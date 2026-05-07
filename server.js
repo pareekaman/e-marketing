@@ -2204,10 +2204,168 @@ async function sendWhatsApp(phone, text) {
   }
 }
 
+// Raw send — used for WhatsApp group IDs (e.g. "120363400573269993@g.us")
+// No phone formatting, no 91-prefix logic — sends "to" as-is.
+async function sendWhatsAppRaw(to, text) {
+  const AUMPFY_URL = process.env.AUMPFY_URL || 'https://api.aumpfy.com/api/apis/trigger/emk-dbde65';
+  const AUMPFY_API_KEY = process.env.AUMPFY_API_KEY || 'sl_f7f604b7eeb89f938399b888621a341f2183bceea4bcb9650f3b8a529d396bfe';
+
+  if (!to) return { ok: false, reason: 'no destination' };
+
+  try {
+    const fetch = global.fetch || (await import('node-fetch')).default;
+    const r = await fetch(AUMPFY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': AUMPFY_API_KEY },
+      body: JSON.stringify({ to: String(to), text })
+    });
+    const data = await r.text();
+    if (r.ok) {
+      console.log(`  📱 WhatsApp (raw) sent → ${to}`);
+      return { ok: true, response: data };
+    } else {
+      console.error(`  ❌ WhatsApp (raw) failed (${r.status}): ${data}`);
+      return { ok: false, status: r.status, error: data };
+    }
+  } catch (err) {
+    console.error('  ❌ WhatsApp (raw) error:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
 // Test endpoint — visit /api/test-whatsapp?phone=98XXXXXXXX&text=hi to test
 app.get('/api/test-whatsapp', requireAuth, requireAdmin, async (req, res) => {
   const result = await sendWhatsApp(req.query.phone, req.query.text || 'Test from E-Marketing Task Manager');
   res.json(result);
+});
+
+// ══════════════════════════════════════════════════════
+// 📢 DAILY REMINDER — sends list of users who didn't fill today's task
+// to a WhatsApp group. Excludes CXO department.
+// ══════════════════════════════════════════════════════
+const REMINDER_GROUP_ID = process.env.REMINDER_GROUP_ID || '120363400573269993@g.us';
+const EXCLUDED_DEPARTMENTS = ['CXO']; // case-insensitive match
+
+async function buildAndSendReminder() {
+  // Today's date in IST (India Standard Time)
+  const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+  const today = istNow.toISOString().split('T')[0]; // YYYY-MM-DD
+
+  // Get all users — excluding CXO department (case-insensitive)
+  const [users] = await db.query(
+    `SELECT id, name, COALESCE(department,'') AS department FROM users ORDER BY name ASC`
+  );
+
+  // Filter out CXO and pick only those who didn't fill today
+  const eligible = users.filter(u =>
+    !EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase())
+  );
+
+  if (!eligible.length) {
+    return { ok: false, reason: 'No eligible users (everyone is CXO or no users)' };
+  }
+
+  // Get IDs of users who already submitted today
+  const [filled] = await db.query(
+    `SELECT DISTINCT user_id FROM daily_tasks WHERE entry_date = ?`,
+    [today]
+  );
+  const filledSet = new Set(filled.map(r => r.user_id));
+
+  // Names of users who haven't filled yet
+  const missingNames = eligible
+    .filter(u => !filledSet.has(u.id))
+    .map(u => u.name);
+
+  if (!missingNames.length) {
+    // Everyone (eligible) has filled — send a "all done" or skip
+    const allDoneMsg = `Hello,\n\nGreat news! ✅ Everyone has filled today's Daily Task report.\n\nThanks team!`;
+    const sendRes = await sendWhatsAppRaw(REMINDER_GROUP_ID, allDoneMsg);
+    return { ok: true, allDone: true, missingCount: 0, send: sendRes, date: today };
+  }
+
+  // Build the reminder message
+  let message = "Hello,\n\n";
+  message += "Today's Daily task report is not filled by :-\n\n";
+  message += missingNames.join("\n");
+  message += "\n\nPlease update today's report.";
+
+  const sendRes = await sendWhatsAppRaw(REMINDER_GROUP_ID, message);
+  return {
+    ok: sendRes.ok,
+    date: today,
+    missingCount: missingNames.length,
+    missingNames,
+    eligibleCount: eligible.length,
+    send: sendRes
+  };
+}
+
+// ── Manual trigger (admin button) ────────────────────────
+app.post('/api/daily-reminder/send', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const result = await buildAndSendReminder();
+    res.json(result);
+  } catch (err) {
+    console.error('Manual reminder error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Preview (admin) — see who would get reminded without actually sending ──
+app.get('/api/daily-reminder/preview', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+    const today = istNow.toISOString().split('T')[0];
+
+    const [users] = await db.query(
+      `SELECT id, name, email, COALESCE(department,'') AS department FROM users ORDER BY name ASC`
+    );
+    const eligible = users.filter(u =>
+      !EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase())
+    );
+    const [filled] = await db.query(
+      `SELECT DISTINCT user_id FROM daily_tasks WHERE entry_date = ?`, [today]
+    );
+    const filledSet = new Set(filled.map(r => r.user_id));
+    const missing = eligible.filter(u => !filledSet.has(u.id));
+    const filledList = eligible.filter(u => filledSet.has(u.id));
+    const excludedList = users.filter(u =>
+      EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase())
+    );
+
+    res.json({
+      date: today,
+      group_id: REMINDER_GROUP_ID,
+      missing_count: missing.length,
+      missing,
+      filled_count: filledList.length,
+      filled: filledList,
+      excluded_count: excludedList.length,
+      excluded: excludedList
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Cron endpoint (called by Vercel Cron at 6:10 PM IST = 12:40 PM UTC) ──
+// Protected by CRON_SECRET so random visitors can't trigger it.
+app.get('/api/cron/daily-reminder', async (req, res) => {
+  // Vercel Cron sends header: authorization: Bearer <CRON_SECRET>
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (process.env.CRON_SECRET && authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: daily-reminder');
+    const result = await buildAndSendReminder();
+    res.json(result);
+  } catch (err) {
+    console.error('Cron error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ══════════════════════════════════════════════════════
