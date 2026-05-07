@@ -2291,6 +2291,15 @@ app.post('/api/daily-tasks', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Date and at least 1 row required' });
     }
 
+    // Date restriction: only today or yesterday
+    const today = new Date(); today.setHours(0,0,0,0);
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    const todayStr = today.toISOString().split('T')[0];
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    if (entry_date !== todayStr && entry_date !== yesterdayStr) {
+      return res.status(400).json({ error: 'Only today or yesterday entries are allowed' });
+    }
+
     // Validate each row
     const cleanRows = [];
     for (const r of rows) {
@@ -2310,7 +2319,7 @@ app.post('/api/daily-tasks', requireAuth, async (req, res) => {
       [req.session.userId, entry_date]
     );
     if (cnt > 0) {
-      return res.status(400).json({ error: 'Aap iss date ke liye already submit kar chuke hain. Edit allowed nahi hai.' });
+      return res.status(400).json({ error: 'You have already submitted for this date. Editing is not allowed.' });
     }
 
     // Bulk insert
@@ -2407,6 +2416,63 @@ app.get('/api/daily-tasks/all', requireAuth, requireAdmin, async (req, res) => {
       params
     );
     res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Monthly report — summary + day-wise entries (admin only)
+app.get('/api/daily-tasks/report', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    // Default to current month if not provided
+    const now = new Date();
+    const month = req.query.month || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ error: 'Invalid month format. Use YYYY-MM' });
+    }
+    const [year, mm] = month.split('-').map(Number);
+    const fromDate = `${year}-${String(mm).padStart(2,'0')}-01`;
+    // last day of month
+    const lastDay = new Date(year, mm, 0).getDate();
+    const toDate = `${year}-${String(mm).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+
+    // All entries in this month
+    const [rows] = await db.query(
+      `SELECT dt.id, DATE_FORMAT(dt.entry_date,'%Y-%m-%d') AS entry_date,
+              dt.client_name, dt.department, dt.description, dt.duration_min,
+              dt.user_id, u.name AS doer_name, u.email AS doer_email,
+              COALESCE(u.department, '') AS doer_department
+       FROM daily_tasks dt
+       JOIN users u ON dt.user_id = u.id
+       WHERE dt.entry_date BETWEEN ? AND ?
+       ORDER BY dt.entry_date ASC, u.name ASC, dt.id ASC`,
+      [fromDate, toDate]
+    );
+
+    // Per-user totals
+    const userTotals = {};
+    for (const r of rows) {
+      if (!userTotals[r.user_id]) {
+        userTotals[r.user_id] = {
+          user_id: r.user_id, name: r.doer_name, email: r.doer_email,
+          department: r.doer_department, total_minutes: 0, total_tasks: 0,
+          days_filled: new Set()
+        };
+      }
+      userTotals[r.user_id].total_minutes += r.duration_min;
+      userTotals[r.user_id].total_tasks += 1;
+      userTotals[r.user_id].days_filled.add(r.entry_date);
+    }
+    // Convert Set to count
+    const summary = Object.values(userTotals)
+      .map(u => ({ ...u, days_filled: u.days_filled.size }))
+      .sort((a, b) => b.total_minutes - a.total_minutes);
+
+    res.json({
+      month, from: fromDate, to: toDate,
+      total_entries: rows.length,
+      total_minutes: rows.reduce((a, b) => a + b.duration_min, 0),
+      summary,
+      entries: rows
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

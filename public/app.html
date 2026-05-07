@@ -391,6 +391,35 @@ tbody tr:last-child td{border-bottom:none;}
 .cp-summary-bad{background:#fee2e2;color:#991b1b;}
 .cp-summary-meh{background:#fef3c7;color:#92400e;}
 
+/* ══════════════════════════════════════════════
+   DAILY REPORTS (month-wise admin view)
+   ══════════════════════════════════════════════ */
+.dr-card{background:#fff;border-radius:18px;padding:30px 32px;box-shadow:0 4px 20px rgba(243,156,18,.08);border:1px solid #fef3c7;}
+.dr-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;flex-wrap:wrap;gap:12px;}
+.dr-title{font-size:24px;font-weight:700;color:#1e293b;}
+.dr-month-picker{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.dr-month-picker label{font-size:13px;font-weight:600;color:#475569;}
+.dr-month-picker input[type="month"]{padding:9px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit;background:#fff;color:#1e293b;}
+.dr-month-picker input[type="month"]:focus{border-color:#F39C12;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
+.dr-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:24px;}
+.dr-stat{background:linear-gradient(135deg,#fff8e1,#ffecb3);border-radius:12px;padding:18px 20px;border:1.5px solid #fef3c7;}
+.dr-stat-label{font-size:11px;font-weight:600;color:#92400e;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;}
+.dr-stat-value{font-size:26px;font-weight:800;color:#F39C12;}
+.dr-stat-sub{font-size:11px;color:#64748b;margin-top:4px;}
+.dr-section-title{font-size:14px;font-weight:700;color:#1e293b;margin:18px 0 10px;padding-bottom:8px;border-bottom:2px dashed #fef3c7;}
+.dr-filter-row{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.dr-filter-row input,.dr-filter-row select{padding:9px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit;}
+.dr-filter-row input{flex:1;min-width:200px;}
+.dr-filter-row input:focus,.dr-filter-row select:focus{border-color:#F39C12;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
+.dr-table-wrap{overflow-x:auto;border-radius:12px;border:1px solid #fef3c7;margin-bottom:18px;max-height:500px;overflow-y:auto;}
+.dr-table{width:100%;border-collapse:collapse;font-size:13px;}
+.dr-table th{position:sticky;top:0;background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;padding:11px 12px;font-weight:700;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;z-index:1;}
+.dr-table td{padding:9px 12px;border-bottom:1px solid #fef3c7;background:#fff;color:#1e293b;}
+.dr-table tr:hover td{background:#fffbeb;}
+.dr-table .pill-min{background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;display:inline-block;}
+.dr-table .pill-tag{background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;display:inline-block;}
+.dr-table .pill-dept{background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;display:inline-block;}
+
 @media (max-width:768px){
   .dt-card,.cm-card,.cp-card{padding:20px 18px;}
   .dt-title{font-size:24px;}
@@ -456,6 +485,10 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="nav-item" id="nav-compliance" style="display:none" onclick="navigate('compliance',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
       <span class="nav-label-text">Compliance</span>
+    </div>
+    <div class="nav-item" id="nav-dailyreports" style="display:none" onclick="navigate('dailyreports',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+      <span class="nav-label-text">Daily Reports</span>
     </div>
     <div class="nav-divider"></div>
     <div class="nav-item" onclick="navigate('profile',this)">
@@ -856,7 +889,7 @@ tbody tr:last-child td{border-bottom:none;}
 
       <!-- Already-submitted notice -->
       <div id="dtLockedNotice" class="dt-locked" style="display:none">
-        🔒 Aap iss date ke liye already submit kar chuke hain — entries lock ho chuki hain.
+        🔒 You have already submitted for this date — entries are now locked.
       </div>
 
       <!-- Rows table -->
@@ -900,10 +933,10 @@ tbody tr:last-child td{border-bottom:none;}
   <div id="page-clients" class="page">
     <div class="cm-card">
       <h1 class="cm-title">🏢 Client Master</h1>
-      <p class="cm-sub">Yahan se add/remove clients karo. Ye list Daily Task form me dropdown me dikhegi.</p>
+      <p class="cm-sub">Add or remove clients here. This list will appear in the dropdown of the Daily Task form.</p>
 
       <div class="cm-add-row">
-        <input type="text" id="cmNewClient" placeholder="Naya client ka naam..." onkeydown="if(event.key==='Enter')cmAdd()"/>
+        <input type="text" id="cmNewClient" placeholder="Enter new client name..." onkeydown="if(event.key==='Enter')cmAdd()"/>
         <button class="dt-btn dt-btn-add" onclick="cmAdd()">+ Add Client</button>
       </div>
 
@@ -920,7 +953,7 @@ tbody tr:last-child td{border-bottom:none;}
         <h1 class="cp-title">📊 Compliance Tracker</h1>
         <button class="dt-btn dt-btn-add" onclick="loadCompliance()">🔄 Refresh</button>
       </div>
-      <p class="cp-sub">Last 7 days me kis user ne kab Daily Task fill kiya. <span class="cp-dot cp-dot-yes"></span> = filled · <span class="cp-dot cp-dot-no"></span> = missed</p>
+      <p class="cp-sub">Last 7 days — who filled the Daily Task and when. <span class="cp-dot cp-dot-yes"></span> = filled · <span class="cp-dot cp-dot-no"></span> = missed</p>
 
       <div class="cp-filter-row">
         <input type="text" id="cpSearch" placeholder="🔍 Search by name / email / department..." oninput="renderCompliance()"/>
@@ -934,6 +967,43 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
 
       <div id="cpGridWrap" class="cp-grid-wrap"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       DAILY REPORTS — month-wise admin report
+       ══════════════════════════════════════════════════════ -->
+  <div id="page-dailyreports" class="page">
+    <div class="dr-card">
+      <div class="dr-header">
+        <h1 class="dr-title">📈 Daily Task Reports</h1>
+        <div class="dr-month-picker">
+          <label>Month:</label>
+          <input type="month" id="drMonth" onchange="loadDailyReports()"/>
+          <button class="dt-btn dt-btn-add" onclick="drExportCSV()">⬇ Export CSV</button>
+        </div>
+      </div>
+
+      <!-- Top stats -->
+      <div class="dr-stats" id="drStats"></div>
+
+      <!-- Per-user summary -->
+      <div class="dr-section-title">📊 Per-User Summary</div>
+      <div id="drSummaryWrap" class="dr-table-wrap">
+        <div class="empty">Loading...</div>
+      </div>
+
+      <!-- Detailed entries -->
+      <div class="dr-section-title">📝 All Entries (this month)</div>
+      <div class="dr-filter-row">
+        <input type="text" id="drSearch" placeholder="🔍 Search by name / client / description..." oninput="renderDREntries()"/>
+        <select id="drUserFilter" onchange="renderDREntries()">
+          <option value="">All Users</option>
+        </select>
+      </div>
+      <div id="drEntriesWrap" class="dr-table-wrap">
+        <div class="empty">Loading...</div>
+      </div>
     </div>
   </div>
 
@@ -1828,6 +1898,7 @@ async function init() {
       document.getElementById('nav-fms').style.display = 'flex';
       document.getElementById('nav-clients').style.display = 'flex';
       document.getElementById('nav-compliance').style.display = 'flex';
+      document.getElementById('nav-dailyreports').style.display = 'flex';
       document.getElementById('bulkDeleteBtn').style.display = 'inline-flex';
     }
     if (ME.role === 'hod') {
@@ -1914,7 +1985,7 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports'};
 
 function navigate(page, el) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -1931,6 +2002,7 @@ function navigate(page, el) {
   if (page==='daily') loadDailyForm();
   if (page==='clients') loadClients();
   if (page==='compliance') loadCompliance();
+  if (page==='dailyreports') loadDailyReports();
   window.scrollTo(0,0);
 }
 
@@ -5440,14 +5512,14 @@ async function loadDailyForm(){
   document.getElementById('dtUserName').textContent = ME.name;
   document.getElementById('dtDoerName').value = ME.name;
 
-  // Date dropdown — today + last 6 days
+  // Date dropdown — today + yesterday only
   const sel = document.getElementById('dtEntryDate');
   sel.innerHTML = '';
   const today = new Date();
-  for (let i = 0; i < 7; i++){
+  for (let i = 0; i < 2; i++){
     const d = new Date(today); d.setDate(d.getDate() - i);
     const v = dtFormatDate(d);
-    const label = i === 0 ? `Today (${dtFormatDDMMYYYY(d)})` : dtFormatDDMMYYYY(d);
+    const label = i === 0 ? `Today (${dtFormatDDMMYYYY(d)})` : `Yesterday (${dtFormatDDMMYYYY(d)})`;
     const opt = document.createElement('option');
     opt.value = v; opt.textContent = label;
     sel.appendChild(opt);
@@ -5569,7 +5641,7 @@ async function dtSubmit(){
     const desc = tr.querySelector('.dt-desc').value.trim();
     const time = parseInt(tr.querySelector('.dt-time').value) || 0;
     if (!client || !desc || time <= 0) {
-      showToast('Saari rows me Client, Description aur Time (>0) zaroori hain','error');
+      showToast('Each row needs Client, Description and Time (>0)','error');
       return;
     }
     rows.push({ client_name: client, department: dept, description: desc, duration_min: time });
@@ -5738,6 +5810,164 @@ function renderCompliance(){
   }
   html += `</tbody></table>`;
   wrap.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════
+// 📈 DAILY REPORTS (admin, month-wise)
+// ══════════════════════════════════════════════════════
+let DR_DATA = null;
+
+async function loadDailyReports(){
+  const monthInput = document.getElementById('drMonth');
+  if (!monthInput.value) {
+    const now = new Date();
+    monthInput.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  }
+  document.getElementById('drStats').innerHTML = '<div class="empty">Loading...</div>';
+  document.getElementById('drSummaryWrap').innerHTML = '<div class="empty">Loading...</div>';
+  document.getElementById('drEntriesWrap').innerHTML = '<div class="empty">Loading...</div>';
+
+  try {
+    DR_DATA = await api('/api/daily-tasks/report?month=' + monthInput.value);
+    if (DR_DATA.error) throw new Error(DR_DATA.error);
+    renderDRStats();
+    renderDRSummary();
+    renderDREntriesUserDropdown();
+    renderDREntries();
+  } catch(e) {
+    document.getElementById('drStats').innerHTML = `<div class="empty">Failed: ${e.message}</div>`;
+    document.getElementById('drSummaryWrap').innerHTML = '';
+    document.getElementById('drEntriesWrap').innerHTML = '';
+  }
+}
+
+function renderDRStats(){
+  const d = DR_DATA;
+  const totalHours = (d.total_minutes / 60).toFixed(1);
+  const monthLabel = new Date(d.month + '-01').toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  document.getElementById('drStats').innerHTML = `
+    <div class="dr-stat">
+      <div class="dr-stat-label">Month</div>
+      <div class="dr-stat-value" style="font-size:20px">${monthLabel}</div>
+    </div>
+    <div class="dr-stat">
+      <div class="dr-stat-label">Total Entries</div>
+      <div class="dr-stat-value">${d.total_entries}</div>
+      <div class="dr-stat-sub">across ${d.summary.length} user${d.summary.length===1?'':'s'}</div>
+    </div>
+    <div class="dr-stat">
+      <div class="dr-stat-label">Total Time</div>
+      <div class="dr-stat-value">${d.total_minutes}<span style="font-size:14px"> min</span></div>
+      <div class="dr-stat-sub">≈ ${totalHours} hours</div>
+    </div>
+    <div class="dr-stat">
+      <div class="dr-stat-label">Active Users</div>
+      <div class="dr-stat-value">${d.summary.length}</div>
+      <div class="dr-stat-sub">submitted at least once</div>
+    </div>
+  `;
+}
+
+function renderDRSummary(){
+  const wrap = document.getElementById('drSummaryWrap');
+  if (!DR_DATA.summary.length) {
+    wrap.innerHTML = '<div class="empty">No submissions in this month yet.</div>';
+    return;
+  }
+  let html = `<table class="dr-table"><thead><tr>
+    <th>User</th><th>Department</th><th>Days Filled</th>
+    <th>Total Tasks</th><th>Total Minutes</th><th>Hours</th><th>Avg/Day</th>
+  </tr></thead><tbody>`;
+  for (const u of DR_DATA.summary) {
+    const hours = (u.total_minutes / 60).toFixed(1);
+    const avg = u.days_filled > 0 ? Math.round(u.total_minutes / u.days_filled) : 0;
+    html += `<tr>
+      <td><b>${dtEscape(u.name)}</b><br><span style="color:#64748b;font-size:11px">${dtEscape(u.email)}</span></td>
+      <td>${dtEscape(u.department || '—')}</td>
+      <td>${u.days_filled} day${u.days_filled===1?'':'s'}</td>
+      <td>${u.total_tasks}</td>
+      <td><span class="pill-min">${u.total_minutes} min</span></td>
+      <td>${hours} hr</td>
+      <td>${avg} min/day</td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
+}
+
+function renderDREntriesUserDropdown(){
+  const sel = document.getElementById('drUserFilter');
+  const cur = sel.value;
+  let html = '<option value="">All Users</option>';
+  for (const u of DR_DATA.summary) {
+    const selected = cur == u.user_id ? 'selected' : '';
+    html += `<option value="${u.user_id}" ${selected}>${dtEscape(u.name)}</option>`;
+  }
+  sel.innerHTML = html;
+}
+
+function renderDREntries(){
+  if (!DR_DATA) return;
+  const wrap = document.getElementById('drEntriesWrap');
+  const search = (document.getElementById('drSearch')?.value || '').toLowerCase();
+  const userId = document.getElementById('drUserFilter')?.value || '';
+
+  let entries = DR_DATA.entries;
+  if (userId) entries = entries.filter(e => String(e.user_id) === String(userId));
+  if (search) {
+    entries = entries.filter(e =>
+      e.doer_name.toLowerCase().includes(search) ||
+      e.client_name.toLowerCase().includes(search) ||
+      (e.description||'').toLowerCase().includes(search) ||
+      (e.department||'').toLowerCase().includes(search)
+    );
+  }
+
+  if (!entries.length) {
+    wrap.innerHTML = '<div class="empty">No entries match the filters.</div>';
+    return;
+  }
+
+  let html = `<table class="dr-table"><thead><tr>
+    <th>Date</th><th>User</th><th>Client</th><th>Department</th>
+    <th>Description</th><th>Time</th>
+  </tr></thead><tbody>`;
+  for (const e of entries) {
+    html += `<tr>
+      <td><b>${e.entry_date}</b></td>
+      <td>${dtEscape(e.doer_name)}</td>
+      <td><span class="pill-tag">${dtEscape(e.client_name)}</span></td>
+      <td>${e.department ? `<span class="pill-dept">${dtEscape(e.department)}</span>` : '—'}</td>
+      <td>${dtEscape(e.description)}</td>
+      <td><span class="pill-min">${e.duration_min} min</span></td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
+}
+
+function drExportCSV(){
+  if (!DR_DATA || !DR_DATA.entries.length) {
+    showToast('No data to export', 'error'); return;
+  }
+  const rows = [['Date', 'User', 'Email', 'Client', 'Department', 'Description', 'Minutes']];
+  for (const e of DR_DATA.entries) {
+    rows.push([
+      e.entry_date,
+      (e.doer_name||'').replace(/,/g,';'),
+      e.doer_email,
+      (e.client_name||'').replace(/,/g,';'),
+      (e.department||'').replace(/,/g,';'),
+      (e.description||'').replace(/,/g,';').replace(/\n/g,' '),
+      e.duration_min
+    ]);
+  }
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `daily_tasks_${DR_DATA.month}.csv`;
+  a.click();
+  showToast('✅ CSV downloaded');
 }
 
 init();
