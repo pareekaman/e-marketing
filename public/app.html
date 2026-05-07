@@ -296,6 +296,108 @@ tbody tr:last-child td{border-bottom:none;}
 .flat-tasks-table{background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow-x:auto;}
 .bulk-section{margin-top:20px;padding-top:16px;border-top:1px solid #f1f5f9;}
 .file-row{display:flex;align-items:center;gap:8px;margin-top:6px;}
+
+/* ══════════════════════════════════════════════
+   DAILY TASK FORM (orange theme, matches brand)
+   ══════════════════════════════════════════════ */
+.dt-card{background:#fff;border-radius:18px;padding:30px 32px;box-shadow:0 4px 20px rgba(243,156,18,.08);border:1px solid #fef3c7;}
+.dt-topbar{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#fff8e1,#ffecb3);border-radius:10px;padding:12px 18px;margin-bottom:22px;}
+.dt-time{color:#F39C12;font-weight:600;font-size:13px;font-family:'Courier New',monospace;}
+.dt-welcome{color:#475569;font-size:14px;}
+.dt-welcome b{color:#1e293b;}
+.dt-title{font-size:30px;font-weight:800;text-align:center;background:linear-gradient(135deg,#FF9800,#F39C12);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:24px;letter-spacing:.5px;font-style:italic;}
+.dt-meta-row{display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap;margin-bottom:20px;}
+.dt-meta-field{display:flex;align-items:center;gap:10px;}
+.dt-meta-field label{font-size:13px;font-weight:600;color:#1e293b;}
+.dt-meta-field select,.dt-meta-field input{padding:9px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;background:#fff;font-family:inherit;color:#1e293b;min-width:200px;}
+.dt-meta-field select:focus,.dt-meta-field input:focus{border-color:#F39C12;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
+.dt-meta-field input:disabled{background:#fef3c7;color:#92400e;font-weight:600;}
+.dt-locked{background:#fef3c7;border:1.5px solid #fbbf24;color:#92400e;padding:14px 18px;border-radius:10px;font-size:13px;margin-bottom:18px;font-weight:500;}
+.dt-table-wrap{border-radius:12px;overflow:hidden;border:1px solid #fef3c7;margin-bottom:18px;}
+.dt-table{width:100%;border-collapse:collapse;}
+.dt-table thead th{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;padding:14px 12px;font-size:12px;font-weight:700;text-align:left;text-transform:uppercase;letter-spacing:.6px;}
+.dt-table tbody td{padding:10px 8px;border-bottom:1px solid #fef3c7;background:#fff;}
+.dt-table tbody tr:last-child td{border-bottom:none;}
+.dt-table tbody tr:hover td{background:#fffbeb;}
+.dt-table input[type="text"],.dt-table input[type="number"],.dt-table select,.dt-table textarea{width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;outline:none;font-family:inherit;background:#fafafa;color:#1e293b;resize:vertical;}
+.dt-table textarea{min-height:36px;line-height:1.4;}
+.dt-table input:focus,.dt-table select:focus,.dt-table textarea:focus{border-color:#F39C12;background:#fff;box-shadow:0 0 0 2px rgba(243,156,18,.12);}
+.dt-row-btn{padding:7px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;width:100%;}
+.dt-btn-dup{background:#10b981;color:#fff;}
+.dt-btn-dup:hover{background:#059669;transform:translateY(-1px);}
+.dt-btn-del{background:#ef4444;color:#fff;}
+.dt-btn-del:hover{background:#dc2626;transform:translateY(-1px);}
+.dt-summary{display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:14px 20px;background:linear-gradient(135deg,#fff8e1,#ffecb3);border-radius:10px;margin-bottom:20px;}
+.dt-summary span{font-size:14px;font-weight:600;color:#475569;}
+.dt-summary strong{font-size:18px;color:#F39C12;font-weight:800;}
+.dt-actions{display:flex;justify-content:flex-end;gap:12px;}
+.dt-btn{padding:11px 22px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;letter-spacing:.3px;}
+.dt-btn-add{background:#10b981;color:#fff;box-shadow:0 4px 12px rgba(16,185,129,.25);}
+.dt-btn-add:hover{background:#059669;transform:translateY(-2px);box-shadow:0 6px 16px rgba(16,185,129,.35);}
+.dt-btn-submit{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;box-shadow:0 4px 14px rgba(243,156,18,.35);}
+.dt-btn-submit:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(243,156,18,.45);}
+.dt-btn-submit:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+.dt-history{margin-top:32px;padding-top:24px;border-top:2px dashed #fef3c7;}
+.dt-history-title{font-size:15px;font-weight:700;color:#1e293b;margin-bottom:14px;}
+.dt-history-wrap{background:#fff;border-radius:10px;border:1px solid #fef3c7;overflow:hidden;}
+.dt-history-day{padding:12px 16px;border-bottom:1px solid #fef3c7;}
+.dt-history-day:last-child{border-bottom:none;}
+.dt-history-date{font-size:12px;font-weight:700;color:#F39C12;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}
+.dt-history-row{display:flex;gap:8px;padding:6px 0;font-size:13px;color:#475569;flex-wrap:wrap;align-items:center;}
+.dt-history-row .pill{background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;}
+
+/* ══════════════════════════════════════════════
+   CLIENT MASTER
+   ══════════════════════════════════════════════ */
+.cm-card{background:#fff;border-radius:18px;padding:30px 32px;box-shadow:0 4px 20px rgba(243,156,18,.08);border:1px solid #fef3c7;}
+.cm-title{font-size:24px;font-weight:700;color:#1e293b;margin-bottom:6px;}
+.cm-sub{color:#64748b;font-size:13px;margin-bottom:22px;}
+.cm-add-row{display:flex;gap:10px;margin-bottom:20px;}
+.cm-add-row input{flex:1;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;outline:none;font-family:inherit;}
+.cm-add-row input:focus{border-color:#F39C12;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
+.cm-list-wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;}
+.cm-client-card{background:#fff8e1;border:1.5px solid #fef3c7;border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;transition:all .15s;}
+.cm-client-card:hover{border-color:#F39C12;background:#fffbeb;}
+.cm-client-name{font-size:14px;font-weight:600;color:#1e293b;}
+.cm-client-del{background:transparent;color:#ef4444;border:1.5px solid #fecaca;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;}
+.cm-client-del:hover{background:#ef4444;color:#fff;border-color:#ef4444;}
+
+/* ══════════════════════════════════════════════
+   COMPLIANCE TRACKER
+   ══════════════════════════════════════════════ */
+.cp-card{background:#fff;border-radius:18px;padding:30px 32px;box-shadow:0 4px 20px rgba(243,156,18,.08);border:1px solid #fef3c7;}
+.cp-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:12px;}
+.cp-title{font-size:24px;font-weight:700;color:#1e293b;}
+.cp-sub{color:#64748b;font-size:13px;margin-bottom:18px;}
+.cp-dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin:0 2px;}
+.cp-dot-yes{background:#10b981;}
+.cp-dot-no{background:#ef4444;}
+.cp-filter-row{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;}
+.cp-filter-row input,.cp-filter-row select{padding:9px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit;}
+.cp-filter-row input{flex:1;min-width:200px;}
+.cp-filter-row input:focus,.cp-filter-row select:focus{border-color:#F39C12;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
+.cp-grid-wrap{overflow-x:auto;border-radius:12px;border:1px solid #fef3c7;}
+.cp-grid{width:100%;border-collapse:collapse;font-size:13px;}
+.cp-grid th{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;padding:12px 10px;font-weight:700;text-align:center;font-size:12px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
+.cp-grid th:first-child,.cp-grid th:nth-child(2),.cp-grid th:nth-child(3){text-align:left;}
+.cp-grid td{padding:10px;border-bottom:1px solid #fef3c7;background:#fff;text-align:center;}
+.cp-grid tr:hover td{background:#fffbeb;}
+.cp-grid td:first-child{font-weight:600;color:#1e293b;text-align:left;}
+.cp-grid td:nth-child(2),.cp-grid td:nth-child(3){text-align:left;color:#64748b;font-size:12px;}
+.cp-cell-yes{color:#10b981;font-size:18px;font-weight:700;}
+.cp-cell-no{color:#ef4444;font-size:18px;font-weight:700;}
+.cp-summary-pill{display:inline-block;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;}
+.cp-summary-good{background:#d1fae5;color:#065f46;}
+.cp-summary-bad{background:#fee2e2;color:#991b1b;}
+.cp-summary-meh{background:#fef3c7;color:#92400e;}
+
+@media (max-width:768px){
+  .dt-card,.cm-card,.cp-card{padding:20px 18px;}
+  .dt-title{font-size:24px;}
+  .dt-meta-row{flex-direction:column;align-items:stretch;}
+  .dt-meta-field{justify-content:space-between;}
+  .dt-meta-field select,.dt-meta-field input{min-width:0;flex:1;}
+}
 </style>
 </head>
 <body>
@@ -341,6 +443,19 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="nav-item" id="nav-fms-tasks" onclick="navigate('fms-tasks',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18M3 6h18M3 18h18"/></svg>
       <span class="nav-label-text">FMS Tasks</span>
+    </div>
+    <div class="nav-divider"></div>
+    <div class="nav-item" id="nav-daily" onclick="navigate('daily',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+      <span class="nav-label-text">Daily Task</span>
+    </div>
+    <div class="nav-item" id="nav-clients" style="display:none" onclick="navigate('clients',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+      <span class="nav-label-text">Client Master</span>
+    </div>
+    <div class="nav-item" id="nav-compliance" style="display:none" onclick="navigate('compliance',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
+      <span class="nav-label-text">Compliance</span>
     </div>
     <div class="nav-divider"></div>
     <div class="nav-item" onclick="navigate('profile',this)">
@@ -714,6 +829,111 @@ tbody tr:last-child td{border-bottom:none;}
     <!-- Empty state -->
     <div id="fmsTasksEmpty" class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;display:none">
       No FMS assigned to you yet.
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       DAILY TASK FORM (visible to all roles)
+       ══════════════════════════════════════════════════════ -->
+  <div id="page-daily" class="page">
+    <div class="dt-card">
+      <div class="dt-topbar">
+        <div class="dt-time" id="dtNow">—</div>
+        <div class="dt-welcome">Welcome <b id="dtUserName">—</b></div>
+      </div>
+      <h1 class="dt-title">Daily Task Form</h1>
+
+      <div class="dt-meta-row">
+        <div class="dt-meta-field">
+          <label>Entry Date:</label>
+          <select id="dtEntryDate"></select>
+        </div>
+        <div class="dt-meta-field" style="text-align:right">
+          <label>Doer Name:</label>
+          <input type="text" id="dtDoerName" disabled/>
+        </div>
+      </div>
+
+      <!-- Already-submitted notice -->
+      <div id="dtLockedNotice" class="dt-locked" style="display:none">
+        🔒 Aap iss date ke liye already submit kar chuke hain — entries lock ho chuki hain.
+      </div>
+
+      <!-- Rows table -->
+      <div class="dt-table-wrap" id="dtTableWrap">
+        <table class="dt-table">
+          <thead>
+            <tr>
+              <th style="width:24%">Client Name</th>
+              <th style="width:22%">Department</th>
+              <th>Task Description</th>
+              <th style="width:90px">Time (min)</th>
+              <th style="width:72px">Dup</th>
+              <th style="width:72px">Del</th>
+            </tr>
+          </thead>
+          <tbody id="dtRowsBody"></tbody>
+        </table>
+      </div>
+
+      <div class="dt-summary">
+        <span>Total Duration (Minutes):</span>
+        <strong id="dtTotalMin">0</strong>
+      </div>
+
+      <div class="dt-actions" id="dtActions">
+        <button class="dt-btn dt-btn-add" onclick="dtAddRow()">+ Add Row</button>
+        <button class="dt-btn dt-btn-submit" onclick="dtSubmit()">Submit All →</button>
+      </div>
+
+      <!-- Past entries -->
+      <div class="dt-history">
+        <div class="dt-history-title">📚 My Past Submissions</div>
+        <div id="dtHistoryWrap" class="dt-history-wrap"><div class="empty">No past submissions yet.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       CLIENT MASTER (admin only)
+       ══════════════════════════════════════════════════════ -->
+  <div id="page-clients" class="page">
+    <div class="cm-card">
+      <h1 class="cm-title">🏢 Client Master</h1>
+      <p class="cm-sub">Yahan se add/remove clients karo. Ye list Daily Task form me dropdown me dikhegi.</p>
+
+      <div class="cm-add-row">
+        <input type="text" id="cmNewClient" placeholder="Naya client ka naam..." onkeydown="if(event.key==='Enter')cmAdd()"/>
+        <button class="dt-btn dt-btn-add" onclick="cmAdd()">+ Add Client</button>
+      </div>
+
+      <div id="cmListWrap" class="cm-list-wrap"><div class="empty">Loading clients…</div></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       COMPLIANCE TRACKER (admin only)
+       ══════════════════════════════════════════════════════ -->
+  <div id="page-compliance" class="page">
+    <div class="cp-card">
+      <div class="cp-header">
+        <h1 class="cp-title">📊 Compliance Tracker</h1>
+        <button class="dt-btn dt-btn-add" onclick="loadCompliance()">🔄 Refresh</button>
+      </div>
+      <p class="cp-sub">Last 7 days me kis user ne kab Daily Task fill kiya. <span class="cp-dot cp-dot-yes"></span> = filled · <span class="cp-dot cp-dot-no"></span> = missed</p>
+
+      <div class="cp-filter-row">
+        <input type="text" id="cpSearch" placeholder="🔍 Search by name / email / department..." oninput="renderCompliance()"/>
+        <select id="cpRoleFilter" onchange="renderCompliance()">
+          <option value="">All Roles</option>
+          <option value="admin">Admin</option>
+          <option value="hod">HOD</option>
+          <option value="pc">PC</option>
+          <option value="user">User</option>
+        </select>
+      </div>
+
+      <div id="cpGridWrap" class="cp-grid-wrap"><div class="empty">Loading...</div></div>
     </div>
   </div>
 
@@ -1606,6 +1826,8 @@ async function init() {
       document.getElementById('nav-users').style.display = 'flex';
       document.getElementById('nav-mis').style.display = 'flex';
       document.getElementById('nav-fms').style.display = 'flex';
+      document.getElementById('nav-clients').style.display = 'flex';
+      document.getElementById('nav-compliance').style.display = 'flex';
       document.getElementById('bulkDeleteBtn').style.display = 'inline-flex';
     }
     if (ME.role === 'hod') {
@@ -1692,7 +1914,7 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',fms:'FMS Admin','fms-tasks':'FMS Tasks'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker'};
 
 function navigate(page, el) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -1706,6 +1928,9 @@ function navigate(page, el) {
   if (page==='approvals') loadApprovals();
   if (page==='fms') loadFMSAdmin();
   if (page==='fms-tasks') loadFMSTasks();
+  if (page==='daily') loadDailyForm();
+  if (page==='clients') loadClients();
+  if (page==='compliance') loadCompliance();
   window.scrollTo(0,0);
 }
 
@@ -5189,6 +5414,330 @@ async function handleTransfer(id, action) {
   showToast(action === 'approved' ? '✅ Transfer approved!' : '❌ Transfer rejected!');
   loadTransferApprovals();
   loadTransferBadge();
+}
+
+// ══════════════════════════════════════════════════════
+// 📅 DAILY TASK FORM
+// ══════════════════════════════════════════════════════
+let DT_CLIENTS = [];
+let DT_DEPARTMENTS = [];
+let DT_LOCKED = false;
+
+function dtPad(n){ return n<10 ? '0'+n : n; }
+function dtFormatDate(d){ return `${d.getFullYear()}-${dtPad(d.getMonth()+1)}-${dtPad(d.getDate())}`; }
+function dtFormatDDMMYYYY(d){ return `${dtPad(d.getDate())}/${dtPad(d.getMonth()+1)}/${d.getFullYear()}`; }
+
+function dtTickClock(){
+  const now = new Date();
+  const t = `${dtFormatDDMMYYYY(now)} ${dtPad(now.getHours())}:${dtPad(now.getMinutes())}:${dtPad(now.getSeconds())}`;
+  const el = document.getElementById('dtNow');
+  if (el) el.textContent = t;
+}
+setInterval(dtTickClock, 1000);
+
+async function loadDailyForm(){
+  dtTickClock();
+  document.getElementById('dtUserName').textContent = ME.name;
+  document.getElementById('dtDoerName').value = ME.name;
+
+  // Date dropdown — today + last 6 days
+  const sel = document.getElementById('dtEntryDate');
+  sel.innerHTML = '';
+  const today = new Date();
+  for (let i = 0; i < 7; i++){
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    const v = dtFormatDate(d);
+    const label = i === 0 ? `Today (${dtFormatDDMMYYYY(d)})` : dtFormatDDMMYYYY(d);
+    const opt = document.createElement('option');
+    opt.value = v; opt.textContent = label;
+    sel.appendChild(opt);
+  }
+  sel.onchange = dtCheckLockAndRender;
+
+  // Load clients + departments
+  try {
+    const [clients, departments] = await Promise.all([
+      api('/api/clients'),
+      api('/api/departments')
+    ]);
+    DT_CLIENTS = Array.isArray(clients) ? clients : [];
+    DT_DEPARTMENTS = Array.isArray(departments) ? departments : [];
+  } catch(e) {
+    DT_CLIENTS = []; DT_DEPARTMENTS = [];
+  }
+
+  await dtCheckLockAndRender();
+  await dtLoadHistory();
+}
+
+async function dtCheckLockAndRender(){
+  const date = document.getElementById('dtEntryDate').value;
+  try {
+    const r = await api('/api/daily-tasks/status?date=' + date);
+    DT_LOCKED = !!r.submitted;
+  } catch(e) { DT_LOCKED = false; }
+
+  const lockNotice = document.getElementById('dtLockedNotice');
+  const tableWrap = document.getElementById('dtTableWrap');
+  const actions = document.getElementById('dtActions');
+
+  if (DT_LOCKED) {
+    lockNotice.style.display = 'block';
+    tableWrap.style.display = 'none';
+    actions.style.display = 'none';
+  } else {
+    lockNotice.style.display = 'none';
+    tableWrap.style.display = 'block';
+    actions.style.display = 'flex';
+    // Reset rows to a single empty row
+    document.getElementById('dtRowsBody').innerHTML = '';
+    dtAddRow();
+  }
+  dtRecalcTotal();
+}
+
+function dtClientOptions(selected){
+  let html = '<option value="">--select--</option>';
+  for (const c of DT_CLIENTS) {
+    const sel = (selected === c.name) ? 'selected' : '';
+    html += `<option value="${dtEscape(c.name)}" ${sel}>${dtEscape(c.name)}</option>`;
+  }
+  return html;
+}
+function dtDeptOptions(selected){
+  let html = '<option value="">--select--</option>';
+  for (const d of DT_DEPARTMENTS) {
+    const sel = (selected === d) ? 'selected' : '';
+    html += `<option value="${dtEscape(d)}" ${sel}>${dtEscape(d)}</option>`;
+  }
+  return html;
+}
+function dtEscape(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function dtAddRow(prefill){
+  const tbody = document.getElementById('dtRowsBody');
+  const tr = document.createElement('tr');
+  tr.className = 'dt-row';
+  tr.innerHTML = `
+    <td><select class="dt-client">${dtClientOptions(prefill?.client)}</select></td>
+    <td><select class="dt-dept">${dtDeptOptions(prefill?.dept)}</select></td>
+    <td><textarea class="dt-desc" placeholder="What did you do?">${dtEscape(prefill?.desc||'')}</textarea></td>
+    <td><input type="number" min="1" class="dt-time" value="${prefill?.time||''}" placeholder="0" oninput="dtRecalcTotal()"/></td>
+    <td><button class="dt-row-btn dt-btn-dup" onclick="dtDupRow(this)">Dup</button></td>
+    <td><button class="dt-row-btn dt-btn-del" onclick="dtDelRow(this)">Del</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function dtDupRow(btn){
+  const tr = btn.closest('tr');
+  const prefill = {
+    client: tr.querySelector('.dt-client').value,
+    dept: tr.querySelector('.dt-dept').value,
+    desc: tr.querySelector('.dt-desc').value,
+    time: tr.querySelector('.dt-time').value,
+  };
+  dtAddRow(prefill);
+  dtRecalcTotal();
+}
+function dtDelRow(btn){
+  const tbody = document.getElementById('dtRowsBody');
+  if (tbody.children.length <= 1) {
+    showToast('At least 1 row required','error');
+    return;
+  }
+  btn.closest('tr').remove();
+  dtRecalcTotal();
+}
+function dtRecalcTotal(){
+  let total = 0;
+  document.querySelectorAll('.dt-time').forEach(inp => {
+    const v = parseInt(inp.value) || 0;
+    if (v > 0) total += v;
+  });
+  const el = document.getElementById('dtTotalMin');
+  if (el) el.textContent = total;
+}
+
+async function dtSubmit(){
+  if (DT_LOCKED) { showToast('Already submitted for this date','error'); return; }
+  const date = document.getElementById('dtEntryDate').value;
+  const rows = [];
+  for (const tr of document.querySelectorAll('#dtRowsBody tr')) {
+    const client = tr.querySelector('.dt-client').value.trim();
+    const dept = tr.querySelector('.dt-dept').value.trim();
+    const desc = tr.querySelector('.dt-desc').value.trim();
+    const time = parseInt(tr.querySelector('.dt-time').value) || 0;
+    if (!client || !desc || time <= 0) {
+      showToast('Saari rows me Client, Description aur Time (>0) zaroori hain','error');
+      return;
+    }
+    rows.push({ client_name: client, department: dept, description: desc, duration_min: time });
+  }
+  if (!rows.length) { showToast('Add at least 1 row','error'); return; }
+
+  const btn = document.querySelector('.dt-btn-submit');
+  btn.disabled = true; btn.textContent = 'Submitting...';
+  try {
+    const r = await api('/api/daily-tasks', 'POST', { entry_date: date, rows });
+    if (r.error) { showToast(r.error, 'error'); }
+    else {
+      showToast(`✅ ${r.count} entries submitted! WhatsApp confirmation sent.`);
+      DT_LOCKED = true;
+      await dtCheckLockAndRender();
+      await dtLoadHistory();
+    }
+  } catch(e) {
+    showToast('Submit failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Submit All →';
+  }
+}
+
+async function dtLoadHistory(){
+  const wrap = document.getElementById('dtHistoryWrap');
+  try {
+    const rows = await api('/api/daily-tasks/mine');
+    if (!rows || !rows.length) {
+      wrap.innerHTML = '<div class="empty">No past submissions yet.</div>';
+      return;
+    }
+    // Group by date
+    const byDate = {};
+    for (const r of rows) {
+      if (!byDate[r.entry_date]) byDate[r.entry_date] = [];
+      byDate[r.entry_date].push(r);
+    }
+    let html = '';
+    for (const date of Object.keys(byDate)) {
+      const items = byDate[date];
+      const total = items.reduce((a,b) => a + (b.duration_min||0), 0);
+      html += `<div class="dt-history-day">
+        <div class="dt-history-date">📅 ${date}  ·  ${items.length} task${items.length>1?'s':''}  ·  ${total} min total</div>`;
+      for (const it of items) {
+        html += `<div class="dt-history-row">
+          <span class="pill">${dtEscape(it.client_name)}</span>
+          ${it.department ? `<span class="pill" style="background:#dbeafe;color:#1e40af">${dtEscape(it.department)}</span>` : ''}
+          <span style="flex:1">${dtEscape(it.description)}</span>
+          <span style="color:#F39C12;font-weight:600">${it.duration_min} min</span>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+    wrap.innerHTML = html;
+  } catch(e) {
+    wrap.innerHTML = '<div class="empty">Failed to load history</div>';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// 🏢 CLIENT MASTER (admin)
+// ══════════════════════════════════════════════════════
+async function loadClients(){
+  const wrap = document.getElementById('cmListWrap');
+  wrap.innerHTML = '<div class="empty">Loading clients…</div>';
+  try {
+    const clients = await api('/api/clients');
+    if (!clients || !clients.length) {
+      wrap.innerHTML = '<div class="empty">No clients yet — add one above.</div>';
+      return;
+    }
+    let html = '';
+    for (const c of clients) {
+      html += `<div class="cm-client-card">
+        <span class="cm-client-name">${dtEscape(c.name)}</span>
+        <button class="cm-client-del" onclick="cmDelete(${c.id}, '${dtEscape(c.name)}')">Remove</button>
+      </div>`;
+    }
+    wrap.innerHTML = html;
+  } catch(e) {
+    wrap.innerHTML = '<div class="empty">Failed to load clients</div>';
+  }
+}
+
+async function cmAdd(){
+  const inp = document.getElementById('cmNewClient');
+  const name = inp.value.trim();
+  if (!name) { showToast('Enter client name', 'error'); return; }
+  try {
+    const r = await api('/api/clients', 'POST', { name });
+    if (r.error) showToast(r.error, 'error');
+    else { showToast('✅ Client added'); inp.value = ''; loadClients(); }
+  } catch(e) { showToast('Failed to add', 'error'); }
+}
+
+async function cmDelete(id, name){
+  if (!confirm(`Remove client "${name}"?`)) return;
+  try {
+    await api('/api/clients/' + id, 'DELETE');
+    showToast('🗑 Client removed');
+    loadClients();
+  } catch(e) { showToast('Failed to delete', 'error'); }
+}
+
+// ══════════════════════════════════════════════════════
+// 📊 COMPLIANCE TRACKER (admin)
+// ══════════════════════════════════════════════════════
+let CP_DATA = null;
+
+async function loadCompliance(){
+  const wrap = document.getElementById('cpGridWrap');
+  wrap.innerHTML = '<div class="empty">Loading...</div>';
+  try {
+    CP_DATA = await api('/api/compliance/last7');
+    renderCompliance();
+  } catch(e) {
+    wrap.innerHTML = '<div class="empty">Failed to load compliance data</div>';
+  }
+}
+
+function renderCompliance(){
+  if (!CP_DATA) return;
+  const wrap = document.getElementById('cpGridWrap');
+  const search = (document.getElementById('cpSearch')?.value || '').toLowerCase();
+  const roleF = document.getElementById('cpRoleFilter')?.value || '';
+
+  const dates = CP_DATA.dates;
+  let users = CP_DATA.users;
+
+  if (search) {
+    users = users.filter(u =>
+      u.name.toLowerCase().includes(search) ||
+      u.email.toLowerCase().includes(search) ||
+      (u.department||'').toLowerCase().includes(search)
+    );
+  }
+  if (roleF) users = users.filter(u => u.role === roleF);
+
+  if (!users.length) { wrap.innerHTML = '<div class="empty">No users match filters</div>'; return; }
+
+  let html = `<table class="cp-grid"><thead><tr>
+    <th style="text-align:left">Name</th>
+    <th style="text-align:left">Role</th>
+    <th style="text-align:left">Department</th>`;
+  for (const d of dates) {
+    const dt = new Date(d);
+    const dayLabel = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()];
+    html += `<th>${dayLabel}<br><span style="font-weight:400;font-size:10px;opacity:.85">${d.slice(5)}</span></th>`;
+  }
+  html += `<th>Score</th></tr></thead><tbody>`;
+
+  for (const u of users) {
+    const filledCnt = u.status.filter(s => s.filled).length;
+    const pct = Math.round((filledCnt/dates.length)*100);
+    const pillClass = pct >= 80 ? 'cp-summary-good' : pct >= 50 ? 'cp-summary-meh' : 'cp-summary-bad';
+
+    html += `<tr>
+      <td>${dtEscape(u.name)}</td>
+      <td>${u.role}</td>
+      <td>${dtEscape(u.department)}</td>`;
+    for (const s of u.status) {
+      html += `<td>${s.filled ? '<span class="cp-cell-yes">✓</span>' : '<span class="cp-cell-no">✗</span>'}</td>`;
+    }
+    html += `<td><span class="cp-summary-pill ${pillClass}">${filledCnt}/${dates.length} (${pct}%)</span></td></tr>`;
+  }
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
 }
 
 init();

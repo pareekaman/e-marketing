@@ -380,6 +380,149 @@ function idxToCol(idx) {
 // ══════════════════════════════════════════════════════
 // AUTH
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// 🛠️ SETUP ENDPOINT — Forces migrations + admin seed on demand
+// Visit: /api/setup in browser to manually trigger
+// Useful when auto-migrations on startup fail silently
+// ══════════════════════════════════════════════════════
+app.get('/api/setup', async (req, res) => {
+  const log = [];
+  const sa = async (sql, label) => {
+    try { await db.query(sql); log.push(`✅ ${label}`); }
+    catch(e) { log.push(`⚠️ ${label} — ${e.code || e.message}`); }
+  };
+
+  try {
+    // Test connection first
+    await db.query('SELECT 1');
+    log.push('✅ DB connection OK');
+
+    // ── Create base tables ────────────────────────────
+    await sa(`CREATE TABLE IF NOT EXISTS users (
+      id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) NOT NULL UNIQUE, notification_email VARCHAR(255) DEFAULT '',
+      password VARCHAR(255) NOT NULL, role ENUM('admin','hod','pc','user') DEFAULT 'user',
+      phone VARCHAR(50) DEFAULT NULL, department VARCHAR(255) DEFAULT '',
+      week_off VARCHAR(50) DEFAULT '', extra_off TEXT, profile_image LONGTEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'users table');
+
+    await sa(`CREATE TABLE IF NOT EXISTS delegation_tasks (
+      id INT AUTO_INCREMENT PRIMARY KEY, description TEXT NOT NULL,
+      assigned_to INT NOT NULL, assigned_by INT NOT NULL, due_date DATE,
+      status ENUM('pending','completed','revised') DEFAULT 'pending',
+      priority ENUM('low','medium','high') DEFAULT 'low',
+      approval ENUM('yes','no') DEFAULT 'no', waiting_approval TINYINT(1) DEFAULT 0,
+      remarks TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_assigned_to (assigned_to), INDEX idx_status (status), INDEX idx_due_date (due_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'delegation_tasks table');
+
+    await sa(`CREATE TABLE IF NOT EXISTS checklist_tasks (
+      id INT AUTO_INCREMENT PRIMARY KEY, description TEXT NOT NULL,
+      assigned_to INT NOT NULL, assigned_by INT NOT NULL, due_date DATE,
+      status ENUM('pending','completed') DEFAULT 'pending',
+      priority ENUM('low','medium','high') DEFAULT 'low', remarks TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_assigned_to (assigned_to), INDEX idx_status (status), INDEX idx_due_date (due_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'checklist_tasks table');
+
+    await sa(`CREATE TABLE IF NOT EXISTS task_approvals (
+      id INT AUTO_INCREMENT PRIMARY KEY, task_id INT NOT NULL, task_type VARCHAR(20) NOT NULL,
+      requested_by INT NOT NULL, requested_to INT NOT NULL, action_type VARCHAR(50),
+      status ENUM('pending','approved','rejected') DEFAULT 'pending', note TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_task (task_id, task_type), INDEX idx_requested_to (requested_to)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'task_approvals table');
+
+    await sa(`CREATE TABLE IF NOT EXISTS task_comments (
+      id INT AUTO_INCREMENT PRIMARY KEY, task_id INT NOT NULL, task_type VARCHAR(20) NOT NULL,
+      user_id INT NOT NULL, comment TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_task (task_id, task_type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'task_comments table');
+
+    await sa(`CREATE TABLE IF NOT EXISTS task_transfers (
+      id INT AUTO_INCREMENT PRIMARY KEY, task_id INT NOT NULL, task_type VARCHAR(20) NOT NULL,
+      from_user INT NOT NULL, to_user INT NOT NULL, requested_by INT NOT NULL,
+      status ENUM('pending','approved','rejected') DEFAULT 'pending', note TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'task_transfers table');
+
+    await sa(`CREATE TABLE IF NOT EXISTS fms_sheets (
+      id INT AUTO_INCREMENT PRIMARY KEY, fms_name VARCHAR(255) DEFAULT '',
+      sheet_name VARCHAR(255) NOT NULL, sheet_id VARCHAR(255) NOT NULL,
+      header_row INT DEFAULT 1, total_steps INT DEFAULT 0, created_by INT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'fms_sheets table');
+
+    await sa(`CREATE TABLE IF NOT EXISTS fms_steps (
+      id INT AUTO_INCREMENT PRIMARY KEY, fms_id INT NOT NULL, step_order INT NOT NULL,
+      step_name VARCHAR(255) NOT NULL, plan_col VARCHAR(10) DEFAULT '',
+      actual_col VARCHAR(10) DEFAULT '', extra_input VARCHAR(10) DEFAULT 'no',
+      extra_col VARCHAR(10) DEFAULT '', show_cols TEXT,
+      delay_reason_col VARCHAR(10) DEFAULT '', doer_name_col VARCHAR(10) DEFAULT '',
+      INDEX idx_fms (fms_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'fms_steps table');
+
+    await sa(`CREATE TABLE IF NOT EXISTS fms_step_doers (
+      id INT AUTO_INCREMENT PRIMARY KEY, step_id INT NOT NULL, user_id INT NOT NULL,
+      INDEX idx_step (step_id), INDEX idx_user (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'fms_step_doers table');
+
+    await sa(`CREATE TABLE IF NOT EXISTS fms_extra_rows (
+      id INT AUTO_INCREMENT PRIMARY KEY, step_id INT NOT NULL,
+      row_label VARCHAR(255) DEFAULT '', col_letter VARCHAR(10) DEFAULT '',
+      field_type VARCHAR(20) DEFAULT 'text', dropdown_options TEXT,
+      INDEX idx_step (step_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'fms_extra_rows table');
+
+    await sa(`CREATE TABLE IF NOT EXISTS week_plans (
+      id INT AUTO_INCREMENT PRIMARY KEY, employee_id INT NOT NULL, hod_id INT,
+      start_date DATE NOT NULL, target_count INT DEFAULT 0,
+      improvement_pct DECIMAL(5,2) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_employee (employee_id), INDEX idx_start (start_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'week_plans table');
+
+    // ── Seed admin user ────────────────────────────────
+    try {
+      const [[{ cnt }]] = await db.query('SELECT COUNT(*) AS cnt FROM users WHERE email=?', ['aman@test.com']);
+      if (cnt === 0) {
+        const hash = bcrypt.hashSync('password', 10);
+        await db.query(
+          'INSERT INTO users (name, email, password, role, department) VALUES (?,?,?,?,?)',
+          ['Aman Admin', 'aman@test.com', hash, 'admin', 'Management']
+        );
+        log.push('🌱 Admin user seeded: aman@test.com / password');
+      } else {
+        log.push('ℹ️ Admin user already exists');
+      }
+    } catch(e) {
+      log.push(`❌ Admin seed failed: ${e.message}`);
+    }
+
+    res.send(`
+      <html><head><title>Setup Complete</title>
+      <style>body{font-family:monospace;background:#1a1a1a;color:#0f0;padding:30px;line-height:1.6;}
+      h2{color:#F39C12;}a{color:#F39C12;}</style></head>
+      <body>
+      <h2>🎯 E-Marketing Task Manager — Setup</h2>
+      <pre>${log.join('\n')}</pre>
+      <hr>
+      <p>✅ Setup done! Now <a href="/">click here to login</a></p>
+      <p style="color:#aaa;font-size:12px;">Login: aman@test.com / password</p>
+      </body></html>
+    `);
+  } catch (err) {
+    res.status(500).send(`
+      <html><body style="font-family:monospace;background:#1a1a1a;color:#f55;padding:30px;">
+      <h2 style="color:#f55;">❌ Setup Failed</h2>
+      <pre>${err.message}\n\nLogs so far:\n${log.join('\n')}</pre>
+      </body></html>
+    `);
+  }
+});
+
 app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -1999,6 +2142,274 @@ app.get('/api/debug', async (req, res) => {
 // ══════════════════════════════════════════════════════
 // PAGES
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// 📅 DAILY TASK FORM + CLIENTS + COMPLIANCE + WHATSAPP
+// ══════════════════════════════════════════════════════
+
+// Auto-create new tables on startup (safe, runs once per cold start)
+(async () => {
+  const sa = async (sql) => { try { await db.query(sql); } catch(e){} };
+  await sa(`CREATE TABLE IF NOT EXISTS clients (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+  await sa(`CREATE TABLE IF NOT EXISTS daily_tasks (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    entry_date DATE NOT NULL,
+    client_name VARCHAR(255) NOT NULL,
+    department VARCHAR(255) DEFAULT '',
+    description TEXT NOT NULL,
+    duration_min INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_date (user_id, entry_date),
+    INDEX idx_entry_date (entry_date)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  console.log('  ✅ Daily Task tables ready');
+})();
+
+// ── WhatsApp helper (Aumpfy API) ──────────────────────
+async function sendWhatsApp(phone, text) {
+  const AUMPFY_URL = process.env.AUMPFY_URL || 'https://api.aumpfy.com/api/apis/trigger/emk-dbde65';
+  const AUMPFY_API_KEY = process.env.AUMPFY_API_KEY || 'sl_f7f604b7eeb89f938399b888621a341f2183bceea4bcb9650f3b8a529d396bfe';
+
+  if (!phone) return { ok: false, reason: 'no phone' };
+  // Strip non-digits, ensure 91 prefix (India)
+  let to = String(phone).replace(/\D/g, '');
+  if (to.length === 10) to = '91' + to;          // 10-digit → add 91
+  else if (to.length === 12 && to.startsWith('91')) {} // already correct
+  else if (to.length === 11 && to.startsWith('0')) to = '91' + to.slice(1);
+  else return { ok: false, reason: 'invalid phone format' };
+
+  try {
+    const fetch = global.fetch || (await import('node-fetch')).default;
+    const r = await fetch(AUMPFY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': AUMPFY_API_KEY },
+      body: JSON.stringify({ to, text })
+    });
+    const data = await r.text();
+    if (r.ok) {
+      console.log(`  📱 WhatsApp sent → ${to}`);
+      return { ok: true, response: data };
+    } else {
+      console.error(`  ❌ WhatsApp failed (${r.status}): ${data}`);
+      return { ok: false, status: r.status, error: data };
+    }
+  } catch (err) {
+    console.error('  ❌ WhatsApp error:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+// Test endpoint — visit /api/test-whatsapp?phone=98XXXXXXXX&text=hi to test
+app.get('/api/test-whatsapp', requireAuth, requireAdmin, async (req, res) => {
+  const result = await sendWhatsApp(req.query.phone, req.query.text || 'Test from E-Marketing Task Manager');
+  res.json(result);
+});
+
+// ══════════════════════════════════════════════════════
+// CLIENTS — admin manages, everyone reads
+// ══════════════════════════════════════════════════════
+app.get('/api/clients', requireAuth, async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT id, name FROM clients ORDER BY name ASC');
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/clients', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const name = (req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Client name required' });
+    await db.query('INSERT INTO clients (name) VALUES (?)', [name]);
+    res.json({ success: true });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Client already exists' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/clients/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await db.query('DELETE FROM clients WHERE id=?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// DEPARTMENTS — unique list from users.department
+// ══════════════════════════════════════════════════════
+app.get('/api/departments', requireAuth, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT DISTINCT department FROM users
+       WHERE department IS NOT NULL AND department != ''
+       ORDER BY department ASC`
+    );
+    res.json(rows.map(r => r.department));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// DAILY TASK — submit, list, and check today's status
+// ══════════════════════════════════════════════════════
+
+// Check if current user already submitted for given date (default today)
+app.get('/api/daily-tasks/status', requireAuth, async (req, res) => {
+  try {
+    const date = req.query.date || new Date().toISOString().split('T')[0];
+    const [[{ cnt }]] = await db.query(
+      'SELECT COUNT(*) AS cnt FROM daily_tasks WHERE user_id=? AND entry_date=?',
+      [req.session.userId, date]
+    );
+    res.json({ submitted: cnt > 0, date });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Get current user's own past entries (read-only)
+app.get('/api/daily-tasks/mine', requireAuth, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT id, DATE_FORMAT(entry_date,'%Y-%m-%d') AS entry_date,
+              client_name, department, description, duration_min, created_at
+       FROM daily_tasks WHERE user_id=?
+       ORDER BY entry_date DESC, id DESC LIMIT 200`,
+      [req.session.userId]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Submit daily task — multiple rows in single call
+app.post('/api/daily-tasks', requireAuth, async (req, res) => {
+  try {
+    const { entry_date, rows } = req.body;
+    if (!entry_date || !Array.isArray(rows) || !rows.length) {
+      return res.status(400).json({ error: 'Date and at least 1 row required' });
+    }
+
+    // Validate each row
+    const cleanRows = [];
+    for (const r of rows) {
+      const client = (r.client_name || '').trim();
+      const dept = (r.department || '').trim();
+      const desc = (r.description || '').trim();
+      const dur = parseInt(r.duration_min) || 0;
+      if (!client || !desc || dur <= 0) {
+        return res.status(400).json({ error: 'Each row needs client, description, and duration > 0' });
+      }
+      cleanRows.push([req.session.userId, entry_date, client, dept, desc, dur]);
+    }
+
+    // Lock check — already submitted for this date?
+    const [[{ cnt }]] = await db.query(
+      'SELECT COUNT(*) AS cnt FROM daily_tasks WHERE user_id=? AND entry_date=?',
+      [req.session.userId, entry_date]
+    );
+    if (cnt > 0) {
+      return res.status(400).json({ error: 'Aap iss date ke liye already submit kar chuke hain. Edit allowed nahi hai.' });
+    }
+
+    // Bulk insert
+    await db.query(
+      `INSERT INTO daily_tasks (user_id, entry_date, client_name, department, description, duration_min) VALUES ?`,
+      [cleanRows]
+    );
+
+    // Get user's name + phone for WhatsApp
+    const [[user]] = await db.query('SELECT name, phone FROM users WHERE id=?', [req.session.userId]);
+
+    // Fire WhatsApp (don't await — don't block response)
+    if (user && user.phone) {
+      const msg = `✨ Hello ${user.name},\nThank you for submitting your daily task ✔️\nYour response for the date ${entry_date} has been successfully recorded in the database 📄✨`;
+      sendWhatsApp(user.phone, msg).catch(e => console.error('WA send err:', e.message));
+    }
+
+    res.json({ success: true, count: cleanRows.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// COMPLIANCE — Last 7 days grid (admin only)
+// ══════════════════════════════════════════════════════
+app.get('/api/compliance/last7', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    // Last 7 days inclusive of today
+    const dates = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      dates.push(d.toISOString().split('T')[0]);
+    }
+
+    // All users (admin filter ke baahar ya andar — abhi sab include)
+    const [users] = await db.query(
+      `SELECT id, name, email, role, department FROM users
+       WHERE role IN ('admin','hod','pc','user')
+       ORDER BY name ASC`
+    );
+
+    // All filled (user_id, date) pairs in this range
+    const [filled] = await db.query(
+      `SELECT user_id, DATE_FORMAT(entry_date,'%Y-%m-%d') AS d
+       FROM daily_tasks
+       WHERE entry_date BETWEEN ? AND ?
+       GROUP BY user_id, entry_date`,
+      [dates[0], dates[dates.length - 1]]
+    );
+
+    // Build lookup: { userId: Set(dates) }
+    const filledMap = {};
+    for (const f of filled) {
+      if (!filledMap[f.user_id]) filledMap[f.user_id] = new Set();
+      filledMap[f.user_id].add(f.d);
+    }
+
+    // Build grid
+    const grid = users.map(u => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      department: u.department || '—',
+      status: dates.map(d => ({
+        date: d,
+        filled: filledMap[u.id]?.has(d) || false
+      }))
+    }));
+
+    res.json({ dates, users: grid });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Admin view — all daily task entries with filters
+app.get('/api/daily-tasks/all', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { from, to, userId } = req.query;
+    let where = '1=1';
+    const params = [];
+    if (from) { where += ' AND dt.entry_date >= ?'; params.push(from); }
+    if (to)   { where += ' AND dt.entry_date <= ?'; params.push(to); }
+    if (userId) { where += ' AND dt.user_id = ?'; params.push(userId); }
+
+    const [rows] = await db.query(
+      `SELECT dt.id, DATE_FORMAT(dt.entry_date,'%Y-%m-%d') AS entry_date,
+              dt.client_name, dt.department, dt.description, dt.duration_min,
+              u.name AS doer_name, u.email AS doer_email
+       FROM daily_tasks dt
+       JOIN users u ON dt.user_id = u.id
+       WHERE ${where}
+       ORDER BY dt.entry_date DESC, dt.id DESC
+       LIMIT 1000`,
+      params
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 // Auth check is handled client-side via /api/me in init() — removing server-side
 // requireAuth here prevents app.html from loading if cookie has any timing/domain issue
