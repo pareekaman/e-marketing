@@ -420,6 +420,20 @@ tbody tr:last-child td{border-bottom:none;}
 .dr-table .pill-tag{background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;display:inline-block;}
 .dr-table .pill-dept{background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;display:inline-block;}
 
+/* Reminder admin panel inside Daily Reports */
+.dr-reminder-panel{background:linear-gradient(135deg,#fef3c7,#fde68a);border:1.5px solid #f59e0b;border-radius:12px;padding:18px 22px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;}
+.dr-reminder-info{flex:1;min-width:240px;}
+.dr-reminder-title{font-size:15px;font-weight:700;color:#92400e;margin-bottom:4px;}
+.dr-reminder-sub{font-size:12px;color:#78350f;line-height:1.5;}
+.dr-reminder-sub b{color:#92400e;}
+.dr-reminder-actions{display:flex;gap:10px;flex-wrap:wrap;}
+.dr-reminder-result{background:#fff;border-radius:10px;border:1.5px solid #e2e8f0;padding:16px 20px;margin-bottom:18px;font-size:13px;line-height:1.6;}
+.dr-reminder-result.success{border-color:#10b981;background:#ecfdf5;color:#065f46;}
+.dr-reminder-result.error{border-color:#ef4444;background:#fef2f2;color:#991b1b;}
+.dr-reminder-result h4{margin-bottom:8px;color:inherit;font-size:14px;}
+.dr-reminder-result ul{margin:6px 0 6px 20px;}
+.dr-reminder-result li{margin:2px 0;font-size:12px;}
+
 @media (max-width:768px){
   .dt-card,.cm-card,.cp-card{padding:20px 18px;}
   .dt-title{font-size:24px;}
@@ -983,6 +997,21 @@ tbody tr:last-child td{border-bottom:none;}
           <button class="dt-btn dt-btn-add" onclick="drExportCSV()">⬇ Export CSV</button>
         </div>
       </div>
+
+      <!-- Reminder panel -->
+      <div class="dr-reminder-panel">
+        <div class="dr-reminder-info">
+          <div class="dr-reminder-title">📢 Daily Reminder</div>
+          <div class="dr-reminder-sub">
+            Auto-runs every day at <b>6:10 PM IST</b> · Sends WhatsApp to group with names of users who haven't filled today's report (CXO excluded)
+          </div>
+        </div>
+        <div class="dr-reminder-actions">
+          <button class="dt-btn dt-btn-add" onclick="reminderPreview()">👁 Preview</button>
+          <button class="dt-btn dt-btn-submit" onclick="reminderSendNow()">📤 Send Now</button>
+        </div>
+      </div>
+      <div id="reminderResult" class="dr-reminder-result" style="display:none"></div>
 
       <!-- Top stats -->
       <div class="dr-stats" id="drStats"></div>
@@ -5968,6 +5997,68 @@ function drExportCSV(){
   a.download = `daily_tasks_${DR_DATA.month}.csv`;
   a.click();
   showToast('✅ CSV downloaded');
+}
+
+// ══════════════════════════════════════════════════════
+// 📢 DAILY REMINDER — admin trigger + preview
+// ══════════════════════════════════════════════════════
+async function reminderPreview(){
+  const box = document.getElementById('reminderResult');
+  box.style.display = 'block';
+  box.className = 'dr-reminder-result';
+  box.innerHTML = '<i>Loading preview…</i>';
+  try {
+    const r = await api('/api/daily-reminder/preview');
+    if (r.error) throw new Error(r.error);
+
+    let html = `<h4>👁 Preview — ${r.date}</h4>`;
+    html += `<div><b>WhatsApp Group:</b> <code>${dtEscape(r.group_id)}</code></div>`;
+    html += `<div style="margin-top:10px"><b>❌ Will be reminded (${r.missing_count}):</b></div>`;
+    if (r.missing_count) {
+      html += '<ul>' + r.missing.map(u => `<li>${dtEscape(u.name)} <span style="color:#94a3b8">(${dtEscape(u.department||'no dept')})</span></li>`).join('') + '</ul>';
+    } else {
+      html += '<div style="color:#10b981;margin-left:8px">🎉 Everyone has filled today!</div>';
+    }
+    html += `<div style="margin-top:10px"><b>✅ Already filled (${r.filled_count}):</b> ${r.filled.map(u=>dtEscape(u.name)).join(', ') || '<i>none</i>'}</div>`;
+    html += `<div style="margin-top:10px"><b>🚫 Excluded (CXO) (${r.excluded_count}):</b> ${r.excluded.map(u=>dtEscape(u.name)).join(', ') || '<i>none</i>'}</div>`;
+    box.innerHTML = html;
+  } catch(e) {
+    box.className = 'dr-reminder-result error';
+    box.innerHTML = `<h4>❌ Preview failed</h4><div>${e.message}</div>`;
+  }
+}
+
+async function reminderSendNow(){
+  if (!confirm('Send the daily reminder WhatsApp now?\n\nThis will message the group with names of users who haven\'t filled today\'s report.')) return;
+
+  const box = document.getElementById('reminderResult');
+  box.style.display = 'block';
+  box.className = 'dr-reminder-result';
+  box.innerHTML = '<i>Sending…</i>';
+  try {
+    const r = await api('/api/daily-reminder/send', 'POST', {});
+    if (r.error) throw new Error(r.error);
+
+    if (!r.ok) {
+      box.className = 'dr-reminder-result error';
+      box.innerHTML = `<h4>❌ Send failed</h4><div>${dtEscape(JSON.stringify(r))}</div>`;
+      return;
+    }
+
+    box.className = 'dr-reminder-result success';
+    if (r.allDone) {
+      box.innerHTML = `<h4>✅ Sent — Everyone filled!</h4><div>All eligible users have filled today's report. "All done" message sent to group.</div>`;
+    } else {
+      box.innerHTML = `<h4>✅ Reminder sent to group</h4>
+        <div><b>Date:</b> ${r.date}</div>
+        <div><b>Reminded ${r.missingCount} user(s):</b></div>
+        <ul>${r.missingNames.map(n => `<li>${dtEscape(n)}</li>`).join('')}</ul>`;
+    }
+    showToast('📱 Reminder sent!');
+  } catch(e) {
+    box.className = 'dr-reminder-result error';
+    box.innerHTML = `<h4>❌ Send failed</h4><div>${e.message}</div>`;
+  }
 }
 
 init();
