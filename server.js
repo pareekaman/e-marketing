@@ -1723,9 +1723,62 @@ app.get('/api/fms-tasks/:id', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Get unique values from a specific column of a Google Sheet
+// Used by FMS admin to auto-populate Step Doers from Doer Name column
+// Query: ?sheetId=...&tabName=...&col=E&headerRow=1
+app.get('/api/fms/sheet-column-values', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { sheetId, tabName, col, headerRow } = req.query;
+    if (!sheetId || !col) return res.status(400).json({ error: 'sheetId and col required' });
+
+    const colIdx = colToIdx(col);
+    if (colIdx < 0) return res.status(400).json({ error: 'Invalid column letter' });
+
+    const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
+    const spreadsheetId = extractSpreadsheetId(sheetId);
+    const tab = tabName || 'Sheet1';
+    const headerIdx = (parseInt(headerRow) || 1) - 1;
+
+    const range = `${tab}!${col}:${col}`;
+    const response = await sheetsApi.spreadsheets.values.get({ spreadsheetId, range });
+    const values = response.data.values || [];
+
+    // Skip header row(s), collect unique non-empty values
+    const dataValues = values.slice(headerIdx + 1).map(r => (r[0] || '').trim()).filter(v => v);
+    const uniqueNames = [...new Set(dataValues)];
+
+    // Match each name with DB users (case-insensitive exact match)
+    const [allUsers] = await db.query('SELECT id, name, email, role FROM users');
+    const matched = [];
+    const unmatched = [];
+    for (const sheetName of uniqueNames) {
+      const user = allUsers.find(u => u.name.trim().toLowerCase() === sheetName.toLowerCase());
+      if (user) {
+        matched.push({ sheet_name: sheetName, user_id: user.id, user_name: user.name, email: user.email });
+      } else {
+        unmatched.push(sheetName);
+      }
+    }
+
+    res.json({
+      total_unique: uniqueNames.length,
+      matched_count: matched.length,
+      unmatched_count: unmatched.length,
+      matched,
+      unmatched,
+      all_unique: uniqueNames
+    });
+  } catch (err) {
+    if (err.code === 403) return res.status(400).json({ error: 'Sheet access denied. Share with service account.' });
+    if (err.code === 404) return res.status(400).json({ error: 'Sheet not found.' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get pending rows for a step (plan filled, actual empty)
 app.get('/api/fms-tasks/:fmsId/steps/:stepId/rows', requireAuth, async (req, res) => {
   try {
+    const isAdmin = req.session.role === 'admin';
     const [sheets] = await db.query('SELECT * FROM fms_sheets WHERE id=?', [req.params.fmsId]);
     if (!sheets[0]) return res.status(404).json({ error: 'FMS not found' });
     const sheet = sheets[0];
@@ -1733,8 +1786,13 @@ app.get('/api/fms-tasks/:fmsId/steps/:stepId/rows', requireAuth, async (req, res
     if (!steps[0]) return res.status(404).json({ error: 'Step not found' });
     const step = steps[0];
 
+    // Get current user's name for doer filtering
+    const [[currentUser]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    const myName = (currentUser?.name || '').trim().toLowerCase();
+
     const planIdx = colToIdx(step.plan_col);
     const actualIdx = colToIdx(step.actual_col);
+    const doerNameIdx = step.doer_name_col ? colToIdx(step.doer_name_col) : -1;
     let showCols = [];
     try { showCols = JSON.parse(step.show_cols||'[]'); } catch(e) {}
 
@@ -1742,8 +1800,8 @@ app.get('/api/fms-tasks/:fmsId/steps/:stepId/rows', requireAuth, async (req, res
     const spreadsheetId = extractSpreadsheetId(sheet.sheet_id);
     const tabName = sheet.sheet_name || 'Sheet1';
 
-    // Optimized: fetch only up to the furthest needed column
-    const maxIdx = Math.max(planIdx, actualIdx, ...(showCols.length ? showCols : [0]));
+    // Optimized: fetch only up to the furthest needed column (include doerNameIdx if set)
+    const maxIdx = Math.max(planIdx, actualIdx, doerNameIdx, ...(showCols.length ? showCols : [0]));
     const lastCol = maxIdx >= 0 ? idxToCol(maxIdx) : 'Z';
     const range = `${tabName}!A:${lastCol}`;
 
@@ -1753,29 +1811,55 @@ app.get('/api/fms-tasks/:fmsId/steps/:stepId/rows', requireAuth, async (req, res
     const headers = allRows[headerRowIdx] || [];
     const dataRows = allRows.slice(headerRowIdx + 1);
 
+    // Doer filtering: non-admins see only their rows; admins see all
+    const applyDoerFilter = !isAdmin && doerNameIdx >= 0 && myName;
+
     const matchedRows = [];
+    let totalPending = 0;       // total pending in this step (for admin info)
+    let assignedToMe = 0;       // assigned to current user
     dataRows.forEach((row, i) => {
       const planVal = planIdx >= 0 ? (row[planIdx]||'').trim() : '';
       const actualVal = actualIdx >= 0 ? (row[actualIdx]||'').trim() : '';
-      if (planVal && !actualVal) {
-        const rowData = {};
-        let colsToShow = showCols.length ? showCols : headers.map((_,hi) => hi);
-        // Plan column always show karo — mandatory
-        if (planIdx >= 0 && !colsToShow.includes(planIdx)) colsToShow = [planIdx, ...colsToShow];
-        colsToShow.forEach(ci => {
-          const h = headers[ci] || `COL ${idxToCol(ci)}`;
-          rowData[h] = row[ci] || '';
-        });
-        matchedRows.push({
-          sheetRowNumber: headerRowIdx + 1 + i + 1,
-          planValue: planVal,
-          actualValue: actualVal,
-          data: rowData
-        });
-      }
+      if (!planVal || actualVal) return; // skip non-pending rows
+      totalPending++;
+
+      // Check doer name match (case-insensitive exact)
+      const rowDoer = doerNameIdx >= 0 ? (row[doerNameIdx]||'').trim() : '';
+      const rowDoerLower = rowDoer.toLowerCase();
+      const isMine = rowDoerLower === myName;
+      if (isMine) assignedToMe++;
+
+      // For non-admin, skip rows that don't belong to them
+      if (applyDoerFilter && !isMine) return;
+
+      const rowData = {};
+      let colsToShow = showCols.length ? showCols : headers.map((_,hi) => hi);
+      // Plan column always show karo — mandatory
+      if (planIdx >= 0 && !colsToShow.includes(planIdx)) colsToShow = [planIdx, ...colsToShow];
+      colsToShow.forEach(ci => {
+        const h = headers[ci] || `COL ${idxToCol(ci)}`;
+        rowData[h] = row[ci] || '';
+      });
+      matchedRows.push({
+        sheetRowNumber: headerRowIdx + 1 + i + 1,
+        planValue: planVal,
+        actualValue: actualVal,
+        rowDoerName: rowDoer,
+        isMine,
+        data: rowData
+      });
     });
 
-    res.json({ rows: matchedRows, headers, total: matchedRows.length });
+    res.json({
+      rows: matchedRows,
+      headers,
+      total: matchedRows.length,
+      totalPending,
+      assignedToMe,
+      filtered: applyDoerFilter,
+      doerColumn: step.doer_name_col || null,
+      isAdmin
+    });
   } catch (err) {
     if (err.code === 403) return res.status(400).json({ error: 'Access denied.' });
     if (err.code === 404) return res.status(400).json({ error: 'Sheet not found.' });

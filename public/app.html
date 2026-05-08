@@ -4476,14 +4476,22 @@ function buildStepBoxHTML(idx) {
 
     <div class="form-group" style="margin:10px 0 0">
       <label>Doer Name Column <span style="color:#94a3b8;font-weight:400;font-size:11px">(jahan done karne wale ka naam auto-save ho)</span></label>
-      ${headers.length ? `
-      <select class="header-select" onchange="fmsSteps[${idx}].doerNameCol=this.value">
-        <option value="">-- None (don't save doer name) --</option>
-        ${headers.map(h=>`<option value="${h.col}" ${(s.doerNameCol||s.doer_name_col||'')===h.col?'selected':''}>${h.name} (COL ${h.col})</option>`).join('')}
-      </select>` : `
-      <input type="text" value="${s.doerNameCol||s.doer_name_col||''}" placeholder="e.g. L"
-        oninput="fmsSteps[${idx}].doerNameCol=this.value"
-        style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>`}
+      <div style="display:flex;gap:8px;align-items:stretch">
+        ${headers.length ? `
+        <select class="header-select" id="fmsDoerNameCol_${idx}" onchange="fmsSteps[${idx}].doerNameCol=this.value" style="flex:1">
+          <option value="">-- None (don't save doer name) --</option>
+          ${headers.map(h=>`<option value="${h.col}" ${(s.doerNameCol||s.doer_name_col||'')===h.col?'selected':''}>${h.name} (COL ${h.col})</option>`).join('')}
+        </select>` : `
+        <input type="text" id="fmsDoerNameCol_${idx}" value="${s.doerNameCol||s.doer_name_col||''}" placeholder="e.g. L"
+          oninput="fmsSteps[${idx}].doerNameCol=this.value"
+          style="flex:1;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>`}
+        <button class="btn btn-sm" type="button" onclick="loadDoersFromColumn(${idx})"
+          style="background:#10b981;color:#fff;border:none;padding:0 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap"
+          title="Auto-fill Step Doers from this column's unique values">
+          🔄 Load Doers
+        </button>
+      </div>
+      <div id="fmsLoadDoersResult_${idx}" style="margin-top:8px;font-size:12px;display:none"></div>
     </div>
 
     <div class="form-group" style="margin:10px 0 0">
@@ -4669,6 +4677,74 @@ function setupMultiSelect(idx) {
     const wrap = document.getElementById(`fmsDoerWrap_${idx}`);
     if (drop && wrap && !wrap.contains(e.target)) drop.classList.remove('open');
   });
+}
+
+// 🔄 Load Step Doers from a Sheet column (uses doer_name_col)
+async function loadDoersFromColumn(idx) {
+  const step = fmsSteps[idx];
+  const col = (step.doerNameCol || step.doer_name_col || '').trim().toUpperCase();
+  const resultBox = document.getElementById(`fmsLoadDoersResult_${idx}`);
+  resultBox.style.display = 'block';
+  resultBox.innerHTML = '<i style="color:#64748b">Loading...</i>';
+
+  if (!col) {
+    resultBox.innerHTML = '<span style="color:#dc2626">⚠️ Pehle "Doer Name Column" select karo, fir ye button daabo.</span>';
+    return;
+  }
+
+  // Get sheet ID + tab name + header row from whichever modal is open (new or edit)
+  const isEdit = document.getElementById('fmsEditModal')?.classList.contains('open');
+  const sheetId = isEdit
+    ? document.getElementById('editFmsSheetId').value.trim()
+    : document.getElementById('fmsSheetId').value.trim();
+  const tabName = isEdit
+    ? document.getElementById('editFmsSheetName').value.trim()
+    : document.getElementById('fmsSheetName').value.trim();
+  const headerRow = isEdit
+    ? (parseInt(document.getElementById('editFmsHeaderRow').value)||1)
+    : (parseInt(document.getElementById('fmsHeaderRow').value)||1);
+
+  if (!sheetId) {
+    resultBox.innerHTML = '<span style="color:#dc2626">⚠️ Pehle Sheet ID daalo upar.</span>';
+    return;
+  }
+
+  try {
+    const params = new URLSearchParams({ sheetId, tabName, col, headerRow });
+    const r = await api('/api/fms/sheet-column-values?' + params.toString());
+    if (r.error) throw new Error(r.error);
+
+    // Auto-select matched users
+    const matchedIds = r.matched.map(m => m.user_id);
+    fmsSteps[idx].doers = matchedIds;
+
+    // Update UI: refresh checkboxes & tags
+    const drop = document.getElementById(`fmsDoerDrop_${idx}`);
+    if (drop) {
+      drop.querySelectorAll('.multi-select-item').forEach(item => {
+        const itemUid = parseInt(item.dataset.uid);
+        const cb = item.querySelector('input[type=checkbox]');
+        if (cb) cb.checked = matchedIds.includes(itemUid);
+      });
+    }
+    updateFMSDoerTags(idx);
+
+    // Show result summary
+    let html = `<div style="background:#f0fdf4;border:1px solid #86efac;color:#166534;padding:8px 12px;border-radius:6px;line-height:1.5">`;
+    html += `<b>✅ Loaded ${r.total_unique} unique name${r.total_unique===1?'':'s'} from Col ${col}</b><br>`;
+    html += `Matched & auto-selected: <b>${r.matched_count}</b>`;
+    if (r.matched_count) {
+      html += ` <span style="color:#475569">(${r.matched.map(m => dtEscape(m.user_name)).join(', ')})</span>`;
+    }
+    if (r.unmatched_count) {
+      html += `<br><span style="color:#b45309">⚠️ Not in users DB (${r.unmatched_count}): ${r.unmatched.map(n => dtEscape(n)).join(', ')}</span>`;
+      html += `<br><span style="color:#64748b;font-size:11px">→ Inn names ko Users tab me add karo, fir wapas Load Doers daabo.</span>`;
+    }
+    html += `</div>`;
+    resultBox.innerHTML = html;
+  } catch (e) {
+    resultBox.innerHTML = `<span style="color:#dc2626">❌ ${e.message}</span>`;
+  }
 }
 
 function getActiveFMSContainer() {
@@ -4970,10 +5046,23 @@ async function loadFMSTaskRows() {
 
   document.getElementById('fmsTaskRowCount').textContent = r.total ? `${r.total} pending row(s)` : '✅ All done!';
 
+  // Filter banner — show if doer-name filtering is applied (or if admin viewing all)
+  let banner = '';
+  if (r.filtered) {
+    banner = `<div style="background:#dbeafe;border:1px solid #93c5fd;color:#1e3a8a;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;">
+      🎯 <b>Showing only your assigned rows</b> — filtered by Col ${r.doerColumn} (Doer Name).
+      ${r.totalPending > r.total ? ` <span style="color:#475569">${r.totalPending - r.total} other row(s) belong to other doers.</span>` : ''}
+    </div>`;
+  } else if (r.isAdmin && r.doerColumn) {
+    banner = `<div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;">
+      👑 <b>Admin view</b> — showing all ${r.totalPending} pending rows across all doers (Col ${r.doerColumn}).
+    </div>`;
+  }
+
   if (!r.rows || !r.rows.length) {
-    document.getElementById('fmsTaskRowsContainer').innerHTML = `
+    document.getElementById('fmsTaskRowsContainer').innerHTML = banner + `
       <div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">
-        ✅ No pending rows — all actual values filled for this step!
+        ${r.filtered ? '✅ No rows assigned to you in this step!' : '✅ No pending rows — all actual values filled for this step!'}
       </div>`;
     return;
   }
@@ -4981,15 +5070,18 @@ async function loadFMSTaskRows() {
   // Build table headers from first row's data keys
   const colKeys = Object.keys(r.rows[0].data);
   const tableRows = r.rows.map((row, ri) => `
-    <tr>
+    <tr ${row.isMine === false && r.isAdmin ? 'style="opacity:.85"' : ''}>
       <td>
         <button class="fms-done-btn" onclick="openFMSDoneModal(${ri})">✅ Done</button>
       </td>
       ${colKeys.map(k => `<td>${row.data[k] || '—'}</td>`).join('')}
-      <td><span class="fms-status-badge">⏳ Pending</span></td>
+      <td>
+        <span class="fms-status-badge">⏳ Pending</span>
+        ${row.rowDoerName && r.isAdmin ? `<br><span style="font-size:10px;color:#64748b;margin-top:4px;display:inline-block">→ ${row.rowDoerName}</span>` : ''}
+      </td>
     </tr>`).join('');
 
-  document.getElementById('fmsTaskRowsContainer').innerHTML = `
+  document.getElementById('fmsTaskRowsContainer').innerHTML = banner + `
     <div class="fms-step-rows-table">
       <table>
         <thead><tr>
