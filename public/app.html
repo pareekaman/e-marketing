@@ -1547,6 +1547,16 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
       <div id="extraOffList" style="display:flex;flex-direction:column;gap:6px"></div>
     </div>
+    <!-- Exclude from Daily Reminder -->
+    <div class="form-group" style="background:#fef3c7;border:1.5px solid #fcd34d;border-radius:8px;padding:10px 12px;margin-top:6px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;font-weight:500;color:#78350f">
+        <input type="checkbox" id="uExcludeReminder" style="accent-color:#F39C12;width:16px;height:16px;cursor:pointer"/>
+        🚫 Exclude from Daily Reminder
+      </label>
+      <div style="font-size:11px;color:#92400e;margin-top:4px;margin-left:24px">
+        Iss user ka naam 6:10 PM ke daily reminder me <b>nahi</b> aayega (CXO ke alawa bhi exclude karne ke liye)
+      </div>
+    </div>
     <div class="modal-footer" style="justify-content:space-between">
       <button class="btn btn-outline" onclick="closeModal('userModal')">Cancel</button>
       <button class="btn btn-primary" onclick="saveUser()">Save</button>
@@ -3182,6 +3192,7 @@ function openAddUser() {
   document.getElementById('pwdOptional').style.display='none';
   document.getElementById('userErr').style.display='none';
   document.getElementById('userSuccess').style.display='none';
+  document.getElementById('uExcludeReminder').checked = false;
   _setWeekOff('');
   _setExtraOff('');
   document.getElementById('userModal').classList.add('open');
@@ -3199,6 +3210,7 @@ function openEditUser(id) {
   document.getElementById('uDepartment').value=u.department||'';
   document.getElementById('uPassword').value='';
   document.getElementById('uRole').value=u.role||'user';
+  document.getElementById('uExcludeReminder').checked = !!u.exclude_from_reminder;
   document.getElementById('pwdOptional').style.display='inline';
   document.getElementById('userErr').style.display='none';
   document.getElementById('userSuccess').style.display='none';
@@ -3218,11 +3230,12 @@ async function saveUser() {
   const department=document.getElementById('uDepartment').value.trim();
   const password=document.getElementById('uPassword').value;
   const role=document.getElementById('uRole').value;
+  const exclude_from_reminder = document.getElementById('uExcludeReminder').checked;
   const week_off=_getWeekOff();
   const extra_off=_getExtraOff();
   if (!name||!email) { err.textContent='Name and email required'; err.style.display='block'; return; }
   if (!id&&!password) { err.textContent='Password required for new user'; err.style.display='block'; return; }
-  const body={name,email,notification_email,role,phone,department,week_off,extra_off};
+  const body={name,email,notification_email,role,phone,department,week_off,extra_off,exclude_from_reminder};
   if (password) body.password=password;
   const r = id ? await api(`/api/users/${id}`,'PUT',body) : await api('/api/users','POST',body);
   if (r.error) { err.textContent=r.error; err.style.display='block'; return; }
@@ -6112,7 +6125,15 @@ async function reminderPreview(){
       html += '<div style="color:#10b981;margin-left:8px">🎉 Everyone has filled today!</div>';
     }
     html += `<div style="margin-top:10px"><b>✅ Already filled (${r.filled_count}):</b> ${r.filled.map(u=>dtEscape(u.name)).join(', ') || '<i>none</i>'}</div>`;
-    html += `<div style="margin-top:10px"><b>🚫 Excluded (CXO) (${r.excluded_count}):</b> ${r.excluded.map(u=>dtEscape(u.name)).join(', ') || '<i>none</i>'}</div>`;
+    html += `<div style="margin-top:10px"><b>🚫 Excluded (${r.excluded_count}):</b></div>`;
+    if (r.excluded_count) {
+      html += '<ul>' + r.excluded.map(u => {
+        const reasonColor = u.reason === 'CXO Department' ? '#7c3aed' : u.reason === 'Manually Excluded' ? '#F39C12' : '#dc2626';
+        return `<li>${dtEscape(u.name)} <span style="color:${reasonColor};font-size:11px;font-weight:600">(${dtEscape(u.reason)})</span></li>`;
+      }).join('') + '</ul>';
+    } else {
+      html += '<div style="color:#94a3b8;margin-left:8px"><i>none</i></div>';
+    }
     box.innerHTML = html;
   } catch(e) {
     box.className = 'dr-reminder-result error';

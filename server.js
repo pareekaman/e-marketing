@@ -65,6 +65,7 @@ const db = mysql.createPool(dbConfig);
     role ENUM('admin','hod','pc','user') DEFAULT 'user',
     phone VARCHAR(50) DEFAULT NULL,
     profile_image LONGTEXT DEFAULT NULL,
+    exclude_from_reminder TINYINT(1) DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
@@ -194,6 +195,7 @@ const db = mysql.createPool(dbConfig);
   await sa(`ALTER TABLE users ADD COLUMN week_off VARCHAR(50) DEFAULT '' AFTER department`);
   await sa(`ALTER TABLE users ADD COLUMN extra_off TEXT DEFAULT '' AFTER week_off`);
   await sa(`ALTER TABLE users ADD COLUMN notification_email VARCHAR(255) DEFAULT '' AFTER email`);
+  await sa(`ALTER TABLE users ADD COLUMN exclude_from_reminder TINYINT(1) DEFAULT 0 AFTER extra_off`);
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN col_letter VARCHAR(10) DEFAULT '' AFTER row_label`);
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN field_type VARCHAR(20) DEFAULT 'text' AFTER col_letter`);
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN dropdown_options TEXT DEFAULT '' AFTER field_type`);
@@ -403,7 +405,9 @@ app.get('/api/setup', async (req, res) => {
       email VARCHAR(255) NOT NULL UNIQUE, notification_email VARCHAR(255) DEFAULT '',
       password VARCHAR(255) NOT NULL, role ENUM('admin','hod','pc','user') DEFAULT 'user',
       phone VARCHAR(50) DEFAULT NULL, department VARCHAR(255) DEFAULT '',
-      week_off VARCHAR(50) DEFAULT '', extra_off TEXT, profile_image LONGTEXT,
+      week_off VARCHAR(50) DEFAULT '', extra_off TEXT,
+      exclude_from_reminder TINYINT(1) DEFAULT 0,
+      profile_image LONGTEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'users table');
 
@@ -1428,30 +1432,31 @@ app.get('/api/users/with-pending-tasks', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════
 app.get('/api/users', requireAuth, async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT id,name,email,notification_email,role,phone,department,week_off,extra_off FROM users ORDER BY role DESC,name ASC');
+    const [rows] = await db.query('SELECT id,name,email,notification_email,role,phone,department,week_off,extra_off,COALESCE(exclude_from_reminder,0) AS exclude_from_reminder FROM users ORDER BY role DESC,name ASC');
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, email, notification_email, password, role, phone, department, week_off, extra_off } = req.body;
+    const { name, email, notification_email, password, role, phone, department, week_off, extra_off, exclude_from_reminder } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
     const [ex] = await db.query('SELECT id FROM users WHERE email=?', [email]);
     if (ex[0]) return res.status(400).json({ error: 'Email already exists' });
-    await db.query('INSERT INTO users (name,email,notification_email,password,role,phone,department,week_off,extra_off) VALUES (?,?,?,?,?,?,?,?,?)',
-      [name, email, notification_email||'', bcrypt.hashSync(password,10), role||'user', phone||null, department||'', week_off||'', extra_off||'']);
+    await db.query('INSERT INTO users (name,email,notification_email,password,role,phone,department,week_off,extra_off,exclude_from_reminder) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      [name, email, notification_email||'', bcrypt.hashSync(password,10), role||'user', phone||null, department||'', week_off||'', extra_off||'', exclude_from_reminder?1:0]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.put('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, email, notification_email, role, password, phone, department, week_off, extra_off } = req.body;
-    if (password) await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,password=?,phone=?,department=?,week_off=?,extra_off=? WHERE id=?',
-      [name,email,notification_email||'',role,bcrypt.hashSync(password,10),phone||null,department||'',week_off||'',extra_off||'',req.params.id]);
-    else await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,phone=?,department=?,week_off=?,extra_off=? WHERE id=?',
-      [name,email,notification_email||'',role,phone||null,department||'',week_off||'',extra_off||'',req.params.id]);
+    const { name, email, notification_email, role, password, phone, department, week_off, extra_off, exclude_from_reminder } = req.body;
+    const exclVal = exclude_from_reminder ? 1 : 0;
+    if (password) await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,password=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=? WHERE id=?',
+      [name,email,notification_email||'',role,bcrypt.hashSync(password,10),phone||null,department||'',week_off||'',extra_off||'',exclVal,req.params.id]);
+    else await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=? WHERE id=?',
+      [name,email,notification_email||'',role,phone||null,department||'',week_off||'',extra_off||'',exclVal,req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2337,14 +2342,16 @@ async function buildAndSendReminder() {
   const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
   const today = istNow.toISOString().split('T')[0]; // YYYY-MM-DD
 
-  // Get all users — excluding CXO department (case-insensitive)
+  // Get all users — excluding CXO department + flagged users (case-insensitive)
   const [users] = await db.query(
-    `SELECT id, name, COALESCE(department,'') AS department FROM users ORDER BY name ASC`
+    `SELECT id, name, COALESCE(department,'') AS department, COALESCE(exclude_from_reminder,0) AS exclude_from_reminder
+     FROM users ORDER BY name ASC`
   );
 
-  // Filter out CXO and pick only those who didn't fill today
+  // Filter out CXO + manually-excluded users
   const eligible = users.filter(u =>
-    !EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase())
+    !EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase()) &&
+    !u.exclude_from_reminder
   );
 
   if (!eligible.length) {
@@ -2405,20 +2412,26 @@ app.get('/api/daily-reminder/preview', requireAuth, requireAdmin, async (req, re
     const today = istNow.toISOString().split('T')[0];
 
     const [users] = await db.query(
-      `SELECT id, name, email, COALESCE(department,'') AS department FROM users ORDER BY name ASC`
+      `SELECT id, name, email, COALESCE(department,'') AS department,
+              COALESCE(exclude_from_reminder,0) AS exclude_from_reminder
+       FROM users ORDER BY name ASC`
     );
-    const eligible = users.filter(u =>
-      !EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase())
-    );
+    const isCxo = u => EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase());
+    const eligible = users.filter(u => !isCxo(u) && !u.exclude_from_reminder);
     const [filled] = await db.query(
       `SELECT DISTINCT user_id FROM daily_tasks WHERE entry_date = ?`, [today]
     );
     const filledSet = new Set(filled.map(r => r.user_id));
     const missing = eligible.filter(u => !filledSet.has(u.id));
     const filledList = eligible.filter(u => filledSet.has(u.id));
-    const excludedList = users.filter(u =>
-      EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase())
-    );
+    // Excluded list — combine CXO + flagged users (deduplicated by id)
+    const excludedList = users.filter(u => isCxo(u) || u.exclude_from_reminder)
+      .map(u => ({
+        ...u,
+        reason: isCxo(u) && u.exclude_from_reminder ? 'CXO + Flagged'
+              : isCxo(u) ? 'CXO Department'
+              : 'Manually Excluded'
+      }));
 
     res.json({
       date: today,
