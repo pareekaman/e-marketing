@@ -1550,6 +1550,60 @@ app.get('/api/fms', requireAuth, requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// IMPORTANT: This route must be defined BEFORE /api/fms/:id
+// to avoid being captured by the :id parameter wildcard.
+// Get unique values from a specific column of a Google Sheet
+// Used by FMS admin to auto-populate Step Doers from Doer Name column
+// Query: ?sheetId=...&tabName=...&col=E&headerRow=1
+app.get('/api/fms/sheet-column-values', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { sheetId, tabName, col, headerRow } = req.query;
+    if (!sheetId || !col) return res.status(400).json({ error: 'sheetId and col required' });
+
+    const colIdx = colToIdx(col);
+    if (colIdx < 0) return res.status(400).json({ error: 'Invalid column letter' });
+
+    const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
+    const spreadsheetId = extractSpreadsheetId(sheetId);
+    const tab = tabName || 'Sheet1';
+    const headerIdx = (parseInt(headerRow) || 1) - 1;
+
+    const range = `${tab}!${col}:${col}`;
+    const response = await sheetsApi.spreadsheets.values.get({ spreadsheetId, range });
+    const values = response.data.values || [];
+
+    // Skip header row(s), collect unique non-empty values
+    const dataValues = values.slice(headerIdx + 1).map(r => (r[0] || '').trim()).filter(v => v);
+    const uniqueNames = [...new Set(dataValues)];
+
+    // Match each name with DB users (case-insensitive exact match)
+    const [allUsers] = await db.query('SELECT id, name, email, role FROM users');
+    const matched = [];
+    const unmatched = [];
+    for (const sheetName of uniqueNames) {
+      const user = allUsers.find(u => u.name.trim().toLowerCase() === sheetName.toLowerCase());
+      if (user) {
+        matched.push({ sheet_name: sheetName, user_id: user.id, user_name: user.name, email: user.email });
+      } else {
+        unmatched.push(sheetName);
+      }
+    }
+
+    res.json({
+      total_unique: uniqueNames.length,
+      matched_count: matched.length,
+      unmatched_count: unmatched.length,
+      matched,
+      unmatched,
+      all_unique: uniqueNames
+    });
+  } catch (err) {
+    if (err.code === 403) return res.status(400).json({ error: 'Sheet access denied. Share with service account.' });
+    if (err.code === 404) return res.status(400).json({ error: 'Sheet not found.' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/fms/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [sheets] = await db.query('SELECT * FROM fms_sheets WHERE id=?', [req.params.id]);
@@ -1721,58 +1775,6 @@ app.get('/api/fms-tasks/:id', requireAuth, async (req, res) => {
     }
     res.json({ sheet: sheets[0], steps });
   } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// Get unique values from a specific column of a Google Sheet
-// Used by FMS admin to auto-populate Step Doers from Doer Name column
-// Query: ?sheetId=...&tabName=...&col=E&headerRow=1
-app.get('/api/fms/sheet-column-values', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { sheetId, tabName, col, headerRow } = req.query;
-    if (!sheetId || !col) return res.status(400).json({ error: 'sheetId and col required' });
-
-    const colIdx = colToIdx(col);
-    if (colIdx < 0) return res.status(400).json({ error: 'Invalid column letter' });
-
-    const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
-    const spreadsheetId = extractSpreadsheetId(sheetId);
-    const tab = tabName || 'Sheet1';
-    const headerIdx = (parseInt(headerRow) || 1) - 1;
-
-    const range = `${tab}!${col}:${col}`;
-    const response = await sheetsApi.spreadsheets.values.get({ spreadsheetId, range });
-    const values = response.data.values || [];
-
-    // Skip header row(s), collect unique non-empty values
-    const dataValues = values.slice(headerIdx + 1).map(r => (r[0] || '').trim()).filter(v => v);
-    const uniqueNames = [...new Set(dataValues)];
-
-    // Match each name with DB users (case-insensitive exact match)
-    const [allUsers] = await db.query('SELECT id, name, email, role FROM users');
-    const matched = [];
-    const unmatched = [];
-    for (const sheetName of uniqueNames) {
-      const user = allUsers.find(u => u.name.trim().toLowerCase() === sheetName.toLowerCase());
-      if (user) {
-        matched.push({ sheet_name: sheetName, user_id: user.id, user_name: user.name, email: user.email });
-      } else {
-        unmatched.push(sheetName);
-      }
-    }
-
-    res.json({
-      total_unique: uniqueNames.length,
-      matched_count: matched.length,
-      unmatched_count: unmatched.length,
-      matched,
-      unmatched,
-      all_unique: uniqueNames
-    });
-  } catch (err) {
-    if (err.code === 403) return res.status(400).json({ error: 'Sheet access denied. Share with service account.' });
-    if (err.code === 404) return res.status(400).json({ error: 'Sheet not found.' });
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // Get pending rows for a step (plan filled, actual empty)
