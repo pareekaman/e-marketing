@@ -30,14 +30,52 @@ const dbConfig = {
   database: process.env.DB_NAME || 'emarketing_task_manager',
   port: Number(process.env.DB_PORT) || 3306,
   waitForConnections: true,
-  connectionLimit: 5,
+  // ⚠️ Shared hosting ka max_user_connections usually 5-10 hota hai.
+  // Vercel serverless me multiple function instances ek saath connect karte hain,
+  // isliye limit chhoti rakhi hai (2) per-instance.
+  connectionLimit: Number(process.env.DB_POOL_SIZE) || 2,
   queueLimit: 0,
   connectTimeout: 30000,
+  // Idle connections ko jaldi release karo (default 8hrs hai mysql me, 30s ideal)
+  idleTimeout: 30000,
+  enableKeepAlive: false,
   // SSL support for cloud MySQL providers (Aiven, PlanetScale, Railway, etc.)
   ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
 };
 
-const db = mysql.createPool(dbConfig);
+const _rawPool = mysql.createPool(dbConfig);
+
+// Wrap pool with retry logic for "max_user_connections" errors
+// Shared hosting pe ye error aata rehta hai jab Vercel concurrent requests bhejta hai.
+// Auto-retry helps recover gracefully without showing errors to users.
+const db = {
+  async query(sql, params) {
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await _rawPool.query(sql, params);
+      } catch (err) {
+        const isConnLimit = err.message && (
+          err.message.includes('max_user_connections') ||
+          err.message.includes('Too many connections') ||
+          err.code === 'ER_USER_LIMIT_REACHED' ||
+          err.code === 'ER_CON_COUNT_ERROR'
+        );
+        if (isConnLimit && attempt < maxRetries) {
+          // Wait progressively longer before retry: 200ms, 500ms, 1000ms
+          const wait = attempt * 250 + Math.random() * 250;
+          console.warn(`  ⚠️ DB conn limit hit, retry ${attempt}/${maxRetries} after ${Math.round(wait)}ms`);
+          await new Promise(r => setTimeout(r, wait));
+          continue;
+        }
+        throw err;
+      }
+    }
+  },
+  // Pass-through for other methods (getConnection used by transactions)
+  getConnection: (...args) => _rawPool.getConnection(...args),
+  end: (...args) => _rawPool.end(...args),
+};
 
 (async () => {
   try {
@@ -1874,15 +1912,16 @@ app.get('/api/fms-tasks/:fmsId/steps/:stepId/rows', requireAuth, async (req, res
   }
 });
 
-// Mark row as done — writes actual (date only) + delay reason to sheet
+// Mark row as done — writes actual (full timestamp) + delay reason to sheet
 app.post('/api/fms-tasks/:fmsId/steps/:stepId/done', requireAuth, async (req, res) => {
   try {
     const { rowNumber, actualValue, delayReason, extraInputs } = req.body;
     if (!rowNumber || !actualValue) return res.status(400).json({ error: 'rowNumber and actualValue required' });
-    // Strip time portion — save only date (DD-MM-YYYY) to Google Sheet
-    let dateOnlyValue = actualValue;
-    const dtMatch = actualValue.match(/^(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/);
-    if (dtMatch) dateOnlyValue = dtMatch[1];
+
+    // Build full timestamp in IST: DD/MM/YYYY HH:mm:ss
+    const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+    const pad = n => String(n).padStart(2, '0');
+    const fullTimestamp = `${pad(istNow.getUTCDate())}/${pad(istNow.getUTCMonth()+1)}/${istNow.getUTCFullYear()} ${pad(istNow.getUTCHours())}:${pad(istNow.getUTCMinutes())}:${pad(istNow.getUTCSeconds())}`;
 
     const [sheets] = await db.query('SELECT * FROM fms_sheets WHERE id=?', [req.params.fmsId]);
     if (!sheets[0]) return res.status(404).json({ error: 'FMS not found' });
@@ -1902,7 +1941,7 @@ app.post('/api/fms-tasks/:fmsId/steps/:stepId/done', requireAuth, async (req, re
       spreadsheetId,
       range: `${tabName}!${actualCol}${rowNumber}`,
       valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [[dateOnlyValue]] }
+      requestBody: { values: [[fullTimestamp]] }
     });
 
     if (delayReason && step.delay_reason_col) {
@@ -2493,6 +2532,34 @@ app.delete('/api/clients/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await db.query('DELETE FROM clients WHERE id=?', [req.params.id]);
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Bulk add clients via CSV
+app.post('/api/clients/bulk', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { names } = req.body;
+    if (!Array.isArray(names) || !names.length) {
+      return res.status(400).json({ error: 'No clients to add' });
+    }
+    // Clean + dedupe within request
+    const cleanNames = [...new Set(
+      names.map(n => String(n||'').trim()).filter(n => n)
+    )];
+    if (!cleanNames.length) return res.status(400).json({ error: 'No valid client names' });
+
+    let added = 0, skipped = 0;
+    const skippedNames = [];
+    for (const name of cleanNames) {
+      try {
+        await db.query('INSERT INTO clients (name) VALUES (?)', [name]);
+        added++;
+      } catch (e) {
+        if (e.code === 'ER_DUP_ENTRY') { skipped++; skippedNames.push(name); }
+        else throw e;
+      }
+    }
+    res.json({ success: true, added, skipped, skippedNames });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

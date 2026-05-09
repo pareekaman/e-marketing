@@ -954,6 +954,21 @@ tbody tr:last-child td{border-bottom:none;}
         <button class="dt-btn dt-btn-add" onclick="cmAdd()">+ Add Client</button>
       </div>
 
+      <!-- Bulk CSV Upload -->
+      <div style="background:#fff7ed;border:1.5px dashed #fcd34d;border-radius:10px;padding:14px 16px;margin-top:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#92400e">📂 Bulk Upload (CSV)</div>
+            <div style="font-size:11px;color:#78350f;margin-top:2px">Upload multiple clients at once. One client name per line.</div>
+          </div>
+          <button class="dt-btn dt-btn-add" onclick="cmDownloadSample()" style="padding:6px 12px;font-size:12px">⬇ Download Sample</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
+          <input type="file" id="cmBulkFile" accept=".csv,.txt" style="font-size:12px;flex:1;min-width:200px"/>
+          <button class="dt-btn dt-btn-add" onclick="cmBulkUpload()" style="padding:8px 14px">📤 Upload CSV</button>
+        </div>
+      </div>
+
       <div id="cmListWrap" class="cm-list-wrap"><div class="empty">Loading clients…</div></div>
     </div>
   </div>
@@ -5131,11 +5146,10 @@ function openFMSDoneModal(rowIdx) {
   // Set plan display
   document.getElementById('fmsDonePlanDisplay').textContent = row.planValue || '—';
 
-  // Set actual = today's date only (DD/MM/YYYY) — no timestamp saved to sheet
+  // Set actual = current full timestamp (DD/MM/YYYY HH:mm:ss) — saved to sheet as-is
   const now = new Date();
   const pad = n => String(n).padStart(2,'0');
-  const dateOnlyStr = `${pad(now.getDate())}/${pad(now.getMonth()+1)}/${now.getFullYear()}`;
-  const actualStr = dateOnlyStr; // Only date saved to sheet
+  const actualStr = `${pad(now.getDate())}/${pad(now.getMonth()+1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
   document.getElementById('fmsDoneActualDisplay').textContent = actualStr;
 
   // Check delay: actual > plan = delayed
@@ -5879,6 +5893,57 @@ async function cmDelete(id, name){
     showToast('🗑 Client removed');
     loadClients();
   } catch(e) { showToast('Failed to delete', 'error'); }
+}
+
+// Download sample CSV
+function cmDownloadSample() {
+  const csv = `client_name\nVibes\nCCIS\nParty Walls\nA1 India\nKala Textiles`;
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'clients_sample.csv';
+  a.click();
+  showToast('✅ Sample downloaded');
+}
+
+// Bulk upload clients via CSV
+async function cmBulkUpload() {
+  const fileInput = document.getElementById('cmBulkFile');
+  const file = fileInput.files[0];
+  if (!file) { showToast('Choose a CSV file first', 'error'); return; }
+
+  try {
+    const text = await file.text();
+    // Parse: split by newlines, take first column (handles plain list or CSV with header)
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+    if (!lines.length) { showToast('CSV file is empty', 'error'); return; }
+
+    // Skip first row if it looks like a header (e.g. "client_name", "name", "Client Name")
+    let names = lines.map(line => line.split(',')[0].trim().replace(/^["']|["']$/g, ''));
+    const firstLower = (names[0] || '').toLowerCase();
+    if (['client_name', 'name', 'client name', 'clients'].includes(firstLower)) {
+      names = names.slice(1);
+    }
+    names = names.filter(n => n);
+    if (!names.length) { showToast('No valid client names found in CSV', 'error'); return; }
+
+    if (!confirm(`Upload ${names.length} client${names.length===1?'':'s'} from CSV?`)) return;
+
+    const r = await api('/api/clients/bulk', 'POST', { names });
+    if (r.error) { showToast(r.error, 'error'); return; }
+
+    let msg = `✅ Added ${r.added} client${r.added===1?'':'s'}`;
+    if (r.skipped) msg += ` · ⚠️ ${r.skipped} duplicate${r.skipped===1?'':'s'} skipped`;
+    showToast(msg);
+
+    // Show details if any skipped
+    if (r.skipped && r.skippedNames && r.skippedNames.length) {
+      console.log('Skipped (already exist):', r.skippedNames.join(', '));
+    }
+    fileInput.value = '';
+    loadClients();
+  } catch(e) {
+    showToast('Failed to upload: ' + e.message, 'error');
+  }
 }
 
 // ══════════════════════════════════════════════════════
