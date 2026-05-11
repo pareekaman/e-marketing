@@ -793,7 +793,7 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
 
 app.post('/api/tasks', requireAuth, async (req, res) => {
   try {
-    const { type, desc, assignedTo, approverEmail, date, priority, approval, remarks } = req.body;
+    const { type, desc, assignedTo, approverEmail, approver, date, priority, approval, remarks } = req.body;
     const isAdmin = req.session.role === 'admin';
     const isHod   = req.session.role === 'hod';
     const isUser  = req.session.role === 'user';
@@ -801,31 +801,54 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
     const targetUser = (isAdmin || isHod || isUser) && assignedTo ? parseInt(assignedTo) : req.session.userId;
     if (!desc || !date) return res.status(400).json({ error: 'Description and date required' });
     if ((type||'checklist') === 'delegation') {
-      // Approver: agar approverEmail diya hai to usse dhundo, warna logged-in user
+      // Approver: prefer approverEmail; otherwise approver ID from form; otherwise logged-in user
       let assignedBy = req.session.userId;
       if (approverEmail) {
         const [aprRows] = await db.query('SELECT id FROM users WHERE email=? LIMIT 1', [approverEmail]);
         if (aprRows.length) assignedBy = aprRows[0].id;
+      } else if (approver && approval === 'yes') {
+        const apId = parseInt(approver);
+        if (apId) {
+          const [aprRows] = await db.query('SELECT id FROM users WHERE id=? LIMIT 1', [apId]);
+          if (aprRows.length) assignedBy = aprRows[0].id;
+        }
       }
       await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks) VALUES (?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, date, 'pending', priority||'low', approval||'no', remarks||'']);
-      // 📧 Send delegation email (non-blocking — fire and forget)
+      // 📧 Send delegation email + 📱 WhatsApp (non-blocking — fire and forget)
       (async () => {
         const target = await getNotifyTarget(targetUser);
-        if (!target) return;
         const [aprRows] = await db.query('SELECT name FROM users WHERE id=? LIMIT 1', [assignedBy]);
         const assignerName = aprRows[0]?.name || 'Admin';
-        await sendMail(
-          target.email,
-          `📋 New Task Assigned: ${(desc||'').slice(0,60)}`,
-          delegationEmailHtml({
-            assigneeName: target.name,
-            assignerName,
-            desc, dueDate: date,
-            priority: priority||'low',
-            approval: approval||'no',
-            remarks: remarks||''
-          })
-        );
+        if (target) {
+          await sendMail(
+            target.email,
+            `📋 New Task Assigned: ${(desc||'').slice(0,60)}`,
+            delegationEmailHtml({
+              assigneeName: target.name,
+              assignerName,
+              desc, dueDate: date,
+              priority: priority||'low',
+              approval: approval||'no',
+              remarks: remarks||''
+            })
+          );
+        }
+        // WhatsApp to doer
+        try {
+          const [[doerRow]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [targetUser]);
+          if (doerRow && doerRow.phone) {
+            const dueFmt = (date||'').split('-').reverse().join('-');
+            const msg = `Hello ${doerRow.name || ''},\n\n📋 *New Task Delegated*\n\n` +
+              `*By:* ${assignerName}\n` +
+              `*Due:* ${dueFmt}\n` +
+              `*Priority:* ${(priority||'low').toUpperCase()}\n` +
+              (approval==='yes' ? `*Approval Required:* Yes\n` : '') +
+              `\n*Task:* ${desc}` +
+              (remarks ? `\n\n*Remarks:* ${remarks}` : '') +
+              `\n\n— E-Marketing Task Manager`;
+            sendWhatsApp(doerRow.phone, msg).catch(e => console.error('WA delegation err:', e.message));
+          }
+        } catch (e) { console.error('WA delegation lookup err:', e.message); }
       })();
     } else {
       await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks) VALUES (?,?,?,?,?,?,?)`, [desc, targetUser, req.session.userId, date, 'pending', priority||'low', remarks||'']);
@@ -2521,6 +2544,116 @@ app.get('/api/daily-reminder/preview', requireAuth, requireAdmin, async (req, re
   }
 });
 
+// ══════════════════════════════════════════════════════
+// 📋 PENDING TASKS REMINDER — 12 PM daily (per-user consolidated WhatsApp)
+// Sends each user a single WhatsApp listing ALL their pending tasks
+// (delegation + checklist) due today or earlier.
+// ══════════════════════════════════════════════════════
+async function buildAndSendPendingTasksReminder() {
+  // Today's date in IST
+  const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+  const today = istNow.toISOString().split('T')[0];
+
+  // Fetch pending tasks (due today or earlier) — delegation + checklist
+  const [delRows] = await db.query(`
+    SELECT t.id, t.description, t.assigned_to, t.priority,
+           DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+           u2.name AS assigned_by_name
+    FROM delegation_tasks t
+    JOIN users u2 ON t.assigned_by = u2.id
+    WHERE t.status='pending' AND t.due_date <= ?`, [today]);
+
+  const [chlRows] = await db.query(`
+    SELECT t.id, t.description, t.assigned_to, t.priority,
+           DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+           u2.name AS assigned_by_name
+    FROM checklist_tasks t
+    JOIN users u2 ON t.assigned_by = u2.id
+    WHERE t.status='pending' AND t.due_date <= ?`, [today]);
+
+  // Group by assigned_to
+  const byUser = {};
+  for (const r of delRows) {
+    if (!byUser[r.assigned_to]) byUser[r.assigned_to] = [];
+    byUser[r.assigned_to].push({ ...r, type: 'Delegation' });
+  }
+  for (const r of chlRows) {
+    if (!byUser[r.assigned_to]) byUser[r.assigned_to] = [];
+    byUser[r.assigned_to].push({ ...r, type: 'Checklist' });
+  }
+
+  const userIds = Object.keys(byUser).map(Number);
+  if (!userIds.length) {
+    return { ok: true, sent: 0, skipped: 0, total: 0, reason: 'No pending tasks for anyone' };
+  }
+
+  // Fetch user details (name + phone)
+  const [users] = await db.query(
+    `SELECT id, name, phone, COALESCE(department,'') AS department,
+            COALESCE(exclude_from_reminder,0) AS exclude_from_reminder
+       FROM users WHERE id IN (${userIds.map(()=>'?').join(',')})`, userIds);
+  const userMap = {};
+  users.forEach(u => userMap[u.id] = u);
+
+  let sent = 0, skipped = 0;
+  const skippedDetails = [];
+
+  for (const uid of userIds) {
+    const u = userMap[uid];
+    if (!u) { skipped++; skippedDetails.push({ id: uid, reason: 'user not found' }); continue; }
+    if (u.exclude_from_reminder) { skipped++; skippedDetails.push({ name: u.name, reason: 'manually excluded' }); continue; }
+    if (!u.phone) { skipped++; skippedDetails.push({ name: u.name, reason: 'no phone' }); continue; }
+    // Skip CXO department
+    if (EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase())) {
+      skipped++; skippedDetails.push({ name: u.name, reason: 'CXO' }); continue;
+    }
+
+    // Sort tasks: oldest due date first
+    const tasks = byUser[uid].sort((a, b) => (a.due_date || '').localeCompare(b.due_date || ''));
+    const lines = tasks.map((t, i) => {
+      const dueFmt = (t.due_date || '').split('-').reverse().join('-');
+      const overdue = t.due_date && t.due_date < today ? ' ⚠️ overdue' : '';
+      return `${i+1}. ${t.description}\n   📅 ${dueFmt}${overdue} · ${t.type}${t.priority && t.priority !== 'low' ? ' · ' + t.priority.toUpperCase() : ''}`;
+    }).join('\n\n');
+
+    const taskWord = tasks.length === 1 ? 'task' : 'tasks';
+    const msg = `Hello ${u.name || ''},\n\n📋 *You have ${tasks.length} pending ${taskWord}*\n\n${lines}\n\nPlease update status by EOD.\n\n— E-Marketing Task Manager`;
+
+    const r = await sendWhatsApp(u.phone, msg);
+    if (r.ok) sent++; else { skipped++; skippedDetails.push({ name: u.name, reason: r.error || r.reason || 'send failed' }); }
+  }
+
+  return { ok: true, date: today, total: userIds.length, sent, skipped, skippedDetails };
+}
+
+// Manual trigger (admin)
+app.post('/api/pending-reminder/send', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const result = await buildAndSendPendingTasksReminder();
+    res.json(result);
+  } catch (err) {
+    console.error('Pending reminder error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Cron endpoint — called at 12 PM IST = 6:30 AM UTC
+app.get('/api/cron/pending-reminder', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (process.env.CRON_SECRET && authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: pending-reminder (12 PM IST)');
+    const result = await buildAndSendPendingTasksReminder();
+    res.json(result);
+  } catch (err) {
+    console.error('Cron pending-reminder error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Cron endpoint (called by Vercel Cron at 6:10 PM IST = 12:40 PM UTC) ──
 // Protected by CRON_SECRET so random visitors can't trigger it.
 app.get('/api/cron/daily-reminder', async (req, res) => {
@@ -2976,13 +3109,14 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
       [uid, leave_type, from_date, to_date, JSON.stringify(cleanDates), reason.trim(), approverId]
     );
 
-    // Notify approver by email (best-effort)
+    // Notify approver — email + WhatsApp (best-effort)
     if (approverId && approverId !== uid) {
+      const typeLabel = ({full_day:'Full Day Leave',half_day:'Half Day Leave',work_from_home:'Work From Home',extra_working:'Extra Working'})[leave_type];
+      const datesLine = cleanDates.map(d => leave_type === 'extra_working' ? `${d.date} (${d.hours}h)` : d.date).join(', ');
+      const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [uid]);
+
       const target = await getNotifyTarget(approverId);
       if (target) {
-        const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [uid]);
-        const typeLabel = ({full_day:'Full Day Leave',half_day:'Half Day Leave',work_from_home:'Work From Home',extra_working:'Extra Working'})[leave_type];
-        const datesLine = cleanDates.map(d => leave_type === 'extra_working' ? `${d.date} (${d.hours}h)` : d.date).join(', ');
         const html = `
           <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f6f9fc;padding:20px;">
             <div style="background:#fff;border-radius:8px;padding:30px;">
@@ -2999,6 +3133,25 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
           </div>`;
         sendMail(target.email, `Leave Request — ${me?.name || ''}`, html).catch(()=>{});
       }
+      // WhatsApp to approver
+      try {
+        const [[apRow]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [approverId]);
+        if (apRow && apRow.phone) {
+          const daysWord = cleanDates.length === 1 ? '1 day' : `${cleanDates.length} days`;
+          const datesPretty = cleanDates.map(d => {
+            const dd = d.date.split('-').reverse().join('-');
+            return leave_type === 'extra_working' ? `${dd} (${d.hours}h)` : dd;
+          }).join(', ');
+          const msg = `Hello ${apRow.name || ''},\n\n🗓 *New Leave Request*\n\n` +
+            `*Employee:* ${me?.name || ''}\n` +
+            `*Type:* ${typeLabel}\n` +
+            `*Duration:* ${daysWord}\n` +
+            `*Dates:* ${datesPretty}\n` +
+            `*Reason:* ${reason}\n\n` +
+            `Please approve / reject from the Approvals tab.\n\n— E-Marketing Task Manager`;
+          sendWhatsApp(apRow.phone, msg).catch(e => console.error('WA leave req err:', e.message));
+        }
+      } catch (e) { console.error('WA leave req lookup err:', e.message); }
     }
 
     res.json({ id: r.insertId, status: 'pending', approver_id: approverId });
@@ -3031,22 +3184,23 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
       [newStatus, uid, (note || '').trim() || null, id]
     );
 
-    // Notify requester
+    // Notify requester — email + WhatsApp
+    const typeLabel = ({full_day:'Full Day Leave',half_day:'Half Day Leave',work_from_home:'Work From Home',extra_working:'Extra Working'})[lr.leave_type];
+    let datesLine = '';
+    try {
+      const arr = lr.dates_json ? JSON.parse(lr.dates_json) : null;
+      if (arr && arr.length) {
+        datesLine = arr.map(d => lr.leave_type === 'extra_working' ? `${d.date.split('-').reverse().join('-')} (${d.hours}h)` : d.date.split('-').reverse().join('-')).join(', ');
+      }
+    } catch {}
+    if (!datesLine) {
+      const fmt = (v) => v instanceof Date ? v.toISOString().slice(0,10).split('-').reverse().join('-') : String(v).slice(0,10).split('-').reverse().join('-');
+      datesLine = `${fmt(lr.from_date)} → ${fmt(lr.to_date)}`;
+    }
+
     const target = await getNotifyTarget(lr.user_id);
     if (target) {
-      const typeLabel = ({full_day:'Full Day Leave',half_day:'Half Day Leave',work_from_home:'Work From Home',extra_working:'Extra Working'})[lr.leave_type];
       const color = newStatus === 'approved' ? '#16a34a' : '#dc2626';
-      let datesLine = '';
-      try {
-        const arr = lr.dates_json ? JSON.parse(lr.dates_json) : null;
-        if (arr && arr.length) {
-          datesLine = arr.map(d => lr.leave_type === 'extra_working' ? `${d.date} (${d.hours}h)` : d.date).join(', ');
-        }
-      } catch {}
-      if (!datesLine) {
-        const fmt = (v) => v instanceof Date ? v.toISOString().slice(0,10) : String(v).slice(0,10);
-        datesLine = `${fmt(lr.from_date)} → ${fmt(lr.to_date)}`;
-      }
       const html = `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f6f9fc;padding:20px;">
           <div style="background:#fff;border-radius:8px;padding:30px;">
@@ -3059,6 +3213,22 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
         </div>`;
       sendMail(target.email, `Leave ${newStatus} — ${typeLabel}`, html).catch(()=>{});
     }
+    // WhatsApp to requester
+    try {
+      const [[reqRow]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [lr.user_id]);
+      if (reqRow && reqRow.phone) {
+        const statusIcon = newStatus === 'approved' ? '✅' : '❌';
+        const statusWord = newStatus === 'approved' ? 'APPROVED' : 'REJECTED';
+        const [[apRow]] = await db.query('SELECT name FROM users WHERE id=? LIMIT 1', [uid]);
+        const msg = `Hello ${reqRow.name || ''},\n\n${statusIcon} *Leave ${statusWord}*\n\n` +
+          `*Type:* ${typeLabel}\n` +
+          `*Dates:* ${datesLine}\n` +
+          `*Decided by:* ${apRow?.name || 'Approver'}\n` +
+          (note ? `*Note:* ${note}\n` : '') +
+          `\n— E-Marketing Task Manager`;
+        sendWhatsApp(reqRow.phone, msg).catch(e => console.error('WA leave decide err:', e.message));
+      }
+    } catch (e) { console.error('WA leave decide lookup err:', e.message); }
 
     res.json({ success: true, status: newStatus });
   } catch (err) { res.status(500).json({ error: err.message }); }

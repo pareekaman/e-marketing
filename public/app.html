@@ -125,6 +125,8 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 .tab-group{display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:8px;}
 .tab{padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;color:#64748b;transition:all .2s;}
 .tab.active{background:#fff;color:#1a56db;box-shadow:0 1px 4px rgba(0,0,0,.1);}
+.tab.tab-action{color:#1a56db;background:#eff6ff;border:1px dashed #bfdbfe;}
+.tab.tab-action:hover{background:#dbeafe;border-color:#1a56db;}
 
 table{width:100%;border-collapse:collapse;}
 thead th{font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:#94a3b8;padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;background:#f8fafc;}
@@ -735,6 +737,7 @@ tbody tr:last-child td{border-bottom:none;}
         <div class="tab-group" id="tasksTypeTabGroup">
           <div class="tab active" id="tasksTabDel" onclick="tasksTab('delegation',this)">Delegation</div>
           <div class="tab" id="tasksTabChl" onclick="tasksTab('checklist',this)">Checklist</div>
+          <div class="tab tab-action" id="tasksTabDelByMe" onclick="openDelegateByMeModal()" title="See tasks you have delegated to others">📤 Delegate by Me</div>
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -756,8 +759,6 @@ tbody tr:last-child td{border-bottom:none;}
           <input type="text" id="taskSearch" placeholder="Search by name, date, desc, status..." oninput="filterTasks()"
             style="padding:8px 12px 8px 32px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;width:260px"/>
         </div>
-        <button class="btn btn-outline" id="delegateByMeBtn" onclick="openDelegateByMeModal()"
-          style="color:#1a56db;border-color:#bfdbfe">📤 Delegate by Me</button>
         <button class="btn btn-outline" id="transferModeBtn" onclick="openNewTransferModal()"
           style="color:#7c3aed;border-color:#c4b5fd">🔀 Transfer</button>
         <button class="btn btn-primary" id="tasksAssignBtn" onclick="openDelegate()" style="display:none">+ Assign Task</button>
@@ -2597,9 +2598,9 @@ async function loadAllTasks() {
   const assignBtn = document.getElementById('tasksAssignBtn');
   if (assignBtn) assignBtn.style.display = (isAdmin || isHod || isUser) ? '' : 'none';
 
-  // Delegate by Me button — sirf un users ko dikhao jo task assign kar sakte hain
-  const dbmBtn = document.getElementById('delegateByMeBtn');
-  if (dbmBtn) dbmBtn.style.display = (isAdmin || isHod || isUser) ? '' : 'none';
+  // Delegate by Me tab — sirf un users ko dikhao jo task assign kar sakte hain
+  const dbmTab = document.getElementById('tasksTabDelByMe');
+  if (dbmTab) dbmTab.style.display = (isAdmin || isHod || isUser) ? '' : 'none';
 
   // PC desktop: show user filter + date range
   const filtersDiv = document.getElementById('tasksUserDateFilters');
