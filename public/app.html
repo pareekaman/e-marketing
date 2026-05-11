@@ -695,6 +695,7 @@ tbody tr:last-child td{border-bottom:none;}
             <div class="tab active" id="dashTabAll"   onclick="dashTab('all',this)">All</div>
             <div class="tab"        id="dashTabDel"   onclick="dashTab('delegation',this)">Delegation</div>
             <div class="tab"        id="dashTabChl"   onclick="dashTab('checklist',this)">Checklist</div>
+            <div class="tab"        id="dashTabFMS"   onclick="dashTab('fms',this)">FMS</div>
           </div>
         </div>
         <div style="overflow-x:auto;max-height:340px;overflow-y:auto;">
@@ -720,48 +721,6 @@ tbody tr:last-child td{border-bottom:none;}
           <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#10b981;display:inline-block"></span>Completed</span>
           <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block"></span>Pending</span>
           <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#f59e0b;display:inline-block"></span>Revised</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- FMS Dashboard Section -->
-    <div id="dashFMSSection" style="margin-top:18px;display:none">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div style="font-size:16px;font-weight:700;color:#1e293b">📊 FMS Pending Tasks</div>
-        <button class="btn btn-outline btn-sm" onclick="loadDashFMS()">🔄 Refresh</button>
-      </div>
-      <!-- FMS chart -->
-      <div style="display:grid;grid-template-columns:1fr 300px;gap:18px;margin-bottom:16px">
-        <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:16px">
-          <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:10px">FMS Summary by Sheet</div>
-          <div id="dashFMSSummary"></div>
-        </div>
-        <div class="chart-card">
-          <h3>FMS Overview</h3>
-          <div class="chart-wrap"><canvas id="dashFMSChart"></canvas></div>
-          <div style="display:flex;gap:12px;justify-content:center;margin-top:10px;font-size:11px;color:#64748b">
-            <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block"></span>Pending</span>
-            <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#f59e0b;display:inline-block"></span>Late</span>
-          </div>
-        </div>
-      </div>
-      <div class="task-table-card">
-        <div class="card-head">
-          <div class="card-head-title">Today's FMS Pending <span id="dashFMSCount" style="font-size:12px;color:#ef4444;font-weight:600;margin-left:6px"></span></div>
-        </div>
-        <div style="overflow-x:auto">
-          <table>
-            <thead>
-              <tr>
-                <th>FMS Name</th>
-                <th>Step</th>
-                <th id="dashFMSDoerHead">Doer</th>
-                <th>Plan Date</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="dashFMSTbody"></tbody>
-          </table>
         </div>
       </div>
     </div>
@@ -1287,15 +1246,11 @@ tbody tr:last-child td{border-bottom:none;}
         <select id="dDoer"><option value="">Select Doer</option></select>
       </div>
       <div class="form-group">
-        <label>Approver</label>
-        <select id="dApprover"><option value="">Select Approver</option></select>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
         <label>Due Date</label>
         <input type="date" id="dDate"/>
       </div>
+    </div>
+    <div class="form-row">
       <div class="form-group">
         <label>Priority</label>
         <select id="dPriority">
@@ -1305,13 +1260,20 @@ tbody tr:last-child td{border-bottom:none;}
           <option value="urgent">Urgent</option>
         </select>
       </div>
+      <div class="form-group">
+        <label>Approval Required</label>
+        <select id="dApproval" onchange="onDelegateApprovalChange()">
+          <option value="no">No Approval</option>
+          <option value="yes">Yes Approval</option>
+        </select>
+      </div>
     </div>
-    <div class="form-group">
-      <label>Approval Required</label>
-      <select id="dApproval">
-        <option value="no">No Approval</option>
-        <option value="yes">Yes Approval</option>
-      </select>
+    <div class="form-group" id="dApproverGroup" style="display:none">
+      <label>Approver</label>
+      <select id="dApprover" onchange="onDelegateApproverChange()"><option value="">Select Approver</option></select>
+      <div id="dApproverEmail" style="margin-top:6px;font-size:12px;color:#1a56db;font-weight:500;display:none">
+        📧 <span id="dApproverEmailText"></span>
+      </div>
     </div>
     <div class="form-group">
       <label>Description</label>
@@ -2500,22 +2462,12 @@ function dashTab(type, el) {
   }
 }
 
-// FMS Dashboard loader
-let dashFMSChartInst = null;
+// FMS Dashboard loader — fetches FMS rows used by the unified pending table
 async function loadDashFMS() {
-  const section = document.getElementById('dashFMSSection');
-  if (!section) return;
-  section.style.display = 'block';
-
+  // Keep the separate section hidden — FMS rows now render inside the main pending table
   const isAdmin = ME.role === 'admin';
   const isHod   = ME.role === 'hod';
   const isPC    = ME.role === 'pc';
-
-  // Doer head — admin/hod/pc sees doer name, employee sees their own
-  document.getElementById('dashFMSDoerHead').textContent = (isAdmin || isHod || isPC) ? 'Doer' : 'My Step';
-
-  document.getElementById('dashFMSTbody').innerHTML = `<tr><td colspan="5" class="empty">Loading FMS tasks…</td></tr>`;
-  document.getElementById('dashFMSCount').textContent = '';
 
   const empFilter = document.getElementById('dashEmployeeFilter');
   const empVal = empFilter ? empFilter.value : 'all';
@@ -2523,79 +2475,29 @@ async function loadDashFMS() {
 
   const data = await api(url);
   if (data.error) {
-    document.getElementById('dashFMSTbody').innerHTML = `<tr><td colspan="5" class="empty" style="color:#dc2626">⚠️ ${data.error}</td></tr>`;
+    window._lastDashFMS = [];
+    // Re-render unified table without FMS
+    if (window._lastDashTasks) renderDashTable(window._lastDashTasks, dashType);
     return;
   }
 
   const rows = data.rows || [];
-  const today = new Date().toISOString().split('T')[0];
 
-  document.getElementById('dashFMSCount').textContent = rows.length ? `(${rows.length} pending)` : '';
+  // Normalize for unified table
+  window._lastDashFMS = rows.map(r => ({
+    id: r.stepId || r.id || 0,
+    type: 'fms',
+    description: `${r.fmsName} — ${r.stepName}`,
+    assignedToName: r.doer || '—',
+    assignedByName: r.doer || '—',
+    due_date: r.planDate || '',
+    planValue: r.planValue || '',
+    isLate: !!r.isLate,
+    status: 'pending'
+  }));
 
-  const tbody = document.getElementById('dashFMSTbody');
-  if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="5" class="empty">No FMS pending tasks 🎉</td></tr>`;
-  } else {
-    tbody.innerHTML = rows.map(r => {
-      const isLate = r.isLate;
-      const lateBadge = isLate
-        ? `<span style="font-size:10px;background:#fef2f2;color:#dc2626;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fecaca">⏰ Late</span>`
-        : `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ On Track</span>`;
-      const dateDisplay = r.planDate
-        ? `<span style="${isLate?'color:#dc2626;font-weight:600':''}">${r.planDate}</span>`
-        : `<span style="color:#94a3b8;font-size:12px">${r.planValue||'—'}</span>`;
-      return `<tr>
-        <td style="font-weight:600;color:#1e293b">${r.fmsName}</td>
-        <td style="color:#374151;font-size:13px">${r.stepName}</td>
-        <td style="color:#374151">${r.doer}</td>
-        <td>${dateDisplay}</td>
-        <td>${lateBadge}</td>
-      </tr>`;
-    }).join('');
-  }
-
-  // Summary by FMS name
-  const summaryByFMS = {};
-  rows.forEach(r => {
-    if (!summaryByFMS[r.fmsName]) summaryByFMS[r.fmsName] = { total: 0, late: 0 };
-    summaryByFMS[r.fmsName].total++;
-    if (r.isLate) summaryByFMS[r.fmsName].late++;
-  });
-
-  const summaryEl = document.getElementById('dashFMSSummary');
-  if (summaryEl) {
-    if (!Object.keys(summaryByFMS).length) {
-      summaryEl.innerHTML = '<div style="color:#94a3b8;font-size:13px;text-align:center;padding:16px">No data</div>';
-    } else {
-      summaryEl.innerHTML = Object.entries(summaryByFMS).map(([name, s]) => `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9">
-          <span style="font-size:13px;font-weight:600;color:#1e293b">${name}</span>
-          <div style="display:flex;gap:8px;align-items:center">
-            <span style="font-size:12px;color:#ef4444;font-weight:600">${s.total} pending</span>
-            ${s.late ? `<span style="font-size:11px;background:#fef2f2;color:#dc2626;padding:1px 7px;border-radius:8px;font-weight:600">${s.late} late</span>` : ''}
-          </div>
-        </div>`).join('');
-    }
-  }
-
-  // FMS chart — pending vs late
-  if (dashFMSChartInst) dashFMSChartInst.destroy();
-  const canvas = document.getElementById('dashFMSChart');
-  if (canvas) {
-    const totalPending = rows.length;
-    const totalLate = rows.filter(r => r.isLate).length;
-    const onTrack = totalPending - totalLate;
-    if (totalPending > 0) {
-      dashFMSChartInst = new Chart(canvas.getContext('2d'), {
-        type: 'pie',
-        data: {
-          labels: ['On Track', 'Late'],
-          datasets: [{ data: [onTrack, totalLate], backgroundColor: ['#ef4444','#f59e0b'], borderWidth: 3, borderColor: '#fff', hoverOffset: 6 }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.label}: ${c.raw}` } } } }
-      });
-    }
-  }
+  // Re-render unified table now that FMS data is in
+  if (window._lastDashTasks) renderDashTable(window._lastDashTasks, dashType);
 }
 
 function toggleDashDateSort() {
@@ -2609,30 +2511,54 @@ function toggleDashDateSort() {
 }
 
 function renderDashTable(tasks, type) {
-  // Show ALL pending tasks (delegation + checklist) combined
+  // Show ALL pending tasks (delegation + checklist + FMS) combined
   const isAdmin = ME.role==='admin' || ME.role==='hod';
   const isPC    = ME.role==='pc';
   document.getElementById('dashDoerHead').textContent = (isAdmin||isPC)?'Doer':'Assigned By';
   const tbody = document.getElementById('dashTbody');
-  // Filter by selected tab: all / delegation / checklist
-  let allPending = tasks.filter(t => {
+
+  // Merge in FMS rows when the user wants 'all' or 'fms'
+  let combined = (type === 'fms') ? [] : (tasks || []).slice();
+  if (!type || type === 'all' || type === 'fms') {
+    const fmsRows = window._lastDashFMS || [];
+    combined = combined.concat(fmsRows);
+  }
+
+  // Filter by selected tab: all / delegation / checklist / fms
+  let allPending = combined.filter(t => {
     const matchType = (!type || type === 'all') ? true : t.type === type;
     return matchType && (t.status === 'pending' || !t.status);
   });
   // Apply date sort
   if (_dashDateSortState === 1) {
-    // Ascending: oldest (earliest) date first — aaj ki pehle aaye
     allPending = [...allPending].sort((a,b) => (a.due_date||a.date||'').localeCompare(b.due_date||b.date||''));
   } else if (_dashDateSortState === 2) {
-    // Descending: newest (latest) date first
     allPending = [...allPending].sort((a,b) => (b.due_date||b.date||'').localeCompare(a.due_date||a.date||''));
   }
   if (!allPending.length) { tbody.innerHTML=`<tr><td colspan="6" class="empty">No pending tasks 🎉</td></tr>`; return; }
-  const typeBadge = t => t.type==='checklist'
-    ? `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ Checklist</span>`
-    : `<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bfdbfe">📋 Delegation</span>`;
-  tbody.innerHTML = allPending.map(t=>`
-    <tr>
+  const typeBadge = t => {
+    if (t.type === 'fms') return `<span style="font-size:10px;background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fed7aa">📊 FMS</span>`;
+    if (t.type === 'checklist') return `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ Checklist</span>`;
+    return `<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bfdbfe">📋 Delegation</span>`;
+  };
+  tbody.innerHTML = allPending.map(t => {
+    if (t.type === 'fms') {
+      const lateBadge = t.isLate
+        ? `<span style="font-size:10px;background:#fef2f2;color:#dc2626;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fecaca">⏰ Late</span>`
+        : `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ On Track</span>`;
+      const dateCell = t.due_date
+        ? `<span style="${t.isLate?'color:#dc2626;font-weight:600':''}">${fmtDate(t.due_date)}</span>`
+        : `<span style="color:#94a3b8;font-size:12px">${t.planValue||'—'}</span>`;
+      return `<tr>
+        <td style="white-space:nowrap">${typeBadge(t)}</td>
+        <td>${t.description}</td>
+        <td>${t.assignedToName}</td>
+        <td>${dateCell}</td>
+        <td>—</td>
+        <td>${lateBadge}</td>
+      </tr>`;
+    }
+    return `<tr>
       <td style="white-space:nowrap">${typeBadge(t)}</td>
       <td>${t.description||t.desc}</td>
       <td>${(isAdmin||isPC)?t.assignedToName:t.assignedByName}</td>
@@ -2647,7 +2573,8 @@ function renderDashTable(tasks, type) {
           ${(!isPC && t.type!=='checklist') ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${t.type}')">Revise</button>` : ''}
         `}
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 // ══════════════════════════════════════════════════════
@@ -3049,10 +2976,41 @@ async function openDelegate() {
   document.getElementById('dDate').value=today;
   document.getElementById('dDate').min=today;
   const users = await api('/api/users');
-  const opts = users.map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
+  // Cache for email lookup in onDelegateApproverChange()
+  window._delegateUsers = users || [];
+  const opts = (users || []).map(u=>`<option value="${u.id}" data-email="${dtEscape(u.email||'')}">${u.name}</option>`).join('');
   document.getElementById('dDoer').innerHTML='<option value="">Select Doer</option>'+opts;
   document.getElementById('dApprover').innerHTML='<option value="">Select Approver</option>'+opts;
+  // Hidden by default — only shown when Approval Required = Yes
+  document.getElementById('dApproverGroup').style.display = 'none';
+  document.getElementById('dApproverEmail').style.display = 'none';
   document.getElementById('delegateModal').classList.add('open');
+}
+
+function onDelegateApprovalChange() {
+  const approval = document.getElementById('dApproval').value;
+  const group = document.getElementById('dApproverGroup');
+  if (approval === 'yes') {
+    group.style.display = 'block';
+  } else {
+    group.style.display = 'none';
+    document.getElementById('dApprover').value = '';
+    document.getElementById('dApproverEmail').style.display = 'none';
+  }
+}
+
+function onDelegateApproverChange() {
+  const sel = document.getElementById('dApprover');
+  const opt = sel.options[sel.selectedIndex];
+  const email = opt ? opt.getAttribute('data-email') : '';
+  const box = document.getElementById('dApproverEmail');
+  const text = document.getElementById('dApproverEmailText');
+  if (email) {
+    text.textContent = email;
+    box.style.display = 'block';
+  } else {
+    box.style.display = 'none';
+  }
 }
 
 async function saveDelegate() {
@@ -3064,10 +3022,11 @@ async function saveDelegate() {
   const priority = document.getElementById('dPriority').value;
   const approval = document.getElementById('dApproval').value;
   const remarks = document.getElementById('dRemarks').value.trim();
-  const approver = document.getElementById('dApprover').value;
+  const approver = approval === 'yes' ? document.getElementById('dApprover').value : '';
   if (!doer) { err.textContent='Please select a doer'; err.style.display='block'; return; }
   if (!date) { err.textContent='Please select a date'; err.style.display='block'; return; }
   if (!desc) { err.textContent='Description is required'; err.style.display='block'; return; }
+  if (approval === 'yes' && !approver) { err.textContent='Please select an approver'; err.style.display='block'; return; }
   await api('/api/tasks','POST',{type:'delegation',desc,assignedTo:doer,date,priority,approval,approver,remarks});
   closeModal('delegateModal');
   showToast('Task delegated successfully!');
