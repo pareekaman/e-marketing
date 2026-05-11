@@ -2797,7 +2797,7 @@ app.get('/api/cron/pending-reminder', async (req, res) => {
   }
 });
 
-// ── Cron endpoint (called by Vercel Cron at 6:10 PM IST = 12:40 PM UTC) ──
+// ── Cron endpoint (called by Vercel Cron at 7:30 PM IST = 2:00 PM UTC) ──
 // Protected by CRON_SECRET so random visitors can't trigger it.
 app.get('/api/cron/daily-reminder', async (req, res) => {
   // Vercel Cron sends header: authorization: Bearer <CRON_SECRET>
