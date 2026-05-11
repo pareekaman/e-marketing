@@ -516,6 +516,39 @@ tbody tr:last-child td{border-bottom:none;}
 .lv-save-btn{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;border:none;padding:9px 24px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 12px rgba(243,156,18,.3);transition:all .2s;}
 .lv-save-btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(243,156,18,.4);}
 
+/* Calendar */
+.lv-cal-hint{font-size:11px;color:#94a3b8;font-weight:500;text-transform:none;letter-spacing:0;margin-left:4px;}
+.lv-calendar{background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px 16px;}
+.lv-cal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.lv-cal-nav{background:#fff;border:1.5px solid #e2e8f0;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:18px;font-weight:700;color:#475569;display:grid;place-items:center;font-family:inherit;transition:all .15s;}
+.lv-cal-nav:hover{border-color:#F39C12;color:#F39C12;background:#fffbeb;}
+.lv-cal-month-label{font-size:14px;font-weight:700;color:#1e293b;}
+.lv-cal-weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px;}
+.lv-cal-weekdays span{text-align:center;font-size:11px;font-weight:600;color:#94a3b8;padding:6px 0;text-transform:uppercase;letter-spacing:.4px;}
+.lv-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.lv-cal-day{padding:8px 0;text-align:center;font-size:13px;font-weight:500;color:#475569;background:transparent;border:1.5px solid transparent;border-radius:8px;cursor:pointer;font-family:inherit;transition:all .12s;}
+.lv-cal-day:hover:not(.lv-cal-day-disabled):not(.lv-cal-day-selected){background:#fffbeb;border-color:#F39C12;color:#F39C12;}
+.lv-cal-day-today{border-color:#10b981;color:#10b981;font-weight:700;}
+.lv-cal-day-selected{background:#10b981 !important;color:#fff !important;border-color:#10b981 !important;font-weight:700;box-shadow:0 2px 8px rgba(16,185,129,.4);}
+.lv-cal-day-disabled{color:#cbd5e1;cursor:not-allowed;opacity:.6;}
+.lv-cal-day-other{visibility:hidden;}
+.lv-cal-foot{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0;font-size:12px;font-weight:600;color:#10b981;}
+.lv-cal-count-ico{font-size:13px;}
+
+/* Selected dates list */
+.lv-selected-list{background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;}
+.lv-selected-row{display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fff;border:1px solid #d1fae5;border-radius:8px;font-size:12px;}
+.lv-selected-date{flex:1;font-weight:600;color:#065f46;}
+.lv-selected-hours{display:flex;align-items:center;gap:5px;}
+.lv-selected-hours input{width:60px;padding:5px 8px;border:1.5px solid #d1fae5;border-radius:6px;font-size:12px;outline:none;font-family:inherit;text-align:center;}
+.lv-selected-hours input:focus{border-color:#10b981;}
+.lv-selected-hours-label{font-size:11px;color:#065f46;font-weight:600;}
+.lv-selected-remove{background:transparent;border:none;color:#dc2626;cursor:pointer;font-size:14px;padding:2px 6px;border-radius:4px;}
+.lv-selected-remove:hover{background:#fee2e2;}
+
+/* Hours pill in list view */
+.lv-hours-pill{background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:6px;font-size:10px;font-weight:700;margin-left:4px;}
+
 @media (max-width:768px){
   .lv-card{padding:20px 18px;}
   .lv-type-grid{grid-template-columns:1fr;}
@@ -581,10 +614,9 @@ tbody tr:last-child td{border-bottom:none;}
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
       <span class="nav-label-text">Daily Task</span>
     </div>
-    <div class="nav-item" id="nav-leaves" onclick="navigate('leaves',this)" style="position:relative">
+    <div class="nav-item" id="nav-leaves" onclick="navigate('leaves',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
       <span class="nav-label-text">Leave Tracker</span>
-      <span id="leaveBadge" style="display:none;position:absolute;top:6px;right:8px;background:#F39C12;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;align-items:center;justify-content:center">0</span>
     </div>
     <div class="nav-item" id="nav-clients" style="display:none" onclick="navigate('clients',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
@@ -852,6 +884,7 @@ tbody tr:last-child td{border-bottom:none;}
     <div style="display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:8px;width:fit-content;margin-bottom:18px">
       <div class="tab active" id="apprTabTask" onclick="switchApprovalTab('task',this)">📋 Task Approvals</div>
       <div class="tab" id="apprTabTransfer" onclick="switchApprovalTab('transfer',this)" style="display:none">🔀 Transfer Requests</div>
+      <div class="tab" id="apprTabLeave" onclick="switchApprovalTab('leave',this)">🗓 Leave Approvals <span id="apprLeaveBadge" style="display:none;background:#F39C12;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
     </div>
 
     <!-- Task approvals panel -->
@@ -864,6 +897,13 @@ tbody tr:last-child td{border-bottom:none;}
     <!-- Transfer approvals panel (admin/HOD only) -->
     <div id="transferApprovalsPanel" style="display:none">
       <div id="transferApprovalsContent" class="flat-tasks-table" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden">
+        <div class="empty">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Leave approvals panel -->
+    <div id="leaveApprovalsPanel" style="display:none">
+      <div id="leaveApprovalsContent" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:6px">
         <div class="empty">Loading…</div>
       </div>
     </div>
@@ -1163,9 +1203,6 @@ tbody tr:last-child td{border-bottom:none;}
       <div class="lv-tabs">
         <div class="lv-tab active" data-tab="mine" onclick="lvSwitchTab('mine',this)">
           <span class="lv-tab-ico">👤</span> My Leaves
-        </div>
-        <div class="lv-tab" data-tab="approvals" id="lvTabApprovals" onclick="lvSwitchTab('approvals',this)" style="display:none">
-          <span class="lv-tab-ico">✅</span> Pending My Approval <span class="lv-tab-badge" id="lvApprovalCount">0</span>
         </div>
         <div class="lv-tab" data-tab="team" id="lvTabTeam" onclick="lvSwitchTab('team',this)" style="display:none">
           <span class="lv-tab-ico">👥</span> Team Leaves
@@ -2002,15 +2039,28 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
     </div>
 
-    <div class="form-row">
-      <div class="form-group">
-        <label>From Date <span class="lv-req">*</span></label>
-        <input type="date" id="lvFromDate" onchange="lvSyncToDate()"/>
+    <div class="form-group">
+      <label>Select Dates <span class="lv-req">*</span> <span class="lv-cal-hint">📅 (click individual dates to select/deselect)</span></label>
+      <div class="lv-calendar" id="lvCalendar">
+        <div class="lv-cal-head">
+          <button type="button" class="lv-cal-nav" onclick="lvCalNav(-1)">‹</button>
+          <div class="lv-cal-month-label" id="lvCalMonthLabel">—</div>
+          <button type="button" class="lv-cal-nav" onclick="lvCalNav(1)">›</button>
+        </div>
+        <div class="lv-cal-weekdays">
+          <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+        </div>
+        <div class="lv-cal-grid" id="lvCalGrid"></div>
+        <div class="lv-cal-foot">
+          <span class="lv-cal-count-ico">📅</span>
+          <span id="lvCalCount">0 dates selected</span>
+        </div>
       </div>
-      <div class="form-group">
-        <label>To Date <span class="lv-req">*</span></label>
-        <input type="date" id="lvToDate"/>
-      </div>
+    </div>
+
+    <div class="form-group" id="lvSelectedBox" style="display:none">
+      <label id="lvSelectedLabel">Selected Dates</label>
+      <div id="lvSelectedList" class="lv-selected-list"></div>
     </div>
 
     <div class="form-group">
@@ -2195,22 +2245,18 @@ async function init() {
       // PC: can view all tasks + approve, but cannot edit/delete
       // Nav items same as employee (dashboard, alltasks, approvals, profile, fms-tasks)
     }
-    // Leave Tracker — HOD / Admin / PC see approval + team tabs
+    // Leave Tracker — HOD / Admin / PC also see Team tab
     if (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc') {
-      const tApp = document.getElementById('lvTabApprovals');
       const tTeam = document.getElementById('lvTabTeam');
-      if (tApp) tApp.style.display = 'flex';
       if (tTeam) tTeam.style.display = 'flex';
     }
     setMinDates();
     loadDashboard();
     loadApprovalBadge();
     loadTransferBadge();
-    loadLeaveBadge();
     // Refresh badges every 30 seconds
     setInterval(loadApprovalBadge, 30000);
     setInterval(loadTransferBadge, 30000);
-    setInterval(loadLeaveBadge, 30000);
   } catch(e) { console.error('Init error:', e); window.location.replace('/'); }
 }
 
@@ -3532,13 +3578,25 @@ async function uploadUsersCSV() {
 
 // ══════════════════════════════════════════════════════
 async function loadApprovalBadge() {
-  const d = await api('/api/approvals/count');
+  const [d, lv] = await Promise.all([
+    api('/api/approvals/count'),
+    api('/api/leaves/pending-count')
+  ]);
+  const taskCnt = d.count || 0;
+  const leaveCnt = lv?.count || 0;
+  const total = taskCnt + leaveCnt;
   const badge = document.getElementById('approvalBadge');
-  if (d.count > 0) {
-    badge.textContent = d.count;
+  if (total > 0) {
+    badge.textContent = total;
     badge.style.display = 'flex';
   } else {
     badge.style.display = 'none';
+  }
+  // Approvals page tab badge (leaves only)
+  const tabBadge = document.getElementById('apprLeaveBadge');
+  if (tabBadge) {
+    if (leaveCnt > 0) { tabBadge.textContent = leaveCnt; tabBadge.style.display = 'inline-block'; }
+    else tabBadge.style.display = 'none';
   }
   // Also refresh transfer badge
   loadTransferBadge();
@@ -3549,7 +3607,10 @@ function switchApprovalTab(tab, el) {
   if (el) el.classList.add('active');
   document.getElementById('approvalsPanel').style.display = tab==='task' ? 'block' : 'none';
   document.getElementById('transferApprovalsPanel').style.display = tab==='transfer' ? 'block' : 'none';
+  const leavePanel = document.getElementById('leaveApprovalsPanel');
+  if (leavePanel) leavePanel.style.display = tab==='leave' ? 'block' : 'none';
   if (tab==='transfer') loadTransferApprovals();
+  if (tab==='leave') loadLeaveApprovals();
 }
 
 async function loadApprovals() {
@@ -3557,6 +3618,8 @@ async function loadApprovals() {
   if (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc') {
     document.getElementById('apprTabTransfer').style.display = 'block';
   }
+  // Also pre-load leave approvals (so badge stays in sync)
+  loadLeaveApprovals();
 
   const approvals = await api('/api/approvals');
   const container = document.getElementById('approvalsContent');
@@ -6497,6 +6560,9 @@ let LEAVE_TAB = 'mine';
 let LEAVE_STATUS = '';
 let LEAVE_PICKED_TYPE = '';
 let LEAVE_DECIDE_ID = null;
+// Calendar state
+let LEAVE_CAL_VIEW = new Date(); // month being viewed
+const LEAVE_SELECTED = new Map(); // dateStr -> hours (only meaningful for extra_working)
 
 async function loadLeaves(){
   const wrap = document.getElementById('lvListWrap');
@@ -6506,11 +6572,12 @@ async function loadLeaves(){
     const data = await api('/api/leaves' + qs);
     if (data.error) throw new Error(data.error);
     LEAVE_DATA = Array.isArray(data) ? data : [];
+    lvRegisterPool(LEAVE_DATA);
     renderLeaves();
   } catch(e){
     wrap.innerHTML = `<div class="empty" style="color:#dc2626">⚠️ ${dtEscape(e.message)}</div>`;
   }
-  loadLeaveBadge();
+  loadApprovalBadge();
 }
 
 function renderLeaves(){
@@ -6541,7 +6608,6 @@ function renderLeaves(){
     groups[key].items.push(r);
   }
 
-  const canDecide = LEAVE_TAB === 'approvals';
   let html = '';
   for (const key of Object.keys(groups)) {
     const g = groups[key];
@@ -6551,10 +6617,18 @@ function renderLeaves(){
         ${g.dept ? `<small>${dtEscape(g.dept)}</small>` : ''}
       </div>`;
     for (const r of g.items) {
-      const range = r.from_date === r.to_date
-        ? fmtDate(r.from_date)
-        : `${fmtDate(r.from_date)} → ${fmtDate(r.to_date)}`;
-      const canDelete = (LEAVE_TAB === 'mine' && r.status === 'pending') || ME.role === 'admin';
+      const dates = Array.isArray(r.dates) && r.dates.length
+        ? r.dates : [{ date: r.from_date }];
+      const dateLine = dates.map(d => {
+        const dStr = fmtDate(d.date);
+        return r.leave_type === 'extra_working' && d.hours
+          ? `${dStr}<span class="lv-hours-pill">${d.hours}h</span>`
+          : dStr;
+      }).join(' · ');
+      const countLabel = dates.length > 1
+        ? `<span style="color:#94a3b8;font-weight:500"> · ${dates.length} day${dates.length===1?'':'s'}</span>`
+        : '';
+      const canDelete = (r.user_id === ME.id && r.status === 'pending') || ME.role === 'admin';
       html += `<div class="lv-item">
         <div class="lv-item-main">
           <div class="lv-item-row1">
@@ -6570,14 +6644,8 @@ function renderLeaves(){
           </div>
         </div>
         <div class="lv-item-actions">
-          <div class="lv-item-date">${range}</div>
-          <div class="lv-item-btns">
-            ${canDecide && r.status === 'pending' ? `
-              <button class="lv-btn-approve" onclick="openLeaveDecision(${r.id},'approve')">✓ Approve</button>
-              <button class="lv-btn-reject" onclick="openLeaveDecision(${r.id},'reject')">✕ Reject</button>
-            ` : ''}
-            ${canDelete ? `<button class="lv-btn-delete" onclick="deleteLeave(${r.id})">🗑 Delete</button>` : ''}
-          </div>
+          <div class="lv-item-date">${dateLine}${countLabel}</div>
+          ${canDelete ? `<div class="lv-item-btns"><button class="lv-btn-delete" onclick="deleteLeave(${r.id})">🗑 Delete</button></div>` : ''}
         </div>
       </div>`;
     }
@@ -6613,21 +6681,21 @@ function openLeaveForm(){
   // Reset form
   document.querySelectorAll('#lvTypeGrid .lv-type-btn').forEach(b => b.classList.remove('active'));
   LEAVE_PICKED_TYPE = '';
-  const today = new Date().toISOString().split('T')[0];
-  document.getElementById('lvFromDate').value = today;
-  document.getElementById('lvToDate').value = today;
+  LEAVE_SELECTED.clear();
+  LEAVE_CAL_VIEW = new Date();
+  LEAVE_CAL_VIEW.setDate(1);
+  lvRenderCalendar();
+  lvRenderSelectedList();
   document.getElementById('lvReason').value = '';
   // Approver hint
   const hintBox = document.getElementById('lvApproverHint');
   const hintName = document.getElementById('lvApproverHintName');
+  hintBox.style.display = 'block';
   if (ME.role === 'admin') {
-    hintBox.style.display = 'block';
-    hintName.textContent = 'Auto-approved (Admin)';
+    hintName.textContent = 'Another Admin (Approvals tab)';
   } else if (ME.role === 'hod' || ME.role === 'pc') {
-    hintBox.style.display = 'block';
     hintName.textContent = 'Admin';
   } else {
-    hintBox.style.display = 'block';
     hintName.textContent = `HOD${ME.department ? ' — '+ME.department : ''}`;
   }
   document.getElementById('leaveModal').classList.add('open');
@@ -6637,12 +6705,115 @@ function lvPickType(type, el){
   LEAVE_PICKED_TYPE = type;
   document.querySelectorAll('#lvTypeGrid .lv-type-btn').forEach(b => b.classList.remove('active'));
   if (el) el.classList.add('active');
+  // Show / hide selected list (hours input panel)
+  lvRenderSelectedList();
 }
 
-function lvSyncToDate(){
-  const from = document.getElementById('lvFromDate').value;
-  const to = document.getElementById('lvToDate');
-  if (!to.value || to.value < from) to.value = from;
+// ── Calendar render & navigation ──────────────────────
+function lvCalNav(dir){
+  LEAVE_CAL_VIEW.setMonth(LEAVE_CAL_VIEW.getMonth() + dir);
+  lvRenderCalendar();
+}
+
+function lvDateKey(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+function lvRenderCalendar(){
+  const view = LEAVE_CAL_VIEW;
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('lvCalMonthLabel').textContent = `${monthNames[month]} ${year}`;
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startWeekday = firstDay.getDay(); // 0=Sun
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayKey = lvDateKey(today);
+
+  let html = '';
+  // Leading blanks
+  for (let i = 0; i < startWeekday; i++) html += `<button type="button" class="lv-cal-day lv-cal-day-other" disabled></button>`;
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const cur = new Date(year, month, d);
+    const key = lvDateKey(cur);
+    const isPast = cur < today;
+    const isToday = key === todayKey;
+    const isSelected = LEAVE_SELECTED.has(key);
+    const classes = ['lv-cal-day'];
+    if (isPast) classes.push('lv-cal-day-disabled');
+    if (isToday && !isSelected) classes.push('lv-cal-day-today');
+    if (isSelected) classes.push('lv-cal-day-selected');
+    const dis = isPast ? 'disabled' : '';
+    html += `<button type="button" class="${classes.join(' ')}" ${dis} onclick="lvToggleDate('${key}')">${d}</button>`;
+  }
+  document.getElementById('lvCalGrid').innerHTML = html;
+
+  // Count
+  const cnt = LEAVE_SELECTED.size;
+  document.getElementById('lvCalCount').textContent =
+    cnt === 0 ? '0 dates selected' : `${cnt} date${cnt===1?'':'s'} selected`;
+}
+
+function lvToggleDate(key){
+  if (LEAVE_SELECTED.has(key)) {
+    LEAVE_SELECTED.delete(key);
+  } else {
+    LEAVE_SELECTED.set(key, '');
+  }
+  lvRenderCalendar();
+  lvRenderSelectedList();
+}
+
+function lvRenderSelectedList(){
+  const box = document.getElementById('lvSelectedBox');
+  const list = document.getElementById('lvSelectedList');
+  const label = document.getElementById('lvSelectedLabel');
+  const isExtra = LEAVE_PICKED_TYPE === 'extra_working';
+
+  if (!LEAVE_SELECTED.size) {
+    box.style.display = 'none';
+    return;
+  }
+  if (!isExtra) {
+    // Show a compact summary only when not extra_working
+    box.style.display = 'block';
+    label.textContent = 'Selected Dates';
+    const sorted = [...LEAVE_SELECTED.keys()].sort();
+    const first = sorted[0], last = sorted[sorted.length - 1];
+    const summary = sorted.length === 1
+      ? `${fmtDate(first)}`
+      : `${sorted.length} days leave — ${fmtDate(first)} … ${fmtDate(last)}`;
+    list.innerHTML = `<div class="lv-selected-row">
+      <span style="font-size:14px">📅</span>
+      <span class="lv-selected-date">${summary}</span>
+    </div>`;
+    return;
+  }
+  // Extra working — show hours input per date
+  box.style.display = 'block';
+  label.textContent = 'Hours per Date';
+  const sorted = [...LEAVE_SELECTED.keys()].sort();
+  list.innerHTML = sorted.map(k => `
+    <div class="lv-selected-row">
+      <span class="lv-selected-date">📅 ${fmtDate(k)}</span>
+      <div class="lv-selected-hours">
+        <input type="number" min="0.5" max="24" step="0.5" placeholder="0"
+          value="${LEAVE_SELECTED.get(k) || ''}"
+          oninput="lvUpdateHours('${k}', this.value)"/>
+        <span class="lv-selected-hours-label">hrs</span>
+      </div>
+      <button type="button" class="lv-selected-remove" onclick="lvToggleDate('${k}')">✕</button>
+    </div>`).join('');
+}
+
+function lvUpdateHours(key, val){
+  if (!LEAVE_SELECTED.has(key)) return;
+  LEAVE_SELECTED.set(key, val);
 }
 
 async function saveLeave(){
@@ -6651,39 +6822,59 @@ async function saveLeave(){
   const showErr = (m) => { errBox.textContent = m; errBox.style.display = 'block'; };
 
   if (!LEAVE_PICKED_TYPE) return showErr('Please pick a Leave Type');
-  const from_date = document.getElementById('lvFromDate').value;
-  const to_date = document.getElementById('lvToDate').value;
+  if (!LEAVE_SELECTED.size) return showErr('Select at least one date');
+
   const reason = document.getElementById('lvReason').value.trim();
-  if (!from_date || !to_date) return showErr('From Date and To Date required');
-  if (to_date < from_date) return showErr('To Date cannot be before From Date');
   if (!reason) return showErr('Reason is required');
 
+  const isExtra = LEAVE_PICKED_TYPE === 'extra_working';
+  const dates = [];
+  for (const key of [...LEAVE_SELECTED.keys()].sort()) {
+    const item = { date: key };
+    if (isExtra) {
+      const h = parseFloat(LEAVE_SELECTED.get(key));
+      if (!h || h <= 0) return showErr(`Enter hours for ${fmtDate(key)}`);
+      item.hours = h;
+    }
+    dates.push(item);
+  }
+
   const r = await api('/api/leaves', 'POST', {
-    leave_type: LEAVE_PICKED_TYPE, from_date, to_date, reason
+    leave_type: LEAVE_PICKED_TYPE, dates, reason
   });
   if (r.error) return showErr(r.error);
   closeModal('leaveModal');
-  showToast(r.status === 'approved'
-    ? '✅ Leave auto-approved!'
-    : '✅ Leave request submitted for approval');
+  showToast('✅ Leave request submitted for approval');
   loadLeaves();
+  loadApprovalBadge();
+}
+
+// Pool of leaves currently shown (Leave Tracker page + Approvals page) — used by decision modal
+let LEAVE_DECISION_POOL = {};
+
+function lvRegisterPool(list){
+  for (const r of (list || [])) LEAVE_DECISION_POOL[r.id] = r;
 }
 
 function openLeaveDecision(id, action){
   LEAVE_DECIDE_ID = id;
-  const lr = LEAVE_DATA.find(x => x.id === id);
+  const lr = LEAVE_DECISION_POOL[id] || (LEAVE_DATA.find(x => x.id === id));
   if (!lr) return;
   document.getElementById('lvDecisionErr').style.display = 'none';
   document.getElementById('lvDecisionNote').value = '';
   document.getElementById('lvDecisionTitle').textContent =
     action === 'approve' ? 'Approve Leave' : 'Reject Leave';
-  const range = lr.from_date === lr.to_date ? fmtDate(lr.from_date) : `${fmtDate(lr.from_date)} → ${fmtDate(lr.to_date)}`;
+  const dates = Array.isArray(lr.dates) && lr.dates.length ? lr.dates : [{date: lr.from_date}];
+  const datesHtml = dates.map(d =>
+    lr.leave_type === 'extra_working' && d.hours
+      ? `${fmtDate(d.date)} <span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:5px;font-size:10px;font-weight:700;margin-left:3px">${d.hours}h</span>`
+      : fmtDate(d.date)
+  ).join(' · ');
   document.getElementById('lvDecisionInfo').innerHTML = `
     <div><b>Employee:</b> ${dtEscape(lr.user_name)}</div>
     <div><b>Type:</b> ${LEAVE_TYPE_LABEL[lr.leave_type]||lr.leave_type}</div>
-    <div><b>Date:</b> ${range}</div>
+    <div><b>Dates (${dates.length}):</b> ${datesHtml}</div>
     <div><b>Reason:</b> ${dtEscape(lr.reason)}</div>`;
-  // Pre-highlight intended action button
   const approveBtn = document.getElementById('lvApproveBtn');
   const rejectBtn = document.getElementById('lvRejectBtn');
   approveBtn.style.opacity = action === 'approve' ? '1' : '.7';
@@ -6703,7 +6894,10 @@ async function submitLeaveDecision(action){
   closeModal('leaveDecisionModal');
   showToast(action === 'approve' ? '✅ Leave approved' : '❌ Leave rejected');
   LEAVE_DECIDE_ID = null;
-  loadLeaves();
+  loadLeaveApprovals();
+  loadApprovalBadge();
+  // If user is currently on Leave Tracker, also refresh that view
+  if (document.getElementById('page-leaves')?.classList.contains('active')) loadLeaves();
 }
 
 async function deleteLeave(id){
@@ -6712,24 +6906,58 @@ async function deleteLeave(id){
   if (r.error) { showToast(r.error, 'error'); return; }
   showToast('🗑 Leave deleted');
   loadLeaves();
+  loadApprovalBadge();
 }
 
-async function loadLeaveBadge(){
+async function loadLeaveApprovals(){
+  const wrap = document.getElementById('leaveApprovalsContent');
+  if (!wrap) return;
   try {
-    const r = await api('/api/leaves/pending-count');
-    const count = r?.count || 0;
-    const sideBadge = document.getElementById('leaveBadge');
-    const tabBadge = document.getElementById('lvApprovalCount');
-    if (sideBadge) {
-      if (count > 0) {
-        sideBadge.textContent = count;
-        sideBadge.style.display = 'flex';
-      } else {
-        sideBadge.style.display = 'none';
-      }
+    const list = await api('/api/leaves?scope=approvals&status=pending');
+    const rows = Array.isArray(list) ? list : [];
+    lvRegisterPool(rows);
+
+    // Update tab badge
+    const tabBadge = document.getElementById('apprLeaveBadge');
+    if (tabBadge) {
+      if (rows.length > 0) { tabBadge.textContent = rows.length; tabBadge.style.display = 'inline-block'; }
+      else tabBadge.style.display = 'none';
     }
-    if (tabBadge) tabBadge.textContent = count;
-  } catch(e){ /* silent */ }
+
+    if (!rows.length) {
+      wrap.innerHTML = `<div class="empty" style="padding:36px">✅ No pending leave approvals!</div>`;
+      return;
+    }
+    wrap.innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Employee</th><th>Type</th><th>Dates</th><th>Reason</th><th>Applied</th><th>Action</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(r => {
+            const dates = Array.isArray(r.dates) && r.dates.length ? r.dates : [{date: r.from_date}];
+            const datesHtml = dates.map(d =>
+              r.leave_type === 'extra_working' && d.hours
+                ? `${fmtDate(d.date)}<span class="lv-hours-pill">${d.hours}h</span>`
+                : fmtDate(d.date)
+            ).join(' · ');
+            return `<tr>
+              <td><b>${dtEscape(r.user_name)}</b>${r.user_department ? `<br><span style="color:#94a3b8;font-size:11px">${dtEscape(r.user_department)}</span>` : ''}</td>
+              <td><span class="lv-type-pill lv-type-${r.leave_type}">${LEAVE_TYPE_ICON[r.leave_type]||''} ${LEAVE_TYPE_LABEL[r.leave_type]||r.leave_type}</span></td>
+              <td style="font-size:12px;line-height:1.5">${datesHtml}<br><span style="color:#94a3b8;font-size:11px">${dates.length} day${dates.length===1?'':'s'}</span></td>
+              <td style="font-size:12px;max-width:240px">${dtEscape(r.reason)}</td>
+              <td style="color:#64748b;font-size:11px">${dtEscape((r.created_at||'').slice(0,16))}</td>
+              <td style="white-space:nowrap">
+                <button class="action-btn done" onclick="openLeaveDecision(${r.id},'approve')">Approve</button>
+                <button class="action-btn delete" style="margin-left:6px" onclick="openLeaveDecision(${r.id},'reject')">Reject</button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  } catch(e) {
+    wrap.innerHTML = `<div class="empty" style="color:#dc2626">⚠️ ${dtEscape(e.message)}</div>`;
+  }
 }
 
 init();

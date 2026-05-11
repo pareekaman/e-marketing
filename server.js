@@ -230,6 +230,7 @@ const db = {
     leave_type ENUM('full_day','half_day','work_from_home','extra_working') NOT NULL,
     from_date DATE NOT NULL,
     to_date DATE NOT NULL,
+    dates_json TEXT DEFAULT NULL,
     reason TEXT NOT NULL,
     status ENUM('pending','approved','rejected') DEFAULT 'pending',
     approver_id INT DEFAULT NULL,
@@ -241,6 +242,7 @@ const db = {
     INDEX idx_approver (approver_id),
     INDEX idx_from (from_date)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  await sa(`ALTER TABLE leave_requests ADD COLUMN dates_json TEXT DEFAULT NULL AFTER to_date`);
 
   // ── Column additions (safe ALTERs from previous versions) ─────
   await sa(`ALTER TABLE fms_sheets ADD COLUMN fms_name VARCHAR(255) DEFAULT '' AFTER id`);
@@ -547,7 +549,8 @@ app.get('/api/setup', async (req, res) => {
     await sa(`CREATE TABLE IF NOT EXISTS leave_requests (
       id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL,
       leave_type ENUM('full_day','half_day','work_from_home','extra_working') NOT NULL,
-      from_date DATE NOT NULL, to_date DATE NOT NULL, reason TEXT NOT NULL,
+      from_date DATE NOT NULL, to_date DATE NOT NULL, dates_json TEXT DEFAULT NULL,
+      reason TEXT NOT NULL,
       status ENUM('pending','approved','rejected') DEFAULT 'pending',
       approver_id INT DEFAULT NULL, approver_note TEXT DEFAULT NULL,
       decided_at TIMESTAMP NULL DEFAULT NULL,
@@ -555,6 +558,7 @@ app.get('/api/setup', async (req, res) => {
       INDEX idx_user (user_id), INDEX idx_status (status),
       INDEX idx_approver (approver_id), INDEX idx_from (from_date)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'leave_requests table');
+    await sa(`ALTER TABLE leave_requests ADD COLUMN dates_json TEXT DEFAULT NULL AFTER to_date`, 'leave_requests.dates_json');
 
     // ── Seed admin user ────────────────────────────────
     try {
@@ -2838,7 +2842,12 @@ async function resolveLeaveApprover(userId) {
   const [rows] = await db.query('SELECT id, role, department FROM users WHERE id=?', [userId]);
   const me = rows[0];
   if (!me) return null;
-  if (me.role === 'admin') return me.id; // self-approve
+  if (me.role === 'admin') {
+    // Admin's leave → another admin if available, else self (still needs explicit approval from Approvals tab)
+    const [adm] = await db.query("SELECT id FROM users WHERE role='admin' AND id<>? ORDER BY id ASC LIMIT 1", [me.id]);
+    if (adm[0]) return adm[0].id;
+    return me.id;
+  }
   if (me.role === 'hod' || me.role === 'pc') {
     const [adm] = await db.query("SELECT id FROM users WHERE role='admin' ORDER BY id ASC LIMIT 1");
     return adm[0]?.id || null;
@@ -2886,7 +2895,7 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
 
     const [rows] = await db.query(`
       SELECT lr.id, lr.user_id, lr.leave_type, lr.status, lr.reason,
-        lr.approver_id, lr.approver_note,
+        lr.approver_id, lr.approver_note, lr.dates_json,
         DATE_FORMAT(lr.from_date,'%Y-%m-%d') AS from_date,
         DATE_FORMAT(lr.to_date,'%Y-%m-%d')   AS to_date,
         DATE_FORMAT(lr.created_at,'%Y-%m-%d %H:%i:%s') AS created_at,
@@ -2900,6 +2909,17 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
       ORDER BY lr.created_at DESC
       LIMIT 500
     `, params);
+    // Parse dates_json into structured array for client
+    for (const r of rows) {
+      if (r.dates_json) {
+        try { r.dates = JSON.parse(r.dates_json); }
+        catch { r.dates = null; }
+      } else {
+        // Legacy rows (pre dates_json): fall back to from/to range
+        r.dates = [{ date: r.from_date }];
+      }
+      delete r.dates_json;
+    }
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2919,33 +2939,50 @@ app.get('/api/leaves/pending-count', requireAuth, async (req, res) => {
 // Apply for leave
 app.post('/api/leaves', requireAuth, async (req, res) => {
   try {
-    const { leave_type, from_date, to_date, reason } = req.body;
+    const { leave_type, dates, reason } = req.body;
     const allowedTypes = ['full_day','half_day','work_from_home','extra_working'];
     if (!allowedTypes.includes(leave_type)) return res.status(400).json({ error: 'Invalid leave type' });
-    if (!from_date || !to_date) return res.status(400).json({ error: 'From / To date required' });
+    if (!Array.isArray(dates) || !dates.length) return res.status(400).json({ error: 'Select at least one date' });
     if (!reason || !reason.trim()) return res.status(400).json({ error: 'Reason required' });
-    if (new Date(to_date) < new Date(from_date)) return res.status(400).json({ error: 'To Date cannot be before From Date' });
+
+    // Normalize + validate dates
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    const seen = new Set();
+    const cleanDates = [];
+    for (const d of dates) {
+      const date = (d && d.date) || d;
+      if (!dateRe.test(date)) return res.status(400).json({ error: 'Invalid date format' });
+      if (seen.has(date)) continue;
+      seen.add(date);
+      const item = { date };
+      if (leave_type === 'extra_working') {
+        const h = Number(d && d.hours);
+        if (!h || h <= 0 || h > 24) return res.status(400).json({ error: `Hours required (1-24) for ${date}` });
+        item.hours = h;
+      }
+      cleanDates.push(item);
+    }
+    cleanDates.sort((a,b) => a.date.localeCompare(b.date));
+    const from_date = cleanDates[0].date;
+    const to_date = cleanDates[cleanDates.length - 1].date;
 
     const uid = req.session.userId;
     const approverId = await resolveLeaveApprover(uid);
 
-    // Admin self-approves automatically
-    const status = (req.session.role === 'admin') ? 'approved' : 'pending';
-    const decidedAt = (status === 'approved') ? new Date() : null;
-
     const [r] = await db.query(
       `INSERT INTO leave_requests
-       (user_id, leave_type, from_date, to_date, reason, status, approver_id, decided_at)
-       VALUES (?,?,?,?,?,?,?,?)`,
-      [uid, leave_type, from_date, to_date, reason.trim(), status, approverId, decidedAt]
+       (user_id, leave_type, from_date, to_date, dates_json, reason, status, approver_id)
+       VALUES (?,?,?,?,?,?,'pending',?)`,
+      [uid, leave_type, from_date, to_date, JSON.stringify(cleanDates), reason.trim(), approverId]
     );
 
     // Notify approver by email (best-effort)
-    if (status === 'pending' && approverId) {
+    if (approverId && approverId !== uid) {
       const target = await getNotifyTarget(approverId);
       if (target) {
         const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [uid]);
         const typeLabel = ({full_day:'Full Day Leave',half_day:'Half Day Leave',work_from_home:'Work From Home',extra_working:'Extra Working'})[leave_type];
+        const datesLine = cleanDates.map(d => leave_type === 'extra_working' ? `${d.date} (${d.hours}h)` : d.date).join(', ');
         const html = `
           <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f6f9fc;padding:20px;">
             <div style="background:#fff;border-radius:8px;padding:30px;">
@@ -2954,8 +2991,7 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
               <p><b>${me?.name || 'An employee'}</b> ne ek leave request submit ki hai aapke approval ke liye.</p>
               <table style="width:100%;border-collapse:collapse;margin:14px 0;">
                 <tr><td style="padding:8px;background:#f0f4f8;width:140px"><b>Type</b></td><td style="padding:8px;">${typeLabel}</td></tr>
-                <tr><td style="padding:8px;background:#f0f4f8;"><b>From</b></td><td style="padding:8px;">${from_date}</td></tr>
-                <tr><td style="padding:8px;background:#f0f4f8;"><b>To</b></td><td style="padding:8px;">${to_date}</td></tr>
+                <tr><td style="padding:8px;background:#f0f4f8;"><b>Dates</b></td><td style="padding:8px;">${datesLine}</td></tr>
                 <tr><td style="padding:8px;background:#f0f4f8;"><b>Reason</b></td><td style="padding:8px;">${(reason||'').replace(/</g,'&lt;')}</td></tr>
               </table>
               <p style="color:#777;font-size:12px;margin-top:20px;">E-Marketing Task Manager · Leave Tracker</p>
@@ -2965,7 +3001,7 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
       }
     }
 
-    res.json({ id: r.insertId, status, approver_id: approverId });
+    res.json({ id: r.insertId, status: 'pending', approver_id: approverId });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -3000,12 +3036,23 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
     if (target) {
       const typeLabel = ({full_day:'Full Day Leave',half_day:'Half Day Leave',work_from_home:'Work From Home',extra_working:'Extra Working'})[lr.leave_type];
       const color = newStatus === 'approved' ? '#16a34a' : '#dc2626';
+      let datesLine = '';
+      try {
+        const arr = lr.dates_json ? JSON.parse(lr.dates_json) : null;
+        if (arr && arr.length) {
+          datesLine = arr.map(d => lr.leave_type === 'extra_working' ? `${d.date} (${d.hours}h)` : d.date).join(', ');
+        }
+      } catch {}
+      if (!datesLine) {
+        const fmt = (v) => v instanceof Date ? v.toISOString().slice(0,10) : String(v).slice(0,10);
+        datesLine = `${fmt(lr.from_date)} → ${fmt(lr.to_date)}`;
+      }
       const html = `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f6f9fc;padding:20px;">
           <div style="background:#fff;border-radius:8px;padding:30px;">
             <h2 style="color:${color};margin-top:0;">Leave ${newStatus === 'approved' ? 'Approved ✅' : 'Rejected ❌'}</h2>
             <p>Hi <b>${target.name || 'there'}</b>,</p>
-            <p>Aapki leave request <b>${typeLabel}</b> (${lr.from_date.toISOString().slice(0,10)} → ${lr.to_date.toISOString().slice(0,10)}) ko <b style="color:${color}">${newStatus}</b> kar diya gaya hai.</p>
+            <p>Aapki leave request <b>${typeLabel}</b> (${datesLine}) ko <b style="color:${color}">${newStatus}</b> kar diya gaya hai.</p>
             ${note ? `<p><b>Note:</b> ${(note||'').replace(/</g,'&lt;')}</p>` : ''}
             <p style="color:#777;font-size:12px;margin-top:20px;">E-Marketing Task Manager · Leave Tracker</p>
           </div>
