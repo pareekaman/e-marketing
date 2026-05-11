@@ -21,6 +21,21 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ══════════════════════════════════════════════════════
+// MIGRATION GATE — every /api request awaits in-flight schema migrations.
+// On Vercel cold starts, fire-and-forget migration IIFEs may not complete
+// before requests arrive. Without this, queries that reference newly-added
+// columns (e.g. client_id) fail with "Unknown column" errors.
+// On warm starts the promises are already resolved → near-zero overhead.
+// ══════════════════════════════════════════════════════
+app.use('/api', async (req, res, next) => {
+  try {
+    await _startupMigrationsPromise;
+    await _clientsTableMigrationsPromise;
+  } catch (e) { /* migration failures are logged elsewhere — keep serving */ }
+  next();
+});
+
+// ══════════════════════════════════════════════════════
 // MYSQL CONNECTION
 // ══════════════════════════════════════════════════════
 const dbConfig = {
@@ -91,7 +106,11 @@ const db = {
 // Creates all tables + columns. Safe to re-run (uses IF NOT EXISTS / silent ALTER).
 // On a fresh empty database, this gives you a fully working schema.
 // ══════════════════════════════════════════════════════
-(async () => {
+// We capture the migration IIFE's promise so the request middleware can
+// AWAIT it before serving any /api request. Vercel serverless cold starts
+// otherwise begin handling requests while ALTERs are still in flight — which
+// causes "Unknown column" errors for newly-added columns.
+const _startupMigrationsPromise = (async () => {
   const sa = async (sql) => { try { await db.query(sql); } catch(e) { /* silent — column/table may already exist */ } };
 
   // ── Base tables (CREATE IF NOT EXISTS) ────────────────
@@ -2428,7 +2447,7 @@ app.get('/api/debug', async (req, res) => {
 // ══════════════════════════════════════════════════════
 
 // Auto-create new tables on startup (safe, runs once per cold start)
-(async () => {
+const _clientsTableMigrationsPromise = (async () => {
   const sa = async (sql) => { try { await db.query(sql); } catch(e){} };
   await sa(`CREATE TABLE IF NOT EXISTS clients (
     id INT AUTO_INCREMENT PRIMARY KEY,
