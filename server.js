@@ -2553,7 +2553,7 @@ app.get('/api/test-whatsapp', requireAuth, requireAdmin, async (req, res) => {
 // 📢 DAILY REMINDER — sends list of users who didn't fill today's task
 // to a WhatsApp group. Excludes CXO department.
 // ══════════════════════════════════════════════════════
-const REMINDER_GROUP_ID = process.env.REMINDER_GROUP_ID || '120363400573269993@g.us';
+const REMINDER_GROUP_ID = process.env.REMINDER_GROUP_ID || '919602694444-1618492040@g.us';
 const EXCLUDED_DEPARTMENTS = ['CXO']; // case-insensitive match
 
 async function buildAndSendReminder() {
