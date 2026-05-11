@@ -4479,7 +4479,7 @@ async function openEditFMS() {
     actualCol: s.actual_col||'',
     extraInput: s.extra_input||'no',
     extraCol: s.extra_col||'',
-    extraRows: (s.extraRows||[]).map(r=>({col_letter:r.col_letter||'', field_type:r.field_type||'text', label:r.row_label||r.label||r.col_letter||'', dropdown_options:r.dropdown_options||''})),
+    extraRows: (s.extraRows||[]).map(r=>({col_letter:r.col_letter||'', field_type:r.field_type||'text', label:r.row_label||r.label||r.col_letter||'', dropdown_options:r.dropdown_options||'', required: r.required==null?1:(r.required?1:0)})),
     showCols: s.show_cols_parsed || [],
     delayReasonCol: s.delay_reason_col||'',
     doerNameCol: s.doer_name_col||''
@@ -4950,7 +4950,7 @@ function addFMSExtraRow(idx) {
     const labelEl = document.getElementById(`fmsExtraLabel_${idx}_${ri}`);
     if (labelEl) fmsSteps[idx].extraRows[ri].label = labelEl.value;
   });
-  fmsSteps[idx].extraRows.push({col_letter:'', field_type:'text', label:'', dropdown_options:''});
+  fmsSteps[idx].extraRows.push({col_letter:'', field_type:'text', label:'', dropdown_options:'', required:1});
   refreshStepBox(idx);
   setupMultiSelect(idx);
   updateFMSDoerTags(idx);
@@ -4980,6 +4980,8 @@ function buildExtraRowHTML(idx, ri, headers) {
     <option value="dropdown" ${r.field_type==='dropdown'?'selected':''}>🔽 Dropdown</option>
   </select>`;
   const dropOptsSection = r.field_type==='dropdown' ? buildDropdownOptionsHTML(idx, ri, r) : '';
+  // required defaults to true (1) — explicit false / 0 means optional
+  const isRequired = !(r.required === 0 || r.required === false || r.required === '0');
   return `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">
       <div>
@@ -4994,9 +4996,18 @@ function buildExtraRowHTML(idx, ri, headers) {
         <div style="font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">Field Type</div>
         ${ftSel}
       </div>
-      <div style="display:flex;align-items:flex-end">
-        <button class="action-btn delete" style="padding:5px 14px;width:100%" onclick="removeFMSExtraRow(${idx},${ri})">✕ Remove</button>
+      <div>
+        <div style="font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">Required?</div>
+        <label style="display:flex;align-items:center;gap:6px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:'Inter',sans-serif;background:#fff;cursor:pointer;height:34px;box-sizing:border-box">
+          <input type="checkbox" ${isRequired?'checked':''}
+            onchange="fmsSteps[${idx}].extraRows[${ri}].required=this.checked?1:0"
+            style="accent-color:#1a56db;width:14px;height:14px;cursor:pointer"/>
+          <span style="font-weight:600;color:#374151">${isRequired?'Required':'Optional'}</span>
+        </label>
       </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+      <button class="action-btn delete" style="padding:4px 12px" onclick="removeFMSExtraRow(${idx},${ri})">✕ Remove Row</button>
     </div>
     <div id="fmsDropOptSection_${idx}_${ri}">${dropOptsSection}</div>`;
 }
@@ -5579,8 +5590,12 @@ function openFMSDoneModal(rowIdx) {
         default:
           inputHtml = `<input type="text" id="fmsExtra_${i}" placeholder="Enter value..." style="${inputStyle}"/>`;
       }
+      const isRequired = !(r.required === 0 || r.required === false || r.required === '0');
+      const requiredTag = isRequired
+        ? '<span style="color:#ef4444">*</span>'
+        : '<span style="color:#94a3b8;font-size:10px;font-weight:600">(optional)</span>';
       return `<div style="margin-bottom:12px">
-        <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px">${label} <span style="color:#ef4444">*</span> <span style="color:#94a3b8;font-weight:400">(COL ${r.col_letter})</span></label>
+        <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px">${label} ${requiredTag} <span style="color:#94a3b8;font-weight:400">(COL ${r.col_letter})</span></label>
         ${inputHtml}
       </div>`;
     }).join('');
@@ -5614,14 +5629,15 @@ async function saveFMSDone() {
   saveBtn.textContent = '⏳ Saving...';
   saveBtn.disabled = true;
 
-  // Collect extra input values — mandatory check
+  // Collect extra input values — mandatory check only for `required` fields
   const activeStep = window._fmsActiveStepData;
   const extraRows = (activeStep && activeStep.extraRows) ? activeStep.extraRows.filter(r => r.col_letter) : [];
   for (let i = 0; i < extraRows.length; i++) {
     const r = extraRows[i];
+    const isRequired = !(r.required === 0 || r.required === false || r.required === '0');
     const el = document.getElementById(`fmsExtra_${i}`);
     const val = el ? el.value.trim() : '';
-    if (!val) {
+    if (isRequired && !val) {
       const label = r.label || r.row_label || r.col_letter || `Field ${i+1}`;
       errEl.textContent = `"${label}" field bharna zaroori hai!`;
       errEl.style.display = 'block';

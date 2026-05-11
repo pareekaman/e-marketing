@@ -295,6 +295,8 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN col_letter VARCHAR(10) DEFAULT '' AFTER row_label`);
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN field_type VARCHAR(20) DEFAULT 'text' AFTER col_letter`);
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN dropdown_options TEXT DEFAULT '' AFTER field_type`);
+  // Required flag — default 1 so existing rows continue to be mandatory (backward compat)
+  await sa(`ALTER TABLE fms_extra_rows ADD COLUMN required TINYINT(1) DEFAULT 1 AFTER dropdown_options`);
 
   console.log('  ✅ DB migrations checked');
 
@@ -578,8 +580,10 @@ app.get('/api/setup', async (req, res) => {
       id INT AUTO_INCREMENT PRIMARY KEY, step_id INT NOT NULL,
       row_label VARCHAR(255) DEFAULT '', col_letter VARCHAR(10) DEFAULT '',
       field_type VARCHAR(20) DEFAULT 'text', dropdown_options TEXT,
+      required TINYINT(1) DEFAULT 1,
       INDEX idx_step (step_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'fms_extra_rows table');
+    await sa(`ALTER TABLE fms_extra_rows ADD COLUMN required TINYINT(1) DEFAULT 1 AFTER dropdown_options`, 'fms_extra_rows.required');
 
     await sa(`CREATE TABLE IF NOT EXISTS week_plans (
       id INT AUTO_INCREMENT PRIMARY KEY, employee_id INT NOT NULL, hod_id INT,
@@ -1857,7 +1861,7 @@ app.post('/api/fms', requireAuth, requireAdmin, async (req, res) => {
       );
       const stepId = sr.insertId;
       if (s.doers?.length) for (const uid of s.doers) await conn.query('INSERT INTO fms_step_doers (step_id,user_id) VALUES (?,?)', [stepId, uid]);
-      if (s.extraInput==='yes' && s.extraRows?.length) for (const row of s.extraRows) await conn.query('INSERT INTO fms_extra_rows (step_id,row_label,col_letter,field_type,dropdown_options) VALUES (?,?,?,?,?)', [stepId, row.label||row.col_letter||'', row.col_letter||'', row.field_type||'text', row.dropdown_options||'']);
+      if (s.extraInput==='yes' && s.extraRows?.length) for (const row of s.extraRows) await conn.query('INSERT INTO fms_extra_rows (step_id,row_label,col_letter,field_type,dropdown_options,required) VALUES (?,?,?,?,?,?)', [stepId, row.label||row.col_letter||'', row.col_letter||'', row.field_type||'text', row.dropdown_options||'', row.required===false||row.required===0?0:1]);
     }
     await conn.commit();
     res.json({ success: true, id: fmsId });
@@ -1884,7 +1888,7 @@ app.put('/api/fms/:id', requireAuth, requireAdmin, async (req, res) => {
       );
       const stepId = sr.insertId;
       if (s.doers?.length) for (const uid of s.doers) await conn.query('INSERT INTO fms_step_doers (step_id,user_id) VALUES (?,?)', [stepId, uid]);
-      if (s.extraInput==='yes' && s.extraRows?.length) for (const row of s.extraRows) await conn.query('INSERT INTO fms_extra_rows (step_id,row_label,col_letter,field_type,dropdown_options) VALUES (?,?,?,?,?)', [stepId, row.label||row.col_letter||'', row.col_letter||'', row.field_type||'text', row.dropdown_options||'']);
+      if (s.extraInput==='yes' && s.extraRows?.length) for (const row of s.extraRows) await conn.query('INSERT INTO fms_extra_rows (step_id,row_label,col_letter,field_type,dropdown_options,required) VALUES (?,?,?,?,?,?)', [stepId, row.label||row.col_letter||'', row.col_letter||'', row.field_type||'text', row.dropdown_options||'', row.required===false||row.required===0?0:1]);
     }
     await conn.commit();
     res.json({ success: true });
