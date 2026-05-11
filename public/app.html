@@ -553,19 +553,161 @@ tbody tr:last-child td{border-bottom:none;}
 /* Hours pill in list view */
 .lv-hours-pill{background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:6px;font-size:10px;font-weight:700;margin-left:4px;}
 
-@media (max-width:768px){
-  .lv-card{padding:20px 18px;}
-  .lv-type-grid{grid-template-columns:1fr;}
-  .lv-item{grid-template-columns:1fr;}
-  .lv-item-actions{align-items:flex-start;flex-direction:row;justify-content:space-between;}
-}
+/* ══════════════════════════════════════════════════════
+   MOBILE — full responsive overhaul
+   Mostly users use mobile, so every feature has to be reachable.
+══════════════════════════════════════════════════════ */
+.mobile-hamburger{display:none;background:transparent;border:none;cursor:pointer;padding:8px;border-radius:8px;color:#1e293b;transition:background .15s;}
+.mobile-hamburger:hover{background:#f1f5f9;}
+.mobile-hamburger svg{width:24px;height:24px;display:block;}
+.sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99;}
+.sidebar-backdrop.open{display:block;}
 
 @media (max-width:768px){
-  .dt-card,.cm-card,.cp-card{padding:20px 18px;}
-  .dt-title{font-size:24px;}
-  .dt-meta-row{flex-direction:column;align-items:stretch;}
-  .dt-meta-field{justify-content:space-between;}
+  /* ── Sidebar → slide-in drawer ── */
+  .sidebar{width:240px;transform:translateX(-100%);transition:transform .25s ease;box-shadow:4px 0 24px rgba(0,0,0,.18);}
+  .sidebar:hover{width:240px;}
+  .sidebar.open{transform:translateX(0);}
+  .sidebar .logo-text,.sidebar .nav-label-text,.sidebar .su-info,.sidebar .logout-label{opacity:1;}
+
+  /* ── Main content ── */
+  .main{margin-left:0;}
+  .topbar{padding:0 14px;height:54px;gap:10px;}
+  .topbar-title{font-size:15px;font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .mobile-hamburger{display:flex;align-items:center;justify-content:center;}
+  .topbar-right{gap:6px;flex-shrink:0;}
+
+  /* ── Pages ── */
+  .page{padding:14px 12px;}
+  .page-header{flex-wrap:wrap;gap:10px;margin-bottom:14px;}
+  .page-header h2{font-size:17px;}
+
+  /* ── Dashboard ── */
+  .dash-topbar{flex-direction:column;align-items:stretch;gap:10px;}
+  .dash-topbar h2{font-size:17px;}
+  .dash-topbar-btns{flex-wrap:wrap;}
+  .dash-topbar-btns .btn{flex:1;min-width:0;justify-content:center;font-size:12px;padding:8px 10px;}
+  .overview-cards{grid-template-columns:repeat(3,1fr);gap:8px;}
+  .ov-card{padding:12px 10px;}
+  .ov-card .label{font-size:11px;}
+  .ov-card .number{font-size:24px;}
+  .dash-bottom{grid-template-columns:1fr;gap:14px;}
+  .chart-card{padding:14px;}
+  .chart-wrap{height:180px;}
+
+  /* ── Topbar dropdown filters → stack ── */
+  #dashEmployeeFilter, #pcDateRangeFilter{width:100%;}
+  #pcDateRangeFilter{flex-direction:row;flex-wrap:wrap;gap:6px;}
+  #pcDateRangeFilter input{flex:1;min-width:0;}
+
+  /* ── Tab groups ── */
+  .tab-group{flex-wrap:wrap;}
+  .tab{font-size:11px;padding:5px 10px;}
+
+  /* ── Tables: allow horizontal scroll for wide tables ── */
+  .task-table-card > div,
+  .flat-tasks-table,
+  .mis-table-wrap,
+  .users-grid,
+  .dr-table-wrap,
+  .cp-grid-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  thead th{padding:8px 10px;font-size:10px;}
+  tbody td{padding:9px 10px;font-size:12px;}
+  .action-btn{font-size:10px;padding:3px 8px;}
+
+  /* ── Modals: near-fullscreen with breathing room ── */
+  .modal-overlay{padding:8px;align-items:flex-start;padding-top:18px;}
+  .modal{width:100% !important;max-width:100% !important;padding:18px 16px;max-height:calc(100vh - 36px);border-radius:12px;}
+  .modal h3{font-size:15px;margin-bottom:14px;}
+  .form-row{grid-template-columns:1fr;gap:0;}
+  .form-group input,.form-group select,.form-group textarea{font-size:14px;padding:10px 12px;}
+  .modal-footer{flex-wrap:wrap;gap:6px;}
+  .modal-footer .btn{flex:1;min-width:0;justify-content:center;}
+
+  /* ── Buttons: bigger touch targets ── */
+  .btn{padding:9px 14px;font-size:13px;}
+  .btn-sm{padding:6px 10px;font-size:11px;}
+
+  /* ── Sidebar user/avatar bigger ── */
+  .sidebar:hover .nav-label-text,
+  .sidebar:hover .su-info,
+  .sidebar:hover .logout-label,
+  .sidebar:hover .logo-text{opacity:1;}
+
+  /* ── All Tasks page filters ── */
+  #taskSearch, #userSearch, #cpSearch, #lvSearch, #drSearch{width:100% !important;}
+
+  /* ── Leave Tracker ── */
+  .lv-card{padding:16px 12px;}
+  .lv-title{font-size:18px;}
+  .lv-type-grid{grid-template-columns:1fr;}
+  .lv-item{grid-template-columns:1fr;}
+  .lv-item-actions{align-items:flex-start;flex-direction:row;justify-content:space-between;flex-wrap:wrap;}
+  .lv-tabs{overflow-x:auto;}
+  .lv-tab{white-space:nowrap;font-size:12px;padding:9px 14px;}
+  .lv-filter-row{flex-direction:column;align-items:stretch;}
+  .lv-filter-row input{max-width:100%;width:100%;}
+  .lv-calendar{padding:10px 8px;}
+  .lv-cal-day{padding:9px 0;font-size:12px;}
+
+  /* ── Daily Task ── */
+  .dt-card,.cm-card,.cp-card,.dr-card,.profile-card{padding:18px 14px;}
+  .dt-title{font-size:22px;}
+  .dt-meta-row{flex-direction:column;align-items:stretch;gap:10px;}
+  .dt-meta-field{justify-content:space-between;flex-wrap:wrap;}
   .dt-meta-field select,.dt-meta-field input{min-width:0;flex:1;}
+  .dt-table-wrap{overflow-x:auto;}
+  .dt-table{min-width:560px;}
+  .dt-actions{flex-direction:column;}
+  .dt-actions .dt-btn{width:100%;}
+  .dt-summary{flex-wrap:wrap;justify-content:space-between;}
+
+  /* ── Daily Reports ── */
+  .dr-header{flex-direction:column;align-items:stretch;}
+  .dr-month-picker{flex-wrap:wrap;}
+  .dr-stats{grid-template-columns:1fr 1fr;}
+  .dr-reminder-panel{flex-direction:column;align-items:stretch;}
+  .dr-reminder-actions{justify-content:stretch;}
+  .dr-reminder-actions .btn{flex:1;}
+
+  /* ── Compliance ── */
+  .cp-header{flex-direction:column;align-items:stretch;}
+  .cp-filter-row{flex-direction:column;}
+  .cp-filter-row input,.cp-filter-row select{min-width:0;width:100%;}
+
+  /* ── Client Master ── */
+  .cm-add-row{flex-direction:column;}
+  .cm-list-wrap{grid-template-columns:1fr;}
+
+  /* ── FMS ── */
+  #fmsListTabs{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;}
+  .fms-name-tab{white-space:nowrap;flex-shrink:0;}
+  #fmsStepTabs{flex-wrap:nowrap;overflow-x:auto;padding-bottom:6px;}
+  .fms-step-tab{white-space:nowrap;flex-shrink:0;}
+  .fms-step-rows-table{overflow-x:auto;}
+  .fms-step-rows-table table{min-width:520px;}
+  .fms-train-track{padding:18px 0 32px;}
+
+  /* ── Approvals page tabs ── */
+  #page-approvals .tab-group, #page-approvals > div:nth-child(2){flex-wrap:wrap;}
+
+  /* ── Profile ── */
+  .profile-card{max-width:100%;}
+
+  /* ── Status / role badges spacing on small screens ── */
+  .status-badge,.priority-badge,.role-badge{font-size:10px;padding:2px 6px;}
+
+  /* ── Tab-action (Delegate by Me as tab) ── */
+  .tab.tab-action{padding:5px 10px;font-size:11px;}
+
+  /* ── Set Plan / MIS modals get same treatment via .modal global rule above ── */
+}
+
+/* ── Extra small (phones <380px) ── */
+@media (max-width:380px){
+  .overview-cards{grid-template-columns:1fr;}
+  .topbar-title{font-size:14px;}
+  .dr-stats{grid-template-columns:1fr;}
 }
 </style>
 </head>
@@ -574,6 +716,7 @@ tbody tr:last-child td{border-bottom:none;}
 <!-- ══════════════════════════════════════
      SIDEBAR
 ══════════════════════════════════════ -->
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-logo">
     <img src="emarketing-logo.png" alt="E-Marketing"
@@ -660,6 +803,9 @@ tbody tr:last-child td{border-bottom:none;}
 ══════════════════════════════════════ -->
 <div class="main" id="mainContent">
   <div class="topbar">
+    <button class="mobile-hamburger" onclick="toggleSidebar()" aria-label="Open menu">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
     <div class="topbar-title" id="topbarTitle">Dashboard</div>
     <div class="topbar-right" id="topbarActions"></div>
   </div>
@@ -2325,12 +2471,28 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker'};
 
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const bd = document.getElementById('sidebarBackdrop');
+  const opening = !sb.classList.contains('open');
+  sb.classList.toggle('open', opening);
+  bd.classList.toggle('open', opening);
+  document.body.style.overflow = opening ? 'hidden' : '';
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarBackdrop').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
 function navigate(page, el) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   if (el) el.classList.add('active');
   document.getElementById('topbarTitle').textContent = pageTitles[page] || page;
+  // Auto-close mobile drawer after navigation
+  if (window.innerWidth <= 768) closeSidebar();
   if (page==='dashboard') loadDashboard();
   if (page==='alltasks') loadAllTasks();
   if (page==='users') loadUsers();
