@@ -224,6 +224,24 @@ const db = {
     INDEX idx_start (start_date)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+  await sa(`CREATE TABLE IF NOT EXISTS leave_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    leave_type ENUM('full_day','half_day','work_from_home','extra_working') NOT NULL,
+    from_date DATE NOT NULL,
+    to_date DATE NOT NULL,
+    reason TEXT NOT NULL,
+    status ENUM('pending','approved','rejected') DEFAULT 'pending',
+    approver_id INT DEFAULT NULL,
+    approver_note TEXT DEFAULT NULL,
+    decided_at TIMESTAMP NULL DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user (user_id),
+    INDEX idx_status (status),
+    INDEX idx_approver (approver_id),
+    INDEX idx_from (from_date)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
   // ── Column additions (safe ALTERs from previous versions) ─────
   await sa(`ALTER TABLE fms_sheets ADD COLUMN fms_name VARCHAR(255) DEFAULT '' AFTER id`);
   await sa(`ALTER TABLE fms_steps ADD COLUMN show_cols TEXT DEFAULT '' AFTER extra_col`);
@@ -525,6 +543,18 @@ app.get('/api/setup', async (req, res) => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_employee (employee_id), INDEX idx_start (start_date)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'week_plans table');
+
+    await sa(`CREATE TABLE IF NOT EXISTS leave_requests (
+      id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL,
+      leave_type ENUM('full_day','half_day','work_from_home','extra_working') NOT NULL,
+      from_date DATE NOT NULL, to_date DATE NOT NULL, reason TEXT NOT NULL,
+      status ENUM('pending','approved','rejected') DEFAULT 'pending',
+      approver_id INT DEFAULT NULL, approver_note TEXT DEFAULT NULL,
+      decided_at TIMESTAMP NULL DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_user (user_id), INDEX idx_status (status),
+      INDEX idx_approver (approver_id), INDEX idx_from (from_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'leave_requests table');
 
     // ── Seed admin user ────────────────────────────────
     try {
@@ -2797,6 +2827,210 @@ app.get('/api/daily-tasks/report', requireAuth, requireAdmin, async (req, res) =
       summary,
       entries: rows
     });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// LEAVE TRACKER
+// Flow: user → HOD of same dept; hod/pc → admin; admin → self (auto-approved)
+// ══════════════════════════════════════════════════════
+async function resolveLeaveApprover(userId) {
+  const [rows] = await db.query('SELECT id, role, department FROM users WHERE id=?', [userId]);
+  const me = rows[0];
+  if (!me) return null;
+  if (me.role === 'admin') return me.id; // self-approve
+  if (me.role === 'hod' || me.role === 'pc') {
+    const [adm] = await db.query("SELECT id FROM users WHERE role='admin' ORDER BY id ASC LIMIT 1");
+    return adm[0]?.id || null;
+  }
+  // user → HOD of same department; fallback to admin
+  if (me.department) {
+    const [hods] = await db.query("SELECT id FROM users WHERE role='hod' AND department=? ORDER BY id ASC LIMIT 1", [me.department]);
+    if (hods[0]) return hods[0].id;
+  }
+  const [adm] = await db.query("SELECT id FROM users WHERE role='admin' ORDER BY id ASC LIMIT 1");
+  return adm[0]?.id || null;
+}
+
+// List leaves — scope based on role + ?scope= filter
+//   scope=mine       → only my requests (default for users)
+//   scope=approvals  → requests awaiting my approval (hod/admin/pc)
+//   scope=team       → all in my visibility (hod = dept, admin = all)
+app.get('/api/leaves', requireAuth, async (req, res) => {
+  try {
+    const uid = req.session.userId;
+    const role = req.session.role;
+    const scope = req.query.scope || 'mine';
+    const status = req.query.status || '';
+
+    let where = '1=1', params = [];
+    if (scope === 'mine') {
+      where += ' AND lr.user_id=?'; params.push(uid);
+    } else if (scope === 'approvals') {
+      where += ' AND lr.approver_id=? AND lr.user_id<>?'; params.push(uid, uid);
+    } else if (scope === 'team') {
+      if (role === 'admin') {
+        // no filter — all
+      } else if (role === 'hod') {
+        const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
+        if (me?.department) {
+          where += ' AND u.department=?'; params.push(me.department);
+        } else {
+          where += ' AND lr.user_id=?'; params.push(uid);
+        }
+      } else {
+        where += ' AND lr.user_id=?'; params.push(uid);
+      }
+    }
+    if (status) { where += ' AND lr.status=?'; params.push(status); }
+
+    const [rows] = await db.query(`
+      SELECT lr.id, lr.user_id, lr.leave_type, lr.status, lr.reason,
+        lr.approver_id, lr.approver_note,
+        DATE_FORMAT(lr.from_date,'%Y-%m-%d') AS from_date,
+        DATE_FORMAT(lr.to_date,'%Y-%m-%d')   AS to_date,
+        DATE_FORMAT(lr.created_at,'%Y-%m-%d %H:%i:%s') AS created_at,
+        DATE_FORMAT(lr.decided_at,'%Y-%m-%d %H:%i:%s') AS decided_at,
+        u.name AS user_name, u.email AS user_email, u.department AS user_department,
+        ap.name AS approver_name
+      FROM leave_requests lr
+      JOIN users u ON lr.user_id=u.id
+      LEFT JOIN users ap ON lr.approver_id=ap.id
+      WHERE ${where}
+      ORDER BY lr.created_at DESC
+      LIMIT 500
+    `, params);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Pending approvals count — for badge
+app.get('/api/leaves/pending-count', requireAuth, async (req, res) => {
+  try {
+    const uid = req.session.userId;
+    const [[r]] = await db.query(
+      "SELECT COUNT(*) AS cnt FROM leave_requests WHERE approver_id=? AND status='pending' AND user_id<>?",
+      [uid, uid]
+    );
+    res.json({ count: r.cnt || 0 });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Apply for leave
+app.post('/api/leaves', requireAuth, async (req, res) => {
+  try {
+    const { leave_type, from_date, to_date, reason } = req.body;
+    const allowedTypes = ['full_day','half_day','work_from_home','extra_working'];
+    if (!allowedTypes.includes(leave_type)) return res.status(400).json({ error: 'Invalid leave type' });
+    if (!from_date || !to_date) return res.status(400).json({ error: 'From / To date required' });
+    if (!reason || !reason.trim()) return res.status(400).json({ error: 'Reason required' });
+    if (new Date(to_date) < new Date(from_date)) return res.status(400).json({ error: 'To Date cannot be before From Date' });
+
+    const uid = req.session.userId;
+    const approverId = await resolveLeaveApprover(uid);
+
+    // Admin self-approves automatically
+    const status = (req.session.role === 'admin') ? 'approved' : 'pending';
+    const decidedAt = (status === 'approved') ? new Date() : null;
+
+    const [r] = await db.query(
+      `INSERT INTO leave_requests
+       (user_id, leave_type, from_date, to_date, reason, status, approver_id, decided_at)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      [uid, leave_type, from_date, to_date, reason.trim(), status, approverId, decidedAt]
+    );
+
+    // Notify approver by email (best-effort)
+    if (status === 'pending' && approverId) {
+      const target = await getNotifyTarget(approverId);
+      if (target) {
+        const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [uid]);
+        const typeLabel = ({full_day:'Full Day Leave',half_day:'Half Day Leave',work_from_home:'Work From Home',extra_working:'Extra Working'})[leave_type];
+        const html = `
+          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f6f9fc;padding:20px;">
+            <div style="background:#fff;border-radius:8px;padding:30px;">
+              <h2 style="color:#F39C12;margin-top:0;">🗓 New Leave Request</h2>
+              <p>Hi <b>${target.name||'there'}</b>,</p>
+              <p><b>${me?.name || 'An employee'}</b> ne ek leave request submit ki hai aapke approval ke liye.</p>
+              <table style="width:100%;border-collapse:collapse;margin:14px 0;">
+                <tr><td style="padding:8px;background:#f0f4f8;width:140px"><b>Type</b></td><td style="padding:8px;">${typeLabel}</td></tr>
+                <tr><td style="padding:8px;background:#f0f4f8;"><b>From</b></td><td style="padding:8px;">${from_date}</td></tr>
+                <tr><td style="padding:8px;background:#f0f4f8;"><b>To</b></td><td style="padding:8px;">${to_date}</td></tr>
+                <tr><td style="padding:8px;background:#f0f4f8;"><b>Reason</b></td><td style="padding:8px;">${(reason||'').replace(/</g,'&lt;')}</td></tr>
+              </table>
+              <p style="color:#777;font-size:12px;margin-top:20px;">E-Marketing Task Manager · Leave Tracker</p>
+            </div>
+          </div>`;
+        sendMail(target.email, `Leave Request — ${me?.name || ''}`, html).catch(()=>{});
+      }
+    }
+
+    res.json({ id: r.insertId, status, approver_id: approverId });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Approve / Reject leave — only the assigned approver (or admin) can act
+app.put('/api/leaves/:id', requireAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { action, note } = req.body; // action = 'approve' | 'reject'
+    if (!['approve','reject'].includes(action)) return res.status(400).json({ error: 'Invalid action' });
+
+    const [rows] = await db.query('SELECT * FROM leave_requests WHERE id=?', [id]);
+    const lr = rows[0];
+    if (!lr) return res.status(404).json({ error: 'Leave not found' });
+    if (lr.status !== 'pending') return res.status(400).json({ error: 'Already decided' });
+
+    const uid = req.session.userId;
+    const role = req.session.role;
+    if (lr.approver_id !== uid && role !== 'admin') {
+      return res.status(403).json({ error: 'Not authorized to act on this request' });
+    }
+
+    const newStatus = action === 'approve' ? 'approved' : 'rejected';
+    await db.query(
+      `UPDATE leave_requests
+         SET status=?, approver_id=?, approver_note=?, decided_at=NOW()
+       WHERE id=?`,
+      [newStatus, uid, (note || '').trim() || null, id]
+    );
+
+    // Notify requester
+    const target = await getNotifyTarget(lr.user_id);
+    if (target) {
+      const typeLabel = ({full_day:'Full Day Leave',half_day:'Half Day Leave',work_from_home:'Work From Home',extra_working:'Extra Working'})[lr.leave_type];
+      const color = newStatus === 'approved' ? '#16a34a' : '#dc2626';
+      const html = `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f6f9fc;padding:20px;">
+          <div style="background:#fff;border-radius:8px;padding:30px;">
+            <h2 style="color:${color};margin-top:0;">Leave ${newStatus === 'approved' ? 'Approved ✅' : 'Rejected ❌'}</h2>
+            <p>Hi <b>${target.name || 'there'}</b>,</p>
+            <p>Aapki leave request <b>${typeLabel}</b> (${lr.from_date.toISOString().slice(0,10)} → ${lr.to_date.toISOString().slice(0,10)}) ko <b style="color:${color}">${newStatus}</b> kar diya gaya hai.</p>
+            ${note ? `<p><b>Note:</b> ${(note||'').replace(/</g,'&lt;')}</p>` : ''}
+            <p style="color:#777;font-size:12px;margin-top:20px;">E-Marketing Task Manager · Leave Tracker</p>
+          </div>
+        </div>`;
+      sendMail(target.email, `Leave ${newStatus} — ${typeLabel}`, html).catch(()=>{});
+    }
+
+    res.json({ success: true, status: newStatus });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Delete own pending leave (or admin force-delete)
+app.delete('/api/leaves/:id', requireAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const uid = req.session.userId;
+    const role = req.session.role;
+    const [rows] = await db.query('SELECT * FROM leave_requests WHERE id=?', [id]);
+    const lr = rows[0];
+    if (!lr) return res.status(404).json({ error: 'Not found' });
+    if (role !== 'admin' && (lr.user_id !== uid || lr.status !== 'pending')) {
+      return res.status(403).json({ error: 'Cannot delete this request' });
+    }
+    await db.query('DELETE FROM leave_requests WHERE id=?', [id]);
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

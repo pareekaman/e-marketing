@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const fs=require\\('fs'\\);const html=fs.readFileSync\\('c:/Users/USER/Downloads/emarketing-task-manager/emarketing/public/app.html','utf8'\\);const scripts=[...html.matchAll\\(/<script\\(?![^>]*src=\\)[^>]*>\\([\\\\s\\\\S]*?\\)<\\\\/script>/g\\)].map\\(m=>m[1]\\);console.log\\('inline script blocks:',scripts.length\\);try{new Function\\(scripts.join\\('\\\\n;\\\\n'\\)\\);console.log\\('parse: OK'\\);}catch\\(e\\){console.error\\('parse FAIL:',e.message\\);}\")",
+      "Bash(node --check \"c:/Users/USER/Downloads/emarketing-task-manager/emarketing/server.js\")"
+    ]
+  }
+}

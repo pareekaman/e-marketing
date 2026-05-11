@@ -434,6 +434,95 @@ tbody tr:last-child td{border-bottom:none;}
 .dr-reminder-result ul{margin:6px 0 6px 20px;}
 .dr-reminder-result li{margin:2px 0;font-size:12px;}
 
+/* ══════════════════════════════════════════════
+   LEAVE TRACKER (orange theme — matches brand)
+   ══════════════════════════════════════════════ */
+.lv-card{background:#fff;border-radius:18px;padding:28px 32px;box-shadow:0 4px 20px rgba(243,156,18,.08);border:1px solid #fef3c7;}
+.lv-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px;flex-wrap:wrap;gap:12px;}
+.lv-title{font-size:24px;font-weight:700;color:#1e293b;margin-bottom:4px;}
+.lv-sub{color:#64748b;font-size:13px;}
+.lv-add-btn{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;border:none;padding:11px 22px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit;letter-spacing:.3px;box-shadow:0 4px 14px rgba(243,156,18,.35);transition:all .2s;}
+.lv-add-btn:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(243,156,18,.45);}
+
+/* Tabs */
+.lv-tabs{display:flex;gap:4px;border-bottom:2px solid #fef3c7;margin-bottom:18px;flex-wrap:wrap;}
+.lv-tab{padding:11px 18px;border-radius:10px 10px 0 0;font-size:13px;font-weight:600;color:#92400e;cursor:pointer;display:flex;align-items:center;gap:6px;background:transparent;border:2px solid transparent;border-bottom:none;transition:all .15s;margin-bottom:-2px;}
+.lv-tab:hover{background:#fff8e1;}
+.lv-tab.active{background:#fff8e1;border-color:#fef3c7;color:#c2410c;}
+.lv-tab-ico{font-size:14px;}
+.lv-tab-badge{background:#F39C12;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px;min-width:18px;text-align:center;}
+
+/* Filter row */
+.lv-filter-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
+.lv-status-pills{display:flex;gap:6px;flex-wrap:wrap;}
+.lv-pill{padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:#64748b;border:1.5px solid #e2e8f0;display:inline-flex;align-items:center;gap:5px;transition:all .15s;}
+.lv-pill:hover{border-color:#F39C12;color:#F39C12;}
+.lv-pill.active{background:linear-gradient(135deg,#fff8e1,#ffecb3);border-color:#F39C12;color:#92400e;}
+.lv-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+.lv-dot-pending{background:#F39C12;}
+.lv-dot-approved{background:#10b981;}
+.lv-dot-rejected{background:#ef4444;}
+.lv-filter-row input{padding:9px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;font-family:inherit;min-width:240px;flex:1;max-width:340px;}
+.lv-filter-row input:focus{border-color:#F39C12;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
+
+/* List */
+.lv-list-wrap{display:flex;flex-direction:column;gap:14px;}
+.lv-user-group{background:#fff;border:1.5px solid #fef3c7;border-radius:12px;overflow:hidden;}
+.lv-user-head{background:linear-gradient(135deg,#fff8e1,#ffecb3);padding:11px 18px;font-size:14px;font-weight:700;color:#1e293b;border-bottom:1.5px solid #fef3c7;display:flex;justify-content:space-between;align-items:center;}
+.lv-user-head small{font-size:11px;color:#92400e;font-weight:600;}
+.lv-item{display:grid;grid-template-columns:1fr auto;gap:10px;padding:13px 18px;border-bottom:1px solid #fef3c7;transition:background .15s;}
+.lv-item:last-child{border-bottom:none;}
+.lv-item:hover{background:#fffbeb;}
+.lv-item-main{display:flex;flex-direction:column;gap:4px;}
+.lv-item-row1{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.lv-type-pill{font-size:12px;font-weight:700;padding:3px 10px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;}
+.lv-type-full_day{background:#fee2e2;color:#991b1b;}
+.lv-type-half_day{background:#fed7aa;color:#9a3412;}
+.lv-type-work_from_home{background:#dbeafe;color:#1e40af;}
+.lv-type-extra_working{background:#dcfce7;color:#166534;}
+.lv-status{font-size:11px;font-weight:700;padding:2px 9px;border-radius:10px;text-transform:uppercase;letter-spacing:.4px;}
+.lv-status-pending{background:#fef3c7;color:#92400e;}
+.lv-status-approved{background:#d1fae5;color:#065f46;}
+.lv-status-rejected{background:#fee2e2;color:#991b1b;}
+.lv-item-reason{font-size:13px;color:#475569;line-height:1.4;}
+.lv-item-meta{font-size:11px;color:#94a3b8;}
+.lv-item-meta b{color:#64748b;}
+.lv-item-actions{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
+.lv-item-date{font-size:13px;font-weight:700;color:#F39C12;white-space:nowrap;}
+.lv-item-btns{display:flex;gap:6px;}
+.lv-btn-approve{background:#10b981;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;}
+.lv-btn-approve:hover{background:#059669;}
+.lv-btn-reject{background:#ef4444;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;}
+.lv-btn-reject:hover{background:#dc2626;}
+.lv-btn-delete{background:transparent;color:#ef4444;border:1.5px solid #fecaca;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;}
+.lv-btn-delete:hover{background:#ef4444;color:#fff;}
+
+/* Modal */
+.lv-modal{max-width:520px;}
+.lv-modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;padding-bottom:14px;border-bottom:2px dashed #fef3c7;}
+.lv-modal-title{font-size:18px;font-weight:700;color:#1e293b;margin:0;}
+.lv-modal-close{background:transparent;border:none;font-size:18px;color:#94a3b8;cursor:pointer;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;transition:all .15s;}
+.lv-modal-close:hover{background:#fef3c7;color:#92400e;}
+.lv-req{color:#ef4444;}
+.lv-modal .form-group input:disabled{background:#fff8e1;color:#92400e;font-weight:600;border-color:#fef3c7;cursor:not-allowed;}
+.lv-modal .form-group input:focus:not(:disabled),
+.lv-modal .form-group textarea:focus{border-color:#F39C12;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
+.lv-type-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
+.lv-type-btn{background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:12px 14px;font-size:13px;font-weight:600;color:#1e293b;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px;transition:all .15s;text-align:left;}
+.lv-type-btn:hover{border-color:#F39C12;background:#fffbeb;}
+.lv-type-btn.active{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;border-color:#F39C12;box-shadow:0 4px 14px rgba(243,156,18,.35);}
+.lv-type-ico{font-size:16px;}
+.lv-approver-hint{background:#fff8e1;border:1.5px solid #fef3c7;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;margin-top:6px;}
+.lv-save-btn{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;border:none;padding:9px 24px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 12px rgba(243,156,18,.3);transition:all .2s;}
+.lv-save-btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(243,156,18,.4);}
+
+@media (max-width:768px){
+  .lv-card{padding:20px 18px;}
+  .lv-type-grid{grid-template-columns:1fr;}
+  .lv-item{grid-template-columns:1fr;}
+  .lv-item-actions{align-items:flex-start;flex-direction:row;justify-content:space-between;}
+}
+
 @media (max-width:768px){
   .dt-card,.cm-card,.cp-card{padding:20px 18px;}
   .dt-title{font-size:24px;}
@@ -491,6 +580,11 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="nav-item" id="nav-daily" onclick="navigate('daily',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
       <span class="nav-label-text">Daily Task</span>
+    </div>
+    <div class="nav-item" id="nav-leaves" onclick="navigate('leaves',this)" style="position:relative">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+      <span class="nav-label-text">Leave Tracker</span>
+      <span id="leaveBadge" style="display:none;position:absolute;top:6px;right:8px;background:#F39C12;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;align-items:center;justify-content:center">0</span>
     </div>
     <div class="nav-item" id="nav-clients" style="display:none" onclick="navigate('clients',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
@@ -1048,6 +1142,53 @@ tbody tr:last-child td{border-bottom:none;}
       <div id="drEntriesWrap" class="dr-table-wrap">
         <div class="empty">Loading...</div>
       </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       LEAVE TRACKER — all users
+       ══════════════════════════════════════════════════════ -->
+  <div id="page-leaves" class="page">
+    <div class="lv-card">
+      <div class="lv-header">
+        <div>
+          <h1 class="lv-title">🗓 Leave Tracker</h1>
+          <p class="lv-sub">Apply for leave, work-from-home, or extra working. <span id="lvApproverLine" style="color:#92400e;font-weight:600"></span></p>
+        </div>
+        <button class="lv-add-btn" onclick="openLeaveForm()">
+          <span style="font-size:18px;line-height:1">＋</span> Apply for Leave
+        </button>
+      </div>
+
+      <div class="lv-tabs">
+        <div class="lv-tab active" data-tab="mine" onclick="lvSwitchTab('mine',this)">
+          <span class="lv-tab-ico">👤</span> My Leaves
+        </div>
+        <div class="lv-tab" data-tab="approvals" id="lvTabApprovals" onclick="lvSwitchTab('approvals',this)" style="display:none">
+          <span class="lv-tab-ico">✅</span> Pending My Approval <span class="lv-tab-badge" id="lvApprovalCount">0</span>
+        </div>
+        <div class="lv-tab" data-tab="team" id="lvTabTeam" onclick="lvSwitchTab('team',this)" style="display:none">
+          <span class="lv-tab-ico">👥</span> Team Leaves
+        </div>
+      </div>
+
+      <div class="lv-filter-row">
+        <div class="lv-status-pills">
+          <div class="lv-pill active" data-status="" onclick="lvSetStatus('',this)">All</div>
+          <div class="lv-pill" data-status="pending" onclick="lvSetStatus('pending',this)">
+            <span class="lv-dot lv-dot-pending"></span> Pending
+          </div>
+          <div class="lv-pill" data-status="approved" onclick="lvSetStatus('approved',this)">
+            <span class="lv-dot lv-dot-approved"></span> Approved
+          </div>
+          <div class="lv-pill" data-status="rejected" onclick="lvSetStatus('rejected',this)">
+            <span class="lv-dot lv-dot-rejected"></span> Rejected
+          </div>
+        </div>
+        <input type="text" id="lvSearch" placeholder="🔍 Search by name / reason / type..." oninput="renderLeaves()"/>
+      </div>
+
+      <div id="lvListWrap" class="lv-list-wrap"><div class="empty">Loading…</div></div>
     </div>
   </div>
 
@@ -1816,6 +1957,96 @@ tbody tr:last-child td{border-bottom:none;}
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════════════
+     LEAVE TRACKER — APPLY FORM
+══════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="leaveModal">
+  <div class="modal lv-modal">
+    <div class="lv-modal-head">
+      <h3 class="lv-modal-title">🗓 Leave Tracker Form</h3>
+      <button class="lv-modal-close" onclick="closeModal('leaveModal')">✕</button>
+    </div>
+    <div class="alert error" id="leaveErr"></div>
+
+    <div class="form-group">
+      <label>Timestamp <span class="lv-req">*</span></label>
+      <input type="text" id="lvTimestamp" disabled/>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Employee Name <span class="lv-req">*</span></label>
+        <input type="text" id="lvEmpName" disabled/>
+      </div>
+      <div class="form-group">
+        <label>Employee Email <span class="lv-req">*</span></label>
+        <input type="text" id="lvEmpEmail" disabled/>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Leave Type <span class="lv-req">*</span></label>
+      <div class="lv-type-grid" id="lvTypeGrid">
+        <button type="button" class="lv-type-btn" data-type="full_day" onclick="lvPickType('full_day',this)">
+          <span class="lv-type-ico">🛌</span> Full Day Leave
+        </button>
+        <button type="button" class="lv-type-btn" data-type="half_day" onclick="lvPickType('half_day',this)">
+          <span class="lv-type-ico">⏱</span> Half Day Leave
+        </button>
+        <button type="button" class="lv-type-btn" data-type="work_from_home" onclick="lvPickType('work_from_home',this)">
+          <span class="lv-type-ico">🏠</span> Work From Home
+        </button>
+        <button type="button" class="lv-type-btn" data-type="extra_working" onclick="lvPickType('extra_working',this)">
+          <span class="lv-type-ico">⚡</span> Extra Working
+        </button>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>From Date <span class="lv-req">*</span></label>
+        <input type="date" id="lvFromDate" onchange="lvSyncToDate()"/>
+      </div>
+      <div class="form-group">
+        <label>To Date <span class="lv-req">*</span></label>
+        <input type="date" id="lvToDate"/>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Reason <span class="lv-req">*</span></label>
+      <textarea id="lvReason" placeholder="Reason for leave (sick, personal work, urgent matter…)"></textarea>
+    </div>
+
+    <div class="lv-approver-hint" id="lvApproverHint" style="display:none">
+      ℹ️ Approval will be sent to: <b id="lvApproverHintName"></b>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('leaveModal')">Cancel</button>
+      <button class="lv-save-btn" onclick="saveLeave()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── LEAVE APPROVAL DECISION MODAL ── -->
+<div class="modal-overlay" id="leaveDecisionModal">
+  <div class="modal" style="max-width:420px">
+    <h3 id="lvDecisionTitle">Decide Leave</h3>
+    <div class="alert error" id="lvDecisionErr"></div>
+    <div id="lvDecisionInfo" style="background:#fff8e1;border:1px solid #fef3c7;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;line-height:1.6"></div>
+    <div class="form-group">
+      <label>Note (optional)</label>
+      <textarea id="lvDecisionNote" placeholder="Add a note for the requester…" style="min-height:60px"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('leaveDecisionModal')">Cancel</button>
+      <button class="btn btn-danger" id="lvRejectBtn" onclick="submitLeaveDecision('reject')">Reject</button>
+      <button class="btn btn-green" id="lvApproveBtn" onclick="submitLeaveDecision('approve')">Approve</button>
+    </div>
+  </div>
+</div>
+
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script>
 <script>
 // ══════════════════════════════════════════════════════
@@ -1964,13 +2195,22 @@ async function init() {
       // PC: can view all tasks + approve, but cannot edit/delete
       // Nav items same as employee (dashboard, alltasks, approvals, profile, fms-tasks)
     }
+    // Leave Tracker — HOD / Admin / PC see approval + team tabs
+    if (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc') {
+      const tApp = document.getElementById('lvTabApprovals');
+      const tTeam = document.getElementById('lvTabTeam');
+      if (tApp) tApp.style.display = 'flex';
+      if (tTeam) tTeam.style.display = 'flex';
+    }
     setMinDates();
     loadDashboard();
     loadApprovalBadge();
     loadTransferBadge();
+    loadLeaveBadge();
     // Refresh badges every 30 seconds
     setInterval(loadApprovalBadge, 30000);
     setInterval(loadTransferBadge, 30000);
+    setInterval(loadLeaveBadge, 30000);
   } catch(e) { console.error('Init error:', e); window.location.replace('/'); }
 }
 
@@ -2039,7 +2279,7 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker'};
 
 function navigate(page, el) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -2057,6 +2297,7 @@ function navigate(page, el) {
   if (page==='clients') loadClients();
   if (page==='compliance') loadCompliance();
   if (page==='dailyreports') loadDailyReports();
+  if (page==='leaves') loadLeaves();
   window.scrollTo(0,0);
 }
 
@@ -6237,6 +6478,258 @@ async function reminderSendNow(){
     box.className = 'dr-reminder-result error';
     box.innerHTML = `<h4>❌ Send failed</h4><div>${e.message}</div>`;
   }
+}
+
+// ══════════════════════════════════════════════════════
+// 🗓 LEAVE TRACKER
+// ══════════════════════════════════════════════════════
+const LEAVE_TYPE_LABEL = {
+  full_day: 'Full Day Leave',
+  half_day: 'Half Day Leave',
+  work_from_home: 'Work From Home',
+  extra_working: 'Extra Working'
+};
+const LEAVE_TYPE_ICON = {
+  full_day: '🛌', half_day: '⏱', work_from_home: '🏠', extra_working: '⚡'
+};
+let LEAVE_DATA = [];
+let LEAVE_TAB = 'mine';
+let LEAVE_STATUS = '';
+let LEAVE_PICKED_TYPE = '';
+let LEAVE_DECIDE_ID = null;
+
+async function loadLeaves(){
+  const wrap = document.getElementById('lvListWrap');
+  wrap.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const qs = `?scope=${LEAVE_TAB}${LEAVE_STATUS ? '&status='+LEAVE_STATUS : ''}`;
+    const data = await api('/api/leaves' + qs);
+    if (data.error) throw new Error(data.error);
+    LEAVE_DATA = Array.isArray(data) ? data : [];
+    renderLeaves();
+  } catch(e){
+    wrap.innerHTML = `<div class="empty" style="color:#dc2626">⚠️ ${dtEscape(e.message)}</div>`;
+  }
+  loadLeaveBadge();
+}
+
+function renderLeaves(){
+  const wrap = document.getElementById('lvListWrap');
+  if (!LEAVE_DATA.length) {
+    wrap.innerHTML = '<div class="empty">No leave records yet.</div>';
+    return;
+  }
+  const search = (document.getElementById('lvSearch')?.value || '').toLowerCase();
+  let rows = LEAVE_DATA;
+  if (search) {
+    rows = rows.filter(r =>
+      (r.user_name||'').toLowerCase().includes(search) ||
+      (r.reason||'').toLowerCase().includes(search) ||
+      (LEAVE_TYPE_LABEL[r.leave_type]||'').toLowerCase().includes(search)
+    );
+  }
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="empty">No leaves match the filters.</div>';
+    return;
+  }
+
+  // Group by user_name
+  const groups = {};
+  for (const r of rows) {
+    const key = r.user_id + '|' + r.user_name;
+    if (!groups[key]) groups[key] = { name: r.user_name, dept: r.user_department, items: [] };
+    groups[key].items.push(r);
+  }
+
+  const canDecide = LEAVE_TAB === 'approvals';
+  let html = '';
+  for (const key of Object.keys(groups)) {
+    const g = groups[key];
+    html += `<div class="lv-user-group">
+      <div class="lv-user-head">
+        <span>${dtEscape(g.name)}</span>
+        ${g.dept ? `<small>${dtEscape(g.dept)}</small>` : ''}
+      </div>`;
+    for (const r of g.items) {
+      const range = r.from_date === r.to_date
+        ? fmtDate(r.from_date)
+        : `${fmtDate(r.from_date)} → ${fmtDate(r.to_date)}`;
+      const canDelete = (LEAVE_TAB === 'mine' && r.status === 'pending') || ME.role === 'admin';
+      html += `<div class="lv-item">
+        <div class="lv-item-main">
+          <div class="lv-item-row1">
+            <span class="lv-type-pill lv-type-${r.leave_type}">${LEAVE_TYPE_ICON[r.leave_type]||''} ${LEAVE_TYPE_LABEL[r.leave_type]||r.leave_type}</span>
+            <span class="lv-status lv-status-${r.status}">${r.status}</span>
+          </div>
+          <div class="lv-item-reason">${dtEscape(r.reason)}</div>
+          <div class="lv-item-meta">
+            <b>Applied:</b> ${dtEscape((r.created_at||'').slice(0,16))}
+            ${r.approver_name ? ` · <b>Approver:</b> ${dtEscape(r.approver_name)}` : ''}
+            ${r.decided_at ? ` · <b>Decided:</b> ${dtEscape(r.decided_at.slice(0,16))}` : ''}
+            ${r.approver_note ? ` · <b>Note:</b> ${dtEscape(r.approver_note)}` : ''}
+          </div>
+        </div>
+        <div class="lv-item-actions">
+          <div class="lv-item-date">${range}</div>
+          <div class="lv-item-btns">
+            ${canDecide && r.status === 'pending' ? `
+              <button class="lv-btn-approve" onclick="openLeaveDecision(${r.id},'approve')">✓ Approve</button>
+              <button class="lv-btn-reject" onclick="openLeaveDecision(${r.id},'reject')">✕ Reject</button>
+            ` : ''}
+            ${canDelete ? `<button class="lv-btn-delete" onclick="deleteLeave(${r.id})">🗑 Delete</button>` : ''}
+          </div>
+        </div>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  wrap.innerHTML = html;
+}
+
+function lvSwitchTab(tab, el){
+  LEAVE_TAB = tab;
+  document.querySelectorAll('.lv-tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  loadLeaves();
+}
+
+function lvSetStatus(status, el){
+  LEAVE_STATUS = status;
+  document.querySelectorAll('.lv-pill').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  loadLeaves();
+}
+
+function openLeaveForm(){
+  document.getElementById('leaveErr').style.display = 'none';
+  // Timestamp
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const tsStr = `${pad(now.getDate())}-${months[now.getMonth()]}-${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  document.getElementById('lvTimestamp').value = tsStr;
+  document.getElementById('lvEmpName').value = ME.name || '';
+  document.getElementById('lvEmpEmail').value = ME.email || '';
+  // Reset form
+  document.querySelectorAll('#lvTypeGrid .lv-type-btn').forEach(b => b.classList.remove('active'));
+  LEAVE_PICKED_TYPE = '';
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('lvFromDate').value = today;
+  document.getElementById('lvToDate').value = today;
+  document.getElementById('lvReason').value = '';
+  // Approver hint
+  const hintBox = document.getElementById('lvApproverHint');
+  const hintName = document.getElementById('lvApproverHintName');
+  if (ME.role === 'admin') {
+    hintBox.style.display = 'block';
+    hintName.textContent = 'Auto-approved (Admin)';
+  } else if (ME.role === 'hod' || ME.role === 'pc') {
+    hintBox.style.display = 'block';
+    hintName.textContent = 'Admin';
+  } else {
+    hintBox.style.display = 'block';
+    hintName.textContent = `HOD${ME.department ? ' — '+ME.department : ''}`;
+  }
+  document.getElementById('leaveModal').classList.add('open');
+}
+
+function lvPickType(type, el){
+  LEAVE_PICKED_TYPE = type;
+  document.querySelectorAll('#lvTypeGrid .lv-type-btn').forEach(b => b.classList.remove('active'));
+  if (el) el.classList.add('active');
+}
+
+function lvSyncToDate(){
+  const from = document.getElementById('lvFromDate').value;
+  const to = document.getElementById('lvToDate');
+  if (!to.value || to.value < from) to.value = from;
+}
+
+async function saveLeave(){
+  const errBox = document.getElementById('leaveErr');
+  errBox.style.display = 'none';
+  const showErr = (m) => { errBox.textContent = m; errBox.style.display = 'block'; };
+
+  if (!LEAVE_PICKED_TYPE) return showErr('Please pick a Leave Type');
+  const from_date = document.getElementById('lvFromDate').value;
+  const to_date = document.getElementById('lvToDate').value;
+  const reason = document.getElementById('lvReason').value.trim();
+  if (!from_date || !to_date) return showErr('From Date and To Date required');
+  if (to_date < from_date) return showErr('To Date cannot be before From Date');
+  if (!reason) return showErr('Reason is required');
+
+  const r = await api('/api/leaves', 'POST', {
+    leave_type: LEAVE_PICKED_TYPE, from_date, to_date, reason
+  });
+  if (r.error) return showErr(r.error);
+  closeModal('leaveModal');
+  showToast(r.status === 'approved'
+    ? '✅ Leave auto-approved!'
+    : '✅ Leave request submitted for approval');
+  loadLeaves();
+}
+
+function openLeaveDecision(id, action){
+  LEAVE_DECIDE_ID = id;
+  const lr = LEAVE_DATA.find(x => x.id === id);
+  if (!lr) return;
+  document.getElementById('lvDecisionErr').style.display = 'none';
+  document.getElementById('lvDecisionNote').value = '';
+  document.getElementById('lvDecisionTitle').textContent =
+    action === 'approve' ? 'Approve Leave' : 'Reject Leave';
+  const range = lr.from_date === lr.to_date ? fmtDate(lr.from_date) : `${fmtDate(lr.from_date)} → ${fmtDate(lr.to_date)}`;
+  document.getElementById('lvDecisionInfo').innerHTML = `
+    <div><b>Employee:</b> ${dtEscape(lr.user_name)}</div>
+    <div><b>Type:</b> ${LEAVE_TYPE_LABEL[lr.leave_type]||lr.leave_type}</div>
+    <div><b>Date:</b> ${range}</div>
+    <div><b>Reason:</b> ${dtEscape(lr.reason)}</div>`;
+  // Pre-highlight intended action button
+  const approveBtn = document.getElementById('lvApproveBtn');
+  const rejectBtn = document.getElementById('lvRejectBtn');
+  approveBtn.style.opacity = action === 'approve' ? '1' : '.7';
+  rejectBtn.style.opacity = action === 'reject' ? '1' : '.7';
+  document.getElementById('leaveDecisionModal').classList.add('open');
+}
+
+async function submitLeaveDecision(action){
+  if (!LEAVE_DECIDE_ID) return;
+  const note = document.getElementById('lvDecisionNote').value.trim();
+  const r = await api('/api/leaves/' + LEAVE_DECIDE_ID, 'PUT', { action, note });
+  if (r.error) {
+    const e = document.getElementById('lvDecisionErr');
+    e.textContent = r.error; e.style.display = 'block';
+    return;
+  }
+  closeModal('leaveDecisionModal');
+  showToast(action === 'approve' ? '✅ Leave approved' : '❌ Leave rejected');
+  LEAVE_DECIDE_ID = null;
+  loadLeaves();
+}
+
+async function deleteLeave(id){
+  if (!confirm('Delete this leave request?')) return;
+  const r = await api('/api/leaves/' + id, 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast('🗑 Leave deleted');
+  loadLeaves();
+}
+
+async function loadLeaveBadge(){
+  try {
+    const r = await api('/api/leaves/pending-count');
+    const count = r?.count || 0;
+    const sideBadge = document.getElementById('leaveBadge');
+    const tabBadge = document.getElementById('lvApprovalCount');
+    if (sideBadge) {
+      if (count > 0) {
+        sideBadge.textContent = count;
+        sideBadge.style.display = 'flex';
+      } else {
+        sideBadge.style.display = 'none';
+      }
+    }
+    if (tabBadge) tabBadge.textContent = count;
+  } catch(e){ /* silent */ }
 }
 
 init();
