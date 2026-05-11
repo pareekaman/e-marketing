@@ -263,6 +263,11 @@ const db = {
   await sa(`ALTER TABLE users ADD COLUMN extra_off TEXT DEFAULT '' AFTER week_off`);
   await sa(`ALTER TABLE users ADD COLUMN notification_email VARCHAR(255) DEFAULT '' AFTER email`);
   await sa(`ALTER TABLE users ADD COLUMN exclude_from_reminder TINYINT(1) DEFAULT 0 AFTER extra_off`);
+  // user_role — separate from app `role`. Decides leave-approval hierarchy
+  // (e.g. an IT person may have app role 'admin' but user role 'user',
+  // so their leave still goes to their HOD).
+  await sa(`ALTER TABLE users ADD COLUMN user_role ENUM('admin','hod','pc','user') DEFAULT NULL AFTER role`);
+  await sa(`UPDATE users SET user_role=role WHERE user_role IS NULL`);
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN col_letter VARCHAR(10) DEFAULT '' AFTER row_label`);
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN field_type VARCHAR(20) DEFAULT 'text' AFTER col_letter`);
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN dropdown_options TEXT DEFAULT '' AFTER field_type`);
@@ -471,12 +476,15 @@ app.get('/api/setup', async (req, res) => {
       id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255) NOT NULL,
       email VARCHAR(255) NOT NULL UNIQUE, notification_email VARCHAR(255) DEFAULT '',
       password VARCHAR(255) NOT NULL, role ENUM('admin','hod','pc','user') DEFAULT 'user',
+      user_role ENUM('admin','hod','pc','user') DEFAULT NULL,
       phone VARCHAR(50) DEFAULT NULL, department VARCHAR(255) DEFAULT '',
       week_off VARCHAR(50) DEFAULT '', extra_off TEXT,
       exclude_from_reminder TINYINT(1) DEFAULT 0,
       profile_image LONGTEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'users table');
+    await sa(`ALTER TABLE users ADD COLUMN user_role ENUM('admin','hod','pc','user') DEFAULT NULL AFTER role`, 'users.user_role');
+    await sa(`UPDATE users SET user_role=role WHERE user_role IS NULL`, 'backfill user_role from role');
 
     await sa(`CREATE TABLE IF NOT EXISTS delegation_tasks (
       id INT AUTO_INCREMENT PRIMARY KEY, description TEXT NOT NULL,
@@ -647,7 +655,11 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', requireAuth, async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT id,name,email,notification_email,role,phone,profile_image,department,week_off FROM users WHERE id=?', [req.session.userId]);
+    const [rows] = await db.query(
+      `SELECT id,name,email,notification_email,role,
+              COALESCE(user_role, role) AS user_role,
+              phone,profile_image,department,week_off
+       FROM users WHERE id=?`, [req.session.userId]);
     if (!rows[0]) return res.status(404).json({ error: 'User not found' });
     // extra_off fetch separately — safe if column not yet added
     try {
@@ -1579,31 +1591,43 @@ app.get('/api/users/with-pending-tasks', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════
 app.get('/api/users', requireAuth, async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT id,name,email,notification_email,role,phone,department,week_off,extra_off,COALESCE(exclude_from_reminder,0) AS exclude_from_reminder FROM users ORDER BY role DESC,name ASC');
+    const [rows] = await db.query(
+      `SELECT id,name,email,notification_email,role,
+              COALESCE(user_role, role) AS user_role,
+              phone,department,week_off,extra_off,
+              COALESCE(exclude_from_reminder,0) AS exclude_from_reminder
+       FROM users ORDER BY role DESC,name ASC`
+    );
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, email, notification_email, password, role, phone, department, week_off, extra_off, exclude_from_reminder } = req.body;
+    const { name, email, notification_email, password, role, user_role, phone, department, week_off, extra_off, exclude_from_reminder } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
     const [ex] = await db.query('SELECT id FROM users WHERE email=?', [email]);
     if (ex[0]) return res.status(400).json({ error: 'Email already exists' });
-    await db.query('INSERT INTO users (name,email,notification_email,password,role,phone,department,week_off,extra_off,exclude_from_reminder) VALUES (?,?,?,?,?,?,?,?,?,?)',
-      [name, email, notification_email||'', bcrypt.hashSync(password,10), role||'user', phone||null, department||'', week_off||'', extra_off||'', exclude_from_reminder?1:0]);
+    const validRoles = ['admin','hod','pc','user'];
+    const appRole = validRoles.includes(role) ? role : 'user';
+    const userRole = validRoles.includes(user_role) ? user_role : appRole;
+    await db.query('INSERT INTO users (name,email,notification_email,password,role,user_role,phone,department,week_off,extra_off,exclude_from_reminder) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      [name, email, notification_email||'', bcrypt.hashSync(password,10), appRole, userRole, phone||null, department||'', week_off||'', extra_off||'', exclude_from_reminder?1:0]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.put('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, email, notification_email, role, password, phone, department, week_off, extra_off, exclude_from_reminder } = req.body;
+    const { name, email, notification_email, role, user_role, password, phone, department, week_off, extra_off, exclude_from_reminder } = req.body;
     const exclVal = exclude_from_reminder ? 1 : 0;
-    if (password) await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,password=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=? WHERE id=?',
-      [name,email,notification_email||'',role,bcrypt.hashSync(password,10),phone||null,department||'',week_off||'',extra_off||'',exclVal,req.params.id]);
-    else await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=? WHERE id=?',
-      [name,email,notification_email||'',role,phone||null,department||'',week_off||'',extra_off||'',exclVal,req.params.id]);
+    const validRoles = ['admin','hod','pc','user'];
+    const appRole = validRoles.includes(role) ? role : 'user';
+    const userRole = validRoles.includes(user_role) ? user_role : appRole;
+    if (password) await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,password=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=? WHERE id=?',
+      [name,email,notification_email||'',appRole,userRole,bcrypt.hashSync(password,10),phone||null,department||'',week_off||'',extra_off||'',exclVal,req.params.id]);
+    else await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=? WHERE id=?',
+      [name,email,notification_email||'',appRole,userRole,phone||null,department||'',week_off||'',extra_off||'',exclVal,req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1621,13 +1645,16 @@ app.post('/api/users/bulk', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { users } = req.body;
     if (!users || !users.length) return res.status(400).json({ error: 'No users provided' });
+    const validRoles = ['admin','hod','pc','user'];
     let added = 0, skipped = 0, errors = [];
     for (const u of users) {
       if (!u.name || !u.email || !u.password) { errors.push(`${u.email||'?'}: missing fields`); continue; }
       const [ex] = await db.query('SELECT id FROM users WHERE email=?', [u.email]);
       if (ex[0]) { skipped++; continue; }
-      await db.query('INSERT INTO users (name,email,password,role,phone,department,week_off,extra_off) VALUES (?,?,?,?,?,?,?,?)',
-        [u.name, u.email, bcrypt.hashSync(u.password,10), u.role||'user', u.phone||null, u.department||'', u.week_off||'', u.extra_off||'']);
+      const appRole = validRoles.includes(u.role) ? u.role : 'user';
+      const userRole = validRoles.includes(u.user_role) ? u.user_role : appRole;
+      await db.query('INSERT INTO users (name,email,password,role,user_role,phone,department,week_off,extra_off) VALUES (?,?,?,?,?,?,?,?,?)',
+        [u.name, u.email, bcrypt.hashSync(u.password,10), appRole, userRole, u.phone||null, u.department||'', u.week_off||'', u.extra_off||'']);
       added++;
     }
     res.json({ success: true, added, skipped, errors });
@@ -3055,25 +3082,38 @@ app.get('/api/daily-tasks/report', requireAuth, requireAdmin, async (req, res) =
 // Flow: user → HOD of same dept; hod/pc → admin; admin → self (auto-approved)
 // ══════════════════════════════════════════════════════
 async function resolveLeaveApprover(userId) {
-  const [rows] = await db.query('SELECT id, role, department FROM users WHERE id=?', [userId]);
+  // Uses `user_role` (org hierarchy), NOT `role` (app permissions). An IT employee
+  // may have role='admin' for full app access but user_role='user' so leaves still
+  // route to their HOD.
+  const [rows] = await db.query(
+    `SELECT id, COALESCE(user_role, role) AS user_role, department
+     FROM users WHERE id=?`, [userId]);
   const me = rows[0];
   if (!me) return null;
-  if (me.role === 'admin') {
-    // Admin's leave → another admin if available, else self (still needs explicit approval from Approvals tab)
-    const [adm] = await db.query("SELECT id FROM users WHERE role='admin' AND id<>? ORDER BY id ASC LIMIT 1", [me.id]);
+  if (me.user_role === 'admin') {
+    // Admin's leave → another admin (by user_role) if available, else self
+    const [adm] = await db.query(
+      `SELECT id FROM users
+       WHERE COALESCE(user_role, role)='admin' AND id<>? ORDER BY id ASC LIMIT 1`,
+      [me.id]);
     if (adm[0]) return adm[0].id;
     return me.id;
   }
-  if (me.role === 'hod' || me.role === 'pc') {
-    const [adm] = await db.query("SELECT id FROM users WHERE role='admin' ORDER BY id ASC LIMIT 1");
+  if (me.user_role === 'hod' || me.user_role === 'pc') {
+    const [adm] = await db.query(
+      `SELECT id FROM users WHERE COALESCE(user_role, role)='admin' ORDER BY id ASC LIMIT 1`);
     return adm[0]?.id || null;
   }
   // user → HOD of same department; fallback to admin
   if (me.department) {
-    const [hods] = await db.query("SELECT id FROM users WHERE role='hod' AND department=? ORDER BY id ASC LIMIT 1", [me.department]);
+    const [hods] = await db.query(
+      `SELECT id FROM users
+       WHERE COALESCE(user_role, role)='hod' AND department=? ORDER BY id ASC LIMIT 1`,
+      [me.department]);
     if (hods[0]) return hods[0].id;
   }
-  const [adm] = await db.query("SELECT id FROM users WHERE role='admin' ORDER BY id ASC LIMIT 1");
+  const [adm] = await db.query(
+    `SELECT id FROM users WHERE COALESCE(user_role, role)='admin' ORDER BY id ASC LIMIT 1`);
   return adm[0]?.id || null;
 }
 

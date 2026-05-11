@@ -1693,7 +1693,7 @@ tbody tr:last-child td{border-bottom:none;}
       <input type="password" id="uPassword" placeholder="Enter password"/>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Role</label>
+      <div class="form-group"><label>App Role <span style="color:#94a3b8;font-weight:400;font-size:11px">(app permissions)</span></label>
         <select id="uRole">
           <option value="user">User</option>
           <option value="hod">HOD</option>
@@ -1701,6 +1701,16 @@ tbody tr:last-child td{border-bottom:none;}
           <option value="admin">Admin</option>
         </select>
       </div>
+      <div class="form-group"><label>User Role <span style="color:#94a3b8;font-weight:400;font-size:11px">(leave approval hierarchy)</span></label>
+        <select id="uUserRole">
+          <option value="user">User</option>
+          <option value="hod">HOD</option>
+          <option value="pc">PC</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
       <div class="form-group">
         <label>Week Off <span style="color:#94a3b8;font-weight:400;font-size:11px">(checklist skip hogi)</span></label>
         <div id="weekOffWrap" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fff;min-height:40px">
@@ -3456,18 +3466,25 @@ function renderUsersTable(users) {
   // Store all users in map so openEditUser(id) can safely retrieve data
   users.forEach(u => { _usersMap[u.id] = u; });
   const roleLabel = r => r==='admin'?'👑 Admin':r==='hod'?'🏢 HOD':r==='pc'?'🖥️ PC':'👤 User';
-  tbody.innerHTML = users.map(u=>`
+  tbody.innerHTML = users.map(u=>{
+    const userRole = u.user_role || u.role;
+    const showBoth = userRole !== u.role;
+    return `
     <tr>
       <td style="font-weight:600">${u.name}</td>
       <td style="color:#64748b">${u.email}</td>
       <td style="color:#64748b">${u.phone||'—'}</td>
       <td style="color:#64748b">${u.department||'—'}</td>
-      <td><span class="role-badge ${u.role}">${roleLabel(u.role)}</span></td>
+      <td>
+        <span class="role-badge ${u.role}" title="App Role — permissions">${roleLabel(u.role)}</span>
+        ${showBoth ? `<br><span class="role-badge ${userRole}" style="font-size:10px;margin-top:3px;display:inline-block;opacity:.85" title="User Role — leave hierarchy">→ ${roleLabel(userRole)}</span>` : ''}
+      </td>
       <td>
         <button class="action-btn edit" onclick="openEditUser(${u.id})">Edit</button>
         <button class="action-btn delete" style="margin-left:6px" onclick="deleteUser(${u.id})">Delete</button>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 function _setWeekOff(s) {
@@ -3527,6 +3544,7 @@ function openAddUser() {
   document.getElementById('userModalTitle').textContent='Add User';
   ['editUserId','uName','uEmail','uNotifEmail','uPhone','uDepartment','uPassword'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('uRole').value='user';
+  document.getElementById('uUserRole').value='user';
   document.getElementById('pwdOptional').style.display='none';
   document.getElementById('userErr').style.display='none';
   document.getElementById('userSuccess').style.display='none';
@@ -3548,6 +3566,7 @@ function openEditUser(id) {
   document.getElementById('uDepartment').value=u.department||'';
   document.getElementById('uPassword').value='';
   document.getElementById('uRole').value=u.role||'user';
+  document.getElementById('uUserRole').value=u.user_role||u.role||'user';
   document.getElementById('uExcludeReminder').checked = !!u.exclude_from_reminder;
   document.getElementById('pwdOptional').style.display='inline';
   document.getElementById('userErr').style.display='none';
@@ -3568,12 +3587,13 @@ async function saveUser() {
   const department=document.getElementById('uDepartment').value.trim();
   const password=document.getElementById('uPassword').value;
   const role=document.getElementById('uRole').value;
+  const user_role=document.getElementById('uUserRole').value;
   const exclude_from_reminder = document.getElementById('uExcludeReminder').checked;
   const week_off=_getWeekOff();
   const extra_off=_getExtraOff();
   if (!name||!email) { err.textContent='Name and email required'; err.style.display='block'; return; }
   if (!id&&!password) { err.textContent='Password required for new user'; err.style.display='block'; return; }
-  const body={name,email,notification_email,role,phone,department,week_off,extra_off,exclude_from_reminder};
+  const body={name,email,notification_email,role,user_role,phone,department,week_off,extra_off,exclude_from_reminder};
   if (password) body.password=password;
   const r = id ? await api(`/api/users/${id}`,'PUT',body) : await api('/api/users','POST',body);
   if (r.error) { err.textContent=r.error; err.style.display='block'; return; }
@@ -3582,7 +3602,7 @@ async function saveUser() {
 }
 
 function downloadUserSample() {
-  const csv = `name,email,password,role,phone,department,week_off\nJohn Doe,john@test.com,pass123,user,9876543210,Sales,0\nJane Smith,jane@test.com,pass123,hod,9876543211,Production,0\nAdmin User,admin2@test.com,pass123,admin,,Management,`;
+  const csv = `name,email,password,role,user_role,phone,department,week_off\nJohn Doe,john@test.com,pass123,user,user,9876543210,Sales,0\nJane Smith,jane@test.com,pass123,hod,hod,9876543211,Production,0\nIT Admin,it@test.com,pass123,admin,user,9876543212,IT,0\nAdmin User,admin2@test.com,pass123,admin,admin,,Management,`;
   const a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
   a.download = 'users_sample.csv'; a.click();
