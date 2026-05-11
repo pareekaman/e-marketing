@@ -2236,6 +2236,18 @@ async function init() {
       const tTeam = document.getElementById('lvTabTeam');
       if (tTeam) tTeam.style.display = 'flex';
     }
+    // FMS Tasks nav — hide for users who are not a doer in any FMS step.
+    // Admin / PC see it regardless (overview / approval role).
+    (async () => {
+      const fmsNav = document.getElementById('nav-fms-tasks');
+      if (!fmsNav) return;
+      if (ME.role === 'admin' || ME.role === 'pc') { fmsNav.style.display = 'flex'; return; }
+      try {
+        const list = await api('/api/fms-tasks');
+        const hasFMS = Array.isArray(list) && list.length > 0;
+        fmsNav.style.display = hasFMS ? 'flex' : 'none';
+      } catch { fmsNav.style.display = 'none'; }
+    })();
     setMinDates();
     loadDashboard();
     loadApprovalBadge();
