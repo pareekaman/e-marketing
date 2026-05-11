@@ -224,6 +224,15 @@ const db = {
     INDEX idx_start (start_date)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+  await sa(`CREATE TABLE IF NOT EXISTS holidays (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    holiday_date DATE NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    created_by INT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_date (holiday_date)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
   await sa(`CREATE TABLE IF NOT EXISTS leave_requests (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
@@ -546,6 +555,13 @@ app.get('/api/setup', async (req, res) => {
       INDEX idx_employee (employee_id), INDEX idx_start (start_date)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'week_plans table');
 
+    await sa(`CREATE TABLE IF NOT EXISTS holidays (
+      id INT AUTO_INCREMENT PRIMARY KEY, holiday_date DATE NOT NULL UNIQUE,
+      name VARCHAR(255) NOT NULL, created_by INT DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_date (holiday_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'holidays table');
+
     await sa(`CREATE TABLE IF NOT EXISTS leave_requests (
       id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL,
       leave_type ENUM('full_day','half_day','work_from_home','extra_working') NOT NULL,
@@ -800,6 +816,27 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
     // Admin, HOD and regular users can all assign to others; fallback to self if not specified
     const targetUser = (isAdmin || isHod || isUser) && assignedTo ? parseInt(assignedTo) : req.session.userId;
     if (!desc || !date) return res.status(400).json({ error: 'Description and date required' });
+
+    // Holiday / week-off check — auto-adjust due_date if needed
+    let effectiveDate = date;
+    let adjusted = false, adjustedReason = '';
+    try {
+      const holidaysSet = await loadHolidaysSet();
+      const [[doerUser]] = await db.query('SELECT week_off, extra_off FROM users WHERE id=? LIMIT 1', [targetUser]);
+      if (doerUser && isUserOffOn(doerUser, date, holidaysSet)) {
+        const tt = (type||'checklist') === 'delegation' ? 'delegation' : 'checklist';
+        if (tt === 'delegation') {
+          // Push to next working day
+          effectiveDate = nextWorkingDay(doerUser, date, holidaysSet);
+          adjusted = true;
+          adjustedReason = `Original date was a holiday/week-off — moved to ${effectiveDate}`;
+        } else {
+          // Checklist: skip creation on off day
+          return res.json({ success: true, skipped: true, reason: 'Skipped — selected date is a holiday or doer\'s week-off' });
+        }
+      }
+    } catch (e) { console.error('holiday check error:', e.message); }
+
     if ((type||'checklist') === 'delegation') {
       // Approver: prefer approverEmail; otherwise approver ID from form; otherwise logged-in user
       let assignedBy = req.session.userId;
@@ -813,7 +850,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
           if (aprRows.length) assignedBy = aprRows[0].id;
         }
       }
-      await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks) VALUES (?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, date, 'pending', priority||'low', approval||'no', remarks||'']);
+      await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks) VALUES (?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, 'pending', priority||'low', approval||'no', remarks||'']);
       // 📧 Send delegation email + 📱 WhatsApp (non-blocking — fire and forget)
       (async () => {
         const target = await getNotifyTarget(targetUser);
@@ -826,7 +863,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
             delegationEmailHtml({
               assigneeName: target.name,
               assignerName,
-              desc, dueDate: date,
+              desc, dueDate: effectiveDate,
               priority: priority||'low',
               approval: approval||'no',
               remarks: remarks||''
@@ -837,7 +874,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         try {
           const [[doerRow]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [targetUser]);
           if (doerRow && doerRow.phone) {
-            const dueFmt = (date||'').split('-').reverse().join('-');
+            const dueFmt = (effectiveDate||'').split('-').reverse().join('-');
             const msg = `Hello ${doerRow.name || ''},\n\n📋 *New Task Delegated*\n\n` +
               `*By:* ${assignerName}\n` +
               `*Due:* ${dueFmt}\n` +
@@ -851,9 +888,9 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         } catch (e) { console.error('WA delegation lookup err:', e.message); }
       })();
     } else {
-      await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks) VALUES (?,?,?,?,?,?,?)`, [desc, targetUser, req.session.userId, date, 'pending', priority||'low', remarks||'']);
+      await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks) VALUES (?,?,?,?,?,?,?)`, [desc, targetUser, req.session.userId, effectiveDate, 'pending', priority||'low', remarks||'']);
     }
-    res.json({ success: true });
+    res.json({ success: true, adjusted, effectiveDate, adjustedReason });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -861,9 +898,24 @@ app.post('/api/tasks/bulk-checklist', requireAuth, requireAdmin, async (req, res
   try {
     const { desc, assignedTo, priority, remarks, dates } = req.body;
     if (!desc || !assignedTo || !dates || !dates.length) return res.status(400).json({ error: 'Missing fields' });
+
+    // Filter out holiday + week-off dates for this user
+    let skippedCount = 0;
+    try {
+      const holidaysSet = await loadHolidaysSet();
+      const [[doerUser]] = await db.query('SELECT week_off, extra_off FROM users WHERE id=? LIMIT 1', [parseInt(assignedTo)]);
+      if (doerUser) {
+        const filtered = dates.filter(d => !isUserOffOn(doerUser, d, holidaysSet));
+        skippedCount = dates.length - filtered.length;
+        if (!filtered.length) return res.json({ success: true, count: 0, skipped: skippedCount, message: 'All dates were holidays / week-offs — nothing inserted' });
+        dates.length = 0;
+        dates.push(...filtered);
+      }
+    } catch (e) { console.error('bulk-checklist holiday filter err:', e.message); }
+
     const values = dates.map(date => [desc, parseInt(assignedTo), req.session.userId, date, 'pending', priority||'low', remarks||'']);
     await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks) VALUES ?`, [values]);
-    res.json({ success: true, count: dates.length });
+    res.json({ success: true, count: dates.length, skipped: skippedCount });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -2440,15 +2492,27 @@ async function buildAndSendReminder() {
 
   // Get all users — excluding CXO department + flagged users (case-insensitive)
   const [users] = await db.query(
-    `SELECT id, name, COALESCE(department,'') AS department, COALESCE(exclude_from_reminder,0) AS exclude_from_reminder
+    `SELECT id, name, COALESCE(department,'') AS department,
+            COALESCE(week_off,'') AS week_off, COALESCE(extra_off,'') AS extra_off,
+            COALESCE(exclude_from_reminder,0) AS exclude_from_reminder
      FROM users ORDER BY name ASC`
   );
 
-  // Filter out CXO + manually-excluded users
+  // Load holidays for today's off-check
+  const holidaysSet = await loadHolidaysSet();
+  const isHolidayToday = holidaysSet.has(today);
+
+  // Filter out CXO + manually-excluded users + users whose today is week-off/holiday
   const eligible = users.filter(u =>
     !EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase()) &&
-    !u.exclude_from_reminder
+    !u.exclude_from_reminder &&
+    !isUserOffOn(u, today, holidaysSet)
   );
+
+  // If today is a global holiday → skip reminder entirely
+  if (isHolidayToday) {
+    return { ok: true, allDone: false, skipped: true, reason: 'Today is a holiday — reminder skipped', date: today };
+  }
 
   if (!eligible.length) {
     return { ok: false, reason: 'No eligible users (everyone is CXO or no users)' };
@@ -2587,13 +2651,21 @@ async function buildAndSendPendingTasksReminder() {
     return { ok: true, sent: 0, skipped: 0, total: 0, reason: 'No pending tasks for anyone' };
   }
 
-  // Fetch user details (name + phone)
+  // Fetch user details (name + phone + off info)
   const [users] = await db.query(
     `SELECT id, name, phone, COALESCE(department,'') AS department,
+            COALESCE(week_off,'') AS week_off, COALESCE(extra_off,'') AS extra_off,
             COALESCE(exclude_from_reminder,0) AS exclude_from_reminder
        FROM users WHERE id IN (${userIds.map(()=>'?').join(',')})`, userIds);
   const userMap = {};
   users.forEach(u => userMap[u.id] = u);
+
+  // Load holidays for off-day check
+  const holidaysSet = await loadHolidaysSet();
+  const isHolidayToday = holidaysSet.has(today);
+  if (isHolidayToday) {
+    return { ok: true, sent: 0, skipped: userIds.length, total: userIds.length, reason: 'Today is a holiday — pending reminder skipped' };
+  }
 
   let sent = 0, skipped = 0;
   const skippedDetails = [];
@@ -2606,6 +2678,10 @@ async function buildAndSendPendingTasksReminder() {
     // Skip CXO department
     if (EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase())) {
       skipped++; skippedDetails.push({ name: u.name, reason: 'CXO' }); continue;
+    }
+    // Skip if today is user's week-off
+    if (isUserOffOn(u, today, holidaysSet)) {
+      skipped++; skippedDetails.push({ name: u.name, reason: 'week-off' }); continue;
     }
 
     // Sort tasks: oldest due date first
@@ -2845,9 +2921,12 @@ app.get('/api/compliance/last7', requireAuth, requireAdmin, async (req, res) => 
       dates.push(d.toISOString().split('T')[0]);
     }
 
-    // All users (admin filter ke baahar ya andar — abhi sab include)
+    // All users with week_off / extra_off so we can mark off-days
     const [users] = await db.query(
-      `SELECT id, name, email, role, department FROM users
+      `SELECT id, name, email, role, department,
+              COALESCE(week_off,'') AS week_off,
+              COALESCE(extra_off,'') AS extra_off
+       FROM users
        WHERE role IN ('admin','hod','pc','user')
        ORDER BY name ASC`
     );
@@ -2868,7 +2947,9 @@ app.get('/api/compliance/last7', requireAuth, requireAdmin, async (req, res) => 
       filledMap[f.user_id].add(f.d);
     }
 
-    // Build grid
+    const holidaysSet = await loadHolidaysSet();
+
+    // Build grid — mark off-days so UI doesn't count them as missed
     const grid = users.map(u => ({
       id: u.id,
       name: u.name,
@@ -2877,11 +2958,13 @@ app.get('/api/compliance/last7', requireAuth, requireAdmin, async (req, res) => 
       department: u.department || '—',
       status: dates.map(d => ({
         date: d,
-        filled: filledMap[u.id]?.has(d) || false
+        filled: filledMap[u.id]?.has(d) || false,
+        off: isUserOffOn(u, d, holidaysSet),
+        isHoliday: holidaysSet.has(d)
       }))
     }));
 
-    res.json({ dates, users: grid });
+    res.json({ dates, users: grid, holidays: [...holidaysSet] });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -3250,6 +3333,158 @@ app.delete('/api/leaves/:id', requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ══════════════════════════════════════════════════════
+// HOLIDAYS — global; everyone reads, admin writes
+// Plus helpers used everywhere to decide if a user is "off" on a date.
+// ══════════════════════════════════════════════════════
+function _toDateStr(v) {
+  if (v instanceof Date) return v.toISOString().slice(0,10);
+  return String(v).slice(0,10);
+}
+
+// Returns the user's normalized off-day descriptors:
+//   weekOff: array of weekday numbers (0=Sun..6=Sat)
+//   extraOff: array of {day:0-6, weeks:[1..5]} (e.g. 1st & 3rd Saturday)
+function _parseUserOff(user) {
+  const weekOff = (user.week_off || '').split(',').map(s=>parseInt(s.trim(),10)).filter(n=>!isNaN(n));
+  let extraOff = [];
+  try { extraOff = user.extra_off ? JSON.parse(user.extra_off) : []; } catch { extraOff = []; }
+  return { weekOff, extraOff };
+}
+
+// dateStr = 'YYYY-MM-DD'; holidaysSet = Set of YYYY-MM-DD strings
+function isUserOffOn(user, dateStr, holidaysSet) {
+  const ds = _toDateStr(dateStr);
+  if (holidaysSet && holidaysSet.has(ds)) return true;
+  if (!user) return false;
+  const { weekOff, extraOff } = _parseUserOff(user);
+  const d = new Date(ds + 'T00:00:00');
+  const day = d.getDay();
+  if (weekOff.includes(day)) return true;
+  const nth = Math.ceil(d.getDate() / 7);
+  if (extraOff.some(e => e.day === day && Array.isArray(e.weeks) && e.weeks.includes(nth))) return true;
+  return false;
+}
+
+async function loadHolidaysSet() {
+  try {
+    const [rows] = await db.query('SELECT DATE_FORMAT(holiday_date,"%Y-%m-%d") AS d FROM holidays');
+    return new Set(rows.map(r => r.d));
+  } catch (e) {
+    console.error('loadHolidaysSet error:', e.message);
+    return new Set();
+  }
+}
+
+// Find next working day on/after fromDate for a given user (max 60 day lookahead)
+function nextWorkingDay(user, fromDateStr, holidaysSet) {
+  const d = new Date(_toDateStr(fromDateStr) + 'T00:00:00');
+  for (let i = 0; i < 60; i++) {
+    d.setDate(d.getDate() + 1);
+    const yy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    const ds = `${yy}-${mm}-${dd}`;
+    if (!isUserOffOn(user, ds, holidaysSet)) return ds;
+  }
+  return _toDateStr(fromDateStr); // fallback
+}
+
+app.get('/api/holidays', requireAuth, async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT id, name, DATE_FORMAT(holiday_date,'%Y-%m-%d') AS holiday_date
+      FROM holidays ORDER BY holiday_date ASC`);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/holidays', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { date, name } = req.body;
+    if (!date || !name) return res.status(400).json({ error: 'date and name required' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Invalid date format' });
+
+    await db.query(
+      'INSERT INTO holidays (holiday_date, name, created_by) VALUES (?,?,?) ' +
+      'ON DUPLICATE KEY UPDATE name=VALUES(name)',
+      [date, name.trim(), req.session.userId]
+    );
+
+    // Cascade: delete checklist tasks on this date + push delegation tasks forward
+    const cascade = await cascadeHolidayDate(date);
+    res.json({ success: true, ...cascade });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Bulk holidays — accepts array of {date, name}
+app.post('/api/holidays/bulk', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { holidays } = req.body;
+    if (!Array.isArray(holidays) || !holidays.length) return res.status(400).json({ error: 'No holidays provided' });
+
+    let added = 0, skipped = 0, errors = [];
+    let cascadeDeleted = 0, cascadePushed = 0;
+
+    for (const h of holidays) {
+      const date = (h.date || '').trim();
+      const name = (h.name || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !name) {
+        skipped++; errors.push({ row: h, reason: 'invalid date or empty name' });
+        continue;
+      }
+      try {
+        await db.query(
+          'INSERT INTO holidays (holiday_date, name, created_by) VALUES (?,?,?) ' +
+          'ON DUPLICATE KEY UPDATE name=VALUES(name)',
+          [date, name, req.session.userId]
+        );
+        const c = await cascadeHolidayDate(date);
+        cascadeDeleted += c.deletedChecklist || 0;
+        cascadePushed += c.pushedDelegation || 0;
+        added++;
+      } catch (e) {
+        skipped++; errors.push({ row: h, reason: e.message });
+      }
+    }
+
+    res.json({ success: true, added, skipped, cascadeDeleted, cascadePushed, errors });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/holidays/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await db.query('DELETE FROM holidays WHERE id=?', [parseInt(req.params.id, 10)]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// On holiday add: delete checklist tasks on that date + push delegation tasks
+async function cascadeHolidayDate(dateStr) {
+  let deletedChecklist = 0, pushedDelegation = 0;
+  try {
+    const [del] = await db.query("DELETE FROM checklist_tasks WHERE due_date=? AND status='pending'", [dateStr]);
+    deletedChecklist = del.affectedRows || 0;
+  } catch (e) { console.error('cascade checklist:', e.message); }
+
+  try {
+    const holidaysSet = await loadHolidaysSet();
+    const [delegationsOnDate] = await db.query(
+      "SELECT t.id, t.assigned_to, u.week_off, u.extra_off " +
+      "FROM delegation_tasks t JOIN users u ON t.assigned_to=u.id " +
+      "WHERE t.due_date=? AND t.status='pending'",
+      [dateStr]
+    );
+    for (const t of delegationsOnDate) {
+      const newDate = nextWorkingDay(t, dateStr, holidaysSet);
+      await db.query('UPDATE delegation_tasks SET due_date=? WHERE id=?', [newDate, t.id]);
+      pushedDelegation++;
+    }
+  } catch (e) { console.error('cascade delegation:', e.message); }
+
+  return { deletedChecklist, pushedDelegation };
+}
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 // Auth check is handled client-side via /api/me in init() — removing server-side

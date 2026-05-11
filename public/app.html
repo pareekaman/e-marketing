@@ -388,6 +388,8 @@ tbody tr:last-child td{border-bottom:none;}
 .cp-grid td:nth-child(2),.cp-grid td:nth-child(3){text-align:left;color:#64748b;font-size:12px;}
 .cp-cell-yes{color:#10b981;font-size:18px;font-weight:700;}
 .cp-cell-no{color:#ef4444;font-size:18px;font-weight:700;}
+.cp-cell-off{color:#94a3b8;font-size:11px;font-weight:700;background:#f1f5f9;padding:2px 6px;border-radius:5px;display:inline-block;}
+.cp-cell-holiday{color:#92400e;font-size:11px;font-weight:700;background:#fef3c7;padding:2px 6px;border-radius:5px;display:inline-block;}
 .cp-summary-pill{display:inline-block;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;}
 .cp-summary-good{background:#d1fae5;color:#065f46;}
 .cp-summary-bad{background:#fee2e2;color:#991b1b;}
@@ -1376,8 +1378,9 @@ tbody tr:last-child td{border-bottom:none;}
      HOLIDAYS MODAL
 ══════════════════════════════════════ -->
 <div class="modal-overlay" id="holidayModal">
-  <div class="modal">
+  <div class="modal" style="max-width:560px">
     <h3>🗓 Holidays</h3>
+    <div class="alert error" id="holidayErr"></div>
     <div class="form-row">
       <div class="form-group">
         <label>Date</label>
@@ -1388,9 +1391,25 @@ tbody tr:last-child td{border-bottom:none;}
         <input type="text" id="hName" placeholder="e.g. Diwali"/>
       </div>
     </div>
-    <button class="btn btn-primary" style="width:100%;margin-bottom:16px" onclick="addHoliday()">Add Holiday</button>
+    <button class="btn btn-primary" style="width:100%;margin-bottom:14px" onclick="addHoliday()">+ Add Holiday</button>
+
+    <!-- Bulk Upload -->
+    <div style="background:#fff7ed;border:1.5px dashed #fcd34d;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#92400e">📂 Bulk Upload (CSV)</div>
+          <div style="font-size:11px;color:#78350f;margin-top:2px">Format: <code>date,name</code> per line — date as YYYY-MM-DD or DD-MM-YYYY</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="downloadHolidaySample()" style="padding:6px 12px;font-size:12px">⬇ Sample</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
+        <input type="file" id="holidayBulkFile" accept=".csv,.txt" style="font-size:12px;flex:1;min-width:200px"/>
+        <button class="btn btn-green btn-sm" onclick="uploadHolidayBulk()" style="padding:8px 14px">📤 Upload CSV</button>
+      </div>
+    </div>
+
     <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">Holiday List</div>
-    <div id="holidayList" style="max-height:280px;overflow-y:auto"></div>
+    <div id="holidayList" style="max-height:260px;overflow-y:auto"></div>
     <div style="margin-top:16px">
       <button class="btn btn-outline" style="width:100%" onclick="closeModal('holidayModal')">Close</button>
     </div>
@@ -2155,7 +2174,8 @@ let ME = null;
 let dashType = 'all';
 let tasksType = 'delegation';
 let dashChartInst = null;
-let holidays = JSON.parse(localStorage.getItem('tm_holidays') || '[]');
+// Holidays now server-backed — loaded fresh each time the holiday modal opens
+let holidays = [];
 let transferMode = false;
 let pendingTransferTaskIds = []; // task IDs that already have pending transfer
 // Dashboard date sort: 0=default(API order), 1=asc(oldest first), 2=desc(newest first)
@@ -3169,56 +3189,112 @@ async function saveChecklist() {
 }
 
 // ══════════════════════════════════════════════════════
-// HOLIDAYS
+// HOLIDAYS — server-backed; admin manages
 // ══════════════════════════════════════════════════════
-function openHoliday() {
+async function openHoliday() {
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('hDate').value='';
   document.getElementById('hDate').min=today;
   document.getElementById('hName').value='';
-  renderHolidayList();
+  document.getElementById('holidayErr').style.display = 'none';
+  document.getElementById('holidayBulkFile').value = '';
+  await refreshHolidays();
   document.getElementById('holidayModal').classList.add('open');
 }
 
+async function refreshHolidays() {
+  try {
+    const data = await api('/api/holidays');
+    holidays = Array.isArray(data) ? data : [];
+  } catch(e) { holidays = []; }
+  renderHolidayList();
+}
+
 async function addHoliday() {
+  const err = document.getElementById('holidayErr');
+  err.style.display = 'none';
   const date = document.getElementById('hDate').value;
   const name = document.getElementById('hName').value.trim();
-  if (!date||!name) { showToast('Date and name required!'); return; }
+  if (!date||!name) { err.textContent='Date and name required!'; err.style.display='block'; return; }
 
-  // Save holiday
-  holidays.push({date,name});
-  holidays.sort((a,b)=>a.date.localeCompare(b.date));
-  localStorage.setItem('tm_holidays', JSON.stringify(holidays));
-
-  // Auto-delete checklist tasks on this holiday date
-  const result = await api('/api/tasks/delete-by-date','DELETE',{date});
-  const deleted = result.deleted || 0;
+  const r = await api('/api/holidays','POST',{ date, name });
+  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
 
   document.getElementById('hDate').value='';
   document.getElementById('hName').value='';
-  renderHolidayList();
+  await refreshHolidays();
 
-  if (deleted > 0) {
-    showToast(`Holiday added! ${deleted} checklist task(s) auto-deleted for ${formatDate(date)}`);
-  } else {
-    showToast(`Holiday added! No checklist tasks were on ${formatDate(date)}`);
-  }
+  const parts = [];
+  if (r.deletedChecklist) parts.push(`${r.deletedChecklist} checklist task(s) removed`);
+  if (r.pushedDelegation) parts.push(`${r.pushedDelegation} delegation task(s) pushed forward`);
+  const detail = parts.length ? ' — ' + parts.join(', ') : '';
+  showToast(`✅ Holiday added${detail}`);
 }
 
-function deleteHoliday(idx) {
-  holidays.splice(idx,1);
-  localStorage.setItem('tm_holidays', JSON.stringify(holidays));
-  renderHolidayList();
+async function deleteHoliday(id) {
+  if (!confirm('Remove this holiday?')) return;
+  const r = await api('/api/holidays/'+id, 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  await refreshHolidays();
+  showToast('🗑 Holiday removed');
 }
 
 function renderHolidayList() {
   const container = document.getElementById('holidayList');
   if (!holidays.length) { container.innerHTML='<div class="empty" style="padding:16px">No holidays added yet</div>'; return; }
-  container.innerHTML = holidays.map((h,i)=>`
+  container.innerHTML = holidays.map(h => `
     <div class="holiday-item">
-      <span><strong>${formatDate(h.date)}</strong> — ${h.name}</span>
-      <button class="action-btn delete" onclick="deleteHoliday(${i})">Remove</button>
+      <span><strong>${formatDate(h.holiday_date || h.date)}</strong> — ${dtEscape(h.name)}</span>
+      <button class="action-btn delete" onclick="deleteHoliday(${h.id})">Remove</button>
     </div>`).join('');
+}
+
+function downloadHolidaySample() {
+  const csv = `date,name\n2026-08-15,Independence Day\n2026-10-02,Gandhi Jayanti\n2026-11-09,Diwali\n2026-12-25,Christmas`;
+  downloadFile(csv, 'holidays_sample.csv');
+}
+
+async function uploadHolidayBulk() {
+  const err = document.getElementById('holidayErr');
+  err.style.display = 'none';
+  const file = document.getElementById('holidayBulkFile').files[0];
+  if (!file) { err.textContent = 'Please select a CSV file'; err.style.display = 'block'; return; }
+
+  const text = await file.text();
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (!lines.length) { err.textContent = 'CSV is empty'; err.style.display = 'block'; return; }
+
+  // Skip header if present (starts with "date" or contains "date,name")
+  const firstLow = lines[0].toLowerCase();
+  if (firstLow.startsWith('date,') || firstLow === 'date,name') lines.shift();
+
+  const list = [];
+  const errors = [];
+  for (let i = 0; i < lines.length; i++) {
+    const parts = lines[i].split(',').map(s => s.trim());
+    if (parts.length < 2) { errors.push(`Line ${i+1}: missing name`); continue; }
+    let date = parts[0];
+    const name = parts.slice(1).join(',').trim();
+    // Accept DD-MM-YYYY → convert to YYYY-MM-DD
+    if (/^\d{2}-\d{2}-\d{4}$/.test(date)) date = date.split('-').reverse().join('-');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { errors.push(`Line ${i+1}: invalid date "${parts[0]}"`); continue; }
+    if (!name) { errors.push(`Line ${i+1}: empty name`); continue; }
+    list.push({ date, name });
+  }
+  if (!list.length) {
+    err.textContent = 'No valid rows. ' + (errors[0] || ''); err.style.display = 'block'; return;
+  }
+
+  const r = await api('/api/holidays/bulk', 'POST', { holidays: list });
+  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+
+  document.getElementById('holidayBulkFile').value = '';
+  await refreshHolidays();
+  const parts = [`✅ ${r.added} holiday(s) added`];
+  if (r.skipped) parts.push(`${r.skipped} skipped`);
+  if (r.cascadeDeleted) parts.push(`${r.cascadeDeleted} checklist removed`);
+  if (r.cascadePushed) parts.push(`${r.cascadePushed} delegation pushed`);
+  showToast(parts.join(' · '));
 }
 
 function formatDate(d) {
@@ -6258,8 +6334,11 @@ function renderCompliance(){
   html += `<th>Score</th></tr></thead><tbody>`;
 
   for (const u of users) {
+    // Working days = days that aren't user's off/holiday
+    const workingDays = u.status.filter(s => !s.off).length;
     const filledCnt = u.status.filter(s => s.filled).length;
-    const pct = Math.round((filledCnt/dates.length)*100);
+    const denom = workingDays || 1;
+    const pct = Math.round((filledCnt/denom)*100);
     const pillClass = pct >= 80 ? 'cp-summary-good' : pct >= 50 ? 'cp-summary-meh' : 'cp-summary-bad';
 
     html += `<tr>
@@ -6267,9 +6346,19 @@ function renderCompliance(){
       <td>${u.role}</td>
       <td>${dtEscape(u.department)}</td>`;
     for (const s of u.status) {
-      html += `<td>${s.filled ? '<span class="cp-cell-yes">✓</span>' : '<span class="cp-cell-no">✗</span>'}</td>`;
+      let cell;
+      if (s.off) {
+        cell = s.isHoliday
+          ? '<span class="cp-cell-holiday" title="Holiday">🎉 Off</span>'
+          : '<span class="cp-cell-off" title="Week off">Off</span>';
+      } else if (s.filled) {
+        cell = '<span class="cp-cell-yes">✓</span>';
+      } else {
+        cell = '<span class="cp-cell-no">✗</span>';
+      }
+      html += `<td>${cell}</td>`;
     }
-    html += `<td><span class="cp-summary-pill ${pillClass}">${filledCnt}/${dates.length} (${pct}%)</span></td></tr>`;
+    html += `<td><span class="cp-summary-pill ${pillClass}">${filledCnt}/${workingDays} (${pct}%)</span></td></tr>`;
   }
   html += `</tbody></table>`;
   wrap.innerHTML = html;
