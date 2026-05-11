@@ -1279,6 +1279,10 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
     </div>
     <div class="form-group">
+      <label>Client <span style="color:#94a3b8;font-weight:400;font-size:11px">(optional)</span></label>
+      <select id="dClient"><option value="">— No Client —</option></select>
+    </div>
+    <div class="form-group">
       <label>Description</label>
       <textarea id="dDesc" placeholder="Enter task description…"></textarea>
     </div>
@@ -1302,7 +1306,7 @@ tbody tr:last-child td{border-bottom:none;}
         <button class="btn btn-green btn-sm" onclick="uploadCSV()">⬆ Upload CSV</button>
         <button class="btn btn-outline btn-sm" onclick="downloadSample()">⬇ Sample</button>
       </div>
-      <div style="font-size:11px;color:#94a3b8;margin-top:6px">Format: doer_email, approver_email, due_date, priority, approval, description, remarks</div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:6px">Format: doer_email, approver_email, due_date, priority, approval, description, remarks, client_name</div>
     </div>
   </div>
 </div>
@@ -1336,6 +1340,11 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="form-group">
       <label>Start Date</label>
       <input type="date" id="cDate"/>
+    </div>
+
+    <div class="form-group">
+      <label>Client <span style="color:#94a3b8;font-weight:400;font-size:11px">(optional)</span></label>
+      <select id="cClient"><option value="">— No Client —</option></select>
     </div>
 
     <div class="form-group">
@@ -2589,9 +2598,12 @@ function renderDashTable(tasks, type) {
         <td>${lateBadge}</td>
       </tr>`;
     }
+    const clientPill = t.client_name
+      ? `<div style="margin-top:3px"><span style="font-size:10px;background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span></div>`
+      : '';
     return `<tr>
       <td style="white-space:nowrap">${typeBadge(t)}</td>
-      <td>${t.description||t.desc}</td>
+      <td>${t.description||t.desc}${clientPill}</td>
       <td>${(isAdmin||isPC)?t.assignedToName:t.assignedByName}</td>
       <td>${fmtDate(t.due_date||t.date)}</td>
       <td>${t.type!=='checklist' ? `<span class="priority-badge ${t.priority||'low'}">${t.priority||'low'}</span>` : '—'}</td>
@@ -2757,9 +2769,12 @@ function renderTasksTable() {
         <button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>
         <span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
     `;
+    const clientPill = t.client_name
+      ? `<div style="margin-top:3px"><span style="font-size:10px;background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span></div>`
+      : '';
     return `<tr>
       <td style="white-space:nowrap">${actionBtns}</td>
-      <td>${t.description||''}</td>
+      <td>${t.description||''}${clientPill}</td>
       <td>${t.assignedToName||''}</td>
       <td>${isAdmin ? (t.assignedByName||'') : (t.assignedByName||'')}</td>
       <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}</td>
@@ -3006,12 +3021,15 @@ async function openDelegate() {
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('dDate').value=today;
   document.getElementById('dDate').min=today;
-  const users = await api('/api/users');
+  const [users, clients] = await Promise.all([api('/api/users'), api('/api/clients')]);
   // Cache for email lookup in onDelegateApproverChange()
   window._delegateUsers = users || [];
   const opts = (users || []).map(u=>`<option value="${u.id}" data-email="${dtEscape(u.email||'')}">${u.name}</option>`).join('');
   document.getElementById('dDoer').innerHTML='<option value="">Select Doer</option>'+opts;
   document.getElementById('dApprover').innerHTML='<option value="">Select Approver</option>'+opts;
+  // Client dropdown — pulls from Client Master
+  const clientOpts = (clients || []).map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+  document.getElementById('dClient').innerHTML = '<option value="">— No Client —</option>' + clientOpts;
   // Hidden by default — only shown when Approval Required = Yes
   document.getElementById('dApproverGroup').style.display = 'none';
   document.getElementById('dApproverEmail').style.display = 'none';
@@ -3054,13 +3072,19 @@ async function saveDelegate() {
   const approval = document.getElementById('dApproval').value;
   const remarks = document.getElementById('dRemarks').value.trim();
   const approver = approval === 'yes' ? document.getElementById('dApprover').value : '';
+  const client_id = document.getElementById('dClient').value || null;
   if (!doer) { err.textContent='Please select a doer'; err.style.display='block'; return; }
   if (!date) { err.textContent='Please select a date'; err.style.display='block'; return; }
   if (!desc) { err.textContent='Description is required'; err.style.display='block'; return; }
   if (approval === 'yes' && !approver) { err.textContent='Please select an approver'; err.style.display='block'; return; }
-  await api('/api/tasks','POST',{type:'delegation',desc,assignedTo:doer,date,priority,approval,approver,remarks});
+  const r = await api('/api/tasks','POST',{type:'delegation',desc,assignedTo:doer,date,priority,approval,approver,remarks,client_id});
+  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
   closeModal('delegateModal');
-  showToast('Task delegated successfully!');
+  if (r.adjusted) {
+    showToast(`Task delegated! 📅 Moved to ${r.effectiveDate} (holiday/week-off)`);
+  } else {
+    showToast('Task delegated successfully!');
+  }
   loadDashboard();
 }
 
@@ -3077,9 +3101,11 @@ async function openChecklist() {
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('cDate').value=today;
   document.getElementById('cDate').min=today;
-  const users = await api('/api/users');
+  const [users, clients] = await Promise.all([api('/api/users'), api('/api/clients')]);
   document.getElementById('cDoer').innerHTML='<option value="">Select Employee</option>'+
     users.map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
+  document.getElementById('cClient').innerHTML='<option value="">— No Client —</option>'+
+    (clients || []).map(c=>`<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
 
   ['cFrequency','cDate','cDesc'].forEach(id=>{
     document.getElementById(id).onchange = updateChecklistPreview;
@@ -3183,9 +3209,10 @@ async function saveChecklist() {
   const extraOff = selUser?.extra_off || '';
 
   const dates = generateDates(date, freq, weekOff, extraOff);
+  const client_id = document.getElementById('cClient').value || null;
 
   const result = await api('/api/tasks/bulk-checklist','POST',{
-    desc, assignedTo: doer, priority: 'low', remarks, dates
+    desc, assignedTo: doer, priority: 'low', remarks, dates, client_id
   });
 
   btn.disabled=false; btn.textContent='Generate Tasks';
@@ -3316,7 +3343,7 @@ function formatDate(d) {
 // BULK UPLOAD
 // ══════════════════════════════════════════════════════
 function downloadSample() {
-  const csv = `doer_email,approver_email,due_date,priority,approval,description,remarks\npriyanka@test.com,aman@test.com,2026-04-01,high,yes,Complete sales report,Follow up needed\npooja@test.com,aman@test.com,2026-04-02,medium,no,Prepare presentation,`;
+  const csv = `doer_email,approver_email,due_date,priority,approval,description,remarks,client_name\npriyanka@test.com,aman@test.com,2026-04-01,high,yes,Complete sales report,Follow up needed,Ambraee\npooja@test.com,aman@test.com,2026-04-02,medium,no,Prepare presentation,,Sohan Health Care`;
   downloadFile(csv,'delegation_sample.csv');
 }
 
@@ -3346,16 +3373,19 @@ async function uploadCSV() {
   const text = await file.text();
   const lines = text.trim().split('\n').slice(1);
   if (!lines.length) { showToast('CSV is empty','error'); return; }
-  // Fetch users once
-  const allUsers = await api('/api/users');
+  // Fetch users + clients once
+  const [allUsers, allClients] = await Promise.all([api('/api/users'), api('/api/clients')]);
+  const clientByName = {};
+  (allClients || []).forEach(c => { clientByName[c.name.toLowerCase().trim()] = c.id; });
   let count = 0, skipped = 0;
   for (const line of lines) {
     if (!line.trim()) continue;
-    const [doer_email,approver_email,due_date,priority,approval,description,remarks] = line.split(',').map(s=>s.trim());
+    const [doer_email,approver_email,due_date,priority,approval,description,remarks,client_name] = line.split(',').map(s=>s.trim());
     if (!doer_email||!description) { skipped++; continue; }
     const doer = allUsers.find(u=>u.email===doer_email);
     if (!doer) { skipped++; continue; }
-    await api('/api/tasks','POST',{type:'delegation',desc:description,assignedTo:doer.id,approverEmail:approver_email,date:due_date,priority,approval,remarks});
+    const client_id = client_name ? (clientByName[client_name.toLowerCase()] || null) : null;
+    await api('/api/tasks','POST',{type:'delegation',desc:description,assignedTo:doer.id,approverEmail:approver_email,date:due_date,priority,approval,remarks,client_id});
     count++;
   }
   showToast(`✅ ${count} tasks uploaded! ${skipped?`(${skipped} skipped)`:''}`);
