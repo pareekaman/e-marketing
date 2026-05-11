@@ -1719,27 +1719,11 @@ tbody tr:last-child td{border-bottom:none;}
         </select>
       </div>
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Week Off <span style="color:#94a3b8;font-weight:400;font-size:11px">(checklist skip hogi)</span></label>
-        <div id="weekOffWrap" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fff;min-height:40px">
-          <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:500;cursor:pointer;text-transform:none;letter-spacing:0"><input type="checkbox" class="woff-cb" value="0" style="accent-color:#1a56db"/> Sun</label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:500;cursor:pointer;text-transform:none;letter-spacing:0"><input type="checkbox" class="woff-cb" value="1" style="accent-color:#1a56db"/> Mon</label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:500;cursor:pointer;text-transform:none;letter-spacing:0"><input type="checkbox" class="woff-cb" value="2" style="accent-color:#1a56db"/> Tue</label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:500;cursor:pointer;text-transform:none;letter-spacing:0"><input type="checkbox" class="woff-cb" value="3" style="accent-color:#1a56db"/> Wed</label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:500;cursor:pointer;text-transform:none;letter-spacing:0"><input type="checkbox" class="woff-cb" value="4" style="accent-color:#1a56db"/> Thu</label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:500;cursor:pointer;text-transform:none;letter-spacing:0"><input type="checkbox" class="woff-cb" value="5" style="accent-color:#1a56db"/> Fri</label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:500;cursor:pointer;text-transform:none;letter-spacing:0"><input type="checkbox" class="woff-cb" value="6" style="accent-color:#1a56db"/> Sat</label>
-        </div>
+    <!-- Off-days are managed globally via the Holiday tab (applies to all users) -->
+    <div class="form-group" style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:8px;padding:9px 12px;margin-top:6px">
+      <div style="font-size:12px;color:#1e40af;line-height:1.5">
+        ℹ️ <b>Week off / holidays</b> are managed globally from the <b>Holiday tab</b> (Dashboard → 🗓 Holidays). Same off-days apply to all users.
       </div>
-    </div>
-    <!-- Extra Off Section -->
-    <div class="form-group">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <label style="margin:0">Extra Off <span style="color:#94a3b8;font-weight:400;font-size:11px">(e.g. 2nd & 4th Saturday)</span></label>
-        <button type="button" class="btn btn-outline btn-sm" onclick="addExtraOff()" style="font-size:11px;padding:3px 10px">+ Add</button>
-      </div>
-      <div id="extraOffList" style="display:flex;flex-direction:column;gap:6px"></div>
     </div>
     <!-- Exclude from Daily Reminder -->
     <div class="form-group" style="background:#fef3c7;border:1.5px solid #fcd34d;border-radius:8px;padding:10px 12px;margin-top:6px">
@@ -3202,13 +3186,8 @@ async function saveChecklist() {
   const btn = document.getElementById('cGenerateBtn');
   btn.disabled=true; btn.textContent='Generating…';
 
-  // Get user's week_off to skip those days
-  const allUsers = await api('/api/users');
-  const selUser = allUsers.find(u=>String(u.id)===String(doer));
-  const weekOff = selUser?.week_off || '';
-  const extraOff = selUser?.extra_off || '';
-
-  const dates = generateDates(date, freq, weekOff, extraOff);
+  // No per-user week_off — holiday filtering happens server-side via /api/holidays
+  const dates = generateDates(date, freq, '', '');
   const client_id = document.getElementById('cClient').value || null;
 
   const result = await api('/api/tasks/bulk-checklist','POST',{
@@ -3219,7 +3198,8 @@ async function saveChecklist() {
 
   if (result.error) { err.textContent=result.error; err.style.display='block'; return; }
 
-  suc.textContent = `✅ ${dates.length} tasks generated! (${weekOff ? 'Week off days skipped' : 'No week off set'})`;
+  const skippedNote = result.skipped ? ` (${result.skipped} holiday date${result.skipped===1?'':'s'} skipped)` : '';
+  suc.textContent = `✅ ${result.count || dates.length} tasks generated!${skippedNote}`;
   suc.style.display='block';
 
   setTimeout(()=>{ closeModal('checklistModal'); loadDashboard(); }, 2000);
@@ -3579,8 +3559,6 @@ function openAddUser() {
   document.getElementById('userErr').style.display='none';
   document.getElementById('userSuccess').style.display='none';
   document.getElementById('uExcludeReminder').checked = false;
-  _setWeekOff('');
-  _setExtraOff('');
   document.getElementById('userModal').classList.add('open');
 }
 
@@ -3601,8 +3579,6 @@ function openEditUser(id) {
   document.getElementById('pwdOptional').style.display='inline';
   document.getElementById('userErr').style.display='none';
   document.getElementById('userSuccess').style.display='none';
-  _setWeekOff(u.week_off||'');
-  _setExtraOff(u.extra_off||'');
   document.getElementById('userModal').classList.add('open');
 }
 
@@ -3619,11 +3595,9 @@ async function saveUser() {
   const role=document.getElementById('uRole').value;
   const user_role=document.getElementById('uUserRole').value;
   const exclude_from_reminder = document.getElementById('uExcludeReminder').checked;
-  const week_off=_getWeekOff();
-  const extra_off=_getExtraOff();
   if (!name||!email) { err.textContent='Name and email required'; err.style.display='block'; return; }
   if (!id&&!password) { err.textContent='Password required for new user'; err.style.display='block'; return; }
-  const body={name,email,notification_email,role,user_role,phone,department,week_off,extra_off,exclude_from_reminder};
+  const body={name,email,notification_email,role,user_role,phone,department,exclude_from_reminder};
   if (password) body.password=password;
   const r = id ? await api(`/api/users/${id}`,'PUT',body) : await api('/api/users','POST',body);
   if (r.error) { err.textContent=r.error; err.style.display='block'; return; }
@@ -3632,7 +3606,7 @@ async function saveUser() {
 }
 
 function downloadUserSample() {
-  const csv = `name,email,password,role,user_role,phone,department,week_off\nJohn Doe,john@test.com,pass123,user,user,9876543210,Sales,0\nJane Smith,jane@test.com,pass123,hod,hod,9876543211,Production,0\nIT Admin,it@test.com,pass123,admin,user,9876543212,IT,0\nAdmin User,admin2@test.com,pass123,admin,admin,,Management,`;
+  const csv = `name,email,password,role,user_role,phone,department\nJohn Doe,john@test.com,pass123,user,user,9876543210,Sales\nJane Smith,jane@test.com,pass123,hod,hod,9876543211,Production\nIT Admin,it@test.com,pass123,admin,user,9876543212,IT\nAdmin User,admin2@test.com,pass123,admin,admin,,Management`;
   const a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
   a.download = 'users_sample.csv'; a.click();

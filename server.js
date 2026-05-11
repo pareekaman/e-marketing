@@ -2576,9 +2576,11 @@ async function buildAndSendReminder() {
     !isUserOffOn(u, today, holidaysSet)
   );
 
-  // If today is a global holiday → skip reminder entirely
+  // If today is a holiday → send a fixed "holiday" message to the group instead
   if (isHolidayToday) {
-    return { ok: true, allDone: false, skipped: true, reason: 'Today is a holiday — reminder skipped', date: today };
+    const holidayMsg = `Hello,\n\nToday is Holiday/Weekoff , So no report is filled today.\n\nThank You.`;
+    const sendRes = await sendWhatsAppRaw(REMINDER_GROUP_ID, holidayMsg);
+    return { ok: sendRes.ok, holiday: true, date: today, send: sendRes };
   }
 
   if (!eligible.length) {
@@ -3423,27 +3425,12 @@ function _toDateStr(v) {
   return String(v).slice(0,10);
 }
 
-// Returns the user's normalized off-day descriptors:
-//   weekOff: array of weekday numbers (0=Sun..6=Sat)
-//   extraOff: array of {day:0-6, weeks:[1..5]} (e.g. 1st & 3rd Saturday)
-function _parseUserOff(user) {
-  const weekOff = (user.week_off || '').split(',').map(s=>parseInt(s.trim(),10)).filter(n=>!isNaN(n));
-  let extraOff = [];
-  try { extraOff = user.extra_off ? JSON.parse(user.extra_off) : []; } catch { extraOff = []; }
-  return { weekOff, extraOff };
-}
-
 // dateStr = 'YYYY-MM-DD'; holidaysSet = Set of YYYY-MM-DD strings
-function isUserOffOn(user, dateStr, holidaysSet) {
+// Single source of truth for off-days: the Holiday tab (holidays table).
+// Per-user week_off / extra_off are NOT considered — same holiday list applies to everyone.
+function isUserOffOn(_user, dateStr, holidaysSet) {
   const ds = _toDateStr(dateStr);
   if (holidaysSet && holidaysSet.has(ds)) return true;
-  if (!user) return false;
-  const { weekOff, extraOff } = _parseUserOff(user);
-  const d = new Date(ds + 'T00:00:00');
-  const day = d.getDay();
-  if (weekOff.includes(day)) return true;
-  const nth = Math.ceil(d.getDate() / 7);
-  if (extraOff.some(e => e.day === day && Array.isArray(e.weeks) && e.weeks.includes(nth))) return true;
   return false;
 }
 
