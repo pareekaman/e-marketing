@@ -2913,7 +2913,10 @@ app.get('/api/departments', requireAuth, async (req, res) => {
        WHERE department IS NOT NULL AND department != ''
        ORDER BY department ASC`
     );
-    res.json(rows.map(r => r.department));
+    const fromUsers = rows.map(r => r.department);
+    const extras = ['YouTube'];
+    const merged = [...new Set([...fromUsers, ...extras])].sort((a,b) => a.localeCompare(b));
+    res.json(merged);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
