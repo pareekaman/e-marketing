@@ -6929,11 +6929,19 @@ async function loadLeaves(){
   wrap.innerHTML = '<div class="empty">Loading…</div>';
   try {
     const qs = `?scope=${LEAVE_TAB}${LEAVE_STATUS ? '&status='+LEAVE_STATUS : ''}`;
-    const data = await api('/api/leaves' + qs);
+    const [data, approverRes] = await Promise.all([
+      api('/api/leaves' + qs),
+      api('/api/leaves/my-approvers')
+    ]);
     if (data.error) throw new Error(data.error);
     LEAVE_DATA = Array.isArray(data) ? data : [];
     lvRegisterPool(LEAVE_DATA);
     renderLeaves();
+    // Show approver names in page header
+    const approverLine = document.getElementById('lvApproverLine');
+    if (approverLine && approverRes?.names) {
+      approverLine.textContent = `Your approver${approverRes.names.includes(',') ? 's' : ''}: ${approverRes.names}`;
+    }
   } catch(e){
     wrap.innerHTML = `<div class="empty" style="color:#dc2626">⚠️ ${dtEscape(e.message)}</div>`;
   }
@@ -6998,7 +7006,9 @@ function renderLeaves(){
           <div class="lv-item-reason">${dtEscape(r.reason)}</div>
           <div class="lv-item-meta">
             <b>Applied:</b> ${dtEscape((r.created_at||'').slice(0,16))}
-            ${r.approver_name ? ` · <b>Approver:</b> ${dtEscape(r.approver_name)}` : ''}
+            ${r.status === 'pending'
+              ? (r.dept_hod_names ? ` · <b>Approver:</b> ${dtEscape(r.dept_hod_names)}` : (r.approver_name ? ` · <b>Approver:</b> ${dtEscape(r.approver_name)}` : ''))
+              : (r.approver_name ? ` · <b>Decided by:</b> ${dtEscape(r.approver_name)}` : '')}
             ${r.decided_at ? ` · <b>Decided:</b> ${dtEscape(r.decided_at.slice(0,16))}` : ''}
             ${r.approver_note ? ` · <b>Note:</b> ${dtEscape(r.approver_note)}` : ''}
           </div>
@@ -7047,17 +7057,18 @@ function openLeaveForm(){
   lvRenderCalendar();
   lvRenderSelectedList();
   document.getElementById('lvReason').value = '';
-  // Approver hint
+  // Approver hint — show actual HOD names from API
   const hintBox = document.getElementById('lvApproverHint');
   const hintName = document.getElementById('lvApproverHintName');
   hintBox.style.display = 'block';
-  if (ME.role === 'admin') {
-    hintName.textContent = 'Another Admin (Approvals tab)';
-  } else if (ME.role === 'hod' || ME.role === 'pc') {
-    hintName.textContent = 'Admin';
-  } else {
-    hintName.textContent = `HOD${ME.department ? ' — '+ME.department : ''}`;
-  }
+  hintName.textContent = '…';
+  api('/api/leaves/my-approvers').then(r => {
+    hintName.textContent = r?.names || 'HOD';
+  }).catch(() => {
+    if (ME.role === 'admin') hintName.textContent = 'Another Admin';
+    else if (ME.role === 'hod' || ME.role === 'pc') hintName.textContent = 'Admin';
+    else hintName.textContent = `HOD${ME.department ? ' — '+ME.department : ''}`;
+  });
   document.getElementById('leaveModal').classList.add('open');
 }
 

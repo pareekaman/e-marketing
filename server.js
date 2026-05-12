@@ -3205,7 +3205,19 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
     if (scope === 'mine') {
       where += ' AND lr.user_id=?'; params.push(uid);
     } else if (scope === 'approvals') {
-      where += ' AND lr.approver_id=? AND lr.user_id<>?'; params.push(uid, uid);
+      // If this user is an HOD, show leaves for ALL HODs in same department
+      const [[meInfo]] = await db.query(
+        'SELECT department, COALESCE(user_role, role) AS user_role FROM users WHERE id=?', [uid]);
+      if (meInfo?.user_role === 'hod' && meInfo?.department) {
+        const [deptHods] = await db.query(
+          `SELECT id FROM users WHERE COALESCE(user_role, role)='hod' AND department=?`,
+          [meInfo.department]);
+        const hodIds = deptHods.map(h => h.id);
+        where += ` AND lr.approver_id IN (${hodIds.map(()=>'?').join(',')}) AND lr.user_id<>?`;
+        params.push(...hodIds, uid);
+      } else {
+        where += ' AND lr.approver_id=? AND lr.user_id<>?'; params.push(uid, uid);
+      }
     } else if (scope === 'team') {
       if (role === 'admin') {
         // no filter — all
@@ -3230,7 +3242,12 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
         DATE_FORMAT(lr.created_at,'%Y-%m-%d %H:%i:%s') AS created_at,
         DATE_FORMAT(lr.decided_at,'%Y-%m-%d %H:%i:%s') AS decided_at,
         u.name AS user_name, u.email AS user_email, u.department AS user_department,
-        ap.name AS approver_name
+        ap.name AS approver_name,
+        (SELECT GROUP_CONCAT(hod.name ORDER BY hod.name SEPARATOR ', ')
+         FROM users hod
+         WHERE COALESCE(hod.user_role, hod.role)='hod'
+           AND hod.department=u.department
+           AND u.department IS NOT NULL AND u.department<>'') AS dept_hod_names
       FROM leave_requests lr
       JOIN users u ON lr.user_id=u.id
       LEFT JOIN users ap ON lr.approver_id=ap.id
@@ -3254,14 +3271,48 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
 });
 
 // Pending approvals count — for badge
+// Returns names of all HODs who will approve current user's leave
+app.get('/api/leaves/my-approvers', requireAuth, async (req, res) => {
+  try {
+    const uid = req.session.userId;
+    const [[me]] = await db.query(
+      'SELECT department, COALESCE(user_role, role) AS user_role FROM users WHERE id=?', [uid]);
+    if (!me) return res.json({ names: '' });
+    if (me.user_role === 'admin') return res.json({ names: 'Another Admin' });
+    if (me.user_role === 'hod' || me.user_role === 'pc') return res.json({ names: 'Admin' });
+    if (me.department) {
+      const [hods] = await db.query(
+        `SELECT name FROM users WHERE COALESCE(user_role, role)='hod' AND department=? ORDER BY name`,
+        [me.department]);
+      return res.json({ names: hods.map(h => h.name).join(', ') || 'HOD' });
+    }
+    res.json({ names: 'HOD' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/leaves/pending-count', requireAuth, async (req, res) => {
   try {
     const uid = req.session.userId;
-    const [[r]] = await db.query(
-      "SELECT COUNT(*) AS cnt FROM leave_requests WHERE approver_id=? AND status='pending' AND user_id<>?",
-      [uid, uid]
-    );
-    res.json({ count: r.cnt || 0 });
+    // Count pending leaves for all HODs in same department
+    const [[meInfo]] = await db.query(
+      'SELECT department, COALESCE(user_role, role) AS user_role FROM users WHERE id=?', [uid]);
+    let cnt = 0;
+    if (meInfo?.user_role === 'hod' && meInfo?.department) {
+      const [deptHods] = await db.query(
+        `SELECT id FROM users WHERE COALESCE(user_role, role)='hod' AND department=?`,
+        [meInfo.department]);
+      const hodIds = deptHods.map(h => h.id);
+      const [[r]] = await db.query(
+        `SELECT COUNT(*) AS cnt FROM leave_requests WHERE approver_id IN (${hodIds.map(()=>'?').join(',')}) AND status='pending' AND user_id<>?`,
+        [...hodIds, uid]);
+      cnt = r.cnt || 0;
+    } else {
+      const [[r]] = await db.query(
+        "SELECT COUNT(*) AS cnt FROM leave_requests WHERE approver_id=? AND status='pending' AND user_id<>?",
+        [uid, uid]);
+      cnt = r.cnt || 0;
+    }
+    res.json({ count: cnt });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -3329,23 +3380,35 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
           </div>`;
         sendMail(target.email, `Leave Request — ${me?.name || ''}`, html).catch(()=>{});
       }
-      // WhatsApp to approver
+      // WhatsApp to ALL HODs in same department (so both HODs get notified)
       try {
-        const [[apRow]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [approverId]);
-        if (apRow && apRow.phone) {
-          const daysWord = cleanDates.length === 1 ? '1 day' : `${cleanDates.length} days`;
-          const datesPretty = cleanDates.map(d => {
-            const dd = d.date.split('-').reverse().join('-');
-            return leave_type === 'extra_working' ? `${dd} (${d.hours}h)` : dd;
-          }).join(', ');
-          const msg = `Hello ${apRow.name || ''},\n\n🗓 *New Leave Request*\n\n` +
+        const daysWord = cleanDates.length === 1 ? '1 day' : `${cleanDates.length} days`;
+        const datesPretty = cleanDates.map(d => {
+          const dd = d.date.split('-').reverse().join('-');
+          return leave_type === 'extra_working' ? `${dd} (${d.hours}h)` : dd;
+        }).join(', ');
+        const [[submitter]] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
+        let waRecipients = [];
+        if (submitter?.department) {
+          const [allHods] = await db.query(
+            `SELECT name, phone FROM users WHERE COALESCE(user_role, role)='hod' AND department=? AND phone IS NOT NULL AND phone<>''`,
+            [submitter.department]);
+          waRecipients = allHods;
+        }
+        if (!waRecipients.length) {
+          // fallback to single assigned approver
+          const [[apRow]] = await db.query('SELECT name, phone FROM users WHERE id=?', [approverId]);
+          if (apRow?.phone) waRecipients = [apRow];
+        }
+        for (const hod of waRecipients) {
+          const msg = `Hello ${hod.name || ''},\n\n🗓 *New Leave Request*\n\n` +
             `*Employee:* ${me?.name || ''}\n` +
             `*Type:* ${typeLabel}\n` +
             `*Duration:* ${daysWord}\n` +
             `*Dates:* ${datesPretty}\n` +
             `*Reason:* ${reason}\n\n` +
             `Please approve / reject from the Approvals tab.\n\n— E-Marketing Task Manager`;
-          sendWhatsApp(apRow.phone, msg).catch(e => console.error('WA leave req err:', e.message));
+          sendWhatsApp(hod.phone, msg).catch(e => console.error('WA leave req err:', e.message));
         }
       } catch (e) { console.error('WA leave req lookup err:', e.message); }
     }
@@ -3368,8 +3431,15 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
 
     const uid = req.session.userId;
     const role = req.session.role;
+    // Allow: admin always, assigned approver, OR any HOD in same department as the assigned approver
     if (lr.approver_id !== uid && role !== 'admin') {
-      return res.status(403).json({ error: 'Not authorized to act on this request' });
+      const [[myInfo]] = await db.query(
+        'SELECT department, COALESCE(user_role, role) AS user_role FROM users WHERE id=?', [uid]);
+      const [[apInfo]] = await db.query(
+        'SELECT department FROM users WHERE id=?', [lr.approver_id]);
+      const samedept = myInfo?.user_role === 'hod' && myInfo?.department &&
+                       apInfo?.department === myInfo.department;
+      if (!samedept) return res.status(403).json({ error: 'Not authorized to act on this request' });
     }
 
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
