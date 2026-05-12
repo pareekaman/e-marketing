@@ -2879,6 +2879,30 @@ app.post('/api/clients/bulk', requireAuth, requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Client stats — total hours + top 3 workers (all-time)
+app.get('/api/clients/:id/stats', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [[client]] = await db.query('SELECT name FROM clients WHERE id=?', [req.params.id]);
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    const [[totals]] = await db.query(
+      'SELECT COALESCE(SUM(duration_min),0) AS total_minutes FROM daily_tasks WHERE client_name=?',
+      [client.name]
+    );
+    const [topWorkers] = await db.query(
+      `SELECT u.name, COALESCE(u.department,'') AS department,
+              SUM(dt.duration_min) AS total_minutes, COUNT(*) AS task_count
+       FROM daily_tasks dt
+       JOIN users u ON dt.user_id = u.id
+       WHERE dt.client_name = ?
+       GROUP BY dt.user_id, u.name, u.department
+       ORDER BY total_minutes DESC
+       LIMIT 3`,
+      [client.name]
+    );
+    res.json({ client_name: client.name, total_minutes: totals.total_minutes, top_workers: topWorkers });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ══════════════════════════════════════════════════════
 // DEPARTMENTS — unique list from users.department
 // ══════════════════════════════════════════════════════

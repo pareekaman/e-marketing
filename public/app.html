@@ -367,12 +367,29 @@ tbody tr:last-child td{border-bottom:none;}
 .cm-add-row{display:flex;gap:10px;margin-bottom:20px;}
 .cm-add-row input{flex:1;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;outline:none;font-family:inherit;}
 .cm-add-row input:focus{border-color:#F39C12;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
-.cm-list-wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;}
-.cm-client-card{background:#fff8e1;border:1.5px solid #fef3c7;border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;transition:all .15s;}
-.cm-client-card:hover{border-color:#F39C12;background:#fffbeb;}
+.cm-list-wrap{display:flex;flex-direction:column;gap:0;border:1.5px solid #fef3c7;border-radius:12px;overflow:hidden;margin-top:10px;}
+.cm-client-row{background:#fff8e1;border-bottom:1px solid #fef3c7;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:background .15s;}
+.cm-client-row:last-child{border-bottom:none;}
+.cm-client-row:hover,.cm-client-row.cm-active{background:#fffbeb;}
+.cm-client-row.cm-active{border-left:3px solid #F39C12;}
+.cm-client-info{display:flex;align-items:center;gap:10px;flex:1;min-width:0;}
 .cm-client-name{font-size:14px;font-weight:600;color:#1e293b;}
-.cm-client-del{background:transparent;color:#ef4444;border:1.5px solid #fecaca;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;}
+.cm-client-arrow{font-size:11px;color:#94a3b8;transition:transform .2s;}
+.cm-client-row.cm-active .cm-client-arrow{transform:rotate(180deg);}
+.cm-client-del{background:transparent;color:#ef4444;border:1.5px solid #fecaca;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;flex-shrink:0;}
 .cm-client-del:hover{background:#ef4444;color:#fff;border-color:#ef4444;}
+.cm-client-detail{display:none;background:#fffdf5;border-bottom:1px solid #fef3c7;padding:16px 18px;}
+.cm-detail-inner{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;}
+.cm-detail-total{background:#fff;border:1.5px solid #fde68a;border-radius:10px;padding:14px 20px;text-align:center;min-width:120px;}
+.cm-detail-label{display:block;font-size:11px;color:#92400e;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
+.cm-detail-val{display:block;font-size:26px;font-weight:800;color:#F39C12;}
+.cm-detail-workers{flex:1;min-width:220px;}
+.cm-detail-workers-title{font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;}
+.cm-worker-row{display:flex;align-items:center;gap:10px;padding:8px 10px;background:#fff;border:1px solid #fef3c7;border-radius:8px;margin-bottom:6px;}
+.cm-worker-rank{font-size:18px;width:24px;text-align:center;}
+.cm-worker-name{flex:1;font-size:13px;font-weight:600;color:#1e293b;}
+.cm-worker-dept{font-size:11px;color:#94a3b8;background:#f1f5f9;border-radius:4px;padding:2px 6px;}
+.cm-worker-hrs{font-size:13px;font-weight:700;color:#F39C12;white-space:nowrap;}
 
 /* ══════════════════════════════════════════════
    COMPLIANCE TRACKER
@@ -687,7 +704,7 @@ tbody tr:last-child td{border-bottom:none;}
 
   /* ── Client Master ── */
   .cm-add-row{flex-direction:column;}
-  .cm-list-wrap{grid-template-columns:1fr;}
+  .cm-detail-inner{flex-direction:column;gap:14px;}
 
   /* ── FMS ── */
   #fmsListTabs{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;}
@@ -6417,9 +6434,12 @@ async function dtLoadHistory(){
 // ══════════════════════════════════════════════════════
 // 🏢 CLIENT MASTER (admin)
 // ══════════════════════════════════════════════════════
+let CM_OPEN_ID = null;
+
 async function loadClients(){
   const wrap = document.getElementById('cmListWrap');
   wrap.innerHTML = '<div class="empty">Loading clients…</div>';
+  CM_OPEN_ID = null;
   try {
     const clients = await api('/api/clients');
     if (!clients || !clients.length) {
@@ -6428,14 +6448,81 @@ async function loadClients(){
     }
     let html = '';
     for (const c of clients) {
-      html += `<div class="cm-client-card">
-        <span class="cm-client-name">${dtEscape(c.name)}</span>
-        <button class="cm-client-del" onclick="cmDelete(${c.id}, '${dtEscape(c.name)}')">Remove</button>
-      </div>`;
+      const safeName = dtEscape(c.name);
+      html += `<div class="cm-client-row" data-cm-id="${c.id}" onclick="cmToggleDetail(${c.id})">
+        <div class="cm-client-info">
+          <span class="cm-client-name">${safeName}</span>
+          <span class="cm-client-arrow">▼</span>
+        </div>
+        <button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>
+      </div>
+      <div class="cm-client-detail" id="cm-detail-${c.id}"></div>`;
     }
     wrap.innerHTML = html;
   } catch(e) {
     wrap.innerHTML = '<div class="empty">Failed to load clients</div>';
+  }
+}
+
+async function cmToggleDetail(id) {
+  const detail = document.getElementById('cm-detail-' + id);
+  const row = document.querySelector(`[data-cm-id="${id}"]`);
+
+  if (CM_OPEN_ID === id) {
+    detail.style.display = 'none';
+    row.classList.remove('cm-active');
+    CM_OPEN_ID = null;
+    return;
+  }
+
+  // Close any open panel
+  if (CM_OPEN_ID) {
+    const prev = document.getElementById('cm-detail-' + CM_OPEN_ID);
+    const prevRow = document.querySelector(`[data-cm-id="${CM_OPEN_ID}"]`);
+    if (prev) prev.style.display = 'none';
+    if (prevRow) prevRow.classList.remove('cm-active');
+  }
+
+  detail.style.display = 'block';
+  row.classList.add('cm-active');
+  CM_OPEN_ID = id;
+
+  if (detail.dataset.loaded) return;
+  detail.innerHTML = '<div style="padding:14px;text-align:center;color:#94a3b8;font-size:13px">Loading stats…</div>';
+
+  try {
+    const stats = await api('/api/clients/' + id + '/stats');
+    detail.dataset.loaded = '1';
+    const totalHrs = (stats.total_minutes / 60).toFixed(1);
+    const medals = ['🥇','🥈','🥉'];
+    let workersHtml = '';
+    if (!stats.top_workers || !stats.top_workers.length) {
+      workersHtml = '<div style="color:#94a3b8;font-size:13px;padding:6px 0">No work recorded yet</div>';
+    } else {
+      for (let i = 0; i < stats.top_workers.length; i++) {
+        const w = stats.top_workers[i];
+        const hrs = (w.total_minutes / 60).toFixed(1);
+        workersHtml += `<div class="cm-worker-row">
+          <span class="cm-worker-rank">${medals[i]}</span>
+          <span class="cm-worker-name">${dtEscape(w.name)}</span>
+          ${w.department ? `<span class="cm-worker-dept">${dtEscape(w.department)}</span>` : ''}
+          <span class="cm-worker-hrs">${hrs} hrs</span>
+        </div>`;
+      }
+    }
+    detail.innerHTML = `<div class="cm-detail-inner">
+      <div class="cm-detail-total">
+        <span class="cm-detail-label">Total Hours</span>
+        <span class="cm-detail-val">${totalHrs}</span>
+        <span style="font-size:11px;color:#92400e;font-weight:600">hrs</span>
+      </div>
+      <div class="cm-detail-workers">
+        <div class="cm-detail-workers-title">Top 3 Contributors</div>
+        ${workersHtml}
+      </div>
+    </div>`;
+  } catch(e) {
+    detail.innerHTML = '<div style="padding:14px;color:#ef4444;font-size:13px">Failed to load stats</div>';
   }
 }
 
