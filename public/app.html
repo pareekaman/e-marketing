@@ -305,7 +305,9 @@ tbody tr:last-child td{border-bottom:none;}
 .multi-select-headers .hdr-tag .rm{color:#93c5fd;font-size:10px;margin-left:2px;}
 
 /* Flat tasks table (used in All Tasks page) */
-.flat-tasks-table{background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow-x:auto;}
+.flat-tasks-table{background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;}
+.flat-tasks-scroll{overflow:auto;max-height:calc(100vh - 240px);}
+.flat-tasks-scroll thead th{position:sticky;top:0;z-index:2;background:#f8fafc;}
 .bulk-section{margin-top:20px;padding-top:16px;border-top:1px solid #f1f5f9;}
 .file-row{display:flex;align-items:center;gap:8px;margin-top:6px;}
 
@@ -633,11 +635,12 @@ tbody tr:last-child td{border-bottom:none;}
 
   /* ── Tables: allow horizontal scroll for wide tables ── */
   .task-table-card > div,
-  .flat-tasks-table,
+  .flat-tasks-scroll,
   .mis-table-wrap,
   .users-grid,
   .dr-table-wrap,
   .cp-grid-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .flat-tasks-scroll{max-height:calc(100vh - 200px);}
   thead th{padding:8px 10px;font-size:10px;}
   tbody td{padding:9px 10px;font-size:12px;}
   .action-btn{font-size:10px;padding:3px 8px;}
@@ -912,7 +915,7 @@ tbody tr:last-child td{border-bottom:none;}
         <div class="tab-group" id="tasksTypeTabGroup">
           <div class="tab active" id="tasksTabDel" onclick="tasksTab('delegation',this)">Delegation</div>
           <div class="tab" id="tasksTabChl" onclick="tasksTab('checklist',this)">Checklist</div>
-          <div class="tab tab-action" id="tasksTabDelByMe" onclick="tasksTab('delegatebyme',this)" title="See tasks you have delegated to others">📤 Delegate by Me</div>
+          <div class="tab" id="tasksTabDelByMe" onclick="tasksTab('delegatebyme',this)">Delegate by Me</div>
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -1700,7 +1703,7 @@ tbody tr:last-child td{border-bottom:none;}
     <h3 style="margin-bottom:12px">Share Your Sheet</h3>
     <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;margin-bottom:20px;">
       <p style="font-size:14px;color:#374151;line-height:1.6">
-        Apni FMS Sheet ko is email par share karo taaki data sync ho sake:
+        Share your FMS Sheet to this email so data can sync:
       </p>
       <div id="fmsShareEmail" style="margin-top:10px;font-size:15px;font-weight:700;color:#1a56db;background:#eff6ff;padding:10px;border-radius:8px;letter-spacing:.3px;word-break:break-all;">
       </div>
@@ -1750,11 +1753,11 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="form-group">
       <label>New Due Date</label>
       <input type="date" id="reviseDate"/>
-      <div style="font-size:12px;color:#64748b;margin-top:4px">Aaj se pehle ki date select nahi kar sakte</div>
+      <div style="font-size:12px;color:#64748b;margin-top:4px">Cannot select a date before today</div>
     </div>
     <div class="form-group">
       <label>Reason for Revision</label>
-      <textarea id="reviseReason" placeholder="Revision ki wajah likho..." style="min-height:70px;width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;resize:vertical"></textarea>
+      <textarea id="reviseReason" placeholder="Reason for revision..." style="min-height:70px;width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;resize:vertical"></textarea>
     </div>
     <div class="modal-footer" style="justify-content:space-between">
       <button class="btn btn-outline" onclick="closeModal('reviseDateModal')">Cancel</button>
@@ -1905,7 +1908,7 @@ tbody tr:last-child td{border-bottom:none;}
         🚫 Exclude from Daily Reminder
       </label>
       <div style="font-size:11px;color:#92400e;margin-top:4px;margin-left:24px">
-        Iss user ka naam 7:30 PM ke daily reminder me <b>nahi</b> aayega (CXO ke alawa bhi exclude karne ke liye)
+        This user will <b>not</b> appear in the 7:30 PM daily reminder (use to exclude beyond CXO)
       </div>
     </div>
     <div class="modal-footer" style="justify-content:space-between">
@@ -1952,7 +1955,7 @@ tbody tr:last-child td{border-bottom:none;}
     <div id="fmsDoneDelaySection" style="display:none">
       <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:10px;padding:12px;margin-bottom:14px">
         <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:8px">⚠️ Delay Detected — Reason Required</div>
-        <input type="text" id="fmsDoneDelayReason" placeholder="Delay ka reason likho..." style="width:100%;padding:9px 12px;border:1.5px solid #fcd34d;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;background:#fff"/>
+        <input type="text" id="fmsDoneDelayReason" placeholder="Reason for delay..." style="width:100%;padding:9px 12px;border:1.5px solid #fcd34d;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;background:#fff"/>
       </div>
     </div>
     <!-- Extra input fields (shown when step has extraRows configured) -->
@@ -1978,7 +1981,7 @@ tbody tr:last-child td{border-bottom:none;}
     <!-- STEP 1: From User (admin/HOD only) -->
     <div id="bdStep1" style="display:none">
       <div class="form-group">
-        <label>Select Doer (kiske tasks delete karni hain)</label>
+        <label>Select Doer (whose tasks to delete)</label>
         <select id="bdFromUser" onchange="onBdFromChange()"
           style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;background:#fff">
           <option value="">-- Select user --</option>
@@ -1989,7 +1992,7 @@ tbody tr:last-child td{border-bottom:none;}
     <!-- STEP 2: Date -->
     <div id="bdStep2" style="display:none">
       <div class="form-group">
-        <label>Date Select Karo</label>
+        <label>Select Date</label>
         <input type="date" id="bdDate" onchange="onBdDateChange()"
           style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
       </div>
@@ -2003,7 +2006,7 @@ tbody tr:last-child td{border-bottom:none;}
       <div id="bdTasksList" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;max-height:260px;overflow-y:auto;margin-bottom:14px"></div>
 
       <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:12px;color:#dc2626;margin-bottom:12px">
-        ⚠️ Delete permanent hai — wapas nahi aayega!
+        ⚠️ This action is permanent and cannot be undone!
       </div>
 
       <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -2042,7 +2045,7 @@ tbody tr:last-child td{border-bottom:none;}
     <!-- STEP 1: From User (admin/HOD only) -->
     <div id="transferStep1" style="display:none">
       <div class="form-group">
-        <label id="transferFromLabel">Select Doer (kiske tasks transfer karni hain)</label>
+        <label id="transferFromLabel">Select Doer (whose tasks to transfer)</label>
         <select id="transferFromUser" onchange="onTransferFromChange()"
           style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;background:#fff">
           <option value="">-- Select user --</option>
@@ -2053,7 +2056,7 @@ tbody tr:last-child td{border-bottom:none;}
     <!-- STEP 2: Date selection -->
     <div id="transferStep2" style="display:none">
       <div class="form-group">
-        <label>Date Select Karo</label>
+        <label>Select Date</label>
         <input type="date" id="transferDate" onchange="onTransferDateChange()"
           style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
       </div>
@@ -2076,7 +2079,7 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
 
       <div style="background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px;padding:8px 12px;font-size:12px;color:#7c3aed;margin-bottom:12px">
-        ℹ️ Approve hone ke baad task transfer hoga
+        ℹ️ Task will be transferred after approval
       </div>
 
       <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -2258,7 +2261,7 @@ tbody tr:last-child td{border-bottom:none;}
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script>
 <script>
 // ══════════════════════════════════════════════════════
-// DELEGATE BY ME — modal jisme login user ne jo tasks doosron ko delegate kiye un ki list dikhti hai
+// DELEGATE BY ME — shows all tasks delegated by the current logged-in user to others
 // ══════════════════════════════════════════════════════
 let _dbmTasks = [];
 let _dbmStatusFilter = 'pending';
@@ -2272,7 +2275,7 @@ async function openDelegateByMeModal() {
   document.getElementById('delegateByMeModal').classList.add('open');
   document.getElementById('dbmContent').innerHTML = '<div class="empty">Loading…</div>';
 
-  // Sirf delegation tasks fetch karte hain (checklist self-assign hota hai mostly)
+  // Fetch delegation tasks only (checklist tasks are mostly self-assigned)
   const data = await api('/api/tasks?type=delegation&mine=1');
   let tasks = [];
   if (data.grouped) {
@@ -2280,7 +2283,7 @@ async function openDelegateByMeModal() {
   } else {
     tasks = data.tasks || [];
   }
-  // Sirf woh tasks jinhe MAINE assign kiya hai (mtlb assigned_by === ME.id) — server bhi filter karta hai but double check
+  // Only tasks assigned by me (assigned_by === ME.id) — server also filters but double-checking client-side
   _dbmTasks = tasks.filter(t => String(t.assigned_by) === String(ME.id));
   renderDbmTable();
 }
@@ -2307,7 +2310,7 @@ function renderDbmTable() {
   if (!filtered.length) {
     document.getElementById('dbmContent').innerHTML =
       `<div class="empty" style="padding:30px;text-align:center;color:#94a3b8">
-        ${_dbmStatusFilter === 'pending' ? 'Aapne abhi koi pending task delegate nahi kiya hai' : 'Aapne delegate kiye task me se koi completed nahi hai'}
+        ${_dbmStatusFilter === 'pending' ? 'You have not delegated any pending tasks yet' : 'None of your delegated tasks are completed yet'}
       </div>`;
     return;
   }
@@ -2396,7 +2399,7 @@ async function init() {
       document.getElementById('bulkDeleteBtn').style.display = 'inline-flex';
     }
     if (ME.role === 'hod') {
-      // HOD ko MIS dikhta hai (apne department ka)
+      // HOD can view MIS for their own department
       document.getElementById('nav-mis').style.display = 'flex';
       document.getElementById('setPlanBtn').style.display = 'inline-flex';
     }
@@ -2543,7 +2546,7 @@ async function loadDashboard() {
   const isAdmin = ME.role === 'admin';
   const isHod = ME.role === 'hod';
   const isPC = ME.role === 'pc';
-  // ME.department blank ho sakta hai — server DB se resolve karega
+  // ME.department may be blank — server will resolve from DB
   const hodParam = isHod ? '&hodDept='+encodeURIComponent(ME.department||'') : '';
 
   // PC date range params
@@ -2559,7 +2562,7 @@ async function loadDashboard() {
     api(baseUrl + 'checklist')
   ]);
 
-  // Error check: agar DB ya API fail ho toh user ko dikhao
+  // Error check: show error to user if DB or API fails
   if (dDel.error || dChl.error) {
     const errMsg = dDel.error || dChl.error;
     console.error('Dashboard API error:', errMsg);
@@ -2581,7 +2584,7 @@ async function loadDashboard() {
       // Show date range filter for PC
       const drFilter = document.getElementById('pcDateRangeFilter');
       if (drFilter) drFilter.style.display = 'flex';
-      // Smart dropdown: sirf pending wale users
+      // Smart dropdown: show only users with pending tasks
       await refreshPCEmployeeDropdown();
     } else if (empFilter.options.length <= 1) {
       const users = await api('/api/users');
@@ -2651,7 +2654,7 @@ function clearPCDateFilter() {
   onPCFilterChange();
 }
 
-// Refresh PC employee dropdown — sirf pending tasks wale users
+// Refresh PC employee dropdown — show only users with pending tasks
 async function refreshPCEmployeeDropdown() {
   const empFilter = document.getElementById('dashEmployeeFilter');
   if (!empFilter) return;
@@ -2659,7 +2662,7 @@ async function refreshPCEmployeeDropdown() {
   const dateTo   = document.getElementById('pcDateTo')?.value   || '';
   const dateQ    = (dateFrom && dateTo) ? `?dateFrom=${dateFrom}&dateTo=${dateTo}` : '';
   const pendingUsers = await api(`/api/users/with-pending-tasks${dateQ}`);
-  // Current value save karo
+  // Save current dropdown value
   const currentVal = empFilter.value;
   empFilter.innerHTML = '<option value="all">All Employees</option>';
   (pendingUsers || []).forEach(u => {
@@ -2667,7 +2670,7 @@ async function refreshPCEmployeeDropdown() {
     opt.value = u.id; opt.textContent = u.name;
     empFilter.appendChild(opt);
   });
-  // Restore selection agar still valid hai
+  // Restore previous selection if still valid
   if (currentVal && [...empFilter.options].some(o => o.value === currentVal)) {
     empFilter.value = currentVal;
   } else {
@@ -2825,7 +2828,7 @@ async function loadAllTasks() {
   const assignBtn = document.getElementById('tasksAssignBtn');
   if (assignBtn) assignBtn.style.display = (isAdmin || isHod || isUser) ? '' : 'none';
 
-  // Delegate by Me tab — sirf un users ko dikhao jo task assign kar sakte hain
+  // Delegate by Me tab — show only for users who can assign tasks
   const dbmTab = document.getElementById('tasksTabDelByMe');
   if (dbmTab) dbmTab.style.display = (isAdmin || isHod || isUser) ? '' : 'none';
 
@@ -2974,8 +2977,8 @@ function renderTasksTable() {
       <td>${t.assignedToName||''}</td>
       <td>${t.assignedByName||''}</td>
       <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}</td>
-      <td style="color:#64748b">${t.remarks||'—'}</td>
       ${clientCell}
+      <td style="color:#64748b">${t.remarks||'—'}</td>
       <td><span class="status-badge ${t.status}">${t.status==='revised'?'Revision Requested':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
     </tr>`;
   }).join('');
@@ -2996,16 +2999,16 @@ function renderTasksTable() {
   const showClientCol = tasksType === 'delegation' || tasksType === 'delegatebyme';
   container.innerHTML = `
     <div class="flat-tasks-table">
-      <div style="overflow-x:auto">
-        <table style="min-width:${showClientCol ? '820px' : '700px'}">
+      <div class="flat-tasks-scroll">
+        <table style="min-width:${showClientCol ? '820px' : '700px'};width:100%">
           <thead><tr>
             <th>Action</th>
             <th>Desc</th>
             <th>Doer</th>
             <th>Assignee</th>
             <th>Date</th>
-            <th>Remarks</th>
             ${showClientCol ? '<th>Client</th>' : ''}
+            <th>Remarks</th>
             <th>Status</th>
           </tr></thead>
           <tbody>${pageRows}</tbody>
@@ -3998,7 +4001,7 @@ async function api(url,method='GET',body=null) {
 
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
-// Modals sirf Cancel/Close button se band honge — bahar click se nahi
+// Modals close only via Cancel/Close button — not by clicking outside
 // document.querySelectorAll('.modal-overlay').forEach(m=>{
 //   m.addEventListener('click',e=>{ if(e.target===m) m.classList.remove('open'); });
 // });
@@ -4418,7 +4421,7 @@ function renderAllMIS(data, fmsData) {
       * Score combines Delegation + Checklist + FMS. Click employee name to see full breakdown.
     </div>`;
 
-  // FMS section append karo agar data hai
+  // Append FMS section if data exists
   if (fmsData && fmsData.length) {
     const fmsRows = fmsData.map(f => {
       const pct = f.total > 0 ? Math.round((f.done/f.total)*100) : 0;
@@ -5083,7 +5086,7 @@ function buildStepBoxHTML(idx) {
     </div>
 
     <div class="form-group" style="margin:10px 0 0">
-      <label>Doer Name Column <span style="color:#94a3b8;font-weight:400;font-size:11px">(jahan done karne wale ka naam auto-save ho)</span></label>
+      <label>Doer Name Column <span style="color:#94a3b8;font-weight:400;font-size:11px">(column where the doer's name is auto-saved on completion)</span></label>
       <div style="display:flex;gap:8px;align-items:stretch">
         ${headers.length ? `
         <select class="header-select" id="fmsDoerNameCol_${idx}" onchange="fmsSteps[${idx}].doerNameCol=this.value" style="flex:1">
@@ -5307,7 +5310,7 @@ async function loadDoersFromColumn(idx) {
   resultBox.innerHTML = '<i style="color:#64748b">Loading...</i>';
 
   if (!col) {
-    resultBox.innerHTML = '<span style="color:#dc2626">⚠️ Pehle "Doer Name Column" select karo, fir ye button daabo.</span>';
+    resultBox.innerHTML = '<span style="color:#dc2626">⚠️ Please select the "Doer Name Column" first, then click this button.</span>';
     return;
   }
 
@@ -5324,7 +5327,7 @@ async function loadDoersFromColumn(idx) {
     : (parseInt(document.getElementById('fmsHeaderRow').value)||1);
 
   if (!sheetId) {
-    resultBox.innerHTML = '<span style="color:#dc2626">⚠️ Pehle Sheet ID daalo upar.</span>';
+    resultBox.innerHTML = '<span style="color:#dc2626">⚠️ Please enter the Sheet ID above first.</span>';
     return;
   }
 
@@ -5357,7 +5360,7 @@ async function loadDoersFromColumn(idx) {
     }
     if (r.unmatched_count) {
       html += `<br><span style="color:#b45309">⚠️ Not in users DB (${r.unmatched_count}): ${r.unmatched.map(n => dtEscape(n)).join(', ')}</span>`;
-      html += `<br><span style="color:#64748b;font-size:11px">→ Inn names ko Users tab me add karo, fir wapas Load Doers daabo.</span>`;
+      html += `<br><span style="color:#64748b;font-size:11px">→ Add these names in the Users tab, then click Load Doers again.</span>`;
     }
     html += `</div>`;
     resultBox.innerHTML = html;
@@ -5391,7 +5394,7 @@ function toggleFMSDeleteMode() {
 
 function confirmFMSDelete() {
   const checked = [...document.querySelectorAll('.fms-del-check:checked')].map(c=>parseInt(c.dataset.idx));
-  if (!checked.length) { showToast('Koi step select nahi ki','error'); return; }
+  if (!checked.length) { showToast('No steps selected','error'); return; }
   checked.sort((a,b)=>b-a).forEach(idx=>fmsSteps.splice(idx,1));
   fmsDeleteMode=false;
   const btn = document.getElementById('editFmsDeleteModeBtn');
@@ -5414,7 +5417,7 @@ function toggleFMSDupMode() {
 
 function confirmFMSDup() {
   const checked = [...document.querySelectorAll('.fms-dup-check:checked')].map(c=>parseInt(c.dataset.idx));
-  if (!checked.length) { showToast('Koi step select nahi ki','error'); return; }
+  if (!checked.length) { showToast('No steps selected','error'); return; }
   // Deep copy selected steps and add at end
   checked.forEach(idx => {
     const orig = fmsSteps[idx];
@@ -5443,7 +5446,7 @@ function toggleFMSDeleteModeAdd() {
 
 function confirmFMSDeleteAdd() {
   const checked = [...document.querySelectorAll('.fms-del-check:checked')].map(c=>parseInt(c.dataset.idx));
-  if (!checked.length) { showToast('Koi step select nahi ki','error'); return; }
+  if (!checked.length) { showToast('No steps selected','error'); return; }
   checked.sort((a,b)=>b-a).forEach(idx=>fmsSteps.splice(idx,1));
   fmsDeleteMode=false;
   const btn = document.getElementById('fmsAddDeleteModeBtn');
@@ -5511,7 +5514,7 @@ async function saveFMS() {
     });
   });
 
-  if (fmsSteps.some(s=>!s.stepName)) { showToast('Saari steps ka naam dalo','error'); return; }
+  if (fmsSteps.some(s=>!s.stepName)) { showToast('Please enter a name for all steps','error'); return; }
 
   const body = {
     fmsName: fmsData.fmsName || fmsData.sheetName,
@@ -5999,11 +6002,11 @@ async function onBdDateChange() {
 
 async function _doBulkDelete(tasks) {
   if (!tasks.length) {
-    document.getElementById('bulkDeleteErr').textContent = 'Koi task select nahi hui';
+    document.getElementById('bulkDeleteErr').textContent = 'No tasks selected';
     document.getElementById('bulkDeleteErr').style.display = 'block';
     return;
   }
-  if (!confirm(`${tasks.length} task(s) permanently delete karna chahte ho?`)) return;
+  if (!confirm(`Are you sure you want to permanently delete ${tasks.length} task(s)?`)) return;
 
   let deleted = 0;
   for (const t of tasks) {
@@ -6040,7 +6043,7 @@ function onBdYearUserChange() {
 async function openDelete12MonthsConfirm() {
   const sel = document.getElementById('bdYearUser');
   const userId = sel.value;
-  if (!userId) { alert('Pehle employee select karo!'); return; }
+  if (!userId) { alert('Please select an employee first!'); return; }
 
   const userName = sel.options[sel.selectedIndex].text;
   const userEmail = sel.options[sel.selectedIndex]?.dataset?.email || '';
@@ -6051,12 +6054,12 @@ async function openDelete12MonthsConfirm() {
 
   const count = data.count || 0;
   if (count === 0) {
-    alert(`${userName} ke liye koi bhi checklist task nahi mili.`);
+    alert(`No checklist tasks found for ${userName}.`);
     return;
   }
 
   const confirmed = confirm(
-    `⚠️ CONFIRM DELETE\n\nEmployee: ${userName}\nEmail: ${userEmail}\n\nTotal Checklist Tasks: ${count}\n\nYe ${count} tasks permanently delete ho jaayengi — wapas nahi aayengi!\n\nProceed karna hai?`
+    `⚠️ CONFIRM DELETE\n\nEmployee: ${userName}\nEmail: ${userEmail}\n\nTotal Checklist Tasks: ${count}\n\nThese ${count} tasks will be permanently deleted and cannot be recovered!\n\nDo you want to proceed?`
   );
   if (!confirmed) return;
 
@@ -6171,8 +6174,8 @@ async function _doTransfer(tasks) {
   const err = document.getElementById('transferErr');
   err.style.display = 'none';
   const toUserId = document.getElementById('transferToUser').value;
-  if (!toUserId) { err.textContent='Pehle "Transfer To" user select karo'; err.style.display='block'; return; }
-  if (!tasks.length) { err.textContent='Koi task select nahi hui'; err.style.display='block'; return; }
+  if (!toUserId) { err.textContent='Please select a "Transfer To" user'; err.style.display='block'; return; }
+  if (!tasks.length) { err.textContent='No tasks selected'; err.style.display='block'; return; }
   const r = await api('/api/transfers','POST',{
     tasks: tasks.map(t => ({ taskId: t.id, taskType: t.taskType })),
     toUserId: parseInt(toUserId)
@@ -6180,7 +6183,7 @@ async function _doTransfer(tasks) {
   if (r.error) { err.textContent = r.error; err.style.display='block'; return; }
   closeModal('transferModal');
   if (r.count > 0) showToast(`✅ ${r.count} transfer request(s) sent for approval!`);
-  else showToast('⚠️ Sab tasks ki request pehle se pending hai!', 'error');
+  else showToast('⚠️ All tasks already have a pending transfer request!', 'error');
   loadTransferBadge();
 }
 

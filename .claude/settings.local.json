@@ -10,7 +10,8 @@
       "PowerShell(ls -Path \"c:\\\\Users\\\\USER\\\\Downloads\\\\emarketing-task-manager\\\\emarketing\" -Recurse -Directory | Select-Object -First 30 | ForEach-Object { $_.FullName })",
       "Bash(gh auth *)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\USER\\\\Downloads\\\\emarketing-task-manager\\\\emarketing\" -Recurse -File)",
-      "Bash(Select-Object -ExpandProperty Name -First 50)"
+      "Bash(Select-Object -ExpandProperty Name -First 50)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

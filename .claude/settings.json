@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \"Select-String -Path 'c:\\\\Users\\\\USER\\\\Downloads\\\\emarketing-task-manager\\\\emarketing\\\\public\\\\app.html' -Pattern '[ऀ-ॿ]' | Select-Object LineNumber, Line | Format-Table -AutoSize\")",
+      "Bash(grep -v \"^[0-9]*:.*<\\\\|^[0-9]*:.*css\\\\|^[0-9]*:.*style\\\\|^[0-9]*:.*\\\\\\\\.btn\\\\|^[0-9]*:.*\\\\\\\\.tab\\\\|selector\\\\|calendar\\\\|make\\\\|take\\\\|shake\\\\|brake\\\\|lake\\\\|fake\\\\|cake\\\\|bake\\\\|snake\\\\|stoke\\\\|broke\\\\|woke\\\\|spoke\\\\|stroke\\\\|invoke\\\\|revoke\\\\|smoke\\\\|choke\\\\|yoke\\\\|evoke\\\\|joke\")",
+      "Bash(grep -n \"//.*[a-z].*\\\\\\(karo\\\\|karte\\\\|kiya\\\\|sirf\\\\|woh\\\\|dikhao\\\\|hota\\\\|hain\\\\| hai\\\\b\\\\|bhi\\\\|mtlb\\\\|agar\\\\|toh\\\\|pehle\\\\|baad\\\\|doosron\\\\|jinhe\\\\|jisme\\\\|sath\\\\|login\\\\|apne\\\\|koi\\\\|kuch\\\\|lekin\\\\|aur\\\\b\\\\\\)\" \"c:\\\\Users\\\\USER\\\\Downloads\\\\emarketing-task-manager\\\\emarketing\\\\public\\\\app.html\")",
+      "Bash(grep -v \"^\\\\s*//\")",
+      "Bash(grep -v \"^[0-9]*:[ ]*//\")"
+    ]
+  }
+}
