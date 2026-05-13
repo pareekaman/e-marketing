@@ -912,7 +912,7 @@ tbody tr:last-child td{border-bottom:none;}
         <div class="tab-group" id="tasksTypeTabGroup">
           <div class="tab active" id="tasksTabDel" onclick="tasksTab('delegation',this)">Delegation</div>
           <div class="tab" id="tasksTabChl" onclick="tasksTab('checklist',this)">Checklist</div>
-          <div class="tab tab-action" id="tasksTabDelByMe" onclick="openDelegateByMeModal()" title="See tasks you have delegated to others">📤 Delegate by Me</div>
+          <div class="tab tab-action" id="tasksTabDelByMe" onclick="tasksTab('delegatebyme',this)" title="See tasks you have delegated to others">📤 Delegate by Me</div>
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -1452,8 +1452,8 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
     </div>
     <div class="form-group">
-      <label>Client <span style="color:#94a3b8;font-weight:400;font-size:11px">(optional)</span></label>
-      <select id="dClient"><option value="">— No Client —</option></select>
+      <label>Client <span style="color:#dc2626">*</span></label>
+      <select id="dClient"><option value="">— Select Client —</option></select>
     </div>
     <div class="form-group">
       <label>Description</label>
@@ -2839,11 +2839,20 @@ async function loadAllTasks() {
     }
   }
 
-  const data = await api(`/api/tasks?type=${tasksType}`);
+  const fetchType = tasksType === 'delegatebyme' ? 'delegation' : tasksType;
+  const mineParam = tasksType === 'delegatebyme' ? '&mine=1' : '';
+  const data = await api(`/api/tasks?type=${fetchType}${mineParam}`);
 
   // Flatten all tasks — admin, HOD and PC get grouped response
   let allTasks = [];
-  if (isAdmin || isHod || ME.role==='pc') {
+  if (tasksType === 'delegatebyme') {
+    if (data.grouped) {
+      data.grouped.forEach(g => g.tasks.forEach(t => allTasks.push(t)));
+    } else {
+      allTasks = data.tasks || [];
+    }
+    allTasks = allTasks.filter(t => String(t.assigned_by) === String(ME.id));
+  } else if (isAdmin || isHod || ME.role==='pc') {
     (data.grouped||[]).forEach(g => {
       g.tasks.forEach(t => allTasks.push(t));
     });
@@ -2928,17 +2937,19 @@ function renderTasksTable() {
   const pageTasks = tasks.slice((allTasksPage-1)*ALL_TASKS_PAGE_SIZE, allTasksPage*ALL_TASKS_PAGE_SIZE);
 
   // Re-build rows only for this page
+  const isDelegateByMe = tasksType === 'delegatebyme';
   const pageRows = pageTasks.map(t => {
     const isCompleted = t.status === 'completed';
     const isWaiting = t.waiting_approval == 1;
     const isChecklist = tasksType === 'checklist';
+    const editType = isDelegateByMe ? 'delegation' : tasksType;
 
-    const actionBtns = isAdmin ? `
-      <button class="action-btn edit" style="padding:4px 7px" onclick="openEditTask(${t.id},'${tasksType}')" title="Edit">✏️</button>
-      <button class="action-btn delete" style="padding:4px 7px;margin-left:3px" onclick="deleteTask(${t.id},'${tasksType}')" title="Delete">🗑</button>
-      <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px;margin-left:3px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
-      ${!isCompleted && !isWaiting ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>` : ''}
-      ${!isChecklist && !isCompleted && !isWaiting ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${tasksType}')">Revise</button>` : ''}
+    const actionBtns = (isAdmin || isDelegateByMe) ? `
+      <button class="action-btn edit" style="padding:4px 7px" onclick="openEditTask(${t.id},'${editType}')" title="Edit">✏️</button>
+      <button class="action-btn delete" style="padding:4px 7px;margin-left:3px" onclick="deleteTask(${t.id},'${editType}')" title="Delete">🗑</button>
+      <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px;margin-left:3px" onclick="openComments(${t.id},'${editType}')" title="Comments">💬</button>
+      ${!isCompleted && !isWaiting ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${editType}')">Done</button>` : ''}
+      ${!isChecklist && !isCompleted && !isWaiting ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${editType}')">Revise</button>` : ''}
       ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
     ` : (ME.role==='pc') ? `
       <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
@@ -2954,16 +2965,17 @@ function renderTasksTable() {
         <button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>
         <span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
     `;
-    const clientPill = t.client_name
-      ? `<div style="margin-top:3px"><span style="font-size:10px;background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span></div>`
+    const clientCell = (tasksType === 'delegation' || isDelegateByMe)
+      ? `<td style="white-space:nowrap;font-size:12px">${t.client_name ? `<span style="background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span>` : '<span style="color:#94a3b8">—</span>'}</td>`
       : '';
     return `<tr>
       <td style="white-space:nowrap">${actionBtns}</td>
-      <td>${t.description||''}${clientPill}</td>
+      <td>${t.description||''}</td>
       <td>${t.assignedToName||''}</td>
-      <td>${isAdmin ? (t.assignedByName||'') : (t.assignedByName||'')}</td>
+      <td>${t.assignedByName||''}</td>
       <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}</td>
       <td style="color:#64748b">${t.remarks||'—'}</td>
+      ${clientCell}
       <td><span class="status-badge ${t.status}">${t.status==='revised'?'Revision Requested':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
     </tr>`;
   }).join('');
@@ -2981,10 +2993,11 @@ function renderTasksTable() {
       </button>
     </div>` : '';
 
+  const showClientCol = tasksType === 'delegation' || tasksType === 'delegatebyme';
   container.innerHTML = `
     <div class="flat-tasks-table">
       <div style="overflow-x:auto">
-        <table style="min-width:700px">
+        <table style="min-width:${showClientCol ? '820px' : '700px'}">
           <thead><tr>
             <th>Action</th>
             <th>Desc</th>
@@ -2992,6 +3005,7 @@ function renderTasksTable() {
             <th>Assignee</th>
             <th>Date</th>
             <th>Remarks</th>
+            ${showClientCol ? '<th>Client</th>' : ''}
             <th>Status</th>
           </tr></thead>
           <tbody>${pageRows}</tbody>
@@ -3214,7 +3228,7 @@ async function openDelegate() {
   document.getElementById('dApprover').innerHTML='<option value="">Select Approver</option>'+opts;
   // Client dropdown — pulls from Client Master
   const clientOpts = (clients || []).map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
-  document.getElementById('dClient').innerHTML = '<option value="">— No Client —</option>' + clientOpts;
+  document.getElementById('dClient').innerHTML = '<option value="">— Select Client —</option>' + clientOpts;
   // Hidden by default — only shown when Approval Required = Yes
   document.getElementById('dApproverGroup').style.display = 'none';
   document.getElementById('dApproverEmail').style.display = 'none';
@@ -3261,6 +3275,7 @@ async function saveDelegate() {
   if (!doer) { err.textContent='Please select a doer'; err.style.display='block'; return; }
   if (!date) { err.textContent='Please select a date'; err.style.display='block'; return; }
   if (!desc) { err.textContent='Description is required'; err.style.display='block'; return; }
+  if (!client_id) { err.textContent='Please select a client'; err.style.display='block'; return; }
   if (approval === 'yes' && !approver) { err.textContent='Please select an approver'; err.style.display='block'; return; }
   const r = await api('/api/tasks','POST',{type:'delegation',desc,assignedTo:doer,date,priority,approval,approver,remarks,client_id});
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
