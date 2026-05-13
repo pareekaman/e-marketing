@@ -312,6 +312,9 @@ tbody tr:last-child td{border-bottom:none;}
 .flat-tasks-table{background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;}
 .flat-tasks-scroll{overflow:auto;max-height:calc(100vh - 240px);}
 .flat-tasks-scroll thead th{position:sticky;top:0;z-index:2;background:#f8fafc;}
+.flat-tasks-scroll thead th:first-child{position:sticky;top:0;left:0;z-index:3;background:#f8fafc;}
+.flat-tasks-scroll tbody td:first-child{position:sticky;left:0;background:#fff;z-index:1;box-shadow:2px 0 4px rgba(0,0,0,.04);}
+.flat-tasks-scroll tbody tr:hover td:first-child{background:#f8fafc;}
 @keyframes tasksSlideDown{from{opacity:0;transform:translateY(-14px);}to{opacity:1;transform:translateY(0);}}
 .tasks-slide-in{animation:tasksSlideDown .22s ease both;}
 .bulk-section{margin-top:20px;padding-top:16px;border-top:1px solid #f1f5f9;}
@@ -2978,14 +2981,14 @@ function renderTasksTable() {
       ? `<td style="white-space:nowrap;font-size:12px">${t.client_name ? `<span style="background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span>` : '<span style="color:#94a3b8">—</span>'}</td>`
       : '';
     return `<tr>
-      <td style="white-space:nowrap">${actionBtns}</td>
+      <td style="white-space:nowrap;padding-right:12px">${actionBtns}</td>
       <td>${t.description||''}</td>
-      <td>${t.assignedToName||''}</td>
-      <td>${t.assignedByName||''}</td>
+      <td style="white-space:nowrap">${t.assignedToName||''}</td>
+      <td style="white-space:nowrap">${t.assignedByName||''}</td>
       <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}</td>
       ${clientCell}
-      <td style="color:#64748b">${t.remarks||'—'}</td>
-      <td><span class="status-badge ${t.status}">${t.status==='revised'?'Revision Requested':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
+      <td style="color:#64748b;max-width:220px;word-break:break-word;overflow-wrap:anywhere;font-size:12px">${t.remarks||'—'}</td>
+      <td style="white-space:nowrap"><span class="status-badge ${t.status}">${t.status==='revised'?'Revision Requested':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
     </tr>`;
   }).join('');
 
@@ -3008,7 +3011,7 @@ function renderTasksTable() {
       <div class="flat-tasks-scroll">
         <table style="min-width:${showClientCol ? '820px' : '700px'};width:100%">
           <thead><tr>
-            <th>Action</th>
+            <th style="white-space:nowrap">Action</th>
             <th>Desc</th>
             <th>Doer</th>
             <th>Assignee</th>
