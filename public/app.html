@@ -44,7 +44,11 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 .logo-text{font-size:15px;font-weight:700;color:#fff;opacity:0;transition:opacity .2s .1s;white-space:nowrap;}
 .sidebar:hover .logo-text{opacity:1;}
 
-.nav{padding:10px 8px;flex:1;overflow:hidden;}
+.nav{padding:10px 8px;flex:1;overflow-y:auto;overflow-x:hidden;}
+.nav::-webkit-scrollbar{width:3px;}
+.nav::-webkit-scrollbar-track{background:transparent;}
+.nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px;}
+.nav::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3);}
 .nav-item{
   display:flex;align-items:center;gap:10px;
   padding:10px 11px;border-radius:8px;cursor:pointer;
@@ -308,6 +312,8 @@ tbody tr:last-child td{border-bottom:none;}
 .flat-tasks-table{background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;}
 .flat-tasks-scroll{overflow:auto;max-height:calc(100vh - 240px);}
 .flat-tasks-scroll thead th{position:sticky;top:0;z-index:2;background:#f8fafc;}
+@keyframes tasksSlideDown{from{opacity:0;transform:translateY(-14px);}to{opacity:1;transform:translateY(0);}}
+.tasks-slide-in{animation:tasksSlideDown .22s ease both;}
 .bulk-section{margin-top:20px;padding-top:16px;border-top:1px solid #f1f5f9;}
 .file-row{display:flex;align-items:center;gap:8px;margin-top:6px;}
 
@@ -2932,7 +2938,7 @@ function renderTasksTable() {
   });
 
   if (!tasks.length) {
-    container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">No tasks found</div>`;
+    container.innerHTML = `<div class="empty tasks-slide-in" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">No tasks found</div>`;
     return;
   }
 
@@ -2998,7 +3004,7 @@ function renderTasksTable() {
 
   const showClientCol = tasksType === 'delegation' || tasksType === 'delegatebyme';
   container.innerHTML = `
-    <div class="flat-tasks-table">
+    <div class="flat-tasks-table tasks-slide-in">
       <div class="flat-tasks-scroll">
         <table style="min-width:${showClientCol ? '820px' : '700px'};width:100%">
           <thead><tr>
