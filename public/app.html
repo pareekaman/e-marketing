@@ -1472,6 +1472,10 @@ tbody tr:last-child td{border-bottom:none;}
       <textarea id="dDesc" placeholder="Enter task description…"></textarea>
     </div>
     <div class="form-group">
+      <label>URL <span style="color:#94a3b8;font-weight:400;font-size:11px">(optional)</span></label>
+      <input type="url" id="dUrl" placeholder="https://docs.google.com/…" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;transition:border .2s;color:#1e293b;background:#fff"/>
+    </div>
+    <div class="form-group">
       <label>Remarks</label>
       <textarea id="dRemarks" placeholder="Any remarks…" style="min-height:50px"></textarea>
     </div>
@@ -1814,9 +1818,26 @@ tbody tr:last-child td{border-bottom:none;}
       <label>Remarks</label>
       <input type="text" id="editTRemarks" placeholder="Remarks..."/>
     </div>
+    <div class="form-group" id="editTUrlWrap">
+      <label>URL <span style="color:#94a3b8;font-weight:400;font-size:11px">(optional)</span></label>
+      <input type="url" id="editTUrl" placeholder="https://docs.google.com/…" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff"/>
+    </div>
     <div class="modal-footer" style="justify-content:space-between">
       <button class="btn btn-outline" onclick="closeModal('editTaskModal')">Cancel</button>
       <button class="btn btn-primary" onclick="saveEditTask()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     TASK DETAIL MODAL
+══════════════════════════════════════ -->
+<div class="modal-overlay" id="taskDetailModal">
+  <div class="modal" style="width:560px;max-width:96vw">
+    <h3 id="tdTitle" style="margin-bottom:18px">📋 Task Detail</h3>
+    <div id="tdBody" style="display:flex;flex-direction:column;gap:12px;font-size:13.5px;color:#1e293b"></div>
+    <div class="modal-footer" style="margin-top:18px">
+      <button class="btn btn-outline" onclick="closeModal('taskDetailModal')">Close</button>
     </div>
   </div>
 </div>
@@ -2952,11 +2973,14 @@ function renderTasksTable() {
 
   // Re-build rows only for this page
   const isDelegateByMe = tasksType === 'delegatebyme';
+  const isClickable = tasksType === 'delegation' || isDelegateByMe;
+  if (isClickable) window._taskDetailMap = {};
   const pageRows = pageTasks.map(t => {
     const isCompleted = t.status === 'completed';
     const isWaiting = t.waiting_approval == 1;
     const isChecklist = tasksType === 'checklist';
     const editType = isDelegateByMe ? 'delegation' : tasksType;
+    if (isClickable) window._taskDetailMap[t.id] = t;
 
     const actionBtns = (isAdmin || isDelegateByMe) ? `
       <button class="action-btn edit" style="padding:4px 7px" onclick="openEditTask(${t.id},'${editType}')" title="Edit">✏️</button>
@@ -2982,8 +3006,11 @@ function renderTasksTable() {
     const clientCell = (tasksType === 'delegation' || isDelegateByMe)
       ? `<td style="white-space:nowrap;font-size:12px">${t.client_name ? `<span style="background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span>` : '<span style="color:#94a3b8">—</span>'}</td>`
       : '';
-    return `<tr>
-      <td style="white-space:nowrap;padding-right:12px">${actionBtns}</td>
+    const trClick = isClickable
+      ? `onclick="openTaskDetail(window._taskDetailMap[${t.id}])" style="cursor:pointer" title="Click to view details"`
+      : '';
+    return `<tr ${trClick}>
+      <td style="white-space:nowrap;padding-right:12px" onclick="event.stopPropagation()">${actionBtns}</td>
       <td>${t.description||''}</td>
       <td style="white-space:nowrap">${t.assignedToName||''}</td>
       <td style="white-space:nowrap">${t.assignedByName||''}</td>
@@ -3034,6 +3061,41 @@ function tasksTab(type, el) {
   document.querySelectorAll('#tasksTypeTabGroup .tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
   loadAllTasks();
+}
+
+function openTaskDetail(t) {
+  const priorityColors = { urgent:'#dc2626', high:'#ea580c', medium:'#d97706', low:'#16a34a' };
+  const statusLabels = { pending:'Pending', completed:'Completed', revised:'Revision Requested', transferred:'Transferred' };
+  const row = (label, value) => value
+    ? `<div style="display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid #f1f5f9;padding-bottom:10px">
+        <span style="min-width:110px;color:#64748b;font-size:12px;font-weight:600;padding-top:1px">${label}</span>
+        <span style="flex:1;word-break:break-word;overflow-wrap:anywhere">${value}</span>
+      </div>`
+    : '';
+  const urlVal = t.url
+    ? `<a href="${dtEscape(t.url)}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline;word-break:break-all">${dtEscape(t.url)}</a>`
+    : null;
+  const priorityBadge = t.priority
+    ? `<span style="background:${priorityColors[t.priority]||'#64748b'}22;color:${priorityColors[t.priority]||'#64748b'};padding:2px 9px;border-radius:5px;font-weight:600;font-size:12px">${t.priority.charAt(0).toUpperCase()+t.priority.slice(1)}</span>`
+    : null;
+  const statusBadge = t.status
+    ? `<span class="status-badge ${t.status}" style="font-size:12px">${statusLabels[t.status]||t.status}</span>`
+    : null;
+
+  document.getElementById('tdTitle').textContent = '📋 ' + (t.description || 'Task Detail');
+  document.getElementById('tdBody').innerHTML = [
+    row('Description', dtEscape(t.description||'')),
+    row('Doer', dtEscape(t.assignedToName||'')),
+    row('Assigned By', dtEscape(t.assignedByName||'')),
+    row('Due Date', fmtDate(t.due_date||'')),
+    row('Client', t.client_name ? `<span style="background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span>` : null),
+    row('Priority', priorityBadge),
+    row('Status', statusBadge),
+    row('Approval', t.approval === 'yes' ? '<span style="color:#16a34a;font-weight:600">Required</span>' : '<span style="color:#64748b">Not required</span>'),
+    row('Remarks', t.remarks ? dtEscape(t.remarks) : null),
+    row('URL', urlVal),
+  ].filter(Boolean).join('');
+  document.getElementById('taskDetailModal').classList.add('open');
 }
 
 function toggleBlock(header) { header.nextElementSibling.classList.toggle('open'); }
@@ -3122,13 +3184,17 @@ async function openEditTask(id, type) {
   document.getElementById('editTRemarks').value = t.remarks || '';
   document.getElementById('editTaskErr').style.display = 'none';
 
-  // Show/hide priority and approval for delegation only
+  // Show/hide priority, approval, and URL for delegation only
   const isDeleg = type === 'delegation';
   document.getElementById('editTPriorityWrap').style.display = isDeleg ? 'block' : 'none';
   document.getElementById('editTApprovalWrap').style.display = isDeleg ? 'block' : 'none';
+  const urlWrap = document.getElementById('editTUrlWrap');
+  if (urlWrap) urlWrap.style.display = isDeleg ? 'block' : 'none';
   if (isDeleg) {
     document.getElementById('editTPriority').value = t.priority || 'low';
     document.getElementById('editTApproval').value = t.approval || 'no';
+    const urlEl = document.getElementById('editTUrl');
+    if (urlEl) urlEl.value = t.url || '';
   }
 
   document.getElementById('editTaskModal').classList.add('open');
@@ -3150,6 +3216,8 @@ async function saveEditTask() {
   if (type === 'delegation') {
     body.priority = document.getElementById('editTPriority').value;
     body.approval = document.getElementById('editTApproval').value;
+    const urlEl = document.getElementById('editTUrl');
+    body.url = urlEl ? (urlEl.value.trim() || null) : null;
   }
 
   const r = await api(`/api/tasks/${id}/edit`,'PUT', body);
@@ -3228,6 +3296,7 @@ async function transferToday(userId) {
 async function openDelegate() {
   document.getElementById('delegateErr').style.display='none';
   document.getElementById('dDesc').value='';
+  document.getElementById('dUrl').value='';
   document.getElementById('dRemarks').value='';
   document.getElementById('dPriority').value='low';
   document.getElementById('dApproval').value='no';
@@ -3284,6 +3353,7 @@ async function saveDelegate() {
   const priority = document.getElementById('dPriority').value;
   const approval = document.getElementById('dApproval').value;
   const remarks = document.getElementById('dRemarks').value.trim();
+  const url = document.getElementById('dUrl').value.trim() || null;
   const approver = approval === 'yes' ? document.getElementById('dApprover').value : '';
   const client_id = document.getElementById('dClient').value || null;
   if (!doer) { err.textContent='Please select a doer'; err.style.display='block'; return; }
@@ -3291,7 +3361,7 @@ async function saveDelegate() {
   if (!desc) { err.textContent='Description is required'; err.style.display='block'; return; }
   if (!client_id) { err.textContent='Please select a client'; err.style.display='block'; return; }
   if (approval === 'yes' && !approver) { err.textContent='Please select an approver'; err.style.display='block'; return; }
-  const r = await api('/api/tasks','POST',{type:'delegation',desc,assignedTo:doer,date,priority,approval,approver,remarks,client_id});
+  const r = await api('/api/tasks','POST',{type:'delegation',desc,assignedTo:doer,date,priority,approval,approver,remarks,client_id,url});
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
   closeModal('delegateModal');
   if (r.adjusted) {
