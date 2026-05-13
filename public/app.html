@@ -895,7 +895,7 @@ tbody tr:last-child td{border-bottom:none;}
                 <th>Description</th>
                 <th id="dashDoerHead">Doer</th>
                 <th style="white-space:nowrap;cursor:pointer;user-select:none" onclick="toggleDashDateSort()" title="Click to sort by date">Date <span id="dashDateSortIcon" style="font-size:10px;color:#94a3b8">⇅</span></th>
-                <th>Priority</th>
+                <th id="dashPriorityHead">Priority</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -2775,7 +2775,11 @@ function renderDashTable(tasks, type) {
   const isAdmin = ME.role==='admin' || ME.role==='hod';
   const isPC    = ME.role==='pc';
   document.getElementById('dashDoerHead').textContent = (isAdmin||isPC)?'Doer':'Assigned By';
+  const showPriority = (type === 'delegation');
+  const prioHead = document.getElementById('dashPriorityHead');
+  if (prioHead) prioHead.style.display = showPriority ? '' : 'none';
   const tbody = document.getElementById('dashTbody');
+  window._dashTaskMap = {};
 
   // Merge in FMS rows when the user wants 'all' or 'fms'
   let combined = (type === 'fms') ? [] : (tasks || []).slice();
@@ -2795,7 +2799,8 @@ function renderDashTable(tasks, type) {
   } else if (_dashDateSortState === 2) {
     allPending = [...allPending].sort((a,b) => (b.due_date||b.date||'').localeCompare(a.due_date||a.date||''));
   }
-  if (!allPending.length) { tbody.innerHTML=`<tr><td colspan="6" class="empty">No pending tasks 🎉</td></tr>`; return; }
+  const colCount = showPriority ? 6 : 5;
+  if (!allPending.length) { tbody.innerHTML=`<tr><td colspan="${colCount}" class="empty">No pending tasks 🎉</td></tr>`; return; }
   const typeBadge = t => {
     if (t.type === 'fms') return `<span style="font-size:10px;background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fed7aa">📊 FMS</span>`;
     if (t.type === 'checklist') return `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ Checklist</span>`;
@@ -2814,20 +2819,22 @@ function renderDashTable(tasks, type) {
         <td>${t.description}</td>
         <td>${t.assignedToName}</td>
         <td>${dateCell}</td>
-        <td>—</td>
+        ${showPriority ? `<td>—</td>` : ''}
         <td>${lateBadge}</td>
       </tr>`;
     }
+    if (t.id) window._dashTaskMap[t.id] = t;
     const clientPill = t.client_name
       ? `<div style="margin-top:3px"><span style="font-size:10px;background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span></div>`
       : '';
-    return `<tr>
+    const isDeleg = t.type === 'delegation';
+    return `<tr onclick="window._dashTaskMap[${t.id}]&&openTaskDetail(window._dashTaskMap[${t.id}])" style="cursor:pointer" title="Click to view details">
       <td style="white-space:nowrap">${typeBadge(t)}</td>
       <td>${t.description||t.desc}${clientPill}</td>
       <td>${(isAdmin||isPC)?t.assignedToName:t.assignedByName}</td>
       <td>${fmtDate(t.due_date||t.date)}</td>
-      <td>${t.type!=='checklist' ? `<span class="priority-badge ${t.priority||'low'}">${t.priority||'low'}</span>` : '—'}</td>
-      <td>
+      ${showPriority ? `<td>${isDeleg ? `<span class="priority-badge ${t.priority||'low'}">${t.priority||'low'}</span>` : '—'}</td>` : ''}
+      <td onclick="event.stopPropagation()">
         ${t.waiting_approval==1 ? `
           <span style="font-size:11px;color:#f59e0b;font-weight:600">⏳ Waiting Approval</span>
           ${(!isPC || t.type==='checklist') ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>` : ''}
@@ -3093,7 +3100,7 @@ function openTaskDetail(t) {
     row('Status', statusBadge),
     row('Approval', t.approval === 'yes' ? '<span style="color:#16a34a;font-weight:600">Required</span>' : '<span style="color:#64748b">Not required</span>'),
     row('Remarks', t.remarks ? dtEscape(t.remarks) : null),
-    row('URL', urlVal),
+    row('URL', urlVal || '<span style="color:#94a3b8">No URL</span>'),
   ].filter(Boolean).join('');
   document.getElementById('taskDetailModal').classList.add('open');
 }
