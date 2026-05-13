@@ -7211,6 +7211,7 @@ function lvRenderCalendar(){
   const startWeekday = firstDay.getDay(); // 0=Sun
   const today = new Date(); today.setHours(0,0,0,0);
   const todayKey = lvDateKey(today);
+  const minAllowed = new Date(today); minAllowed.setDate(minAllowed.getDate() - 33);
 
   let html = '';
   // Leading blanks
@@ -7218,7 +7219,7 @@ function lvRenderCalendar(){
   for (let d = 1; d <= lastDay.getDate(); d++) {
     const cur = new Date(year, month, d);
     const key = lvDateKey(cur);
-    const isPast = cur < today;
+    const isPast = cur < minAllowed;
     const isToday = key === todayKey;
     const isSelected = LEAVE_SELECTED.has(key);
     const classes = ['lv-cal-day'];
