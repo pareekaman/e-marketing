@@ -2525,6 +2525,8 @@ function closeSidebar() {
 }
 
 function navigate(page, el) {
+  // MIS page — admin and HOD (App Role) only
+  if (page === 'mis' && ME.role !== 'admin' && ME.role !== 'hod') return;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');

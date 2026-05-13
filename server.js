@@ -408,6 +408,10 @@ function requireAdminOrHod(req, res, next) {
   if (req.session.role === 'admin' || req.session.role === 'hod' || req.session.role === 'pc') return next();
   res.status(403).json({ error: 'Admin or HOD only' });
 }
+function requireAdminOrHodOnly(req, res, next) {
+  if (req.session.role === 'admin' || req.session.role === 'hod') return next();
+  res.status(403).json({ error: 'Admin or HOD (App Role) only' });
+}
 function requireAdminOrPC(req, res, next) {
   if (req.session.role === 'admin' || req.session.role === 'pc') return next();
   res.status(403).json({ error: 'Admin or PC only' });
@@ -1144,7 +1148,7 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════
 // MIS
 // ══════════════════════════════════════════════════════
-app.get('/api/mis', requireAuth, requireAdminOrHod, async (req, res) => {
+app.get('/api/mis', requireAuth, requireAdminOrHodOnly, async (req, res) => {
   try {
     const { start, end } = req.query;
     if (!start || !end) return res.status(400).json({ error: 'Dates required' });
@@ -1310,7 +1314,7 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/mis/detail', requireAuth, requireAdminOrHod, async (req, res) => {
+app.get('/api/mis/detail', requireAuth, requireAdminOrHodOnly, async (req, res) => {
   try {
     const { userId, type, start, end } = req.query;
     if (!userId || !start || !end) return res.status(400).json({ error: 'Missing params' });
@@ -1321,7 +1325,7 @@ app.get('/api/mis/detail', requireAuth, requireAdminOrHod, async (req, res) => {
 });
 
 // ── All MIS — per employee combined score ──
-app.get('/api/mis/all', requireAuth, requireAdminOrHod, async (req, res) => {
+app.get('/api/mis/all', requireAuth, requireAdminOrHodOnly, async (req, res) => {
   try {
     const { start, end } = req.query;
     if (!start || !end) return res.status(400).json({ error: 'Dates required' });
@@ -1502,7 +1506,7 @@ app.get('/api/mis/all', requireAuth, requireAdminOrHod, async (req, res) => {
 });
 
 // ── FMS MIS ──
-app.get('/api/mis/fms', requireAuth, requireAdminOrHod, async (req, res) => {
+app.get('/api/mis/fms', requireAuth, requireAdminOrHodOnly, async (req, res) => {
   try {
     const { start, end } = req.query;
     if (!start || !end) return res.status(400).json({ error: 'Dates required' });
