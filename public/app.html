@@ -4827,13 +4827,6 @@ function renderRaceTracker(data) {
   const totalCompleted = racers.reduce((s,e)=>s+(e.completedAll||0), 0);
   const totalOverdue   = racers.reduce((s,e)=>s+(e.overdueAll||0), 0);
 
-  const help = `
-    <div class="race-help">
-      <strong>How it works —</strong> Har employee ek car. Score range <strong>−100 (start)</strong> → <strong>0 (finish)</strong>.
-      Kam pending + overdue = closer to finish. Formula: <code>−(pending% + overdue%×0.5 + revised%×0.25)</code>.
-      Click any card or lane to drill in.
-    </div>`;
-
   const leaderScoreStr = `${leader.overallScore > 0 ? '+' : ''}${leader.overallScore.toFixed(1)}%`;
   const avgColor = avg < -50 ? '#dc2626' : avg < -20 ? '#d97706' : '#16a34a';
 
@@ -4914,7 +4907,6 @@ function renderRaceTracker(data) {
   }).join('');
 
   container.innerHTML = `
-    ${help}
     ${summary}
     <div class="race-wrap">
       <div class="race-legend">
