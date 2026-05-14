@@ -1001,15 +1001,13 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- ── ALL TASKS ── -->
   <div id="page-alltasks" class="page">
-    <div class="page-header">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <div class="tab-group" id="tasksTypeTabGroup">
-          <div class="tab active" id="tasksTabDel" onclick="tasksTab('delegation',this)">Delegation</div>
-          <div class="tab" id="tasksTabChl" onclick="tasksTab('checklist',this)">Checklist</div>
-          <div class="tab" id="tasksTabDelByMe" onclick="tasksTab('delegatebyme',this)">Delegate by Me</div>
-        </div>
+    <div class="page-header" style="flex-direction:column;align-items:flex-end;gap:10px">
+      <div class="tab-group" id="tasksTypeTabGroup">
+        <div class="tab active" id="tasksTabDel" onclick="tasksTab('delegation',this)">Delegation</div>
+        <div class="tab" id="tasksTabChl" onclick="tasksTab('checklist',this)">Checklist</div>
+        <div class="tab" id="tasksTabDelByMe" onclick="tasksTab('delegatebyme',this)">Delegate by Me</div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
         <!-- PC-only: user filter + date range (desktop only) -->
         <div id="tasksUserDateFilters" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;">
           <select id="tasksUserFilter" onchange="filterTasks()"
