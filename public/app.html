@@ -1004,7 +1004,6 @@ tbody tr:last-child td{border-bottom:none;}
   <div id="page-alltasks" class="page">
     <div class="page-header">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <h2>All Tasks</h2>
         <div class="tab-group" id="tasksTypeTabGroup">
           <div class="tab active" id="tasksTabDel" onclick="tasksTab('delegation',this)">Delegation</div>
           <div class="tab" id="tasksTabChl" onclick="tasksTab('checklist',this)">Checklist</div>
@@ -1050,7 +1049,6 @@ tbody tr:last-child td{border-bottom:none;}
   <!-- ── USERS ── -->
   <div id="page-users" class="page">
     <div class="page-header">
-      <h2>Users</h2>
       <div style="display:flex;align-items:center;gap:10px">
         <div style="position:relative">
           <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#94a3b8">🔍</span>
@@ -1070,7 +1068,6 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- ── PROFILE ── -->
   <div id="page-profile" class="page">
-    <div class="page-header"><h2>My Profile</h2></div>
     <div class="profile-card">
 
       <!-- Profile Image Section -->
@@ -1109,8 +1106,6 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- ── APPROVALS ── -->
   <div id="page-approvals" class="page">
-    <div class="page-header"><h2>Approvals</h2></div>
-
     <!-- Tabs -->
     <div style="display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:8px;width:fit-content;margin-bottom:18px">
       <div class="tab active" id="apprTabTask" onclick="switchApprovalTab('task',this)">📋 Task Approvals</div>
@@ -1142,8 +1137,7 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- ── FMS ADMIN ── -->
   <div id="page-fms" class="page">
-    <div class="page-header">
-      <h2>FMS Admin</h2>
+    <div class="page-header" style="justify-content:flex-end">
       <button class="btn btn-primary" onclick="openAddFMS()">+ Add New FMS</button>
     </div>
 
@@ -1179,8 +1173,7 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- ── FMS TASKS ── -->
   <div id="page-fms-tasks" class="page">
-    <div class="page-header">
-      <h2>FMS Tasks</h2>
+    <div class="page-header" style="justify-content:flex-end">
       <div id="fmsTasksRefreshBtn" style="display:none">
         <button class="btn btn-outline btn-sm" onclick="loadFMSTasks()">🔄 Refresh</button>
       </div>
@@ -1253,7 +1246,6 @@ tbody tr:last-child td{border-bottom:none;}
         <div class="dt-time" id="dtNow">—</div>
         <div class="dt-welcome">Welcome <b id="dtUserName">—</b></div>
       </div>
-      <h1 class="dt-title">Daily Task Form</h1>
 
       <div class="dt-meta-row">
         <div class="dt-meta-field">
@@ -1311,7 +1303,6 @@ tbody tr:last-child td{border-bottom:none;}
        ══════════════════════════════════════════════════════ -->
   <div id="page-clients" class="page">
     <div class="cm-card">
-      <h1 class="cm-title">🏢 Client Master</h1>
       <p class="cm-sub">Add or remove clients here. This list will appear in the dropdown of the Daily Task form.</p>
 
       <div class="cm-add-row">
@@ -1343,8 +1334,7 @@ tbody tr:last-child td{border-bottom:none;}
        ══════════════════════════════════════════════════════ -->
   <div id="page-compliance" class="page">
     <div class="cp-card">
-      <div class="cp-header">
-        <h1 class="cp-title">📊 Compliance Tracker</h1>
+      <div class="cp-header" style="justify-content:flex-end">
         <button class="dt-btn dt-btn-add" onclick="loadCompliance()">🔄 Refresh</button>
       </div>
       <p class="cp-sub">Last 7 days — who filled the Daily Task and when. <span class="cp-dot cp-dot-yes"></span> = filled · <span class="cp-dot cp-dot-no"></span> = missed</p>
@@ -1369,8 +1359,7 @@ tbody tr:last-child td{border-bottom:none;}
        ══════════════════════════════════════════════════════ -->
   <div id="page-dailyreports" class="page">
     <div class="dr-card">
-      <div class="dr-header">
-        <h1 class="dr-title">📈 Daily Task Reports</h1>
+      <div class="dr-header" style="justify-content:flex-end">
         <div class="dr-month-picker">
           <label>Month:</label>
           <input type="month" id="drMonth" onchange="loadDailyReports()"/>
@@ -1423,7 +1412,6 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="lv-card">
       <div class="lv-header">
         <div>
-          <h1 class="lv-title">🗓 Leave Tracker</h1>
           <p class="lv-sub">Apply for leave, work-from-home, or extra working. <span id="lvApproverLine" style="color:#92400e;font-weight:600"></span></p>
         </div>
         <button class="lv-add-btn" onclick="openLeaveForm()">
@@ -1462,8 +1450,7 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- ── MIS REPORT ── -->
   <div id="page-mis" class="page">
-    <div class="page-header">
-      <h2>MIS Report</h2>
+    <div class="page-header" style="justify-content:flex-end">
       <button id="setPlanBtn" class="btn btn-primary" onclick="openSetPlanModal()" style="display:none">📅 Set Plan</button>
     </div>
 
@@ -1505,10 +1492,6 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- ── RACE TRACKER (Admin only) ── -->
   <div id="page-race" class="page">
-    <div class="page-header">
-      <h2>🏁 Race Tracker</h2>
-    </div>
-
     <!-- Filters -->
     <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:18px;margin-bottom:18px;">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
