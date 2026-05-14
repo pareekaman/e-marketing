@@ -308,7 +308,7 @@ const _startupMigrationsPromise = (async () => {
       const hash = bcrypt.hashSync('password', 10);
       await db.query(
         'INSERT INTO users (name, email, password, role, department) VALUES (?,?,?,?,?)',
-        ['Aman Admin', 'aman@test.com', hash, 'admin', 'Management']
+        ['Simran Admin', 'aman@test.com', hash, 'admin', 'Management']
       );
       console.log('  🌱 Default admin seeded → aman@test.com / password');
     }
@@ -627,7 +627,7 @@ app.get('/api/setup', async (req, res) => {
         const hash = bcrypt.hashSync('password', 10);
         await db.query(
           'INSERT INTO users (name, email, password, role, department) VALUES (?,?,?,?,?)',
-          ['Aman Admin', 'aman@test.com', hash, 'admin', 'Management']
+          ['Simran Admin', 'aman@test.com', hash, 'admin', 'Management']
         );
         log.push('🌱 Admin user seeded: aman@test.com / password');
       } else {
