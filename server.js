@@ -1536,6 +1536,60 @@ app.get('/api/mis/all', requireAuth, requireAdminOrHodOnly, async (req, res) => 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Composite "Most Active" ranking for the Dashboard. Aggregates per-user signals
+// of engagement in a date range: tasks they own, tasks they delegated to OTHERS,
+// revises they triggered on others' work, and leaves they filed.
+app.get('/api/dashboard/activity', requireAuth, requireAdminOrHodOnly, async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    if (!start || !end) return res.status(400).json({ error: 'Dates required' });
+    const isHod = req.session.role === 'hod';
+    const uid = req.session.userId;
+    let deptFilter = '';
+    let deptParams = [];
+    if (isHod) {
+      const [me] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
+      const dept = me[0]?.department || '';
+      deptFilter = ' AND u.department=?';
+      deptParams = [dept];
+    }
+    const [rows] = await db.query(
+      `SELECT u.id AS userId, u.name, u.department,
+         COALESCE((SELECT COUNT(*) FROM delegation_tasks dt
+                   WHERE dt.assigned_to=u.id AND dt.due_date BETWEEN ? AND ?), 0)
+         + COALESCE((SELECT COUNT(*) FROM checklist_tasks ct
+                     WHERE ct.assigned_to=u.id AND ct.due_date BETWEEN ? AND ?), 0) AS active_tasks,
+         COALESCE((SELECT COUNT(*) FROM delegation_tasks dt
+                   WHERE dt.assigned_by=u.id AND dt.assigned_to<>u.id AND dt.due_date BETWEEN ? AND ?), 0) AS delegated_to_others,
+         COALESCE((SELECT COUNT(*) FROM delegation_tasks dt
+                   WHERE dt.assigned_by=u.id AND dt.status='revised' AND dt.due_date BETWEEN ? AND ?), 0) AS revises_triggered,
+         COALESCE((SELECT COUNT(*) FROM leave_requests lr
+                   WHERE lr.user_id=u.id AND DATE(lr.created_at) BETWEEN ? AND ?), 0) AS leaves_submitted
+       FROM users u
+       WHERE 1=1${deptFilter}`,
+      [start, end, start, end, start, end, start, end, start, end, ...deptParams]
+    );
+    const scored = rows
+      .map(r => ({
+        userId: r.userId,
+        name: r.name,
+        department: r.department || '',
+        active_tasks: Number(r.active_tasks) || 0,
+        delegated_to_others: Number(r.delegated_to_others) || 0,
+        revises_triggered: Number(r.revises_triggered) || 0,
+        leaves_submitted: Number(r.leaves_submitted) || 0,
+        activityScore:
+          (Number(r.active_tasks) || 0) +
+          (Number(r.delegated_to_others) || 0) +
+          (Number(r.revises_triggered) || 0) +
+          (Number(r.leaves_submitted) || 0)
+      }))
+      .filter(r => r.activityScore > 0)
+      .sort((a, b) => b.activityScore - a.activityScore);
+    res.json(scored);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── FMS MIS ──
 app.get('/api/mis/fms', requireAuth, requireAdminOrHodOnly, async (req, res) => {
   try {

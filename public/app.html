@@ -2875,28 +2875,41 @@ async function loadDashboardPerfCharts(){
   }
   if (fromEl.value > toEl.value) { showToast('From date must be before To date', 'error'); return; }
 
-  const data = await api(`/api/mis/all?start=${fromEl.value}&end=${toEl.value}`);
-  if (!Array.isArray(data)) return;
-  const racers = data.filter(r => r.overallScore !== null && r.overallScore !== undefined);
+  const [scoreData, activityData] = await Promise.all([
+    api(`/api/mis/all?start=${fromEl.value}&end=${toEl.value}`),
+    api(`/api/dashboard/activity?start=${fromEl.value}&end=${toEl.value}`)
+  ]);
 
-  const top    = [...racers].sort((a,b) => b.overallScore - a.overallScore).slice(0, 5);
-  const bottom = [...racers].sort((a,b) => a.overallScore - b.overallScore).slice(0, 5);
-  const active = [...racers].sort((a,b) => (b.completedAll||0) - (a.completedAll||0)).slice(0, 5);
-
+  const racers = Array.isArray(scoreData)
+    ? scoreData.filter(r => r.overallScore !== null && r.overallScore !== undefined)
+    : [];
+  // Top performers — score closest to 0 (least negative). Bottom — most negative.
+  const top    = [...racers].sort((a, b) => b.overallScore - a.overallScore).slice(0, 5);
+  const bottom = [...racers].sort((a, b) => a.overallScore - b.overallScore).slice(0, 5);
   renderDashPerfChart('dashTopChart',    'top',    top.map(r => r.name),    top.map(r => r.overallScore),    '#16a34a', 'Score');
   renderDashPerfChart('dashBottomChart', 'bottom', bottom.map(r => r.name), bottom.map(r => r.overallScore), '#dc2626', 'Score');
-  renderDashPerfChart('dashActiveChart', 'active', active.map(r => r.name), active.map(r => r.completedAll || 0), '#1a56db', 'Tasks completed');
+
+  // Most Active — composite engagement: active tasks + tasks delegated to others + revises triggered + leaves submitted.
+  const active = Array.isArray(activityData) ? activityData.slice(0, 5) : [];
+  renderDashPerfChart(
+    'dashActiveChart', 'active',
+    active.map(r => r.name),
+    active.map(r => r.activityScore || 0),
+    '#1a56db',
+    'Activity points',
+    active.map(r => `Active tasks: ${r.active_tasks} · Delegated to others: ${r.delegated_to_others} · Revises: ${r.revises_triggered} · Leaves: ${r.leaves_submitted}`)
+  );
 }
 
-function renderDashPerfChart(canvasId, key, labels, values, color, axisLabel){
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const wrap = canvas.parentElement;
+function renderDashPerfChart(canvasId, key, labels, values, color, axisLabel, breakdown){
+  let wrap = document.getElementById(canvasId)?.parentElement;
+  if (!wrap) wrap = document.querySelector(`#${canvasId}`)?.parentElement;
+  if (!wrap) return;
   if (!labels.length) {
     wrap.innerHTML = '<div class="perf-empty">No data in this date range</div>';
+    if (dashPerfCharts[key]) { dashPerfCharts[key].destroy(); dashPerfCharts[key] = null; }
     return;
   }
-  // wrap was replaced if previously empty — make sure canvas exists
   if (!wrap.querySelector('canvas')) {
     wrap.innerHTML = `<canvas id="${canvasId}"></canvas>`;
   }
@@ -2914,7 +2927,12 @@ function renderDashPerfChart(canvasId, key, labels, values, color, axisLabel){
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: c => ` ${axisLabel}: ${typeof c.raw === 'number' ? c.raw.toFixed(1) : c.raw}` } }
+        tooltip: {
+          callbacks: {
+            label: c => ` ${axisLabel}: ${typeof c.raw === 'number' ? c.raw.toFixed(1) : c.raw}`,
+            afterLabel: c => (breakdown && breakdown[c.dataIndex]) ? breakdown[c.dataIndex] : ''
+          }
+        }
       },
       scales: {
         x: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, color: '#64748b' } },
