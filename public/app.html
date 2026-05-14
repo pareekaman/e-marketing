@@ -258,8 +258,8 @@ tbody tr:last-child td{border-bottom:none;}
 .race-runner-info{display:flex;flex-direction:column;min-width:0;}
 .race-runner-name{font-size:14px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .race-runner-dept{font-size:11px;color:#94a3b8;margin-top:2px;}
-.race-track{position:relative;height:44px;background:linear-gradient(180deg,#334155 0%,#1e293b 100%);border-radius:10px;border:1px solid #0f172a;overflow:hidden;box-shadow:inset 0 2px 4px rgba(0,0,0,.3);}
-.race-track::before{content:"";position:absolute;top:50%;left:0;right:0;height:2px;transform:translateY(-50%);background:repeating-linear-gradient(90deg,#fde047 0 14px,transparent 14px 28px);opacity:.65;}
+.race-track{position:relative;height:44px;background:linear-gradient(90deg,rgba(220,38,38,.55) 0%,rgba(245,158,11,.45) 50%,rgba(22,163,74,.55) 100%),linear-gradient(180deg,#334155 0%,#1e293b 100%);background-blend-mode:multiply;border-radius:10px;border:1px solid #0f172a;overflow:visible;box-shadow:inset 0 2px 4px rgba(0,0,0,.3);}
+.race-track::before{content:"";position:absolute;top:50%;left:8px;right:8px;height:2px;transform:translateY(-50%);background:repeating-linear-gradient(90deg,#fde047 0 14px,transparent 14px 28px);opacity:.85;}
 .race-track-start{position:absolute;left:0;top:0;bottom:0;width:8px;background:repeating-linear-gradient(45deg,#fff 0 4px,#1f2937 4px 8px);z-index:1;}
 .race-track-finish{position:absolute;right:0;top:0;bottom:0;width:8px;background:repeating-linear-gradient(45deg,#fff 0 4px,#1f2937 4px 8px);z-index:1;}
 .race-runner{position:absolute;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;width:40px;height:34px;font-size:26px;line-height:1;filter:drop-shadow(0 3px 4px rgba(0,0,0,.4));transition:left 1.5s cubic-bezier(.34,1.56,.64,1);z-index:3;will-change:left;}
@@ -4898,72 +4898,110 @@ function renderRaceTracker(data) {
     </div>`;
 }
 
-// Show team-wide Pending or Completed breakdown in the existing MIS detail modal
-function showRaceMetric(metric) {
+// Show team-wide list of tasks filtered to a single status (pending or completed)
+async function showRaceMetric(metric) {
   if (!lastRacers.length) { showToast('Generate the race first', 'error'); return; }
   const isPending = metric === 'pending';
-  const key = isPending ? 'pendingAll' : 'completedAll';
-  const overdueByUser = (e) => e.overdueAll || 0;
-
-  const sorted = [...lastRacers]
-    .filter(e => (e[key]||0) > 0)
-    .sort((a,b) => (b[key]||0) - (a[key]||0));
-
-  const grandTotal = sorted.reduce((s,e)=>s+(e[key]||0), 0);
-  const maxCount = sorted[0]?.[key] || 1;
-
-  document.getElementById('misDetailTitle').textContent = isPending
-    ? `⏳ Pending Tasks — Team Breakdown`
-    : `✅ Completed Tasks — Team Breakdown`;
-
-  const color = isPending ? '#f87171' : '#16a34a';
+  const targetStatus = isPending ? 'pending' : 'completed';
+  const color  = isPending ? '#f87171' : '#16a34a';
   const subtle = isPending ? '#fef2f2' : '#f0fdf4';
 
-  if (!sorted.length) {
+  const start = document.getElementById('raceStart').value;
+  const end   = document.getElementById('raceEnd').value;
+
+  document.getElementById('misDetailTitle').textContent = isPending
+    ? `⏳ Pending Tasks — Team`
+    : `✅ Completed Tasks — Team`;
+  document.getElementById('misDetailScore').innerHTML =
+    `<div style="text-align:center;padding:32px;color:#94a3b8">Loading ${targetStatus} tasks…</div>`;
+  document.getElementById('misDetailBody').innerHTML = '';
+  document.getElementById('misDetailModal').classList.add('open');
+
+  // Only fetch from racers who have at least one task of the target status
+  const candidates = lastRacers.filter(r =>
+    isPending ? (r.pendingAll||0) > 0 : (r.completedAll||0) > 0
+  );
+
+  const fetches = [];
+  for (const r of candidates) {
+    if ((r.delegation?.total||0) > 0) {
+      fetches.push(
+        api(`/api/mis/detail?userId=${r.userId}&type=delegation&start=${start}&end=${end}`)
+          .then(d => ({ user: r, taskType: 'Delegation', tasks: (d.tasks||[]).filter(t => t.status === targetStatus) }))
+          .catch(() => ({ user: r, taskType: 'Delegation', tasks: [] }))
+      );
+    }
+    if ((r.checklist?.total||0) > 0) {
+      fetches.push(
+        api(`/api/mis/detail?userId=${r.userId}&type=checklist&start=${start}&end=${end}`)
+          .then(d => ({ user: r, taskType: 'Checklist', tasks: (d.tasks||[]).filter(t => t.status === targetStatus) }))
+          .catch(() => ({ user: r, taskType: 'Checklist', tasks: [] }))
+      );
+    }
+  }
+
+  const results = await Promise.all(fetches);
+
+  // Group by employee
+  const byUser = {};
+  for (const r of results) {
+    if (!r.tasks.length) continue;
+    if (!byUser[r.user.userId]) byUser[r.user.userId] = { user: r.user, tasks: [] };
+    for (const t of r.tasks) byUser[r.user.userId].tasks.push({ ...t, _type: r.taskType });
+  }
+  const groups = Object.values(byUser).sort((a,b) => b.tasks.length - a.tasks.length);
+  const grandTotal = groups.reduce((s,g) => s + g.tasks.length, 0);
+  const today = new Date().toISOString().split('T')[0];
+
+  if (!grandTotal) {
     document.getElementById('misDetailScore').innerHTML = `
       <div style="text-align:center;padding:24px;color:#64748b">
         <div style="font-size:42px">${isPending ? '🎉' : '📭'}</div>
-        <div style="font-size:14px;margin-top:6px">No ${isPending ? 'pending' : 'completed'} tasks in this date range.</div>
+        <div style="font-size:14px;margin-top:6px">No ${targetStatus} tasks in this date range.</div>
       </div>`;
-    document.getElementById('misDetailBody').innerHTML = '';
-    document.getElementById('misDetailModal').classList.add('open');
     return;
   }
 
-  const rows = sorted.map((e, idx) => {
-    const count = e[key] || 0;
-    const overdue = isPending ? overdueByUser(e) : 0;
-    const widthPct = Math.max(6, Math.round((count / maxCount) * 100));
-    const safeName = e.name.replace(/'/g,"\\'");
-    return `
-      <div class="race-breakdown-row" onclick="closeModal('misDetailModal'); setTimeout(()=>openAllMISDetail(${e.userId}, '${safeName}'), 120)">
-        <div class="race-breakdown-rank">${idx + 1}</div>
-        <div>
-          <div class="race-breakdown-name">${escapeHtml(e.name)}</div>
-          <div class="race-breakdown-dept">${escapeHtml(e.department||'—')}${isPending && overdue > 0 ? ` · <span style="color:#dc2626;font-weight:700">${overdue} overdue</span>` : ''}</div>
-          <div class="race-breakdown-bar" style="margin-top:6px"><div class="race-breakdown-bar-fill" style="width:${widthPct}%;background:${color}"></div></div>
-        </div>
-        <div class="race-breakdown-count" style="color:${color}">${count}</div>
-        <div style="font-size:11px;color:#3b82f6;font-weight:600;text-align:right">View →</div>
-      </div>`;
-  }).join('');
-
-  document.getElementById('misDetailScore').innerHTML = `
+  const header = `
     <div style="display:flex;align-items:center;justify-content:space-between;background:${subtle};padding:12px 16px;border-radius:10px;margin-bottom:14px">
       <div>
-        <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;font-weight:600">Team Total</div>
+        <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;font-weight:600">Team Total ${isPending ? 'Pending' : 'Completed'}</div>
         <div style="font-size:30px;font-weight:800;color:${color};line-height:1.1">${grandTotal}</div>
       </div>
       <div style="text-align:right;font-size:12px;color:#64748b">
-        ${sorted.length} ${sorted.length === 1 ? 'employee' : 'employees'}<br>
-        <span style="font-size:11px">Click row for full detail</span>
+        ${groups.length} ${groups.length === 1 ? 'employee' : 'employees'}
       </div>
-    </div>
-    <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Breakdown</div>
-    <div style="max-height:380px;overflow-y:auto">${rows}</div>`;
+    </div>`;
 
-  document.getElementById('misDetailBody').innerHTML = '';
-  document.getElementById('misDetailModal').classList.add('open');
+  const cards = groups.map(g => {
+    const safeName = g.user.name.replace(/'/g,"\\'");
+    const rows = g.tasks.map(t => {
+      const isOverdue = isPending && t.due_date && t.due_date < today;
+      const typeBg = t._type === 'Delegation' ? '#dbeafe' : '#dcfce7';
+      const typeFg = t._type === 'Delegation' ? '#1d4ed8' : '#15803d';
+      return `
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:12px">
+          <span style="font-size:9px;padding:2px 7px;border-radius:4px;background:${typeBg};color:${typeFg};font-weight:700;letter-spacing:.3px">${t._type}</span>
+          <span style="flex:1;color:#374151;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(t.description)}">${escapeHtml(t.description)}</span>
+          <span style="color:#64748b;font-size:11px;white-space:nowrap">${fmtDate(t.due_date)}</span>
+          ${isOverdue ? '<span style="color:#dc2626;font-size:10px;font-weight:700">⏰ OVERDUE</span>' : ''}
+        </div>`;
+    }).join('');
+
+    return `
+      <div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;cursor:pointer" onclick="closeModal('misDetailModal'); setTimeout(()=>openAllMISDetail(${g.user.userId}, '${safeName}'), 120)">
+          <div>
+            <div style="font-weight:700;color:#1e293b;font-size:14px">${escapeHtml(g.user.name)} <span style="font-size:11px;color:#3b82f6;font-weight:600">View all →</span></div>
+            <div style="font-size:11px;color:#94a3b8">${escapeHtml(g.user.department||'—')}</div>
+          </div>
+          <div style="background:${color};color:#fff;padding:3px 12px;border-radius:14px;font-weight:800;font-size:13px">${g.tasks.length}</div>
+        </div>
+        <div>${rows}</div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('misDetailScore').innerHTML = `${header}<div style="max-height:440px;overflow-y:auto;padding-right:4px">${cards}</div>`;
 }
 
 function escapeHtml(s) {
