@@ -521,6 +521,17 @@ tbody tr:last-child td{border-bottom:none;}
    ══════════════════════════════════════════════ */
 .dr-card{background:#fff;border-radius:18px;padding:30px 32px;box-shadow:0 4px 20px rgba(243,156,18,.08);border:1px solid #fef3c7;}
 .dr-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;flex-wrap:wrap;gap:12px;}
+.dr-toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:22px;padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;}
+.dr-range-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.dr-range-group label{font-size:12px;font-weight:600;color:#475569;white-space:nowrap;}
+.dr-range-group input[type="month"],.dr-range-group input[type="date"]{padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit;background:#fff;color:#1e293b;min-width:138px;transition:border-color .15s,box-shadow .15s;}
+.dr-range-group input[type="month"]:focus,.dr-range-group input[type="date"]:focus{border-color:#F39C12;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
+.dr-or{font-size:10px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin:0 4px;padding:3px 8px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;}
+.dr-mini-btn{padding:7px 11px;border:1.5px solid #e2e8f0;background:#fff;color:#475569;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap;}
+.dr-mini-btn:hover{border-color:#cbd5e1;background:#f1f5f9;color:#0f172a;}
+.dr-export-group{display:flex;gap:8px;flex-wrap:wrap;}
+.dr-export-group .dt-btn{padding:8px 14px;font-size:13px;border-radius:8px;box-shadow:none;}
+.dr-export-group .dt-btn:hover{transform:none;box-shadow:0 4px 10px rgba(0,0,0,.08);}
 .dr-title{font-size:24px;font-weight:700;color:#1e293b;}
 .dr-month-picker{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .dr-month-picker label{font-size:13px;font-weight:600;color:#475569;}
@@ -1359,15 +1370,18 @@ tbody tr:last-child td{border-bottom:none;}
        ══════════════════════════════════════════════════════ -->
   <div id="page-dailyreports" class="page">
     <div class="dr-card">
-      <div class="dr-header" style="justify-content:flex-end;flex-wrap:wrap;gap:10px">
-        <div class="dr-month-picker" style="flex-wrap:wrap;gap:8px">
-          <label>Month:</label>
+      <div class="dr-toolbar">
+        <div class="dr-range-group">
+          <label>Month</label>
           <input type="month" id="drMonth" onchange="loadDailyReports()"/>
-          <span style="font-size:12px;color:#94a3b8;margin:0 4px">or range:</span>
+          <span class="dr-or">or</span>
+          <label>From</label>
           <input type="date" id="drDateFrom" onchange="loadDailyReports()"/>
-          <span style="font-size:12px;color:#94a3b8">to</span>
+          <label>To</label>
           <input type="date" id="drDateTo" onchange="loadDailyReports()"/>
-          <button class="dt-btn" onclick="drClearRange()" style="font-size:12px">↺ Use month</button>
+          <button class="dr-mini-btn" onclick="drClearRange()" title="Clear range and use month picker">↺ Reset</button>
+        </div>
+        <div class="dr-export-group">
           <button class="dt-btn dt-btn-add" onclick="drExportCSV()">⬇ CSV</button>
           <button class="dt-btn dt-btn-submit" onclick="drExportPDF()">⬇ PDF</button>
         </div>
