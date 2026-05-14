@@ -4818,43 +4818,7 @@ function renderRaceTracker(data) {
     return;
   }
 
-  const leader   = racers[0];
-  const lastIdx  = racers.length - 1;
-  const trailing = racers[lastIdx];
-  const avg = Math.round((racers.reduce((s,e)=>s+e.overallScore,0) / racers.length) * 10) / 10;
-  const atFinish = racers.filter(e => e.overallScore === 0).length;
-  const totalPending   = racers.reduce((s,e)=>s+(e.pendingAll||0), 0);
-  const totalCompleted = racers.reduce((s,e)=>s+(e.completedAll||0), 0);
-  const totalOverdue   = racers.reduce((s,e)=>s+(e.overdueAll||0), 0);
-
-  const leaderScoreStr = `${leader.overallScore > 0 ? '+' : ''}${leader.overallScore.toFixed(1)}%`;
-  const avgColor = avg < -50 ? '#dc2626' : avg < -20 ? '#d97706' : '#16a34a';
-
-  const summary = `
-    <div class="race-summary">
-      <div class="race-stat s-leader">
-        <div class="race-stat-label">🏆 Leader</div>
-        <div class="race-stat-value" style="font-size:18px;line-height:1.25">${escapeHtml(leader.name)}</div>
-        <div class="race-stat-sub">${leaderScoreStr} · ${escapeHtml(leader.department||'—')}</div>
-      </div>
-      <div class="race-stat s-completed clickable" onclick="showRaceMetric('completed')">
-        <div class="race-stat-label" style="color:#16a34a">Completed</div>
-        <div class="race-stat-value" style="color:#16a34a">${totalCompleted}</div>
-        <div class="race-stat-sub">${atFinish} at finish · ${racers.length} racers</div>
-        <span class="race-stat-cta">View details →</span>
-      </div>
-      <div class="race-stat s-pending clickable" onclick="showRaceMetric('pending')">
-        <div class="race-stat-label" style="color:#f87171">Pending</div>
-        <div class="race-stat-value" style="color:#f87171">${totalPending}</div>
-        <div class="race-stat-sub">${totalOverdue} overdue · ${racers.length} racers</div>
-        <span class="race-stat-cta">View details →</span>
-      </div>
-      <div class="race-stat s-avg">
-        <div class="race-stat-label">Pack Average</div>
-        <div class="race-stat-value" style="color:${avgColor}">${avg > 0 ? '+' : ''}${avg.toFixed(1)}%</div>
-        <div class="race-stat-sub">Trailing: ${escapeHtml(trailing.name)}</div>
-      </div>
-    </div>`;
+  const leader = racers[0];
 
   const lanes = racers.map((emp, idx) => {
     const rank = idx + 1;
@@ -4907,7 +4871,6 @@ function renderRaceTracker(data) {
   }).join('');
 
   container.innerHTML = `
-    ${summary}
     <div class="race-wrap">
       <div class="race-legend">
         <span class="start-flag">🚩 START · −100</span>
