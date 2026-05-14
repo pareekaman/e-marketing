@@ -1359,11 +1359,17 @@ tbody tr:last-child td{border-bottom:none;}
        ══════════════════════════════════════════════════════ -->
   <div id="page-dailyreports" class="page">
     <div class="dr-card">
-      <div class="dr-header" style="justify-content:flex-end">
-        <div class="dr-month-picker">
+      <div class="dr-header" style="justify-content:flex-end;flex-wrap:wrap;gap:10px">
+        <div class="dr-month-picker" style="flex-wrap:wrap;gap:8px">
           <label>Month:</label>
           <input type="month" id="drMonth" onchange="loadDailyReports()"/>
-          <button class="dt-btn dt-btn-add" onclick="drExportCSV()">⬇ Export CSV</button>
+          <span style="font-size:12px;color:#94a3b8;margin:0 4px">or range:</span>
+          <input type="date" id="drDateFrom" onchange="loadDailyReports()"/>
+          <span style="font-size:12px;color:#94a3b8">to</span>
+          <input type="date" id="drDateTo" onchange="loadDailyReports()"/>
+          <button class="dt-btn" onclick="drClearRange()" style="font-size:12px">↺ Use month</button>
+          <button class="dt-btn dt-btn-add" onclick="drExportCSV()">⬇ CSV</button>
+          <button class="dt-btn dt-btn-submit" onclick="drExportPDF()">⬇ PDF</button>
         </div>
       </div>
 
@@ -1392,12 +1398,17 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
 
       <!-- Detailed entries -->
-      <div class="dr-section-title">📝 All Entries (this month)</div>
-      <div class="dr-filter-row">
+      <div class="dr-section-title">📝 All Entries</div>
+      <div class="dr-filter-row" style="flex-wrap:wrap;gap:8px">
         <input type="text" id="drSearch" placeholder="🔍 Search by name / client / description..." oninput="renderDREntries()"/>
         <select id="drUserFilter" onchange="renderDREntries()">
-          <option value="">All Users</option>
+          <option value="">All Doers</option>
         </select>
+        <select id="drClientFilter" onchange="renderDREntries()">
+          <option value="">All Clients</option>
+        </select>
+        <button class="dt-btn" onclick="drClearEntryFilters()" style="font-size:12px">✕ Clear</button>
+        <span id="drFilterSummary" style="font-size:12px;color:#64748b;font-weight:600;margin-left:auto"></span>
       </div>
       <div id="drEntriesWrap" class="dr-table-wrap">
         <div class="empty">Loading...</div>
@@ -7179,7 +7190,9 @@ let DR_DATA = null;
 
 async function loadDailyReports(){
   const monthInput = document.getElementById('drMonth');
-  if (!monthInput.value) {
+  const fromInput  = document.getElementById('drDateFrom');
+  const toInput    = document.getElementById('drDateTo');
+  if (!monthInput.value && !(fromInput?.value && toInput?.value)) {
     const now = new Date();
     monthInput.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   }
@@ -7188,11 +7201,18 @@ async function loadDailyReports(){
   document.getElementById('drEntriesWrap').innerHTML = '<div class="empty">Loading...</div>';
 
   try {
-    DR_DATA = await api('/api/daily-tasks/report?month=' + monthInput.value);
+    let qs = '';
+    if (fromInput?.value && toInput?.value) {
+      qs = `?from=${fromInput.value}&to=${toInput.value}`;
+    } else {
+      qs = '?month=' + monthInput.value;
+    }
+    DR_DATA = await api('/api/daily-tasks/report' + qs);
     if (DR_DATA.error) throw new Error(DR_DATA.error);
     renderDRStats();
     renderDRSummary();
     renderDREntriesUserDropdown();
+    renderDREntriesClientDropdown();
     renderDREntries();
   } catch(e) {
     document.getElementById('drStats').innerHTML = `<div class="empty">Failed: ${e.message}</div>`;
@@ -7258,7 +7278,7 @@ function renderDRSummary(){
 function renderDREntriesUserDropdown(){
   const sel = document.getElementById('drUserFilter');
   const cur = sel.value;
-  let html = '<option value="">All Users</option>';
+  let html = '<option value="">All Doers</option>';
   for (const u of DR_DATA.summary) {
     const selected = cur == u.user_id ? 'selected' : '';
     html += `<option value="${u.user_id}" ${selected}>${dtEscape(u.name)}</option>`;
@@ -7266,14 +7286,40 @@ function renderDREntriesUserDropdown(){
   sel.innerHTML = html;
 }
 
-function renderDREntries(){
-  if (!DR_DATA) return;
-  const wrap = document.getElementById('drEntriesWrap');
+function renderDREntriesClientDropdown(){
+  const sel = document.getElementById('drClientFilter');
+  if (!sel) return;
+  const cur = sel.value;
+  const clients = [...new Set(DR_DATA.entries.map(e => e.client_name).filter(Boolean))].sort();
+  let html = '<option value="">All Clients</option>';
+  for (const c of clients) {
+    const selected = cur === c ? 'selected' : '';
+    html += `<option value="${dtEscape(c)}" ${selected}>${dtEscape(c)}</option>`;
+  }
+  sel.innerHTML = html;
+}
+
+function drClearEntryFilters(){
+  const s = document.getElementById('drSearch'); if (s) s.value = '';
+  const u = document.getElementById('drUserFilter'); if (u) u.value = '';
+  const c = document.getElementById('drClientFilter'); if (c) c.value = '';
+  renderDREntries();
+}
+
+function drClearRange(){
+  const f = document.getElementById('drDateFrom'); if (f) f.value = '';
+  const t = document.getElementById('drDateTo'); if (t) t.value = '';
+  loadDailyReports();
+}
+
+function drFilteredEntries(){
+  if (!DR_DATA) return [];
   const search = (document.getElementById('drSearch')?.value || '').toLowerCase();
   const userId = document.getElementById('drUserFilter')?.value || '';
-
+  const client = document.getElementById('drClientFilter')?.value || '';
   let entries = DR_DATA.entries;
   if (userId) entries = entries.filter(e => String(e.user_id) === String(userId));
+  if (client) entries = entries.filter(e => e.client_name === client);
   if (search) {
     entries = entries.filter(e =>
       e.doer_name.toLowerCase().includes(search) ||
@@ -7281,6 +7327,22 @@ function renderDREntries(){
       (e.description||'').toLowerCase().includes(search) ||
       (e.department||'').toLowerCase().includes(search)
     );
+  }
+  return entries;
+}
+
+function renderDREntries(){
+  if (!DR_DATA) return;
+  const wrap = document.getElementById('drEntriesWrap');
+  const entries = drFilteredEntries();
+
+  const summaryEl = document.getElementById('drFilterSummary');
+  if (summaryEl) {
+    const totalMin = entries.reduce((s,e) => s + (e.duration_min||0), 0);
+    const users = new Set(entries.map(e => e.user_id));
+    summaryEl.textContent = entries.length
+      ? `${entries.length} entries · ${users.size} ${users.size===1?'doer':'doers'} · ${totalMin} min (${(totalMin/60).toFixed(1)} hr)`
+      : '';
   }
 
   if (!entries.length) {
@@ -7307,11 +7369,11 @@ function renderDREntries(){
 }
 
 function drExportCSV(){
-  if (!DR_DATA || !DR_DATA.entries.length) {
-    showToast('No data to export', 'error'); return;
-  }
+  if (!DR_DATA) { showToast('No data to export', 'error'); return; }
+  const entries = drFilteredEntries();
+  if (!entries.length) { showToast('No entries match the current filters', 'error'); return; }
   const rows = [['Date', 'User', 'Email', 'Client', 'Department', 'Description', 'Minutes']];
-  for (const e of DR_DATA.entries) {
+  for (const e of entries) {
     rows.push([
       e.entry_date,
       (e.doer_name||'').replace(/,/g,';'),
@@ -7325,9 +7387,70 @@ function drExportCSV(){
   const csv = rows.map(r => r.join(',')).join('\n');
   const a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  a.download = `daily_tasks_${DR_DATA.month}.csv`;
+  a.download = `daily_tasks_${DR_DATA.from || DR_DATA.month}_to_${DR_DATA.to || DR_DATA.month}.csv`;
   a.click();
   showToast('✅ CSV downloaded');
+}
+
+function drExportPDF(){
+  if (!DR_DATA) { showToast('No data to export', 'error'); return; }
+  const entries = drFilteredEntries();
+  if (!entries.length) { showToast('No entries match the current filters', 'error'); return; }
+  const totalMin = entries.reduce((s,e) => s + (e.duration_min||0), 0);
+  const totalHr = (totalMin/60).toFixed(1);
+  const doers = new Set(entries.map(e => e.user_id)).size;
+  const rangeLabel = DR_DATA.from && DR_DATA.to
+    ? `${DR_DATA.from} → ${DR_DATA.to}`
+    : DR_DATA.month;
+  const userId = document.getElementById('drUserFilter')?.value || '';
+  const client  = document.getElementById('drClientFilter')?.value || '';
+  const search  = document.getElementById('drSearch')?.value || '';
+  const filterLine = [
+    userId ? `Doer: ${entries[0]?.doer_name || userId}` : '',
+    client ? `Client: ${client}` : '',
+    search ? `Search: "${search}"` : ''
+  ].filter(Boolean).join(' · ') || 'No filters applied';
+
+  const rowsHtml = entries.map(e => `
+    <tr>
+      <td>${dtEscape(e.entry_date)}</td>
+      <td>${dtEscape(e.doer_name)}</td>
+      <td>${dtEscape(e.client_name)}</td>
+      <td>${dtEscape(e.department || '—')}</td>
+      <td>${dtEscape(e.description||'')}</td>
+      <td style="text-align:right">${e.duration_min}</td>
+    </tr>`).join('');
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Daily Task Report — ${rangeLabel}</title>
+    <style>
+      body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0f172a;margin:24px;}
+      h1{font-size:18px;margin:0 0 4px;}
+      .meta{font-size:12px;color:#475569;margin-bottom:6px;}
+      .summary{font-size:12px;color:#1e293b;background:#f1f5f9;padding:8px 12px;border-radius:6px;margin-bottom:14px;}
+      table{width:100%;border-collapse:collapse;font-size:11px;}
+      th,td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top;}
+      th{background:#0f172a;color:#fff;font-weight:700;}
+      tr:nth-child(even) td{background:#f8fafc;}
+      tfoot td{font-weight:700;background:#e2e8f0;}
+      @media print{ body{margin:12mm;} }
+    </style></head><body>
+    <h1>Daily Task Report</h1>
+    <div class="meta">Range: <b>${dtEscape(rangeLabel)}</b> · Generated: ${new Date().toLocaleString()}</div>
+    <div class="summary"><b>${entries.length}</b> entries · <b>${doers}</b> ${doers===1?'doer':'doers'} · <b>${totalMin}</b> min (${totalHr} hr) · ${dtEscape(filterLine)}</div>
+    <table>
+      <thead><tr><th>Date</th><th>Doer</th><th>Client</th><th>Department</th><th>Description</th><th style="text-align:right">Min</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot><tr><td colspan="5" style="text-align:right">Total</td><td style="text-align:right">${totalMin}</td></tr></tfoot>
+    </table>
+    <script>window.addEventListener('load', () => { setTimeout(() => window.print(), 200); });<\/script>
+  </body></html>`;
+
+  const win = window.open('', '_blank');
+  if (!win) { showToast('Please allow pop-ups to export PDF', 'error'); return; }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  showToast('🖨 Print dialog will open — choose "Save as PDF"');
 }
 
 // ══════════════════════════════════════════════════════

@@ -3131,19 +3131,29 @@ app.get('/api/daily-tasks/all', requireAuth, requireAdmin, async (req, res) => {
 // Monthly report — summary + day-wise entries (admin only)
 app.get('/api/daily-tasks/report', requireAuth, requireAdmin, async (req, res) => {
   try {
-    // Default to current month if not provided
-    const now = new Date();
-    const month = req.query.month || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-    if (!/^\d{4}-\d{2}$/.test(month)) {
-      return res.status(400).json({ error: 'Invalid month format. Use YYYY-MM' });
+    // Explicit from/to win over month; month is the fallback.
+    const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v);
+    let fromDate, toDate;
+    if (req.query.from && req.query.to && isDate(req.query.from) && isDate(req.query.to)) {
+      fromDate = req.query.from;
+      toDate   = req.query.to;
+    } else {
+      const now = new Date();
+      const month = req.query.month || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+      if (!/^\d{4}-\d{2}$/.test(month)) {
+        return res.status(400).json({ error: 'Invalid month format. Use YYYY-MM' });
+      }
+      const [year, mm] = month.split('-').map(Number);
+      fromDate = `${year}-${String(mm).padStart(2,'0')}-01`;
+      const lastDay = new Date(year, mm, 0).getDate();
+      toDate = `${year}-${String(mm).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
     }
-    const [year, mm] = month.split('-').map(Number);
-    const fromDate = `${year}-${String(mm).padStart(2,'0')}-01`;
-    // last day of month
-    const lastDay = new Date(year, mm, 0).getDate();
-    const toDate = `${year}-${String(mm).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
 
-    // All entries in this month
+    const filterParts = ['dt.entry_date BETWEEN ? AND ?'];
+    const params = [fromDate, toDate];
+    if (req.query.user_id) { filterParts.push('dt.user_id = ?'); params.push(req.query.user_id); }
+    if (req.query.client)  { filterParts.push('dt.client_name = ?'); params.push(req.query.client); }
+
     const [rows] = await db.query(
       `SELECT dt.id, DATE_FORMAT(dt.entry_date,'%Y-%m-%d') AS entry_date,
               dt.client_name, dt.department, dt.description, dt.duration_min,
@@ -3151,9 +3161,9 @@ app.get('/api/daily-tasks/report', requireAuth, requireAdmin, async (req, res) =
               COALESCE(u.department, '') AS doer_department
        FROM daily_tasks dt
        JOIN users u ON dt.user_id = u.id
-       WHERE dt.entry_date BETWEEN ? AND ?
+       WHERE ${filterParts.join(' AND ')}
        ORDER BY dt.entry_date ASC, u.name ASC, dt.id ASC`,
-      [fromDate, toDate]
+      params
     );
 
     // Per-user totals
@@ -3176,7 +3186,8 @@ app.get('/api/daily-tasks/report', requireAuth, requireAdmin, async (req, res) =
       .sort((a, b) => b.total_minutes - a.total_minutes);
 
     res.json({
-      month, from: fromDate, to: toDate,
+      month: req.query.month || fromDate.slice(0, 7),
+      from: fromDate, to: toDate,
       total_entries: rows.length,
       total_minutes: rows.reduce((a, b) => a + b.duration_min, 0),
       summary,
