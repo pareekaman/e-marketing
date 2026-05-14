@@ -813,9 +813,9 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     const params = [];
 
     if (isMine) {
-      // "Delegate by Me" mode — sirf woh tasks jinhe MAINE assign kiya hai.
-      // Role-based scoping skip — koi bhi role apne assign kiye tasks dekh sakta hai.
-      where += ' AND t.assigned_by = ?';
+      // "Delegate by Me" mode — sirf woh tasks jinhe MAINE kisi DOOSRE ko assign kiya hai.
+      // Self-delegated tasks (assigned_to === me) regular Delegation tab me dikhte hain — yahan duplicate na ho.
+      where += ' AND t.assigned_by = ? AND t.assigned_to <> t.assigned_by';
       params.push(uid);
     } else if (isAdmin || role === 'pc') {
       // Admin/PC — sab dikhta hai
@@ -1017,19 +1017,37 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/tasks/:id/detail', requireAuth, requireAdmin, async (req, res) => {
+app.get('/api/tasks/:id/detail', requireAuth, async (req, res) => {
   try {
     const { type } = req.query;
     const table = getTable(type||'delegation');
     const [rows] = await db.query(`SELECT t.*,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date FROM ${table} t WHERE t.id=?`, [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Task not found' });
+    // Admin/HOD see anything; otherwise only the assigner can pull a task's detail (needed for self-edit).
+    const role = req.session.role;
+    if (role !== 'admin' && role !== 'hod' && role !== 'pc') {
+      if (Number(rows[0].assigned_by) !== Number(req.session.userId) && Number(rows[0].assigned_to) !== Number(req.session.userId)) {
+        return res.status(403).json({ error: 'Not allowed' });
+      }
+    }
     res.json({ task: rows[0] });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.put('/api/tasks/:id/edit', requireAuth, requireAdmin, async (req, res) => {
+// Allow edit/delete if user is admin/hod OR if they are the task's assigner.
+// This covers the "user delegated a task (incl. self-delegation) → can edit/delete" case.
+async function canModifyTask(req, taskId, type) {
+  if (req.session.role === 'admin' || req.session.role === 'hod') return true;
+  const [rows] = await db.query(
+    `SELECT assigned_by FROM ${getTable(type||'delegation')} WHERE id=?`, [taskId]
+  );
+  return !!rows[0] && Number(rows[0].assigned_by) === Number(req.session.userId);
+}
+
+app.put('/api/tasks/:id/edit', requireAuth, async (req, res) => {
   try {
     const { type, desc, date, priority, approval, remarks, url } = req.body;
+    if (!await canModifyTask(req, req.params.id, type)) return res.status(403).json({ error: 'Not allowed to edit this task' });
     const table = getTable(type||'delegation');
     if (type === 'delegation') await db.query(`UPDATE ${table} SET description=?,due_date=?,priority=?,approval=?,remarks=?,url=? WHERE id=?`, [desc, date, priority||'low', approval||'no', remarks||'', url||null, req.params.id]);
     else await db.query(`UPDATE ${table} SET description=?,due_date=?,remarks=? WHERE id=?`, [desc, date, remarks||'', req.params.id]);
@@ -1037,9 +1055,10 @@ app.put('/api/tasks/:id/edit', requireAuth, requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/tasks/:id', requireAuth, requireAdmin, async (req, res) => {
+app.delete('/api/tasks/:id', requireAuth, async (req, res) => {
   try {
     const { type } = req.query;
+    if (!await canModifyTask(req, req.params.id, type)) return res.status(403).json({ error: 'Not allowed to delete this task' });
     await db.query(`DELETE FROM ${getTable(type||'delegation')} WHERE id=?`, [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

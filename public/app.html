@@ -2970,14 +2970,10 @@ async function loadAllTasks() {
   const dbmTab = document.getElementById('tasksTabDelByMe');
   if (dbmTab) dbmTab.style.display = (isAdmin || isHod || isUser) ? '' : 'none';
 
-  // PC desktop: show user filter + date range
+  // Admin / PC on desktop: show doer filter + date range
   const filtersDiv = document.getElementById('tasksUserDateFilters');
   if (filtersDiv) {
-    if (isPC && isDesktop) {
-      filtersDiv.style.display = 'flex';
-    } else {
-      filtersDiv.style.display = 'none';
-    }
+    filtersDiv.style.display = ((isAdmin || isPC) && isDesktop) ? 'flex' : 'none';
   }
 
   const fetchType = tasksType === 'delegatebyme' ? 'delegation' : tasksType;
@@ -3003,14 +2999,15 @@ async function loadAllTasks() {
   allTasksData = allTasks;
   allTasksPage = 1;
 
-  // PC desktop: populate user dropdown
-  if (isPC && isDesktop) {
+  // Admin / PC desktop: populate doer dropdown
+  if ((isAdmin || isPC) && isDesktop) {
     const userSel = document.getElementById('tasksUserFilter');
     if (userSel) {
       const prevVal = userSel.value;
       const uniqueUsers = {};
       allTasks.forEach(t => {
-        if (t.assignedToId && t.assignedToName) uniqueUsers[t.assignedToId] = t.assignedToName;
+        const id = t.assignedToId || t.assigned_to;
+        if (id && t.assignedToName) uniqueUsers[id] = t.assignedToName;
       });
       userSel.innerHTML = '<option value="all">All Employees</option>';
       Object.entries(uniqueUsers).sort((a,b)=>a[1].localeCompare(b[1])).forEach(([id,name]) => {
@@ -3021,6 +3018,18 @@ async function loadAllTasks() {
       });
       if (prevVal && [...userSel.options].some(o => o.value === prevVal)) userSel.value = prevVal;
     }
+  }
+
+  // Admin / PC: float own tasks to the top — keep server's due-date ordering within each bucket.
+  if (isAdmin || isPC) {
+    const myId = String(ME.id);
+    allTasks.sort((a, b) => {
+      const aMine = String(a.assigned_to) === myId ? 0 : 1;
+      const bMine = String(b.assigned_to) === myId ? 0 : 1;
+      if (aMine !== bMine) return aMine - bMine;
+      return (a.due_date || '').localeCompare(b.due_date || '');
+    });
+    allTasksData = allTasks;
   }
 
   renderTasksTable();
@@ -3063,7 +3072,7 @@ function renderTasksTable() {
       (t.remarks||'').toLowerCase().includes(search) ||
       (t.status||'').toLowerCase().includes(search) ||
       (t.priority||'').toLowerCase().includes(search);
-    const matchUser = userFilterVal === 'all' || String(t.assignedToId) === String(userFilterVal);
+    const matchUser = userFilterVal === 'all' || String(t.assignedToId || t.assigned_to) === String(userFilterVal);
     const matchDateFrom = !dateFrom || (t.due_date && t.due_date >= dateFrom);
     const matchDateTo = !dateTo || (t.due_date && t.due_date <= dateTo);
     return matchStatus && matchSearch && matchUser && matchDateFrom && matchDateTo;
@@ -3088,7 +3097,10 @@ function renderTasksTable() {
     const editType = isDelegateByMe ? 'delegation' : tasksType;
     if (isClickable) window._taskDetailMap[t.id] = t;
 
-    const actionBtns = (isAdmin || isDelegateByMe) ? `
+    // User can edit/delete their own delegated tasks (self-delegation included).
+    const isMyDelegation = (tasksType === 'delegation' || isDelegateByMe) && String(t.assigned_by) === String(ME.id);
+    const canEdit = isAdmin || isDelegateByMe || isMyDelegation;
+    const actionBtns = canEdit ? `
       <button class="action-btn edit" style="padding:4px 7px" onclick="openEditTask(${t.id},'${editType}')" title="Edit">✏️</button>
       <button class="action-btn delete" style="padding:4px 7px;margin-left:3px" onclick="deleteTask(${t.id},'${editType}')" title="Delete">🗑</button>
       <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px;margin-left:3px" onclick="openComments(${t.id},'${editType}')" title="Comments">💬</button>
