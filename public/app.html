@@ -265,15 +265,13 @@ tbody tr:last-child td{border-bottom:none;}
 .race-runner-meta .meta-pending{background:#fee2e2;color:#b91c1c;}
 .race-runner-meta .meta-total{background:#e0e7ff;color:#3730a3;}
 
-/* Track — clean F1 asphalt look */
-.race-track{position:relative;height:46px;background:linear-gradient(180deg,#1f2937 0%,#0f172a 100%);border-radius:8px;border:1px solid #0a0f1c;overflow:visible;box-shadow:inset 0 2px 6px rgba(0,0,0,.5),0 1px 0 rgba(255,255,255,.04);}
-.race-track-inner{position:absolute;inset:4px;border-radius:5px;overflow:hidden;}
-.race-track-fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px 0 0 5px;transition:width 1.5s cubic-bezier(.34,1.56,.64,1);z-index:1;}
-.race-track-fill.lag{background:linear-gradient(90deg,rgba(239,68,68,.5) 0%,rgba(248,113,113,.88) 100%);box-shadow:inset 0 0 10px rgba(239,68,68,.3);}
-.race-track-fill.lead{background:linear-gradient(90deg,rgba(34,197,94,.5) 0%,rgba(74,222,128,.92) 100%);box-shadow:inset 0 0 10px rgba(34,197,94,.3);}
-.race-track-fill.finish-line{background:linear-gradient(90deg,rgba(22,163,74,.6) 0%,rgba(74,222,128,.95) 100%);box-shadow:inset 0 0 14px rgba(34,197,94,.5),0 0 16px rgba(74,222,128,.25);}
-.race-track-lane{position:absolute;top:50%;left:14px;right:14px;height:1.5px;transform:translateY(-50%);background:repeating-linear-gradient(90deg,rgba(253,224,71,.6) 0 14px,transparent 14px 28px);z-index:2;pointer-events:none;}
-.race-track-finish{position:absolute;right:0;top:0;bottom:0;width:10px;background:repeating-linear-gradient(45deg,#fff 0 5px,#0a0f1c 5px 10px);border-radius:0 5px 5px 0;z-index:2;box-shadow:inset 2px 0 4px rgba(0,0,0,.3);}
+/* Track — full-width binary status (green = no pending, red = has pending) */
+.race-track{position:relative;height:46px;border-radius:8px;border:1px solid #0a0f1c;overflow:visible;box-shadow:inset 0 2px 6px rgba(0,0,0,.35),0 1px 0 rgba(255,255,255,.04);transition:background .3s,box-shadow .3s;}
+.race-track.lead{background:linear-gradient(90deg,rgba(22,163,74,.85) 0%,rgba(34,197,94,.95) 100%);box-shadow:inset 0 0 14px rgba(22,163,74,.35),inset 0 2px 6px rgba(0,0,0,.25);}
+.race-track.lag{background:linear-gradient(90deg,rgba(220,38,38,.85) 0%,rgba(239,68,68,.95) 100%);box-shadow:inset 0 0 14px rgba(220,38,38,.35),inset 0 2px 6px rgba(0,0,0,.25);}
+.race-track.finish-line{background:linear-gradient(90deg,rgba(22,163,74,.95) 0%,rgba(74,222,128,1) 100%);box-shadow:inset 0 0 18px rgba(74,222,128,.55),0 0 16px rgba(74,222,128,.3);}
+.race-track-lane{position:absolute;top:50%;left:14px;right:14px;height:1.5px;transform:translateY(-50%);background:repeating-linear-gradient(90deg,rgba(255,255,255,.55) 0 14px,transparent 14px 28px);z-index:2;pointer-events:none;}
+.race-track-finish{position:absolute;right:0;top:0;bottom:0;width:10px;background:repeating-linear-gradient(45deg,#fff 0 5px,#0a0f1c 5px 10px);border-radius:0 7px 7px 0;z-index:2;box-shadow:inset 2px 0 4px rgba(0,0,0,.3);}
 .race-runner{position:absolute;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;width:42px;height:36px;font-size:28px;line-height:1;filter:drop-shadow(0 4px 6px rgba(0,0,0,.45));transition:left 1.5s cubic-bezier(.34,1.56,.64,1);z-index:5;will-change:left;}
 .race-runner.finish-line{filter:drop-shadow(0 4px 8px rgba(34,197,94,.6)) drop-shadow(0 0 12px rgba(74,222,128,.4));}
 .race-runner-initials{position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:800;color:#fff;background:#1e293b;padding:2px 7px;border-radius:8px;white-space:nowrap;border:1px solid rgba(255,255,255,.15);letter-spacing:.4px;}
@@ -4902,10 +4900,7 @@ function renderRaceTracker(data) {
             ${pending > 0 ? `<span class="meta-pending">${pending} pending</span>` : ''}
           </div>
         </div>
-        <div class="race-track">
-          <div class="race-track-inner">
-            <div class="race-track-fill ${runnerClass}" style="width:${pct}%"></div>
-          </div>
+        <div class="race-track ${runnerClass}">
           <div class="race-track-lane"></div>
           <div class="race-track-finish"></div>
           <div class="race-runner ${runnerClass}" style="left:${pct}%" title="${score > 0 ? '+' : ''}${score.toFixed(1)}%">
