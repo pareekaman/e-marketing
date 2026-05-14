@@ -249,8 +249,8 @@ tbody tr:last-child td{border-bottom:none;}
 .race-legend{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;font-size:11px;color:#64748b;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding-bottom:14px;border-bottom:1px solid #f1f5f9;}
 .race-legend .start-flag{color:#dc2626;display:inline-flex;align-items:center;gap:6px;}
 .race-legend .finish-flag{color:#16a34a;display:inline-flex;align-items:center;gap:6px;}
-.race-lane{display:grid;grid-template-columns:44px minmax(180px,1fr) 2.6fr 110px;align-items:center;gap:14px;padding:16px 12px;border-radius:12px;transition:background .2s,transform .2s,box-shadow .2s;cursor:pointer;}
-.race-lane:hover{background:#f8fafc;transform:translateX(3px);box-shadow:0 4px 14px rgba(15,23,42,.06);}
+.race-lane{display:grid;grid-template-columns:44px minmax(180px,1fr) 2.6fr 130px;align-items:center;gap:14px;padding:16px 12px;border-radius:12px;transition:background .2s;}
+.race-lane:hover{background:#f8fafc;}
 .race-lane + .race-lane{border-top:1px solid #f1f5f9;}
 .race-rank{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;font-weight:800;font-size:14px;background:#f1f5f9;color:#64748b;flex-shrink:0;font-variant-numeric:tabular-nums;}
 .race-rank.r1{background:linear-gradient(135deg,#fde047,#eab308);color:#713f12;box-shadow:0 3px 10px rgba(234,179,8,.35);font-size:18px;}
@@ -269,9 +269,8 @@ tbody tr:last-child td{border-bottom:none;}
 .race-track{position:relative;height:46px;background:linear-gradient(180deg,#1f2937 0%,#0f172a 100%);border-radius:8px;border:1px solid #0a0f1c;overflow:visible;box-shadow:inset 0 2px 6px rgba(0,0,0,.5),0 1px 0 rgba(255,255,255,.04);}
 .race-track-inner{position:absolute;inset:4px;border-radius:5px;overflow:hidden;}
 .race-track-fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px 0 0 5px;transition:width 1.5s cubic-bezier(.34,1.56,.64,1);z-index:1;}
-.race-track-fill.lag{background:linear-gradient(90deg,rgba(239,68,68,.45) 0%,rgba(248,113,113,.85) 100%);box-shadow:inset 0 0 10px rgba(239,68,68,.3);}
-.race-track-fill.mid{background:linear-gradient(90deg,rgba(245,158,11,.45) 0%,rgba(251,146,60,.85) 100%);box-shadow:inset 0 0 10px rgba(245,158,11,.3);}
-.race-track-fill.lead{background:linear-gradient(90deg,rgba(34,197,94,.45) 0%,rgba(74,222,128,.9) 100%);box-shadow:inset 0 0 10px rgba(34,197,94,.3);}
+.race-track-fill.lag{background:linear-gradient(90deg,rgba(239,68,68,.5) 0%,rgba(248,113,113,.88) 100%);box-shadow:inset 0 0 10px rgba(239,68,68,.3);}
+.race-track-fill.lead{background:linear-gradient(90deg,rgba(34,197,94,.5) 0%,rgba(74,222,128,.92) 100%);box-shadow:inset 0 0 10px rgba(34,197,94,.3);}
 .race-track-fill.finish-line{background:linear-gradient(90deg,rgba(22,163,74,.6) 0%,rgba(74,222,128,.95) 100%);box-shadow:inset 0 0 14px rgba(34,197,94,.5),0 0 16px rgba(74,222,128,.25);}
 .race-track-lane{position:absolute;top:50%;left:14px;right:14px;height:1.5px;transform:translateY(-50%);background:repeating-linear-gradient(90deg,rgba(253,224,71,.6) 0 14px,transparent 14px 28px);z-index:2;pointer-events:none;}
 .race-track-finish{position:absolute;right:0;top:0;bottom:0;width:10px;background:repeating-linear-gradient(45deg,#fff 0 5px,#0a0f1c 5px 10px);border-radius:0 5px 5px 0;z-index:2;box-shadow:inset 2px 0 4px rgba(0,0,0,.3);}
@@ -279,14 +278,14 @@ tbody tr:last-child td{border-bottom:none;}
 .race-runner.finish-line{filter:drop-shadow(0 4px 8px rgba(34,197,94,.6)) drop-shadow(0 0 12px rgba(74,222,128,.4));}
 .race-runner-initials{position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:800;color:#fff;background:#1e293b;padding:2px 7px;border-radius:8px;white-space:nowrap;border:1px solid rgba(255,255,255,.15);letter-spacing:.4px;}
 .race-runner.lead .race-runner-initials{background:#16a34a;}
-.race-runner.mid .race-runner-initials{background:#d97706;}
 .race-runner.lag .race-runner-initials{background:#dc2626;}
 .race-runner.finish-line .race-runner-initials{background:linear-gradient(135deg,#16a34a,#15803d);}
 
-.race-score-cell{display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-variant-numeric:tabular-nums;}
+.race-score-cell{display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-variant-numeric:tabular-nums;padding:6px 10px;border-radius:8px;border:1px solid transparent;transition:background .15s,border-color .15s,transform .15s;cursor:pointer;}
+.race-score-cell:hover{background:#f8fafc;border-color:#cbd5e1;transform:scale(1.04);}
+.race-score-cell::after{content:"View →";display:block;font-size:9px;color:#3b82f6;font-weight:700;letter-spacing:.3px;opacity:.7;}
 .race-score{font-size:18px;font-weight:800;letter-spacing:-.3px;}
 .race-score.s-lead{color:#16a34a;}
-.race-score.s-mid{color:#d97706;}
 .race-score.s-lag{color:#dc2626;}
 .race-gap{font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:.2px;}
 
@@ -4871,15 +4870,17 @@ function renderRaceTracker(data) {
   const lanes = racers.map((emp, idx) => {
     const rank = idx + 1;
     const score = emp.overallScore;
+    const pending = emp.pendingAll || 0;
+    const done = emp.completedAll || 0;
     const pct = Math.max(0, Math.min(100, 100 + score));
     const initials = emp.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
     const car = pickCar(idx);
 
+    // Binary: green if no pending tasks, red otherwise. Finish-line variant when score reaches 0.
     let runnerClass, scoreClass;
-    if (score === 0) { runnerClass = 'finish-line'; scoreClass = 's-lead'; }
-    else if (score >= -20) { runnerClass = 'lead';  scoreClass = 's-lead'; }
-    else if (score >= -50) { runnerClass = 'mid';   scoreClass = 's-mid';  }
-    else                    { runnerClass = 'lag';   scoreClass = 's-lag';  }
+    if (pending === 0 && score === 0) { runnerClass = 'finish-line'; scoreClass = 's-lead'; }
+    else if (pending === 0)           { runnerClass = 'lead';        scoreClass = 's-lead'; }
+    else                              { runnerClass = 'lag';         scoreClass = 's-lag';  }
 
     const rankClass = rank === 1 ? 'r1' : rank === 2 ? 'r2' : rank === 3 ? 'r3' : '';
     const rankBadge = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
@@ -4889,10 +4890,8 @@ function renderRaceTracker(data) {
       : `${(leader.overallScore - score).toFixed(1)} behind`;
 
     const safeName = emp.name.replace(/'/g,"\\'");
-    const done = emp.completedAll || 0;
-    const pending = emp.pendingAll || 0;
     return `
-      <div class="race-lane" onclick="openAllMISDetail(${emp.userId}, '${safeName}')" title="Click for ${escapeHtml(emp.name)}'s full task breakdown">
+      <div class="race-lane">
         <div class="race-rank ${rankClass}">${rankBadge}</div>
         <div class="race-runner-info">
           <div class="race-runner-name">${escapeHtml(emp.name)}</div>
@@ -4914,7 +4913,7 @@ function renderRaceTracker(data) {
             ${car}
           </div>
         </div>
-        <div class="race-score-cell">
+        <div class="race-score-cell" onclick="openAllMISDetail(${emp.userId}, '${safeName}')" title="Click for ${escapeHtml(emp.name)}'s full task breakdown">
           <div class="race-score ${scoreClass}">${score > 0 ? '+' : ''}${score.toFixed(1)}%</div>
           <div class="race-gap">${gap}</div>
         </div>
