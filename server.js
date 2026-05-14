@@ -689,6 +689,15 @@ app.post('/api/logout', (req, res) => {
   res.json({ success: true });
 });
 
+// Users (by name) who get admin-level visibility into the Leave Tracker without
+// being full admins everywhere else. Keep this list short and explicit.
+const LEAVE_REPORT_VIEWERS = ['Rotan Singh'];
+function isLeaveReportViewer(user) {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  return LEAVE_REPORT_VIEWERS.includes(user.name);
+}
+
 app.get('/api/me', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -702,6 +711,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
       const [ex] = await db.query('SELECT extra_off FROM users WHERE id=?', [req.session.userId]);
       rows[0].extra_off = ex[0]?.extra_off || '';
     } catch(e) { rows[0].extra_off = ''; }
+    rows[0].canViewAllLeaves = isLeaveReportViewer(rows[0]);
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3244,20 +3254,26 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
         where += ' AND lr.approver_id=? AND lr.user_id<>?'; params.push(uid, uid);
       }
     } else if (scope === 'team') {
-      if (role === 'admin') {
+      // Pull current user once so we can apply leave-viewer override and HOD dept-scoping.
+      const [[me]] = await db.query('SELECT name, role, department FROM users WHERE id=?', [uid]);
+      if (role === 'admin' || isLeaveReportViewer(me)) {
         // no filter — all
       } else if (role === 'hod') {
-        const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
         if (me?.department) {
           where += ' AND u.department=?'; params.push(me.department);
         } else {
           where += ' AND lr.user_id=?'; params.push(uid);
         }
+      } else if (role === 'pc') {
+        // PC keeps its existing org-wide team view.
       } else {
         where += ' AND lr.user_id=?'; params.push(uid);
       }
     }
     if (status) { where += ' AND lr.status=?'; params.push(status); }
+    if (req.query.user_id) { where += ' AND lr.user_id=?'; params.push(req.query.user_id); }
+    if (req.query.from)    { where += ' AND lr.to_date >= ?'; params.push(req.query.from); }
+    if (req.query.to)      { where += ' AND lr.from_date <= ?'; params.push(req.query.to); }
 
     const [rows] = await db.query(`
       SELECT lr.id, lr.user_id, lr.leave_type, lr.status, lr.reason,

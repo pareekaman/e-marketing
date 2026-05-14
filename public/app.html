@@ -1444,6 +1444,21 @@ tbody tr:last-child td{border-bottom:none;}
         <input type="text" id="lvSearch" placeholder="🔍 Search by name / reason / type..." oninput="renderLeaves()"/>
       </div>
 
+      <!-- Team-only filters: user dropdown + date range. Visible to admin / HOD / PC / leave-report viewers on Team tab. -->
+      <div id="lvTeamFilters" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+        <select id="lvUserFilter" onchange="renderLeaves()"
+          style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff">
+          <option value="all">All Employees</option>
+        </select>
+        <input type="date" id="lvDateFrom" onchange="renderLeaves()"
+          style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff">
+        <span style="font-size:12px;color:#94a3b8">to</span>
+        <input type="date" id="lvDateTo" onchange="renderLeaves()"
+          style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff">
+        <button onclick="lvClearFilters()" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;background:#fff;cursor:pointer;color:#64748b">✕ Clear</button>
+        <span id="lvFilterSummary" style="margin-left:auto;font-size:12px;color:#64748b;font-weight:600"></span>
+      </div>
+
       <div id="lvListWrap" class="lv-list-wrap"><div class="empty">Loading…</div></div>
     </div>
   </div>
@@ -2536,8 +2551,8 @@ async function init() {
       // PC: can view all tasks + approve, but cannot edit/delete
       // Nav items same as employee (dashboard, alltasks, approvals, profile, fms-tasks)
     }
-    // Leave Tracker — HOD / Admin / PC also see Team tab
-    if (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc') {
+    // Leave Tracker — HOD / Admin / PC and special leave-report viewers see Team tab
+    if (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc' || ME.canViewAllLeaves) {
       const tTeam = document.getElementById('lvTabTeam');
       if (tTeam) tTeam.style.display = 'flex';
     }
@@ -7430,13 +7445,51 @@ async function loadLeaves(){
   loadApprovalBadge();
 }
 
+function lvCanFilterTeam() {
+  return ME && (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc' || ME.canViewAllLeaves);
+}
+
+function lvSyncTeamFilters() {
+  const box = document.getElementById('lvTeamFilters');
+  if (!box) return;
+  box.style.display = (LEAVE_TAB === 'team' && lvCanFilterTeam()) ? 'flex' : 'none';
+  if (box.style.display === 'flex') {
+    const sel = document.getElementById('lvUserFilter');
+    if (sel) {
+      const prev = sel.value;
+      const uniq = {};
+      for (const r of LEAVE_DATA) {
+        if (r.user_id && r.user_name) uniq[r.user_id] = r.user_name;
+      }
+      sel.innerHTML = '<option value="all">All Employees</option>';
+      Object.entries(uniq).sort((a,b) => a[1].localeCompare(b[1])).forEach(([id,name]) => {
+        const opt = document.createElement('option');
+        opt.value = id; opt.textContent = name;
+        sel.appendChild(opt);
+      });
+      if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+    }
+  }
+}
+
+function lvClearFilters() {
+  const sel = document.getElementById('lvUserFilter'); if (sel) sel.value = 'all';
+  const f = document.getElementById('lvDateFrom'); if (f) f.value = '';
+  const t = document.getElementById('lvDateTo'); if (t) t.value = '';
+  renderLeaves();
+}
+
 function renderLeaves(){
   const wrap = document.getElementById('lvListWrap');
+  lvSyncTeamFilters();
   if (!LEAVE_DATA.length) {
     wrap.innerHTML = '<div class="empty">No leave records yet.</div>';
     return;
   }
   const search = (document.getElementById('lvSearch')?.value || '').toLowerCase();
+  const userVal = document.getElementById('lvUserFilter')?.value || 'all';
+  const dateFrom = document.getElementById('lvDateFrom')?.value || '';
+  const dateTo = document.getElementById('lvDateTo')?.value || '';
   let rows = LEAVE_DATA;
   if (search) {
     rows = rows.filter(r =>
@@ -7444,6 +7497,26 @@ function renderLeaves(){
       (r.reason||'').toLowerCase().includes(search) ||
       (LEAVE_TYPE_LABEL[r.leave_type]||'').toLowerCase().includes(search)
     );
+  }
+  if (LEAVE_TAB === 'team' && lvCanFilterTeam()) {
+    if (userVal && userVal !== 'all') {
+      rows = rows.filter(r => String(r.user_id) === String(userVal));
+    }
+    if (dateFrom) {
+      rows = rows.filter(r => (r.to_date || r.from_date || '') >= dateFrom);
+    }
+    if (dateTo) {
+      rows = rows.filter(r => (r.from_date || r.to_date || '') <= dateTo);
+    }
+  }
+  // Filter summary: count distinct users and total leave days for quick figures.
+  const summaryEl = document.getElementById('lvFilterSummary');
+  if (summaryEl && LEAVE_TAB === 'team' && lvCanFilterTeam()) {
+    const distinctUsers = new Set(rows.map(r => r.user_id));
+    const totalDays = rows.reduce((s,r) => s + (Array.isArray(r.dates) ? r.dates.length : 1), 0);
+    summaryEl.textContent = `${rows.length} leaves · ${distinctUsers.size} ${distinctUsers.size === 1 ? 'employee' : 'employees'} · ${totalDays} days`;
+  } else if (summaryEl) {
+    summaryEl.textContent = '';
   }
   if (!rows.length) {
     wrap.innerHTML = '<div class="empty">No leaves match the filters.</div>';
