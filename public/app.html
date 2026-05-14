@@ -133,6 +133,18 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 .ov-card.completed .number{color:#10b981;}
 
 .dash-bottom{display:grid;grid-template-columns:1fr 320px;gap:18px;}
+.dash-perf-section{margin-top:18px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;}
+.dash-perf-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;}
+.dash-perf-head h3{font-size:15px;font-weight:700;color:#0f172a;margin:0;}
+.dash-perf-dates{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:#64748b;font-weight:600;}
+.dash-perf-dates input[type="date"]{padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit;background:#fff;color:#1e293b;transition:border-color .15s,box-shadow .15s;}
+.dash-perf-dates input[type="date"]:focus{border-color:#1a56db;box-shadow:0 0 0 3px rgba(26,86,219,.15);}
+.dash-perf-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+.dash-perf-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;}
+.dash-perf-card h4{font-size:13px;font-weight:700;color:#1e293b;margin:0 0 10px;display:flex;align-items:center;gap:6px;}
+.dash-perf-card .perf-chart-wrap{position:relative;height:200px;}
+.dash-perf-card .perf-empty{font-size:12px;color:#94a3b8;text-align:center;padding:60px 10px;}
+@media (max-width:960px){ .dash-perf-grid{grid-template-columns:1fr;} }
 .task-table-card{background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;}
 .card-head{padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;}
 .card-head-title{font-size:14px;font-weight:700;}
@@ -984,7 +996,7 @@ tbody tr:last-child td{border-bottom:none;}
             <div class="tab"        id="dashTabFMS"   onclick="dashTab('fms',this)">FMS</div>
           </div>
         </div>
-        <div style="overflow-x:auto;max-height:340px;overflow-y:auto;">
+        <div style="overflow-x:auto;max-height:370px;overflow-y:auto;">
           <table style="min-width:600px">
             <thead style="position:sticky;top:0;z-index:2;background:#f8fafc">
               <tr>
@@ -1007,6 +1019,33 @@ tbody tr:last-child td{border-bottom:none;}
           <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#10b981;display:inline-block"></span>Completed</span>
           <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block"></span>Pending</span>
           <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#f59e0b;display:inline-block"></span>Revised</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Performance & Activity (admin / HOD / PC only) -->
+    <div id="dashPerfSection" class="dash-perf-section" style="display:none">
+      <div class="dash-perf-head">
+        <h3>📈 Performance &amp; Activity</h3>
+        <div class="dash-perf-dates">
+          <label>From</label>
+          <input type="date" id="dashPerfFrom" onchange="loadDashboardPerfCharts()"/>
+          <label>To</label>
+          <input type="date" id="dashPerfTo" onchange="loadDashboardPerfCharts()"/>
+        </div>
+      </div>
+      <div class="dash-perf-grid">
+        <div class="dash-perf-card">
+          <h4>🥇 Top 5 Performers</h4>
+          <div class="perf-chart-wrap"><canvas id="dashTopChart"></canvas></div>
+        </div>
+        <div class="dash-perf-card">
+          <h4>🐢 Bottom 5 Performers</h4>
+          <div class="perf-chart-wrap"><canvas id="dashBottomChart"></canvas></div>
+        </div>
+        <div class="dash-perf-card">
+          <h4>🔥 Top 5 Most Active</h4>
+          <div class="perf-chart-wrap"><canvas id="dashActiveChart"></canvas></div>
         </div>
       </div>
     </div>
@@ -2521,6 +2560,7 @@ let ME = null;
 let dashType = 'all';
 let tasksType = 'delegation';
 let dashChartInst = null;
+let dashPerfCharts = { top: null, bottom: null, active: null };
 // Holidays now server-backed — loaded fresh each time the holiday modal opens
 let holidays = [];
 let transferMode = false;
@@ -2810,6 +2850,78 @@ async function loadDashboard() {
 
   // Load FMS section — respects same employee filter
   loadDashFMS();
+
+  // Performance + Activity charts (admin / HOD only — depends on /api/mis/all)
+  if (isAdmin || isHod) {
+    const perfSec = document.getElementById('dashPerfSection');
+    if (perfSec) perfSec.style.display = 'block';
+    loadDashboardPerfCharts();
+  }
+}
+
+async function loadDashboardPerfCharts(){
+  const isAdmin = ME && ME.role === 'admin';
+  const isHod   = ME && ME.role === 'hod';
+  if (!isAdmin && !isHod) return;
+  const fromEl = document.getElementById('dashPerfFrom');
+  const toEl   = document.getElementById('dashPerfTo');
+  if (!fromEl || !toEl) return;
+  if (!fromEl.value || !toEl.value) {
+    const today = new Date();
+    const thirty = new Date(); thirty.setDate(today.getDate() - 29);
+    const fmt = d => d.toISOString().split('T')[0];
+    fromEl.value = fmt(thirty);
+    toEl.value   = fmt(today);
+  }
+  if (fromEl.value > toEl.value) { showToast('From date must be before To date', 'error'); return; }
+
+  const data = await api(`/api/mis/all?start=${fromEl.value}&end=${toEl.value}`);
+  if (!Array.isArray(data)) return;
+  const racers = data.filter(r => r.overallScore !== null && r.overallScore !== undefined);
+
+  const top    = [...racers].sort((a,b) => b.overallScore - a.overallScore).slice(0, 5);
+  const bottom = [...racers].sort((a,b) => a.overallScore - b.overallScore).slice(0, 5);
+  const active = [...racers].sort((a,b) => (b.completedAll||0) - (a.completedAll||0)).slice(0, 5);
+
+  renderDashPerfChart('dashTopChart',    'top',    top.map(r => r.name),    top.map(r => r.overallScore),    '#16a34a', 'Score');
+  renderDashPerfChart('dashBottomChart', 'bottom', bottom.map(r => r.name), bottom.map(r => r.overallScore), '#dc2626', 'Score');
+  renderDashPerfChart('dashActiveChart', 'active', active.map(r => r.name), active.map(r => r.completedAll || 0), '#1a56db', 'Tasks completed');
+}
+
+function renderDashPerfChart(canvasId, key, labels, values, color, axisLabel){
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const wrap = canvas.parentElement;
+  if (!labels.length) {
+    wrap.innerHTML = '<div class="perf-empty">No data in this date range</div>';
+    return;
+  }
+  // wrap was replaced if previously empty — make sure canvas exists
+  if (!wrap.querySelector('canvas')) {
+    wrap.innerHTML = `<canvas id="${canvasId}"></canvas>`;
+  }
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  if (dashPerfCharts[key]) dashPerfCharts[key].destroy();
+  dashPerfCharts[key] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: axisLabel, data: values, backgroundColor: color, borderRadius: 6, maxBarThickness: 22 }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => ` ${axisLabel}: ${typeof c.raw === 'number' ? c.raw.toFixed(1) : c.raw}` } }
+      },
+      scales: {
+        x: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, color: '#64748b' } },
+        y: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' }, color: '#0f172a' } }
+      }
+    }
+  });
 }
 
 // PC: date range change → refresh dropdown then dashboard
