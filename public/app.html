@@ -241,6 +241,50 @@ tbody tr:last-child td{border-bottom:none;}
 .score-negative{color:#dc2626;font-weight:700;}
 .score-zero{color:#64748b;font-weight:700;}
 
+/* Race Tracker (Admin only) */
+.race-wrap{background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:18px;}
+.race-legend{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:12px;color:#64748b;font-weight:600;letter-spacing:.3px;text-transform:uppercase;}
+.race-legend .start-flag{color:#dc2626;}
+.race-legend .finish-flag{color:#16a34a;}
+.race-lane{display:grid;grid-template-columns:34px minmax(170px,1fr) 2.2fr 90px;align-items:center;gap:12px;padding:10px 8px;border-radius:10px;transition:background .2s;}
+.race-lane:hover{background:#f8fafc;}
+.race-lane + .race-lane{border-top:1px dashed #e2e8f0;}
+.race-rank{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;font-weight:800;font-size:14px;background:#f1f5f9;color:#475569;flex-shrink:0;}
+.race-rank.r1{background:linear-gradient(135deg,#fde047,#facc15);color:#78350f;box-shadow:0 2px 8px rgba(250,204,21,.4);}
+.race-rank.r2{background:linear-gradient(135deg,#e5e7eb,#cbd5e1);color:#334155;box-shadow:0 2px 6px rgba(148,163,184,.4);}
+.race-rank.r3{background:linear-gradient(135deg,#fdba74,#fb923c);color:#7c2d12;box-shadow:0 2px 6px rgba(251,146,60,.4);}
+.race-runner-info{display:flex;flex-direction:column;min-width:0;}
+.race-runner-name{font-size:14px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.race-runner-dept{font-size:11px;color:#94a3b8;margin-top:2px;}
+.race-track{position:relative;height:36px;background:linear-gradient(90deg,#fee2e2 0%,#fef3c7 50%,#dcfce7 100%);border-radius:18px;border:1px solid #e2e8f0;overflow:visible;}
+.race-track::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;border-radius:18px 0 0 18px;background:repeating-linear-gradient(45deg,#1f2937 0 6px,#fff 6px 12px);opacity:.6;}
+.race-track::after{content:"";position:absolute;right:0;top:0;bottom:0;width:6px;border-radius:0 18px 18px 0;background:repeating-linear-gradient(45deg,#1f2937 0 6px,#fff 6px 12px);opacity:.6;}
+.race-runner{position:absolute;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:#fff;border:2.5px solid #1e293b;font-size:14px;font-weight:800;color:#1e293b;box-shadow:0 2px 6px rgba(0,0,0,.18);transition:left 1.2s cubic-bezier(.34,1.56,.64,1);z-index:2;}
+.race-runner.lead{border-color:#16a34a;background:#dcfce7;}
+.race-runner.mid{border-color:#d97706;background:#fef3c7;}
+.race-runner.lag{border-color:#dc2626;background:#fee2e2;}
+.race-runner.finish-line{border-color:#16a34a;background:linear-gradient(135deg,#bbf7d0,#86efac);}
+.race-checkpoint{position:absolute;top:0;bottom:0;width:1px;background:rgba(30,41,59,.18);z-index:1;}
+.race-checkpoint::after{content:attr(data-label);position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-size:9px;color:#94a3b8;font-weight:600;white-space:nowrap;}
+.race-score-cell{display:flex;flex-direction:column;align-items:flex-end;gap:2px;}
+.race-score{font-size:15px;font-weight:800;}
+.race-score.s-lead{color:#16a34a;}
+.race-score.s-mid{color:#d97706;}
+.race-score.s-lag{color:#dc2626;}
+.race-gap{font-size:10px;color:#94a3b8;font-weight:600;}
+.race-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;}
+.race-stat{background:linear-gradient(135deg,#fff,#f8fafc);border:1px solid #e2e8f0;border-radius:12px;padding:14px;}
+.race-stat-label{font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+.race-stat-value{font-size:22px;font-weight:800;color:#1e293b;margin-top:4px;}
+.race-stat-sub{font-size:11px;color:#94a3b8;margin-top:2px;}
+@media (max-width:720px){
+  .race-lane{grid-template-columns:30px 1fr;grid-template-rows:auto auto;gap:6px;}
+  .race-rank{grid-row:1/3;}
+  .race-runner-info{grid-column:2;}
+  .race-track{grid-column:1/3;height:30px;}
+  .race-score-cell{grid-column:1/3;flex-direction:row;justify-content:space-between;align-items:center;}
+}
+
 /* Comments */
 .comment-item{padding:10px 0;border-bottom:1px solid #f1f5f9;}
 .comment-item:last-child{border-bottom:none;}
@@ -786,6 +830,10 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="nav-item" id="nav-mis" style="display:none" onclick="navigate('mis',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
       <span class="nav-label-text">MIS Report</span>
+    </div>
+    <div class="nav-item" id="nav-race" style="display:none" onclick="navigate('race',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v16M4 4h12l-2 4 2 4H4"/></svg>
+      <span class="nav-label-text">Race Tracker</span>
     </div>
     <div class="nav-item" id="nav-fms" style="display:none" onclick="navigate('fms',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
@@ -1415,6 +1463,37 @@ tbody tr:last-child td{border-bottom:none;}
     <div id="misResults">
       <div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">
         Select date range and click Generate
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RACE TRACKER (Admin only) ── -->
+  <div id="page-race" class="page">
+    <div class="page-header">
+      <h2>🏁 Race Tracker</h2>
+    </div>
+
+    <!-- Filters -->
+    <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:18px;margin-bottom:18px;">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;text-transform:uppercase">Start Date</div>
+          <input type="date" id="raceStart" style="padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;"/>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;text-transform:uppercase">End Date</div>
+          <input type="date" id="raceEnd" style="padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;"/>
+        </div>
+        <div style="align-self:flex-end">
+          <button class="btn btn-primary" onclick="generateRace()">Start Race</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="raceResults">
+      <div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">
+        Select date range and click Start Race
       </div>
     </div>
   </div>
@@ -2422,6 +2501,7 @@ async function init() {
     if (ME.role === 'admin') {
       document.getElementById('nav-users').style.display = 'flex';
       document.getElementById('nav-mis').style.display = 'flex';
+      document.getElementById('nav-race').style.display = 'flex';
       document.getElementById('nav-fms').style.display = 'flex';
       document.getElementById('nav-clients').style.display = 'flex';
       document.getElementById('nav-compliance').style.display = 'flex';
@@ -2529,7 +2609,7 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker'};
 
 function toggleSidebar() {
   const sb = document.getElementById('sidebar');
@@ -2548,6 +2628,8 @@ function closeSidebar() {
 function navigate(page, el) {
   // MIS page — admin and HOD (App Role) only
   if (page === 'mis' && ME.role !== 'admin' && ME.role !== 'hod') return;
+  // Race Tracker — admin only
+  if (page === 'race' && ME.role !== 'admin') return;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
@@ -2566,6 +2648,7 @@ function navigate(page, el) {
   if (page==='compliance') loadCompliance();
   if (page==='dailyreports') loadDailyReports();
   if (page==='leaves') loadLeaves();
+  if (page==='race') loadRaceTracker();
   window.scrollTo(0,0);
 }
 
@@ -4627,6 +4710,152 @@ function setDefaultMISDates() {
   monday.setDate(today.getDate() - today.getDay() + 1);
   document.getElementById('misStart').value = monday.toISOString().split('T')[0];
   document.getElementById('misEnd').value = today.toISOString().split('T')[0];
+  // Race Tracker uses the same default window
+  const rs = document.getElementById('raceStart');
+  const re = document.getElementById('raceEnd');
+  if (rs) rs.value = monday.toISOString().split('T')[0];
+  if (re) re.value = today.toISOString().split('T')[0];
+}
+
+// ══════════════════════════════════════════════════════
+// RACE TRACKER (Admin only)
+// ── Score range: -100 (worst) → 0 (perfect). Position on track = 100 + score.
+// ── Sorted by overallScore desc; ties → more completed tasks → name.
+// ══════════════════════════════════════════════════════
+function setRaceDatesToCurrentWeek() {
+  const today = new Date();
+  const dow = today.getDay();           // 0=Sun ... 6=Sat
+  const offsetToMon = dow === 0 ? -6 : 1 - dow;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + offsetToMon);
+  const ymd = d => d.toISOString().split('T')[0];
+  const rs = document.getElementById('raceStart');
+  const re = document.getElementById('raceEnd');
+  if (rs) rs.value = ymd(monday);
+  if (re) re.value = ymd(today);
+}
+
+async function loadRaceTracker() {
+  setRaceDatesToCurrentWeek();
+  await generateRace();
+}
+
+async function generateRace() {
+  const start = document.getElementById('raceStart').value;
+  const end   = document.getElementById('raceEnd').value;
+  if (!start || !end) { showToast('Please select start and end date','error'); return; }
+  if (start > end)   { showToast('Start date must be before end date','error'); return; }
+
+  const container = document.getElementById('raceResults');
+  container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Loading race…</div>`;
+
+  const data = await api(`/api/mis/all?start=${start}&end=${end}`);
+  if (data.error) { showToast(data.error,'error'); container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">${data.error}</div>`; return; }
+  renderRaceTracker(Array.isArray(data) ? data : []);
+}
+
+function renderRaceTracker(data) {
+  const container = document.getElementById('raceResults');
+  // Keep only employees who actually have tasks (score !== null) so the race is meaningful
+  const racers = data
+    .filter(e => e.overallScore !== null && e.overallScore !== undefined)
+    .sort((a, b) => {
+      if (b.overallScore !== a.overallScore) return b.overallScore - a.overallScore;
+      if ((b.completedAll||0) !== (a.completedAll||0)) return (b.completedAll||0) - (a.completedAll||0);
+      return a.name.localeCompare(b.name);
+    });
+
+  if (!racers.length) {
+    container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">No racers found for this date range.</div>`;
+    return;
+  }
+
+  const leader   = racers[0];
+  const lastIdx  = racers.length - 1;
+  const trailing = racers[lastIdx];
+  const avg = Math.round((racers.reduce((s,e)=>s+e.overallScore,0) / racers.length) * 10) / 10;
+  const atFinish = racers.filter(e => e.overallScore === 0).length;
+
+  const summary = `
+    <div class="race-summary">
+      <div class="race-stat">
+        <div class="race-stat-label">🏆 Leader</div>
+        <div class="race-stat-value" style="font-size:18px">${escapeHtml(leader.name)}</div>
+        <div class="race-stat-sub">${leader.overallScore > 0 ? '+' : ''}${leader.overallScore.toFixed(1)}% · ${leader.department||'—'}</div>
+      </div>
+      <div class="race-stat">
+        <div class="race-stat-label">🏁 At Finish Line</div>
+        <div class="race-stat-value">${atFinish}<span style="font-size:14px;color:#94a3b8;font-weight:600"> / ${racers.length}</span></div>
+        <div class="race-stat-sub">Score = 0 (no pending / delays)</div>
+      </div>
+      <div class="race-stat">
+        <div class="race-stat-label">📊 Pack Average</div>
+        <div class="race-stat-value" style="color:${avg<0?'#dc2626':'#16a34a'}">${avg > 0 ? '+' : ''}${avg.toFixed(1)}%</div>
+        <div class="race-stat-sub">${racers.length} racers</div>
+      </div>
+      <div class="race-stat">
+        <div class="race-stat-label">🐢 Trailing</div>
+        <div class="race-stat-value" style="font-size:18px">${escapeHtml(trailing.name)}</div>
+        <div class="race-stat-sub">${trailing.overallScore.toFixed(1)}% · ${trailing.department||'—'}</div>
+      </div>
+    </div>`;
+
+  const lanes = racers.map((emp, idx) => {
+    const rank = idx + 1;
+    const score = emp.overallScore;
+    // Position on track: score -100..0 → pct 0..100
+    const pct = Math.max(0, Math.min(100, 100 + score));
+    const initials = emp.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+
+    let runnerClass, scoreClass;
+    if (score === 0) { runnerClass = 'finish-line'; scoreClass = 's-lead'; }
+    else if (score >= -20) { runnerClass = 'lead';  scoreClass = 's-lead'; }
+    else if (score >= -50) { runnerClass = 'mid';   scoreClass = 's-mid';  }
+    else                    { runnerClass = 'lag';   scoreClass = 's-lag';  }
+
+    const rankClass = rank === 1 ? 'r1' : rank === 2 ? 'r2' : rank === 3 ? 'r3' : '';
+    const rankBadge = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+
+    const gap = rank === 1
+      ? (score === 0 ? '🏁 At finish' : 'Leader')
+      : `${(leader.overallScore - score).toFixed(1)} behind`;
+
+    return `
+      <div class="race-lane" title="${escapeHtml(emp.name)} — ${emp.totalAll} tasks, ${emp.completedAll||0} done, ${emp.pendingAll} pending, ${emp.overdueAll} delayed">
+        <div class="race-rank ${rankClass}">${rankBadge}</div>
+        <div class="race-runner-info">
+          <div class="race-runner-name">${escapeHtml(emp.name)}</div>
+          <div class="race-runner-dept">${escapeHtml(emp.department||'—')} · ${emp.totalAll} tasks</div>
+        </div>
+        <div class="race-track">
+          <div class="race-checkpoint" style="left:25%" data-label="-75"></div>
+          <div class="race-checkpoint" style="left:50%" data-label="-50"></div>
+          <div class="race-checkpoint" style="left:75%" data-label="-25"></div>
+          <div class="race-runner ${runnerClass}" style="left:${pct}%" title="${score > 0 ? '+' : ''}${score.toFixed(1)}%">${initials}</div>
+        </div>
+        <div class="race-score-cell">
+          <div class="race-score ${scoreClass}">${score > 0 ? '+' : ''}${score.toFixed(1)}%</div>
+          <div class="race-gap">${gap}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    ${summary}
+    <div class="race-wrap">
+      <div class="race-legend">
+        <span class="start-flag">🚩 START · -100</span>
+        <span>← worse · score · better →</span>
+        <span class="finish-flag">0 · FINISH 🏁</span>
+      </div>
+      ${lanes}
+    </div>`;
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ══════════════════════════════════════════════════════
