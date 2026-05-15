@@ -1343,8 +1343,10 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
             if (!planVal || actualVal) return; // skip if no plan or already done
 
             // Parse plan date — try to extract date from value
-            // planVal might be a date string like "2026-04-07" or "07/04/2026" or just text
+            // planVal might be a date string like "2026-04-07" or "07/04/2026" or just text,
+            // optionally followed by a time like " 14:30" or " 14:30:00".
             let planDate = '';
+            let planTime = '';
             const dateMatch = planVal.match(/(\d{4}-\d{2}-\d{2})|(\d{2}[\/\-]\d{2}[\/\-]\d{4})/);
             if (dateMatch) {
               const raw = dateMatch[0];
@@ -1354,6 +1356,15 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
                 // DD/MM/YYYY → YYYY-MM-DD
                 const parts = raw.split(/[\/\-]/);
                 if (parts.length === 3) planDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+              }
+              // Time tail (HH:MM or HH:MM:SS) anywhere after the date.
+              const after = planVal.slice(dateMatch.index + raw.length);
+              const timeMatch = after.match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b/);
+              if (timeMatch) {
+                const hh = timeMatch[1].padStart(2,'0');
+                const mm = timeMatch[2];
+                const ss = timeMatch[3];
+                planTime = ss ? `${hh}:${mm}:${ss}` : `${hh}:${mm}`;
               }
             }
 
@@ -1377,6 +1388,7 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
               doer: step.doerNames || '—',
               planValue: planVal,
               planDate: planDate || '',
+              planTime: planTime || '',
               isLate,
               rowNumber: headerRowIdx + 1 + i + 1,
               details

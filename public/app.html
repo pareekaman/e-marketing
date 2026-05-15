@@ -3271,6 +3271,7 @@ async function loadAllTasks() {
       stepName: r.stepName || '',
       doer: r.doer || '—',
       planValue: r.planValue || '',
+      planTime: r.planTime || '',
       details: Array.isArray(r.details) ? r.details : [],
       isLate: !!r.isLate,
       // Aliased shape so existing filters / grouping keep working.
@@ -3380,9 +3381,14 @@ function _buildFmsRowHtml(t) {
   const lateBadge = t.isLate
     ? `<span style="font-size:10px;background:#fef2f2;color:#dc2626;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fecaca">⏰ Late</span>`
     : `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ On Track</span>`;
-  const dateCell = t.due_date
-    ? `<span style="${t.isLate?'color:#dc2626;font-weight:700':''}">${fmtDate(t.due_date)}</span>`
-    : `<span style="color:#94a3b8;font-size:12px">${dtEscape(t.planValue||'—')}</span>`;
+  let dateCell;
+  if (t.due_date) {
+    const datePart = fmtDate(t.due_date);
+    const timePart = t.planTime ? `<span style="color:#64748b;font-size:11px;font-weight:500;display:block;margin-top:1px">🕒 ${dtEscape(t.planTime)}</span>` : '';
+    dateCell = `<span style="${t.isLate?'color:#dc2626;font-weight:700':''}">${datePart}</span>${timePart}`;
+  } else {
+    dateCell = `<span style="color:#94a3b8;font-size:12px">${dtEscape(t.planValue||'—')}</span>`;
+  }
   const detailsHtml = (Array.isArray(t.details) && t.details.length)
     ? t.details.map(d => `<div style="display:flex;gap:6px;align-items:baseline;font-size:12px;line-height:1.45">
         <span style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap">${dtEscape(d.header||'—')}:</span>
