@@ -2826,6 +2826,200 @@ app.post('/api/daily-reminder/send', requireAuth, requireAdmin, async (req, res)
   }
 });
 
+// ══════════════════════════════════════════════════════
+// 📊 PENDING TASK SUMMARY — sends THREE separate WhatsApp messages
+// to the management group (Delegation / Checklist / FMS), each grouped by user.
+// ══════════════════════════════════════════════════════
+async function buildPendingSummaryMessages() {
+  const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+  const today = istNow.toISOString().split('T')[0];
+  const fmtIN = d => (d || '').split('-').reverse().join('/');
+
+  // ── DELEGATION ─────────────────────────────────────────
+  const [delRows] = await db.query(`
+    SELECT t.id, t.description, t.priority,
+           DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+           u.name AS doer_name, c.name AS client_name
+    FROM delegation_tasks t
+    JOIN users u ON t.assigned_to=u.id
+    LEFT JOIN clients c ON t.client_id=c.id
+    WHERE t.status='pending'
+    ORDER BY u.name, t.due_date ASC`);
+
+  // ── CHECKLIST ──────────────────────────────────────────
+  const [chlRows] = await db.query(`
+    SELECT t.id, t.description, t.priority,
+           DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+           u.name AS doer_name, c.name AS client_name
+    FROM checklist_tasks t
+    JOIN users u ON t.assigned_to=u.id
+    LEFT JOIN clients c ON t.client_id=c.id
+    WHERE t.status='pending' AND t.due_date <= ?
+    ORDER BY u.name, t.due_date ASC`, [today]);
+
+  // ── FMS ────────────────────────────────────────────────
+  // Reuse the same shape the dashboard endpoint already returns — pending rows
+  // come pre-filtered by the planVal/actualVal check there.
+  // We'll just call into the existing handler via a direct query against fms_sheets.
+  let fmsRows = [];
+  try {
+    const [allSheets] = await db.query('SELECT * FROM fms_sheets');
+    if (allSheets.length) {
+      const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']).catch(() => null);
+      if (sheetsApi) {
+        for (const sheet of allSheets) {
+          const [steps] = await db.query('SELECT * FROM fms_steps WHERE fms_id=? ORDER BY step_order ASC', [sheet.id]);
+          if (!steps.length) continue;
+          for (const step of steps) {
+            const [doers] = await db.query(`SELECT u.id, u.name FROM fms_step_doers fsd JOIN users u ON fsd.user_id=u.id WHERE fsd.step_id=?`, [step.id]);
+            step.doerNames = doers.map(d => d.name).join(', ');
+          }
+          try {
+            const spreadsheetId = extractSpreadsheetId(sheet.sheet_id);
+            const tabName = sheet.sheet_name || 'Sheet1';
+            const headerRowIdx = (sheet.header_row || 1) - 1;
+            const showColsByStep = steps.map(s => {
+              try { return JSON.parse(s.show_cols || '[]').filter(n => Number.isInteger(n) && n >= 0); }
+              catch { return []; }
+            });
+            const allCols = steps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)])
+              .concat(showColsByStep.flat()).filter(x => x >= 0);
+            if (!allCols.length) continue;
+            const maxCol = Math.max(...allCols);
+            const range = `${tabName}!A:${idxToCol(maxCol)}`;
+            const resp = await sheetsApi.spreadsheets.values.get({ spreadsheetId, range });
+            const data = resp.data.values || [];
+            const headers = data[headerRowIdx] || [];
+            const dataRows = data.slice(headerRowIdx + 1);
+            const blankClean = v => (v || '').toString().replace(/[\s ​‌‍﻿]+/g, '');
+            for (let si = 0; si < steps.length; si++) {
+              const step = steps[si];
+              const showCols = showColsByStep[si];
+              const planIdx = colToIdx(step.plan_col);
+              const actualIdx = colToIdx(step.actual_col);
+              if (planIdx < 0 || actualIdx < 0) continue;
+              dataRows.forEach(row => {
+                const planVal = (row[planIdx] || '').toString().trim();
+                const actualVal = (row[actualIdx] || '').toString().trim();
+                if (!blankClean(planVal) || blankClean(actualVal)) return;
+                // Pick the "Client Name" header among configured show_cols (case-insensitive).
+                let clientName = '';
+                for (const ci of showCols) {
+                  if (/client/i.test(headers[ci] || '')) { clientName = (row[ci] || '').toString().trim(); break; }
+                }
+                fmsRows.push({
+                  fmsName: sheet.fms_name || sheet.sheet_name,
+                  stepName: step.step_name,
+                  doer: step.doerNames || '—',
+                  planValue: planVal,
+                  clientName
+                });
+              });
+            }
+          } catch(e) { /* skip sheet on error */ }
+        }
+      }
+    }
+  } catch(e) { console.error('FMS summary build err:', e.message); }
+
+  // Render per-type message, grouped by user.
+  const groupBy = (rows, key) => rows.reduce((acc, r) => {
+    const k = r[key] || '—';
+    (acc[k] = acc[k] || []).push(r);
+    return acc;
+  }, {});
+
+  function delegationMsg() {
+    if (!delRows.length) return null;
+    const grouped = groupBy(delRows, 'doer_name');
+    let out = 'Hello,\n\n*All Delegation Pending Task Summary*\n';
+    for (const name of Object.keys(grouped).sort()) {
+      out += `\n*${name} - Delegation Pending Task Summary*\n`;
+      for (const t of grouped[name]) {
+        out += `\nTask ID - ${t.id}`;
+        out += `\nTask - ${t.description || '—'}`;
+        out += `\nTarget Date - ${fmtIN(t.due_date)}`;
+        out += `\nPriority - ${(t.priority || 'low').replace(/^./, c => c.toUpperCase())}`;
+        out += `\nClient Name - ${t.client_name || '-'}\n`;
+      }
+    }
+    return out.trim();
+  }
+  function checklistMsg() {
+    if (!chlRows.length) return null;
+    const grouped = groupBy(chlRows, 'doer_name');
+    let out = 'Hello,\n\n*All Checklist Pending Task Summary*\n';
+    for (const name of Object.keys(grouped).sort()) {
+      out += `\n*${name} - Checklist Pending Task Summary*\n`;
+      for (const t of grouped[name]) {
+        out += `\nTask ID - ${t.id}`;
+        out += `\nTask - ${t.description || '—'}`;
+        out += `\nTarget Date - ${fmtIN(t.due_date)}`;
+        out += `\nClient Name - ${t.client_name || '-'}\n`;
+      }
+    }
+    return out.trim();
+  }
+  function fmsMsg() {
+    if (!fmsRows.length) return null;
+    // Each FMS row's "doer" can be a comma-list — split so each name gets credited.
+    const expanded = [];
+    for (const r of fmsRows) {
+      const names = (r.doer || '').split(',').map(s => s.trim()).filter(Boolean);
+      if (!names.length) names.push('—');
+      for (const n of names) expanded.push({ ...r, doer: n });
+    }
+    const grouped = groupBy(expanded, 'doer');
+    const label = 'FMS Pending Task Summary';
+    let out = `Hello,\n\n*All ${label}*\n`;
+    for (const name of Object.keys(grouped).sort()) {
+      out += `\n*${name} - ${label}*\n`;
+      for (const t of grouped[name]) {
+        out += `\nClient Name - ${t.clientName || '-'}`;
+        out += `\nAt Step - ${t.stepName || '—'}`;
+        out += `\nPlanned - ${t.planValue || '—'}\n`;
+      }
+    }
+    return out.trim();
+  }
+
+  return {
+    delegation: delegationMsg(),
+    checklist:  checklistMsg(),
+    fms:        fmsMsg(),
+    counts: { delegation: delRows.length, checklist: chlRows.length, fms: fmsRows.length }
+  };
+}
+
+async function sendPendingSummaryMessages() {
+  const msgs = await buildPendingSummaryMessages();
+  const results = {};
+  for (const type of ['delegation','checklist','fms']) {
+    if (!msgs[type]) { results[type] = { skipped: 'no pending tasks' }; continue; }
+    const r = await sendWhatsAppRaw(REMINDER_GROUP_ID, msgs[type]);
+    results[type] = r;
+    await new Promise(r => setTimeout(r, 1500)); // small spacing so the group reads them in order
+  }
+  return { ok: true, counts: msgs.counts, results };
+}
+
+app.get('/api/pending-summary/preview', requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const msgs = await buildPendingSummaryMessages();
+    res.json(msgs);
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
+app.post('/api/pending-summary/send', requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const out = await sendPendingSummaryMessages();
+    res.json(out);
+  } catch (err) {
+    console.error('Pending summary send error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ── Preview (admin) — see who would get reminded without actually sending ──
 app.get('/api/daily-reminder/preview', requireAuth, requireAdmin, async (req, res) => {
   try {

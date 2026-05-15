@@ -1467,6 +1467,21 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
       <div id="reminderResult" class="dr-reminder-result" style="display:none"></div>
 
+      <!-- Pending Task Summary — 3 separate WhatsApp messages to the group -->
+      <div class="dr-reminder-panel" style="border-color:#fcd34d;background:#fffbeb">
+        <div class="dr-reminder-info">
+          <div class="dr-reminder-title">📊 Pending Task Summary</div>
+          <div class="dr-reminder-sub">
+            Sends <b>3 separate messages</b> to the management group — Delegation / Checklist / FMS, each grouped by user with all pending tasks.
+          </div>
+        </div>
+        <div class="dr-reminder-actions">
+          <button class="dt-btn dt-btn-add" onclick="pendingSummaryPreview()">👁 Preview</button>
+          <button class="dt-btn dt-btn-submit" onclick="pendingSummarySendNow()">📤 Send Now</button>
+        </div>
+      </div>
+      <div id="pendingSummaryResult" class="dr-reminder-result" style="display:none"></div>
+
       <!-- Top stats -->
       <div class="dr-stats" id="drStats"></div>
 
@@ -8150,6 +8165,61 @@ async function reminderSendNow(){
         <ul>${r.missingNames.map(n => `<li>${dtEscape(n)}</li>`).join('')}</ul>`;
     }
     showToast('📱 Reminder sent!');
+  } catch(e) {
+    box.className = 'dr-reminder-result error';
+    box.innerHTML = `<h4>❌ Send failed</h4><div>${e.message}</div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// 📊 PENDING TASK SUMMARY — preview/send 3 group WhatsApp messages
+// ══════════════════════════════════════════════════════
+async function pendingSummaryPreview(){
+  const box = document.getElementById('pendingSummaryResult');
+  box.style.display = 'block';
+  box.className = 'dr-reminder-result';
+  box.innerHTML = '<i>Loading preview…</i>';
+  try {
+    const r = await api('/api/pending-summary/preview');
+    if (r.error) throw new Error(r.error);
+    const section = (label, body) => `
+      <div style="margin-top:12px;padding:10px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px">
+        <div style="font-weight:700;color:#1e293b;margin-bottom:6px">${label}</div>
+        <pre style="font-family:'Inter',sans-serif;font-size:12px;color:#374151;white-space:pre-wrap;margin:0;max-height:240px;overflow:auto">${dtEscape(body || '(no pending tasks)')}</pre>
+      </div>`;
+    box.innerHTML = `<h4>👁 Pending Summary Preview</h4>
+      <div style="font-size:12px;color:#64748b">
+        Delegation: <b>${r.counts.delegation}</b> · Checklist: <b>${r.counts.checklist}</b> · FMS: <b>${r.counts.fms}</b>
+      </div>
+      ${section('📋 Delegation message', r.delegation)}
+      ${section('✅ Checklist message', r.checklist)}
+      ${section('📊 FMS message', r.fms)}`;
+  } catch(e) {
+    box.className = 'dr-reminder-result error';
+    box.innerHTML = `<h4>❌ Preview failed</h4><div>${e.message}</div>`;
+  }
+}
+
+async function pendingSummarySendNow(){
+  if (!await appConfirm('Send 3 pending-task-summary WhatsApp messages to the management group?', 'Send Pending Summary')) return;
+  const box = document.getElementById('pendingSummaryResult');
+  box.style.display = 'block';
+  box.className = 'dr-reminder-result';
+  box.innerHTML = '<i>Sending 3 messages…</i>';
+  try {
+    const r = await api('/api/pending-summary/send', 'POST', {});
+    if (r.error) throw new Error(r.error);
+    const fmtRow = (type, info) => {
+      if (info?.skipped) return `<li>${type}: skipped — ${info.skipped}</li>`;
+      if (info?.ok) return `<li>${type}: ✅ sent</li>`;
+      return `<li>${type}: ❌ ${dtEscape(JSON.stringify(info))}</li>`;
+    };
+    box.innerHTML = `<h4>✅ Pending summary dispatched</h4>
+      <div style="font-size:12px;color:#64748b">
+        Delegation: <b>${r.counts.delegation}</b> · Checklist: <b>${r.counts.checklist}</b> · FMS: <b>${r.counts.fms}</b>
+      </div>
+      <ul>${fmtRow('Delegation', r.results.delegation)}${fmtRow('Checklist', r.results.checklist)}${fmtRow('FMS', r.results.fms)}</ul>`;
+    showToast('📱 Pending summary sent!');
   } catch(e) {
     box.className = 'dr-reminder-result error';
     box.innerHTML = `<h4>❌ Send failed</h4><div>${e.message}</div>`;
