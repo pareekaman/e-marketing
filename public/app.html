@@ -2476,6 +2476,17 @@ tbody tr:last-child td{border-bottom:none;}
   </div>
 </div>
 
+<!-- ══════════════════════════════════════
+     GENERIC ALERT / CONFIRM POPUP — replaces native alert()/confirm()
+══════════════════════════════════════ -->
+<div class="modal-overlay" id="appPromptModal">
+  <div class="modal" style="max-width:420px">
+    <h3 id="appPromptTitle">Notice</h3>
+    <div id="appPromptBody" style="font-size:13.5px;color:#374151;line-height:1.55;white-space:pre-wrap;margin-bottom:18px"></div>
+    <div class="modal-footer" id="appPromptFooter" style="justify-content:flex-end;gap:8px"></div>
+  </div>
+</div>
+
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script>
 <script>
 // ══════════════════════════════════════════════════════
@@ -2715,7 +2726,7 @@ function handleProfileImage(event) {
 
 // Remove profile image
 async function removeProfileImage() {
-  if (!confirm('Remove profile photo?')) return;
+  if (!await appConfirm('Remove profile photo?')) return;
   await api('/api/profile/image','POST',{image: null});
   ME.profile_image = null;
   const initials = ME.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
@@ -3473,7 +3484,7 @@ async function updateStatus(id, status, from, type) {
 }
 
 async function deleteTask(id, type) {
-  if (!confirm('Delete this task?')) return;
+  if (!await appConfirm('Delete this task?')) return;
   await api(`/api/tasks/${id}?type=${type||tasksType}`,'DELETE');
   loadAllTasks();
 }
@@ -3631,7 +3642,7 @@ async function addComment() {
 }
 
 async function deleteComment(id) {
-  if (!confirm('Delete this comment?')) return;
+  if (!await appConfirm('Delete this comment?')) return;
   await api(`/api/comments/${id}`,'DELETE');
   const taskId = document.getElementById('commentTaskId').value;
   const taskType = document.getElementById('commentTaskType').value;
@@ -3639,7 +3650,7 @@ async function deleteComment(id) {
 }
 
 async function bulkDelete(userId) {
-  if (!confirm(`Delete all ${tasksType} tasks for this user?`)) return;
+  if (!await appConfirm(`Delete all ${tasksType} tasks for this user?`)) return;
   await api(`/api/tasks/user/${userId}?type=${tasksType}`,'DELETE');
   loadAllTasks();
 }
@@ -3909,7 +3920,7 @@ async function addHoliday() {
 }
 
 async function deleteHoliday(id) {
-  if (!confirm('Remove this holiday?')) return;
+  if (!await appConfirm('Remove this holiday?')) return;
   const r = await api('/api/holidays/'+id, 'DELETE');
   if (r.error) { showToast(r.error, 'error'); return; }
   await refreshHolidays();
@@ -4249,7 +4260,7 @@ function openAddUser() {
 
 function openEditUser(id) {
   const u = _usersMap[id];
-  if (!u) { alert('User data not found. Please refresh the page.'); return; }
+  if (!u) { appAlert('User data not found. Please refresh the page.'); return; }
   document.getElementById('userModalTitle').textContent='Edit User';
   document.getElementById('editUserId').value=u.id;
   document.getElementById('uName').value=u.name||'';
@@ -4409,9 +4420,9 @@ async function handleApproval(id, action) {
 }
 
 async function deleteUser(id) {
-  if (!confirm('Delete this user?')) return;
+  if (!await appConfirm('Delete this user?')) return;
   const r=await api(`/api/users/${id}`,'DELETE');
-  if (r.error) return alert(r.error);
+  if (r.error) { appAlert(r.error, 'Error'); return; }
   loadUsers();
 }
 
@@ -4468,6 +4479,60 @@ async function api(url,method='GET',body=null) {
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// In-app replacements for native alert()/confirm(). Both return Promises so the
+// existing call-sites can switch from `if (!confirm(...))` to
+// `if (!await appConfirm(...))` with no other plumbing.
+function _showAppPrompt({ title, message, buttons }) {
+  return new Promise(resolve => {
+    const modal  = document.getElementById('appPromptModal');
+    const titleEl = document.getElementById('appPromptTitle');
+    const bodyEl  = document.getElementById('appPromptBody');
+    const footer  = document.getElementById('appPromptFooter');
+    titleEl.textContent = title || 'Notice';
+    bodyEl.textContent  = message || '';
+    footer.innerHTML = '';
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      modal.classList.remove('open');
+      resolve(value);
+    };
+    buttons.forEach(b => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = b.className || 'btn btn-primary';
+      btn.textContent = b.label;
+      btn.addEventListener('click', () => finish(b.value));
+      footer.appendChild(btn);
+    });
+    // ESC + the auto-injected ✕ on every modal resolve as "cancel"-ish.
+    const onEsc = e => {
+      if (e.key === 'Escape') { document.removeEventListener('keydown', onEsc, true); finish(buttons[0]?.value ?? false); }
+    };
+    document.addEventListener('keydown', onEsc, true);
+    modal.classList.add('open');
+    // Focus the primary action so Enter works.
+    const primary = footer.querySelector('.btn-primary, .btn-danger, .btn-green') || footer.lastElementChild;
+    if (primary) primary.focus();
+  });
+}
+function appAlert(message, title = 'Notice') {
+  return _showAppPrompt({
+    title, message,
+    buttons: [{ label: 'OK', className: 'btn btn-primary', value: true }]
+  });
+}
+function appConfirm(message, title = 'Please confirm') {
+  return _showAppPrompt({
+    title, message,
+    buttons: [
+      { label: 'Cancel', className: 'btn btn-outline', value: false },
+      { label: 'OK',     className: 'btn btn-primary', value: true }
+    ]
+  });
+}
 
 // Inject a top-right close (×) into every modal, and let ESC close the topmost open one.
 (function setupModalUX() {
@@ -5387,7 +5452,7 @@ function showFMSStepData(steps, idx) {
 }
 
 async function deleteFMSSheet(id) {
-  if (!confirm('Delete this FMS? This cannot be undone!')) return;
+  if (!await appConfirm('Delete this FMS? This cannot be undone!', 'Delete FMS')) return;
   await api(`/api/fms/${id}`,'DELETE');
   fmsActiveId = null;
   document.getElementById('fmsDetailView').style.display='none';
@@ -6736,7 +6801,7 @@ async function _doBulkDelete(tasks) {
     document.getElementById('bulkDeleteErr').style.display = 'block';
     return;
   }
-  if (!confirm(`Are you sure you want to permanently delete ${tasks.length} task(s)?`)) return;
+  if (!await appConfirm(`Are you sure you want to permanently delete ${tasks.length} task(s)?`, 'Bulk delete tasks')) return;
 
   let deleted = 0;
   for (const t of tasks) {
@@ -6773,28 +6838,29 @@ function onBdYearUserChange() {
 async function openDelete12MonthsConfirm() {
   const sel = document.getElementById('bdYearUser');
   const userId = sel.value;
-  if (!userId) { alert('Please select an employee first!'); return; }
+  if (!userId) { appAlert('Please select an employee first!'); return; }
 
   const userName = sel.options[sel.selectedIndex].text;
   const userEmail = sel.options[sel.selectedIndex]?.dataset?.email || '';
 
   // Fetch total checklist count (all time, no year filter)
   const data = await api(`/api/tasks/checklist-year-count?userId=${userId}&year=all`);
-  if (data.error) { alert('Error: ' + data.error); return; }
+  if (data.error) { appAlert('Error: ' + data.error, 'Error'); return; }
 
   const count = data.count || 0;
   if (count === 0) {
-    alert(`No checklist tasks found for ${userName}.`);
+    appAlert(`No checklist tasks found for ${userName}.`);
     return;
   }
 
-  const confirmed = confirm(
-    `⚠️ CONFIRM DELETE\n\nEmployee: ${userName}\nEmail: ${userEmail}\n\nTotal Checklist Tasks: ${count}\n\nThese ${count} tasks will be permanently deleted and cannot be recovered!\n\nDo you want to proceed?`
+  const confirmed = await appConfirm(
+    `⚠️ CONFIRM DELETE\n\nEmployee: ${userName}\nEmail: ${userEmail}\n\nTotal Checklist Tasks: ${count}\n\nThese ${count} tasks will be permanently deleted and cannot be recovered!\n\nDo you want to proceed?`,
+    'Delete all checklist tasks?'
   );
   if (!confirmed) return;
 
   const result = await api('/api/tasks/checklist-year-delete', 'POST', { userId: parseInt(userId) });
-  if (result.error) { alert('Error: ' + result.error); return; }
+  if (result.error) { appAlert('Error: ' + result.error, 'Error'); return; }
 
   closeModal('bulkDeleteModal');
   showToast(`🗑 ${result.deleted} checklist tasks deleted for ${userName}!`);
@@ -7286,7 +7352,7 @@ async function cmAdd(){
 }
 
 async function cmDelete(id, name){
-  if (!confirm(`Remove client "${name}"?`)) return;
+  if (!await appConfirm(`Remove client "${name}"?`)) return;
   try {
     await api('/api/clients/' + id, 'DELETE');
     showToast('🗑 Client removed');
@@ -7325,7 +7391,7 @@ async function cmBulkUpload() {
     names = names.filter(n => n);
     if (!names.length) { showToast('No valid client names found in CSV', 'error'); return; }
 
-    if (!confirm(`Upload ${names.length} client${names.length===1?'':'s'} from CSV?`)) return;
+    if (!await appConfirm(`Upload ${names.length} client${names.length===1?'':'s'} from CSV?`)) return;
 
     const r = await api('/api/clients/bulk', 'POST', { names });
     if (r.error) { showToast(r.error, 'error'); return; }
@@ -7731,7 +7797,7 @@ async function reminderPreview(){
 }
 
 async function reminderSendNow(){
-  if (!confirm('Send the daily reminder WhatsApp now?\n\nThis will message the group with names of users who haven\'t filled today\'s report.')) return;
+  if (!await appConfirm('Send the daily reminder WhatsApp now?\n\nThis will message the group with names of users who haven\'t filled today\'s report.', 'Send Reminder')) return;
 
   const box = document.getElementById('reminderResult');
   box.style.display = 'block';
@@ -8191,7 +8257,7 @@ async function submitLeaveDecision(action){
 }
 
 async function deleteLeave(id){
-  if (!confirm('Delete this leave request?')) return;
+  if (!await appConfirm('Delete this leave request?')) return;
   const r = await api('/api/leaves/' + id, 'DELETE');
   if (r.error) { showToast(r.error, 'error'); return; }
   showToast('🗑 Leave deleted');
