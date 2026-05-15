@@ -406,6 +406,30 @@ tbody tr:last-child td{border-bottom:none;}
 
 /* Flat tasks table (used in All Tasks page) */
 .flat-tasks-table{background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;}
+/* Grouped tasks (admin / HOD / PC view) */
+.tg-toolbar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:10px;}
+.tg-summary{font-size:12px;font-weight:600;color:#475569;letter-spacing:.2px;}
+.tg-mini-btn{padding:6px 12px;border:1.5px solid #e2e8f0;background:#fff;color:#475569;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;margin-left:auto;}
+.tg-toolbar .tg-mini-btn + .tg-mini-btn{margin-left:8px;}
+.tg-mini-btn:hover{border-color:#cbd5e1;background:#f1f5f9;color:#0f172a;}
+.tg-list{display:flex;flex-direction:column;gap:10px;}
+.tg-section{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;transition:box-shadow .15s;}
+.tg-section:hover{box-shadow:0 4px 14px rgba(15,23,42,.05);}
+.tg-head{width:100%;display:flex;align-items:center;gap:12px;padding:12px 16px;background:linear-gradient(180deg,#fafbfc,#f3f4f6);border:none;border-bottom:1px solid transparent;font-family:inherit;cursor:pointer;text-align:left;transition:background .15s;}
+.tg-head:hover{background:linear-gradient(180deg,#f0f4ff,#e0e7ff);}
+.tg-section.open .tg-head{border-bottom-color:#e2e8f0;}
+.tg-caret{display:inline-block;font-size:10px;color:#64748b;transition:transform .15s;width:12px;}
+.tg-section.open .tg-caret{transform:rotate(90deg);}
+.tg-name{flex:1;font-size:14px;font-weight:700;color:#0f172a;letter-spacing:.1px;}
+.tg-counts{display:flex;gap:6px;flex-wrap:wrap;}
+.tg-count{font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px;letter-spacing:.2px;}
+.tg-count-total{background:#e0e7ff;color:#3730a3;}
+.tg-count-pending{background:#fee2e2;color:#b91c1c;}
+.tg-count-done{background:#dcfce7;color:#15803d;}
+.tg-count-revised{background:#fef3c7;color:#92400e;}
+.tg-body{display:none;max-height:60vh;overflow:hidden;}
+.tg-section.open .tg-body{display:block;}
+.tg-body .flat-tasks-scroll{max-height:60vh;}
 .flat-tasks-scroll{overflow:auto;max-height:calc(100vh - 240px);}
 .flat-tasks-scroll thead th{position:sticky;top:0;z-index:2;background:#f8fafc;}
 .flat-tasks-scroll thead th:first-child{position:sticky;top:0;left:0;z-index:3;background:#f8fafc;}
@@ -3306,9 +3330,65 @@ function filterTaskStatus(status, el) {
   renderTasksTable();
 }
 
+function _buildTaskRowHtml(t, ctx) {
+  const { isAdmin, isDelegateByMe, isClickable, showClientCol } = ctx;
+  const isCompleted = t.status === 'completed';
+  const isWaiting = t.waiting_approval == 1;
+  const isChecklist = tasksType === 'checklist';
+  const editType = isDelegateByMe ? 'delegation' : tasksType;
+  if (isClickable) window._taskDetailMap[t.id] = t;
+
+  const isMyDelegation = (tasksType === 'delegation' || isDelegateByMe) && String(t.assigned_by) === String(ME.id);
+  const canEdit = isAdmin || isDelegateByMe || isMyDelegation;
+  const actionBtns = canEdit ? `
+    <button class="action-btn edit" style="padding:4px 7px" onclick="openEditTask(${t.id},'${editType}')" title="Edit">✏️</button>
+    <button class="action-btn delete" style="padding:4px 7px;margin-left:3px" onclick="deleteTask(${t.id},'${editType}')" title="Delete">🗑</button>
+    <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px;margin-left:3px" onclick="openComments(${t.id},'${editType}')" title="Comments">💬</button>
+    ${!isCompleted && !isWaiting ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${editType}')">Done</button>` : ''}
+    ${!isChecklist && !isCompleted && !isWaiting ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${editType}')">Revise</button>` : ''}
+    ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
+  ` : (ME.role==='pc') ? `
+    <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
+    ${isChecklist && !isCompleted && !isWaiting ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>` : ''}
+    ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
+  ` : `
+    <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
+    ${!isCompleted && !isWaiting ? `
+      <button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>
+      ${!isChecklist ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${tasksType}')">Revise</button>` : ''}
+    ` : ''}
+    ${isWaiting ? `
+      <button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>
+      <span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
+  `;
+  const clientCell = showClientCol
+    ? `<td style="white-space:nowrap;font-size:12px">${t.client_name ? `<span style="background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span>` : '<span style="color:#94a3b8">—</span>'}</td>`
+    : '';
+  const trClick = isClickable
+    ? `onclick="openTaskDetail(window._taskDetailMap[${t.id}])" style="cursor:pointer" title="Click to view details"`
+    : '';
+  return `<tr ${trClick}>
+    <td style="white-space:nowrap;padding-right:12px" onclick="event.stopPropagation()">${actionBtns}</td>
+    <td>${t.description||''}</td>
+    <td style="white-space:nowrap">${t.assignedToName||''}</td>
+    <td style="white-space:nowrap">${t.assignedByName||''}</td>
+    <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}</td>
+    ${clientCell}
+    <td style="color:#64748b;max-width:220px;word-break:break-word;overflow-wrap:anywhere;font-size:12px">${t.remarks||'—'}</td>
+    <td style="white-space:nowrap"><span class="status-badge ${t.status}">${t.status==='revised'?'Revision Requested':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
+  </tr>`;
+}
+
+function toggleTaskGroup(headerEl) {
+  const section = headerEl.closest('.tg-section');
+  if (!section) return;
+  section.classList.toggle('open');
+}
+
 function renderTasksTable() {
   const isAdmin = ME.role==='admin' || ME.role==='hod'; // HOD gets admin-like view
-  // PC gets view-only — see ME.role==='pc' branch in actionBtns below
+  const isPC    = ME.role==='pc';
+  const useGroupView = isAdmin || isPC; // PC also sees everyone's tasks, group it too.
   const search = (document.getElementById('taskSearch')?.value||'').toLowerCase();
   const userFilterVal = document.getElementById('tasksUserFilter')?.value || 'all';
   const dateFrom = document.getElementById('tasksDateFrom')?.value || '';
@@ -3336,65 +3416,81 @@ function renderTasksTable() {
     return;
   }
 
-  const totalPages = Math.ceil(tasks.length / ALL_TASKS_PAGE_SIZE);
-  const pageTasks = tasks.slice((allTasksPage-1)*ALL_TASKS_PAGE_SIZE, allTasksPage*ALL_TASKS_PAGE_SIZE);
-
-  // Re-build rows only for this page
   const isDelegateByMe = tasksType === 'delegatebyme';
   const isClickable = tasksType === 'delegation' || isDelegateByMe;
   if (isClickable) window._taskDetailMap = {};
-  const pageRows = pageTasks.map(t => {
-    const isCompleted = t.status === 'completed';
-    const isWaiting = t.waiting_approval == 1;
-    const isChecklist = tasksType === 'checklist';
-    const editType = isDelegateByMe ? 'delegation' : tasksType;
-    if (isClickable) window._taskDetailMap[t.id] = t;
+  const showClientCol = tasksType === 'delegation' || tasksType === 'delegatebyme';
+  const ctx = { isAdmin, isDelegateByMe, isClickable, showClientCol };
 
-    // User can edit/delete their own delegated tasks (self-delegation included).
-    const isMyDelegation = (tasksType === 'delegation' || isDelegateByMe) && String(t.assigned_by) === String(ME.id);
-    const canEdit = isAdmin || isDelegateByMe || isMyDelegation;
-    const actionBtns = canEdit ? `
-      <button class="action-btn edit" style="padding:4px 7px" onclick="openEditTask(${t.id},'${editType}')" title="Edit">✏️</button>
-      <button class="action-btn delete" style="padding:4px 7px;margin-left:3px" onclick="deleteTask(${t.id},'${editType}')" title="Delete">🗑</button>
-      <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px;margin-left:3px" onclick="openComments(${t.id},'${editType}')" title="Comments">💬</button>
-      ${!isCompleted && !isWaiting ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${editType}')">Done</button>` : ''}
-      ${!isChecklist && !isCompleted && !isWaiting ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${editType}')">Revise</button>` : ''}
-      ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
-    ` : (ME.role==='pc') ? `
-      <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
-      ${isChecklist && !isCompleted && !isWaiting ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>` : ''}
-      ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
-    ` : `
-      <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
-      ${!isCompleted && !isWaiting ? `
-        <button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>
-        ${!isChecklist ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${tasksType}')">Revise</button>` : ''}
-      ` : ''}
-      ${isWaiting ? `
-        <button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>
-        <span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
-    `;
-    const clientCell = (tasksType === 'delegation' || isDelegateByMe)
-      ? `<td style="white-space:nowrap;font-size:12px">${t.client_name ? `<span style="background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span>` : '<span style="color:#94a3b8">—</span>'}</td>`
-      : '';
-    const trClick = isClickable
-      ? `onclick="openTaskDetail(window._taskDetailMap[${t.id}])" style="cursor:pointer" title="Click to view details"`
-      : '';
-    return `<tr ${trClick}>
-      <td style="white-space:nowrap;padding-right:12px" onclick="event.stopPropagation()">${actionBtns}</td>
-      <td>${t.description||''}</td>
-      <td style="white-space:nowrap">${t.assignedToName||''}</td>
-      <td style="white-space:nowrap">${t.assignedByName||''}</td>
-      <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}</td>
-      ${clientCell}
-      <td style="color:#64748b;max-width:220px;word-break:break-word;overflow-wrap:anywhere;font-size:12px">${t.remarks||'—'}</td>
-      <td style="white-space:nowrap"><span class="status-badge ${t.status}">${t.status==='revised'?'Revision Requested':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
-    </tr>`;
-  }).join('');
+  const tableHeadHtml = `<thead><tr>
+    <th style="white-space:nowrap">Action</th>
+    <th>Desc</th>
+    <th>Doer</th>
+    <th>Assignee</th>
+    <th>Date</th>
+    ${showClientCol ? '<th>Client</th>' : ''}
+    <th>Remarks</th>
+    <th>Status</th>
+  </tr></thead>`;
+
+  // ── ADMIN / HOD / PC: group by doer name, collapsed-by-default accordion ───
+  if (useGroupView) {
+    const groups = new Map();
+    for (const t of tasks) {
+      const key = `${t.assigned_to || ''}|${t.assignedToName || '—'}`;
+      if (!groups.has(key)) groups.set(key, { name: t.assignedToName || '—', userId: t.assigned_to || '', tasks: [] });
+      groups.get(key).tasks.push(t);
+    }
+    const sortedGroups = [...groups.values()].sort((a,b) => a.name.localeCompare(b.name));
+    // If a doer filter is active, auto-expand that single group.
+    const autoOpen = sortedGroups.length === 1;
+
+    const sectionsHtml = sortedGroups.map((g, idx) => {
+      const rows = g.tasks.map(t => _buildTaskRowHtml(t, ctx)).join('');
+      const pending = g.tasks.filter(t => t.status === 'pending').length;
+      const completed = g.tasks.filter(t => t.status === 'completed').length;
+      const revised = g.tasks.filter(t => t.status === 'revised').length;
+      const isOpen = autoOpen;
+      return `<div class="tg-section ${isOpen ? 'open' : ''}">
+        <button type="button" class="tg-head" onclick="toggleTaskGroup(this)" aria-expanded="${isOpen}">
+          <span class="tg-caret">▶</span>
+          <span class="tg-name">${dtEscape(g.name)}</span>
+          <span class="tg-counts">
+            <span class="tg-count tg-count-total">${g.tasks.length} total</span>
+            ${pending   ? `<span class="tg-count tg-count-pending">${pending} pending</span>` : ''}
+            ${completed ? `<span class="tg-count tg-count-done">${completed} done</span>` : ''}
+            ${revised   ? `<span class="tg-count tg-count-revised">${revised} revised</span>` : ''}
+          </span>
+        </button>
+        <div class="tg-body">
+          <div class="flat-tasks-scroll">
+            <table style="min-width:${showClientCol ? '820px' : '700px'};width:100%">
+              ${tableHeadHtml}
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    container.innerHTML = `
+      <div class="tg-toolbar">
+        <span class="tg-summary">${sortedGroups.length} ${sortedGroups.length === 1 ? 'doer' : 'doers'} · ${tasks.length} tasks</span>
+        <button type="button" class="tg-mini-btn" onclick="document.querySelectorAll('#tasksContent .tg-section').forEach(s=>s.classList.add('open'))">Expand all</button>
+        <button type="button" class="tg-mini-btn" onclick="document.querySelectorAll('#tasksContent .tg-section').forEach(s=>s.classList.remove('open'))">Collapse all</button>
+      </div>
+      <div class="tg-list tasks-slide-in">${sectionsHtml}</div>`;
+    return;
+  }
+
+  // ── Regular users: single flat table, paginated, always open ───────────
+  const totalPages = Math.ceil(tasks.length / ALL_TASKS_PAGE_SIZE);
+  const pageTasks = tasks.slice((allTasksPage-1)*ALL_TASKS_PAGE_SIZE, allTasksPage*ALL_TASKS_PAGE_SIZE);
+  const pageRows = pageTasks.map(t => _buildTaskRowHtml(t, ctx)).join('');
 
   const paginationHtml = totalPages > 1 ? `
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:12px;border-top:1px solid #f1f5f9;font-size:13px;color:#64748b">
-      <button onclick="if(allTasksPage>1){allTasksPage--;renderTasksTable();}" 
+      <button onclick="if(allTasksPage>1){allTasksPage--;renderTasksTable();}"
         style="padding:4px 12px;border:1.5px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;${allTasksPage===1?'opacity:.4;cursor:not-allowed;pointer-events:none;':''}" >
         ◀ Prev
       </button>
@@ -3405,21 +3501,11 @@ function renderTasksTable() {
       </button>
     </div>` : '';
 
-  const showClientCol = tasksType === 'delegation' || tasksType === 'delegatebyme';
   container.innerHTML = `
     <div class="flat-tasks-table tasks-slide-in">
       <div class="flat-tasks-scroll">
         <table style="min-width:${showClientCol ? '820px' : '700px'};width:100%">
-          <thead><tr>
-            <th style="white-space:nowrap">Action</th>
-            <th>Desc</th>
-            <th>Doer</th>
-            <th>Assignee</th>
-            <th>Date</th>
-            ${showClientCol ? '<th>Client</th>' : ''}
-            <th>Remarks</th>
-            <th>Status</th>
-          </tr></thead>
+          ${tableHeadHtml}
           <tbody>${pageRows}</tbody>
         </table>
       </div>
