@@ -2742,8 +2742,17 @@ app.get('/api/test-whatsapp', requireAuth, requireAdmin, async (req, res) => {
 // 📢 DAILY REMINDER — sends list of users who didn't fill today's task
 // to a WhatsApp group. Excludes CXO department.
 // ══════════════════════════════════════════════════════
-const REMINDER_GROUP_ID = process.env.REMINDER_GROUP_ID || '919602694444-1618492040@g.us';
+const REMINDER_GROUP_ID = process.env.REMINDER_GROUP_ID || '+919301878061';
 const EXCLUDED_DEPARTMENTS = ['CXO']; // case-insensitive match
+
+// Reminder destination can be either a WhatsApp group ID (xxx@g.us) or a phone
+// number (with/without + and 91). Routes to the right sender automatically.
+async function sendToReminderDestination(text) {
+  const dest = String(REMINDER_GROUP_ID || '').trim();
+  if (!dest) return { ok: false, reason: 'no destination configured' };
+  if (dest.includes('@g.us')) return sendWhatsAppRaw(dest, text);
+  return sendWhatsApp(dest, text);
+}
 
 async function buildAndSendReminder() {
   // Today's date in IST (India Standard Time)
@@ -2772,7 +2781,7 @@ async function buildAndSendReminder() {
   // If today is a holiday → send a fixed "holiday" message to the group instead
   if (isHolidayToday) {
     const holidayMsg = `Hello,\n\nToday is Holiday/Weekoff , So no report is filled today.\n\nThank You.`;
-    const sendRes = await sendWhatsAppRaw(REMINDER_GROUP_ID, holidayMsg);
+    const sendRes = await sendToReminderDestination(holidayMsg);
     return { ok: sendRes.ok, holiday: true, date: today, send: sendRes };
   }
 
@@ -2795,7 +2804,7 @@ async function buildAndSendReminder() {
   if (!missingNames.length) {
     // Everyone (eligible) has filled — send a "all done" or skip
     const allDoneMsg = `Hello,\n\nGreat news! ✅ Everyone has filled today's Daily Task report.\n\nThanks team!`;
-    const sendRes = await sendWhatsAppRaw(REMINDER_GROUP_ID, allDoneMsg);
+    const sendRes = await sendToReminderDestination(allDoneMsg);
     return { ok: true, allDone: true, missingCount: 0, send: sendRes, date: today };
   }
 
@@ -2805,7 +2814,7 @@ async function buildAndSendReminder() {
   message += missingNames.join("\n");
   message += "\n\nPlease update today's report.";
 
-  const sendRes = await sendWhatsAppRaw(REMINDER_GROUP_ID, message);
+  const sendRes = await sendToReminderDestination(message);
   return {
     ok: sendRes.ok,
     date: today,
@@ -2997,7 +3006,7 @@ async function sendPendingSummaryMessages() {
   const groupResults = {};
   for (const type of ['delegation','checklist','fms']) {
     if (!msgs[type]) { groupResults[type] = { skipped: 'no pending tasks' }; continue; }
-    const r = await sendWhatsAppRaw(REMINDER_GROUP_ID, msgs[type]);
+    const r = await sendToReminderDestination(msgs[type]);
     groupResults[type] = r;
     await new Promise(r => setTimeout(r, 1500)); // small spacing so the group reads them in order
   }
