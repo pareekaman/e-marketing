@@ -1084,6 +1084,7 @@ tbody tr:last-child td{border-bottom:none;}
         <div class="tab active" id="tasksTabDel" onclick="tasksTab('delegation',this)">Delegation</div>
         <div class="tab" id="tasksTabChl" onclick="tasksTab('checklist',this)">Checklist</div>
         <div class="tab" id="tasksTabDelByMe" onclick="tasksTab('delegatebyme',this)">Delegate by Me</div>
+        <div class="tab" id="tasksTabFMS" onclick="tasksTab('fms',this)">FMS Tasks</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
         <!-- PC-only: user filter + date range (desktop only) -->
@@ -3253,6 +3254,31 @@ async function loadAllTasks() {
     filtersDiv.style.display = ((isAdmin || isPC) && isDesktop) ? 'flex' : 'none';
   }
 
+  // FMS Tasks tab — fetch from the FMS dashboard endpoint and normalize into the same shape
+  if (tasksType === 'fms') {
+    const empVal = document.getElementById('tasksUserFilter')?.value || 'all';
+    const url = '/api/fms-dashboard' + (empVal !== 'all' ? `?employee=${empVal}` : '');
+    const fmsData = await api(url);
+    const rows = (fmsData?.rows) || [];
+    allTasksData = rows.map(r => ({
+      id: r.stepId || r.id || 0,
+      type: 'fms',
+      description: `${r.fmsName} — ${r.stepName}`,
+      assigned_to: null,
+      assigned_by: null,
+      assignedToName: r.doer || '—',
+      assignedByName: r.doer || '—',
+      due_date: r.planDate || '',
+      planValue: r.planValue || '',
+      isLate: !!r.isLate,
+      status: 'pending',
+      remarks: r.planValue ? `Plan: ${r.planValue}` : ''
+    }));
+    allTasksPage = 1;
+    renderTasksTable();
+    return;
+  }
+
   const fetchType = tasksType === 'delegatebyme' ? 'delegation' : tasksType;
   const mineParam = tasksType === 'delegatebyme' ? '&mine=1' : '';
   const dateFromVal = document.getElementById('tasksDateFrom')?.value || '';
@@ -3281,8 +3307,9 @@ async function loadAllTasks() {
   allTasksData = allTasks;
   allTasksPage = 1;
 
-  // Admin / PC desktop: populate doer dropdown
-  if ((isAdmin || isPC) && isDesktop) {
+  // Admin / PC desktop: populate doer dropdown — skip for FMS (rows lack user IDs;
+  // keeping the dropdown from delegation/checklist load so the user can still filter server-side).
+  if ((isAdmin || isPC) && isDesktop && tasksType !== 'fms') {
     const userSel = document.getElementById('tasksUserFilter');
     if (userSel) {
       const prevVal = userSel.value;
@@ -3325,7 +3352,12 @@ function clearTasksDateFilter() {
   loadAllTasks();
 }
 
-function filterTasks() { allTasksPage = 1; renderTasksTable(); }
+function filterTasks() {
+  allTasksPage = 1;
+  // FMS rows are server-filtered by employee — re-fetch when the doer dropdown changes.
+  if (tasksType === 'fms') return loadAllTasks();
+  renderTasksTable();
+}
 
 function filterTaskStatus(status, el) {
   taskStatusFilter = status;
@@ -3337,6 +3369,23 @@ function filterTaskStatus(status, el) {
 
 function _buildTaskRowHtml(t, ctx) {
   const { isAdmin, isDelegateByMe, isClickable, showClientCol } = ctx;
+  // FMS rows are read-only from this page — render a slim version of the row.
+  if (t.type === 'fms' || tasksType === 'fms') {
+    const lateBadge = t.isLate
+      ? `<span style="font-size:10px;background:#fef2f2;color:#dc2626;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fecaca">⏰ Late</span>`
+      : `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ On Track</span>`;
+    const dateCell = t.due_date ? fmtDate(t.due_date) : `<span style="color:#94a3b8">${t.planValue||'—'}</span>`;
+    return `<tr>
+      <td style="white-space:nowrap;color:#94a3b8;font-size:11px">—</td>
+      <td>${dtEscape(t.description||'')}</td>
+      <td style="white-space:nowrap">${dtEscape(t.assignedToName||'')}</td>
+      <td style="white-space:nowrap;color:#94a3b8">—</td>
+      <td style="white-space:nowrap;${t.isLate?'color:#dc2626;font-weight:600':''}">${dateCell}</td>
+      ${showClientCol ? '<td style="color:#94a3b8">—</td>' : ''}
+      <td style="color:#64748b;font-size:12px">${dtEscape(t.remarks||'—')}</td>
+      <td style="white-space:nowrap">${lateBadge}</td>
+    </tr>`;
+  }
   const isCompleted = t.status === 'completed';
   const isWaiting = t.waiting_approval == 1;
   const isChecklist = tasksType === 'checklist';
@@ -3410,7 +3459,8 @@ function renderTasksTable() {
       (t.remarks||'').toLowerCase().includes(search) ||
       (t.status||'').toLowerCase().includes(search) ||
       (t.priority||'').toLowerCase().includes(search);
-    const matchUser = userFilterVal === 'all' || String(t.assignedToId || t.assigned_to) === String(userFilterVal);
+    // FMS rows are pre-filtered server-side by employee; skip the client-side ID match for them.
+    const matchUser = tasksType === 'fms' || userFilterVal === 'all' || String(t.assignedToId || t.assigned_to) === String(userFilterVal);
     const matchDateFrom = !dateFrom || (t.due_date && t.due_date >= dateFrom);
     const matchDateTo = !dateTo || (t.due_date && t.due_date <= dateTo);
     return matchStatus && matchSearch && matchUser && matchDateFrom && matchDateTo;
