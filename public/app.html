@@ -1729,9 +1729,15 @@ tbody tr:last-child td{border-bottom:none;}
       </select>
     </div>
 
-    <div class="form-group">
-      <label>Start Date</label>
-      <input type="date" id="cDate"/>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Start Date</label>
+        <input type="date" id="cDate"/>
+      </div>
+      <div class="form-group">
+        <label>End Date <span style="color:#94a3b8;font-weight:400;font-size:11px">(optional — no tasks after this date)</span></label>
+        <input type="date" id="cEndDate"/>
+      </div>
     </div>
 
     <div class="form-group">
@@ -4052,13 +4058,15 @@ async function openChecklist() {
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('cDate').value=today;
   document.getElementById('cDate').min=today;
+  document.getElementById('cEndDate').value='';
+  document.getElementById('cEndDate').min=today;
   const [users, clients] = await Promise.all([api('/api/users'), api('/api/clients')]);
   document.getElementById('cDoer').innerHTML='<option value="">Select Employee</option>'+
     users.map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
   document.getElementById('cClient').innerHTML='<option value="">— No Client —</option>'+
     (clients || []).map(c=>`<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
 
-  ['cFrequency','cDate','cDesc'].forEach(id=>{
+  ['cFrequency','cDate','cEndDate','cDesc'].forEach(id=>{
     document.getElementById(id).onchange = updateChecklistPreview;
     document.getElementById(id).oninput = updateChecklistPreview;
   });
@@ -4069,16 +4077,20 @@ async function openChecklist() {
 function updateChecklistPreview() {
   const freq = document.getElementById('cFrequency').value;
   const date = document.getElementById('cDate').value;
+  const customEnd = document.getElementById('cEndDate').value || '';
   const desc = document.getElementById('cDesc').value.trim();
   if (!date || !desc) { document.getElementById('cPreview').style.display='none'; return; }
 
   const counts = {daily:365, weekly:52, alternative_week:26, monthly:12, quarterly:4, yearly:1};
   const labels = {daily:'Daily', weekly:'Weekly', alternative_week:'Alternative Week', monthly:'Monthly', quarterly:'Quarterly', yearly:'Yearly'};
   const count = counts[freq];
-  const endDate = getEndDate(date, freq, count);
+  const naturalEnd = getEndDate(date, freq, count);
+  const effectiveEnd = (customEnd && customEnd < naturalEnd) ? customEnd : naturalEnd;
+  // Real count = how many dates the generator would actually emit with the custom cap.
+  const realCount = generateDates(date, freq, '', '', customEnd || '').length;
 
   document.getElementById('cPreviewText').textContent =
-    `"${desc}" — ${count} tasks will be created from ${date} to ${endDate} (${labels[freq]})`;
+    `"${desc}" — ${realCount} task${realCount===1?'':'s'} will be created from ${date} to ${effectiveEnd} (${labels[freq]})`;
   document.getElementById('cPreview').style.display='block';
 }
 
@@ -4089,9 +4101,10 @@ function getEndDate(startDate, freq, count) {
   return d.toISOString().split('T')[0];
 }
 
-function generateDates(startDate, freq, weekOffStr, extraOffStr) {
+function generateDates(startDate, freq, weekOffStr, extraOffStr, endDate) {
   const dates = [];
   const d = new Date(startDate+'T00:00:00');
+  const endCap = endDate ? new Date(endDate+'T00:00:00') : null;
   const counts = {daily:365, weekly:52, alternative_week:26, monthly:12, quarterly:4, yearly:1};
   const count = counts[freq];
   const weekOff = (weekOffStr||'').split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n));
@@ -4113,6 +4126,7 @@ function generateDates(startDate, freq, weekOffStr, extraOffStr) {
   let added = 0;
   let safety = count * 14;
   while (added < count && safety-- > 0) {
+    if (endCap && d > endCap) break; // stop generating past the end date
     const day = d.getDay();
     if (freq === 'daily') {
       if (weekOff.includes(day) || isExtraOff(d)) {
@@ -4142,6 +4156,7 @@ async function saveChecklist() {
 
   const doer    = document.getElementById('cDoer').value;
   const date    = document.getElementById('cDate').value;
+  const endDate = document.getElementById('cEndDate').value || '';
   const desc    = document.getElementById('cDesc').value.trim();
   const remarks = document.getElementById('cRemarks').value.trim();
   const freq    = document.getElementById('cFrequency').value;
@@ -4149,12 +4164,19 @@ async function saveChecklist() {
   if (!doer) { err.textContent='Please select an employee'; err.style.display='block'; return; }
   if (!date) { err.textContent='Please select a start date'; err.style.display='block'; return; }
   if (!desc) { err.textContent='Task name is required'; err.style.display='block'; return; }
+  if (endDate && endDate < date) { err.textContent='End date must be on or after start date'; err.style.display='block'; return; }
 
   const btn = document.getElementById('cGenerateBtn');
   btn.disabled=true; btn.textContent='Generating…';
 
   // No per-user week_off — holiday filtering happens server-side via /api/holidays
-  const dates = generateDates(date, freq, '', '');
+  const dates = generateDates(date, freq, '', '', endDate);
+  if (!dates.length) {
+    btn.disabled=false; btn.textContent='Generate Tasks';
+    err.textContent = 'No dates would be generated between Start and End. Pick a wider range.';
+    err.style.display='block';
+    return;
+  }
   const client_id = document.getElementById('cClient').value || null;
 
   const result = await api('/api/tasks/bulk-checklist','POST',{
