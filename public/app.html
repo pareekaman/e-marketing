@@ -3575,8 +3575,34 @@ async function updateStatus(id, status, from, type) {
 }
 
 async function deleteTask(id, type) {
+  const effType = type || tasksType;
+  // For checklists, also offer "delete entire series" so future-dated copies of
+  // the same task don't keep reappearing after the cap clears.
+  if (effType === 'checklist') {
+    const choice = await _showAppPrompt({
+      title: 'Delete checklist task',
+      message: 'This task may exist for multiple future dates. What do you want to delete?',
+      buttons: [
+        { label: 'Cancel',                          className: 'btn btn-outline', value: 'cancel' },
+        { label: 'Only this date',                  className: 'btn btn-primary', value: 'one' },
+        { label: 'This + all future occurrences',   className: 'btn btn-danger',  value: 'series' }
+      ]
+    });
+    if (choice === 'cancel' || choice === false) return;
+    if (choice === 'series') {
+      const r = await api(`/api/tasks/${id}/checklist-series`, 'DELETE');
+      if (r.error) { appAlert(r.error, 'Error'); return; }
+      showToast(`🗑 ${r.deleted} task${r.deleted===1?'':'s'} deleted`);
+      loadAllTasks();
+      return;
+    }
+    // fall through to single-row delete
+    await api(`/api/tasks/${id}?type=${effType}`, 'DELETE');
+    loadAllTasks();
+    return;
+  }
   if (!await appConfirm('Delete this task?')) return;
-  await api(`/api/tasks/${id}?type=${type||tasksType}`,'DELETE');
+  await api(`/api/tasks/${id}?type=${effType}`,'DELETE');
   loadAllTasks();
 }
 

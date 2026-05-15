@@ -1084,6 +1084,24 @@ app.delete('/api/tasks/:id', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Delete every checklist row that shares description + assigned_to with the given
+// task and has due_date >= today. Use this to nuke a recurring "series" so it
+// doesn't keep reappearing day after day.
+app.delete('/api/tasks/:id/checklist-series', requireAuth, async (req, res) => {
+  try {
+    if (!await canModifyTask(req, req.params.id, 'checklist')) return res.status(403).json({ error: 'Not allowed' });
+    const [[task]] = await db.query('SELECT description, assigned_to FROM checklist_tasks WHERE id=?', [req.params.id]);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    const includePast = req.query.includePast === '1';
+    const dateClause = includePast ? '' : ' AND due_date >= CURDATE()';
+    const [result] = await db.query(
+      `DELETE FROM checklist_tasks WHERE description=? AND assigned_to=?${dateClause}`,
+      [task.description, task.assigned_to]
+    );
+    res.json({ success: true, deleted: result.affectedRows || 0 });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Bulk delete by user
 app.delete('/api/tasks/user/:userId', requireAuth, requireAdmin, async (req, res) => {
   try {
