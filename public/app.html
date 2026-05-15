@@ -1107,7 +1107,7 @@ tbody tr:last-child td{border-bottom:none;}
         </div>
         <button class="btn btn-outline" id="transferModeBtn" onclick="openNewTransferModal()"
           style="color:#7c3aed;border-color:#c4b5fd">🔀 Transfer</button>
-        <button class="btn btn-primary" id="tasksAssignBtn" onclick="openDelegate()" style="display:none">+ Assign Task</button>
+        <button class="btn btn-primary" id="tasksAssignBtn" onclick="openAssignForActiveTab()" style="display:none">+ Assign Task</button>
         <button class="btn btn-outline" id="bulkDeleteBtn" onclick="openBulkDeleteModal()"
           style="color:#dc2626;border-color:#fecaca;display:none">🗑 Bulk Delete</button>
       </div>
@@ -3240,9 +3240,17 @@ async function loadAllTasks() {
   const isUser = ME.role==='user';
   const isDesktop = window.innerWidth >= 768;
 
-  // Show/hide assign task button based on role
+  // Show/hide assign task button based on role; label follows the active tab so the
+  // user knows which form will open.
   const assignBtn = document.getElementById('tasksAssignBtn');
-  if (assignBtn) assignBtn.style.display = (isAdmin || isHod || isUser) ? '' : 'none';
+  if (assignBtn) {
+    // Hide for FMS tab (no in-app create — FMS rows come from Google Sheets).
+    const canAssign = (isAdmin || isHod || isUser) && tasksType !== 'fms';
+    assignBtn.style.display = canAssign ? '' : 'none';
+    if (tasksType === 'checklist')        assignBtn.textContent = '+ Checklist';
+    else if (tasksType === 'delegatebyme') assignBtn.textContent = '+ Delegate Task';
+    else                                   assignBtn.textContent = '+ Delegate Task';
+  }
 
   // Delegate by Me tab — show only for users who can assign tasks
   const dbmTab = document.getElementById('tasksTabDelByMe');
@@ -3687,6 +3695,13 @@ function tasksTab(type, el) {
   document.querySelectorAll('#tasksTypeTabGroup .tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
   loadAllTasks();
+}
+
+// Routes the "+ Assign Task" button to the right form based on the current type tab.
+function openAssignForActiveTab() {
+  if (tasksType === 'checklist') return openChecklist();
+  // delegation / delegate-by-me / fms all default to the Delegate flow.
+  return openDelegate();
 }
 
 function openTaskDetail(t) {
