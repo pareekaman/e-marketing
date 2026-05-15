@@ -3045,6 +3045,24 @@ app.post('/api/pending-summary/send', requireAuth, requireAdmin, async (_req, re
   }
 });
 
+// Cron endpoint — called by Vercel Cron at 10 AM IST (04:30 UTC) and 4 PM IST (10:30 UTC).
+// Protected by CRON_SECRET (Authorization: Bearer ...).
+app.get('/api/cron/pending-summary', async (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (process.env.CRON_SECRET && authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: pending-summary');
+    const out = await sendPendingSummaryMessages();
+    res.json(out);
+  } catch (err) {
+    console.error('Cron pending-summary error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ── Preview (admin) — see who would get reminded without actually sending ──
 app.get('/api/daily-reminder/preview', requireAuth, requireAdmin, async (req, res) => {
   try {

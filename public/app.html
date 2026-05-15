@@ -1472,11 +1472,10 @@ tbody tr:last-child td{border-bottom:none;}
         <div class="dr-reminder-info">
           <div class="dr-reminder-title">📊 Pending Task Summary</div>
           <div class="dr-reminder-sub">
-            Sends <b>3 separate messages</b> to the management group — Delegation / Checklist / FMS, each grouped by user with all pending tasks.
+            Auto-runs <b>10:00 AM</b> &amp; <b>4:00 PM IST</b> daily · sends 3 separate messages (Delegation / Checklist / FMS) grouped by user.
           </div>
         </div>
         <div class="dr-reminder-actions">
-          <button class="dt-btn dt-btn-add" onclick="pendingSummaryPreview()">👁 Preview</button>
           <button class="dt-btn dt-btn-submit" onclick="pendingSummarySendNow()">📤 Send Now</button>
         </div>
       </div>
@@ -8172,34 +8171,8 @@ async function reminderSendNow(){
 }
 
 // ══════════════════════════════════════════════════════
-// 📊 PENDING TASK SUMMARY — preview/send 3 group WhatsApp messages
+// 📊 PENDING TASK SUMMARY — send 3 group WhatsApp messages (auto-cron at 10/16 IST)
 // ══════════════════════════════════════════════════════
-async function pendingSummaryPreview(){
-  const box = document.getElementById('pendingSummaryResult');
-  box.style.display = 'block';
-  box.className = 'dr-reminder-result';
-  box.innerHTML = '<i>Loading preview…</i>';
-  try {
-    const r = await api('/api/pending-summary/preview');
-    if (r.error) throw new Error(r.error);
-    const section = (label, body) => `
-      <div style="margin-top:12px;padding:10px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px">
-        <div style="font-weight:700;color:#1e293b;margin-bottom:6px">${label}</div>
-        <pre style="font-family:'Inter',sans-serif;font-size:12px;color:#374151;white-space:pre-wrap;margin:0;max-height:240px;overflow:auto">${dtEscape(body || '(no pending tasks)')}</pre>
-      </div>`;
-    box.innerHTML = `<h4>👁 Pending Summary Preview</h4>
-      <div style="font-size:12px;color:#64748b">
-        Delegation: <b>${r.counts.delegation}</b> · Checklist: <b>${r.counts.checklist}</b> · FMS: <b>${r.counts.fms}</b>
-      </div>
-      ${section('📋 Delegation message', r.delegation)}
-      ${section('✅ Checklist message', r.checklist)}
-      ${section('📊 FMS message', r.fms)}`;
-  } catch(e) {
-    box.className = 'dr-reminder-result error';
-    box.innerHTML = `<h4>❌ Preview failed</h4><div>${e.message}</div>`;
-  }
-}
-
 async function pendingSummarySendNow(){
   if (!await appConfirm('Send 3 pending-task-summary WhatsApp messages to the management group?', 'Send Pending Summary')) return;
   const box = document.getElementById('pendingSummaryResult');
