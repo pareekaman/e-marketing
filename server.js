@@ -2742,7 +2742,10 @@ app.get('/api/test-whatsapp', requireAuth, requireAdmin, async (req, res) => {
 // 📢 DAILY REMINDER — sends list of users who didn't fill today's task
 // to a WhatsApp group. Excludes CXO department.
 // ══════════════════════════════════════════════════════
-const REMINDER_GROUP_ID = process.env.REMINDER_GROUP_ID || '+919301878061';
+// Daily "report not filled" message goes to the management WhatsApp GROUP.
+const REMINDER_GROUP_ID = process.env.REMINDER_GROUP_ID || '919602694444-1618492040@g.us';
+// Pending Task Summary (delegation / checklist / FMS) goes to this personal WhatsApp NUMBER, not the group.
+const PENDING_SUMMARY_PHONE = process.env.PENDING_SUMMARY_PHONE || '9301878061';
 const EXCLUDED_DEPARTMENTS = ['CXO']; // case-insensitive match
 
 // Reminder destination can be either a WhatsApp group ID (xxx@g.us) or a phone
@@ -3003,12 +3006,14 @@ async function buildPendingSummaryMessages() {
 
 async function sendPendingSummaryMessages() {
   const msgs = await buildPendingSummaryMessages();
+  // Pending summary goes to the configured PERSONAL WhatsApp number, NOT the
+  // daily-reminder group. The group only receives the "report not filled" message.
   const groupResults = {};
   for (const type of ['delegation','checklist','fms']) {
     if (!msgs[type]) { groupResults[type] = { skipped: 'no pending tasks' }; continue; }
-    const r = await sendToReminderDestination(msgs[type]);
+    const r = await sendWhatsApp(PENDING_SUMMARY_PHONE, msgs[type]);
     groupResults[type] = r;
-    await new Promise(r => setTimeout(r, 1500)); // small spacing so the group reads them in order
+    await new Promise(r => setTimeout(r, 1500)); // small spacing so messages stay readable
   }
   // Also DM each user who has the "pending_summary_recipient" access ticked.
   const [recipients] = await db.query(
