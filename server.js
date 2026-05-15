@@ -282,6 +282,7 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE users ADD COLUMN extra_off TEXT DEFAULT '' AFTER week_off`);
   await sa(`ALTER TABLE users ADD COLUMN notification_email VARCHAR(255) DEFAULT '' AFTER email`);
   await sa(`ALTER TABLE users ADD COLUMN exclude_from_reminder TINYINT(1) DEFAULT 0 AFTER extra_off`);
+  await sa(`ALTER TABLE users ADD COLUMN extra_access TEXT DEFAULT NULL AFTER exclude_from_reminder`);
   // user_role — separate from app `role`. Decides leave-approval hierarchy
   // (e.g. an IT person may have app role 'admin' but user role 'user',
   // so their leave still goes to their HOD).
@@ -515,6 +516,9 @@ app.get('/api/setup', async (req, res) => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'users table');
     await sa(`ALTER TABLE users ADD COLUMN user_role ENUM('admin','hod','pc','user') DEFAULT NULL AFTER role`, 'users.user_role');
+    await sa(`ALTER TABLE users ADD COLUMN extra_off TEXT DEFAULT '' AFTER week_off`, 'users.extra_off');
+    await sa(`ALTER TABLE users ADD COLUMN exclude_from_reminder TINYINT(1) DEFAULT 0 AFTER extra_off`, 'users.exclude_from_reminder');
+    await sa(`ALTER TABLE users ADD COLUMN extra_access TEXT DEFAULT NULL AFTER exclude_from_reminder`, 'users.extra_access');
     await sa(`UPDATE users SET user_role=role WHERE user_role IS NULL`, 'backfill user_role from role');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`, 'delegation_tasks.client_id');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN url VARCHAR(2048) DEFAULT NULL AFTER client_id`, 'delegation_tasks.url');
@@ -689,13 +693,15 @@ app.post('/api/logout', (req, res) => {
   res.json({ success: true });
 });
 
-// Users (by name) who get admin-level visibility into the Leave Tracker without
-// being full admins everywhere else. Keep this list short and explicit.
-const LEAVE_REPORT_VIEWERS = ['Rotan Singh'];
+// Leave-report viewing is now driven by per-user extra_access (granted via the
+// admin Users UI), so anyone with 'leaves_all' ticked gets the full team view.
 function isLeaveReportViewer(user) {
   if (!user) return false;
   if (user.role === 'admin') return true;
-  return LEAVE_REPORT_VIEWERS.includes(user.name);
+  const access = Array.isArray(user.extra_access)
+    ? user.extra_access
+    : parseExtraAccess(user.extra_access);
+  return access.includes('leaves_all');
 }
 
 app.get('/api/me', requireAuth, async (req, res) => {
@@ -703,7 +709,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
     const [rows] = await db.query(
       `SELECT id,name,email,notification_email,role,
               COALESCE(user_role, role) AS user_role,
-              phone,profile_image,department,week_off
+              phone,profile_image,department,week_off,extra_access
        FROM users WHERE id=?`, [req.session.userId]);
     if (!rows[0]) return res.status(404).json({ error: 'User not found' });
     // extra_off fetch separately — safe if column not yet added
@@ -711,6 +717,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
       const [ex] = await db.query('SELECT extra_off FROM users WHERE id=?', [req.session.userId]);
       rows[0].extra_off = ex[0]?.extra_off || '';
     } catch(e) { rows[0].extra_off = ''; }
+    rows[0].extra_access = parseExtraAccess(rows[0].extra_access);
     rows[0].canViewAllLeaves = isLeaveReportViewer(rows[0]);
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1722,45 +1729,81 @@ app.get('/api/users/with-pending-tasks', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════
 // USERS
 // ══════════════════════════════════════════════════════
+// Page keys an admin can grant to non-admin users via the user-edit checkboxes.
+// Single source of truth for both the dropdown and server-side validation.
+const EXTRA_ACCESS_KEYS = ['race','mis','fms','users','clients','compliance','dailyreports','leaves_all'];
+function sanitizeExtraAccess(input) {
+  let arr = input;
+  if (typeof input === 'string') {
+    try { arr = JSON.parse(input); } catch { arr = input.split(',').map(s => s.trim()); }
+  }
+  if (!Array.isArray(arr)) return [];
+  return [...new Set(arr.filter(k => EXTRA_ACCESS_KEYS.includes(k)))];
+}
+function parseExtraAccess(raw) {
+  if (!raw) return [];
+  try {
+    const a = JSON.parse(raw);
+    return Array.isArray(a) ? a : [];
+  } catch { return []; }
+}
+
+app.get('/api/access/pages', requireAuth, requireAdmin, (_req, res) => {
+  res.json([
+    { key: 'race',         label: 'Race Tracker' },
+    { key: 'mis',          label: 'MIS Report' },
+    { key: 'fms',          label: 'FMS Admin' },
+    { key: 'users',        label: 'Users' },
+    { key: 'clients',      label: 'Clients' },
+    { key: 'compliance',   label: 'Compliance Tracker' },
+    { key: 'dailyreports', label: 'Daily Reports' },
+    { key: 'leaves_all',   label: 'Leaves — Full Team Report' }
+  ]);
+});
+
 app.get('/api/users', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(
       `SELECT id,name,email,notification_email,role,
               COALESCE(user_role, role) AS user_role,
               phone,department,week_off,extra_off,
-              COALESCE(exclude_from_reminder,0) AS exclude_from_reminder
+              COALESCE(exclude_from_reminder,0) AS exclude_from_reminder,
+              extra_access
        FROM users ORDER BY role DESC,name ASC`
     );
+    for (const r of rows) r.extra_access = parseExtraAccess(r.extra_access);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, email, notification_email, password, role, user_role, phone, department, week_off, extra_off, exclude_from_reminder } = req.body;
+    const { name, email, notification_email, password, role, user_role, phone, department, week_off, extra_off, exclude_from_reminder, extra_access } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
     const [ex] = await db.query('SELECT id FROM users WHERE email=?', [email]);
     if (ex[0]) return res.status(400).json({ error: 'Email already exists' });
     const validRoles = ['admin','hod','pc','user'];
     const appRole = validRoles.includes(role) ? role : 'user';
     const userRole = validRoles.includes(user_role) ? user_role : appRole;
-    await db.query('INSERT INTO users (name,email,notification_email,password,role,user_role,phone,department,week_off,extra_off,exclude_from_reminder) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-      [name, email, notification_email||'', bcrypt.hashSync(password,10), appRole, userRole, phone||null, department||'', week_off||'', extra_off||'', exclude_from_reminder?1:0]);
+    const accessJson = JSON.stringify(sanitizeExtraAccess(extra_access));
+    await db.query('INSERT INTO users (name,email,notification_email,password,role,user_role,phone,department,week_off,extra_off,exclude_from_reminder,extra_access) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+      [name, email, notification_email||'', bcrypt.hashSync(password,10), appRole, userRole, phone||null, department||'', week_off||'', extra_off||'', exclude_from_reminder?1:0, accessJson]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.put('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, email, notification_email, role, user_role, password, phone, department, week_off, extra_off, exclude_from_reminder } = req.body;
+    const { name, email, notification_email, role, user_role, password, phone, department, week_off, extra_off, exclude_from_reminder, extra_access } = req.body;
     const exclVal = exclude_from_reminder ? 1 : 0;
     const validRoles = ['admin','hod','pc','user'];
     const appRole = validRoles.includes(role) ? role : 'user';
     const userRole = validRoles.includes(user_role) ? user_role : appRole;
-    if (password) await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,password=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=? WHERE id=?',
-      [name,email,notification_email||'',appRole,userRole,bcrypt.hashSync(password,10),phone||null,department||'',week_off||'',extra_off||'',exclVal,req.params.id]);
-    else await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=? WHERE id=?',
-      [name,email,notification_email||'',appRole,userRole,phone||null,department||'',week_off||'',extra_off||'',exclVal,req.params.id]);
+    const accessJson = JSON.stringify(sanitizeExtraAccess(extra_access));
+    if (password) await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,password=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=?,extra_access=? WHERE id=?',
+      [name,email,notification_email||'',appRole,userRole,bcrypt.hashSync(password,10),phone||null,department||'',week_off||'',extra_off||'',exclVal,accessJson,req.params.id]);
+    else await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=?,extra_access=? WHERE id=?',
+      [name,email,notification_email||'',appRole,userRole,phone||null,department||'',week_off||'',extra_off||'',exclVal,accessJson,req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3320,7 +3363,7 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
       }
     } else if (scope === 'team') {
       // Pull current user once so we can apply leave-viewer override and HOD dept-scoping.
-      const [[me]] = await db.query('SELECT name, role, department FROM users WHERE id=?', [uid]);
+      const [[me]] = await db.query('SELECT name, role, department, extra_access FROM users WHERE id=?', [uid]);
       if (role === 'admin' || isLeaveReportViewer(me)) {
         // no filter — all
       } else if (role === 'hod') {

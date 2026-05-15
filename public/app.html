@@ -2102,6 +2102,16 @@ tbody tr:last-child td{border-bottom:none;}
         </select>
       </div>
     </div>
+    <!-- Page access checkboxes — admin grants extra page visibility to non-admin users without code changes -->
+    <div class="form-group" style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:12px;margin-top:6px">
+      <label style="margin:0 0 8px;font-size:12px;color:#1e293b;letter-spacing:.3px">
+        🔓 Extra Page Access
+        <span style="color:#94a3b8;font-weight:400;text-transform:none;font-size:11px">(non-admin users — tick what they can see)</span>
+      </label>
+      <div id="uExtraAccessGrid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;font-size:12px"></div>
+      <div style="font-size:11px;color:#64748b;margin-top:6px">Admins always see everything; ticks here only matter for HOD / PC / User accounts.</div>
+    </div>
+
     <!-- Off-days are managed globally via the Holiday tab (applies to all users) -->
     <div class="form-group" style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:8px;padding:9px 12px;margin-top:6px">
       <div style="font-size:12px;color:#1e40af;line-height:1.5">
@@ -2620,6 +2630,21 @@ async function init() {
     if (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc' || ME.canViewAllLeaves) {
       const tTeam = document.getElementById('lvTabTeam');
       if (tTeam) tTeam.style.display = 'flex';
+    }
+
+    // Per-user extra page access — admin grants via the Users edit modal.
+    // Reveals additional sidebar nav items without code changes.
+    if (Array.isArray(ME.extra_access) && ME.extra_access.length) {
+      const NAV_BY_KEY = {
+        race: 'nav-race', mis: 'nav-mis', fms: 'nav-fms', users: 'nav-users',
+        clients: 'nav-clients', compliance: 'nav-compliance', dailyreports: 'nav-dailyreports'
+      };
+      for (const key of ME.extra_access) {
+        const navId = NAV_BY_KEY[key];
+        if (!navId) continue;
+        const el = document.getElementById(navId);
+        if (el) el.style.display = 'flex';
+      }
     }
     // FMS Tasks nav — hide for users who are not a doer in any FMS step.
     // Admin / PC see it regardless (overview / approval role).
@@ -4141,6 +4166,30 @@ function _getExtraOff() {
   return JSON.stringify(_extraOffData.filter(e => e.weeks.length > 0));
 }
 
+// Page list shared by the user modal. Loaded once from /api/access/pages.
+let _accessPages = null;
+async function ensureAccessPages() {
+  if (_accessPages) return _accessPages;
+  const r = await api('/api/access/pages');
+  _accessPages = Array.isArray(r) ? r : [];
+  return _accessPages;
+}
+async function renderExtraAccessGrid(currentAccess) {
+  const grid = document.getElementById('uExtraAccessGrid');
+  if (!grid) return;
+  const pages = await ensureAccessPages();
+  const set = new Set(Array.isArray(currentAccess) ? currentAccess : []);
+  grid.innerHTML = pages.map(p => `
+    <label style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;font-weight:500;color:#374151">
+      <input type="checkbox" class="u-extra-access" value="${p.key}" ${set.has(p.key) ? 'checked' : ''} style="accent-color:#1a56db;width:14px;height:14px;cursor:pointer">
+      ${p.label}
+    </label>
+  `).join('');
+}
+function readExtraAccessFromForm() {
+  return [...document.querySelectorAll('#uExtraAccessGrid .u-extra-access:checked')].map(el => el.value);
+}
+
 function openAddUser() {
   document.getElementById('userModalTitle').textContent='Add User';
   ['editUserId','uName','uEmail','uNotifEmail','uPhone','uDepartment','uPassword'].forEach(id=>document.getElementById(id).value='');
@@ -4150,6 +4199,7 @@ function openAddUser() {
   document.getElementById('userErr').style.display='none';
   document.getElementById('userSuccess').style.display='none';
   document.getElementById('uExcludeReminder').checked = false;
+  renderExtraAccessGrid([]);
   document.getElementById('userModal').classList.add('open');
 }
 
@@ -4170,6 +4220,7 @@ function openEditUser(id) {
   document.getElementById('pwdOptional').style.display='inline';
   document.getElementById('userErr').style.display='none';
   document.getElementById('userSuccess').style.display='none';
+  renderExtraAccessGrid(Array.isArray(u.extra_access) ? u.extra_access : []);
   document.getElementById('userModal').classList.add('open');
 }
 
@@ -4188,7 +4239,8 @@ async function saveUser() {
   const exclude_from_reminder = document.getElementById('uExcludeReminder').checked;
   if (!name||!email) { err.textContent='Name and email required'; err.style.display='block'; return; }
   if (!id&&!password) { err.textContent='Password required for new user'; err.style.display='block'; return; }
-  const body={name,email,notification_email,role,user_role,phone,department,exclude_from_reminder};
+  const extra_access = readExtraAccessFromForm();
+  const body={name,email,notification_email,role,user_role,phone,department,exclude_from_reminder,extra_access};
   if (password) body.password=password;
   const r = id ? await api(`/api/users/${id}`,'PUT',body) : await api('/api/users','POST',body);
   if (r.error) { err.textContent=r.error; err.style.display='block'; return; }
