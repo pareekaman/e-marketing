@@ -853,11 +853,14 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
       params.push(uid);
     }
 
-    // All Tasks — Delegation me sab future tasks dikhao (transfer ke liye).
-    // Checklist — recurring hota hai isliye full future visible karne se table flood ho jata hai;
-    // sirf today + next 10 days dikhao taaki upcoming visibility bhi mile aur view tidy rahe.
-    if (!isDeleg) {
-      where += ' AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 10 DAY)';
+    // Explicit from/to range (sent by admin filter) overrides defaults for BOTH types.
+    // Otherwise: delegation shows all future (transfer ke liye), checklist caps at
+    // today + 30 days so recurring checklists don't flood the table.
+    const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v);
+    if (req.query.from && isDate(req.query.from)) { where += ' AND t.due_date >= ?'; params.push(req.query.from); }
+    if (req.query.to   && isDate(req.query.to))   { where += ' AND t.due_date <= ?'; params.push(req.query.to);   }
+    if (!isDeleg && !(req.query.from || req.query.to)) {
+      where += ' AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)';
     }
 
     const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,t.remarks,t.url,":"'no' AS approval,0 AS waiting_approval,t.remarks,NULL AS url,"}t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
