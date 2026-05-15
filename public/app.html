@@ -128,6 +128,7 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 .ov-card{background:#fff;border-radius:12px;padding:20px 22px;border:1px solid #e2e8f0;}
 .ov-card .label{font-size:13px;color:#64748b;margin-bottom:6px;}
 .ov-card .number{font-size:34px;font-weight:700;}
+.ov-card.total .number{color:#1a56db;}
 .ov-card.pending .number{color:#ef4444;}
 .ov-card.revised .number{color:#f59e0b;}
 .ov-card.completed .number{color:#10b981;}
@@ -981,9 +982,9 @@ tbody tr:last-child td{border-bottom:none;}
       <div class="dash-topbar-btns" id="dashBtns"></div>
     </div>
     <div class="overview-cards">
-      <div class="ov-card pending"><div class="label">Pending</div><div class="number" id="dPending">—</div></div>
-      <div class="ov-card revised"><div class="label">Revised</div><div class="number" id="dRevised">—</div></div>
+      <div class="ov-card total"><div class="label">Total</div><div class="number" id="dTotal">—</div></div>
       <div class="ov-card completed"><div class="label">Completed</div><div class="number" id="dCompleted">—</div></div>
+      <div class="ov-card pending"><div class="label">Pending</div><div class="number" id="dPending">—</div></div>
     </div>
     <div class="dash-bottom">
       <div class="task-table-card">
@@ -2805,9 +2806,9 @@ async function loadDashboard() {
   if (dDel.error || dChl.error) {
     const errMsg = dDel.error || dChl.error;
     console.error('Dashboard API error:', errMsg);
-    document.getElementById('dPending').textContent = 'Err';
-    document.getElementById('dRevised').textContent = 'Err';
+    document.getElementById('dTotal').textContent = 'Err';
     document.getElementById('dCompleted').textContent = 'Err';
+    document.getElementById('dPending').textContent = 'Err';
     document.getElementById('dashTbody').innerHTML = `<tr><td colspan="6" style="color:red;padding:16px;text-align:center">⚠️ Data load failed: ${errMsg}<br><small>Check /api/debug for details</small></td></tr>`;
     return;
   }
@@ -3014,17 +3015,17 @@ function updateDashStats(type) {
     completed = (del.completed||0) + (chl.completed||0) + (t.fmsCompleted||0);
     revised   = del.revised || 0;
   }
-  const pEl = document.getElementById('dPending');
-  const rEl = document.getElementById('dRevised');
-  const cEl = document.getElementById('dCompleted');
-  if (pEl) pEl.textContent = pending;
-  if (rEl) rEl.textContent = revised;
-  if (cEl) cEl.textContent = completed;
+  const total = pending + completed + revised;
+  const totalEl = document.getElementById('dTotal');
+  const cEl     = document.getElementById('dCompleted');
+  const pEl     = document.getElementById('dPending');
+  if (totalEl) totalEl.textContent = total;
+  if (cEl)     cEl.textContent     = completed;
+  if (pEl)     pEl.textContent     = pending;
 
   if (dashChartInst) dashChartInst.destroy();
   const canvas = document.getElementById('dashChart');
   if (!canvas) return;
-  const total = pending + completed + revised;
   if (!total) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -3033,7 +3034,9 @@ function updateDashStats(type) {
   }
   // For FMS / checklist (no revised), drop that slice from the chart.
   const labels = ['Completed','Pending']; const data = [completed, pending]; const colors = ['#10b981','#ef4444'];
-  if (type === 'all' || type === 'delegation') { labels.push('Revised'); data.push(revised); colors.push('#f59e0b'); }
+  if (revised > 0 && (type === 'all' || type === 'delegation')) {
+    labels.push('Revised'); data.push(revised); colors.push('#f59e0b');
+  }
   dashChartInst = new Chart(canvas.getContext('2d'), {
     type:'pie',
     data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:3,borderColor:'#fff',hoverOffset:6}]},
