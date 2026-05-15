@@ -3263,16 +3263,24 @@ async function loadAllTasks() {
     allTasksData = rows.map(r => ({
       id: r.stepId || r.id || 0,
       type: 'fms',
-      description: `${r.fmsName} — ${r.stepName}`,
+      // Keep FMS-specific fields so _buildFmsRowHtml can render them directly.
+      fmsId: r.fmsId,
+      stepId: r.stepId,
+      fmsName: r.fmsName || '',
+      stepName: r.stepName || '',
+      doer: r.doer || '—',
+      planValue: r.planValue || '',
+      details: Array.isArray(r.details) ? r.details : [],
+      isLate: !!r.isLate,
+      // Aliased shape so existing filters / grouping keep working.
+      description: `${r.fmsName || ''} — ${r.stepName || ''}`,
       assigned_to: null,
       assigned_by: null,
       assignedToName: r.doer || '—',
       assignedByName: r.doer || '—',
       due_date: r.planDate || '',
-      planValue: r.planValue || '',
-      isLate: !!r.isLate,
       status: 'pending',
-      remarks: r.planValue ? `Plan: ${r.planValue}` : ''
+      remarks: ''
     }));
     allTasksPage = 1;
     renderTasksTable();
