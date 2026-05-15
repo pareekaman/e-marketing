@@ -2812,9 +2812,9 @@ async function loadDashboard() {
     return;
   }
 
-  document.getElementById('dPending').textContent = (dDel.pending||0) + (dChl.pending||0);
-  document.getElementById('dRevised').textContent = (dDel.revised||0) + (dChl.revised||0);
-  document.getElementById('dCompleted').textContent = (dDel.completed||0) + (dChl.completed||0);
+  // Cache totals so the type-tab can re-derive cards + chart without re-fetching.
+  window._dashTotals = { del: dDel, chl: dChl, fmsPending: 0, fmsCompleted: 0 };
+  updateDashStats(dashType);
 
   if (isAdmin || isHod || isPC) {
     empFilter.style.display = 'block';
@@ -2851,21 +2851,6 @@ async function loadDashboard() {
         <button class="btn btn-primary" onclick="openDelegate()">+ Assign Task</button>`;
     }
   }
-
-  if (dashChartInst) dashChartInst.destroy();
-
-  const combinedPending   = (dDel.pending||0)   + (dChl.pending||0);
-  const combinedCompleted = (dDel.completed||0) + (dChl.completed||0);
-  const combinedRevised   = dDel.revised||0;
-  const chartLabels = ['Completed','Pending','Revised'];
-  const chartData   = [combinedCompleted, combinedPending, combinedRevised];
-  const chartColors = ['#10b981','#ef4444','#f59e0b'];
-
-  dashChartInst = new Chart(document.getElementById('dashChart').getContext('2d'), {
-    type:'pie',
-    data:{labels:chartLabels,datasets:[{data:chartData,backgroundColor:chartColors,borderWidth:3,borderColor:'#fff',hoverOffset:6}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}`}}}}
-  });
 
   // Combine both types for the unified pending table
   const allTodayPending = [...(dDel.todayPending||[]), ...(dChl.todayPending||[])];
@@ -3007,11 +2992,61 @@ async function refreshPCEmployeeDropdown() {
   }
 }
 
+// Recompute the three overview cards + the pie chart based on the current type tab.
+function updateDashStats(type) {
+  const t = window._dashTotals || { del:{}, chl:{}, fmsPending:0, fmsCompleted:0 };
+  const del = t.del || {}, chl = t.chl || {};
+  let pending = 0, completed = 0, revised = 0;
+  if (type === 'delegation') {
+    pending   = del.pending || 0;
+    completed = del.completed || 0;
+    revised   = del.revised || 0;
+  } else if (type === 'checklist') {
+    pending   = chl.pending || 0;
+    completed = chl.completed || 0;
+    revised   = 0;
+  } else if (type === 'fms') {
+    pending   = t.fmsPending   || 0;
+    completed = t.fmsCompleted || 0;
+    revised   = 0;
+  } else {
+    pending   = (del.pending||0)   + (chl.pending||0)   + (t.fmsPending||0);
+    completed = (del.completed||0) + (chl.completed||0) + (t.fmsCompleted||0);
+    revised   = del.revised || 0;
+  }
+  const pEl = document.getElementById('dPending');
+  const rEl = document.getElementById('dRevised');
+  const cEl = document.getElementById('dCompleted');
+  if (pEl) pEl.textContent = pending;
+  if (rEl) rEl.textContent = revised;
+  if (cEl) cEl.textContent = completed;
+
+  if (dashChartInst) dashChartInst.destroy();
+  const canvas = document.getElementById('dashChart');
+  if (!canvas) return;
+  const total = pending + completed + revised;
+  if (!total) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    dashChartInst = null;
+    return;
+  }
+  // For FMS / checklist (no revised), drop that slice from the chart.
+  const labels = ['Completed','Pending']; const data = [completed, pending]; const colors = ['#10b981','#ef4444'];
+  if (type === 'all' || type === 'delegation') { labels.push('Revised'); data.push(revised); colors.push('#f59e0b'); }
+  dashChartInst = new Chart(canvas.getContext('2d'), {
+    type:'pie',
+    data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:3,borderColor:'#fff',hoverOffset:6}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}`}}}}
+  });
+}
+
 function dashTab(type, el) {
   dashType = type;
   document.querySelectorAll('#dashTypeTabGroup .tab').forEach(t=>t.classList.remove('active'));
   if(el) el.classList.add('active');
-  // Re-render table without full API reload
+  // Refresh stat cards + chart from cached totals; table re-renders from the same cache.
+  updateDashStats(dashType);
   if (window._lastDashTasks) {
     renderDashTable(window._lastDashTasks, dashType);
   } else {
@@ -3052,6 +3087,12 @@ async function loadDashFMS() {
     isLate: !!r.isLate,
     status: 'pending'
   }));
+
+  // Feed FMS pending count into the cached totals so the type-tab + stat cards stay in sync.
+  if (window._dashTotals) {
+    window._dashTotals.fmsPending = window._lastDashFMS.length;
+    updateDashStats(dashType);
+  }
 
   // Re-render unified table now that FMS data is in
   if (window._lastDashTasks) renderDashTable(window._lastDashTasks, dashType);
