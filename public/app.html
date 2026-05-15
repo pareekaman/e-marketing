@@ -3266,6 +3266,7 @@ async function loadAllTasks() {
       // Keep FMS-specific fields so _buildFmsRowHtml can render them directly.
       fmsId: r.fmsId,
       stepId: r.stepId,
+      rowNumber: r.rowNumber,
       fmsName: r.fmsName || '',
       stepName: r.stepName || '',
       doer: r.doer || '—',
@@ -3388,7 +3389,7 @@ function _buildFmsRowHtml(t) {
         <span style="color:#1e293b">${dtEscape(d.value||'—')}</span>
       </div>`).join('')
     : '<span style="color:#94a3b8;font-size:12px">—</span>';
-  const navArg = JSON.stringify({ fmsId: t.fmsId, stepId: t.stepId }).replace(/"/g, '&quot;');
+  const refArg = JSON.stringify({ fmsId: t.fmsId, stepId: t.stepId, rowNumber: t.rowNumber }).replace(/"/g, '&quot;');
   return `<tr>
     <td style="vertical-align:top">
       <div style="font-weight:700;color:#0f172a;font-size:13.5px">${dtEscape(t.fmsName||'')}</div>
@@ -3401,7 +3402,8 @@ function _buildFmsRowHtml(t) {
       <div style="margin-top:4px">${lateBadge}</div>
     </td>
     <td style="vertical-align:top;white-space:nowrap">
-      <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:5px 10px" onclick='openFmsTaskFromRow(${navArg})'>Open</button>
+      <button class="action-btn done" onclick='openFmsDoneFromRow(${refArg})' title="Mark this FMS row done">✅ Done</button>
+      <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 8px;margin-left:4px" onclick='openFmsTaskFromRow(${refArg})' title="Open in FMS Tasks page">Open</button>
     </td>
   </tr>`;
 }
@@ -3410,8 +3412,6 @@ async function openFmsTaskFromRow(ref) {
   try {
     if (!ref || !ref.fmsId) return;
     navigate('fms-tasks', document.getElementById('nav-fms-tasks'));
-    // Wait for loadFMSTasks to populate the dropdown, then jump to this FMS.
-    // Step picking is left to the user once the FMS is open.
     for (let tries = 0; tries < 20; tries++) {
       const sel = document.getElementById('fmsTasksSelect');
       if (sel && [...sel.options].some(o => String(o.value) === String(ref.fmsId))) {
@@ -3422,6 +3422,66 @@ async function openFmsTaskFromRow(ref) {
       await new Promise(r => setTimeout(r, 100));
     }
   } catch(e) { console.error(e); }
+}
+
+// Mark Done directly from the All Tasks → FMS row. Chains: navigate → FMS select →
+// step select → wait for rows → open existing FMS Done modal pre-filled for this sheet row.
+async function openFmsDoneFromRow(ref) {
+  try {
+    if (!ref || !ref.fmsId || !ref.stepId || !ref.rowNumber) {
+      showToast('Missing FMS row reference', 'error');
+      return;
+    }
+    navigate('fms-tasks', document.getElementById('nav-fms-tasks'));
+
+    // 1. FMS dropdown
+    let fmsSelected = false;
+    for (let i = 0; i < 30; i++) {
+      const sel = document.getElementById('fmsTasksSelect');
+      if (sel && [...sel.options].some(o => String(o.value) === String(ref.fmsId))) {
+        sel.value = String(ref.fmsId);
+        await onFMSTasksSelect();
+        fmsSelected = true;
+        break;
+      }
+      await new Promise(r => setTimeout(r, 100));
+    }
+    if (!fmsSelected) { showToast('FMS not found / no access', 'error'); return; }
+
+    // 2. Step select
+    let stepSelected = false;
+    for (let i = 0; i < 30; i++) {
+      const steps = window._fmsAllSteps;
+      if (Array.isArray(steps) && steps.length) {
+        const step = steps.find(s => Number(s.id) === Number(ref.stepId));
+        if (step && (step.isMyStep || ME.role === 'admin')) {
+          const doerNames = (step.doers || []).map(d => d.name).join(', ') || '—';
+          selectFMSStep(step.id, step.step_name, doerNames);
+          stepSelected = true;
+        } else if (step) {
+          showToast('This FMS step is not assigned to you', 'error');
+          return;
+        }
+        break;
+      }
+      await new Promise(r => setTimeout(r, 100));
+    }
+    if (!stepSelected) { showToast('Step not found', 'error'); return; }
+
+    // 3. Wait for the step's rows to load and find ours by sheetRowNumber
+    for (let i = 0; i < 40; i++) {
+      const rows = window._fmsCurrentRows;
+      if (Array.isArray(rows) && rows.length) {
+        const idx = rows.findIndex(r => Number(r.sheetRowNumber) === Number(ref.rowNumber));
+        if (idx >= 0) {
+          openFMSDoneModal(idx);
+          return;
+        }
+      }
+      await new Promise(r => setTimeout(r, 150));
+    }
+    showToast('Row not found in current FMS view', 'error');
+  } catch(e) { console.error(e); showToast('Could not open Done modal: ' + e.message, 'error'); }
 }
 
 function _buildTaskRowHtml(t, ctx) {
