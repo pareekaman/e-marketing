@@ -1786,7 +1786,7 @@ app.get('/api/users/with-pending-tasks', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════
 // Page keys an admin can grant to non-admin users via the user-edit checkboxes.
 // Single source of truth for both the dropdown and server-side validation.
-const EXTRA_ACCESS_KEYS = ['race','mis','fms','users','clients','compliance','dailyreports','leaves_all'];
+const EXTRA_ACCESS_KEYS = ['race','mis','fms','users','clients','compliance','dailyreports','leaves_all','pending_summary_recipient'];
 function sanitizeExtraAccess(input) {
   let arr = input;
   if (typeof input === 'string') {
@@ -1805,14 +1805,15 @@ function parseExtraAccess(raw) {
 
 app.get('/api/access/pages', requireAuth, requireAdmin, (_req, res) => {
   res.json([
-    { key: 'race',         label: 'Race Tracker' },
-    { key: 'mis',          label: 'MIS Report' },
-    { key: 'fms',          label: 'FMS Admin' },
-    { key: 'users',        label: 'Users' },
-    { key: 'clients',      label: 'Clients' },
-    { key: 'compliance',   label: 'Compliance Tracker' },
-    { key: 'dailyreports', label: 'Daily Reports' },
-    { key: 'leaves_all',   label: 'Leaves — Full Team Report' }
+    { key: 'race',                      label: 'Race Tracker' },
+    { key: 'mis',                       label: 'MIS Report' },
+    { key: 'fms',                       label: 'FMS Admin' },
+    { key: 'users',                     label: 'Users' },
+    { key: 'clients',                   label: 'Clients' },
+    { key: 'compliance',                label: 'Compliance Tracker' },
+    { key: 'dailyreports',              label: 'Daily Reports' },
+    { key: 'leaves_all',                label: 'Leaves — Full Team Report' },
+    { key: 'pending_summary_recipient', label: 'Receive Pending Task Summary on WhatsApp' }
   ]);
 });
 
@@ -2993,14 +2994,29 @@ async function buildPendingSummaryMessages() {
 
 async function sendPendingSummaryMessages() {
   const msgs = await buildPendingSummaryMessages();
-  const results = {};
+  const groupResults = {};
   for (const type of ['delegation','checklist','fms']) {
-    if (!msgs[type]) { results[type] = { skipped: 'no pending tasks' }; continue; }
+    if (!msgs[type]) { groupResults[type] = { skipped: 'no pending tasks' }; continue; }
     const r = await sendWhatsAppRaw(REMINDER_GROUP_ID, msgs[type]);
-    results[type] = r;
+    groupResults[type] = r;
     await new Promise(r => setTimeout(r, 1500)); // small spacing so the group reads them in order
   }
-  return { ok: true, counts: msgs.counts, results };
+  // Also DM each user who has the "pending_summary_recipient" access ticked.
+  const [recipients] = await db.query(
+    `SELECT id, name, phone, extra_access FROM users WHERE phone IS NOT NULL AND phone <> '' AND extra_access IS NOT NULL`
+  );
+  const dmResults = [];
+  for (const u of recipients) {
+    if (!parseExtraAccess(u.extra_access).includes('pending_summary_recipient')) continue;
+    const perType = {};
+    for (const type of ['delegation','checklist','fms']) {
+      if (!msgs[type]) { perType[type] = { skipped: 'no pending tasks' }; continue; }
+      perType[type] = await sendWhatsApp(u.phone, msgs[type]);
+      await new Promise(r => setTimeout(r, 1200));
+    }
+    dmResults.push({ userId: u.id, name: u.name, phone: u.phone, perType });
+  }
+  return { ok: true, counts: msgs.counts, group: groupResults, dms: dmResults };
 }
 
 app.get('/api/pending-summary/preview', requireAuth, requireAdmin, async (_req, res) => {

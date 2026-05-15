@@ -8214,11 +8214,18 @@ async function pendingSummarySendNow(){
       if (info?.ok) return `<li>${type}: ✅ sent</li>`;
       return `<li>${type}: ❌ ${dtEscape(JSON.stringify(info))}</li>`;
     };
+    const groupBlock = r.group || r.results || {};
+    const dmBlocks = (r.dms || []).map(d => {
+      const lines = ['delegation','checklist','fms'].map(t => fmtRow(t.charAt(0).toUpperCase()+t.slice(1), d.perType?.[t])).join('');
+      return `<div style="margin-top:8px"><b>📱 ${dtEscape(d.name)} (${dtEscape(d.phone)})</b><ul>${lines}</ul></div>`;
+    }).join('');
     box.innerHTML = `<h4>✅ Pending summary dispatched</h4>
       <div style="font-size:12px;color:#64748b">
         Delegation: <b>${r.counts.delegation}</b> · Checklist: <b>${r.counts.checklist}</b> · FMS: <b>${r.counts.fms}</b>
       </div>
-      <ul>${fmtRow('Delegation', r.results.delegation)}${fmtRow('Checklist', r.results.checklist)}${fmtRow('FMS', r.results.fms)}</ul>`;
+      <div style="margin-top:6px"><b>Group</b></div>
+      <ul>${fmtRow('Delegation', groupBlock.delegation)}${fmtRow('Checklist', groupBlock.checklist)}${fmtRow('FMS', groupBlock.fms)}</ul>
+      ${dmBlocks || '<div style="font-size:12px;color:#94a3b8">No personal DMs configured (tick "Receive Pending Task Summary on WhatsApp" on any user in the Users page).</div>'}`;
     showToast('📱 Pending summary sent!');
   } catch(e) {
     box.className = 'dr-reminder-result error';
