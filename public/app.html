@@ -6951,8 +6951,17 @@ async function saveFMSDone() {
 
   closeModal('fmsDoneModal');
   showToast('✅ Saved to Google Sheet!');
-  // Reload rows
-  loadFMSTaskRows();
+  // Reload rows on whichever page is visible
+  if (typeof loadFMSTaskRows === 'function') loadFMSTaskRows();
+  // If the user marked done from the All Tasks → FMS tab, refresh that view too
+  // so the completed row drops out of the pending list.
+  if (typeof tasksType !== 'undefined' && tasksType === 'fms' && typeof loadAllTasks === 'function') {
+    loadAllTasks();
+  }
+  // Dashboard pending-FMS list also needs to drop the completed row.
+  if (typeof loadDashFMS === 'function' && document.getElementById('page-dashboard')?.classList.contains('active')) {
+    loadDashFMS();
+  }
 }
 
 function setTrainSpeed(val) {

@@ -1337,10 +1337,13 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
           const actualIdx = colToIdx(step.actual_col);
           if (planIdx < 0 || actualIdx < 0) continue;
 
+          // Strip every flavour of whitespace (regular, NBSP, zero-width, BOM) so cells
+          // that only contain invisible chars don't slip past as "non-blank".
+          const blankClean = v => (v || '').toString().replace(/[\s ​-‍﻿]+/g, '');
           dataRows.forEach((row, i) => {
             const planVal = (row[planIdx] || '').trim();
             const actualVal = (row[actualIdx] || '').trim();
-            if (!planVal || actualVal) return; // skip if no plan or already done
+            if (!blankClean(planVal) || blankClean(actualVal)) return; // skip if no plan or already done
 
             // Parse plan date — try to extract date from value
             // planVal might be a date string like "2026-04-07" or "07/04/2026" or just text,
@@ -2226,10 +2229,11 @@ app.get('/api/fms-tasks/:fmsId/steps/:stepId/rows', requireAuth, async (req, res
     const matchedRows = [];
     let totalPending = 0;       // total pending in this step (for admin info)
     let assignedToMe = 0;       // assigned to current user
+    const blankClean = v => (v || '').toString().replace(/[\s ​-‍﻿]+/g, '');
     dataRows.forEach((row, i) => {
       const planVal = planIdx >= 0 ? (row[planIdx]||'').trim() : '';
       const actualVal = actualIdx >= 0 ? (row[actualIdx]||'').trim() : '';
-      if (!planVal || actualVal) return; // skip non-pending rows
+      if (!blankClean(planVal) || blankClean(actualVal)) return; // skip non-pending rows
       totalPending++;
 
       // Check doer name match (case-insensitive exact)
