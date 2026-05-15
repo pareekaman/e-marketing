@@ -1312,7 +1312,14 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
         const headerRowIdx = (sheet.header_row || 1) - 1;
 
         const filteredSteps = steps; // fix: was undefined, use steps array
-        const allCols = filteredSteps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)]).filter(x => x >= 0);
+        // Include show_cols indices so we can return their values for the All Tasks "Details" column.
+        const showColsByStep = filteredSteps.map(s => {
+          try { return JSON.parse(s.show_cols || '[]').filter(n => Number.isInteger(n) && n >= 0); }
+          catch { return []; }
+        });
+        const allCols = filteredSteps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)])
+          .concat(showColsByStep.flat())
+          .filter(x => x >= 0);
         if (!allCols.length) continue;
         const maxCol = Math.max(...allCols);
         const lastCol = idxToCol(maxCol);
@@ -1323,7 +1330,9 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
         const headers = sheetData[headerRowIdx] || [];
         const dataRows = sheetData.slice(headerRowIdx + 1);
 
-        for (const step of steps) {
+        for (let si = 0; si < steps.length; si++) {
+          const step = steps[si];
+          const showCols = showColsByStep[si];
           const planIdx = colToIdx(step.plan_col);
           const actualIdx = colToIdx(step.actual_col);
           if (planIdx < 0 || actualIdx < 0) continue;
@@ -1351,6 +1360,15 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
             // isLate: plan date is in the past and still pending
             const isLate = planDate && planDate < today;
 
+            // Build "details" — first 5 configured show_cols with their headers + values.
+            const details = [];
+            const colsToShow = (showCols && showCols.length ? showCols : []).slice(0, 5);
+            for (const ci of colsToShow) {
+              const header = headers[ci] || `Col ${idxToCol(ci)}`;
+              const value = (row[ci] || '').toString().trim();
+              details.push({ header, value });
+            }
+
             allRows.push({
               fmsName,
               fmsId: sheet.id,
@@ -1360,7 +1378,8 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
               planValue: planVal,
               planDate: planDate || '',
               isLate,
-              rowNumber: headerRowIdx + 1 + i + 1
+              rowNumber: headerRowIdx + 1 + i + 1,
+              details
             });
           });
         }

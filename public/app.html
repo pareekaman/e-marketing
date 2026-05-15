@@ -3367,25 +3367,58 @@ function filterTaskStatus(status, el) {
   renderTasksTable();
 }
 
+function _buildFmsRowHtml(t) {
+  const lateBadge = t.isLate
+    ? `<span style="font-size:10px;background:#fef2f2;color:#dc2626;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fecaca">⏰ Late</span>`
+    : `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ On Track</span>`;
+  const dateCell = t.due_date
+    ? `<span style="${t.isLate?'color:#dc2626;font-weight:700':''}">${fmtDate(t.due_date)}</span>`
+    : `<span style="color:#94a3b8;font-size:12px">${dtEscape(t.planValue||'—')}</span>`;
+  const detailsHtml = (Array.isArray(t.details) && t.details.length)
+    ? t.details.map(d => `<div style="display:flex;gap:6px;align-items:baseline;font-size:12px;line-height:1.45">
+        <span style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap">${dtEscape(d.header||'—')}:</span>
+        <span style="color:#1e293b">${dtEscape(d.value||'—')}</span>
+      </div>`).join('')
+    : '<span style="color:#94a3b8;font-size:12px">—</span>';
+  const navArg = JSON.stringify({ fmsId: t.fmsId, stepId: t.stepId }).replace(/"/g, '&quot;');
+  return `<tr>
+    <td style="vertical-align:top">
+      <div style="font-weight:700;color:#0f172a;font-size:13.5px">${dtEscape(t.fmsName||'')}</div>
+      <div style="color:#64748b;font-size:11px;margin-top:2px">↳ ${dtEscape(t.stepName||'')}</div>
+      <div style="color:#94a3b8;font-size:11px;margin-top:3px">Doer: ${dtEscape(t.doer||'—')}</div>
+    </td>
+    <td style="vertical-align:top;max-width:380px">${detailsHtml}</td>
+    <td style="vertical-align:top;white-space:nowrap">
+      <div>${dateCell}</div>
+      <div style="margin-top:4px">${lateBadge}</div>
+    </td>
+    <td style="vertical-align:top;white-space:nowrap">
+      <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:5px 10px" onclick='openFmsTaskFromRow(${navArg})'>Open</button>
+    </td>
+  </tr>`;
+}
+
+async function openFmsTaskFromRow(ref) {
+  try {
+    if (!ref || !ref.fmsId) return;
+    navigate('fms-tasks', document.getElementById('nav-fms-tasks'));
+    // Wait for loadFMSTasks to populate the dropdown, then jump to this FMS.
+    // Step picking is left to the user once the FMS is open.
+    for (let tries = 0; tries < 20; tries++) {
+      const sel = document.getElementById('fmsTasksSelect');
+      if (sel && [...sel.options].some(o => String(o.value) === String(ref.fmsId))) {
+        sel.value = String(ref.fmsId);
+        await onFMSTasksSelect();
+        return;
+      }
+      await new Promise(r => setTimeout(r, 100));
+    }
+  } catch(e) { console.error(e); }
+}
+
 function _buildTaskRowHtml(t, ctx) {
   const { isAdmin, isDelegateByMe, isClickable, showClientCol } = ctx;
-  // FMS rows are read-only from this page — render a slim version of the row.
-  if (t.type === 'fms' || tasksType === 'fms') {
-    const lateBadge = t.isLate
-      ? `<span style="font-size:10px;background:#fef2f2;color:#dc2626;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fecaca">⏰ Late</span>`
-      : `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ On Track</span>`;
-    const dateCell = t.due_date ? fmtDate(t.due_date) : `<span style="color:#94a3b8">${t.planValue||'—'}</span>`;
-    return `<tr>
-      <td style="white-space:nowrap;color:#94a3b8;font-size:11px">—</td>
-      <td>${dtEscape(t.description||'')}</td>
-      <td style="white-space:nowrap">${dtEscape(t.assignedToName||'')}</td>
-      <td style="white-space:nowrap;color:#94a3b8">—</td>
-      <td style="white-space:nowrap;${t.isLate?'color:#dc2626;font-weight:600':''}">${dateCell}</td>
-      ${showClientCol ? '<td style="color:#94a3b8">—</td>' : ''}
-      <td style="color:#64748b;font-size:12px">${dtEscape(t.remarks||'—')}</td>
-      <td style="white-space:nowrap">${lateBadge}</td>
-    </tr>`;
-  }
+  if (t.type === 'fms' || tasksType === 'fms') return _buildFmsRowHtml(t);
   const isCompleted = t.status === 'completed';
   const isWaiting = t.waiting_approval == 1;
   const isChecklist = tasksType === 'checklist';
@@ -3477,16 +3510,23 @@ function renderTasksTable() {
   const showClientCol = tasksType === 'delegation' || tasksType === 'delegatebyme';
   const ctx = { isAdmin, isDelegateByMe, isClickable, showClientCol };
 
-  const tableHeadHtml = `<thead><tr>
-    <th style="white-space:nowrap">Action</th>
-    <th>Desc</th>
-    <th>Doer</th>
-    <th>Assignee</th>
-    <th>Date</th>
-    ${showClientCol ? '<th>Client</th>' : ''}
-    <th>Remarks</th>
-    <th>Status</th>
-  </tr></thead>`;
+  const tableHeadHtml = tasksType === 'fms'
+    ? `<thead><tr>
+        <th style="white-space:nowrap">FMS — Step</th>
+        <th>Details</th>
+        <th style="white-space:nowrap">Planned Date</th>
+        <th style="white-space:nowrap">Action</th>
+      </tr></thead>`
+    : `<thead><tr>
+        <th style="white-space:nowrap">Action</th>
+        <th>Desc</th>
+        <th>Doer</th>
+        <th>Assignee</th>
+        <th>Date</th>
+        ${showClientCol ? '<th>Client</th>' : ''}
+        <th>Remarks</th>
+        <th>Status</th>
+      </tr></thead>`;
 
   // ── ADMIN / HOD / PC: group by doer name, collapsed-by-default accordion ───
   if (useGroupView) {
