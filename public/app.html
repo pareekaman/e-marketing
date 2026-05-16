@@ -441,53 +441,68 @@ tbody tr:last-child td{border-bottom:none;}
 .file-row{display:flex;align-items:center;gap:8px;margin-top:6px;}
 
 /* ══════════════════════════════════════════════
-   DAILY TASK FORM (orange theme, matches brand)
+   DAILY TASK FORM
    ══════════════════════════════════════════════ */
-.dt-card{background:#fff;border-radius:18px;padding:30px 32px;box-shadow:0 4px 20px rgba(243,156,18,.08);border:1px solid #fef3c7;}
-.dt-topbar{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#fff8e1,#ffecb3);border-radius:10px;padding:12px 18px;margin-bottom:22px;}
-.dt-time{color:#F39C12;font-weight:600;font-size:13px;font-family:'Courier New',monospace;}
-.dt-welcome{color:#475569;font-size:14px;}
-.dt-welcome b{color:#1e293b;}
+.dt-card{background:#fff;border-radius:16px;padding:24px 28px;box-shadow:0 1px 3px rgba(15,23,42,.04),0 4px 16px rgba(15,23,42,.06);border:1px solid #e2e8f0;}
+.dt-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+.dt-header-text{min-width:0;}
+.dt-page-title{font-size:20px;font-weight:700;color:#0f172a;letter-spacing:-.01em;}
+.dt-page-sub{color:#64748b;font-size:13px;margin-top:4px;}
+.dt-topbar{display:flex;align-items:center;gap:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px 14px;}
+.dt-time{color:#0f172a;font-weight:600;font-size:13px;font-family:'Courier New',monospace;display:flex;align-items:center;gap:8px;}
+.dt-time::before{content:'';width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.18);}
+.dt-welcome{color:#64748b;font-size:13px;border-left:1px solid #e2e8f0;padding-left:14px;}
+.dt-welcome b{color:#0f172a;}
+
 .dt-title{font-size:30px;font-weight:800;text-align:center;background:linear-gradient(135deg,#FF9800,#F39C12);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:24px;letter-spacing:.5px;font-style:italic;}
-.dt-meta-row{display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap;margin-bottom:20px;}
-.dt-meta-field{display:flex;align-items:center;gap:10px;}
-.dt-meta-field label{font-size:13px;font-weight:600;color:#1e293b;}
-.dt-meta-field select,.dt-meta-field input{padding:9px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;background:#fff;font-family:inherit;color:#1e293b;min-width:200px;}
-.dt-meta-field select:focus,.dt-meta-field input:focus{border-color:#F39C12;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
-.dt-meta-field input:disabled{background:#fef3c7;color:#92400e;font-weight:600;}
-.dt-locked{background:#fef3c7;border:1.5px solid #fbbf24;color:#92400e;padding:14px 18px;border-radius:10px;font-size:13px;margin-bottom:18px;font-weight:500;}
-.dt-table-wrap{border-radius:12px;overflow:hidden;border:1px solid #fef3c7;margin-bottom:18px;}
+
+.dt-meta-row{display:flex;justify-content:flex-start;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:16px;}
+.dt-meta-field{display:flex;flex-direction:column;gap:5px;min-width:0;}
+.dt-meta-field label{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;}
+.dt-meta-field select,.dt-meta-field input{padding:9px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;background:#fff;font-family:inherit;color:#0f172a;min-width:220px;}
+.dt-meta-field select:focus,.dt-meta-field input:focus{border-color:#F39C12;box-shadow:0 0 0 3px rgba(243,156,18,.12);}
+.dt-meta-field input:disabled{background:#f1f5f9;color:#475569;font-weight:600;border-color:#e2e8f0;cursor:not-allowed;}
+
+.dt-locked{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:14px 18px;border-radius:10px;font-size:13px;margin-bottom:16px;font-weight:500;display:flex;align-items:center;gap:10px;}
+
+.dt-table-wrap{border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;margin-bottom:14px;background:#fff;}
 .dt-table{width:100%;border-collapse:collapse;}
-.dt-table thead th{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;padding:14px 12px;font-size:12px;font-weight:700;text-align:left;text-transform:uppercase;letter-spacing:.6px;}
-.dt-table tbody td{padding:10px 8px;border-bottom:1px solid #fef3c7;background:#fff;}
+.dt-table thead th{background:#0f172a;color:#e2e8f0;padding:11px 12px;font-size:11px;font-weight:700;text-align:left;text-transform:uppercase;letter-spacing:.5px;}
+.dt-table tbody td{padding:9px 8px;border-bottom:1px solid #f1f5f9;background:#fff;vertical-align:top;}
 .dt-table tbody tr:last-child td{border-bottom:none;}
-.dt-table tbody tr:hover td{background:#fffbeb;}
-.dt-table input[type="text"],.dt-table input[type="number"],.dt-table select,.dt-table textarea{width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;outline:none;font-family:inherit;background:#fafafa;color:#1e293b;resize:vertical;}
+.dt-table tbody tr:hover td{background:#fafbfc;}
+.dt-table input[type="text"],.dt-table input[type="number"],.dt-table select,.dt-table textarea{width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;outline:none;font-family:inherit;background:#fff;color:#0f172a;resize:vertical;}
 .dt-table textarea{min-height:36px;line-height:1.4;}
-.dt-table input:focus,.dt-table select:focus,.dt-table textarea:focus{border-color:#F39C12;background:#fff;box-shadow:0 0 0 2px rgba(243,156,18,.12);}
-.dt-row-btn{padding:7px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;width:100%;}
-.dt-btn-dup{background:#10b981;color:#fff;}
-.dt-btn-dup:hover{background:#059669;transform:translateY(-1px);}
-.dt-btn-del{background:#ef4444;color:#fff;}
-.dt-btn-del:hover{background:#dc2626;transform:translateY(-1px);}
-.dt-summary{display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:14px 20px;background:linear-gradient(135deg,#fff8e1,#ffecb3);border-radius:10px;margin-bottom:20px;}
-.dt-summary span{font-size:14px;font-weight:600;color:#475569;}
-.dt-summary strong{font-size:18px;color:#F39C12;font-weight:800;}
-.dt-actions{display:flex;justify-content:flex-end;gap:12px;}
-.dt-btn{padding:11px 22px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;letter-spacing:.3px;}
-.dt-btn-add{background:#10b981;color:#fff;box-shadow:0 4px 12px rgba(16,185,129,.25);}
-.dt-btn-add:hover{background:#059669;transform:translateY(-2px);box-shadow:0 6px 16px rgba(16,185,129,.35);}
-.dt-btn-submit{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;box-shadow:0 4px 14px rgba(243,156,18,.35);}
-.dt-btn-submit:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(243,156,18,.45);}
-.dt-btn-submit:disabled{opacity:.5;cursor:not-allowed;transform:none;}
-.dt-history{margin-top:32px;padding-top:24px;border-top:2px dashed #fef3c7;}
-.dt-history-title{font-size:15px;font-weight:700;color:#1e293b;margin-bottom:14px;}
-.dt-history-wrap{background:#fff;border-radius:10px;border:1px solid #fef3c7;overflow:hidden;}
-.dt-history-day{padding:12px 16px;border-bottom:1px solid #fef3c7;}
-.dt-history-day:last-child{border-bottom:none;}
-.dt-history-date{font-size:12px;font-weight:700;color:#F39C12;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}
-.dt-history-row{display:flex;gap:8px;padding:6px 0;font-size:13px;color:#475569;flex-wrap:wrap;align-items:center;}
-.dt-history-row .pill{background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;}
+.dt-table input:focus,.dt-table select:focus,.dt-table textarea:focus{border-color:#F39C12;box-shadow:0 0 0 2px rgba(243,156,18,.12);}
+.dt-row-btn{padding:6px 10px;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;font-family:inherit;width:100%;text-transform:uppercase;letter-spacing:.3px;}
+.dt-btn-dup{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;}
+.dt-btn-dup:hover{background:#10b981;color:#fff;border-color:#10b981;}
+.dt-btn-del{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;}
+.dt-btn-del:hover{background:#ef4444;color:#fff;border-color:#ef4444;}
+
+.dt-summary{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 18px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:14px;}
+.dt-summary-label{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;}
+.dt-summary-val{font-size:22px;color:#F39C12;font-weight:800;letter-spacing:-.02em;line-height:1;}
+.dt-summary-val-suffix{font-size:12px;color:#64748b;font-weight:600;margin-left:4px;}
+
+.dt-actions{display:flex;justify-content:flex-end;gap:10px;}
+.dt-btn{padding:10px 18px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;letter-spacing:.2px;}
+.dt-btn-add{background:#fff;color:#475569;border:1.5px solid #e2e8f0;}
+.dt-btn-add:hover{background:#f1f5f9;color:#0f172a;border-color:#cbd5e1;}
+.dt-btn-submit{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;box-shadow:0 1px 2px rgba(243,156,18,.25);}
+.dt-btn-submit:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(243,156,18,.35);}
+.dt-btn-submit:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none;}
+
+.dt-history{margin-top:28px;padding-top:22px;border-top:1px solid #e2e8f0;}
+.dt-history-title{font-size:14px;font-weight:700;color:#0f172a;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+.dt-history-wrap{display:flex;flex-direction:column;gap:10px;}
+.dt-history-day{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;}
+.dt-history-date{font-size:13px;font-weight:700;color:#0f172a;margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.dt-history-meta{font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;background:#f1f5f9;padding:3px 8px;border-radius:5px;}
+.dt-history-row{display:flex;gap:10px;padding:8px 10px;font-size:13px;color:#334155;align-items:center;border-radius:8px;background:#f8fafc;margin-bottom:6px;flex-wrap:wrap;border:1px solid #f1f5f9;}
+.dt-history-row:last-child{margin-bottom:0;}
+.dt-history-row .pill{background:#fff7ed;color:#c2410c;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid #fed7aa;}
+.dt-history-time{margin-left:auto;color:#F39C12;font-weight:700;background:#fff;border:1px solid #fed7aa;padding:3px 10px;border-radius:6px;font-size:12px;white-space:nowrap;}
 
 /* ══════════════════════════════════════════════
    CLIENT MASTER
@@ -852,14 +867,18 @@ tbody tr:last-child td{border-bottom:none;}
   /* ── Daily Task ── */
   .dt-card,.cm-card,.cp-card,.dr-card,.profile-card{padding:18px 14px;}
   .dt-title{font-size:22px;}
+  .dt-header{flex-direction:column;align-items:stretch;gap:12px;}
+  .dt-topbar{justify-content:space-between;width:100%;}
   .dt-meta-row{flex-direction:column;align-items:stretch;gap:10px;}
-  .dt-meta-field{justify-content:space-between;flex-wrap:wrap;}
-  .dt-meta-field select,.dt-meta-field input{min-width:0;flex:1;}
+  .dt-meta-field{flex-direction:column;align-items:stretch;}
+  .dt-meta-field select,.dt-meta-field input{min-width:0;width:100%;}
   .dt-table-wrap{overflow-x:auto;}
   .dt-table{min-width:560px;}
   .dt-actions{flex-direction:column;}
   .dt-actions .dt-btn{width:100%;}
-  .dt-summary{flex-wrap:wrap;justify-content:space-between;}
+  .dt-summary{flex-wrap:wrap;}
+  .dt-history-row{flex-direction:column;align-items:flex-start;}
+  .dt-history-time{margin-left:0;align-self:flex-start;}
 
   /* ── Daily Reports ── */
   .dr-header{flex-direction:column;align-items:stretch;}
@@ -913,6 +932,71 @@ tbody tr:last-child td{border-bottom:none;}
   .overview-cards{grid-template-columns:1fr;}
   .topbar-title{font-size:14px;}
   .dr-stats{grid-template-columns:1fr;}
+}
+
+/* ══════════════════════════════════════════════
+   📆 MONDAY CHECK-IN MODAL  (compact, single-viewport)
+   ══════════════════════════════════════════════ */
+.mw-overlay{align-items:center;padding:16px;}
+.mw-card{background:#fff;border-radius:16px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(15,23,42,.28);overflow:hidden;}
+
+/* Hero */
+.mw-hero{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.mw-hero-title{font-size:16px;font-weight:800;letter-spacing:-.01em;line-height:1.2;}
+.mw-hero-sub{font-size:11px;opacity:.92;margin-top:2px;font-weight:600;letter-spacing:.2px;}
+.mw-hero-x{background:rgba(255,255,255,.18);color:#fff;border:none;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:13px;font-weight:700;transition:background .15s;}
+.mw-hero-x:hover{background:rgba(255,255,255,.32);}
+
+/* Last week — single row */
+.mw-last{padding:14px 20px 12px;border-bottom:1px solid #f1f5f9;}
+.mw-last-cap{font-size:10px;font-weight:800;color:#64748b;letter-spacing:.6px;margin-bottom:8px;}
+.mw-last-cap span{color:#94a3b8;font-weight:600;margin-left:4px;}
+.mw-last-row{display:flex;align-items:baseline;gap:10px;margin-bottom:6px;}
+.mw-last-emoji{font-size:26px;line-height:1;flex-shrink:0;animation:mw-pop .5s cubic-bezier(.34,1.56,.64,1);}
+.mw-last-score{font-size:32px;font-weight:800;letter-spacing:-.03em;color:#0f172a;line-height:1;font-variant-numeric:tabular-nums;}
+.mw-last-score.mw-good{color:#16a34a;}
+.mw-last-score.mw-warn{color:#d97706;}
+.mw-last-score.mw-bad{color:#dc2626;}
+.mw-last-rank{font-size:14px;font-weight:700;color:#475569;margin-left:auto;}
+.mw-last-verdict{font-size:12px;color:#64748b;line-height:1.5;}
+.mw-last-verdict.mw-hit{color:#166534;}
+.mw-last-verdict.mw-miss{color:#991b1b;}
+@keyframes mw-pop{0%{transform:scale(0);opacity:0;}60%{transform:scale(1.2);opacity:1;}100%{transform:scale(1);opacity:1;}}
+
+/* This week — picker */
+.mw-this{padding:14px 20px 16px;}
+.mw-this-cap{font-size:10px;font-weight:800;color:#64748b;letter-spacing:.6px;margin-bottom:10px;}
+.mw-this-cap span{color:#94a3b8;font-weight:600;}
+.mw-quick{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;}
+.mw-quick-btn{background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 4px;cursor:pointer;font-family:inherit;color:#0f172a;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:2px;}
+.mw-quick-btn:hover{border-color:#fcd34d;background:#fffbeb;}
+.mw-quick-btn.active{border-color:#F39C12;background:#fff7ed;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
+.mw-q-emoji{font-size:18px;line-height:1;}
+.mw-q-num{font-size:14px;font-weight:800;letter-spacing:-.02em;line-height:1;}
+.mw-quick-btn.active .mw-q-num{color:#9a3412;}
+.mw-q-lbl{font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;}
+
+.mw-slider{width:100%;accent-color:#F39C12;cursor:pointer;margin:6px 0 8px;}
+.mw-target-line{font-size:13px;color:#475569;text-align:center;font-weight:600;}
+.mw-target-line b{color:#F39C12;font-weight:800;font-size:15px;letter-spacing:-.01em;}
+
+/* Footer */
+.mw-actions{padding:12px 20px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.mw-btn-snooze{background:transparent;color:#64748b;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;padding:6px 4px;}
+.mw-btn-snooze:hover{color:#0f172a;text-decoration:underline;}
+.mw-btn-commit{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 2px 8px rgba(243,156,18,.3);transition:all .15s;}
+.mw-btn-commit:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(243,156,18,.4);}
+.mw-btn-commit:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+
+/* Confetti */
+.mw-confetti{position:fixed;inset:0;pointer-events:none;z-index:99999;overflow:hidden;}
+.mw-confetti span{position:absolute;font-size:20px;animation:mw-fall 1.6s cubic-bezier(.42,0,.58,1) forwards;will-change:transform,opacity;}
+@keyframes mw-fall{from{transform:translate(0,-20px) rotate(0);opacity:1;}to{transform:translate(var(--dx,0),100vh) rotate(720deg);opacity:0;}}
+
+@media (max-width:520px){
+  .mw-overlay{padding:0;align-items:stretch;}
+  .mw-card{border-radius:0;max-width:100%;min-height:100vh;display:flex;flex-direction:column;}
+  .mw-this{flex:1;}
 }
 
 /* ── Global page-level loader (tab/page switches) ── */
@@ -1370,18 +1454,24 @@ tbody tr:last-child td{border-bottom:none;}
        ══════════════════════════════════════════════════════ -->
   <div id="page-daily" class="page">
     <div class="dt-card">
-      <div class="dt-topbar">
-        <div class="dt-time" id="dtNow">—</div>
-        <div class="dt-welcome">Welcome <b id="dtUserName">—</b></div>
+      <div class="dt-header">
+        <div class="dt-header-text">
+          <div class="dt-page-title">Daily Task</div>
+          <div class="dt-page-sub">Log the time you spent today by client and department.</div>
+        </div>
+        <div class="dt-topbar">
+          <div class="dt-time" id="dtNow">—</div>
+          <div class="dt-welcome">Welcome <b id="dtUserName">—</b></div>
+        </div>
       </div>
 
       <div class="dt-meta-row">
         <div class="dt-meta-field">
-          <label>Entry Date:</label>
+          <label>Entry Date</label>
           <select id="dtEntryDate"></select>
         </div>
-        <div class="dt-meta-field" style="text-align:right">
-          <label>Doer Name:</label>
+        <div class="dt-meta-field">
+          <label>Doer</label>
           <input type="text" id="dtDoerName" disabled/>
         </div>
       </div>
@@ -1409,8 +1499,10 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
 
       <div class="dt-summary">
-        <span>Total Duration (Minutes):</span>
-        <strong id="dtTotalMin">0</strong>
+        <span class="dt-summary-label">Total Duration</span>
+        <div>
+          <span class="dt-summary-val" id="dtTotalMin">0</span><span class="dt-summary-val-suffix">min</span>
+        </div>
       </div>
 
       <div class="dt-actions" id="dtActions">
@@ -2463,6 +2555,56 @@ tbody tr:last-child td{border-bottom:none;}
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════════════
+     📆 MONDAY WEEKLY CHECK-IN MODAL
+     Auto-opens Mon–Wed for any user who hasn't committed
+     their target score for the current week.
+══════════════════════════════════════════════════════ -->
+<div class="modal-overlay mw-overlay" id="mondayCheckinModal">
+  <div class="mw-card">
+    <!-- Compact hero -->
+    <div class="mw-hero">
+      <div>
+        <div class="mw-hero-title" id="mwGreeting">Good morning!</div>
+        <div class="mw-hero-sub"   id="mwSubtitle">Monday Check-in</div>
+      </div>
+      <button class="mw-hero-x" onclick="mwSnooze()" title="Remind me tomorrow">✕</button>
+    </div>
+
+    <!-- LAST WEEK — one-line summary -->
+    <div class="mw-last">
+      <div class="mw-last-cap">LAST WEEK <span id="mwLastRange">—</span></div>
+      <div class="mw-last-row">
+        <span class="mw-last-emoji" id="mwBadgeIcon">⏳</span>
+        <span class="mw-last-score" id="mwGaugeText">—</span>
+        <span class="mw-last-rank"  id="mwBadgeTitle">Loading</span>
+      </div>
+      <div class="mw-last-verdict" id="mwLastVerdict">—</div>
+    </div>
+
+    <!-- THIS WEEK — picker -->
+    <div class="mw-this">
+      <div class="mw-this-cap">THIS WEEK <span id="mwThisRange">—</span> · pick your target</div>
+      <div class="mw-quick">
+        <button class="mw-quick-btn" data-v="0"   onclick="mwSetPick(0)"  ><span class="mw-q-emoji">🏆</span><span class="mw-q-num">0</span><span class="mw-q-lbl">Legend</span></button>
+        <button class="mw-quick-btn" data-v="-10" onclick="mwSetPick(-10)"><span class="mw-q-emoji">⭐</span><span class="mw-q-num">-10</span><span class="mw-q-lbl">Achiever</span></button>
+        <button class="mw-quick-btn" data-v="-25" onclick="mwSetPick(-25)"><span class="mw-q-emoji">💪</span><span class="mw-q-num">-25</span><span class="mw-q-lbl">Builder</span></button>
+        <button class="mw-quick-btn" data-v="-50" onclick="mwSetPick(-50)"><span class="mw-q-emoji">📈</span><span class="mw-q-num">-50</span><span class="mw-q-lbl">Climber</span></button>
+      </div>
+      <input type="range" id="mwSlider" class="mw-slider" min="-100" max="0" step="1" value="-10" oninput="mwSliderChange(this.value)"/>
+      <div class="mw-target-line">
+        Target <b id="mwPreviewVal">-10</b> · <span id="mwPreviewEmoji">⭐</span> <b id="mwPreviewRank">Achiever</b>
+      </div>
+    </div>
+
+    <div class="mw-actions">
+      <button class="mw-btn-snooze" onclick="mwSnooze()">Remind tomorrow</button>
+      <button class="mw-btn-commit" id="mwCommitBtn" onclick="mwSubmit()">Commit →</button>
+    </div>
+    <div class="alert error" id="mwErr" style="display:none;margin:10px 24px 16px"></div>
+  </div>
+</div>
+
 <!-- ── DELEGATE BY ME MODAL ─────────────────────────────────────── -->
 <div class="modal-overlay" id="delegateByMeModal">
   <div class="modal" style="max-width:900px;max-height:90vh;display:flex;flex-direction:column">
@@ -2793,6 +2935,8 @@ async function init() {
     // Refresh badges every 30 seconds
     setInterval(loadApprovalBadge, 30000);
     setInterval(loadTransferBadge, 30000);
+    // Monday weekly check-in — fire-and-forget; modal opens if needed.
+    mwMaybeOpen();
   } catch(e) { console.error('Init error:', e); window.location.replace('/'); }
 }
 
@@ -4840,6 +4984,200 @@ async function saveProfile() {
   document.getElementById('pCurrent').value='';
   document.getElementById('pNew').value='';
   document.getElementById('pConfirm').value='';
+}
+
+// ══════════════════════════════════════════════════════
+// 📆 MONDAY WEEKLY CHECK-IN
+// ══════════════════════════════════════════════════════
+let MW_DATA = null;
+let MW_CHOSEN_SCORE = -10;
+let MW_LAST_COMMITTED = null; // for live-preview comparison
+
+function mwScoreClass(score) {
+  if (score === null || score === undefined) return '';
+  if (score >= -10) return 'mw-good';
+  if (score >= -40) return 'mw-warn';
+  return 'mw-bad';
+}
+function mwFmtScore(score) {
+  if (score === null || score === undefined) return '—';
+  return (score > 0 ? '+' : '') + score.toFixed(1);
+}
+function mwFmtDateRange(start, end) {
+  const fmt = d => {
+    const [y,m,da] = d.split('-');
+    return `${da} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m)-1]}`;
+  };
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
+// ── Rank / badge mapping based on score band ──
+function mwRankFor(score) {
+  if (score === null || score === undefined) return { icon: '⏳', title: 'No data' };
+  if (score >= -5)  return { icon: '🏆', title: 'Legend'   };
+  if (score >= -15) return { icon: '⭐', title: 'Achiever' };
+  if (score >= -35) return { icon: '💪', title: 'Builder'  };
+  if (score >= -60) return { icon: '📈', title: 'Climber'  };
+  return                    { icon: '🔥', title: 'Hustler'  };
+}
+
+// Confetti — 30 emoji particles, 1.6s.
+function mwConfetti() {
+  const wrap = document.createElement('div');
+  wrap.className = 'mw-confetti';
+  const emojis = ['🎉','🎊','✨','⭐','🏆'];
+  for (let i = 0; i < 30; i++) {
+    const s = document.createElement('span');
+    s.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    s.style.left = (Math.random() * 100) + '%';
+    s.style.top  = (-20 - Math.random() * 60) + 'px';
+    s.style.animationDelay = (Math.random() * 0.3) + 's';
+    s.style.setProperty('--dx', ((Math.random() - 0.5) * 200) + 'px');
+    wrap.appendChild(s);
+  }
+  document.body.appendChild(wrap);
+  setTimeout(() => wrap.remove(), 2200);
+}
+
+async function mwMaybeOpen() {
+  try {
+    const r = await api('/api/my-week-status');
+    if (r && r.needsCheckin) {
+      await mwLoadAndShow();
+    }
+  } catch(e) { /* silent — not critical */ }
+}
+
+async function mwLoadAndShow() {
+  try {
+    MW_DATA = await api('/api/my-week-data');
+    if (!MW_DATA || MW_DATA.error) {
+      showToast('Could not load weekly data', 'error');
+      return;
+    }
+
+    // Header
+    const hr = new Date(Date.now() + (5.5*60*60*1000)).getUTCHours();
+    const greet = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
+    const firstName = (ME.name || '').split(' ')[0] || '';
+    document.getElementById('mwGreeting').textContent = `${greet}, ${firstName}`;
+    document.getElementById('mwSubtitle').textContent = `Monday Check-in · 30 seconds`;
+
+    // Last week — score, rank, verdict
+    const lw = MW_DATA.lastWeek;
+    const lastCommit = lw.plan && lw.plan.user_committed_score !== null ? parseFloat(lw.plan.user_committed_score) : null;
+    const lastActual = lw.stats.overall.score;
+    MW_LAST_COMMITTED = lastCommit;
+
+    document.getElementById('mwLastRange').textContent = mwFmtDateRange(lw.start, lw.end);
+    const rank = mwRankFor(lastActual);
+    document.getElementById('mwBadgeIcon').textContent = rank.icon;
+    document.getElementById('mwBadgeTitle').textContent = rank.title;
+    const scoreEl = document.getElementById('mwGaugeText');
+    scoreEl.textContent = mwFmtScore(lastActual);
+    scoreEl.className = 'mw-last-score ' + mwScoreClass(lastActual);
+
+    const verdictEl = document.getElementById('mwLastVerdict');
+    if (lastCommit !== null && lastActual !== null) {
+      if (lastActual >= lastCommit) {
+        verdictEl.className = 'mw-last-verdict mw-hit';
+        verdictEl.innerHTML = `🎯 Target hit · committed ${mwFmtScore(lastCommit)}, scored ${mwFmtScore(lastActual)}`;
+      } else {
+        const gap = (lastCommit - lastActual).toFixed(1);
+        verdictEl.className = 'mw-last-verdict mw-miss';
+        verdictEl.innerHTML = `📉 Missed by ${gap} pts · committed ${mwFmtScore(lastCommit)}, scored ${mwFmtScore(lastActual)}`;
+      }
+    } else if (lastActual === null) {
+      verdictEl.className = 'mw-last-verdict';
+      verdictEl.textContent = 'No tasks last week — fresh slate.';
+    } else {
+      verdictEl.className = 'mw-last-verdict';
+      verdictEl.textContent = `${lw.stats.overall.completed}/${lw.stats.overall.total} tasks done · no target was set last week`;
+    }
+
+    // This week — picker
+    const tw = MW_DATA.thisWeek;
+    document.getElementById('mwThisRange').textContent = mwFmtDateRange(tw.start, tw.end);
+
+    let defaultScore = -10;
+    if (lastActual !== null && lastActual !== undefined) {
+      defaultScore = Math.max(-100, Math.min(0, Math.round(lastActual)));
+    }
+    mwSetPick(defaultScore);
+
+    document.getElementById('mwErr').style.display = 'none';
+    document.getElementById('mondayCheckinModal').classList.add('open');
+  } catch (e) {
+    console.error('mwLoadAndShow:', e);
+    showToast('Failed to open check-in', 'error');
+  }
+}
+
+function mwRefreshPreview() {
+  const v = MW_CHOSEN_SCORE;
+  const rank = mwRankFor(v);
+  document.getElementById('mwPreviewVal').textContent   = (v > 0 ? '+' : '') + v;
+  document.getElementById('mwPreviewEmoji').textContent = rank.icon;
+  document.getElementById('mwPreviewRank').textContent  = rank.title;
+}
+
+function mwSetPick(val) {
+  const v = Math.max(-100, Math.min(0, parseInt(val) || 0));
+  MW_CHOSEN_SCORE = v;
+  document.getElementById('mwSlider').value = v;
+  document.querySelectorAll('.mw-quick-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.v) === v);
+  });
+  mwRefreshPreview();
+}
+function mwSliderChange(val) {
+  MW_CHOSEN_SCORE = Math.max(-100, Math.min(0, parseInt(val) || 0));
+  document.querySelectorAll('.mw-quick-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.v) === MW_CHOSEN_SCORE);
+  });
+  mwRefreshPreview();
+}
+
+async function mwSubmit() {
+  const btn = document.getElementById('mwCommitBtn');
+  const err = document.getElementById('mwErr');
+  err.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    const r = await api('/api/my-week-plan', 'POST', {
+      startDate: MW_DATA.thisWeek.start,
+      committedScore: MW_CHOSEN_SCORE
+    });
+    if (r.error) {
+      err.textContent = r.error;
+      err.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Commit & Start Week →';
+      return;
+    }
+    closeModal('mondayCheckinModal');
+    const rank = mwRankFor(MW_CHOSEN_SCORE);
+    // Confetti when user hit last week's target OR commits to top-tier this week.
+    const lastActual = MW_DATA && MW_DATA.lastWeek ? MW_DATA.lastWeek.stats.overall.score : null;
+    const lastCommit = MW_LAST_COMMITTED;
+    const hitLast = lastCommit !== null && lastActual !== null && lastActual >= lastCommit;
+    if (hitLast || MW_CHOSEN_SCORE >= -10) mwConfetti();
+    showToast(`${rank.icon} Locked: ${mwFmtScore(MW_CHOSEN_SCORE)} — go be a ${rank.title} this week!`);
+  } catch (e) {
+    err.textContent = 'Network error: ' + e.message;
+    err.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Commit & Start Week →';
+  }
+}
+
+async function mwSnooze() {
+  try {
+    await api('/api/my-week-plan/snooze', 'POST', {});
+    closeModal('mondayCheckinModal');
+    showToast('⏰ Reminder set for tomorrow.');
+  } catch (e) { showToast('Failed to snooze', 'error'); }
 }
 
 // ══════════════════════════════════════════════════════
@@ -7648,13 +7986,17 @@ async function dtLoadHistory(){
       const items = byDate[date];
       const total = items.reduce((a,b) => a + (b.duration_min||0), 0);
       html += `<div class="dt-history-day">
-        <div class="dt-history-date">📅 ${date}  ·  ${items.length} task${items.length>1?'s':''}  ·  ${total} min total</div>`;
+        <div class="dt-history-date">
+          <span>📅 ${dtEscape(fmtDate(date) || date)}</span>
+          <span class="dt-history-meta">${items.length} task${items.length>1?'s':''}</span>
+          <span class="dt-history-meta">${total} min total</span>
+        </div>`;
       for (const it of items) {
         html += `<div class="dt-history-row">
           <span class="pill">${dtEscape(it.client_name)}</span>
-          ${it.department ? `<span class="pill" style="background:#dbeafe;color:#1e40af">${dtEscape(it.department)}</span>` : ''}
-          <span style="flex:1">${dtEscape(it.description)}</span>
-          <span style="color:#F39C12;font-weight:600">${it.duration_min} min</span>
+          ${it.department ? `<span class="pill" style="background:#dbeafe;color:#1e40af;border-color:#bfdbfe">${dtEscape(it.department)}</span>` : ''}
+          <span style="flex:1;min-width:160px">${dtEscape(it.description)}</span>
+          <span class="dt-history-time">${it.duration_min} min</span>
         </div>`;
       }
       html += `</div>`;

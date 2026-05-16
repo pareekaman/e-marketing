@@ -238,10 +238,18 @@ const _startupMigrationsPromise = (async () => {
     start_date DATE NOT NULL,
     target_count INT DEFAULT 0,
     improvement_pct DECIMAL(5,2) DEFAULT 0,
+    user_committed_score DECIMAL(5,1) DEFAULT NULL,
+    user_committed_at TIMESTAMP NULL DEFAULT NULL,
+    checkin_skipped_until DATE DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_emp_week (employee_id, start_date),
     INDEX idx_employee (employee_id),
     INDEX idx_start (start_date)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  // Migrate older deploys that lack these columns
+  try { await sa(`ALTER TABLE week_plans ADD COLUMN user_committed_score DECIMAL(5,1) DEFAULT NULL`); } catch {}
+  try { await sa(`ALTER TABLE week_plans ADD COLUMN user_committed_at TIMESTAMP NULL DEFAULT NULL`); } catch {}
+  try { await sa(`ALTER TABLE week_plans ADD COLUMN checkin_skipped_until DATE DEFAULT NULL`); } catch {}
 
   await sa(`CREATE TABLE IF NOT EXISTS holidays (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -599,9 +607,16 @@ app.get('/api/setup', async (req, res) => {
       id INT AUTO_INCREMENT PRIMARY KEY, employee_id INT NOT NULL, hod_id INT,
       start_date DATE NOT NULL, target_count INT DEFAULT 0,
       improvement_pct DECIMAL(5,2) DEFAULT 0,
+      user_committed_score DECIMAL(5,1) DEFAULT NULL,
+      user_committed_at TIMESTAMP NULL DEFAULT NULL,
+      checkin_skipped_until DATE DEFAULT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_emp_week (employee_id, start_date),
       INDEX idx_employee (employee_id), INDEX idx_start (start_date)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'week_plans table');
+    await sa(`ALTER TABLE week_plans ADD COLUMN user_committed_score DECIMAL(5,1) DEFAULT NULL`, 'week_plans.user_committed_score');
+    await sa(`ALTER TABLE week_plans ADD COLUMN user_committed_at TIMESTAMP NULL DEFAULT NULL`, 'week_plans.user_committed_at');
+    await sa(`ALTER TABLE week_plans ADD COLUMN checkin_skipped_until DATE DEFAULT NULL`, 'week_plans.checkin_skipped_until');
 
     await sa(`CREATE TABLE IF NOT EXISTS holidays (
       id INT AUTO_INCREMENT PRIMARY KEY, holiday_date DATE NOT NULL UNIQUE,
@@ -2601,6 +2616,216 @@ app.get('/api/week-plan', requireAuth, requireAdminOrHod, async (req, res) => {
     res.json(rows);
   } catch (e) {
     res.json([]);
+  }
+});
+
+// ══════════════════════════════════════════════════════
+// 📆 MONDAY WEEKLY CHECK-IN — per-user self-commitment + last week recap
+// ══════════════════════════════════════════════════════
+// Helper — returns YYYY-MM-DD of the Monday of the IST week containing `date`.
+function istMondayOf(date) {
+  const ist = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+  const dayUTC = ist.getUTCDay(); // 0=Sun, 1=Mon..6=Sat
+  const diff = (dayUTC === 0 ? -6 : 1 - dayUTC); // shift back to Monday
+  const mon = new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate() + diff));
+  return mon.toISOString().split('T')[0];
+}
+function addDays(yyyyMmDd, n) {
+  const d = new Date(yyyyMmDd + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().split('T')[0];
+}
+
+// Score formula — matches existing MIS calc. Returns score in [-100, 0].
+function scoreFor(total, pending, overdue, revised) {
+  total = parseInt(total)||0; pending = parseInt(pending)||0;
+  overdue = parseInt(overdue)||0; revised = parseInt(revised)||0;
+  if (total <= 0) return null;
+  return Math.max(-100, Math.round((0 - (pending/total)*100 - (overdue/total)*50 - (revised/total)*25)*10)/10);
+}
+
+// Aggregates last/this-week numbers for ONE user (the caller).
+async function getMyWeekBundle(userId) {
+  const now = new Date();
+  const istToday = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+  const todayStr = istToday.toISOString().split('T')[0];
+  const istDayOfWeek = istToday.getUTCDay(); // 0=Sun..6=Sat
+
+  const thisMon = istMondayOf(now);
+  const thisSun = addDays(thisMon, 6);
+  const lastMon = addDays(thisMon, -7);
+  const lastSun = addDays(thisMon, -1);
+
+  // Compute stats for a given window (delegation + checklist)
+  async function statsFor(start, end) {
+    const [del] = await db.query(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending,
+              SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+              SUM(CASE WHEN status='revised'   THEN 1 ELSE 0 END) AS revised,
+              SUM(CASE WHEN status='pending' AND due_date < ? THEN 1 ELSE 0 END) AS overdue
+         FROM delegation_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ?`,
+      [todayStr, userId, start, end]);
+    const [chl] = await db.query(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending,
+              SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+              SUM(CASE WHEN status='pending' AND due_date < ? THEN 1 ELSE 0 END) AS overdue
+         FROM checklist_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ?`,
+      [todayStr, userId, start, end]);
+    const d = del[0] || {}, c = chl[0] || {};
+    const dPack = {
+      total: +d.total||0, pending: +d.pending||0, completed: +d.completed||0,
+      overdue: +d.overdue||0, revised: +d.revised||0,
+      score: scoreFor(d.total, d.pending, d.overdue, d.revised)
+    };
+    const cPack = {
+      total: +c.total||0, pending: +c.pending||0, completed: +c.completed||0,
+      overdue: +c.overdue||0, revised: 0,
+      score: scoreFor(c.total, c.pending, c.overdue, 0)
+    };
+    const totalAll = dPack.total + cPack.total;
+    const pendAll  = dPack.pending + cPack.pending;
+    const overAll  = dPack.overdue + cPack.overdue;
+    const revAll   = dPack.revised;
+    return {
+      delegation: dPack, checklist: cPack,
+      overall: {
+        total: totalAll, pending: pendAll, overdue: overAll, revised: revAll,
+        completed: dPack.completed + cPack.completed,
+        score: scoreFor(totalAll, pendAll, overAll, revAll)
+      }
+    };
+  }
+
+  const [lastStats, thisStats] = await Promise.all([
+    statsFor(lastMon, lastSun),
+    statsFor(thisMon, thisSun)
+  ]);
+
+  // Pull this & last week plan rows
+  const [planRows] = await db.query(
+    `SELECT DATE_FORMAT(start_date,'%Y-%m-%d') AS start_date,
+            user_committed_score, target_count, improvement_pct,
+            DATE_FORMAT(checkin_skipped_until,'%Y-%m-%d') AS checkin_skipped_until
+       FROM week_plans WHERE employee_id=? AND start_date IN (?, ?)`,
+    [userId, thisMon, lastMon]);
+  const planByMon = {};
+  for (const p of planRows) planByMon[p.start_date] = p;
+
+  return {
+    todayStr, istDayOfWeek,
+    thisWeek: { start: thisMon, end: thisSun, plan: planByMon[thisMon] || null, stats: thisStats },
+    lastWeek: { start: lastMon, end: lastSun, plan: planByMon[lastMon] || null, stats: lastStats }
+  };
+}
+
+// Lightweight status — used by app bootstrap to decide whether to pop the modal.
+app.get('/api/my-week-status', requireAuth, async (req, res) => {
+  try {
+    const uid = req.session.userId;
+    const bundle = await getMyWeekBundle(uid);
+    const thisPlan = bundle.thisWeek.plan;
+    const committed = thisPlan && thisPlan.user_committed_score !== null && thisPlan.user_committed_score !== undefined;
+    const skipUntil = thisPlan && thisPlan.checkin_skipped_until;
+    const dayOK = bundle.istDayOfWeek >= 1 && bundle.istDayOfWeek <= 3; // Mon, Tue, Wed
+    const snoozed = skipUntil && bundle.todayStr <= skipUntil;
+    const needsCheckin = dayOK && !committed && !snoozed;
+    res.json({
+      needsCheckin,
+      todayStr: bundle.todayStr,
+      istDayOfWeek: bundle.istDayOfWeek,
+      thisWeekStart: bundle.thisWeek.start,
+      lastWeekStart: bundle.lastWeek.start
+    });
+  } catch (err) {
+    console.error('my-week-status error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Full bundle — used when the modal opens.
+app.get('/api/my-week-data', requireAuth, async (req, res) => {
+  try {
+    const uid = req.session.userId;
+    const bundle = await getMyWeekBundle(uid);
+    res.json(bundle);
+  } catch (err) {
+    console.error('my-week-data error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Save the user's committed score for a given Monday.
+app.post('/api/my-week-plan', requireAuth, async (req, res) => {
+  try {
+    const uid = req.session.userId;
+    const { startDate, committedScore } = req.body || {};
+    if (!startDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      return res.status(400).json({ error: 'startDate (YYYY-MM-DD) required' });
+    }
+    const score = parseFloat(committedScore);
+    if (isNaN(score) || score < -100 || score > 0) {
+      return res.status(400).json({ error: 'committedScore must be between -100 and 0' });
+    }
+    await db.execute(
+      `INSERT INTO week_plans (employee_id, start_date, user_committed_score, user_committed_at, created_at)
+       VALUES (?, ?, ?, NOW(), NOW())
+       ON DUPLICATE KEY UPDATE user_committed_score=VALUES(user_committed_score), user_committed_at=NOW()`,
+      [uid, startDate, score]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('my-week-plan save error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Snooze the Monday check-in until tomorrow (or to end of this week).
+app.post('/api/my-week-plan/snooze', requireAuth, async (req, res) => {
+  try {
+    const uid = req.session.userId;
+    const bundle = await getMyWeekBundle(uid);
+    const thisMon = bundle.thisWeek.start;
+    // Snooze until tomorrow (IST)
+    const tomorrow = addDays(bundle.todayStr, 1);
+    await db.execute(
+      `INSERT INTO week_plans (employee_id, start_date, checkin_skipped_until, created_at)
+       VALUES (?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE checkin_skipped_until=VALUES(checkin_skipped_until)`,
+      [uid, thisMon, tomorrow]
+    );
+    res.json({ ok: true, snoozedUntil: tomorrow });
+  } catch (err) {
+    console.error('my-week-plan snooze error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Detail drill-down — list of tasks for the user in a week window.
+app.get('/api/my-week-tasks', requireAuth, async (req, res) => {
+  try {
+    const uid = req.session.userId;
+    const { type, start, end } = req.query;
+    if (!start || !end || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+      return res.status(400).json({ error: 'start, end (YYYY-MM-DD) required' });
+    }
+    const table = type === 'delegation' ? 'delegation_tasks' : 'checklist_tasks';
+    if (!['delegation','checklist'].includes(type)) {
+      return res.status(400).json({ error: 'type must be delegation or checklist' });
+    }
+    const [tasks] = await db.query(
+      `SELECT t.id, t.description, t.status, t.priority,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              u.name AS assigned_by_name
+         FROM ${table} t LEFT JOIN users u ON u.id=t.assigned_by
+         WHERE t.assigned_to=? AND t.due_date BETWEEN ? AND ?
+         ORDER BY t.due_date ASC, t.id ASC`,
+      [uid, start, end]);
+    res.json({ tasks });
+  } catch (err) {
+    console.error('my-week-tasks error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
