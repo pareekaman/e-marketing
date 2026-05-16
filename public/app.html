@@ -952,16 +952,44 @@ tbody tr:last-child td{border-bottom:none;}
 .mw-last-cap{font-size:10px;font-weight:800;color:#64748b;letter-spacing:.6px;margin-bottom:8px;}
 .mw-last-cap span{color:#94a3b8;font-weight:600;margin-left:4px;}
 .mw-last-row{display:flex;align-items:baseline;gap:10px;margin-bottom:6px;}
+.mw-clickable{cursor:pointer;padding:6px 8px;margin:-6px -8px 0;border-radius:8px;transition:background .12s;}
+.mw-clickable:hover{background:#f8fafc;}
 .mw-last-emoji{font-size:26px;line-height:1;flex-shrink:0;animation:mw-pop .5s cubic-bezier(.34,1.56,.64,1);}
 .mw-last-score{font-size:32px;font-weight:800;letter-spacing:-.03em;color:#0f172a;line-height:1;font-variant-numeric:tabular-nums;}
 .mw-last-score.mw-good{color:#16a34a;}
 .mw-last-score.mw-warn{color:#d97706;}
 .mw-last-score.mw-bad{color:#dc2626;}
-.mw-last-rank{font-size:14px;font-weight:700;color:#475569;margin-left:auto;}
-.mw-last-verdict{font-size:12px;color:#64748b;line-height:1.5;}
+.mw-last-rank{font-size:14px;font-weight:700;color:#475569;}
+.mw-details-toggle{margin-left:auto;font-size:11px;color:#F39C12;font-weight:700;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0;}
+.mw-last.mw-open .mw-details-toggle::before{content:'▲';}
+.mw-last.mw-open .mw-details-toggle{content:'▲ hide';}
+.mw-last-verdict{font-size:12px;color:#64748b;line-height:1.5;margin-top:2px;}
 .mw-last-verdict.mw-hit{color:#166534;}
 .mw-last-verdict.mw-miss{color:#991b1b;}
 @keyframes mw-pop{0%{transform:scale(0);opacity:0;}60%{transform:scale(1.2);opacity:1;}100%{transform:scale(1);opacity:1;}}
+
+/* Details panel — collapsed by default, scrollable when open */
+.mw-details{margin-top:10px;display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto;padding-right:4px;}
+.mw-details::-webkit-scrollbar{width:5px;}
+.mw-details::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:5px;}
+.mw-det-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;}
+.mw-det-head{display:flex;justify-content:space-between;align-items:center;}
+.mw-det-name{font-size:13px;font-weight:700;color:#0f172a;}
+.mw-det-score{font-size:14px;font-weight:800;letter-spacing:-.02em;color:#0f172a;font-variant-numeric:tabular-nums;}
+.mw-det-score.mw-good{color:#16a34a;}
+.mw-det-score.mw-warn{color:#d97706;}
+.mw-det-score.mw-bad{color:#dc2626;}
+.mw-det-meta{font-size:11px;color:#64748b;margin-top:2px;font-weight:600;}
+.mw-det-tasks{margin-top:8px;display:flex;flex-direction:column;gap:5px;}
+.mw-det-task{display:flex;justify-content:space-between;gap:8px;align-items:center;background:#fff;border:1px solid #f1f5f9;border-radius:7px;padding:6px 9px;font-size:12px;}
+.mw-det-task-desc{flex:1;color:#1e293b;min-width:0;}
+.mw-det-task-desc small{display:block;font-size:10px;color:#94a3b8;margin-top:2px;font-weight:500;}
+.mw-det-task-st{font-size:9px;font-weight:800;padding:2px 7px;border-radius:5px;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0;white-space:nowrap;}
+.mw-det-task-st.completed{background:#dcfce7;color:#166534;}
+.mw-det-task-st.pending{background:#fef3c7;color:#92400e;}
+.mw-det-task-st.overdue{background:#fee2e2;color:#991b1b;}
+.mw-det-task-st.revised{background:#fce7f3;color:#9d174d;}
+.mw-det-empty{font-size:11px;color:#94a3b8;text-align:center;padding:6px;font-style:italic;}
 
 /* This week — picker */
 .mw-this{padding:14px 20px 16px;}
@@ -981,7 +1009,7 @@ tbody tr:last-child td{border-bottom:none;}
 .mw-target-line b{color:#F39C12;font-weight:800;font-size:15px;letter-spacing:-.01em;}
 
 /* Footer */
-.mw-actions{padding:12px 20px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.mw-actions{padding:12px 20px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;align-items:center;gap:10px;}
 .mw-btn-snooze{background:transparent;color:#64748b;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;padding:6px 4px;}
 .mw-btn-snooze:hover{color:#0f172a;text-decoration:underline;}
 .mw-btn-commit{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 2px 8px rgba(243,156,18,.3);transition:all .15s;}
@@ -2568,18 +2596,37 @@ tbody tr:last-child td{border-bottom:none;}
         <div class="mw-hero-title" id="mwGreeting">Good morning!</div>
         <div class="mw-hero-sub"   id="mwSubtitle">Monday Check-in</div>
       </div>
-      <button class="mw-hero-x" onclick="mwSnooze()" title="Remind me tomorrow">✕</button>
+      <button class="mw-hero-x" onclick="mwSnooze()" title="Close for now">✕</button>
     </div>
 
-    <!-- LAST WEEK — one-line summary -->
+    <!-- LAST WEEK — one-line summary, click to expand details -->
     <div class="mw-last">
       <div class="mw-last-cap">LAST WEEK <span id="mwLastRange">—</span></div>
-      <div class="mw-last-row">
+      <div class="mw-last-row mw-clickable" onclick="mwToggleDetails()" title="Tap to see task breakdown">
         <span class="mw-last-emoji" id="mwBadgeIcon">⏳</span>
         <span class="mw-last-score" id="mwGaugeText">—</span>
         <span class="mw-last-rank"  id="mwBadgeTitle">Loading</span>
+        <span class="mw-details-toggle" id="mwDetailsToggle">▼ details</span>
       </div>
       <div class="mw-last-verdict" id="mwLastVerdict">—</div>
+      <div class="mw-details" id="mwDetails" style="display:none">
+        <div class="mw-det-card">
+          <div class="mw-det-head">
+            <span class="mw-det-name">📋 Delegation</span>
+            <span class="mw-det-score" id="mwDetDelScore">—</span>
+          </div>
+          <div class="mw-det-meta" id="mwDetDelMeta">—</div>
+          <div class="mw-det-tasks" id="mwDetDelTasks"></div>
+        </div>
+        <div class="mw-det-card">
+          <div class="mw-det-head">
+            <span class="mw-det-name">✅ Checklist</span>
+            <span class="mw-det-score" id="mwDetChlScore">—</span>
+          </div>
+          <div class="mw-det-meta" id="mwDetChlMeta">—</div>
+          <div class="mw-det-tasks" id="mwDetChlTasks"></div>
+        </div>
+      </div>
     </div>
 
     <!-- THIS WEEK — picker -->
@@ -2598,7 +2645,6 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
 
     <div class="mw-actions">
-      <button class="mw-btn-snooze" onclick="mwSnooze()">Remind tomorrow</button>
       <button class="mw-btn-commit" id="mwCommitBtn" onclick="mwSubmit()">Commit →</button>
     </div>
     <div class="alert error" id="mwErr" style="display:none;margin:10px 24px 16px"></div>
@@ -5095,6 +5141,31 @@ async function mwLoadAndShow() {
       verdictEl.textContent = `${lw.stats.overall.completed}/${lw.stats.overall.total} tasks done · no target was set last week`;
     }
 
+    // Pre-fill breakdown card headers/meta (tasks lazy-loaded on first toggle)
+    const del = lw.stats.delegation, chl = lw.stats.checklist;
+    const delScoreEl = document.getElementById('mwDetDelScore');
+    delScoreEl.textContent = mwFmtScore(del.score);
+    delScoreEl.className = 'mw-det-score ' + mwScoreClass(del.score);
+    document.getElementById('mwDetDelMeta').textContent = del.total
+      ? `${del.completed}/${del.total} done · ${del.pending} pending${del.overdue ? ' · ' + del.overdue + ' overdue' : ''}`
+      : 'No delegation tasks';
+    const chlScoreEl = document.getElementById('mwDetChlScore');
+    chlScoreEl.textContent = mwFmtScore(chl.score);
+    chlScoreEl.className = 'mw-det-score ' + mwScoreClass(chl.score);
+    document.getElementById('mwDetChlMeta').textContent = chl.total
+      ? `${chl.completed}/${chl.total} done · ${chl.pending} pending${chl.overdue ? ' · ' + chl.overdue + ' overdue' : ''}`
+      : 'No checklist tasks';
+
+    // Reset details panel to collapsed and not-loaded so a fresh open re-fetches
+    const detEl = document.getElementById('mwDetails');
+    detEl.style.display = 'none';
+    detEl.dataset.loaded = '';
+    document.getElementById('mwLast') && document.getElementById('mwLast').classList.remove('mw-open');
+    document.querySelector('.mw-last')?.classList.remove('mw-open');
+    document.getElementById('mwDetailsToggle').textContent = '▼ details';
+    document.getElementById('mwDetDelTasks').innerHTML = '';
+    document.getElementById('mwDetChlTasks').innerHTML = '';
+
     // This week — picker
     const tw = MW_DATA.thisWeek;
     document.getElementById('mwThisRange').textContent = mwFmtDateRange(tw.start, tw.end);
@@ -5136,6 +5207,56 @@ function mwSliderChange(val) {
     b.classList.toggle('active', parseInt(b.dataset.v) === MW_CHOSEN_SCORE);
   });
   mwRefreshPreview();
+}
+
+async function mwToggleDetails() {
+  const det = document.getElementById('mwDetails');
+  const wrap = document.querySelector('.mw-last');
+  const toggle = document.getElementById('mwDetailsToggle');
+  if (det.style.display === 'block') {
+    det.style.display = 'none';
+    wrap.classList.remove('mw-open');
+    toggle.textContent = '▼ details';
+    return;
+  }
+  det.style.display = 'block';
+  wrap.classList.add('mw-open');
+  toggle.textContent = '▲ hide';
+  if (det.dataset.loaded === '1') return;
+
+  const renderTaskList = (containerId, tasks, emptyMsg) => {
+    const el = document.getElementById(containerId);
+    if (!tasks || !tasks.length) {
+      el.innerHTML = `<div class="mw-det-empty">${emptyMsg}</div>`;
+      return;
+    }
+    const today = MW_DATA.todayStr;
+    el.innerHTML = tasks.map(t => {
+      const isOverdue = t.status === 'pending' && t.due_date < today;
+      const stCls = isOverdue ? 'overdue' : t.status;
+      const stLabel = isOverdue ? 'Overdue' : (t.status === 'revised' ? 'Revised' : t.status[0].toUpperCase() + t.status.slice(1));
+      const sub = `${fmtDate(t.due_date) || ''}${t.assigned_by_name ? ' · by ' + dtEscape(t.assigned_by_name) : ''}`;
+      return `<div class="mw-det-task">
+        <div class="mw-det-task-desc">${dtEscape(t.description || '—')}<small>${sub}</small></div>
+        <span class="mw-det-task-st ${stCls}">${stLabel}</span>
+      </div>`;
+    }).join('');
+  };
+
+  document.getElementById('mwDetDelTasks').innerHTML = '<div class="mw-det-empty">Loading…</div>';
+  document.getElementById('mwDetChlTasks').innerHTML = '<div class="mw-det-empty">Loading…</div>';
+  try {
+    const [delRes, chlRes] = await Promise.all([
+      api(`/api/my-week-tasks?type=delegation&start=${MW_DATA.lastWeek.start}&end=${MW_DATA.lastWeek.end}`),
+      api(`/api/my-week-tasks?type=checklist&start=${MW_DATA.lastWeek.start}&end=${MW_DATA.lastWeek.end}`)
+    ]);
+    renderTaskList('mwDetDelTasks', delRes.tasks || [], 'No delegation tasks this week');
+    renderTaskList('mwDetChlTasks', chlRes.tasks || [], 'No checklist tasks this week');
+    det.dataset.loaded = '1';
+  } catch (e) {
+    document.getElementById('mwDetDelTasks').innerHTML = '<div class="mw-det-empty">Failed to load.</div>';
+    document.getElementById('mwDetChlTasks').innerHTML = '<div class="mw-det-empty">Failed to load.</div>';
+  }
 }
 
 async function mwSubmit() {
