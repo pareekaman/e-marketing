@@ -914,9 +914,26 @@ tbody tr:last-child td{border-bottom:none;}
   .topbar-title{font-size:14px;}
   .dr-stats{grid-template-columns:1fr;}
 }
+
+/* ── Global page-level loader (tab/page switches) ── */
+.page-loader{position:fixed;inset:0;background:rgba(15,23,42,.18);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;z-index:9998;}
+.page-loader.show{display:flex;animation:pl-fade .15s ease-out;}
+.page-loader-box{display:flex;flex-direction:column;align-items:center;gap:10px;background:#fff;border-radius:14px;padding:22px 30px;box-shadow:0 8px 32px rgba(15,23,42,.18);border:1px solid #e2e8f0;}
+.page-loader-spinner{width:38px;height:38px;border:3.5px solid #fde68a;border-top-color:#F39C12;border-radius:50%;animation:pl-spin .7s linear infinite;}
+.page-loader-text{font-size:12px;font-weight:600;color:#64748b;letter-spacing:.3px;}
+@keyframes pl-spin{to{transform:rotate(360deg);}}
+@keyframes pl-fade{from{opacity:0;}to{opacity:1;}}
 </style>
 </head>
 <body>
+
+<!-- Global page loader overlay -->
+<div class="page-loader" id="pageLoader" aria-hidden="true">
+  <div class="page-loader-box">
+    <div class="page-loader-spinner"></div>
+    <div class="page-loader-text">Loading…</div>
+  </div>
+</div>
 
 <!-- ══════════════════════════════════════
      SIDEBAR
@@ -2872,18 +2889,14 @@ function navigate(page, el) {
   document.getElementById('topbarTitle').textContent = pageTitles[page] || page;
   // Auto-close mobile drawer after navigation
   if (window.innerWidth <= 768) closeSidebar();
-  if (page==='dashboard') loadDashboard();
-  if (page==='alltasks') loadAllTasks();
-  if (page==='users') loadUsers();
-  if (page==='approvals') loadApprovals();
-  if (page==='fms') loadFMSAdmin();
-  if (page==='fms-tasks') loadFMSTasks();
-  if (page==='daily') loadDailyForm();
-  if (page==='clients') loadClients();
-  if (page==='compliance') loadCompliance();
-  if (page==='dailyreports') loadDailyReports();
-  if (page==='leaves') loadLeaves();
-  if (page==='race') loadRaceTracker();
+  const pageLoaders = {
+    dashboard: loadDashboard, alltasks: loadAllTasks, users: loadUsers,
+    approvals: loadApprovals, fms: loadFMSAdmin, 'fms-tasks': loadFMSTasks,
+    daily: loadDailyForm, clients: loadClients, compliance: loadCompliance,
+    dailyreports: loadDailyReports, leaves: loadLeaves, race: loadRaceTracker
+  };
+  const loaderFn = pageLoaders[page];
+  if (typeof loaderFn === 'function') withPageLoader(loaderFn);
   window.scrollTo(0,0);
 }
 
@@ -3163,7 +3176,7 @@ function dashTab(type, el) {
   if (window._lastDashTasks) {
     renderDashTable(window._lastDashTasks, dashType);
   } else {
-    loadDashboard();
+    withPageLoader(loadDashboard);
   }
 }
 
@@ -3512,63 +3525,48 @@ async function openFmsTaskFromRow(ref) {
   } catch(e) { console.error(e); }
 }
 
-// Mark Done directly from the All Tasks → FMS row. Chains: navigate → FMS select →
-// step select → wait for rows → open existing FMS Done modal pre-filled for this sheet row.
+// Mark Done directly from the All Tasks → FMS row — opens the existing FMS Done
+// modal in place (no navigation away from All Tasks).
 async function openFmsDoneFromRow(ref) {
   try {
     if (!ref || !ref.fmsId || !ref.stepId || !ref.rowNumber) {
       showToast('Missing FMS row reference', 'error');
       return;
     }
-    navigate('fms-tasks', document.getElementById('nav-fms-tasks'));
 
-    // 1. FMS dropdown
-    let fmsSelected = false;
-    for (let i = 0; i < 30; i++) {
-      const sel = document.getElementById('fmsTasksSelect');
-      if (sel && [...sel.options].some(o => String(o.value) === String(ref.fmsId))) {
-        sel.value = String(ref.fmsId);
-        await onFMSTasksSelect();
-        fmsSelected = true;
-        break;
-      }
-      await new Promise(r => setTimeout(r, 100));
-    }
-    if (!fmsSelected) { showToast('FMS not found / no access', 'error'); return; }
+    // Set the active FMS / step so saveFMSDone() and the modal pick them up.
+    fmsTasksActiveFmsId = Number(ref.fmsId);
+    fmsTasksActiveStepId = Number(ref.stepId);
 
-    // 2. Step select
-    let stepSelected = false;
-    for (let i = 0; i < 30; i++) {
-      const steps = window._fmsAllSteps;
-      if (Array.isArray(steps) && steps.length) {
-        const step = steps.find(s => Number(s.id) === Number(ref.stepId));
-        if (step && (step.isMyStep || ME.role === 'admin')) {
-          const doerNames = (step.doers || []).map(d => d.name).join(', ') || '—';
-          selectFMSStep(step.id, step.step_name, doerNames);
-          stepSelected = true;
-        } else if (step) {
-          showToast('This FMS step is not assigned to you', 'error');
-          return;
-        }
-        break;
-      }
-      await new Promise(r => setTimeout(r, 100));
-    }
-    if (!stepSelected) { showToast('Step not found', 'error'); return; }
+    // Fetch step config (for extraRows) and step rows (for row data) in parallel.
+    const [stepsData, rowsData] = await Promise.all([
+      api(`/api/fms-tasks/${ref.fmsId}`),
+      api(`/api/fms-tasks/${ref.fmsId}/steps/${ref.stepId}/rows`)
+    ]);
 
-    // 3. Wait for the step's rows to load and find ours by sheetRowNumber
-    for (let i = 0; i < 40; i++) {
-      const rows = window._fmsCurrentRows;
-      if (Array.isArray(rows) && rows.length) {
-        const idx = rows.findIndex(r => Number(r.sheetRowNumber) === Number(ref.rowNumber));
-        if (idx >= 0) {
-          openFMSDoneModal(idx);
-          return;
-        }
-      }
-      await new Promise(r => setTimeout(r, 150));
+    if (stepsData?.error) { showToast(stepsData.error, 'error'); return; }
+    if (rowsData?.error)  { showToast(rowsData.error,  'error'); return; }
+
+    const steps = stepsData?.steps || [];
+    const step = steps.find(s => Number(s.id) === Number(ref.stepId));
+    if (step && !(step.isMyStep || ME.role === 'admin')) {
+      showToast('This FMS step is not assigned to you', 'error');
+      return;
     }
-    showToast('Row not found in current FMS view', 'error');
+    window._fmsAllSteps = steps;
+    window._fmsActiveStepData = step || null;
+
+    const rows = rowsData?.rows || [];
+    const idx = rows.findIndex(r => Number(r.sheetRowNumber) === Number(ref.rowNumber));
+    if (idx < 0) {
+      showToast('Row already completed or not pending anymore', 'error');
+      // Refresh All Tasks so the stale row drops out of view.
+      if (typeof loadAllTasks === 'function') loadAllTasks();
+      return;
+    }
+    window._fmsCurrentRows = rows;
+
+    openFMSDoneModal(idx);
   } catch(e) { console.error(e); showToast('Could not open Done modal: ' + e.message, 'error'); }
 }
 
@@ -3771,7 +3769,7 @@ function tasksTab(type, el) {
   tasksType = type;
   document.querySelectorAll('#tasksTypeTabGroup .tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  loadAllTasks();
+  withPageLoader(loadAllTasks);
 }
 
 // Routes the "+ Assign Task" button to the right form based on the current type tab.
@@ -4958,6 +4956,30 @@ function showToast(msg,type='success') {
   t.textContent=msg;
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),3000);
+}
+
+// ── Page-level loader (tab/page switches) ─────────────────────────
+// Refcounted so rapid switches don't flicker. withPageLoader() wraps
+// any sync or async work — overlay shows while the promise is pending.
+let _pageLoaderCnt = 0;
+function showPageLoader() {
+  _pageLoaderCnt++;
+  const el = document.getElementById('pageLoader');
+  if (el) el.classList.add('show');
+}
+function hidePageLoader() {
+  _pageLoaderCnt = Math.max(0, _pageLoaderCnt - 1);
+  if (_pageLoaderCnt === 0) {
+    const el = document.getElementById('pageLoader');
+    if (el) el.classList.remove('show');
+  }
+}
+function withPageLoader(fnOrPromise) {
+  showPageLoader();
+  const p = (typeof fnOrPromise === 'function')
+    ? Promise.resolve().then(fnOrPromise)
+    : Promise.resolve(fnOrPromise);
+  return p.catch(e => { console.error('[pageLoader] task failed:', e); }).finally(hidePageLoader);
 }
 
 // ══════════════════════════════════════════════════════
