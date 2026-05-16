@@ -2590,13 +2590,12 @@ tbody tr:last-child td{border-bottom:none;}
 ══════════════════════════════════════════════════════ -->
 <div class="modal-overlay mw-overlay" id="mondayCheckinModal">
   <div class="mw-card">
-    <!-- Compact hero -->
+    <!-- Compact hero (no close — user must commit before dismissing) -->
     <div class="mw-hero">
       <div>
         <div class="mw-hero-title" id="mwGreeting">Good morning!</div>
         <div class="mw-hero-sub"   id="mwSubtitle">Monday Check-in</div>
       </div>
-      <button class="mw-hero-x" onclick="mwSnooze()" title="Close for now">✕</button>
     </div>
 
     <!-- LAST WEEK — one-line summary, click to expand details -->
@@ -2625,6 +2624,14 @@ tbody tr:last-child td{border-bottom:none;}
           </div>
           <div class="mw-det-meta" id="mwDetChlMeta">—</div>
           <div class="mw-det-tasks" id="mwDetChlTasks"></div>
+        </div>
+        <div class="mw-det-card">
+          <div class="mw-det-head">
+            <span class="mw-det-name">🚂 FMS</span>
+            <span class="mw-det-score" id="mwDetFmsScore">—</span>
+          </div>
+          <div class="mw-det-meta" id="mwDetFmsMeta">—</div>
+          <div class="mw-det-tasks" id="mwDetFmsTasks"></div>
         </div>
       </div>
     </div>
@@ -5156,15 +5163,20 @@ async function mwLoadAndShow() {
       ? `${chl.completed}/${chl.total} done · ${chl.pending} pending${chl.overdue ? ' · ' + chl.overdue + ' overdue' : ''}`
       : 'No checklist tasks';
 
+    // FMS placeholder — score/meta filled lazily after sheet fetch
+    document.getElementById('mwDetFmsScore').textContent = '—';
+    document.getElementById('mwDetFmsScore').className = 'mw-det-score';
+    document.getElementById('mwDetFmsMeta').textContent = 'Tap to load';
+
     // Reset details panel to collapsed and not-loaded so a fresh open re-fetches
     const detEl = document.getElementById('mwDetails');
     detEl.style.display = 'none';
     detEl.dataset.loaded = '';
-    document.getElementById('mwLast') && document.getElementById('mwLast').classList.remove('mw-open');
     document.querySelector('.mw-last')?.classList.remove('mw-open');
     document.getElementById('mwDetailsToggle').textContent = '▼ details';
     document.getElementById('mwDetDelTasks').innerHTML = '';
     document.getElementById('mwDetChlTasks').innerHTML = '';
+    document.getElementById('mwDetFmsTasks').innerHTML = '';
 
     // This week — picker
     const tw = MW_DATA.thisWeek;
@@ -5243,19 +5255,58 @@ async function mwToggleDetails() {
     }).join('');
   };
 
+  const renderFmsList = (tasks) => {
+    const el = document.getElementById('mwDetFmsTasks');
+    if (!tasks || !tasks.length) {
+      el.innerHTML = '<div class="mw-det-empty">No FMS rows planned this week</div>';
+      return;
+    }
+    el.innerHTML = tasks.map(t => {
+      const stCls = t.status === 'completed' ? 'completed' : 'pending';
+      const stLabel = t.status === 'completed' ? 'Done' : 'Pending';
+      const sub = `${dtEscape(t.fmsName)} · planned ${dtEscape(t.planValue)}${t.actualValue ? ' · done ' + dtEscape(t.actualValue) : ''}`;
+      return `<div class="mw-det-task">
+        <div class="mw-det-task-desc">${dtEscape(t.stepName || '—')}<small>${sub}</small></div>
+        <span class="mw-det-task-st ${stCls}">${stLabel}</span>
+      </div>`;
+    }).join('');
+  };
+
   document.getElementById('mwDetDelTasks').innerHTML = '<div class="mw-det-empty">Loading…</div>';
   document.getElementById('mwDetChlTasks').innerHTML = '<div class="mw-det-empty">Loading…</div>';
+  document.getElementById('mwDetFmsTasks').innerHTML = '<div class="mw-det-empty">Loading…</div>';
   try {
-    const [delRes, chlRes] = await Promise.all([
+    const [delRes, chlRes, fmsRes] = await Promise.all([
       api(`/api/my-week-tasks?type=delegation&start=${MW_DATA.lastWeek.start}&end=${MW_DATA.lastWeek.end}`),
-      api(`/api/my-week-tasks?type=checklist&start=${MW_DATA.lastWeek.start}&end=${MW_DATA.lastWeek.end}`)
+      api(`/api/my-week-tasks?type=checklist&start=${MW_DATA.lastWeek.start}&end=${MW_DATA.lastWeek.end}`),
+      api(`/api/my-week-fms-tasks?start=${MW_DATA.lastWeek.start}&end=${MW_DATA.lastWeek.end}`)
     ]);
     renderTaskList('mwDetDelTasks', delRes.tasks || [], 'No delegation tasks this week');
     renderTaskList('mwDetChlTasks', chlRes.tasks || [], 'No checklist tasks this week');
+
+    // Compute FMS score/meta from the returned tasks (no separate stats call)
+    const fmsTasks = fmsRes.tasks || [];
+    const fmsTotal = fmsTasks.length;
+    const fmsDone  = fmsTasks.filter(t => t.status === 'completed').length;
+    const fmsScoreEl = document.getElementById('mwDetFmsScore');
+    if (fmsTotal === 0) {
+      fmsScoreEl.textContent = '—';
+      fmsScoreEl.className = 'mw-det-score';
+      document.getElementById('mwDetFmsMeta').textContent = 'No FMS steps assigned';
+    } else {
+      // FMS uses % completion (0–100), not the -100..0 scale
+      const pct = Math.round((fmsDone / fmsTotal) * 100);
+      fmsScoreEl.textContent = pct + '%';
+      fmsScoreEl.className = 'mw-det-score ' + (pct >= 80 ? 'mw-good' : pct >= 50 ? 'mw-warn' : 'mw-bad');
+      document.getElementById('mwDetFmsMeta').textContent = `${fmsDone}/${fmsTotal} done · ${fmsTotal - fmsDone} pending`;
+    }
+    renderFmsList(fmsTasks);
+
     det.dataset.loaded = '1';
   } catch (e) {
     document.getElementById('mwDetDelTasks').innerHTML = '<div class="mw-det-empty">Failed to load.</div>';
     document.getElementById('mwDetChlTasks').innerHTML = '<div class="mw-det-empty">Failed to load.</div>';
+    document.getElementById('mwDetFmsTasks').innerHTML = '<div class="mw-det-empty">Failed to load.</div>';
   }
 }
 

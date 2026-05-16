@@ -2829,6 +2829,102 @@ app.get('/api/my-week-tasks', requireAuth, async (req, res) => {
   }
 });
 
+// Parse FMS plan-column values that look like dates (DD-MM-YYYY, DD/MM/YYYY,
+// YYYY-MM-DD, optional trailing time). Returns YYYY-MM-DD or null.
+function parseFmsPlanDate(val) {
+  if (!val) return null;
+  const v = String(val).trim();
+  let m = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (m) {
+    const [, d, mo, y] = m;
+    const dt = new Date(`${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}T00:00:00Z`);
+    return isNaN(dt.getTime()) ? null : dt.toISOString().split('T')[0];
+  }
+  m = v.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (m) {
+    const [, y, mo, d] = m;
+    const dt = new Date(`${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}T00:00:00Z`);
+    return isNaN(dt.getTime()) ? null : dt.toISOString().split('T')[0];
+  }
+  return null;
+}
+
+// FMS rows for the caller within a date window (planned date in [start, end]).
+// Reads each fms_sheet the user is a doer in; safe for non-FMS users (returns []).
+app.get('/api/my-week-fms-tasks', requireAuth, async (req, res) => {
+  try {
+    const uid = req.session.userId;
+    const { start, end } = req.query;
+    if (!start || !end || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+      return res.status(400).json({ error: 'start, end (YYYY-MM-DD) required' });
+    }
+
+    const [doerSteps] = await db.query(
+      `SELECT fs.id AS step_id, fs.step_name, fs.fms_id, fs.plan_col, fs.actual_col,
+              fsh.fms_name, fsh.sheet_name, fsh.sheet_id, fsh.header_row
+         FROM fms_step_doers fsd
+         JOIN fms_steps  fs  ON fs.id = fsd.step_id
+         JOIN fms_sheets fsh ON fsh.id = fs.fms_id
+        WHERE fsd.user_id = ?`,
+      [uid]);
+    if (!doerSteps.length) return res.json({ tasks: [] });
+
+    const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']).catch(() => null);
+    if (!sheetsApi) return res.json({ tasks: [] });
+
+    // Group by sheet so we fetch each spreadsheet once even if user has multiple steps in it
+    const bySheet = {};
+    for (const s of doerSteps) {
+      if (!bySheet[s.fms_id]) bySheet[s.fms_id] = { sheet: s, steps: [] };
+      bySheet[s.fms_id].steps.push(s);
+    }
+
+    const tasks = [];
+    for (const fmsId of Object.keys(bySheet)) {
+      const { sheet, steps } = bySheet[fmsId];
+      try {
+        const spreadsheetId = extractSpreadsheetId(sheet.sheet_id);
+        const tabName = sheet.sheet_name || 'Sheet1';
+        const headerRowIdx = (sheet.header_row || 1) - 1;
+        const allCols = steps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)]).filter(x => x >= 0);
+        if (!allCols.length) continue;
+        const lastCol = idxToCol(Math.max(...allCols));
+        const response = await sheetsApi.spreadsheets.values.get({
+          spreadsheetId, range: `${tabName}!A:${lastCol}`
+        });
+        const rows = (response.data.values || []).slice(headerRowIdx + 1);
+
+        for (const step of steps) {
+          const planIdx = colToIdx(step.plan_col);
+          const actualIdx = colToIdx(step.actual_col);
+          if (planIdx < 0) continue;
+          rows.forEach((row, i) => {
+            const planVal = (row[planIdx] || '').toString().trim();
+            if (!planVal) return;
+            const planDate = parseFmsPlanDate(planVal);
+            if (!planDate || planDate < start || planDate > end) return;
+            const actualVal = actualIdx >= 0 ? (row[actualIdx] || '').toString().trim() : '';
+            tasks.push({
+              fmsName: sheet.fms_name || sheet.sheet_name,
+              stepName: step.step_name,
+              planValue: planVal,
+              actualValue: actualVal,
+              planDate,
+              status: actualVal ? 'completed' : 'pending',
+              rowNumber: headerRowIdx + 1 + i + 1
+            });
+          });
+        }
+      } catch (e) { /* skip this sheet on error */ }
+    }
+    tasks.sort((a, b) => (a.planDate || '').localeCompare(b.planDate || ''));
+    res.json({ tasks });
+  } catch (err) {
+    console.error('my-week-fms-tasks error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ══════════════════════════════════════════════════════
 // DEBUG ENDPOINT (remove after fixing)
 // ══════════════════════════════════════════════════════
