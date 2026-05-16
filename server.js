@@ -3262,7 +3262,7 @@ app.get('/api/clients', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/clients', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/clients', requireAuth, requireAdminOrPC, async (req, res) => {
   try {
     const name = (req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Client name required' });
@@ -3282,7 +3282,7 @@ app.delete('/api/clients/:id', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // Bulk add clients via CSV
-app.post('/api/clients/bulk', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/clients/bulk', requireAuth, requireAdminOrPC, async (req, res) => {
   try {
     const { names } = req.body;
     if (!Array.isArray(names) || !names.length) {

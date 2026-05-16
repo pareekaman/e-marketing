@@ -2680,8 +2680,9 @@ async function init() {
       document.getElementById('setPlanBtn').style.display = 'inline-flex';
     }
     if (ME.role === 'pc') {
-      // PC: can view all tasks + approve, but cannot edit/delete
-      // Nav items same as employee (dashboard, alltasks, approvals, profile, fms-tasks)
+      // PC: can view all tasks + approve, but cannot edit/delete delegations.
+      // Allowed to manage the Clients list (add / bulk-upload / delete).
+      document.getElementById('nav-clients').style.display = 'flex';
     }
     // Leave Tracker — HOD / Admin / PC and special leave-report viewers see Team tab
     if (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc' || ME.canViewAllLeaves) {
