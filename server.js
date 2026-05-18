@@ -804,27 +804,35 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
       : `AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 10 DAY)`;
 
     const taskType = req.query.taskType || 'both';
+    // status filter for the returned task rows. Default 'pending' for backward compat.
+    // Counts (pending/revised/completed) are always computed so the stat cards stay in sync.
+    const reqStatus = (req.query.status || 'pending').toLowerCase();
+    const rowStatus = ['pending','completed','revised','all'].includes(reqStatus) ? reqStatus : 'pending';
+    const rowStatusClause = rowStatus === 'all' ? '' : `AND t.status='${rowStatus}'`;
+    const skipStats = req.query.skipStats === '1';
     let pending = 0, revised = 0, completed = 0;
 
-    if (taskType === 'delegation' || taskType === 'both') {
+    if (!skipStats && (taskType === 'delegation' || taskType === 'both')) {
       const [d] = await db.query(`SELECT SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed FROM delegation_tasks t WHERE 1=1 ${userFilter} ${delDateClause}`, params);
       pending += parseInt(d[0].pending)||0; revised += parseInt(d[0].revised)||0; completed += parseInt(d[0].completed)||0;
     }
-    if (taskType === 'checklist' || taskType === 'both') {
+    if (!skipStats && (taskType === 'checklist' || taskType === 'both')) {
       const [d] = await db.query(`SELECT SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed FROM checklist_tasks t WHERE 1=1 ${userFilter} ${chlDateClause}`, params);
       pending += parseInt(d[0].pending)||0; revised += parseInt(d[0].revised)||0; completed += parseInt(d[0].completed)||0;
     }
 
-    let delegationPending = [], checklistPending = [];
+    let delegationRows = [], checklistRows = [];
     if (taskType === 'delegation' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,t.remarks,t.url,t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE t.status='pending' ${delDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, params);
-      delegationPending = rows;
+      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,t.remarks,t.url,t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${delDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, params);
+      delegationRows = rows;
     }
     if (taskType === 'checklist' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,t.remarks,t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE t.status='pending' ${chlDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, params);
-      checklistPending = rows;
+      const [rows] = await db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,t.remarks,t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${chlDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, params);
+      checklistRows = rows;
     }
-    res.json({ pending, revised, completed, todayPending: [...delegationPending, ...checklistPending] });
+    // `todayPending` kept for backwards compatibility (regular pending load still uses it).
+    // `tasks` is the generic field for any status filter.
+    res.json({ pending, revised, completed, todayPending: [...delegationRows, ...checklistRows], tasks: [...delegationRows, ...checklistRows], status: rowStatus });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

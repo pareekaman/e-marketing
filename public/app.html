@@ -127,6 +127,7 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 .overview-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;}
 .ov-card{background:#fff;border-radius:12px;padding:20px 22px;border:1px solid #e2e8f0;cursor:pointer;transition:transform .1s,box-shadow .15s,border-color .15s;}
 .ov-card:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(15,23,42,.08);border-color:#cbd5e1;}
+.ov-card.ov-card-active{border-color:#F39C12;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
 .ov-card .label{font-size:13px;color:#64748b;margin-bottom:6px;}
 .ov-card .number{font-size:34px;font-weight:700;}
 .ov-card.total .number{color:#1a56db;}
@@ -3178,6 +3179,8 @@ async function loadDashboard() {
   // Combine both types for the unified pending table
   const allTodayPending = [...(dDel.todayPending||[]), ...(dChl.todayPending||[])];
   window._lastDashTasks = allTodayPending;
+  // Invalidate completed cache — must re-fetch since the employee/date window may have changed.
+  window._lastDashCompleted = null;
   // Keep sort state across reloads (don't reset)
   renderDashTable(allTodayPending, dashType);
 
@@ -3379,47 +3382,54 @@ function dashTab(type, el) {
   }
 }
 
-// Click-through from a Dashboard stat card → All Tasks page with the right
-// type tab + status filter + employee filter pre-applied, so the user sees
-// the very rows that produced the number they tapped.
-function goToAllTasksFromDash(status) {
-  // Map dashboard type (all/delegation/checklist/fms) to an All Tasks type tab.
-  // Dashboard "all" → default to delegation (most common in All Tasks).
-  const map = { all: 'delegation', delegation: 'delegation', checklist: 'checklist', fms: 'fms' };
-  const targetType = map[dashType] || 'delegation';
+// Stat-card filter — keeps user on Dashboard, just narrows the table to
+// pending / completed / all. Completed rows are lazy-fetched (and cached)
+// the first time the user opens that view, so the regular load stays cheap.
+let dashStatusFilter = 'pending';
+async function goToAllTasksFromDash(status) {
+  dashStatusFilter = status;
+  // Visually mark which card is active.
+  document.querySelectorAll('.ov-card').forEach(c => c.classList.remove('ov-card-active'));
+  const cardSel = status === 'completed' ? '.ov-card.completed'
+                : status === 'all'       ? '.ov-card.total'
+                : '.ov-card.pending';
+  document.querySelector(cardSel)?.classList.add('ov-card-active');
 
-  // Carry over the dashboard's employee filter (admin/PC only).
-  const dashEmp = document.getElementById('dashEmployeeFilter')?.value;
+  // Update the table title so the user knows what they're looking at.
+  const titleEl = document.querySelector('#dashTbody')?.closest('.task-table-card')?.querySelector('.card-head-title');
+  if (titleEl) titleEl.textContent = status === 'completed' ? 'Completed Tasks'
+                                   : status === 'all'       ? 'All Tasks (Pending + Completed)'
+                                   : 'All Pending Tasks';
 
-  // Switch page first so the All Tasks DOM is visible.
-  navigate('alltasks', document.querySelector('.nav-item[onclick*="alltasks"]'));
+  // Lazy-load completed rows on first ask (covers both Completed and Total clicks).
+  if ((status === 'completed' || status === 'all') && !window._lastDashCompleted) {
+    await loadDashCompleted();
+  }
+  // Re-render with whatever cache we have.
+  renderDashTable(window._lastDashTasks || [], dashType);
+}
 
-  // Set the type tab (Delegation / Checklist / FMS) on the All Tasks page.
-  const typeTabId = targetType === 'delegation' ? 'tasksTabDel'
-                  : targetType === 'checklist' ? 'tasksTabChl'
-                  : 'tasksTabFMS';
-  const typeTabEl = document.getElementById(typeTabId);
-  if (typeTabEl) tasksTab(targetType, typeTabEl);
-
-  // Set the status filter (All / Pending / Completed).
-  taskStatusFilter = status;
-  document.querySelectorAll('#page-alltasks .tab-group .tab').forEach(t => t.classList.remove('active'));
-  const statusTabId = status === 'all' ? 'statusTabAll'
-                    : status === 'completed' ? 'statusTabCompleted'
-                    : 'statusTabPending';
-  document.getElementById(statusTabId)?.classList.add('active');
-  // Also re-activate the type tab (we just cleared its active class above).
-  if (typeTabEl) typeTabEl.classList.add('active');
-
-  // Carry over the employee filter (after loadAllTasks populates the dropdown).
-  if (dashEmp && dashEmp !== 'all') {
-    setTimeout(() => {
-      const empSel = document.getElementById('tasksUserFilter');
-      if (empSel && [...empSel.options].some(o => o.value === dashEmp)) {
-        empSel.value = dashEmp;
-        filterTasks();
-      }
-    }, 600);
+// Fetch completed task rows for the same employee / date window the dashboard
+// is currently viewing. Stored in window._lastDashCompleted (cleared on
+// loadDashboard so it stays in sync after status changes).
+async function loadDashCompleted() {
+  const empFilter = document.getElementById('dashEmployeeFilter');
+  const empVal = empFilter ? empFilter.value : 'all';
+  const isAdmin = ME.role === 'admin';
+  const isHod = ME.role === 'hod';
+  const isPC = ME.role === 'pc';
+  const hodParam = isHod ? '&hodDept='+encodeURIComponent(ME.department||'') : '';
+  const dateFrom = isPC ? (document.getElementById('pcDateFrom')?.value || '') : '';
+  const dateTo   = isPC ? (document.getElementById('pcDateTo')?.value   || '') : '';
+  const dateParams = (isPC && dateFrom && dateTo) ? `&dateFrom=${dateFrom}&dateTo=${dateTo}` : '';
+  const baseUrl = (isAdmin || isHod || isPC)
+    ? `/api/dashboard?employee=${empVal}${hodParam}${dateParams}&status=completed&skipStats=1&taskType=`
+    : `/api/dashboard?status=completed&skipStats=1&taskType=`;
+  try {
+    const [dDel, dChl] = await Promise.all([api(baseUrl + 'delegation'), api(baseUrl + 'checklist')]);
+    window._lastDashCompleted = [...(dDel.tasks || []), ...(dChl.tasks || [])];
+  } catch (e) {
+    window._lastDashCompleted = [];
   }
 }
 
@@ -3524,13 +3534,25 @@ function renderDashTable(tasks, type) {
   const showPriority = (type === 'delegation');
 
   // Merge in FMS rows when the user wants 'all' or 'fms'
-  let combined = (type === 'fms') ? [] : (tasks || []).slice();
-  if (!type || type === 'all' || type === 'fms') {
-    const fmsRows = window._lastDashFMS || [];
-    combined = combined.concat(fmsRows);
+  // Choose the source list based on the active stat-card filter (pending/completed/all).
+  // FMS only has pending data on dashboard, so it's merged only when status allows pending.
+  const pendingSource = (tasks || []).slice();
+  const completedSource = window._lastDashCompleted || [];
+  let combined;
+  if (type === 'fms') {
+    combined = (dashStatusFilter === 'completed') ? [] : (window._lastDashFMS || []).slice();
+  } else if (dashStatusFilter === 'completed') {
+    combined = completedSource;
+  } else if (dashStatusFilter === 'all') {
+    combined = pendingSource.concat(completedSource);
+    if (!type || type === 'all') combined = combined.concat(window._lastDashFMS || []);
+  } else {
+    // pending (default)
+    combined = pendingSource;
+    if (!type || type === 'all') combined = combined.concat(window._lastDashFMS || []);
   }
 
-  // Filter by selected tab: all / delegation / checklist / fms.
+  // Filter by selected type tab + status filter (status comes from stat-card clicks).
   // Future-dated rule: hide upcoming Checklist tasks (today + overdue only);
   // Delegation and FMS show their full pipeline including upcoming.
   const today = new Date().toISOString().split('T')[0];
@@ -3538,7 +3560,10 @@ function renderDashTable(tasks, type) {
     const matchType = (!type || type === 'all') ? true : t.type === type;
     const due = t.due_date || t.date || '';
     const dueOK = t.type !== 'checklist' || !due || due <= today;
-    return matchType && (t.status === 'pending' || !t.status) && dueOK;
+    const matchStatus = dashStatusFilter === 'all' ? true
+                      : dashStatusFilter === 'completed' ? t.status === 'completed'
+                      : (t.status === 'pending' || !t.status);
+    return matchType && matchStatus && dueOK;
   });
   // Apply date sort
   if (_dashDateSortState === 1) {
@@ -3547,7 +3572,13 @@ function renderDashTable(tasks, type) {
     allPending = [...allPending].sort((a,b) => (b.due_date||b.date||'').localeCompare(a.due_date||a.date||''));
   }
   const colCount = showPriority ? 6 : 5;
-  if (!allPending.length) { tbody.innerHTML=`<tr><td colspan="${colCount}" class="empty">No pending tasks 🎉</td></tr>`; return; }
+  if (!allPending.length) {
+    const emptyMsg = dashStatusFilter === 'completed' ? 'No completed tasks in this window'
+                   : dashStatusFilter === 'all'       ? 'No tasks in this window'
+                   : 'No pending tasks 🎉';
+    tbody.innerHTML=`<tr><td colspan="${colCount}" class="empty">${emptyMsg}</td></tr>`;
+    return;
+  }
   const typeBadge = t => {
     if (t.type === 'fms') return `<span style="font-size:10px;background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fed7aa">📊 FMS</span>`;
     if (t.type === 'checklist') return `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ Checklist</span>`;
@@ -3591,21 +3622,23 @@ function renderDashTable(tasks, type) {
       ? `<div style="margin-top:3px"><span style="font-size:10px;background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span></div>`
       : '';
     const isDeleg = t.type === 'delegation';
+    const isCompleted = t.status === 'completed';
+    const actionCell = isCompleted
+      ? `<span style="font-size:11px;color:#16a34a;font-weight:700;background:#dcfce7;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0">✅ Completed</span>`
+      : (t.waiting_approval==1 ? `
+          <span style="font-size:11px;color:#f59e0b;font-weight:600">⏳ Waiting Approval</span>
+          ${(!isPC || t.type==='checklist') ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>` : ''}
+        ` : `
+          ${(!isPC || t.type==='checklist') ? `<button class="action-btn done" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>` : ''}
+          ${(!isPC && t.type!=='checklist') ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${t.type}')">Revise</button>` : ''}
+        `);
     return `<tr onclick="window._dashTaskMap[${t.id}]&&openTaskDetail(window._dashTaskMap[${t.id}])" style="cursor:pointer" title="Click to view details">
       <td style="white-space:nowrap">${typeBadge(t)}</td>
       <td>${t.description||t.desc}${clientPill}</td>
       <td>${(isAdmin||isPC)?t.assignedToName:t.assignedByName}</td>
       <td>${fmtDate(t.due_date||t.date)}</td>
       ${showPriority ? `<td>${isDeleg ? `<span class="priority-badge ${t.priority||'low'}">${t.priority||'low'}</span>` : '—'}</td>` : ''}
-      <td onclick="event.stopPropagation()">
-        ${t.waiting_approval==1 ? `
-          <span style="font-size:11px;color:#f59e0b;font-weight:600">⏳ Waiting Approval</span>
-          ${(!isPC || t.type==='checklist') ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>` : ''}
-        ` : `
-          ${(!isPC || t.type==='checklist') ? `<button class="action-btn done" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>` : ''}
-          ${(!isPC && t.type!=='checklist') ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${t.type}')">Revise</button>` : ''}
-        `}
-      </td>
+      <td onclick="event.stopPropagation()">${actionCell}</td>
     </tr>`;
   }).join('');
 }
