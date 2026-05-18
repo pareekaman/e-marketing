@@ -1840,7 +1840,7 @@ app.get('/api/users', requireAuth, async (req, res) => {
               phone,department,week_off,extra_off,
               COALESCE(exclude_from_reminder,0) AS exclude_from_reminder,
               extra_access
-       FROM users ORDER BY role DESC,name ASC`
+       FROM users ORDER BY name ASC`
     );
     for (const r of rows) r.extra_access = parseExtraAccess(r.extra_access);
     res.json(rows);

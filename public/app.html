@@ -3457,8 +3457,8 @@ function renderDashTable(tasks, type) {
       <th style="white-space:nowrap;cursor:pointer;user-select:none" onclick="toggleDashDateSort()" title="Click to sort by date">Planned Date <span id="dashDateSortIcon" style="font-size:10px;color:#94a3b8">⇅</span></th>
       <th style="white-space:nowrap">Action</th>
     </tr>`;
-    const today = new Date().toISOString().split('T')[0];
-    let fmsRows = (window._lastDashFMS || []).filter(t => !t.due_date || t.due_date <= today);
+    // FMS shows the full pipeline (upcoming + today + overdue) — no future-hide.
+    let fmsRows = (window._lastDashFMS || []).slice();
     if (_dashDateSortState === 1) fmsRows = [...fmsRows].sort((a,b) => (a.due_date||'').localeCompare(b.due_date||''));
     else if (_dashDateSortState === 2) fmsRows = [...fmsRows].sort((a,b) => (b.due_date||'').localeCompare(a.due_date||''));
     if (!fmsRows.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty">No pending FMS rows 🎉</td></tr>`; return; }
@@ -3484,13 +3484,14 @@ function renderDashTable(tasks, type) {
     combined = combined.concat(fmsRows);
   }
 
-  // Filter by selected tab: all / delegation / checklist / fms
-  // Also: only show today + overdue (no future-dated upcoming tasks).
+  // Filter by selected tab: all / delegation / checklist / fms.
+  // Future-dated rule: hide upcoming Checklist tasks (today + overdue only);
+  // Delegation and FMS show their full pipeline including upcoming.
   const today = new Date().toISOString().split('T')[0];
   let allPending = combined.filter(t => {
     const matchType = (!type || type === 'all') ? true : t.type === type;
     const due = t.due_date || t.date || '';
-    const dueOK = !due || due <= today;
+    const dueOK = t.type !== 'checklist' || !due || due <= today;
     return matchType && (t.status === 'pending' || !t.status) && dueOK;
   });
   // Apply date sort
