@@ -2554,7 +2554,7 @@ app.post('/api/week-plan', requireAuth, requireAdminOrHod, async (req, res) => {
     }
     const impPct = (improvementPct !== undefined && improvementPct !== null && improvementPct !== '') ? parseInt(improvementPct) : null;
     // Upsert: insert or update if same employee+startDate exists
-    await db.execute(
+    await db.query(
       `INSERT INTO week_plans (employee_id, hod_id, start_date, target_count, improvement_pct, created_at)
        VALUES (?, ?, ?, ?, ?, NOW())
        ON DUPLICATE KEY UPDATE target_count = VALUES(target_count), hod_id = VALUES(hod_id), improvement_pct = VALUES(improvement_pct), created_at = NOW()`,
@@ -2564,7 +2564,7 @@ app.post('/api/week-plan', requireAuth, requireAdminOrHod, async (req, res) => {
   } catch (e) {
     // If table doesn't exist, create it first then retry
     if (e.code === 'ER_NO_SUCH_TABLE') {
-      await db.execute(`
+      await db.query(`
         CREATE TABLE IF NOT EXISTS week_plans (
           id INT AUTO_INCREMENT PRIMARY KEY,
           employee_id INT NOT NULL,
@@ -2578,7 +2578,7 @@ app.post('/api/week-plan', requireAuth, requireAdminOrHod, async (req, res) => {
       `);
       const { employeeId, startDate, targetCount, hodId, improvementPct } = req.body;
       const impPct = (improvementPct !== undefined && improvementPct !== null && improvementPct !== '') ? parseInt(improvementPct) : null;
-      await db.execute(
+      await db.query(
         `INSERT INTO week_plans (employee_id, hod_id, start_date, target_count, improvement_pct, created_at)
          VALUES (?, ?, ?, ?, ?, NOW())
          ON DUPLICATE KEY UPDATE target_count = VALUES(target_count), hod_id = VALUES(hod_id), improvement_pct = VALUES(improvement_pct), created_at = NOW()`,
@@ -2589,11 +2589,11 @@ app.post('/api/week-plan', requireAuth, requireAdminOrHod, async (req, res) => {
     // If improvement_pct column missing (old table), add it then retry
     if (e.code === 'ER_BAD_FIELD_ERROR') {
       try {
-        await db.execute(`ALTER TABLE week_plans ADD COLUMN improvement_pct INT DEFAULT NULL`);
+        await db.query(`ALTER TABLE week_plans ADD COLUMN improvement_pct INT DEFAULT NULL`);
       } catch(ae) { /* already exists */ }
       const { employeeId, startDate, targetCount, hodId, improvementPct } = req.body;
       const impPct = (improvementPct !== undefined && improvementPct !== null && improvementPct !== '') ? parseInt(improvementPct) : null;
-      await db.execute(
+      await db.query(
         `INSERT INTO week_plans (employee_id, hod_id, start_date, target_count, improvement_pct, created_at)
          VALUES (?, ?, ?, ?, ?, NOW())
          ON DUPLICATE KEY UPDATE target_count = VALUES(target_count), hod_id = VALUES(hod_id), improvement_pct = VALUES(improvement_pct), created_at = NOW()`,
@@ -2608,7 +2608,7 @@ app.post('/api/week-plan', requireAuth, requireAdminOrHod, async (req, res) => {
 
 app.get('/api/week-plan', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT wp.*, u.name as employee_name FROM week_plans wp
        JOIN users u ON u.id = wp.employee_id
        ORDER BY wp.start_date DESC LIMIT 50`
@@ -2768,7 +2768,7 @@ app.post('/api/my-week-plan', requireAuth, async (req, res) => {
     if (isNaN(score) || score < -100 || score > 0) {
       return res.status(400).json({ error: 'committedScore must be between -100 and 0' });
     }
-    await db.execute(
+    await db.query(
       `INSERT INTO week_plans (employee_id, start_date, user_committed_score, user_committed_at, created_at)
        VALUES (?, ?, ?, NOW(), NOW())
        ON DUPLICATE KEY UPDATE user_committed_score=VALUES(user_committed_score), user_committed_at=NOW()`,
@@ -2789,7 +2789,7 @@ app.post('/api/my-week-plan/snooze', requireAuth, async (req, res) => {
     const thisMon = bundle.thisWeek.start;
     // Snooze until tomorrow (IST)
     const tomorrow = addDays(bundle.todayStr, 1);
-    await db.execute(
+    await db.query(
       `INSERT INTO week_plans (employee_id, start_date, checkin_skipped_until, created_at)
        VALUES (?, ?, ?, NOW())
        ON DUPLICATE KEY UPDATE checkin_skipped_until=VALUES(checkin_skipped_until)`,
