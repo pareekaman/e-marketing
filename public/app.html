@@ -125,7 +125,8 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 .dash-topbar-btns{display:flex;gap:8px;}
 
 .overview-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;}
-.ov-card{background:#fff;border-radius:12px;padding:20px 22px;border:1px solid #e2e8f0;}
+.ov-card{background:#fff;border-radius:12px;padding:20px 22px;border:1px solid #e2e8f0;cursor:pointer;transition:transform .1s,box-shadow .15s,border-color .15s;}
+.ov-card:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(15,23,42,.08);border-color:#cbd5e1;}
 .ov-card .label{font-size:13px;color:#64748b;margin-bottom:6px;}
 .ov-card .number{font-size:34px;font-weight:700;}
 .ov-card.total .number{color:#1a56db;}
@@ -1170,9 +1171,9 @@ tbody tr:last-child td{border-bottom:none;}
       <div class="dash-topbar-btns" id="dashBtns"></div>
     </div>
     <div class="overview-cards">
-      <div class="ov-card total"><div class="label">Total</div><div class="number" id="dTotal">—</div></div>
-      <div class="ov-card completed"><div class="label">Completed</div><div class="number" id="dCompleted">—</div></div>
-      <div class="ov-card pending"><div class="label">Pending</div><div class="number" id="dPending">—</div></div>
+      <div class="ov-card total"     onclick="goToAllTasksFromDash('all')"       title="Open All Tasks with these rows"><div class="label">Total</div><div class="number" id="dTotal">—</div></div>
+      <div class="ov-card completed" onclick="goToAllTasksFromDash('completed')" title="Open All Tasks → Completed"><div class="label">Completed</div><div class="number" id="dCompleted">—</div></div>
+      <div class="ov-card pending"   onclick="goToAllTasksFromDash('pending')"   title="Open All Tasks → Pending"><div class="label">Pending</div><div class="number" id="dPending">—</div></div>
     </div>
     <div class="dash-bottom">
       <div class="task-table-card">
@@ -1279,6 +1280,7 @@ tbody tr:last-child td{border-bottom:none;}
     <!-- Status filter tabs -->
     <div style="display:flex;gap:8px;margin-bottom:16px;">
       <div class="tab-group">
+        <div class="tab" id="statusTabAll" onclick="filterTaskStatus('all',this)">All</div>
         <div class="tab active" id="statusTabPending" onclick="filterTaskStatus('pending',this)">Pending</div>
         <div class="tab" id="statusTabCompleted" onclick="filterTaskStatus('completed',this)">Completed</div>
       </div>
@@ -3374,6 +3376,50 @@ function dashTab(type, el) {
     renderDashTable(window._lastDashTasks, dashType);
   } else {
     withPageLoader(loadDashboard);
+  }
+}
+
+// Click-through from a Dashboard stat card → All Tasks page with the right
+// type tab + status filter + employee filter pre-applied, so the user sees
+// the very rows that produced the number they tapped.
+function goToAllTasksFromDash(status) {
+  // Map dashboard type (all/delegation/checklist/fms) to an All Tasks type tab.
+  // Dashboard "all" → default to delegation (most common in All Tasks).
+  const map = { all: 'delegation', delegation: 'delegation', checklist: 'checklist', fms: 'fms' };
+  const targetType = map[dashType] || 'delegation';
+
+  // Carry over the dashboard's employee filter (admin/PC only).
+  const dashEmp = document.getElementById('dashEmployeeFilter')?.value;
+
+  // Switch page first so the All Tasks DOM is visible.
+  navigate('alltasks', document.querySelector('.nav-item[onclick*="alltasks"]'));
+
+  // Set the type tab (Delegation / Checklist / FMS) on the All Tasks page.
+  const typeTabId = targetType === 'delegation' ? 'tasksTabDel'
+                  : targetType === 'checklist' ? 'tasksTabChl'
+                  : 'tasksTabFMS';
+  const typeTabEl = document.getElementById(typeTabId);
+  if (typeTabEl) tasksTab(targetType, typeTabEl);
+
+  // Set the status filter (All / Pending / Completed).
+  taskStatusFilter = status;
+  document.querySelectorAll('#page-alltasks .tab-group .tab').forEach(t => t.classList.remove('active'));
+  const statusTabId = status === 'all' ? 'statusTabAll'
+                    : status === 'completed' ? 'statusTabCompleted'
+                    : 'statusTabPending';
+  document.getElementById(statusTabId)?.classList.add('active');
+  // Also re-activate the type tab (we just cleared its active class above).
+  if (typeTabEl) typeTabEl.classList.add('active');
+
+  // Carry over the employee filter (after loadAllTasks populates the dropdown).
+  if (dashEmp && dashEmp !== 'all') {
+    setTimeout(() => {
+      const empSel = document.getElementById('tasksUserFilter');
+      if (empSel && [...empSel.options].some(o => o.value === dashEmp)) {
+        empSel.value = dashEmp;
+        filterTasks();
+      }
+    }, 600);
   }
 }
 
