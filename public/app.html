@@ -3511,16 +3511,32 @@ function renderDashTable(tasks, type) {
       const lateBadge = t.isLate
         ? `<span style="font-size:10px;background:#fef2f2;color:#dc2626;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fecaca">⏰ Late</span>`
         : `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ On Track</span>`;
-      const dateCell = t.due_date
-        ? `<span style="${t.isLate?'color:#dc2626;font-weight:600':''}">${fmtDate(t.due_date)}</span>`
-        : `<span style="color:#94a3b8;font-size:12px">${t.planValue||'—'}</span>`;
+      // Date cell — planned date with optional time, falls back to raw planValue.
+      let dateCell;
+      if (t.due_date) {
+        const datePart = fmtDate(t.due_date);
+        const timePart = t.planTime ? `<div style="color:#64748b;font-size:11px;margin-top:1px">🕒 ${dtEscape(t.planTime)}</div>` : '';
+        dateCell = `<span style="${t.isLate?'color:#dc2626;font-weight:700':''}">${datePart}</span>${timePart}<div style="margin-top:4px">${lateBadge}</div>`;
+      } else {
+        dateCell = `<span style="color:#94a3b8;font-size:12px">${dtEscape(t.planValue||'—')}</span><div style="margin-top:4px">${lateBadge}</div>`;
+      }
+      // Description cell — FMS name + Step + Doer + details key:value list (compact).
+      const detailsHtml = (Array.isArray(t.details) && t.details.length)
+        ? `<div style="margin-top:5px;display:flex;flex-direction:column;gap:2px">${t.details.map(d => `<div style="display:flex;gap:6px;align-items:baseline;font-size:11px;line-height:1.4"><span style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap">${dtEscape(d.header||'—')}:</span><span style="color:#1e293b">${dtEscape(d.value||'—')}</span></div>`).join('')}</div>`
+        : '';
+      const descCell = `<div style="font-weight:700;color:#0f172a;font-size:13px">${dtEscape(t.fmsName||'')}</div>
+        <div style="color:#64748b;font-size:11px;margin-top:2px">↳ ${dtEscape(t.stepName||'')}</div>
+        ${detailsHtml}`;
+      const refArg = JSON.stringify({ fmsId: t.fmsId, stepId: t.stepId, rowNumber: t.rowNumber }).replace(/"/g, '&quot;');
+      const actionCell = `<button class="action-btn done" onclick='openFmsDoneFromRow(${refArg})' title="Mark this FMS row done">✅ Done</button>
+        <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 8px;margin-left:4px" onclick='openFmsTaskFromRow(${refArg})' title="Open in FMS Tasks page">Open</button>`;
       return `<tr>
-        <td style="white-space:nowrap">${typeBadge(t)}</td>
-        <td>${t.description}</td>
-        <td>${t.assignedToName}</td>
-        <td>${dateCell}</td>
-        ${showPriority ? `<td>—</td>` : ''}
-        <td>${lateBadge}</td>
+        <td style="white-space:nowrap;vertical-align:top">${typeBadge(t)}</td>
+        <td style="vertical-align:top;max-width:380px">${descCell}</td>
+        <td style="vertical-align:top">${dtEscape(t.doer||t.assignedToName||'—')}</td>
+        <td style="white-space:nowrap;vertical-align:top">${dateCell}</td>
+        ${showPriority ? `<td style="vertical-align:top">—</td>` : ''}
+        <td style="white-space:nowrap;vertical-align:top">${actionCell}</td>
       </tr>`;
     }
     if (t.id) window._dashTaskMap[t.id] = t;
@@ -6708,50 +6724,13 @@ function buildStepBoxHTML(idx) {
   // Build header options for selects — MUST be declared BEFORE extraRowsHTML
   const headers = fmsSheetHeaders || [];
 
-  const extraRowsHTML = (s.extraRows||[]).map((r,ri)=>{
-    const colSel = headers.length ? `
-      <select onchange="onFMSExtraColChange(${idx},${ri},this)"
-        style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:'Inter',sans-serif;outline:none;background:#fff">
-        <option value="">-- Select Column --</option>
-        ${headers.map(h=>`<option value="${h.col}" data-name="${h.name}" ${(r.col_letter)===h.col?'selected':''}>` + h.name + ` (COL ${h.col})</option>`).join('')}
-      </select>` : `
-      <input type="text" value="${r.col_letter||''}" placeholder="Col e.g. AS"
-        oninput="fmsSteps[${idx}].extraRows[${ri}].col_letter=this.value"
-        style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:'Inter',sans-serif;outline:none"/>`;
-    const labelField = `<input type="text" value="${(r.label||'').replace(/"/g,'&quot;')}" placeholder="Label (auto from header)"
-      oninput="fmsSteps[${idx}].extraRows[${ri}].label=this.value"
-      id="fmsExtraLabel_${idx}_${ri}"
-      style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:'Inter',sans-serif;outline:none"/>`;
-    const ftSel = `<select onchange="onFMSExtraTypeChange(${idx},${ri},this.value)"
-      style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:'Inter',sans-serif;outline:none;background:#fff">
-      <option value="text" ${(r.field_type||'text')==='text'?'selected':''}>📝 Text</option>
-      <option value="number" ${r.field_type==='number'?'selected':''}>🔢 Number</option>
-      <option value="date" ${r.field_type==='date'?'selected':''}>📅 Date</option>
-      <option value="link" ${r.field_type==='link'?'selected':''}>🔗 Link</option>
-      <option value="dropdown" ${r.field_type==='dropdown'?'selected':''}>🔽 Dropdown</option>
-    </select>`;
-    const dropSection = r.field_type==='dropdown' ? buildDropdownOptionsHTML(idx, ri, r) : '';
-    return `<div class="extra-row-item" id="fmsExtraRow_${idx}_${ri}" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:10px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">
-        <div>
-          <div style="font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">Column</div>
-          ${colSel}
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">Label</div>
-          ${labelField}
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">Field Type</div>
-          ${ftSel}
-        </div>
-        <div style="display:flex;align-items:flex-end">
-          <button class="action-btn delete" style="padding:5px 14px;width:100%" onclick="removeFMSExtraRow(${idx},${ri})">✕ Remove</button>
-        </div>
-      </div>
-      <div id="fmsDropOptSection_${idx}_${ri}">${dropSection}</div>
-    </div>`;
-  }).join('');
+  // Use the shared row builder — it includes the Required/Optional toggle that
+  // lets admins mark individual extra inputs as optional.
+  const extraRowsHTML = (s.extraRows||[]).map((r,ri) =>
+    `<div class="extra-row-item" id="fmsExtraRow_${idx}_${ri}" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:10px">
+      ${buildExtraRowHTML(idx, ri, headers)}
+    </div>`
+  ).join('');
   const blankOpt = `<option value="">-- Select Column --</option>`;
   const hdrOpts = headers.map(h=>`<option value="${h.col}" title="${h.name}">${h.name} (COL ${h.col})</option>`).join('');
 
