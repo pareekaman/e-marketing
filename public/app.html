@@ -1187,7 +1187,7 @@ tbody tr:last-child td{border-bottom:none;}
         </div>
         <div style="overflow-x:auto;max-height:370px;overflow-y:auto;">
           <table style="min-width:600px">
-            <thead style="position:sticky;top:0;z-index:2;background:#f8fafc">
+            <thead id="dashThead" style="position:sticky;top:0;z-index:2;background:#f8fafc">
               <tr>
                 <th style="white-space:nowrap">Type</th>
                 <th>Description</th>
@@ -3398,16 +3398,25 @@ async function loadDashFMS() {
 
   const rows = data.rows || [];
 
-  // Normalize for unified table
+  // Keep all FMS-specific fields so the FMS tab can render the rich layout
+  // (same fields as loadAllTasks uses for its FMS tab).
   window._lastDashFMS = rows.map(r => ({
     id: r.stepId || r.id || 0,
     type: 'fms',
-    description: `${r.fmsName} — ${r.stepName}`,
+    fmsId: r.fmsId,
+    stepId: r.stepId,
+    rowNumber: r.rowNumber,
+    fmsName: r.fmsName || '',
+    stepName: r.stepName || '',
+    doer: r.doer || '—',
+    planValue: r.planValue || '',
+    planTime: r.planTime || '',
+    details: Array.isArray(r.details) ? r.details : [],
+    isLate: !!r.isLate,
+    description: `${r.fmsName || ''} — ${r.stepName || ''}`,
     assignedToName: r.doer || '—',
     assignedByName: r.doer || '—',
     due_date: r.planDate || '',
-    planValue: r.planValue || '',
-    isLate: !!r.isLate,
     status: 'pending'
   }));
 
@@ -3435,12 +3444,38 @@ function renderDashTable(tasks, type) {
   // Show ALL pending tasks (delegation + checklist + FMS) combined
   const isAdmin = ME.role==='admin' || ME.role==='hod';
   const isPC    = ME.role==='pc';
-  document.getElementById('dashDoerHead').textContent = (isAdmin||isPC)?'Doer':'Assigned By';
-  const showPriority = (type === 'delegation');
-  const prioHead = document.getElementById('dashPriorityHead');
-  if (prioHead) prioHead.style.display = showPriority ? '' : 'none';
   const tbody = document.getElementById('dashTbody');
+  const thead = document.getElementById('dashThead');
   window._dashTaskMap = {};
+
+  // FMS tab — swap to the rich FMS layout (FMS-Step / Details / Planned Date / Action)
+  // with Done + Open buttons, same as the All Tasks → FMS tab.
+  if (type === 'fms') {
+    thead.innerHTML = `<tr>
+      <th style="white-space:nowrap">FMS — Step</th>
+      <th>Details</th>
+      <th style="white-space:nowrap;cursor:pointer;user-select:none" onclick="toggleDashDateSort()" title="Click to sort by date">Planned Date <span id="dashDateSortIcon" style="font-size:10px;color:#94a3b8">⇅</span></th>
+      <th style="white-space:nowrap">Action</th>
+    </tr>`;
+    const today = new Date().toISOString().split('T')[0];
+    let fmsRows = (window._lastDashFMS || []).filter(t => !t.due_date || t.due_date <= today);
+    if (_dashDateSortState === 1) fmsRows = [...fmsRows].sort((a,b) => (a.due_date||'').localeCompare(b.due_date||''));
+    else if (_dashDateSortState === 2) fmsRows = [...fmsRows].sort((a,b) => (b.due_date||'').localeCompare(a.due_date||''));
+    if (!fmsRows.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty">No pending FMS rows 🎉</td></tr>`; return; }
+    tbody.innerHTML = fmsRows.map(_buildFmsRowHtml).join('');
+    return;
+  }
+
+  // Default unified layout (All / Delegation / Checklist) — restore original headers
+  thead.innerHTML = `<tr>
+    <th style="white-space:nowrap">Type</th>
+    <th>Description</th>
+    <th id="dashDoerHead">${(isAdmin||isPC)?'Doer':'Assigned By'}</th>
+    <th style="white-space:nowrap;cursor:pointer;user-select:none" onclick="toggleDashDateSort()" title="Click to sort by date">Date <span id="dashDateSortIcon" style="font-size:10px;color:#94a3b8">⇅</span></th>
+    <th id="dashPriorityHead"${(type === 'delegation') ? '' : ' style="display:none"'}>Priority</th>
+    <th>Action</th>
+  </tr>`;
+  const showPriority = (type === 'delegation');
 
   // Merge in FMS rows when the user wants 'all' or 'fms'
   let combined = (type === 'fms') ? [] : (tasks || []).slice();
@@ -3450,9 +3485,13 @@ function renderDashTable(tasks, type) {
   }
 
   // Filter by selected tab: all / delegation / checklist / fms
+  // Also: only show today + overdue (no future-dated upcoming tasks).
+  const today = new Date().toISOString().split('T')[0];
   let allPending = combined.filter(t => {
     const matchType = (!type || type === 'all') ? true : t.type === type;
-    return matchType && (t.status === 'pending' || !t.status);
+    const due = t.due_date || t.date || '';
+    const dueOK = !due || due <= today;
+    return matchType && (t.status === 'pending' || !t.status) && dueOK;
   });
   // Apply date sort
   if (_dashDateSortState === 1) {
@@ -3833,7 +3872,6 @@ function renderTasksTable() {
   const dateTo = document.getElementById('tasksDateTo')?.value || '';
   const container = document.getElementById('tasksContent');
 
-  const today = new Date().toISOString().split('T')[0];
   let tasks = allTasksData.filter(t => {
     const matchStatus = taskStatusFilter === 'all' || t.status === taskStatusFilter;
     const matchSearch = !search ||
@@ -3848,9 +3886,7 @@ function renderTasksTable() {
     const matchUser = tasksType === 'fms' || userFilterVal === 'all' || String(t.assignedToId || t.assigned_to) === String(userFilterVal);
     const matchDateFrom = !dateFrom || (t.due_date && t.due_date >= dateFrom);
     const matchDateTo = !dateTo || (t.due_date && t.due_date <= dateTo);
-    // Checklist tab: hide future-dated tasks — only show today's + overdue.
-    const matchChecklistWindow = tasksType !== 'checklist' || !t.due_date || t.due_date <= today;
-    return matchStatus && matchSearch && matchUser && matchDateFrom && matchDateTo && matchChecklistWindow;
+    return matchStatus && matchSearch && matchUser && matchDateFrom && matchDateTo;
   });
 
   if (!tasks.length) {
