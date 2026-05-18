@@ -2721,22 +2721,38 @@ async function getMyWeekBundle(userId) {
 }
 
 // Lightweight status — used by app bootstrap to decide whether to pop the modal.
+// Fires on EVERY page load, so it must be cheap: one row lookup, no stats.
 app.get('/api/my-week-status', requireAuth, async (req, res) => {
   try {
     const uid = req.session.userId;
-    const bundle = await getMyWeekBundle(uid);
-    const thisPlan = bundle.thisWeek.plan;
+    const now = new Date();
+    const istToday = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+    const todayStr = istToday.toISOString().split('T')[0];
+    const istDayOfWeek = istToday.getUTCDay(); // 0=Sun..6=Sat
+
+    // Early exit if today isn't Mon/Tue/Wed — no DB hit at all on Thu–Sun.
+    const dayOK = istDayOfWeek >= 1 && istDayOfWeek <= 3;
+    const thisMon = istMondayOf(now);
+    if (!dayOK) {
+      return res.json({ needsCheckin: false, todayStr, istDayOfWeek, thisWeekStart: thisMon, lastWeekStart: addDays(thisMon, -7) });
+    }
+
+    // Single-row plan lookup — cheap, replaces full getMyWeekBundle.
+    const [planRows] = await db.query(
+      `SELECT user_committed_score,
+              DATE_FORMAT(checkin_skipped_until,'%Y-%m-%d') AS checkin_skipped_until
+         FROM week_plans WHERE employee_id=? AND start_date=? LIMIT 1`,
+      [uid, thisMon]);
+    const thisPlan = planRows[0] || null;
     const committed = thisPlan && thisPlan.user_committed_score !== null && thisPlan.user_committed_score !== undefined;
     const skipUntil = thisPlan && thisPlan.checkin_skipped_until;
-    const dayOK = bundle.istDayOfWeek >= 1 && bundle.istDayOfWeek <= 3; // Mon, Tue, Wed
-    const snoozed = skipUntil && bundle.todayStr <= skipUntil;
-    const needsCheckin = dayOK && !committed && !snoozed;
+    const snoozed = skipUntil && todayStr <= skipUntil;
     res.json({
-      needsCheckin,
-      todayStr: bundle.todayStr,
-      istDayOfWeek: bundle.istDayOfWeek,
-      thisWeekStart: bundle.thisWeek.start,
-      lastWeekStart: bundle.lastWeek.start
+      needsCheckin: !committed && !snoozed,
+      todayStr,
+      istDayOfWeek,
+      thisWeekStart: thisMon,
+      lastWeekStart: addDays(thisMon, -7)
     });
   } catch (err) {
     console.error('my-week-status error:', err);
