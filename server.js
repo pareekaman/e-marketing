@@ -3103,9 +3103,11 @@ async function sendToReminderDestination(text) {
 }
 
 async function buildAndSendReminder() {
-  // Today's date in IST (India Standard Time)
-  const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
-  const today = istNow.toISOString().split('T')[0]; // YYYY-MM-DD
+  // Sunday + holidays: don't send anything at all (not even a "holiday" group message).
+  const off = await getTodayOffIST();
+  if (off.off) return { ok: true, skipped: true, date: off.today, reason: off.reason };
+  const today = off.today;
+  const holidaysSet = off.holidaysSet;
 
   // Get all users — excluding CXO department + flagged users (case-insensitive)
   const [users] = await db.query(
@@ -3115,26 +3117,19 @@ async function buildAndSendReminder() {
      FROM users ORDER BY name ASC`
   );
 
-  // Load holidays for today's off-check
-  const holidaysSet = await loadHolidaysSet();
-  const isHolidayToday = holidaysSet.has(today);
+  // Users on approved leave today are excluded from the "report not filed" name list.
+  const onLeave = await usersOnLeaveSet(today);
 
-  // Filter out CXO + manually-excluded users + users whose today is week-off/holiday
+  // Filter out CXO + manually-excluded users + users whose today is week-off/holiday + on-leave
   const eligible = users.filter(u =>
     !EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase()) &&
     !u.exclude_from_reminder &&
-    !isUserOffOn(u, today, holidaysSet)
+    !isUserOffOn(u, today, holidaysSet) &&
+    !onLeave.has(u.id)
   );
 
-  // If today is a holiday → send a fixed "holiday" message to the group instead
-  if (isHolidayToday) {
-    const holidayMsg = `Hello,\n\nToday is Holiday/Weekoff , So no report is filled today.\n\nThank You.`;
-    const sendRes = await sendToReminderDestination(holidayMsg);
-    return { ok: sendRes.ok, holiday: true, date: today, send: sendRes };
-  }
-
   if (!eligible.length) {
-    return { ok: false, reason: 'No eligible users (everyone is CXO or no users)' };
+    return { ok: false, reason: 'No eligible users (everyone is CXO / on leave / off)' };
   }
 
   // Get IDs of users who already submitted today
@@ -3350,6 +3345,10 @@ async function buildPendingSummaryMessages() {
 }
 
 async function sendPendingSummaryMessages() {
+  // Sunday + holidays: no summary messages at all.
+  const offCheck = await getTodayOffIST();
+  if (offCheck.off) return { ok: true, skipped: true, date: offCheck.today, reason: offCheck.reason };
+
   const msgs = await buildPendingSummaryMessages();
   // Pending summary goes to the configured PERSONAL WhatsApp number, NOT the
   // daily-reminder group. The group only receives the "report not filled" message.
@@ -3462,9 +3461,10 @@ app.get('/api/daily-reminder/preview', requireAuth, requireAdmin, async (req, re
 // (delegation + checklist) due today or earlier.
 // ══════════════════════════════════════════════════════
 async function buildAndSendPendingTasksReminder() {
-  // Today's date in IST
-  const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
-  const today = istNow.toISOString().split('T')[0];
+  // Sunday + holiday guard — no DMs to anyone on those days.
+  const offCheck = await getTodayOffIST();
+  if (offCheck.off) return { ok: true, sent: 0, skipped: 0, total: 0, reason: offCheck.reason };
+  const today = offCheck.today;
 
   // Fetch pending tasks (due today or earlier) — delegation + checklist
   const [delRows] = await db.query(`
@@ -3509,11 +3509,9 @@ async function buildAndSendPendingTasksReminder() {
   users.forEach(u => userMap[u.id] = u);
 
   // Load holidays for off-day check
-  const holidaysSet = await loadHolidaysSet();
-  const isHolidayToday = holidaysSet.has(today);
-  if (isHolidayToday) {
-    return { ok: true, sent: 0, skipped: userIds.length, total: userIds.length, reason: 'Today is a holiday — pending reminder skipped' };
-  }
+  const holidaysSet = offCheck.holidaysSet || await loadHolidaysSet();
+  // Holiday/Sunday already guarded above. Per-user leave exclusion below.
+  const onLeave = await usersOnLeaveSet(today);
 
   let sent = 0, skipped = 0;
   const skippedDetails = [];
@@ -3523,6 +3521,7 @@ async function buildAndSendPendingTasksReminder() {
     if (!u) { skipped++; skippedDetails.push({ id: uid, reason: 'user not found' }); continue; }
     if (u.exclude_from_reminder) { skipped++; skippedDetails.push({ name: u.name, reason: 'manually excluded' }); continue; }
     if (!u.phone) { skipped++; skippedDetails.push({ name: u.name, reason: 'no phone' }); continue; }
+    if (onLeave.has(uid)) { skipped++; skippedDetails.push({ name: u.name, reason: 'on approved leave' }); continue; }
     // Skip CXO department
     if (EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase())) {
       skipped++; skippedDetails.push({ name: u.name, reason: 'CXO' }); continue;
@@ -4333,6 +4332,36 @@ async function loadHolidaysSet() {
     return new Set(rows.map(r => r.d));
   } catch (e) {
     console.error('loadHolidaysSet error:', e.message);
+    return new Set();
+  }
+}
+
+// Universal "no-message day" guard for all reminder/summary crons.
+// Returns { off: true, reason } if today is Sunday IST OR in the holidays table.
+async function getTodayOffIST() {
+  const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+  const today = istNow.toISOString().split('T')[0];
+  const istDay = istNow.getUTCDay(); // 0 = Sunday IST
+  if (istDay === 0) return { off: true, reason: 'Sunday — reminders skipped', today };
+  const holidaysSet = await loadHolidaysSet();
+  if (holidaysSet.has(today)) return { off: true, reason: 'Holiday — reminders skipped', today, holidaysSet };
+  return { off: false, today, holidaysSet };
+}
+
+// User IDs who have filed a leave covering `today` — pending or approved both
+// count (only rejected leaves leave the user on the missing-names list).
+// extra_working is the OPPOSITE of leave so it's deliberately excluded.
+async function usersOnLeaveSet(today) {
+  try {
+    const [rows] = await db.query(
+      `SELECT DISTINCT user_id FROM leave_requests
+        WHERE status <> 'rejected'
+          AND leave_type IN ('full_day','half_day','work_from_home')
+          AND from_date <= ? AND to_date >= ?`,
+      [today, today]);
+    return new Set(rows.map(r => r.user_id));
+  } catch (e) {
+    console.error('usersOnLeaveSet error:', e.message);
     return new Set();
   }
 }
