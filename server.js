@@ -1556,10 +1556,15 @@ app.get('/api/mis/all', requireAuth, requireAdminOrHodOnly, async (req, res) => 
                 if (planIdx < 0 || actualIdx < 0) continue;
                 let stepPending = 0, stepDone = 0;
                 dataRows.forEach(row => {
-                  const planVal = (row[planIdx]||'').trim();
-                  const actualVal = (row[actualIdx]||'').trim();
-                  if (planVal && !actualVal) stepPending++;
-                  if (planVal && actualVal) stepDone++;
+                  const planVal = (row[planIdx]||'').toString().trim();
+                  const actualVal = (row[actualIdx]||'').toString().trim();
+                  if (!planVal) return;
+                  // Date-range filter — only count FMS rows whose plan-date falls in [start, end].
+                  // Mirrors what /api/mis/fms-detail returns so counts and detail stay in sync.
+                  const planDate = parseFmsPlanDate(planVal);
+                  if (!planDate || planDate < start || planDate > end) return;
+                  if (!actualVal) stepPending++;
+                  else stepDone++;
                 });
                 // Distribute counts to each doer (har doer ko poora count attribute karte hain — shared work)
                 step.doerIds.forEach(uid => {
@@ -2966,7 +2971,9 @@ app.get('/api/mis/fms-detail', requireAuth, requireAdminOrHodOnly, async (req, r
     if (!userId || !start || !end || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
       return res.status(400).json({ error: 'userId, start, end (YYYY-MM-DD) required' });
     }
-    const tasks = await fmsTasksForUserInRange(parseInt(userId), start, end);
+    // Date filter ON so the drill-down rows match the aggregate counts shown
+    // on the Race Tracker / MIS card (both filter by plan-date in [start, end]).
+    const tasks = await fmsTasksForUserInRange(parseInt(userId), start, end, { applyDateFilter: true });
     res.json({ tasks });
   } catch (err) {
     console.error('mis/fms-detail error:', err);
