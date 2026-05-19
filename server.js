@@ -2875,9 +2875,12 @@ function parseFmsPlanDate(val) {
 
 // FMS rows for the caller within a date window (planned date in [start, end]).
 // Reads each fms_sheet the user is a doer in; safe for non-FMS users (returns []).
-// Core: FMS rows for ONE user whose planned-date falls in [start, end].
-// Reads the user's assigned sheets via Google Sheets API.
-async function fmsTasksForUserInRange(uid, start, end) {
+// Core: FMS rows for ONE user. By default returns every row in their assigned
+// sheets where the plan column is filled (matches /api/mis/all aggregate counts).
+// Pass { applyDateFilter: true } to restrict to rows whose plan-date falls in
+// [start, end] — used by the Monday check-in last-week view.
+async function fmsTasksForUserInRange(uid, start, end, opts = {}) {
+  const applyDateFilter = opts.applyDateFilter === true;
   const [doerSteps] = await db.query(
     `SELECT fs.id AS step_id, fs.step_name, fs.fms_id, fs.plan_col, fs.actual_col,
             fsh.fms_name, fsh.sheet_name, fsh.sheet_id, fsh.header_row
@@ -2921,14 +2924,14 @@ async function fmsTasksForUserInRange(uid, start, end) {
           const planVal = (row[planIdx] || '').toString().trim();
           if (!planVal) return;
           const planDate = parseFmsPlanDate(planVal);
-          if (!planDate || planDate < start || planDate > end) return;
+          if (applyDateFilter && (!planDate || planDate < start || planDate > end)) return;
           const actualVal = actualIdx >= 0 ? (row[actualIdx] || '').toString().trim() : '';
           tasks.push({
             fmsName: sheet.fms_name || sheet.sheet_name,
             stepName: step.step_name,
             planValue: planVal,
             actualValue: actualVal,
-            planDate,
+            planDate: planDate || '',
             status: actualVal ? 'completed' : 'pending',
             rowNumber: headerRowIdx + 1 + i + 1
           });
@@ -2946,7 +2949,8 @@ app.get('/api/my-week-fms-tasks', requireAuth, async (req, res) => {
     if (!start || !end || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
       return res.status(400).json({ error: 'start, end (YYYY-MM-DD) required' });
     }
-    const tasks = await fmsTasksForUserInRange(req.session.userId, start, end);
+    // Monday check-in cares about last-week-only rows — keep the date filter on.
+    const tasks = await fmsTasksForUserInRange(req.session.userId, start, end, { applyDateFilter: true });
     res.json({ tasks });
   } catch (err) {
     console.error('my-week-fms-tasks error:', err);
