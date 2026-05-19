@@ -6066,10 +6066,12 @@ async function openAllMISDetail(userId, userName) {
   const start = document.getElementById('misStart').value;
   const end   = document.getElementById('misEnd').value;
 
-  // Fetch task details for both types
-  const [delDetail, chlDetail] = await Promise.all([
+  // Fetch task details for delegation, checklist, AND FMS in parallel.
+  const fmsExpected = emp.fms && emp.fms.total > 0;
+  const [delDetail, chlDetail, fmsDetail] = await Promise.all([
     emp.delegation.total > 0 ? api(`/api/mis/detail?userId=${userId}&type=delegation&start=${start}&end=${end}`) : Promise.resolve({ tasks: [] }),
-    emp.checklist.total > 0  ? api(`/api/mis/detail?userId=${userId}&type=checklist&start=${start}&end=${end}`)  : Promise.resolve({ tasks: [] })
+    emp.checklist.total > 0  ? api(`/api/mis/detail?userId=${userId}&type=checklist&start=${start}&end=${end}`)  : Promise.resolve({ tasks: [] }),
+    fmsExpected              ? api(`/api/mis/fms-detail?userId=${userId}&start=${start}&end=${end}`)             : Promise.resolve({ tasks: [] })
   ]);
 
   const today = new Date().toISOString().split('T')[0];
@@ -6123,11 +6125,25 @@ async function openAllMISDetail(userId, userName) {
     ${fms.total > 0 ? `
     <div style="margin-top:16px;border-top:1px solid #f1f5f9;padding-top:12px">
       <div style="font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:8px">📊 FMS (${fms.total} entries) — Completion: ${fms.score !== null ? fms.score.toFixed(1) : 0}%</div>
-      <div style="display:flex;gap:14px;font-size:12px;flex-wrap:wrap;padding:8px 10px;background:#faf5ff;border-radius:8px">
+      <div style="display:flex;gap:14px;font-size:12px;flex-wrap:wrap;padding:8px 10px;background:#faf5ff;border-radius:8px;margin-bottom:10px">
         <span>Total entries: <strong>${fms.total}</strong></span>
         <span style="color:#10b981">Done: <strong>${fms.done}</strong></span>
         <span style="color:#ef4444">Pending: <strong>${fms.pending}</strong></span>
       </div>
+      ${(fmsDetail.tasks && fmsDetail.tasks.length) ? `
+      <div style="overflow-x:auto">
+        <table style="font-size:12px;width:100%">
+          <thead><tr><th>FMS — Step</th><th>Planned</th><th>Actual</th><th>Status</th></tr></thead>
+          <tbody>${fmsDetail.tasks.map(t => `
+            <tr>
+              <td style="font-size:12px"><div style="font-weight:600;color:#0f172a">${dtEscape(t.fmsName || '')}</div><div style="color:#64748b;font-size:11px;margin-top:2px">↳ ${dtEscape(t.stepName || '')}</div></td>
+              <td style="color:#475569;font-size:11px;white-space:nowrap">${dtEscape(t.planValue || '—')}</td>
+              <td style="color:${t.actualValue ? '#16a34a' : '#94a3b8'};font-size:11px;white-space:nowrap">${dtEscape(t.actualValue || '—')}</td>
+              <td><span class="status-badge ${t.status}">${t.status === 'completed' ? 'Done' : 'Pending'}</span></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : '<div style="color:#94a3b8;font-size:12px;padding:6px 10px">No FMS rows to show.</div>'}
     </div>` : ''}`;
 
   // Reuse existing misDetailBody (blank it since we put everything in score div)
