@@ -1253,7 +1253,7 @@ tbody tr:last-child td{border-bottom:none;}
         <div class="tab" id="tasksTabFMS" onclick="tasksTab('fms',this)">FMS Tasks</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
-        <!-- PC-only: user filter + date range (desktop only) -->
+        <!-- User filter + date range (desktop only, all roles) -->
         <div id="tasksUserDateFilters" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;">
           <select id="tasksUserFilter" onchange="filterTasks()"
             style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff">
@@ -3672,10 +3672,11 @@ async function loadAllTasks() {
   const dbmTab = document.getElementById('tasksTabDelByMe');
   if (dbmTab) dbmTab.style.display = (isAdmin || isHod || isUser) ? '' : 'none';
 
-  // Admin / PC on desktop: show doer filter + date range
+  // Show doer filter + date range to everyone on desktop (employee dropdown
+  // stays "All Employees" for non-admin/PC since backend scopes to own tasks).
   const filtersDiv = document.getElementById('tasksUserDateFilters');
   if (filtersDiv) {
-    filtersDiv.style.display = ((isAdmin || isPC) && isDesktop) ? 'flex' : 'none';
+    filtersDiv.style.display = isDesktop ? 'flex' : 'none';
   }
 
   // FMS Tasks tab — fetch from the FMS dashboard endpoint and normalize into the same shape
