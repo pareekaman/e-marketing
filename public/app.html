@@ -3553,17 +3553,14 @@ function renderDashTable(tasks, type) {
   }
 
   // Filter by selected type tab + status filter (status comes from stat-card clicks).
-  // Future-dated rule: hide upcoming Checklist tasks (today + overdue only);
-  // Delegation and FMS show their full pipeline including upcoming.
-  const today = new Date().toISOString().split('T')[0];
+  // Backend already caps checklist at today + 10 days and shows delegation/FMS in full —
+  // so we just render whatever it returned, no extra date hide here.
   let allPending = combined.filter(t => {
     const matchType = (!type || type === 'all') ? true : t.type === type;
-    const due = t.due_date || t.date || '';
-    const dueOK = t.type !== 'checklist' || !due || due <= today;
     const matchStatus = dashStatusFilter === 'all' ? true
                       : dashStatusFilter === 'completed' ? t.status === 'completed'
                       : (t.status === 'pending' || !t.status);
-    return matchType && matchStatus && dueOK;
+    return matchType && matchStatus;
   });
   // Apply date sort
   if (_dashDateSortState === 1) {
