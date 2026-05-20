@@ -792,13 +792,13 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
     }
 
     // Stats + Table:
-    //   Delegation: today + earlier (overdue / due today)
+    //   Delegation: ALL dates (matches FMS — no date cap, sab pending dikhane hain)
     //   Checklist : today + next 10 days (upcoming visibility for recurring tasks)
     // PC: agar date range diya hai toh woh use karo (overrides both)
     const usingPCRange = isPC && dateFrom && dateTo;
     const delDateClause = usingPCRange
       ? `AND t.due_date BETWEEN '${dateFrom}' AND '${dateTo}'`
-      : `AND t.due_date <= CURDATE()`;
+      : '';
     const chlDateClause = usingPCRange
       ? `AND t.due_date BETWEEN '${dateFrom}' AND '${dateTo}'`
       : `AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 10 DAY)`;
