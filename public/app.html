@@ -1105,6 +1105,10 @@ tbody tr:last-child td{border-bottom:none;}
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
       <span class="nav-label-text">Leave Tracker</span>
     </div>
+    <div class="nav-item" id="nav-meetings" onclick="navigate('meetings',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+      <span class="nav-label-text">Meetings</span>
+    </div>
     <div class="nav-item" id="nav-clients" style="display:none" onclick="navigate('clients',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
       <span class="nav-label-text">Client Master</span>
@@ -1757,6 +1761,106 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
 
       <div id="lvListWrap" class="lv-list-wrap"><div class="empty">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- ── MEETINGS ── -->
+  <div id="page-meetings" class="page">
+    <div class="page-header" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="font-size:13px;color:#475569;font-weight:600">Date</label>
+        <input type="date" id="mtgDate" onchange="loadMeetingsForDate()"
+          style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;color:#1e293b;background:#fff"/>
+        <button class="btn btn-outline" onclick="mtgShiftDate(-1)" style="padding:6px 12px">←</button>
+        <button class="btn btn-outline" onclick="mtgShiftDate(1)"  style="padding:6px 12px">→</button>
+        <button class="btn btn-outline" onclick="mtgShiftDate(0)"  style="padding:6px 12px">Today</button>
+      </div>
+      <button class="btn btn-primary" onclick="openMeetingModal()">＋ Schedule Meeting</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 360px;gap:16px;margin-top:14px" id="mtgGrid">
+      <!-- Meetings list -->
+      <div class="task-table-card" style="padding:0">
+        <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
+          <div class="card-head-title">Meetings <span id="mtgDateLabel" style="color:#64748b;font-weight:500;font-size:13px"></span></div>
+        </div>
+        <div id="mtgList" style="padding:8px"></div>
+      </div>
+      <!-- Slot grid -->
+      <div class="task-table-card" style="padding:0">
+        <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
+          <div class="card-head-title">Available Slots</div>
+        </div>
+        <div id="mtgSlots" style="padding:12px;display:grid;grid-template-columns:repeat(2,1fr);gap:6px"></div>
+        <div id="mtgSlotsLegend" style="padding:0 12px 12px;font-size:11px;color:#64748b;display:flex;gap:12px;flex-wrap:wrap">
+          <span><span style="display:inline-block;width:10px;height:10px;background:#dcfce7;border:1px solid #86efac;border-radius:2px;vertical-align:middle"></span> Free</span>
+          <span><span style="display:inline-block;width:10px;height:10px;background:#fee2e2;border:1px solid #fca5a5;border-radius:2px;vertical-align:middle"></span> Booked</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Meeting create/edit modal -->
+  <div class="modal-overlay" id="meetingModal">
+    <div class="modal" style="width:640px">
+      <button class="modal-close" onclick="closeModal('meetingModal')">×</button>
+      <h3 id="meetingModalTitle">Schedule Meeting</h3>
+      <input type="hidden" id="mtgEditId" value=""/>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Title *</label>
+          <input type="text" id="mtgTitle" placeholder="e.g. Q2 strategy sync"/>
+        </div>
+        <div class="form-group">
+          <label>Client</label>
+          <select id="mtgClient"><option value="">— None —</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Date *</label>
+          <input type="date" id="mtgFormDate"/>
+        </div>
+        <div class="form-group">
+          <label>Duration</label>
+          <select id="mtgDuration" onchange="mtgRecalcEnd()">
+            <option value="30">30 min</option>
+            <option value="60">60 min</option>
+            <option value="15">15 min</option>
+            <option value="90">90 min</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Start time *</label>
+          <input type="time" id="mtgStart" step="900" onchange="mtgRecalcEnd()"/>
+        </div>
+        <div class="form-group">
+          <label>End time</label>
+          <input type="time" id="mtgEnd" step="900" readonly style="background:#f8fafc"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Attendees (team)</label>
+        <div id="mtgAttendees" style="display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow:auto;padding:8px;border:1.5px solid #e2e8f0;border-radius:8px"></div>
+        <div id="mtgAvailNote" style="font-size:11px;color:#64748b;margin-top:6px"></div>
+      </div>
+      <div class="form-group">
+        <label>Agenda</label>
+        <textarea id="mtgAgenda" rows="3" placeholder="Optional — what's the meeting about?"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Meet link <span style="font-size:11px;color:#64748b">(leave blank for auto Google Meet, if configured)</span></label>
+        <input type="text" id="mtgLink" placeholder="https://meet.google.com/..."/>
+      </div>
+      <div class="modal-footer" style="justify-content:space-between">
+        <button id="mtgDeleteBtn" class="btn btn-outline" style="color:#dc2626;border-color:#fca5a5;display:none" onclick="deleteMeeting()">Cancel Meeting</button>
+        <div style="display:flex;gap:8px;margin-left:auto">
+          <button class="btn btn-outline" onclick="closeModal('meetingModal')">Close</button>
+          <button class="btn btn-primary" onclick="saveMeeting()">Save</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -3061,7 +3165,7 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Meetings'};
 
 function toggleSidebar() {
   const sb = document.getElementById('sidebar');
@@ -3093,7 +3197,8 @@ function navigate(page, el) {
     dashboard: loadDashboard, alltasks: loadAllTasks, users: loadUsers,
     approvals: loadApprovals, fms: loadFMSAdmin, 'fms-tasks': loadFMSTasks,
     daily: loadDailyForm, clients: loadClients, compliance: loadCompliance,
-    dailyreports: loadDailyReports, leaves: loadLeaves, race: loadRaceTracker
+    dailyreports: loadDailyReports, leaves: loadLeaves, race: loadRaceTracker,
+    meetings: loadMeetings
   };
   const loaderFn = pageLoaders[page];
   if (typeof loaderFn === 'function') withPageLoader(loaderFn);
@@ -9496,6 +9601,239 @@ async function loadLeaveApprovals(){
   } catch(e) {
     wrap.innerHTML = `<div class="empty" style="color:#dc2626">⚠️ ${dtEscape(e.message)}</div>`;
   }
+}
+
+// ══════════════════════════════════════════════════════
+// MEETINGS — scheduler page
+// ══════════════════════════════════════════════════════
+let _mtgClientsCache = null;
+let _mtgUsersCache = null;
+let _mtgEditing = null;
+
+function _mtgTodayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+async function loadMeetings() {
+  const dateEl = document.getElementById('mtgDate');
+  if (!dateEl.value) dateEl.value = _mtgTodayIso();
+  await Promise.all([_mtgEnsureClients(), _mtgEnsureUsers()]);
+  await loadMeetingsForDate();
+}
+
+async function _mtgEnsureClients() {
+  if (_mtgClientsCache) return _mtgClientsCache;
+  try { _mtgClientsCache = await api('/api/clients') || []; }
+  catch { _mtgClientsCache = []; }
+  return _mtgClientsCache;
+}
+
+async function _mtgEnsureUsers() {
+  if (_mtgUsersCache) return _mtgUsersCache;
+  try { _mtgUsersCache = await api('/api/users') || []; }
+  catch { _mtgUsersCache = []; }
+  return _mtgUsersCache;
+}
+
+function mtgShiftDate(days) {
+  const dateEl = document.getElementById('mtgDate');
+  if (days === 0) { dateEl.value = _mtgTodayIso(); }
+  else {
+    const d = new Date(dateEl.value || _mtgTodayIso());
+    d.setDate(d.getDate() + days);
+    dateEl.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+  loadMeetingsForDate();
+}
+
+async function loadMeetingsForDate() {
+  const date = document.getElementById('mtgDate').value;
+  if (!date) return;
+  document.getElementById('mtgDateLabel').textContent = `· ${fmtDate(date)}`;
+  const listEl = document.getElementById('mtgList');
+  const slotsEl = document.getElementById('mtgSlots');
+  listEl.innerHTML = '<div class="empty" style="padding:24px">Loading…</div>';
+  slotsEl.innerHTML = '<div style="grid-column:1/-1;color:#94a3b8;text-align:center;padding:12px;font-size:12px">Loading…</div>';
+
+  const [meetings, slotResp] = await Promise.all([
+    api(`/api/meetings?from=${date}&to=${date}`),
+    api(`/api/meetings/slots?date=${date}`)
+  ]);
+
+  // Meetings list
+  if (!Array.isArray(meetings) || !meetings.length) {
+    listEl.innerHTML = '<div class="empty" style="padding:24px">No meetings on this date</div>';
+  } else {
+    listEl.innerHTML = meetings.map(m => {
+      const att = (m.attendees || []).map(a => dtEscape(a.name)).join(', ') || '—';
+      const statusPill = m.status === 'cancelled'
+        ? '<span style="font-size:10px;background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:10px;font-weight:700">CANCELLED</span>'
+        : '';
+      const linkBtn = m.meet_link && m.status !== 'cancelled'
+        ? `<a href="${dtEscape(m.meet_link)}" target="_blank" rel="noopener" class="btn btn-primary" style="padding:4px 10px;font-size:11px">Join</a>` : '';
+      return `<div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;display:flex;flex-direction:column;gap:6px;${m.status==='cancelled'?'opacity:0.55':''}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div>
+            <div style="font-weight:700;color:#0f172a">${dtEscape(m.title)} ${statusPill}</div>
+            <div style="font-size:12px;color:#64748b;margin-top:2px">${m.start_time} – ${m.end_time} · 🏢 ${dtEscape(m.client_name || '—')} · 👤 ${dtEscape(m.organizer_name || '—')}</div>
+            <div style="font-size:12px;color:#475569;margin-top:2px">Team: ${att}</div>
+            ${m.agenda ? `<div style="font-size:12px;color:#475569;margin-top:4px;background:#f8fafc;padding:6px 8px;border-radius:6px">${dtEscape(m.agenda)}</div>` : ''}
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            ${linkBtn}
+            ${m.status !== 'cancelled' ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openMeetingModal(${m.id})">Edit</button>` : ''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Slot grid
+  if (slotResp?.off) {
+    slotsEl.innerHTML = `<div style="grid-column:1/-1;color:#dc2626;text-align:center;padding:24px;font-size:13px;font-weight:600">${slotResp.reason} — no slots</div>`;
+  } else if (!slotResp?.slots?.length) {
+    slotsEl.innerHTML = `<div style="grid-column:1/-1;color:#94a3b8;text-align:center;padding:24px;font-size:12px">No slots</div>`;
+  } else {
+    slotsEl.innerHTML = slotResp.slots.map(s => {
+      const bg = s.booked ? '#fee2e2' : '#dcfce7';
+      const bd = s.booked ? '#fca5a5' : '#86efac';
+      const fg = s.booked ? '#991b1b' : '#166534';
+      const click = s.booked ? '' : `onclick="openMeetingModal(null,'${s.start}')"`;
+      return `<div style="background:${bg};border:1px solid ${bd};color:${fg};padding:6px 8px;border-radius:6px;font-size:12px;font-weight:600;text-align:center;cursor:${s.booked?'not-allowed':'pointer'}" ${click}>${s.start}–${s.end}</div>`;
+    }).join('');
+  }
+}
+
+async function openMeetingModal(id, prefillStart) {
+  _mtgEditing = id || null;
+  document.getElementById('mtgEditId').value = id || '';
+  document.getElementById('meetingModalTitle').textContent = id ? 'Edit Meeting' : 'Schedule Meeting';
+  document.getElementById('mtgDeleteBtn').style.display = id ? 'inline-block' : 'none';
+
+  // Populate dropdowns from cache
+  await Promise.all([_mtgEnsureClients(), _mtgEnsureUsers()]);
+  const clientSel = document.getElementById('mtgClient');
+  clientSel.innerHTML = '<option value="">— None —</option>' +
+    _mtgClientsCache.map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+  const attEl = document.getElementById('mtgAttendees');
+  attEl.innerHTML = _mtgUsersCache.map(u =>
+    `<label style="display:flex;align-items:center;gap:5px;font-size:12px;background:#f1f5f9;padding:4px 8px;border-radius:6px;cursor:pointer">
+       <input type="checkbox" value="${u.id}" data-att/> ${dtEscape(u.name)}
+     </label>`).join('');
+
+  // Default values
+  document.getElementById('mtgTitle').value = '';
+  document.getElementById('mtgAgenda').value = '';
+  document.getElementById('mtgLink').value = '';
+  document.getElementById('mtgFormDate').value = document.getElementById('mtgDate').value || _mtgTodayIso();
+  document.getElementById('mtgStart').value = prefillStart || '10:00';
+  document.getElementById('mtgDuration').value = '30';
+  mtgRecalcEnd();
+
+  if (id) {
+    const m = await api(`/api/meetings/${id}`);
+    if (m && !m.error) {
+      document.getElementById('mtgTitle').value = m.title || '';
+      document.getElementById('mtgAgenda').value = m.agenda || '';
+      document.getElementById('mtgLink').value = m.meet_link || '';
+      document.getElementById('mtgFormDate').value = m.meeting_date || '';
+      document.getElementById('mtgStart').value = m.start_time || '10:00';
+      clientSel.value = m.client_id || '';
+      const dur = (() => {
+        const [sh,sm] = (m.start_time||'10:00').split(':').map(Number);
+        const [eh,em] = (m.end_time||'10:30').split(':').map(Number);
+        return (eh*60+em) - (sh*60+sm);
+      })();
+      const durSel = document.getElementById('mtgDuration');
+      if ([15,30,60,90].includes(dur)) durSel.value = String(dur);
+      mtgRecalcEnd();
+      const attSet = new Set((m.attendees||[]).map(a => String(a.id)));
+      attEl.querySelectorAll('[data-att]').forEach(cb => { cb.checked = attSet.has(cb.value); });
+    }
+  }
+  document.getElementById('meetingModal').classList.add('open');
+  mtgRefreshAvailNote();
+  // Update availability note when attendees change
+  attEl.querySelectorAll('[data-att]').forEach(cb => cb.addEventListener('change', mtgRefreshAvailNote));
+  document.getElementById('mtgFormDate').addEventListener('change', mtgRefreshAvailNote);
+  document.getElementById('mtgStart').addEventListener('change', mtgRefreshAvailNote);
+}
+
+function mtgRecalcEnd() {
+  const start = document.getElementById('mtgStart').value || '10:00';
+  const dur = parseInt(document.getElementById('mtgDuration').value, 10) || 30;
+  const [h,m] = start.split(':').map(Number);
+  const total = h*60 + m + dur;
+  const eh = String(Math.floor(total/60) % 24).padStart(2,'0');
+  const em = String(total % 60).padStart(2,'0');
+  document.getElementById('mtgEnd').value = `${eh}:${em}`;
+}
+
+async function mtgRefreshAvailNote() {
+  const date = document.getElementById('mtgFormDate').value;
+  const start = document.getElementById('mtgStart').value;
+  const end = document.getElementById('mtgEnd').value;
+  const noteEl = document.getElementById('mtgAvailNote');
+  if (!date || !start || !end) { noteEl.textContent = ''; return; }
+  const ids = Array.from(document.querySelectorAll('#mtgAttendees [data-att]:checked')).map(c => c.value);
+  if (!ids.length) { noteEl.textContent = 'Pick attendees to see availability for this slot.'; noteEl.style.color = '#64748b'; return; }
+  try {
+    const r = await api(`/api/meetings/slots?date=${date}&userIds=${ids.join(',')}`);
+    if (r?.off) { noteEl.textContent = `${r.reason} — date unavailable.`; noteEl.style.color = '#dc2626'; return; }
+    // Find slot containing chosen start
+    const slot = (r.slots || []).find(s => s.start === start);
+    if (!slot) { noteEl.textContent = 'Start time outside business hours.'; noteEl.style.color = '#f59e0b'; return; }
+    if (slot.conflictForSelection) {
+      const busyNames = _mtgUsersCache.filter(u => slot.busyUserIds.includes(u.id) && ids.includes(String(u.id))).map(u => u.name);
+      noteEl.textContent = `⚠️ Busy: ${busyNames.join(', ')}`;
+      noteEl.style.color = '#dc2626';
+    } else {
+      noteEl.textContent = '✓ All selected attendees are free.';
+      noteEl.style.color = '#16a34a';
+    }
+  } catch { noteEl.textContent = ''; }
+}
+
+async function saveMeeting() {
+  const id = document.getElementById('mtgEditId').value;
+  const payload = {
+    title: document.getElementById('mtgTitle').value.trim(),
+    agenda: document.getElementById('mtgAgenda').value.trim(),
+    client_id: document.getElementById('mtgClient').value || null,
+    meeting_date: document.getElementById('mtgFormDate').value,
+    start_time: document.getElementById('mtgStart').value,
+    end_time: document.getElementById('mtgEnd').value,
+    meet_link: document.getElementById('mtgLink').value.trim() || null,
+    attendee_ids: Array.from(document.querySelectorAll('#mtgAttendees [data-att]:checked')).map(c => parseInt(c.value, 10))
+  };
+  if (!payload.title || !payload.meeting_date || !payload.start_time || !payload.end_time) {
+    showToast('Title, date, start and end time required');
+    return;
+  }
+  try {
+    const r = id
+      ? await api(`/api/meetings/${id}`, 'PUT', payload)
+      : await api('/api/meetings', 'POST', payload);
+    if (r?.error) { showToast(r.error); return; }
+    showToast(id ? 'Meeting updated · WhatsApp sent' : 'Meeting scheduled · WhatsApp sent');
+    closeModal('meetingModal');
+    document.getElementById('mtgDate').value = payload.meeting_date;
+    loadMeetingsForDate();
+  } catch (e) { showToast('Save failed: ' + e.message); }
+}
+
+async function deleteMeeting() {
+  const id = document.getElementById('mtgEditId').value;
+  if (!id) return;
+  if (!confirm('Cancel this meeting? WhatsApp notification will go out.')) return;
+  try {
+    const r = await api(`/api/meetings/${id}`, 'DELETE');
+    if (r?.error) { showToast(r.error); return; }
+    showToast('Meeting cancelled · WhatsApp sent');
+    closeModal('meetingModal');
+    loadMeetingsForDate();
+  } catch (e) { showToast('Cancel failed: ' + e.message); }
 }
 
 init();

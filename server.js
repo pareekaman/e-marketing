@@ -3043,7 +3043,37 @@ const _clientsTableMigrationsPromise = (async () => {
     INDEX idx_user_date (user_id, entry_date),
     INDEX idx_entry_date (entry_date)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
-  console.log('  ✅ Daily Task tables ready');
+
+  // ── Meetings ────────────────────────────────────────────
+  await sa(`CREATE TABLE IF NOT EXISTS meetings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    agenda TEXT DEFAULT NULL,
+    client_id INT DEFAULT NULL,
+    organizer_id INT NOT NULL,
+    meeting_date DATE NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    meet_link VARCHAR(2048) DEFAULT NULL,
+    status ENUM('scheduled','cancelled','done') DEFAULT 'scheduled',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_date (meeting_date),
+    INDEX idx_organizer (organizer_id),
+    INDEX idx_client (client_id),
+    INDEX idx_status (status)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+  await sa(`CREATE TABLE IF NOT EXISTS meeting_attendees (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    meeting_id INT NOT NULL,
+    user_id INT NOT NULL,
+    UNIQUE KEY uq_meeting_user (meeting_id, user_id),
+    INDEX idx_meeting (meeting_id),
+    INDEX idx_user (user_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+  console.log('  ✅ Daily Task + Meetings tables ready');
 })();
 
 // ── WhatsApp helper (Aumpfy API) ──────────────────────
@@ -4506,6 +4536,341 @@ async function cascadeHolidayDate(dateStr) {
 
   return { deletedChecklist, pushedDelegation };
 }
+
+// ══════════════════════════════════════════════════════
+// MEETINGS — scheduler with WhatsApp + Google Meet hooks
+// ══════════════════════════════════════════════════════
+// All client meeting notifications fan out to this single WhatsApp group.
+// User confirmed (2026-05-21) this group is used for every client.
+const MEETING_CLIENT_GROUP_ID = process.env.MEETING_CLIENT_GROUP_ID || '120363400573269993@g.us';
+// Business hours for slot generation. Sundays + holidays excluded automatically.
+const MEETING_BIZ_HOURS = { startHour: 10, endHour: 19, slotMin: 30 };
+// Google Workspace user to impersonate for Meet link creation via service-account DWD.
+// Leave empty to disable auto-Meet-link (link will be optional manual paste instead).
+const MEETING_GMEET_IMPERSONATE = process.env.GOOGLE_MEET_IMPERSONATE_EMAIL || '';
+
+// Build every slot for a given date, mark booked vs free per attendee set.
+// Returns: [{ start: 'HH:MM', end: 'HH:MM', booked: bool, busyUserIds: [int] }]
+async function buildMeetingSlots(dateStr, userIds = []) {
+  const slots = [];
+  const { startHour, endHour, slotMin } = MEETING_BIZ_HOURS;
+  for (let h = startHour; h < endHour; h++) {
+    for (let m = 0; m < 60; m += slotMin) {
+      const sh = String(h).padStart(2, '0'), sm = String(m).padStart(2, '0');
+      const endMin = m + slotMin;
+      const eh = String(endMin >= 60 ? h + 1 : h).padStart(2, '0');
+      const em = String(endMin % 60).padStart(2, '0');
+      slots.push({ start: `${sh}:${sm}`, end: `${eh}:${em}`, booked: false, busyUserIds: [] });
+    }
+  }
+  // Pull every scheduled meeting on this date and overlap-check against each slot.
+  // For org-wide busy view we look at ALL meetings; the per-user busyUserIds gets
+  // populated from attendee+organizer joins so the UI can show team availability.
+  const [meetings] = await db.query(
+    `SELECT m.id, TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
+            TIME_FORMAT(m.end_time,'%H:%i') AS end_time, m.organizer_id
+     FROM meetings m
+     WHERE m.meeting_date = ? AND m.status = 'scheduled'`,
+    [dateStr]
+  );
+  if (meetings.length) {
+    const mIds = meetings.map(m => m.id);
+    const [attendees] = await db.query(
+      `SELECT meeting_id, user_id FROM meeting_attendees WHERE meeting_id IN (${mIds.map(()=>'?').join(',')})`,
+      mIds
+    );
+    const attByMtg = {};
+    for (const a of attendees) (attByMtg[a.meeting_id] = attByMtg[a.meeting_id] || []).push(a.user_id);
+    for (const m of meetings) {
+      const involved = new Set([m.organizer_id, ...(attByMtg[m.id] || [])]);
+      for (const slot of slots) {
+        // Overlap if slot.start < meeting.end AND slot.end > meeting.start
+        if (slot.start < m.end_time && slot.end > m.start_time) {
+          slot.booked = true;
+          for (const uid of involved) if (!slot.busyUserIds.includes(uid)) slot.busyUserIds.push(uid);
+        }
+      }
+    }
+  }
+  // If specific userIds were requested, narrow "booked" to reflect just those users.
+  // (Organization-wide booked stays as a separate flag in the same payload.)
+  if (userIds.length) {
+    for (const slot of slots) {
+      const conflict = slot.busyUserIds.some(uid => userIds.includes(uid));
+      slot.conflictForSelection = conflict;
+    }
+  }
+  return slots;
+}
+
+// Try to auto-create a Google Meet link via Calendar API + service-account DWD.
+// Returns null on any failure so the caller can fall back to a manual link.
+async function createGoogleMeetLink({ title, dateStr, startTime, endTime, attendeeEmails = [] }) {
+  if (!MEETING_GMEET_IMPERSONATE || !process.env.GOOGLE_CREDENTIALS) return null;
+  try {
+    const { google } = require('googleapis');
+    const creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+    const auth = new google.auth.JWT({
+      email: creds.client_email,
+      key: creds.private_key,
+      scopes: ['https://www.googleapis.com/auth/calendar.events'],
+      subject: MEETING_GMEET_IMPERSONATE
+    });
+    await auth.authorize();
+    const calendar = google.calendar({ version: 'v3', auth });
+    const startIso = `${dateStr}T${startTime}:00+05:30`;
+    const endIso   = `${dateStr}T${endTime}:00+05:30`;
+    const requestId = `meet-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+    const event = await calendar.events.insert({
+      calendarId: 'primary',
+      conferenceDataVersion: 1,
+      requestBody: {
+        summary: title,
+        start: { dateTime: startIso, timeZone: 'Asia/Kolkata' },
+        end:   { dateTime: endIso,   timeZone: 'Asia/Kolkata' },
+        attendees: attendeeEmails.filter(Boolean).map(e => ({ email: e })),
+        conferenceData: { createRequest: { requestId, conferenceSolutionKey: { type: 'hangoutsMeet' } } }
+      }
+    });
+    const link = event.data.hangoutLink || event.data.conferenceData?.entryPoints?.[0]?.uri || null;
+    return link;
+  } catch (err) {
+    console.error('  ⚠️ Google Meet auto-create failed:', err.message);
+    return null;
+  }
+}
+
+function _meetingMsgBody(action, meeting, clientName, organizerName, attendeeNames) {
+  const fmtDate = d => (d || '').split('-').reverse().join('/');
+  const headline = action === 'created' ? '📅 *New Meeting Scheduled*'
+                 : action === 'rescheduled' ? '🔄 *Meeting Rescheduled*'
+                 : '❌ *Meeting Cancelled*';
+  const lines = [
+    headline,
+    '',
+    `*Title:* ${meeting.title}`,
+    `*Client:* ${clientName || '—'}`,
+    `*Date:* ${fmtDate(meeting.meeting_date)}`,
+    `*Time:* ${meeting.start_time} – ${meeting.end_time}`,
+    `*Organizer:* ${organizerName || '—'}`
+  ];
+  if (attendeeNames && attendeeNames.length) lines.push(`*Team:* ${attendeeNames.join(', ')}`);
+  if (meeting.agenda) lines.push('', `*Agenda:* ${meeting.agenda}`);
+  if (action !== 'cancelled' && meeting.meet_link) lines.push('', `*Join:* ${meeting.meet_link}`);
+  return lines.join('\n');
+}
+
+async function sendMeetingNotification(meetingId, action) {
+  try {
+    const [[m]] = await db.query(
+      `SELECT m.id, m.title, m.agenda, m.client_id, m.organizer_id,
+              DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS meeting_date,
+              TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
+              TIME_FORMAT(m.end_time,'%H:%i')   AS end_time,
+              m.meet_link, m.status,
+              c.name AS client_name, u.name AS organizer_name
+       FROM meetings m
+       LEFT JOIN clients c ON m.client_id = c.id
+       LEFT JOIN users   u ON m.organizer_id = u.id
+       WHERE m.id = ?`, [meetingId]);
+    if (!m) return { ok: false, reason: 'meeting not found' };
+    const [atts] = await db.query(
+      `SELECT u.id, u.name, u.phone FROM meeting_attendees ma
+       JOIN users u ON ma.user_id = u.id WHERE ma.meeting_id = ?`, [meetingId]);
+    const body = _meetingMsgBody(action, m, m.client_name, m.organizer_name, atts.map(a => a.name));
+    // Client group fan-out (single shared group, hardcoded).
+    const groupResult = await sendWhatsAppRaw(MEETING_CLIENT_GROUP_ID, body);
+    // Direct WhatsApp to organizer + attendees who have phones.
+    const dmTargets = new Set();
+    const [[org]] = await db.query('SELECT phone FROM users WHERE id=?', [m.organizer_id]);
+    if (org?.phone) dmTargets.add(org.phone);
+    for (const a of atts) if (a.phone) dmTargets.add(a.phone);
+    const dmResults = [];
+    for (const phone of dmTargets) {
+      dmResults.push(await sendWhatsApp(phone, body));
+      await new Promise(r => setTimeout(r, 600));
+    }
+    return { ok: true, group: groupResult, dms: dmResults.length };
+  } catch (err) {
+    console.error('  ⚠️ Meeting notification failed:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+// List meetings (filter by date range / status / organizer).
+app.get('/api/meetings', requireAuth, async (req, res) => {
+  try {
+    const { from, to, status, organizer } = req.query;
+    let where = '1=1', params = [];
+    if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) { where += ' AND m.meeting_date >= ?'; params.push(from); }
+    if (to   && /^\d{4}-\d{2}-\d{2}$/.test(to))   { where += ' AND m.meeting_date <= ?'; params.push(to); }
+    if (status) { where += ' AND m.status = ?'; params.push(status); }
+    if (organizer && organizer !== 'all') { where += ' AND m.organizer_id = ?'; params.push(organizer); }
+    const [rows] = await db.query(
+      `SELECT m.id, m.title, m.agenda, m.client_id, m.organizer_id,
+              DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS meeting_date,
+              TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
+              TIME_FORMAT(m.end_time,'%H:%i')   AS end_time,
+              m.meet_link, m.status, m.created_at,
+              c.name AS client_name, u.name AS organizer_name
+       FROM meetings m
+       LEFT JOIN clients c ON m.client_id = c.id
+       LEFT JOIN users   u ON m.organizer_id = u.id
+       WHERE ${where}
+       ORDER BY m.meeting_date ASC, m.start_time ASC
+       LIMIT 500`, params);
+    if (rows.length) {
+      const ids = rows.map(r => r.id);
+      const [atts] = await db.query(
+        `SELECT ma.meeting_id, ma.user_id, u.name
+         FROM meeting_attendees ma JOIN users u ON ma.user_id = u.id
+         WHERE ma.meeting_id IN (${ids.map(()=>'?').join(',')})`, ids);
+      const byMtg = {};
+      for (const a of atts) (byMtg[a.meeting_id] = byMtg[a.meeting_id] || []).push({ id: a.user_id, name: a.name });
+      for (const r of rows) r.attendees = byMtg[r.id] || [];
+    }
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Slot map for a given date — used by the scheduler UI.
+app.get('/api/meetings/slots', requireAuth, async (req, res) => {
+  try {
+    const date = req.query.date;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return res.status(400).json({ error: 'date=YYYY-MM-DD required' });
+    const userIds = String(req.query.userIds || '')
+      .split(',').map(s => parseInt(s, 10)).filter(n => Number.isFinite(n) && n > 0);
+    // Off-day check (Sunday + holidays) — return empty slots with a reason.
+    const off = await (async () => {
+      try {
+        const holidays = await loadHolidaysSet();
+        const d = new Date(date + 'T00:00:00');
+        if (d.getDay() === 0) return { off: true, reason: 'Sunday' };
+        if (holidays.has(date)) return { off: true, reason: 'Holiday' };
+        return { off: false };
+      } catch { return { off: false }; }
+    })();
+    if (off.off) return res.json({ date, off: true, reason: off.reason, slots: [] });
+    const slots = await buildMeetingSlots(date, userIds);
+    res.json({ date, off: false, slots });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Single meeting detail.
+app.get('/api/meetings/:id', requireAuth, async (req, res) => {
+  try {
+    const [[m]] = await db.query(
+      `SELECT m.id, m.title, m.agenda, m.client_id, m.organizer_id,
+              DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS meeting_date,
+              TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
+              TIME_FORMAT(m.end_time,'%H:%i')   AS end_time,
+              m.meet_link, m.status,
+              c.name AS client_name, u.name AS organizer_name
+       FROM meetings m
+       LEFT JOIN clients c ON m.client_id = c.id
+       LEFT JOIN users   u ON m.organizer_id = u.id
+       WHERE m.id = ?`, [req.params.id]);
+    if (!m) return res.status(404).json({ error: 'not found' });
+    const [atts] = await db.query(
+      `SELECT u.id, u.name, u.email FROM meeting_attendees ma
+       JOIN users u ON ma.user_id = u.id WHERE ma.meeting_id = ?`, [req.params.id]);
+    m.attendees = atts;
+    res.json(m);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Create meeting + notify.
+app.post('/api/meetings', requireAuth, async (req, res) => {
+  try {
+    const { title, agenda, client_id, meeting_date, start_time, end_time, meet_link, attendee_ids } = req.body;
+    if (!title || !meeting_date || !start_time || !end_time) {
+      return res.status(400).json({ error: 'title, meeting_date, start_time, end_time required' });
+    }
+    const organizerId = req.session.userId;
+    // Auto-create Google Meet link if env enabled and caller didn't paste one.
+    let finalLink = meet_link || null;
+    if (!finalLink) {
+      const attEmails = [];
+      const attIdArr = Array.isArray(attendee_ids) ? attendee_ids : [];
+      if (attIdArr.length) {
+        const [emails] = await db.query(
+          `SELECT email FROM users WHERE id IN (${attIdArr.map(()=>'?').join(',')})`, attIdArr);
+        for (const r of emails) if (r.email) attEmails.push(r.email);
+      }
+      finalLink = await createGoogleMeetLink({
+        title, dateStr: meeting_date, startTime: start_time, endTime: end_time,
+        attendeeEmails: attEmails
+      });
+    }
+    const [result] = await db.query(
+      `INSERT INTO meetings (title, agenda, client_id, organizer_id, meeting_date, start_time, end_time, meet_link)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      [title, agenda || null, client_id || null, organizerId, meeting_date, start_time, end_time, finalLink]);
+    const newId = result.insertId;
+    if (Array.isArray(attendee_ids) && attendee_ids.length) {
+      const values = attendee_ids.filter(n => Number.isFinite(parseInt(n))).map(uid => [newId, parseInt(uid)]);
+      if (values.length) {
+        await db.query(
+          `INSERT IGNORE INTO meeting_attendees (meeting_id, user_id) VALUES ${values.map(()=>'(?,?)').join(',')}`,
+          values.flat());
+      }
+    }
+    // Fire-and-forget notification so the request returns fast.
+    sendMeetingNotification(newId, 'created').catch(e => console.error('notify err:', e.message));
+    res.json({ ok: true, id: newId, meet_link: finalLink });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Reschedule / edit meeting + notify.
+app.put('/api/meetings/:id', requireAuth, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { title, agenda, client_id, meeting_date, start_time, end_time, meet_link, attendee_ids } = req.body;
+    const [[existing]] = await db.query('SELECT organizer_id, meeting_date, start_time, end_time FROM meetings WHERE id=?', [id]);
+    if (!existing) return res.status(404).json({ error: 'not found' });
+    // Only organizer or admin can edit.
+    if (existing.organizer_id !== req.session.userId && req.session.role !== 'admin') {
+      return res.status(403).json({ error: 'only organizer or admin can edit' });
+    }
+    const rescheduled = (meeting_date && meeting_date !== String(existing.meeting_date).slice(0,10))
+                    || (start_time && start_time !== String(existing.start_time).slice(0,5))
+                    || (end_time   && end_time   !== String(existing.end_time).slice(0,5));
+    await db.query(
+      `UPDATE meetings SET
+         title=COALESCE(?,title), agenda=?, client_id=?,
+         meeting_date=COALESCE(?,meeting_date),
+         start_time=COALESCE(?,start_time), end_time=COALESCE(?,end_time),
+         meet_link=COALESCE(?,meet_link)
+       WHERE id=?`,
+      [title, agenda || null, client_id || null, meeting_date || null, start_time || null, end_time || null, meet_link || null, id]);
+    if (Array.isArray(attendee_ids)) {
+      await db.query('DELETE FROM meeting_attendees WHERE meeting_id=?', [id]);
+      const values = attendee_ids.filter(n => Number.isFinite(parseInt(n))).map(uid => [id, parseInt(uid)]);
+      if (values.length) {
+        await db.query(
+          `INSERT IGNORE INTO meeting_attendees (meeting_id, user_id) VALUES ${values.map(()=>'(?,?)').join(',')}`,
+          values.flat());
+      }
+    }
+    sendMeetingNotification(id, rescheduled ? 'rescheduled' : 'created').catch(e => console.error('notify err:', e.message));
+    res.json({ ok: true, rescheduled });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Cancel (soft) — status flips to cancelled, notification fires.
+app.delete('/api/meetings/:id', requireAuth, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const [[existing]] = await db.query('SELECT organizer_id FROM meetings WHERE id=?', [id]);
+    if (!existing) return res.status(404).json({ error: 'not found' });
+    if (existing.organizer_id !== req.session.userId && req.session.role !== 'admin') {
+      return res.status(403).json({ error: 'only organizer or admin can cancel' });
+    }
+    await db.query("UPDATE meetings SET status='cancelled' WHERE id=?", [id]);
+    sendMeetingNotification(id, 'cancelled').catch(e => console.error('notify err:', e.message));
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 // Auth check is handled client-side via /api/me in init() — removing server-side
