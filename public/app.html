@@ -10225,6 +10225,10 @@ async function openMeetingModal(id, prefillStart) {
   const clientSel = document.getElementById('mtgClient');
   clientSel.innerHTML = '<option value="">— None —</option>' +
     _mtgClientsCache.map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+  // Explicit reset — browsers retain the previously-selected <select> .value
+  // across innerHTML rebuilds if the new option list still contains it, so a
+  // brand-new meeting was silently inheriting the last-picked client.
+  clientSel.value = '';
   const attEl = document.getElementById('mtgAttendees');
   attEl.innerHTML = _mtgUsersCache.map(u =>
     `<label data-att-row style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0;margin-bottom:0;padding:6px 10px;border-radius:6px;cursor:pointer;color:#1e293b" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">
