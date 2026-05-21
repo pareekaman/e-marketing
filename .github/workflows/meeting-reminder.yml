@@ -1,0 +1,31 @@
+name: Meeting reminder
+
+# Vercel Hobby plan only allows daily crons, so the every-5-minute reminder
+# ping for upcoming meetings runs from GitHub Actions instead. The endpoint
+# is idempotent (reminder_sent flag prevents double-sends), so duplicate
+# triggers are harmless.
+
+on:
+  schedule:
+    # Every 5 minutes. GitHub Actions cron is best-effort; meetings table
+    # widens the trigger window to 6-14 min before start so each meeting
+    # is caught at least once.
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}  # allow manual fire from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Hit meeting-reminder endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL:     ${{ secrets.APP_URL }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "APP_URL secret not set — skipping"; exit 0
+          fi
+          curl --silent --show-error --fail-with-body \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL%/}/api/cron/meeting-reminder"

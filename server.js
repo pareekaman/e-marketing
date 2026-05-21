@@ -3685,16 +3685,16 @@ app.get('/api/cron/daily-reminder', async (req, res) => {
   }
 });
 
-// ── 10-min pre-meeting reminder. Vercel Cron hits this every minute. ──
+// ── 10-min pre-meeting reminder. Hit by an external cron (GitHub Actions, 5-min
+// schedule) since the Vercel Hobby plan only allows daily crons. ──
 async function sendMeetingReminders() {
-  // Compute IST window: meetings starting between (now+9min) and (now+11min)
-  // so we never miss the trigger window even if cron fires at minute boundary.
+  // External cron fires every 5 min, so the window is widened (6-14 min) to
+  // guarantee each meeting is caught at least once. reminder_sent flag stops
+  // duplicate sends within the window.
   const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
   const today = istNow.toISOString().split('T')[0];
   const totalNow = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
-  const minLow  = totalNow + 9, minHigh = totalNow + 11;
-  // Wrap-around (e.g. 23:55 + 10 = next day): skip wrap — reminders only fire
-  // for "today" meetings since FY meetings are scheduled in business hours.
+  const minLow  = totalNow + 6, minHigh = totalNow + 14;
   if (minHigh > 24 * 60) return { ok: true, skipped: 'late-night window' };
   const lowH = String(Math.floor(minLow / 60)).padStart(2,'0') + ':' + String(minLow % 60).padStart(2,'0') + ':00';
   const highH = String(Math.floor(minHigh / 60)).padStart(2,'0') + ':' + String(minHigh % 60).padStart(2,'0') + ':00';
