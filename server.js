@@ -916,8 +916,21 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
     const isAdmin = req.session.role === 'admin';
     const isHod   = req.session.role === 'hod';
     const isUser  = req.session.role === 'user';
-    // Admin, HOD and regular users can all assign to others; fallback to self if not specified
-    const targetUser = (isAdmin || isHod || isUser) && assignedTo ? parseInt(assignedTo) : req.session.userId;
+    const isClient = req.session.role === 'client';
+    // Clients can only assign to their handler. Resolve from clients table.
+    let targetUser;
+    let enforcedClientId = clientIdInt;
+    if (isClient) {
+      const [[me]] = await db.query('SELECT client_id FROM users WHERE id=? LIMIT 1', [req.session.userId]);
+      if (!me?.client_id) return res.status(403).json({ error: 'Client portal: no linked client' });
+      const [[c]] = await db.query('SELECT handler_id FROM clients WHERE id=? LIMIT 1', [me.client_id]);
+      if (!c?.handler_id) return res.status(400).json({ error: 'Your client does not have a handler assigned yet — contact admin' });
+      targetUser = c.handler_id;
+      enforcedClientId = me.client_id; // force tag the task to client's own id
+    } else {
+      // Admin, HOD and regular users can all assign to others; fallback to self if not specified
+      targetUser = (isAdmin || isHod || isUser) && assignedTo ? parseInt(assignedTo) : req.session.userId;
+    }
     if (!desc || !date) return res.status(400).json({ error: 'Description and date required' });
 
     // Holiday / week-off check — auto-adjust due_date if needed
@@ -953,7 +966,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
           if (aprRows.length) assignedBy = aprRows[0].id;
         }
       }
-      await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url) VALUES (?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, 'pending', priority||'low', approval||'no', remarks||'', clientIdInt, url||null]);
+      await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url) VALUES (?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null]);
       // 📧 Send delegation email + 📱 WhatsApp (non-blocking — fire and forget)
       (async () => {
         const target = await getNotifyTarget(targetUser);
@@ -991,7 +1004,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         } catch (e) { console.error('WA delegation lookup err:', e.message); }
       })();
     } else {
-      await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks,client_id) VALUES (?,?,?,?,?,?,?,?)`, [desc, targetUser, req.session.userId, effectiveDate, 'pending', priority||'low', remarks||'', clientIdInt]);
+      await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks,client_id) VALUES (?,?,?,?,?,?,?,?)`, [desc, targetUser, req.session.userId, effectiveDate, 'pending', priority||'low', remarks||'', enforcedClientId]);
     }
     res.json({ success: true, adjusted, effectiveDate, adjustedReason });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -3034,6 +3047,12 @@ const _clientsTableMigrationsPromise = (async () => {
   // default doer in the "Delegate Task" shortcut on the Client Master row.
   await sa(`ALTER TABLE clients ADD COLUMN handler_id INT DEFAULT NULL AFTER name`);
   await sa(`ALTER TABLE clients ADD INDEX idx_handler (handler_id)`);
+  // Allow "client" as a login role + back-link users to clients so the client
+  // portal can resolve "my client" from the session.
+  await sa(`ALTER TABLE users MODIFY COLUMN role ENUM('admin','hod','pc','user','client') DEFAULT 'user'`);
+  await sa(`ALTER TABLE users MODIFY COLUMN user_role ENUM('admin','hod','pc','user','client') DEFAULT NULL`);
+  await sa(`ALTER TABLE users ADD COLUMN client_id INT DEFAULT NULL AFTER extra_access`);
+  await sa(`ALTER TABLE users ADD INDEX idx_client (client_id)`);
 
   await sa(`CREATE TABLE IF NOT EXISTS daily_tasks (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -3665,6 +3684,49 @@ app.get('/api/cron/daily-reminder', async (req, res) => {
 // ══════════════════════════════════════════════════════
 // CLIENTS — admin manages, everyone reads
 // ══════════════════════════════════════════════════════
+// Client portal — only callable by users with role='client'. Returns the
+// linked client info + handler + all tasks (delegation + checklist) tagged
+// to that client.
+app.get('/api/client-portal/me', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
+    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
+    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const [[c]] = await db.query(
+      `SELECT c.id, c.name, c.handler_id, u.name AS handler_name, u.email AS handler_email
+       FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [u.client_id]);
+    res.json(c || null);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/client-portal/tasks', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
+    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
+    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const cid = u.client_id;
+    const [delegation] = await db.query(
+      `SELECT t.id, 'delegation' AS type, t.description, t.status, t.priority,
+              COALESCE(t.waiting_approval,0) AS waiting_approval, t.remarks, t.url,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              u1.name AS assignedToName, COALESCE(u2.name,'—') AS assignedByName
+       FROM delegation_tasks t
+       JOIN users u1 ON t.assigned_to=u1.id
+       LEFT JOIN users u2 ON t.assigned_by=u2.id
+       WHERE t.client_id=? ORDER BY t.due_date DESC LIMIT 500`, [cid]);
+    const [checklist] = await db.query(
+      `SELECT t.id, 'checklist' AS type, t.description, t.status, t.priority,
+              0 AS waiting_approval, t.remarks, NULL AS url,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              u1.name AS assignedToName, COALESCE(u2.name,'—') AS assignedByName
+       FROM checklist_tasks t
+       JOIN users u1 ON t.assigned_to=u1.id
+       LEFT JOIN users u2 ON t.assigned_by=u2.id
+       WHERE t.client_id=? ORDER BY t.due_date DESC LIMIT 500`, [cid]);
+    res.json([...delegation, ...checklist]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/clients', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -3680,10 +3742,33 @@ app.post('/api/clients', requireAuth, requireAdminOrPC, async (req, res) => {
     const name = (req.body.name || '').trim();
     const handlerRaw = req.body.handler_id;
     const handlerId = handlerRaw == null || handlerRaw === '' ? null : parseInt(handlerRaw, 10);
+    const loginEmail = (req.body.login_email || '').trim().toLowerCase();
+    const loginPassword = req.body.login_password || '';
     if (!name) return res.status(400).json({ error: 'Client name required' });
-    await db.query('INSERT INTO clients (name, handler_id) VALUES (?, ?)',
+    // Provisioning a login is optional. If asked, both fields must be present.
+    if ((loginEmail && !loginPassword) || (!loginEmail && loginPassword)) {
+      return res.status(400).json({ error: 'Both login email and password required to provision client login' });
+    }
+    const [r] = await db.query('INSERT INTO clients (name, handler_id) VALUES (?, ?)',
       [name, Number.isFinite(handlerId) ? handlerId : null]);
-    res.json({ success: true });
+    const newClientId = r.insertId;
+    if (loginEmail && loginPassword) {
+      try {
+        const hash = bcrypt.hashSync(loginPassword, 10);
+        await db.query(
+          `INSERT INTO users (name, email, password, role, user_role, client_id)
+           VALUES (?, ?, ?, 'client', 'client', ?)`,
+          [name, loginEmail, hash, newClientId]);
+      } catch (e) {
+        // Client row was created — surface auth provisioning error separately so
+        // admin knows the client exists but login was not set up.
+        return res.status(201).json({
+          success: true, client_id: newClientId,
+          warning: e.code === 'ER_DUP_ENTRY' ? 'Client added but login email already in use' : 'Client added but login provisioning failed: ' + e.message
+        });
+      }
+    }
+    res.json({ success: true, client_id: newClientId });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Client already exists' });
     res.status(500).json({ error: err.message });

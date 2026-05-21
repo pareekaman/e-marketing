@@ -1109,6 +1109,10 @@ tbody tr:last-child td{border-bottom:none;}
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
       <span class="nav-label-text">Meetings</span>
     </div>
+    <div class="nav-item" id="nav-client-portal" style="display:none" onclick="navigate('client-portal',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+      <span class="nav-label-text">My Portal</span>
+    </div>
     <div class="nav-item" id="nav-clients" style="display:none" onclick="navigate('clients',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
       <span class="nav-label-text">Client Master</span>
@@ -1615,6 +1619,20 @@ tbody tr:last-child td{border-bottom:none;}
         <label>Handler (account manager)</label>
         <select id="cmFormHandler"><option value="">— None —</option></select>
       </div>
+      <div style="margin:14px 0 10px;padding:10px 12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px">
+        <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Client Login (optional)</div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px">Fill both fields if this client should be able to log in to their own portal. Leave blank to skip.</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Login Email</label>
+            <input type="email" id="cmFormLoginEmail" placeholder="client@example.com" autocomplete="off"/>
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="text" id="cmFormLoginPassword" placeholder="Set a password" autocomplete="off"/>
+          </div>
+        </div>
+      </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal('clientAddModal')">Cancel</button>
         <button class="btn btn-primary" onclick="cmAdd()">Save</button>
@@ -1781,6 +1799,82 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
 
       <div id="lvListWrap" class="lv-list-wrap"><div class="empty">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- ── CLIENT PORTAL — only role='client' lands here ── -->
+  <div id="page-client-portal" class="page">
+    <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);padding:20px 24px;border-radius:12px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+      <div>
+        <div id="cpHeading" style="font-size:20px;font-weight:700;color:#0f172a">Welcome</div>
+        <div id="cpSubline" style="font-size:13px;color:#475569;margin-top:4px">Loading…</div>
+      </div>
+      <button class="btn btn-primary" onclick="cpOpenDelegate()">＋ New Task for Handler</button>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <div class="tab-group" id="cpStatusTabGroup">
+        <div class="tab" id="cpTabAll" onclick="cpFilterStatus('all',this)">All</div>
+        <div class="tab active" id="cpTabPending" onclick="cpFilterStatus('pending',this)">Pending</div>
+        <div class="tab" id="cpTabCompleted" onclick="cpFilterStatus('completed',this)">Completed</div>
+      </div>
+    </div>
+
+    <div class="task-table-card" style="padding:0">
+      <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
+        <div class="card-head-title">My Tasks</div>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="min-width:680px;width:100%">
+          <thead><tr>
+            <th style="white-space:nowrap">Type</th>
+            <th>Description</th>
+            <th>Doer</th>
+            <th>Date</th>
+            <th>Status</th>
+          </tr></thead>
+          <tbody id="cpTaskBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Client-portal delegate modal: doer is locked to the handler -->
+  <div class="modal-overlay" id="clientDelegateModal">
+    <div class="modal" style="width:520px">
+      <button class="modal-close" onclick="closeModal('clientDelegateModal')">×</button>
+      <h3>＋ Assign Task to Your Handler</h3>
+      <div class="alert error" id="cpDelErr" style="display:none"></div>
+      <div class="form-group">
+        <label>Handler (auto-assigned)</label>
+        <input type="text" id="cpDelHandler" readonly style="background:#f8fafc;color:#475569;font-weight:600"/>
+      </div>
+      <div class="form-group">
+        <label>Description *</label>
+        <textarea id="cpDelDesc" rows="3" placeholder="What needs to be done?"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Due Date *</label>
+          <input type="date" id="cpDelDate"/>
+        </div>
+        <div class="form-group">
+          <label>Priority</label>
+          <select id="cpDelPriority">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Remarks</label>
+        <textarea id="cpDelRemarks" rows="2" placeholder="Optional notes"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('clientDelegateModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="cpSaveDelegate()">Send to Handler</button>
+      </div>
     </div>
   </div>
 
@@ -3058,7 +3152,7 @@ async function init() {
     if (!ME || !ME.id) { window.location.replace('/'); return; }
     const initials = ME.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
     document.getElementById('sidebarName').textContent = ME.name;
-    const roleLabel = ME.role==='admin' ? '👑 Admin' : ME.role==='hod' ? '🏢 HOD' : ME.role==='pc' ? '🖥️ PC' : '👤 Employee';
+    const roleLabel = ME.role==='admin' ? '👑 Admin' : ME.role==='hod' ? '🏢 HOD' : ME.role==='pc' ? '🖥️ PC' : ME.role==='client' ? '🏢 Client' : '👤 Employee';
     document.getElementById('sidebarRole').textContent = roleLabel;
     document.getElementById('pName').value = ME.name;
     document.getElementById('pEmail').value = ME.email;
@@ -3122,6 +3216,16 @@ async function init() {
       } catch { fmsNav.style.display = 'none'; }
     })();
     setMinDates();
+    // Client role: hide everything except the client portal nav + auto-route there.
+    // No badges, no Monday check-in, no dashboard loaders for clients.
+    if (ME.role === 'client') {
+      document.querySelectorAll('.sidebar .nav-item').forEach(n => { n.style.display = 'none'; });
+      const cpNav = document.getElementById('nav-client-portal');
+      if (cpNav) cpNav.style.display = 'flex';
+      // Hide the profile nav too — clients don't need profile management here.
+      navigate('client-portal', cpNav);
+      return;
+    }
     loadDashboard();
     loadApprovalBadge();
     loadTransferBadge();
@@ -3198,7 +3302,7 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Meetings'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Meetings','client-portal':'🏢 My Portal'};
 
 function toggleSidebar() {
   const sb = document.getElementById('sidebar');
@@ -3231,7 +3335,7 @@ function navigate(page, el) {
     approvals: loadApprovals, fms: loadFMSAdmin, 'fms-tasks': loadFMSTasks,
     daily: loadDailyForm, clients: loadClients, compliance: loadCompliance,
     dailyreports: loadDailyReports, leaves: loadLeaves, race: loadRaceTracker,
-    meetings: loadMeetings
+    meetings: loadMeetings, 'client-portal': loadClientPortal
   };
   const loaderFn = pageLoaders[page];
   if (typeof loaderFn === 'function') withPageLoader(loaderFn);
@@ -8528,6 +8632,8 @@ function cmOpenAddModal() {
   // Reset form, populate handler list from cached users, open.
   document.getElementById('cmAddErr').style.display = 'none';
   document.getElementById('cmFormName').value = '';
+  document.getElementById('cmFormLoginEmail').value = '';
+  document.getElementById('cmFormLoginPassword').value = '';
   const handlerSel = document.getElementById('cmFormHandler');
   handlerSel.innerHTML = '<option value="">— None —</option>' +
     CM_USERS.map(u => `<option value="${u.id}">${dtEscape(u.name)}</option>`).join('');
@@ -8568,7 +8674,6 @@ function cmRenderList(){
           </div>
         </div>
         <div class="cm-client-actions">
-          <button class="cm-btn-primary" style="padding:5px 12px;font-size:12px" onclick="event.stopPropagation();cmOpenDelegate(${c.id})">＋ Delegate</button>
           <button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>
           <span class="cm-client-arrow">▼</span>
         </div>
@@ -8578,12 +8683,6 @@ function cmRenderList(){
   wrap.innerHTML = html;
 }
 
-// Open the existing Delegate modal pre-filled with this client (and its handler as default doer).
-function cmOpenDelegate(clientId) {
-  const client = CM_ALL.find(c => c.id === clientId);
-  if (!client) return;
-  openDelegate({ clientId, doerId: client.handler_id || null });
-}
 
 function cmFilter(){ cmRenderList(); }
 
@@ -8669,11 +8768,18 @@ async function cmAdd(){
   err.style.display = 'none';
   const name = document.getElementById('cmFormName').value.trim();
   const handler_id = document.getElementById('cmFormHandler').value || null;
+  const login_email = document.getElementById('cmFormLoginEmail').value.trim();
+  const login_password = document.getElementById('cmFormLoginPassword').value;
   if (!name) { err.textContent = 'Client name required'; err.style.display = 'block'; return; }
+  if ((login_email && !login_password) || (!login_email && login_password)) {
+    err.textContent = 'Fill both login email and password, or leave both blank';
+    err.style.display = 'block'; return;
+  }
   try {
-    const r = await api('/api/clients', 'POST', { name, handler_id });
+    const r = await api('/api/clients', 'POST', { name, handler_id, login_email, login_password });
     if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
-    showToast('✅ Client added');
+    if (r.warning) showToast(r.warning);
+    else showToast(login_email ? '✅ Client added with login' : '✅ Client added');
     closeModal('clientAddModal');
     loadClients();
   } catch(e) {
@@ -9698,6 +9804,104 @@ async function loadLeaveApprovals(){
   } catch(e) {
     wrap.innerHTML = `<div class="empty" style="color:#dc2626">⚠️ ${dtEscape(e.message)}</div>`;
   }
+}
+
+// ══════════════════════════════════════════════════════
+// CLIENT PORTAL — only role='client' sees this
+// ══════════════════════════════════════════════════════
+let _cpTasks = [];
+let _cpMe = null;
+let _cpStatusFilter = 'pending';
+
+async function loadClientPortal() {
+  try {
+    const [me, tasks] = await Promise.all([
+      api('/api/client-portal/me'),
+      api('/api/client-portal/tasks')
+    ]);
+    _cpMe = me || {};
+    _cpTasks = Array.isArray(tasks) ? tasks : [];
+    document.getElementById('cpHeading').textContent = `🏢 ${_cpMe.name || 'Client'}`;
+    const handlerText = _cpMe.handler_name
+      ? `Your handler: <strong>${dtEscape(_cpMe.handler_name)}</strong>${_cpMe.handler_email ? ` · ${dtEscape(_cpMe.handler_email)}` : ''}`
+      : '⚠️ No handler assigned yet — contact admin before delegating tasks.';
+    document.getElementById('cpSubline').innerHTML = handlerText;
+    cpRenderTable();
+  } catch(e) {
+    document.getElementById('cpSubline').textContent = 'Failed to load portal: ' + (e.message || 'error');
+  }
+}
+
+function cpFilterStatus(status, el) {
+  _cpStatusFilter = status;
+  document.querySelectorAll('#cpStatusTabGroup .tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  cpRenderTable();
+}
+
+function cpRenderTable() {
+  const tbody = document.getElementById('cpTaskBody');
+  let rows = _cpTasks;
+  if (_cpStatusFilter === 'pending') {
+    rows = rows.filter(t => t.status === 'pending' || t.status === 'revised');
+  } else if (_cpStatusFilter === 'completed') {
+    rows = rows.filter(t => t.status === 'completed');
+  }
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty" style="padding:24px">No tasks yet</td></tr>`;
+    return;
+  }
+  const typeBadge = t => t.type === 'checklist'
+    ? `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ Checklist</span>`
+    : `<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bfdbfe">📋 Delegation</span>`;
+  const statusBadge = t => {
+    if (t.status === 'completed') return `<span style="font-size:11px;color:#16a34a;font-weight:700;background:#dcfce7;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0">✅ Done</span>`;
+    if (t.status === 'revised')   return `<span style="font-size:11px;color:#9d174d;font-weight:700;background:#fce7f3;padding:3px 8px;border-radius:6px;border:1px solid #fbcfe8">🔄 Revised</span>`;
+    return `<span style="font-size:11px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:3px 8px;border-radius:6px;border:1px solid #fca5a5">⏳ Pending</span>`;
+  };
+  tbody.innerHTML = rows.sort((a,b) => (b.due_date||'').localeCompare(a.due_date||'')).map(t => `
+    <tr>
+      <td style="white-space:nowrap">${typeBadge(t)}</td>
+      <td>${dtEscape(t.description || '')}</td>
+      <td>${dtEscape(t.assignedToName || '—')}</td>
+      <td style="white-space:nowrap">${fmtDate(t.due_date || '')}</td>
+      <td>${statusBadge(t)}</td>
+    </tr>`).join('');
+}
+
+function cpOpenDelegate() {
+  if (!_cpMe?.handler_id) {
+    showToast('No handler assigned — contact admin', 'error');
+    return;
+  }
+  document.getElementById('cpDelErr').style.display = 'none';
+  document.getElementById('cpDelHandler').value = _cpMe.handler_name || '';
+  document.getElementById('cpDelDesc').value = '';
+  document.getElementById('cpDelRemarks').value = '';
+  document.getElementById('cpDelPriority').value = 'low';
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('cpDelDate').value = today;
+  document.getElementById('cpDelDate').min = today;
+  document.getElementById('clientDelegateModal').classList.add('open');
+}
+
+async function cpSaveDelegate() {
+  const err = document.getElementById('cpDelErr');
+  err.style.display = 'none';
+  const desc = document.getElementById('cpDelDesc').value.trim();
+  const date = document.getElementById('cpDelDate').value;
+  const priority = document.getElementById('cpDelPriority').value;
+  const remarks = document.getElementById('cpDelRemarks').value.trim();
+  if (!desc) { err.textContent = 'Description required'; err.style.display = 'block'; return; }
+  if (!date) { err.textContent = 'Due date required'; err.style.display = 'block'; return; }
+  // Server forces assignedTo=handler and client_id=our client; we just send the rest.
+  const r = await api('/api/tasks', 'POST', {
+    type: 'delegation', desc, date, priority, remarks, approval: 'no'
+  });
+  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+  showToast('✅ Task sent to your handler');
+  closeModal('clientDelegateModal');
+  loadClientPortal();
 }
 
 // ══════════════════════════════════════════════════════
