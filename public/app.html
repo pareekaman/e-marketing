@@ -3661,12 +3661,18 @@ function renderDashTable(tasks, type) {
       : '';
     const isDeleg = t.type === 'delegation';
     const isCompleted = t.status === 'completed';
+    const isRevised = t.status === 'revised';
+    const revisedBadge = isRevised
+      ? `<span style="font-size:10px;color:#9d174d;font-weight:700;background:#fce7f3;padding:2px 8px;border-radius:10px;border:1px solid #fbcfe8;margin-right:6px">🔄 Revised</span>`
+      : '';
     const actionCell = isCompleted
       ? `<span style="font-size:11px;color:#16a34a;font-weight:700;background:#dcfce7;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0">✅ Completed</span>`
       : (t.waiting_approval==1 ? `
+          ${revisedBadge}
           <span style="font-size:11px;color:#f59e0b;font-weight:600">⏳ Waiting Approval</span>
           ${(!isPC || t.type==='checklist') ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>` : ''}
         ` : `
+          ${revisedBadge}
           ${(!isPC || t.type==='checklist') ? `<button class="action-btn done" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>` : ''}
           ${(!isPC && t.type!=='checklist') ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${t.type}')">Revise</button>` : ''}
         `);
@@ -3987,7 +3993,7 @@ function _buildTaskRowHtml(t, ctx) {
     <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}</td>
     ${clientCell}
     <td style="color:#64748b;max-width:220px;word-break:break-word;overflow-wrap:anywhere;font-size:12px">${t.remarks||'—'}</td>
-    <td style="white-space:nowrap"><span class="status-badge ${t.status}">${t.status==='revised'?'Revision Requested':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
+    <td style="white-space:nowrap"><span class="status-badge ${t.status}">${t.status==='revised'?'Revised':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
   </tr>`;
 }
 
