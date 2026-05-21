@@ -3563,9 +3563,10 @@ function renderDashTable(tasks, type) {
   // Default unified layout (All / Delegation / Checklist) — restore original headers
   thead.innerHTML = `<tr>
     <th style="white-space:nowrap">Type</th>
-    <th>Description</th>
+    <th style="max-width:240px">Description</th>
     <th id="dashDoerHead">${(isAdmin||isPC)?'Doer':'Assigned By'}</th>
     <th style="white-space:nowrap;cursor:pointer;user-select:none" onclick="toggleDashDateSort()" title="Click to sort by date">Date <span id="dashDateSortIcon" style="font-size:10px;color:#94a3b8">⇅</span></th>
+    <th style="white-space:nowrap">Client</th>
     <th id="dashPriorityHead"${(type === 'delegation') ? '' : ' style="display:none"'}>Priority</th>
     <th>Action</th>
   </tr>`;
@@ -3609,7 +3610,7 @@ function renderDashTable(tasks, type) {
   } else if (_dashDateSortState === 2) {
     allPending = [...allPending].sort((a,b) => (b.due_date||b.date||'').localeCompare(a.due_date||a.date||''));
   }
-  const colCount = showPriority ? 6 : 5;
+  const colCount = showPriority ? 7 : 6;
   if (!allPending.length) {
     const emptyMsg = dashStatusFilter === 'completed' ? 'No completed tasks in this window'
                    : dashStatusFilter === 'all'       ? 'No tasks in this window'
@@ -3648,17 +3649,18 @@ function renderDashTable(tasks, type) {
         <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 8px;margin-left:4px" onclick='openFmsTaskFromRow(${refArg})' title="Open in FMS Tasks page">Open</button>`;
       return `<tr>
         <td style="white-space:nowrap;vertical-align:top">${typeBadge(t)}</td>
-        <td style="vertical-align:top;max-width:380px">${descCell}</td>
+        <td style="vertical-align:top;max-width:240px">${descCell}</td>
         <td style="vertical-align:top">${dtEscape(t.doer||t.assignedToName||'—')}</td>
         <td style="white-space:nowrap;vertical-align:top">${dateCell}</td>
+        <td style="white-space:nowrap;vertical-align:top;color:#94a3b8">—</td>
         ${showPriority ? `<td style="vertical-align:top">—</td>` : ''}
         <td style="white-space:nowrap;vertical-align:top">${actionCell}</td>
       </tr>`;
     }
     if (t.id) window._dashTaskMap[t.id] = t;
-    const clientPill = t.client_name
-      ? `<div style="margin-top:3px"><span style="font-size:10px;background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span></div>`
-      : '';
+    const clientCell = t.client_name
+      ? `<td style="white-space:nowrap"><span style="font-size:11px;background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span></td>`
+      : `<td style="color:#94a3b8">—</td>`;
     const isDeleg = t.type === 'delegation';
     const isCompleted = t.status === 'completed';
     const isRevised = t.status === 'revised';
@@ -3678,9 +3680,10 @@ function renderDashTable(tasks, type) {
         `);
     return `<tr onclick="window._dashTaskMap[${t.id}]&&openTaskDetail(window._dashTaskMap[${t.id}])" style="cursor:pointer" title="Click to view details">
       <td style="white-space:nowrap">${typeBadge(t)}</td>
-      <td>${t.description||t.desc}${clientPill}</td>
+      <td style="max-width:240px;word-break:break-word">${t.description||t.desc}</td>
       <td>${(isAdmin||isPC)?t.assignedToName:t.assignedByName}</td>
       <td>${fmtDate(t.due_date||t.date)}</td>
+      ${clientCell}
       ${showPriority ? `<td>${isDeleg ? `<span class="priority-badge ${t.priority||'low'}">${t.priority||'low'}</span>` : '—'}</td>` : ''}
       <td onclick="event.stopPropagation()">${actionCell}</td>
     </tr>`;
@@ -4041,7 +4044,7 @@ function renderTasksTable() {
   const isDelegateByMe = tasksType === 'delegatebyme';
   const isClickable = tasksType === 'delegation' || isDelegateByMe;
   if (isClickable) window._taskDetailMap = {};
-  const showClientCol = tasksType === 'delegation' || tasksType === 'delegatebyme';
+  const showClientCol = tasksType === 'delegation' || tasksType === 'delegatebyme' || tasksType === 'checklist';
   const ctx = { isAdmin, isDelegateByMe, isClickable, showClientCol };
 
   const tableHeadHtml = tasksType === 'fms'
