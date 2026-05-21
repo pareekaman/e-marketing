@@ -124,7 +124,7 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 .dash-topbar h2{font-size:20px;font-weight:700;}
 .dash-topbar-btns{display:flex;gap:8px;}
 
-.overview-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
+.overview-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;}
 .ov-card{background:#fff;border-radius:12px;padding:20px 22px;border:1px solid #e2e8f0;cursor:pointer;transition:transform .1s,box-shadow .15s,border-color .15s;}
 .ov-card:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(15,23,42,.08);border-color:#cbd5e1;}
 .ov-card.ov-card-active{border-color:#F39C12;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
@@ -802,7 +802,7 @@ tbody tr:last-child td{border-bottom:none;}
   .dash-topbar h2{font-size:17px;}
   .dash-topbar-btns{flex-wrap:wrap;}
   .dash-topbar-btns .btn{flex:1;min-width:0;justify-content:center;font-size:12px;padding:8px 10px;}
-  .overview-cards{grid-template-columns:repeat(4,1fr);gap:8px;}
+  .overview-cards{grid-template-columns:repeat(3,1fr);gap:8px;}
   .ov-card{padding:12px 10px;}
   .ov-card .label{font-size:11px;}
   .ov-card .number{font-size:24px;}
@@ -1174,8 +1174,7 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="overview-cards">
       <div class="ov-card total"     onclick="goToAllTasksFromDash('all')"       title="Open All Tasks with these rows"><div class="label">Total</div><div class="number" id="dTotal">—</div></div>
       <div class="ov-card completed" onclick="goToAllTasksFromDash('completed')" title="Open All Tasks → Completed"><div class="label">Completed</div><div class="number" id="dCompleted">—</div></div>
-      <div class="ov-card pending"   onclick="goToAllTasksFromDash('pending')"   title="Open All Tasks → Pending"><div class="label">Pending</div><div class="number" id="dPending">—</div></div>
-      <div class="ov-card revised"   onclick="goToAllTasksFromDash('revised')"   title="Open All Tasks → Revised"><div class="label">Revised</div><div class="number" id="dRevised">—</div></div>
+      <div class="ov-card pending"   onclick="goToAllTasksFromDash('pending')"   title="Open All Tasks → Pending (includes Revised)"><div class="label">Pending</div><div class="number" id="dPending">—</div><div id="dPendingBreakdown" style="font-size:11px;color:#f59e0b;font-weight:600;margin-top:4px;display:none">—</div></div>
     </div>
     <div class="dash-bottom">
       <div class="task-table-card">
@@ -1284,7 +1283,6 @@ tbody tr:last-child td{border-bottom:none;}
       <div class="tab-group">
         <div class="tab" id="statusTabAll" onclick="filterTaskStatus('all',this)">All</div>
         <div class="tab active" id="statusTabPending" onclick="filterTaskStatus('pending',this)">Pending</div>
-        <div class="tab" id="statusTabRevised" onclick="filterTaskStatus('revised',this)">Revised</div>
         <div class="tab" id="statusTabCompleted" onclick="filterTaskStatus('completed',this)">Completed</div>
       </div>
     </div>
@@ -3134,7 +3132,6 @@ async function loadDashboard() {
     document.getElementById('dTotal').textContent = 'Err';
     document.getElementById('dCompleted').textContent = 'Err';
     document.getElementById('dPending').textContent = 'Err';
-    const rErr = document.getElementById('dRevised'); if (rErr) rErr.textContent = 'Err';
     document.getElementById('dashTbody').innerHTML = `<tr><td colspan="6" style="color:red;padding:16px;text-align:center">⚠️ Data load failed: ${errMsg}<br><small>Check /api/debug for details</small></td></tr>`;
     return;
   }
@@ -3187,6 +3184,10 @@ async function loadDashboard() {
   window._lastDashRevised   = null;
   // Keep sort state across reloads (don't reset)
   renderDashTable(allTodayPending, dashType);
+
+  // Revised rows are merged into the default Pending view — fetch eagerly so
+  // they appear without an extra click. Re-render once they arrive.
+  loadDashRevised().then(() => renderDashTable(window._lastDashTasks || [], dashType));
 
   // Load FMS section — respects same employee filter
   loadDashFMS();
@@ -3345,14 +3346,20 @@ function updateDashStats(type) {
     revised   = del.revised || 0;
   }
   const total = pending + completed + revised;
+  // Revised is treated as a sub-state of pending — combine for display but keep
+  // the revised breakdown visible as a subtitle on the pending card.
+  const pendingCombined = pending + revised;
   const totalEl = document.getElementById('dTotal');
   const cEl     = document.getElementById('dCompleted');
   const pEl     = document.getElementById('dPending');
-  const rEl     = document.getElementById('dRevised');
+  const pBreak  = document.getElementById('dPendingBreakdown');
   if (totalEl) totalEl.textContent = total;
   if (cEl)     cEl.textContent     = completed;
-  if (pEl)     pEl.textContent     = pending;
-  if (rEl)     rEl.textContent     = revised;
+  if (pEl)     pEl.textContent     = pendingCombined;
+  if (pBreak) {
+    if (revised > 0) { pBreak.textContent = `incl. ${revised} revised`; pBreak.style.display = 'block'; }
+    else             { pBreak.style.display = 'none'; }
+  }
 
   if (dashChartInst) dashChartInst.destroy();
   const canvas = document.getElementById('dashChart');
@@ -3397,7 +3404,6 @@ async function goToAllTasksFromDash(status) {
   // Visually mark which card is active.
   document.querySelectorAll('.ov-card').forEach(c => c.classList.remove('ov-card-active'));
   const cardSel = status === 'completed' ? '.ov-card.completed'
-                : status === 'revised'   ? '.ov-card.revised'
                 : status === 'all'       ? '.ov-card.total'
                 : '.ov-card.pending';
   document.querySelector(cardSel)?.classList.add('ov-card-active');
@@ -3405,15 +3411,15 @@ async function goToAllTasksFromDash(status) {
   // Update the table title so the user knows what they're looking at.
   const titleEl = document.querySelector('#dashTbody')?.closest('.task-table-card')?.querySelector('.card-head-title');
   if (titleEl) titleEl.textContent = status === 'completed' ? 'Completed Tasks'
-                                   : status === 'revised'   ? 'Revised Tasks'
                                    : status === 'all'       ? 'All Tasks (Pending + Revised + Completed)'
-                                   : 'All Pending Tasks';
+                                   : 'All Pending Tasks (incl. Revised)';
 
-  // Lazy-load completed/revised rows on first ask. "All" needs both.
+  // Lazy-load completed/revised rows on first ask. Pending always needs revised
+  // alongside the default pending stream; "All" needs everything.
   if ((status === 'completed' || status === 'all') && !window._lastDashCompleted) {
     await loadDashCompleted();
   }
-  if ((status === 'revised' || status === 'all') && !window._lastDashRevised) {
+  if ((status === 'pending' || status === 'all') && !window._lastDashRevised) {
     await loadDashRevised();
   }
   // Re-render with whatever cache we have.
@@ -3575,18 +3581,16 @@ function renderDashTable(tasks, type) {
   let combined;
   if (type === 'fms') {
     // FMS has no completed/revised dashboard rows — only pending stream.
-    combined = (dashStatusFilter === 'completed' || dashStatusFilter === 'revised')
+    combined = (dashStatusFilter === 'completed')
       ? [] : (window._lastDashFMS || []).slice();
   } else if (dashStatusFilter === 'completed') {
     combined = completedSource;
-  } else if (dashStatusFilter === 'revised') {
-    combined = revisedSource;
   } else if (dashStatusFilter === 'all') {
     combined = pendingSource.concat(revisedSource).concat(completedSource);
     if (!type || type === 'all') combined = combined.concat(window._lastDashFMS || []);
   } else {
-    // pending (default)
-    combined = pendingSource;
+    // pending (default) — revised rows are merged in so they show as pending work.
+    combined = pendingSource.concat(revisedSource);
     if (!type || type === 'all') combined = combined.concat(window._lastDashFMS || []);
   }
 
@@ -3597,8 +3601,7 @@ function renderDashTable(tasks, type) {
     const matchType = (!type || type === 'all') ? true : t.type === type;
     const matchStatus = dashStatusFilter === 'all' ? true
                       : dashStatusFilter === 'completed' ? t.status === 'completed'
-                      : dashStatusFilter === 'revised'   ? t.status === 'revised'
-                      : (t.status === 'pending' || !t.status);
+                      : (t.status === 'pending' || t.status === 'revised' || !t.status);
     return matchType && matchStatus;
   });
   // Apply date sort
@@ -3610,7 +3613,6 @@ function renderDashTable(tasks, type) {
   const colCount = showPriority ? 6 : 5;
   if (!allPending.length) {
     const emptyMsg = dashStatusFilter === 'completed' ? 'No completed tasks in this window'
-                   : dashStatusFilter === 'revised'   ? 'No revised tasks in this window'
                    : dashStatusFilter === 'all'       ? 'No tasks in this window'
                    : 'No pending tasks 🎉';
     tbody.innerHTML=`<tr><td colspan="${colCount}" class="empty">${emptyMsg}</td></tr>`;
@@ -4007,7 +4009,10 @@ function renderTasksTable() {
   const container = document.getElementById('tasksContent');
 
   let tasks = allTasksData.filter(t => {
-    const matchStatus = taskStatusFilter === 'all' || t.status === taskStatusFilter;
+    // "Pending" tab includes revised rows — revise/pending are treated as one bucket of open work.
+    const matchStatus = taskStatusFilter === 'all'
+      || (taskStatusFilter === 'pending' && (t.status === 'pending' || t.status === 'revised'))
+      || t.status === taskStatusFilter;
     const matchSearch = !search ||
       (t.description||'').toLowerCase().includes(search) ||
       (t.assignedToName||'').toLowerCase().includes(search) ||
