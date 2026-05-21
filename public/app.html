@@ -1175,6 +1175,7 @@ tbody tr:last-child td{border-bottom:none;}
       <div class="ov-card total"     onclick="goToAllTasksFromDash('all')"       title="Open All Tasks with these rows"><div class="label">Total</div><div class="number" id="dTotal">—</div></div>
       <div class="ov-card completed" onclick="goToAllTasksFromDash('completed')" title="Open All Tasks → Completed"><div class="label">Completed</div><div class="number" id="dCompleted">—</div></div>
       <div class="ov-card pending"   onclick="goToAllTasksFromDash('pending')"   title="Open All Tasks → Pending"><div class="label">Pending</div><div class="number" id="dPending">—</div></div>
+      <div class="ov-card revised"   onclick="goToAllTasksFromDash('revised')"   title="Open All Tasks → Revised"><div class="label">Revised</div><div class="number" id="dRevised">—</div></div>
     </div>
     <div class="dash-bottom">
       <div class="task-table-card">
@@ -3133,6 +3134,7 @@ async function loadDashboard() {
     document.getElementById('dTotal').textContent = 'Err';
     document.getElementById('dCompleted').textContent = 'Err';
     document.getElementById('dPending').textContent = 'Err';
+    const rErr = document.getElementById('dRevised'); if (rErr) rErr.textContent = 'Err';
     document.getElementById('dashTbody').innerHTML = `<tr><td colspan="6" style="color:red;padding:16px;text-align:center">⚠️ Data load failed: ${errMsg}<br><small>Check /api/debug for details</small></td></tr>`;
     return;
   }
@@ -3180,8 +3182,9 @@ async function loadDashboard() {
   // Combine both types for the unified pending table
   const allTodayPending = [...(dDel.todayPending||[]), ...(dChl.todayPending||[])];
   window._lastDashTasks = allTodayPending;
-  // Invalidate completed cache — must re-fetch since the employee/date window may have changed.
+  // Invalidate completed/revised caches — must re-fetch since the employee/date window may have changed.
   window._lastDashCompleted = null;
+  window._lastDashRevised   = null;
   // Keep sort state across reloads (don't reset)
   renderDashTable(allTodayPending, dashType);
 
@@ -3345,9 +3348,11 @@ function updateDashStats(type) {
   const totalEl = document.getElementById('dTotal');
   const cEl     = document.getElementById('dCompleted');
   const pEl     = document.getElementById('dPending');
+  const rEl     = document.getElementById('dRevised');
   if (totalEl) totalEl.textContent = total;
   if (cEl)     cEl.textContent     = completed;
   if (pEl)     pEl.textContent     = pending;
+  if (rEl)     rEl.textContent     = revised;
 
   if (dashChartInst) dashChartInst.destroy();
   const canvas = document.getElementById('dashChart');
@@ -3392,6 +3397,7 @@ async function goToAllTasksFromDash(status) {
   // Visually mark which card is active.
   document.querySelectorAll('.ov-card').forEach(c => c.classList.remove('ov-card-active'));
   const cardSel = status === 'completed' ? '.ov-card.completed'
+                : status === 'revised'   ? '.ov-card.revised'
                 : status === 'all'       ? '.ov-card.total'
                 : '.ov-card.pending';
   document.querySelector(cardSel)?.classList.add('ov-card-active');
@@ -3399,12 +3405,16 @@ async function goToAllTasksFromDash(status) {
   // Update the table title so the user knows what they're looking at.
   const titleEl = document.querySelector('#dashTbody')?.closest('.task-table-card')?.querySelector('.card-head-title');
   if (titleEl) titleEl.textContent = status === 'completed' ? 'Completed Tasks'
-                                   : status === 'all'       ? 'All Tasks (Pending + Completed)'
+                                   : status === 'revised'   ? 'Revised Tasks'
+                                   : status === 'all'       ? 'All Tasks (Pending + Revised + Completed)'
                                    : 'All Pending Tasks';
 
-  // Lazy-load completed rows on first ask (covers both Completed and Total clicks).
+  // Lazy-load completed/revised rows on first ask. "All" needs both.
   if ((status === 'completed' || status === 'all') && !window._lastDashCompleted) {
     await loadDashCompleted();
+  }
+  if ((status === 'revised' || status === 'all') && !window._lastDashRevised) {
+    await loadDashRevised();
   }
   // Re-render with whatever cache we have.
   renderDashTable(window._lastDashTasks || [], dashType);
@@ -3431,6 +3441,28 @@ async function loadDashCompleted() {
     window._lastDashCompleted = [...(dDel.tasks || []), ...(dChl.tasks || [])];
   } catch (e) {
     window._lastDashCompleted = [];
+  }
+}
+
+// Same pattern as loadDashCompleted but for revised rows.
+async function loadDashRevised() {
+  const empFilter = document.getElementById('dashEmployeeFilter');
+  const empVal = empFilter ? empFilter.value : 'all';
+  const isAdmin = ME.role === 'admin';
+  const isHod = ME.role === 'hod';
+  const isPC = ME.role === 'pc';
+  const hodParam = isHod ? '&hodDept='+encodeURIComponent(ME.department||'') : '';
+  const dateFrom = isPC ? (document.getElementById('pcDateFrom')?.value || '') : '';
+  const dateTo   = isPC ? (document.getElementById('pcDateTo')?.value   || '') : '';
+  const dateParams = (isPC && dateFrom && dateTo) ? `&dateFrom=${dateFrom}&dateTo=${dateTo}` : '';
+  const baseUrl = (isAdmin || isHod || isPC)
+    ? `/api/dashboard?employee=${empVal}${hodParam}${dateParams}&status=revised&skipStats=1&taskType=`
+    : `/api/dashboard?status=revised&skipStats=1&taskType=`;
+  try {
+    const [dDel, dChl] = await Promise.all([api(baseUrl + 'delegation'), api(baseUrl + 'checklist')]);
+    window._lastDashRevised = [...(dDel.tasks || []), ...(dChl.tasks || [])];
+  } catch (e) {
+    window._lastDashRevised = [];
   }
 }
 
@@ -3539,13 +3571,18 @@ function renderDashTable(tasks, type) {
   // FMS only has pending data on dashboard, so it's merged only when status allows pending.
   const pendingSource = (tasks || []).slice();
   const completedSource = window._lastDashCompleted || [];
+  const revisedSource = window._lastDashRevised || [];
   let combined;
   if (type === 'fms') {
-    combined = (dashStatusFilter === 'completed') ? [] : (window._lastDashFMS || []).slice();
+    // FMS has no completed/revised dashboard rows — only pending stream.
+    combined = (dashStatusFilter === 'completed' || dashStatusFilter === 'revised')
+      ? [] : (window._lastDashFMS || []).slice();
   } else if (dashStatusFilter === 'completed') {
     combined = completedSource;
+  } else if (dashStatusFilter === 'revised') {
+    combined = revisedSource;
   } else if (dashStatusFilter === 'all') {
-    combined = pendingSource.concat(completedSource);
+    combined = pendingSource.concat(revisedSource).concat(completedSource);
     if (!type || type === 'all') combined = combined.concat(window._lastDashFMS || []);
   } else {
     // pending (default)
@@ -3560,6 +3597,7 @@ function renderDashTable(tasks, type) {
     const matchType = (!type || type === 'all') ? true : t.type === type;
     const matchStatus = dashStatusFilter === 'all' ? true
                       : dashStatusFilter === 'completed' ? t.status === 'completed'
+                      : dashStatusFilter === 'revised'   ? t.status === 'revised'
                       : (t.status === 'pending' || !t.status);
     return matchType && matchStatus;
   });
@@ -3572,6 +3610,7 @@ function renderDashTable(tasks, type) {
   const colCount = showPriority ? 6 : 5;
   if (!allPending.length) {
     const emptyMsg = dashStatusFilter === 'completed' ? 'No completed tasks in this window'
+                   : dashStatusFilter === 'revised'   ? 'No revised tasks in this window'
                    : dashStatusFilter === 'all'       ? 'No tasks in this window'
                    : 'No pending tasks 🎉';
     tbody.innerHTML=`<tr><td colspan="${colCount}" class="empty">${emptyMsg}</td></tr>`;
