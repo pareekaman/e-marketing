@@ -3030,6 +3030,10 @@ const _clientsTableMigrationsPromise = (async () => {
     name VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  // Handler = the user (account manager) responsible for this client. Drives the
+  // default doer in the "Delegate Task" shortcut on the Client Master row.
+  await sa(`ALTER TABLE clients ADD COLUMN handler_id INT DEFAULT NULL AFTER name`);
+  await sa(`ALTER TABLE clients ADD INDEX idx_handler (handler_id)`);
 
   await sa(`CREATE TABLE IF NOT EXISTS daily_tasks (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -3663,7 +3667,10 @@ app.get('/api/cron/daily-reminder', async (req, res) => {
 // ══════════════════════════════════════════════════════
 app.get('/api/clients', requireAuth, async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT id, name FROM clients ORDER BY name ASC');
+    const [rows] = await db.query(
+      `SELECT c.id, c.name, c.handler_id, u.name AS handler_name
+       FROM clients c LEFT JOIN users u ON c.handler_id = u.id
+       ORDER BY c.name ASC`);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3671,11 +3678,37 @@ app.get('/api/clients', requireAuth, async (req, res) => {
 app.post('/api/clients', requireAuth, requireAdminOrPC, async (req, res) => {
   try {
     const name = (req.body.name || '').trim();
+    const handlerRaw = req.body.handler_id;
+    const handlerId = handlerRaw == null || handlerRaw === '' ? null : parseInt(handlerRaw, 10);
     if (!name) return res.status(400).json({ error: 'Client name required' });
-    await db.query('INSERT INTO clients (name) VALUES (?)', [name]);
+    await db.query('INSERT INTO clients (name, handler_id) VALUES (?, ?)',
+      [name, Number.isFinite(handlerId) ? handlerId : null]);
     res.json({ success: true });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Client already exists' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/clients/:id', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const name = req.body.name == null ? null : String(req.body.name).trim();
+    const handlerRaw = req.body.handler_id;
+    const handlerId = handlerRaw === undefined ? undefined
+                    : (handlerRaw == null || handlerRaw === '') ? null
+                    : parseInt(handlerRaw, 10);
+    if (name === '') return res.status(400).json({ error: 'Client name cannot be empty' });
+    // Only update fields that were sent.
+    const sets = [], params = [];
+    if (name !== null) { sets.push('name=?'); params.push(name); }
+    if (handlerId !== undefined) { sets.push('handler_id=?'); params.push(handlerId); }
+    if (!sets.length) return res.json({ success: true, noop: true });
+    params.push(id);
+    await db.query(`UPDATE clients SET ${sets.join(', ')} WHERE id=?`, params);
+    res.json({ success: true });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Client name already exists' });
     res.status(500).json({ error: err.message });
   }
 });

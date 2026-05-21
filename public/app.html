@@ -1578,8 +1578,7 @@ tbody tr:last-child td{border-bottom:none;}
       <div class="cm-toolbar">
         <input class="cm-search" type="text" id="cmSearch" placeholder="🔍 Search clients..." oninput="cmFilter()"/>
         <div class="cm-add-row">
-          <input type="text" id="cmNewClient" placeholder="New client name..." onkeydown="if(event.key==='Enter')cmAdd()"/>
-          <button class="cm-btn-primary" onclick="cmAdd()">+ Add</button>
+          <button class="cm-btn-primary" onclick="cmOpenAddModal()">+ Add Client</button>
           <button class="cm-btn-ghost" onclick="cmToggleBulk()" id="cmBulkBtn">📂 Bulk Upload</button>
         </div>
       </div>
@@ -1599,6 +1598,27 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
 
       <div id="cmListWrap" class="cm-list-wrap"><div class="empty">Loading clients…</div></div>
+    </div>
+  </div>
+
+  <!-- Add Client modal -->
+  <div class="modal-overlay" id="clientAddModal">
+    <div class="modal" style="width:520px">
+      <button class="modal-close" onclick="closeModal('clientAddModal')">×</button>
+      <h3>＋ Add Client</h3>
+      <div class="alert error" id="cmAddErr" style="display:none"></div>
+      <div class="form-group">
+        <label>Client Name *</label>
+        <input type="text" id="cmFormName" placeholder="e.g. Acme Pvt Ltd"/>
+      </div>
+      <div class="form-group">
+        <label>Handler (account manager)</label>
+        <select id="cmFormHandler"><option value="">— None —</option></select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('clientAddModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="cmAdd()">Save</button>
+      </div>
     </div>
   </div>
 
@@ -4533,7 +4553,7 @@ async function transferToday(userId) {
 // ══════════════════════════════════════════════════════
 // DELEGATE MODAL
 // ══════════════════════════════════════════════════════
-async function openDelegate() {
+async function openDelegate(prefill = {}) {
   document.getElementById('delegateErr').style.display='none';
   document.getElementById('dDesc').value='';
   document.getElementById('dUrl').value='';
@@ -4555,6 +4575,11 @@ async function openDelegate() {
   // Hidden by default — only shown when Approval Required = Yes
   document.getElementById('dApproverGroup').style.display = 'none';
   document.getElementById('dApproverEmail').style.display = 'none';
+  // Apply caller-supplied pre-fills (used by the Client Master "+ Delegate" shortcut)
+  if (prefill && typeof prefill === 'object') {
+    if (prefill.clientId) document.getElementById('dClient').value = String(prefill.clientId);
+    if (prefill.doerId)   document.getElementById('dDoer').value   = String(prefill.doerId);
+  }
   document.getElementById('delegateModal').classList.add('open');
 }
 
@@ -8481,13 +8506,15 @@ function cmInitials(name){
   return parts.map(p => p[0] || '').join('').toUpperCase() || '?';
 }
 
+let CM_USERS = [];
 async function loadClients(){
   const wrap = document.getElementById('cmListWrap');
   wrap.innerHTML = '<div class="empty">Loading clients…</div>';
   CM_OPEN_ID = null;
   try {
-    const clients = await api('/api/clients');
+    const [clients, users] = await Promise.all([api('/api/clients'), api('/api/users')]);
     CM_ALL = Array.isArray(clients) ? clients : [];
+    CM_USERS = Array.isArray(users) ? users : [];
     document.getElementById('cmStatTotal').textContent = CM_ALL.length;
     cmRenderList();
   } catch(e) {
@@ -8495,6 +8522,18 @@ async function loadClients(){
     document.getElementById('cmStatTotal').textContent = '0';
     document.getElementById('cmStatVisible').textContent = '0';
   }
+}
+
+function cmOpenAddModal() {
+  // Reset form, populate handler list from cached users, open.
+  document.getElementById('cmAddErr').style.display = 'none';
+  document.getElementById('cmFormName').value = '';
+  const handlerSel = document.getElementById('cmFormHandler');
+  handlerSel.innerHTML = '<option value="">— None —</option>' +
+    CM_USERS.map(u => `<option value="${u.id}">${dtEscape(u.name)}</option>`).join('');
+  handlerSel.value = '';
+  document.getElementById('clientAddModal').classList.add('open');
+  setTimeout(() => document.getElementById('cmFormName')?.focus(), 0);
 }
 
 function cmRenderList(){
@@ -8517,15 +8556,19 @@ function cmRenderList(){
     const safeName = dtEscape(c.name);
     const initials = dtEscape(cmInitials(c.name));
     const avatarStyle = cmAvatarStyle(c.name);
+    const handlerLabel = c.handler_name
+      ? `<span style="font-size:11px;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:10px;font-weight:600">👤 ${dtEscape(c.handler_name)}</span>`
+      : `<span style="font-size:11px;color:#94a3b8;background:#f1f5f9;padding:2px 8px;border-radius:10px;font-weight:600">No handler</span>`;
     html += `<div class="cm-client-row" data-cm-id="${c.id}" onclick="cmToggleDetail(${c.id})">
         <div class="cm-client-info">
           <div class="cm-avatar" style="${avatarStyle}">${initials}</div>
           <div class="cm-client-meta">
             <span class="cm-client-name">${safeName}</span>
-            <div class="cm-client-id">Client #${c.id}</div>
+            <div class="cm-client-id">Client #${c.id} · ${handlerLabel}</div>
           </div>
         </div>
         <div class="cm-client-actions">
+          <button class="cm-btn-primary" style="padding:5px 12px;font-size:12px" onclick="event.stopPropagation();cmOpenDelegate(${c.id})">＋ Delegate</button>
           <button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>
           <span class="cm-client-arrow">▼</span>
         </div>
@@ -8533,6 +8576,13 @@ function cmRenderList(){
       <div class="cm-client-detail" id="cm-detail-${c.id}"></div>`;
   }
   wrap.innerHTML = html;
+}
+
+// Open the existing Delegate modal pre-filled with this client (and its handler as default doer).
+function cmOpenDelegate(clientId) {
+  const client = CM_ALL.find(c => c.id === clientId);
+  if (!client) return;
+  openDelegate({ clientId, doerId: client.handler_id || null });
 }
 
 function cmFilter(){ cmRenderList(); }
@@ -8588,11 +8638,21 @@ async function cmToggleDetail(id) {
         </div>`;
       }
     }
+    const client = CM_ALL.find(x => x.id === id) || {};
+    const handlerOptions = '<option value="">— None —</option>' +
+      CM_USERS.map(u => `<option value="${u.id}" ${String(u.id)===String(client.handler_id)?'selected':''}>${dtEscape(u.name)}</option>`).join('');
     detail.innerHTML = `<div class="cm-detail-inner">
       <div class="cm-detail-total">
         <span class="cm-detail-label">Total Hours</span>
         <span class="cm-detail-val">${totalHrs}</span>
         <span class="cm-detail-val-suffix">hours logged</span>
+      </div>
+      <div style="margin-top:14px;padding:12px;background:#f8fafc;border-radius:8px">
+        <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:6px">Handler</div>
+        <select onchange="cmUpdateHandler(${id}, this.value)"
+          style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff;outline:none">
+          ${handlerOptions}
+        </select>
       </div>
       <div class="cm-detail-workers">
         <div class="cm-detail-workers-title">Top 3 Contributors</div>
@@ -8605,14 +8665,38 @@ async function cmToggleDetail(id) {
 }
 
 async function cmAdd(){
-  const inp = document.getElementById('cmNewClient');
-  const name = inp.value.trim();
-  if (!name) { showToast('Enter client name', 'error'); return; }
+  const err = document.getElementById('cmAddErr');
+  err.style.display = 'none';
+  const name = document.getElementById('cmFormName').value.trim();
+  const handler_id = document.getElementById('cmFormHandler').value || null;
+  if (!name) { err.textContent = 'Client name required'; err.style.display = 'block'; return; }
   try {
-    const r = await api('/api/clients', 'POST', { name });
-    if (r.error) showToast(r.error, 'error');
-    else { showToast('✅ Client added'); inp.value = ''; loadClients(); }
-  } catch(e) { showToast('Failed to add', 'error'); }
+    const r = await api('/api/clients', 'POST', { name, handler_id });
+    if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+    showToast('✅ Client added');
+    closeModal('clientAddModal');
+    loadClients();
+  } catch(e) {
+    err.textContent = 'Failed to add';
+    err.style.display = 'block';
+  }
+}
+
+async function cmUpdateHandler(clientId, handlerId) {
+  try {
+    const r = await api('/api/clients/' + clientId, 'PUT', { handler_id: handlerId || null });
+    if (r.error) { showToast(r.error, 'error'); return; }
+    showToast('Handler updated');
+    // Patch in-memory so the row refresh is instant; full reload would close the panel.
+    const c = CM_ALL.find(x => x.id === clientId);
+    if (c) {
+      c.handler_id = handlerId ? parseInt(handlerId, 10) : null;
+      const u = CM_USERS.find(u => String(u.id) === String(handlerId));
+      c.handler_name = u ? u.name : null;
+    }
+    CM_OPEN_ID = null; // re-render wipes the panel; user can click again to view
+    cmRenderList();
+  } catch(e) { showToast('Update failed', 'error'); }
 }
 
 async function cmDelete(id, name){
@@ -9731,8 +9815,9 @@ async function openMeetingModal(id, prefillStart) {
     _mtgClientsCache.map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
   const attEl = document.getElementById('mtgAttendees');
   attEl.innerHTML = _mtgUsersCache.map(u =>
-    `<label data-att-row style="display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 10px;border-radius:6px;cursor:pointer;color:#1e293b" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">
-       <input type="checkbox" value="${u.id}" data-att onchange="updateAttSummary()"/> ${dtEscape(u.name)}
+    `<label data-att-row style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0;margin-bottom:0;padding:6px 10px;border-radius:6px;cursor:pointer;color:#1e293b" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">
+       <input type="checkbox" value="${u.id}" data-att onchange="updateAttSummary()" style="margin:0"/>
+       <span>${dtEscape(u.name)}</span>
      </label>`).join('');
   document.getElementById('mtgAttSearch').value = '';
   filterAttDropdown();
