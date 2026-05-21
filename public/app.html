@@ -1586,6 +1586,10 @@ tbody tr:last-child td{border-bottom:none;}
        CLIENT MASTER (admin only)
        ══════════════════════════════════════════════════════ -->
   <div id="page-clients" class="page">
+    <!-- Detail view (hidden until a client is opened) -->
+    <div id="cmDetailView" style="display:none"></div>
+    <!-- List view (default) -->
+    <div id="cmListView">
     <div class="cm-card">
       <div class="cm-header">
         <div class="cm-header-text">
@@ -1627,6 +1631,7 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
 
       <div id="cmListWrap" class="cm-list-wrap"><div class="empty">Loading clients…</div></div>
+    </div>
     </div>
   </div>
 
@@ -1903,7 +1908,7 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
   </div>
 
-  <!-- ── MEETINGS — calendar view (month + day) ── -->
+  <!-- ── MEETINGS — calendar (month 70% + day timeline 30%) ── -->
   <div id="page-meetings" class="page">
     <div class="mtg-cal-toolbar">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -1912,39 +1917,24 @@ tbody tr:last-child td{border-bottom:none;}
         <button class="btn btn-outline" onclick="mtgShift(1)"  style="padding:6px 10px">→</button>
         <div id="mtgCalLabel" style="font-size:18px;font-weight:700;color:#0f172a;margin-left:6px">—</div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <div class="tab-group" id="mtgViewTabs">
-          <div class="tab active" id="mtgViewMonth" onclick="mtgSetView('month',this)">Month</div>
-          <div class="tab" id="mtgViewDay" onclick="mtgSetView('day',this)">Day</div>
-        </div>
-        <button class="btn btn-primary" onclick="openMeetingModal()">＋ Schedule</button>
-      </div>
+      <button class="btn btn-primary" onclick="openMeetingModal()">＋ Schedule</button>
     </div>
 
-    <!-- Month view -->
-    <div id="mtgMonthWrap" class="task-table-card" style="padding:0;margin-top:14px">
-      <div class="mtg-cal-daynames">
-        <div>SUN</div><div>MON</div><div>TUE</div><div>WED</div><div>THU</div><div>FRI</div><div>SAT</div>
+    <div style="display:grid;grid-template-columns:7fr 3fr;gap:16px;margin-top:14px" id="mtgGrid">
+      <!-- Month view (70%) -->
+      <div id="mtgMonthWrap" class="task-table-card" style="padding:0">
+        <div class="mtg-cal-daynames">
+          <div>SUN</div><div>MON</div><div>TUE</div><div>WED</div><div>THU</div><div>FRI</div><div>SAT</div>
+        </div>
+        <div id="mtgMonthGrid" class="mtg-cal-month-grid"></div>
       </div>
-      <div id="mtgMonthGrid" class="mtg-cal-month-grid"></div>
-    </div>
-
-    <!-- Day view (hidden by default) -->
-    <div id="mtgDayWrap" style="display:none;margin-top:14px">
-      <div style="display:grid;grid-template-columns:1fr 360px;gap:16px">
-        <div class="task-table-card" style="padding:0;overflow:hidden">
-          <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
-            <div class="card-head-title">Timeline <span id="mtgDayLabel" style="color:#64748b;font-weight:500;font-size:13px"></span></div>
-            <button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="mtgSetView('month', document.getElementById('mtgViewMonth'))">← Month</button>
-          </div>
-          <div id="mtgDayTimeline" style="position:relative;overflow:auto;max-height:640px"></div>
+      <!-- Day timeline (30%) -->
+      <div class="task-table-card" style="padding:0;overflow:hidden">
+        <div class="card-head" style="padding:12px 14px;border-bottom:1px solid #e2e8f0">
+          <div class="card-head-title">Day <span id="mtgDayLabel" style="color:#64748b;font-weight:500;font-size:12px"></span></div>
         </div>
-        <div class="task-table-card" style="padding:0">
-          <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
-            <div class="card-head-title">Meetings on this day</div>
-          </div>
-          <div id="mtgDayList" style="padding:8px"></div>
-        </div>
+        <div id="mtgDayTimeline" style="position:relative;overflow:auto;max-height:560px"></div>
+        <div id="mtgDayList" style="border-top:1px solid #f1f5f9;max-height:200px;overflow:auto"></div>
       </div>
     </div>
   </div>
@@ -8700,7 +8690,7 @@ function cmRenderList(){
     const handlerLabel = c.handler_name
       ? `<span style="font-size:11px;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:10px;font-weight:600">👤 ${dtEscape(c.handler_name)}</span>`
       : `<span style="font-size:11px;color:#94a3b8;background:#f1f5f9;padding:2px 8px;border-radius:10px;font-weight:600">No handler</span>`;
-    html += `<div class="cm-client-row" data-cm-id="${c.id}" onclick="cmToggleDetail(${c.id})">
+    html += `<div class="cm-client-row" data-cm-id="${c.id}" onclick="cmShowDetail(${c.id})">
         <div class="cm-client-info">
           <div class="cm-avatar" style="${avatarStyle}">${initials}</div>
           <div class="cm-client-meta">
@@ -8710,10 +8700,9 @@ function cmRenderList(){
         </div>
         <div class="cm-client-actions">
           <button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>
-          <span class="cm-client-arrow">▼</span>
+          <span class="cm-client-arrow">›</span>
         </div>
-      </div>
-      <div class="cm-client-detail" id="cm-detail-${c.id}"></div>`;
+      </div>`;
   }
   wrap.innerHTML = html;
 }
@@ -8726,76 +8715,129 @@ function cmToggleBulk(){
   panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }
 
-async function cmToggleDetail(id) {
-  const detail = document.getElementById('cm-detail-' + id);
-  const row = document.querySelector(`[data-cm-id="${id}"]`);
-
-  if (CM_OPEN_ID === id) {
-    detail.style.display = 'none';
-    row.classList.remove('cm-active');
-    CM_OPEN_ID = null;
-    return;
-  }
-
-  // Close any open panel
-  if (CM_OPEN_ID) {
-    const prev = document.getElementById('cm-detail-' + CM_OPEN_ID);
-    const prevRow = document.querySelector(`[data-cm-id="${CM_OPEN_ID}"]`);
-    if (prev) prev.style.display = 'none';
-    if (prevRow) prevRow.classList.remove('cm-active');
-  }
-
+async function cmShowDetail(id) {
+  // Hide list, show detail container; fetch + render.
+  document.getElementById('cmListView').style.display = 'none';
+  const detail = document.getElementById('cmDetailView');
   detail.style.display = 'block';
-  row.classList.add('cm-active');
-  CM_OPEN_ID = id;
-
-  if (detail.dataset.loaded) return;
-  detail.innerHTML = '<div style="padding:14px;text-align:center;color:#94a3b8;font-size:13px">Loading stats…</div>';
-
+  detail.innerHTML = '<div class="empty" style="padding:40px">Loading client details…</div>';
+  window.scrollTo(0, 0);
   try {
-    const stats = await api('/api/clients/' + id + '/stats');
-    detail.dataset.loaded = '1';
-    const totalHrs = (stats.total_minutes / 60).toFixed(1);
-    const medals = ['🥇','🥈','🥉'];
-    let workersHtml = '';
-    if (!stats.top_workers || !stats.top_workers.length) {
-      workersHtml = '<div style="color:#94a3b8;font-size:13px;padding:6px 0">No work recorded yet</div>';
-    } else {
-      for (let i = 0; i < stats.top_workers.length; i++) {
-        const w = stats.top_workers[i];
-        const hrs = (w.total_minutes / 60).toFixed(1);
-        workersHtml += `<div class="cm-worker-row">
-          <span class="cm-worker-rank">${medals[i]}</span>
-          <span class="cm-worker-name">${dtEscape(w.name)}</span>
-          ${w.department ? `<span class="cm-worker-dept">${dtEscape(w.department)}</span>` : ''}
-          <span class="cm-worker-hrs">${hrs} hrs</span>
-        </div>`;
-      }
-    }
-    const client = CM_ALL.find(x => x.id === id) || {};
-    const handlerOptions = '<option value="">— None —</option>' +
-      CM_USERS.map(u => `<option value="${u.id}" ${String(u.id)===String(client.handler_id)?'selected':''}>${dtEscape(u.name)}</option>`).join('');
-    detail.innerHTML = `<div class="cm-detail-inner">
-      <div class="cm-detail-total">
-        <span class="cm-detail-label">Total Hours</span>
-        <span class="cm-detail-val">${totalHrs}</span>
-        <span class="cm-detail-val-suffix">hours logged</span>
-      </div>
-      <div style="margin-top:14px;padding:12px;background:#f8fafc;border-radius:8px">
-        <div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:6px">Handler</div>
-        <select onchange="cmUpdateHandler(${id}, this.value)"
-          style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff;outline:none">
-          ${handlerOptions}
-        </select>
-      </div>
-      <div class="cm-detail-workers">
-        <div class="cm-detail-workers-title">Top 3 Contributors</div>
-        ${workersHtml}
-      </div>
-    </div>`;
-  } catch(e) {
-    detail.innerHTML = '<div style="padding:14px;color:#ef4444;font-size:13px">Failed to load stats</div>';
+    const s = await api('/api/clients/' + id + '/stats');
+    if (s.error) { detail.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed: ${s.error}</div>`; return; }
+    detail.innerHTML = cmRenderDetailHtml(s, id);
+  } catch (e) {
+    detail.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed to load: ${e.message}</div>`;
   }
+}
+
+function cmBackToList() {
+  document.getElementById('cmDetailView').style.display = 'none';
+  document.getElementById('cmListView').style.display = 'block';
+}
+
+function cmRenderDetailHtml(s, id) {
+  const client = s.client || {};
+  const time = s.time || {};
+  const del = s.delegation || {}, chl = s.checklist || {};
+  const tasksTotal = (parseInt(del.total)||0) + (parseInt(chl.total)||0);
+  const pendingTotal = (parseInt(del.pending)||0) + (parseInt(chl.pending)||0);
+  const completedTotal = (parseInt(del.completed)||0) + (parseInt(chl.completed)||0);
+  const overdueTotal = (parseInt(del.overdue)||0) + (parseInt(chl.overdue)||0);
+  const revisedTotal = parseInt(del.revised)||0;
+  const totalHrs = ((time.total_minutes || 0) / 60).toFixed(1);
+  const completionPct = tasksTotal > 0 ? Math.round((completedTotal / tasksTotal) * 100) : 0;
+  const handlerLine = client.handler_name
+    ? `<span style="background:#ccfbf1;color:#0f766e;padding:3px 10px;border-radius:6px;font-weight:600;font-size:12px">👤 ${dtEscape(client.handler_name)}${client.handler_email ? ` · ${dtEscape(client.handler_email)}` : ''}</span>`
+    : `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:6px;font-weight:600;font-size:12px">⚠️ No handler</span>`;
+  const handlerOpts = '<option value="">— None —</option>' +
+    CM_USERS.map(u => `<option value="${u.id}" ${String(u.id)===String(client.handler_id)?'selected':''}>${dtEscape(u.name)}</option>`).join('');
+  const medals = ['🥇','🥈','🥉','4.','5.'];
+  const workersHtml = (s.top_workers || []).length
+    ? s.top_workers.map((w,i) => {
+        const hrs = ((w.total_minutes || 0) / 60).toFixed(1);
+        return `<div style="display:grid;grid-template-columns:24px 1fr auto auto;gap:10px;align-items:center;padding:8px 4px;border-bottom:1px solid #f1f5f9;font-size:13px">
+          <span>${medals[i]||''}</span>
+          <span style="font-weight:600;color:#0f172a">${dtEscape(w.name)}</span>
+          <span style="color:#64748b;font-size:12px">${dtEscape(w.department || '')}</span>
+          <span style="color:#1a56db;font-weight:700">${hrs} hrs · ${w.task_count}</span>
+        </div>`;
+      }).join('')
+    : '<div style="color:#94a3b8;font-size:13px;padding:12px 0">No time logged yet</div>';
+  const recentHtml = (s.recent || []).length
+    ? s.recent.map(t => {
+        const typeBadge = t.type === 'checklist'
+          ? `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700">✅ Checklist</span>`
+          : `<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:700">📋 Delegation</span>`;
+        const statusColor = t.status === 'completed' ? '#16a34a' : t.status === 'revised' ? '#9d174d' : '#b91c1c';
+        const statusLabel = t.status === 'completed' ? 'Done' : t.status === 'revised' ? 'Revised' : 'Pending';
+        return `<tr>
+          <td>${typeBadge}</td>
+          <td>${dtEscape(t.description || '')}</td>
+          <td style="white-space:nowrap">${dtEscape(t.doer || '—')}</td>
+          <td style="white-space:nowrap">${fmtDate(t.due_date || '')}</td>
+          <td style="white-space:nowrap"><span style="color:${statusColor};font-weight:700;font-size:12px">${statusLabel}</span></td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="5" class="empty" style="padding:20px">No tasks yet</td></tr>';
+
+  const statCard = (label, value, color, sub) => `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px">
+    <div style="font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px">${label}</div>
+    <div style="font-size:28px;font-weight:700;color:${color};margin-top:6px">${value}</div>
+    ${sub ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px">${sub}</div>` : ''}
+  </div>`;
+
+  return `
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin-bottom:16px">
+      <button class="btn btn-outline" onclick="cmBackToList()" style="padding:6px 12px;font-size:12px;margin-bottom:12px">← Back to Clients</button>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:22px;font-weight:700;color:#0f172a">${dtEscape(client.name)}</div>
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            ${handlerLine}
+            <span style="font-size:11px;color:#94a3b8">Client #${client.id}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label style="font-size:11px;color:#64748b;font-weight:600">Change handler:</label>
+          <select onchange="cmUpdateHandler(${id}, this.value); cmShowDetail(${id})"
+            style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff;outline:none">
+            ${handlerOpts}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
+      ${statCard('Total Tasks', tasksTotal, '#1a56db', `${del.total||0} delegation · ${chl.total||0} checklist`)}
+      ${statCard('Pending', pendingTotal, '#ef4444', overdueTotal > 0 ? `${overdueTotal} overdue` : 'On track')}
+      ${statCard('Completed', completedTotal, '#10b981', `${completionPct}% completion rate`)}
+      ${statCard('Revised', revisedTotal, '#f59e0b', revisedTotal > 0 ? 'Needs rework' : 'None')}
+      ${statCard('Time Logged', totalHrs + ' hrs', '#7c3aed', `${time.log_count||0} daily entries`)}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 360px;gap:16px">
+      <div class="task-table-card" style="padding:0">
+        <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
+          <div class="card-head-title">Recent Activity (last 20)</div>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;min-width:580px">
+            <thead><tr>
+              <th>Type</th><th>Description</th><th>Doer</th><th>Date</th><th>Status</th>
+            </tr></thead>
+            <tbody>${recentHtml}</tbody>
+          </table>
+        </div>
+      </div>
+      <div class="task-table-card" style="padding:0">
+        <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
+          <div class="card-head-title">Top Contributors</div>
+        </div>
+        <div style="padding:8px 14px">${workersHtml}</div>
+      </div>
+    </div>
+  `;
 }
 
 async function cmAdd(){
@@ -9945,9 +9987,9 @@ async function cpSaveDelegate() {
 let _mtgClientsCache = null;
 let _mtgUsersCache = null;
 let _mtgEditing = null;
-let _mtgView = 'month';
-let _mtgAnchor = null; // Date object — the month anchor (month view) or selected day (day view)
-let _mtgMonthCache = {}; // YYYY-MM → meeting array
+let _mtgMonthAnchor = null; // month-anchor Date (1st of viewed month)
+let _mtgDayAnchor   = null; // currently focused day in the right-pane timeline
+let _mtgMonthCache = {};
 let _mtgHolidays = null;
 
 function _mtgTodayIso() {
@@ -9963,10 +10005,12 @@ function _mtgParseIso(s) {
 }
 
 async function loadMeetings() {
-  if (!_mtgAnchor) _mtgAnchor = new Date();
+  const today = new Date();
+  if (!_mtgMonthAnchor) _mtgMonthAnchor = new Date(today.getFullYear(), today.getMonth(), 1);
+  if (!_mtgDayAnchor)   _mtgDayAnchor   = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   await Promise.all([_mtgEnsureClients(), _mtgEnsureUsers(), _mtgEnsureHolidays()]);
-  if (_mtgView === 'day') renderMtgDay();
-  else renderMtgMonth();
+  await renderMtgMonth();
+  await renderMtgDay();
 }
 
 async function _mtgEnsureHolidays() {
@@ -9978,33 +10022,22 @@ async function _mtgEnsureHolidays() {
   return _mtgHolidays;
 }
 
-function mtgSetView(view, el) {
-  _mtgView = view;
-  document.querySelectorAll('#mtgViewTabs .tab').forEach(t => t.classList.remove('active'));
-  if (el) el.classList.add('active');
-  document.getElementById('mtgMonthWrap').style.display = view === 'month' ? 'block' : 'none';
-  document.getElementById('mtgDayWrap').style.display = view === 'day' ? 'block' : 'none';
-  if (view === 'day') renderMtgDay();
-  else renderMtgMonth();
-}
-
 function mtgGoToday() {
-  _mtgAnchor = new Date();
-  loadMeetings();
+  const t = new Date();
+  _mtgMonthAnchor = new Date(t.getFullYear(), t.getMonth(), 1);
+  _mtgDayAnchor   = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+  renderMtgMonth();
+  renderMtgDay();
 }
 
 function mtgShift(dir) {
-  if (_mtgView === 'month') {
-    _mtgAnchor = new Date(_mtgAnchor.getFullYear(), _mtgAnchor.getMonth() + dir, 1);
-    renderMtgMonth();
-  } else {
-    _mtgAnchor = new Date(_mtgAnchor.getFullYear(), _mtgAnchor.getMonth(), _mtgAnchor.getDate() + dir);
-    renderMtgDay();
-  }
+  // Shift the MONTH view; day pane stays focused on its own anchor.
+  _mtgMonthAnchor = new Date(_mtgMonthAnchor.getFullYear(), _mtgMonthAnchor.getMonth() + dir, 1);
+  renderMtgMonth();
 }
 
 async function renderMtgMonth() {
-  const anchor = _mtgAnchor;
+  const anchor = _mtgMonthAnchor;
   const year = anchor.getFullYear();
   const month = anchor.getMonth(); // 0-indexed
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -10069,16 +10102,13 @@ async function renderMtgMonth() {
 }
 
 function mtgJumpToDay(iso) {
-  _mtgAnchor = _mtgParseIso(iso);
-  mtgSetView('day', document.getElementById('mtgViewDay'));
+  _mtgDayAnchor = _mtgParseIso(iso);
+  renderMtgDay();
 }
 
 async function renderMtgDay() {
-  const anchor = _mtgAnchor;
+  const anchor = _mtgDayAnchor;
   const iso = _mtgIso(anchor);
-  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  document.getElementById('mtgCalLabel').textContent = `${dayNames[anchor.getDay()]}, ${anchor.getDate()} ${monthNames[anchor.getMonth()]} ${anchor.getFullYear()}`;
   document.getElementById('mtgDayLabel').textContent = `· ${fmtDate(iso)}`;
 
   const tlEl = document.getElementById('mtgDayTimeline');
@@ -10208,7 +10238,7 @@ async function openMeetingModal(id, prefillStart) {
   document.getElementById('mtgTitle').value = '';
   document.getElementById('mtgAgenda').value = '';
   document.getElementById('mtgLink').value = '';
-  document.getElementById('mtgFormDate').value = (_mtgAnchor ? _mtgIso(_mtgAnchor) : _mtgTodayIso());
+  document.getElementById('mtgFormDate').value = (_mtgDayAnchor ? _mtgIso(_mtgDayAnchor) : _mtgTodayIso());
   document.getElementById('mtgStart').value = prefillStart || '10:00';
   document.getElementById('mtgDuration').value = '30';
   mtgRecalcEnd();
@@ -10339,8 +10369,9 @@ async function saveMeeting() {
     if (r?.error) { showToast(r.error); return; }
     showToast(id ? 'Meeting updated · WhatsApp sent' : 'Meeting scheduled · WhatsApp sent');
     closeModal('meetingModal');
-    _mtgAnchor = _mtgParseIso(payload.meeting_date);
-    _mtgMonthCache = {}; // invalidate so next month render refetches
+    _mtgDayAnchor = _mtgParseIso(payload.meeting_date);
+    _mtgMonthAnchor = new Date(_mtgDayAnchor.getFullYear(), _mtgDayAnchor.getMonth(), 1);
+    _mtgMonthCache = {};
     loadMeetings();
   } catch (e) { showToast('Save failed: ' + e.message); }
 }

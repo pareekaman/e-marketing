@@ -3095,6 +3095,10 @@ const _clientsTableMigrationsPromise = (async () => {
     INDEX idx_meeting (meeting_id),
     INDEX idx_user (user_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  // 10-minute pre-meeting reminder flag — set when the cron fires the reminder
+  // so we never double-send. Cleared if the meeting is rescheduled.
+  await sa(`ALTER TABLE meetings ADD COLUMN reminder_sent TINYINT(1) DEFAULT 0 AFTER status`);
+  await sa(`ALTER TABLE meetings ADD INDEX idx_reminder (meeting_date, start_time, reminder_sent, status)`);
 
   console.log('  ✅ Daily Task + Meetings tables ready');
 })();
@@ -3681,6 +3685,47 @@ app.get('/api/cron/daily-reminder', async (req, res) => {
   }
 });
 
+// ── 10-min pre-meeting reminder. Vercel Cron hits this every minute. ──
+async function sendMeetingReminders() {
+  // Compute IST window: meetings starting between (now+9min) and (now+11min)
+  // so we never miss the trigger window even if cron fires at minute boundary.
+  const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+  const today = istNow.toISOString().split('T')[0];
+  const totalNow = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
+  const minLow  = totalNow + 9, minHigh = totalNow + 11;
+  // Wrap-around (e.g. 23:55 + 10 = next day): skip wrap — reminders only fire
+  // for "today" meetings since FY meetings are scheduled in business hours.
+  if (minHigh > 24 * 60) return { ok: true, skipped: 'late-night window' };
+  const lowH = String(Math.floor(minLow / 60)).padStart(2,'0') + ':' + String(minLow % 60).padStart(2,'0') + ':00';
+  const highH = String(Math.floor(minHigh / 60)).padStart(2,'0') + ':' + String(minHigh % 60).padStart(2,'0') + ':00';
+  const [due] = await db.query(
+    `SELECT id FROM meetings
+     WHERE status='scheduled' AND reminder_sent=0
+       AND meeting_date=? AND start_time BETWEEN ? AND ?`,
+    [today, lowH, highH]);
+  if (!due.length) return { ok: true, fired: 0 };
+  let fired = 0;
+  for (const m of due) {
+    // Mark first so concurrent crons don't double-send, then notify.
+    await db.query('UPDATE meetings SET reminder_sent=1 WHERE id=? AND reminder_sent=0', [m.id]);
+    await sendMeetingNotification(m.id, 'reminder').catch(e => console.error('meet reminder err:', e.message));
+    fired++;
+  }
+  return { ok: true, fired, window: `${lowH}-${highH} IST` };
+}
+
+app.get('/api/cron/meeting-reminder', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (process.env.CRON_SECRET && authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    const r = await sendMeetingReminders();
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ══════════════════════════════════════════════════════
 // CLIENTS — admin manages, everyone reads
 // ══════════════════════════════════════════════════════
@@ -3833,15 +3878,38 @@ app.post('/api/clients/bulk', requireAuth, requireAdminOrPC, async (req, res) =>
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Client stats — total hours + top 3 workers (all-time)
-app.get('/api/clients/:id/stats', requireAuth, requireAdmin, async (req, res) => {
+// Client stats — full client snapshot for the detail page (all-time +
+// per-status task counts, recent activity, top contributors).
+app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res) => {
   try {
-    const [[client]] = await db.query('SELECT name FROM clients WHERE id=?', [req.params.id]);
+    const id = req.params.id;
+    const [[client]] = await db.query(
+      `SELECT c.id, c.name, c.handler_id, u.name AS handler_name, u.email AS handler_email
+       FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
+
+    // Time spent (from daily_tasks logged against this client name)
     const [[totals]] = await db.query(
-      'SELECT COALESCE(SUM(duration_min),0) AS total_minutes FROM daily_tasks WHERE client_name=?',
-      [client.name]
-    );
+      'SELECT COALESCE(SUM(duration_min),0) AS total_minutes, COUNT(*) AS log_count FROM daily_tasks WHERE client_name=?',
+      [client.name]);
+
+    // Task counts by status — delegation and checklist tagged with client_id
+    const [[del]] = await db.query(
+      `SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+        SUM(CASE WHEN status='revised'   THEN 1 ELSE 0 END) AS revised,
+        SUM(CASE WHEN status='pending' AND due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
+       FROM delegation_tasks WHERE client_id=?`, [id]);
+    const [[chl]] = await db.query(
+      `SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+        SUM(CASE WHEN status='pending' AND due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
+       FROM checklist_tasks WHERE client_id=?`, [id]);
+
     const [topWorkers] = await db.query(
       `SELECT u.name, COALESCE(u.department,'') AS department,
               SUM(dt.duration_min) AS total_minutes, COUNT(*) AS task_count
@@ -3850,10 +3918,41 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdmin, async (req, res) =>
        WHERE dt.client_name = ?
        GROUP BY dt.user_id, u.name, u.department
        ORDER BY total_minutes DESC
-       LIMIT 3`,
-      [client.name]
-    );
-    res.json({ client_name: client.name, total_minutes: totals.total_minutes, top_workers: topWorkers });
+       LIMIT 5`, [client.name]);
+
+    // Recent activity — last 10 tasks (delegation + checklist) touching this client
+    const [recentDel] = await db.query(
+      `SELECT t.id, 'delegation' AS type, t.description, t.status, t.priority,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              u1.name AS doer, COALESCE(u2.name,'—') AS assigner,
+              DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created
+       FROM delegation_tasks t
+       JOIN users u1 ON t.assigned_to=u1.id
+       LEFT JOIN users u2 ON t.assigned_by=u2.id
+       WHERE t.client_id=? ORDER BY t.created_at DESC LIMIT 15`, [id]);
+    const [recentChl] = await db.query(
+      `SELECT t.id, 'checklist' AS type, t.description, t.status, t.priority,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              u1.name AS doer, COALESCE(u2.name,'—') AS assigner,
+              DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created
+       FROM checklist_tasks t
+       JOIN users u1 ON t.assigned_to=u1.id
+       LEFT JOIN users u2 ON t.assigned_by=u2.id
+       WHERE t.client_id=? ORDER BY t.created_at DESC LIMIT 15`, [id]);
+    const recent = [...recentDel, ...recentChl]
+      .sort((a,b) => (b.created||'').localeCompare(a.created||''))
+      .slice(0, 20);
+
+    res.json({
+      client: {
+        id: client.id, name: client.name,
+        handler_id: client.handler_id, handler_name: client.handler_name, handler_email: client.handler_email
+      },
+      time: { total_minutes: totals.total_minutes, log_count: totals.log_count },
+      delegation: del, checklist: chl,
+      top_workers: topWorkers,
+      recent
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -4762,6 +4861,7 @@ function _meetingMsgBody(action, meeting, clientName, organizerName, attendeeNam
   const fmtDate = d => (d || '').split('-').reverse().join('/');
   const headline = action === 'created' ? '📅 *New Meeting Scheduled*'
                  : action === 'rescheduled' ? '🔄 *Meeting Rescheduled*'
+                 : action === 'reminder' ? '⏰ *Meeting in 10 minutes*'
                  : '❌ *Meeting Cancelled*';
   // Client group sees only the essentials — no organizer / team / agenda / client name.
   // Internal DMs (organizer + attendees) get the full context.
@@ -4808,11 +4908,8 @@ async function sendMeetingNotification(meetingId, action) {
     const [atts] = await db.query(
       `SELECT u.id, u.name, u.phone FROM meeting_attendees ma
        JOIN users u ON ma.user_id = u.id WHERE ma.meeting_id = ?`, [meetingId]);
-    const clientBody = _meetingMsgBody(action, m, m.client_name, m.organizer_name, atts.map(a => a.name), true);
     const internalBody = _meetingMsgBody(action, m, m.client_name, m.organizer_name, atts.map(a => a.name), false);
-    // Client group fan-out (single shared group, hardcoded). Slimmed message — no client/team/agenda.
-    const groupResult = await sendWhatsAppRaw(MEETING_CLIENT_GROUP_ID, clientBody);
-    // Direct WhatsApp to organizer + attendees who have phones. Full context.
+    // Notify only the host (organizer) + attendees — no client-group fanout.
     const dmTargets = new Set();
     const [[org]] = await db.query('SELECT phone FROM users WHERE id=?', [m.organizer_id]);
     if (org?.phone) dmTargets.add(org.phone);
@@ -4822,7 +4919,7 @@ async function sendMeetingNotification(meetingId, action) {
       dmResults.push(await sendWhatsApp(phone, internalBody));
       await new Promise(r => setTimeout(r, 600));
     }
-    return { ok: true, group: groupResult, dms: dmResults.length };
+    return { ok: true, dms: dmResults.length };
   } catch (err) {
     console.error('  ⚠️ Meeting notification failed:', err.message);
     return { ok: false, error: err.message };
@@ -4972,7 +5069,7 @@ app.put('/api/meetings/:id', requireAuth, async (req, res) => {
          title=COALESCE(?,title), agenda=?, client_id=?,
          meeting_date=COALESCE(?,meeting_date),
          start_time=COALESCE(?,start_time), end_time=COALESCE(?,end_time),
-         meet_link=COALESCE(?,meet_link)
+         meet_link=COALESCE(?,meet_link)${rescheduled ? ', reminder_sent=0' : ''}
        WHERE id=?`,
       [title, agenda || null, client_id || null, meeting_date || null, start_time || null, end_time || null, meet_link || null, id]);
     if (Array.isArray(attendee_ids)) {
