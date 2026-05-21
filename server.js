@@ -4640,11 +4640,24 @@ async function createGoogleMeetLink({ title, dateStr, startTime, endTime, attend
   }
 }
 
-function _meetingMsgBody(action, meeting, clientName, organizerName, attendeeNames) {
+function _meetingMsgBody(action, meeting, clientName, organizerName, attendeeNames, forClientGroup = false) {
   const fmtDate = d => (d || '').split('-').reverse().join('/');
   const headline = action === 'created' ? '📅 *New Meeting Scheduled*'
                  : action === 'rescheduled' ? '🔄 *Meeting Rescheduled*'
                  : '❌ *Meeting Cancelled*';
+  // Client group sees only the essentials — no organizer / team / agenda / client name.
+  // Internal DMs (organizer + attendees) get the full context.
+  if (forClientGroup) {
+    const lines = [
+      headline,
+      '',
+      `*Title:* ${meeting.title}`,
+      `*Date:* ${fmtDate(meeting.meeting_date)}`,
+      `*Time:* ${meeting.start_time} – ${meeting.end_time}`
+    ];
+    if (action !== 'cancelled' && meeting.meet_link) lines.push('', `*Join:* ${meeting.meet_link}`);
+    return lines.join('\n');
+  }
   const lines = [
     headline,
     '',
@@ -4677,17 +4690,18 @@ async function sendMeetingNotification(meetingId, action) {
     const [atts] = await db.query(
       `SELECT u.id, u.name, u.phone FROM meeting_attendees ma
        JOIN users u ON ma.user_id = u.id WHERE ma.meeting_id = ?`, [meetingId]);
-    const body = _meetingMsgBody(action, m, m.client_name, m.organizer_name, atts.map(a => a.name));
-    // Client group fan-out (single shared group, hardcoded).
-    const groupResult = await sendWhatsAppRaw(MEETING_CLIENT_GROUP_ID, body);
-    // Direct WhatsApp to organizer + attendees who have phones.
+    const clientBody = _meetingMsgBody(action, m, m.client_name, m.organizer_name, atts.map(a => a.name), true);
+    const internalBody = _meetingMsgBody(action, m, m.client_name, m.organizer_name, atts.map(a => a.name), false);
+    // Client group fan-out (single shared group, hardcoded). Slimmed message — no client/team/agenda.
+    const groupResult = await sendWhatsAppRaw(MEETING_CLIENT_GROUP_ID, clientBody);
+    // Direct WhatsApp to organizer + attendees who have phones. Full context.
     const dmTargets = new Set();
     const [[org]] = await db.query('SELECT phone FROM users WHERE id=?', [m.organizer_id]);
     if (org?.phone) dmTargets.add(org.phone);
     for (const a of atts) if (a.phone) dmTargets.add(a.phone);
     const dmResults = [];
     for (const phone of dmTargets) {
-      dmResults.push(await sendWhatsApp(phone, body));
+      dmResults.push(await sendWhatsApp(phone, internalBody));
       await new Promise(r => setTimeout(r, 600));
     }
     return { ok: true, group: groupResult, dms: dmResults.length };
