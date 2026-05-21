@@ -9816,8 +9816,8 @@ async function openMeetingModal(id, prefillStart) {
   const attEl = document.getElementById('mtgAttendees');
   attEl.innerHTML = _mtgUsersCache.map(u =>
     `<label data-att-row style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0;margin-bottom:0;padding:6px 10px;border-radius:6px;cursor:pointer;color:#1e293b" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">
-       <input type="checkbox" value="${u.id}" data-att onchange="updateAttSummary()" style="margin:0"/>
-       <span>${dtEscape(u.name)}</span>
+       <input type="checkbox" value="${u.id}" data-att onchange="updateAttSummary()" style="width:16px;height:16px;margin:0;padding:0;flex-shrink:0;accent-color:#1a56db"/>
+       <span style="flex:1">${dtEscape(u.name)}</span>
      </label>`).join('');
   document.getElementById('mtgAttSearch').value = '';
   filterAttDropdown();
