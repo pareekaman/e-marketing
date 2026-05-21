@@ -3346,18 +3346,17 @@ function updateDashStats(type) {
     revised   = del.revised || 0;
   }
   const total = pending + completed + revised;
-  // Revised is treated as a sub-state of pending — combine for display but keep
-  // the revised breakdown visible as a subtitle on the pending card.
-  const pendingCombined = pending + revised;
+  // Pending card shows the strict pending count; revised is surfaced as a
+  // separate subtitle within the same card so the two numbers stay distinct.
   const totalEl = document.getElementById('dTotal');
   const cEl     = document.getElementById('dCompleted');
   const pEl     = document.getElementById('dPending');
   const pBreak  = document.getElementById('dPendingBreakdown');
   if (totalEl) totalEl.textContent = total;
   if (cEl)     cEl.textContent     = completed;
-  if (pEl)     pEl.textContent     = pendingCombined;
+  if (pEl)     pEl.textContent     = pending;
   if (pBreak) {
-    if (revised > 0) { pBreak.textContent = `incl. ${revised} revised`; pBreak.style.display = 'block'; }
+    if (revised > 0) { pBreak.textContent = `+ ${revised} revised`; pBreak.style.display = 'block'; }
     else             { pBreak.style.display = 'none'; }
   }
 
