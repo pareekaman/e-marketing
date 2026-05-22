@@ -3481,17 +3481,25 @@ async function loadDashboardPerfCharts(){
     api(`/api/dashboard/activity?start=${fromEl.value}&end=${toEl.value}`)
   ]);
 
+  // Exclude internal owner / admin names from both leaderboards so the
+  // ranking reflects regular doers only.
+  const PERF_EXCLUDE = ['abhishek jain', 'simran gurnani'];
+  const isExcluded = r => PERF_EXCLUDE.includes(String(r.name || '').trim().toLowerCase());
   const racers = Array.isArray(scoreData)
-    ? scoreData.filter(r => r.overallScore !== null && r.overallScore !== undefined)
+    ? scoreData.filter(r => !isExcluded(r))
     : [];
-  // Top performers — score closest to 0 (least negative). Bottom — most negative.
-  const top    = [...racers].sort((a, b) => b.overallScore - a.overallScore).slice(0, 5);
-  const bottom = [...racers].sort((a, b) => a.overallScore - b.overallScore).slice(0, 5);
-  renderDashPerfChart('dashTopChart',    'top',    top.map(r => r.name),    top.map(r => r.overallScore),    '#16a34a', 'Score');
-  renderDashPerfChart('dashBottomChart', 'bottom', bottom.map(r => r.name), bottom.map(r => r.overallScore), '#dc2626', 'Score');
+  // Top Performers — sorted by tasks COMPLETED in this window (most → least).
+  // Bottom Performers — kept as overall-score-based to flag who's lagging.
+  const completables = racers.filter(r => Number.isFinite(parseInt(r.completedAll)));
+  const top    = [...completables].sort((a, b) => (parseInt(b.completedAll)||0) - (parseInt(a.completedAll)||0)).slice(0, 5);
+  const bottomPool = racers.filter(r => r.overallScore !== null && r.overallScore !== undefined);
+  const bottom = [...bottomPool].sort((a, b) => a.overallScore - b.overallScore).slice(0, 5);
+  renderDashPerfChart('dashTopChart',    'top',    top.map(r => r.name),    top.map(r => parseInt(r.completedAll)||0), '#16a34a', 'Tasks completed');
+  renderDashPerfChart('dashBottomChart', 'bottom', bottom.map(r => r.name), bottom.map(r => r.overallScore),           '#dc2626', 'Score');
 
   // Most Active — composite engagement: active tasks + tasks delegated to others + revises triggered + leaves submitted.
-  const active = Array.isArray(activityData) ? activityData.slice(0, 5) : [];
+  const active = (Array.isArray(activityData) ? activityData : [])
+    .filter(r => !isExcluded(r)).slice(0, 5);
   renderDashPerfChart(
     'dashActiveChart', 'active',
     active.map(r => r.name),
