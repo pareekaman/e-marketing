@@ -3837,31 +3837,31 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
     const createdByDay = {}, doneByDay = {};
     for (const r of [...dailyDel, ...dailyChl]) createdByDay[r.d] = (createdByDay[r.d]||0) + (parseInt(r.c)||0);
     for (const r of [...dailyDone, ...dailyDoneChl]) doneByDay[r.d] = (doneByDay[r.d]||0) + (parseInt(r.c)||0);
-    // Top performers — users who completed the most client tasks in the window.
-    // Excludes hardcoded internal names so the leaderboard stays meaningful.
-    const excludeList = TOP_PERFORMER_EXCLUDE_NAMES;
-    const exclPlaceholders = excludeList.map(()=>'?').join(',');
-    const [topPerformers] = await db.query(
-      `SELECT u.id, u.name, COUNT(*) AS completed_count
-       FROM (
-         SELECT assigned_to FROM delegation_tasks
-          WHERE client_id=? AND status='completed' AND due_date BETWEEN ? AND ?
-         UNION ALL
-         SELECT assigned_to FROM checklist_tasks
-          WHERE client_id=? AND status='completed' AND due_date BETWEEN ? AND ?
-       ) t
-       JOIN users u ON t.assigned_to = u.id
-       WHERE u.name NOT IN (${exclPlaceholders})
-       GROUP BY u.id, u.name
-       ORDER BY completed_count DESC, u.name ASC
-       LIMIT 5`,
-      [id, from, to, id, from, to, ...excludeList]);
+    // Upcoming Deadlines — pending tasks (delegation + checklist) sorted by
+    // soonest due date. Overdue rows surface first.
+    const [upDel] = await db.query(
+      `SELECT t.id, 'delegation' AS type, t.description, t.priority,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              u.name AS doer
+       FROM delegation_tasks t JOIN users u ON t.assigned_to=u.id
+       WHERE t.client_id=? AND t.status IN ('pending','revised')
+       ORDER BY t.due_date ASC LIMIT 15`, [id]);
+    const [upChl] = await db.query(
+      `SELECT t.id, 'checklist' AS type, t.description, t.priority,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              u.name AS doer
+       FROM checklist_tasks t JOIN users u ON t.assigned_to=u.id
+       WHERE t.client_id=? AND t.status='pending'
+         AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+       ORDER BY t.due_date ASC LIMIT 15`, [id]);
+    const upcoming = [...upDel, ...upChl]
+      .sort((a,b) => (a.due_date||'').localeCompare(b.due_date||''))
+      .slice(0, 10);
     res.json({
       client, range: { from, to },
       delegation: del, checklist: chl, meetings: { ...meet, recent: meetRecent },
       recent,
-      daily: { created: createdByDay, completed: doneByDay },
-      top_performers: topPerformers
+      upcoming
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
