@@ -3744,6 +3744,78 @@ app.get('/api/client-portal/me', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Client-portal stats — same shape as /api/clients/:id/stats but auto-resolves
+// the client_id from the logged-in client session. Defaults to current month.
+app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
+    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
+    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const id = u.client_id;
+    const [[client]] = await db.query(
+      `SELECT c.id, c.name, c.handler_id, u.name AS handler_name, u.email AS handler_email
+       FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
+    const ist = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+    const y = ist.getUTCFullYear(), m = ist.getUTCMonth();
+    const defaultFrom = `${y}-${String(m+1).padStart(2,'0')}-01`;
+    const lastDay = new Date(Date.UTC(y, m+1, 0)).getUTCDate();
+    const defaultTo = `${y}-${String(m+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+    const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+    const from = isDate(req.query.from) ? req.query.from : defaultFrom;
+    const to   = isDate(req.query.to)   ? req.query.to   : defaultTo;
+    const [[del]] = await db.query(
+      `SELECT COUNT(*) AS total,
+        SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+        SUM(CASE WHEN status='revised'   THEN 1 ELSE 0 END) AS revised,
+        SUM(CASE WHEN status='pending' AND due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
+       FROM delegation_tasks WHERE client_id=? AND due_date BETWEEN ? AND ?`, [id, from, to]);
+    const [[chl]] = await db.query(
+      `SELECT COUNT(*) AS total,
+        SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+        SUM(CASE WHEN status='pending' AND due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
+       FROM checklist_tasks WHERE client_id=? AND due_date BETWEEN ? AND ?`, [id, from, to]);
+    const [[meet]] = await db.query(
+      `SELECT COUNT(*) AS total,
+        SUM(CASE WHEN status='scheduled' THEN 1 ELSE 0 END) AS scheduled,
+        SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) AS cancelled,
+        SUM(CASE WHEN status='done'      THEN 1 ELSE 0 END) AS done
+       FROM meetings WHERE client_id=? AND meeting_date BETWEEN ? AND ?`, [id, from, to]);
+    const [meetRecent] = await db.query(
+      `SELECT m.id, m.title, m.status,
+              DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS meeting_date,
+              TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
+              TIME_FORMAT(m.end_time,'%H:%i')   AS end_time,
+              u.name AS organizer_name
+       FROM meetings m LEFT JOIN users u ON m.organizer_id = u.id
+       WHERE m.client_id=? AND m.meeting_date BETWEEN ? AND ?
+       ORDER BY m.meeting_date DESC, m.start_time DESC LIMIT 15`, [id, from, to]);
+    const [recentDel] = await db.query(
+      `SELECT t.id, 'delegation' AS type, t.description, t.status, t.priority,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created
+       FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id
+       WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
+       ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
+    const [recentChl] = await db.query(
+      `SELECT t.id, 'checklist' AS type, t.description, t.status, t.priority,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created
+       FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id
+       WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
+       ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
+    const recent = [...recentDel, ...recentChl]
+      .sort((a,b) => (b.created||'').localeCompare(a.created||''))
+      .slice(0, 20);
+    res.json({
+      client, range: { from, to },
+      delegation: del, checklist: chl, meetings: { ...meet, recent: meetRecent },
+      recent
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/client-portal/tasks', requireAuth, async (req, res) => {
   try {
     if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });

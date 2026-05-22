@@ -1855,41 +1855,11 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
   </div>
 
-  <!-- ── CLIENT PORTAL — only role='client' lands here ── -->
+  <!-- ── CLIENT PORTAL — only role='client' lands here.
+       Renders the same stats/recent/meetings layout as the admin
+       Client Detail page but without the admin-only controls. ── -->
   <div id="page-client-portal" class="page">
-    <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);padding:20px 24px;border-radius:12px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-      <div>
-        <div id="cpHeading" style="font-size:20px;font-weight:700;color:#0f172a">Welcome</div>
-        <div id="cpSubline" style="font-size:13px;color:#475569;margin-top:4px">Loading…</div>
-      </div>
-      <button class="btn btn-primary" onclick="cpOpenDelegate()">＋ New Task for Handler</button>
-    </div>
-
-    <div style="display:flex;gap:8px;margin-bottom:14px">
-      <div class="tab-group" id="cpStatusTabGroup">
-        <div class="tab" id="cpTabAll" onclick="cpFilterStatus('all',this)">All</div>
-        <div class="tab active" id="cpTabPending" onclick="cpFilterStatus('pending',this)">Pending</div>
-        <div class="tab" id="cpTabCompleted" onclick="cpFilterStatus('completed',this)">Completed</div>
-      </div>
-    </div>
-
-    <div class="task-table-card" style="padding:0">
-      <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
-        <div class="card-head-title">My Tasks</div>
-      </div>
-      <div style="overflow-x:auto">
-        <table style="min-width:680px;width:100%">
-          <thead><tr>
-            <th style="white-space:nowrap">Type</th>
-            <th>Description</th>
-            <th>Doer</th>
-            <th>Date</th>
-            <th>Status</th>
-          </tr></thead>
-          <tbody id="cpTaskBody"></tbody>
-        </table>
-      </div>
-    </div>
+    <div id="cpContent"></div>
   </div>
 
   <!-- Client-portal delegate modal: doer is locked to the handler -->
@@ -9969,64 +9939,133 @@ async function loadLeaveApprovals(){
 // ══════════════════════════════════════════════════════
 // CLIENT PORTAL — only role='client' sees this
 // ══════════════════════════════════════════════════════
-let _cpTasks = [];
 let _cpMe = null;
-let _cpStatusFilter = 'pending';
 
-async function loadClientPortal() {
+async function loadClientPortal(from, to) {
+  const wrap = document.getElementById('cpContent');
+  wrap.innerHTML = '<div class="empty" style="padding:40px">Loading…</div>';
   try {
-    const [me, tasks] = await Promise.all([
-      api('/api/client-portal/me'),
-      api('/api/client-portal/tasks')
-    ]);
-    _cpMe = me || {};
-    _cpTasks = Array.isArray(tasks) ? tasks : [];
-    document.getElementById('cpHeading').textContent = `🏢 ${_cpMe.name || 'Client'}`;
-    const handlerText = _cpMe.handler_name
-      ? `Your handler: <strong>${dtEscape(_cpMe.handler_name)}</strong>${_cpMe.handler_email ? ` · ${dtEscape(_cpMe.handler_email)}` : ''}`
-      : '⚠️ No handler assigned yet — contact admin before delegating tasks.';
-    document.getElementById('cpSubline').innerHTML = handlerText;
-    cpRenderTable();
+    const qs = (from && to) ? `?from=${from}&to=${to}` : '';
+    const s = await api('/api/client-portal/stats' + qs);
+    if (s.error) { wrap.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">${s.error}</div>`; return; }
+    _cpMe = s.client || {};
+    wrap.innerHTML = cpRenderHtml(s);
   } catch(e) {
-    document.getElementById('cpSubline').textContent = 'Failed to load portal: ' + (e.message || 'error');
+    wrap.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed to load: ${e.message || 'error'}</div>`;
   }
 }
 
-function cpFilterStatus(status, el) {
-  _cpStatusFilter = status;
-  document.querySelectorAll('#cpStatusTabGroup .tab').forEach(t => t.classList.remove('active'));
-  if (el) el.classList.add('active');
-  cpRenderTable();
+function cpApplyRange() {
+  const from = document.getElementById('cpFrom')?.value;
+  const to   = document.getElementById('cpTo')?.value;
+  loadClientPortal(from, to);
 }
 
-function cpRenderTable() {
-  const tbody = document.getElementById('cpTaskBody');
-  let rows = _cpTasks;
-  if (_cpStatusFilter === 'pending') {
-    rows = rows.filter(t => t.status === 'pending' || t.status === 'revised');
-  } else if (_cpStatusFilter === 'completed') {
-    rows = rows.filter(t => t.status === 'completed');
-  }
-  if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="5" class="empty" style="padding:24px">No tasks yet</td></tr>`;
-    return;
-  }
-  const typeBadge = t => t.type === 'checklist'
-    ? `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ Checklist</span>`
-    : `<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bfdbfe">📋 Delegation</span>`;
-  const statusBadge = t => {
-    if (t.status === 'completed') return `<span style="font-size:11px;color:#16a34a;font-weight:700;background:#dcfce7;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0">✅ Done</span>`;
-    if (t.status === 'revised')   return `<span style="font-size:11px;color:#9d174d;font-weight:700;background:#fce7f3;padding:3px 8px;border-radius:6px;border:1px solid #fbcfe8">🔄 Revised</span>`;
-    return `<span style="font-size:11px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:3px 8px;border-radius:6px;border:1px solid #fca5a5">⏳ Pending</span>`;
-  };
-  tbody.innerHTML = rows.sort((a,b) => (b.due_date||'').localeCompare(a.due_date||'')).map(t => `
-    <tr>
-      <td style="white-space:nowrap">${typeBadge(t)}</td>
-      <td>${dtEscape(t.description || '')}</td>
-      <td>${dtEscape(t.assignedToName || '—')}</td>
-      <td style="white-space:nowrap">${fmtDate(t.due_date || '')}</td>
-      <td>${statusBadge(t)}</td>
-    </tr>`).join('');
+function cpRenderHtml(s) {
+  const client = s.client || {};
+  const del = s.delegation || {}, chl = s.checklist || {};
+  const meet = s.meetings || {};
+  const range = s.range || {};
+  const tasksTotal     = (parseInt(del.total)||0)     + (parseInt(chl.total)||0);
+  const pendingTotal   = (parseInt(del.pending)||0)   + (parseInt(chl.pending)||0);
+  const completedTotal = (parseInt(del.completed)||0) + (parseInt(chl.completed)||0);
+  const overdueTotal   = (parseInt(del.overdue)||0)   + (parseInt(chl.overdue)||0);
+  const revisedTotal   = parseInt(del.revised)||0;
+  const meetingsTotal     = parseInt(meet.total)||0;
+  const meetingsScheduled = parseInt(meet.scheduled)||0;
+  const meetingsCancelled = parseInt(meet.cancelled)||0;
+  const completionPct = tasksTotal > 0 ? Math.round((completedTotal / tasksTotal) * 100) : 0;
+  const handlerLine = client.handler_name
+    ? `<span style="background:#ccfbf1;color:#0f766e;padding:3px 10px;border-radius:6px;font-weight:600;font-size:12px">👤 Your handler: ${dtEscape(client.handler_name)}${client.handler_email ? ` · ${dtEscape(client.handler_email)}` : ''}</span>`
+    : `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:6px;font-weight:600;font-size:12px">⚠️ No handler assigned — contact admin</span>`;
+  const canDelegate = !!client.handler_id;
+
+  const recentHtml = (s.recent || []).length
+    ? s.recent.map(t => {
+        const typeBadge = t.type === 'checklist'
+          ? `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700">✅ Checklist</span>`
+          : `<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:700">📋 Delegation</span>`;
+        const statusColor = t.status === 'completed' ? '#16a34a' : t.status === 'revised' ? '#9d174d' : '#b91c1c';
+        const statusLabel = t.status === 'completed' ? 'Done' : t.status === 'revised' ? 'Revised' : 'Pending';
+        return `<tr>
+          <td>${typeBadge}</td>
+          <td>${dtEscape(t.description || '')}</td>
+          <td style="white-space:nowrap">${dtEscape(t.doer || '—')}</td>
+          <td style="white-space:nowrap">${fmtDate(t.due_date || '')}</td>
+          <td style="white-space:nowrap"><span style="color:${statusColor};font-weight:700;font-size:12px">${statusLabel}</span></td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="5" class="empty" style="padding:20px">No tasks in this window</td></tr>';
+
+  const meetingsHtml = (meet.recent || []).length
+    ? meet.recent.map(m => {
+        const statusPill = m.status === 'cancelled'
+          ? '<span style="font-size:10px;color:#b91c1c;background:#fee2e2;padding:2px 8px;border-radius:10px;font-weight:700">CANCELLED</span>'
+          : m.status === 'done'
+          ? '<span style="font-size:10px;color:#16a34a;background:#dcfce7;padding:2px 8px;border-radius:10px;font-weight:700">DONE</span>'
+          : '<span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:2px 8px;border-radius:10px;font-weight:700">SCHEDULED</span>';
+        return `<div style="padding:10px 14px;border-bottom:1px solid #f1f5f9">
+          <div style="font-weight:600;color:#0f172a;font-size:13px">${dtEscape(m.title)} ${statusPill}</div>
+          <div style="font-size:11px;color:#64748b;margin-top:3px">${fmtDate(m.meeting_date)} · ${m.start_time}–${m.end_time}${m.organizer_name ? ` · 👤 ${dtEscape(m.organizer_name)}` : ''}</div>
+        </div>`;
+      }).join('')
+    : '<div class="empty" style="padding:20px">No meetings in this window</div>';
+
+  const statCard = (label, value, color, sub) => `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px">
+    <div style="font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px">${label}</div>
+    <div style="font-size:28px;font-weight:700;color:${color};margin-top:6px">${value}</div>
+    ${sub ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px">${sub}</div>` : ''}
+  </div>`;
+
+  return `
+    <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);padding:18px 24px;border-radius:12px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:22px;font-weight:700;color:#0f172a">🏢 ${dtEscape(client.name || 'Client')}</div>
+          <div style="margin-top:8px">${handlerLine}</div>
+        </div>
+        <button class="btn btn-primary" ${canDelegate ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'} onclick="cpOpenDelegate()">＋ New Task for Handler</button>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fffbeb;padding:10px 14px;border-radius:8px;border:1px solid #fde68a">
+        <label style="font-size:11px;color:#92400e;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Range</label>
+        <input type="date" id="cpFrom" value="${range.from || ''}" style="padding:6px 10px;border:1.5px solid #fde68a;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
+        <span style="font-size:11px;color:#92400e">to</span>
+        <input type="date" id="cpTo" value="${range.to || ''}" style="padding:6px 10px;border:1.5px solid #fde68a;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
+        <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="cpApplyRange()">Apply</button>
+        <span style="font-size:11px;color:#92400e">Default: current month</span>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
+      ${statCard('Total Tasks', tasksTotal, '#1a56db', `${del.total||0} delegation · ${chl.total||0} checklist`)}
+      ${statCard('Pending', pendingTotal, '#ef4444', overdueTotal > 0 ? `${overdueTotal} overdue` : 'On track')}
+      ${statCard('Completed', completedTotal, '#10b981', `${completionPct}% completion rate`)}
+      ${statCard('Revised', revisedTotal, '#f59e0b', revisedTotal > 0 ? 'Needs rework' : 'None')}
+      ${statCard('Meetings', meetingsTotal, '#7c3aed', `${meetingsScheduled} scheduled · ${meetingsCancelled} cancelled`)}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 360px;gap:16px">
+      <div class="task-table-card" style="padding:0">
+        <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
+          <div class="card-head-title">Recent Activity</div>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;min-width:580px">
+            <thead><tr>
+              <th>Type</th><th>Description</th><th>Doer</th><th>Date</th><th>Status</th>
+            </tr></thead>
+            <tbody>${recentHtml}</tbody>
+          </table>
+        </div>
+      </div>
+      <div class="task-table-card" style="padding:0">
+        <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
+          <div class="card-head-title">Meetings (this window)</div>
+        </div>
+        <div>${meetingsHtml}</div>
+      </div>
+    </div>
+  `;
 }
 
 function cpOpenDelegate() {
