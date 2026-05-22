@@ -4768,7 +4768,9 @@ const MEETING_GMEET_IMPERSONATE = process.env.GOOGLE_MEET_IMPERSONATE_EMAIL || '
 
 // Build every slot for a given date, mark booked vs free per attendee set.
 // Returns: [{ start: 'HH:MM', end: 'HH:MM', booked: bool, busyUserIds: [int] }]
-async function buildMeetingSlots(dateStr, userIds = []) {
+// viewerId — the logged-in user; only meetings involving this user count as
+// "booked" so each user's calendar shows their own conflicts only.
+async function buildMeetingSlots(dateStr, userIds = [], viewerId = null) {
   const slots = [];
   const { startHour, endHour, slotMin } = MEETING_BIZ_HOURS;
   for (let h = startHour; h < endHour; h++) {
@@ -4780,9 +4782,6 @@ async function buildMeetingSlots(dateStr, userIds = []) {
       slots.push({ start: `${sh}:${sm}`, end: `${eh}:${em}`, booked: false, busyUserIds: [] });
     }
   }
-  // Pull every scheduled meeting on this date and overlap-check against each slot.
-  // For org-wide busy view we look at ALL meetings; the per-user busyUserIds gets
-  // populated from attendee+organizer joins so the UI can show team availability.
   const [meetings] = await db.query(
     `SELECT m.id, TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
             TIME_FORMAT(m.end_time,'%H:%i') AS end_time, m.organizer_id
@@ -4800,17 +4799,19 @@ async function buildMeetingSlots(dateStr, userIds = []) {
     for (const a of attendees) (attByMtg[a.meeting_id] = attByMtg[a.meeting_id] || []).push(a.user_id);
     for (const m of meetings) {
       const involved = new Set([m.organizer_id, ...(attByMtg[m.id] || [])]);
+      // A slot is "booked" for the viewer only if the viewer themselves is in
+      // this meeting. Others' meetings don't block the viewer's calendar.
+      const viewerInvolved = viewerId != null && involved.has(viewerId);
       for (const slot of slots) {
-        // Overlap if slot.start < meeting.end AND slot.end > meeting.start
         if (slot.start < m.end_time && slot.end > m.start_time) {
-          slot.booked = true;
+          if (viewerInvolved) slot.booked = true;
+          // busyUserIds still records everyone (used for team availability hints
+          // in the schedule modal when picking attendees).
           for (const uid of involved) if (!slot.busyUserIds.includes(uid)) slot.busyUserIds.push(uid);
         }
       }
     }
   }
-  // If specific userIds were requested, narrow "booked" to reflect just those users.
-  // (Organization-wide booked stays as a separate flag in the same payload.)
   if (userIds.length) {
     for (const slot of slots) {
       const conflict = slot.busyUserIds.some(uid => userIds.includes(uid));
@@ -4927,10 +4928,15 @@ async function sendMeetingNotification(meetingId, action) {
 }
 
 // List meetings (filter by date range / status / organizer).
+// Every user is scoped to meetings they organize or are invited to — nobody
+// sees someone else's private meetings here.
 app.get('/api/meetings', requireAuth, async (req, res) => {
   try {
+    const uid = req.session.userId;
     const { from, to, status, organizer } = req.query;
-    let where = '1=1', params = [];
+    let where = `(m.organizer_id = ? OR EXISTS
+      (SELECT 1 FROM meeting_attendees ma WHERE ma.meeting_id = m.id AND ma.user_id = ?))`;
+    const params = [uid, uid];
     if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) { where += ' AND m.meeting_date >= ?'; params.push(from); }
     if (to   && /^\d{4}-\d{2}-\d{2}$/.test(to))   { where += ' AND m.meeting_date <= ?'; params.push(to); }
     if (status) { where += ' AND m.status = ?'; params.push(status); }
@@ -4980,7 +4986,7 @@ app.get('/api/meetings/slots', requireAuth, async (req, res) => {
       } catch { return { off: false }; }
     })();
     if (off.off) return res.json({ date, off: true, reason: off.reason, slots: [] });
-    const slots = await buildMeetingSlots(date, userIds);
+    const slots = await buildMeetingSlots(date, userIds, req.session.userId);
     res.json({ date, off: false, slots });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
