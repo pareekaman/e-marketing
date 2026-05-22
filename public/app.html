@@ -9975,92 +9975,139 @@ function cpRenderHtml(s) {
   const meetingsScheduled = parseInt(meet.scheduled)||0;
   const meetingsCancelled = parseInt(meet.cancelled)||0;
   const completionPct = tasksTotal > 0 ? Math.round((completedTotal / tasksTotal) * 100) : 0;
-  const handlerLine = client.handler_name
-    ? `<span style="background:#ccfbf1;color:#0f766e;padding:3px 10px;border-radius:6px;font-weight:600;font-size:12px">👤 Your handler: ${dtEscape(client.handler_name)}${client.handler_email ? ` · ${dtEscape(client.handler_email)}` : ''}</span>`
-    : `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:6px;font-weight:600;font-size:12px">⚠️ No handler assigned — contact admin</span>`;
   const canDelegate = !!client.handler_id;
+
+  // Avatar — gradient circle with client initials (reuses cmInitials/cmAvatarStyle).
+  const initials = dtEscape(cmInitials(client.name || 'C'));
+  const avatarStyle = cmAvatarStyle(client.name || 'C');
+
+  // Time-of-day greeting (IST).
+  const istHour = (new Date(Date.now() + (5.5*60*60*1000))).getUTCHours();
+  const greeting = istHour < 12 ? 'Good morning' : istHour < 17 ? 'Good afternoon' : 'Good evening';
+
+  const handlerLine = client.handler_name
+    ? `<div style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.92);color:#0f766e;padding:8px 14px;border-radius:999px;font-weight:600;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+         <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#14b8a6,#0d9488);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${dtEscape(cmInitials(client.handler_name))}</div>
+         <span>Handler: <strong>${dtEscape(client.handler_name)}</strong></span>
+         ${client.handler_email ? `<span style="color:#64748b;font-weight:500">· ${dtEscape(client.handler_email)}</span>` : ''}
+       </div>`
+    : `<div style="display:inline-flex;align-items:center;gap:6px;background:#fef2f2;color:#991b1b;padding:8px 14px;border-radius:999px;font-weight:600;font-size:13px;border:1px solid #fecaca">
+         ⚠️ No handler assigned — contact admin before delegating tasks
+       </div>`;
 
   const recentHtml = (s.recent || []).length
     ? s.recent.map(t => {
         const typeBadge = t.type === 'checklist'
-          ? `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700">✅ Checklist</span>`
-          : `<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:700">📋 Delegation</span>`;
-        const statusColor = t.status === 'completed' ? '#16a34a' : t.status === 'revised' ? '#9d174d' : '#b91c1c';
-        const statusLabel = t.status === 'completed' ? 'Done' : t.status === 'revised' ? 'Revised' : 'Pending';
-        return `<tr>
+          ? `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:3px 9px;border-radius:10px;font-weight:700;letter-spacing:.3px">✅ CHECKLIST</span>`
+          : `<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:3px 9px;border-radius:10px;font-weight:700;letter-spacing:.3px">📋 DELEGATION</span>`;
+        const statusPill = t.status === 'completed'
+          ? `<span style="font-size:11px;color:#15803d;font-weight:700;background:#dcfce7;padding:4px 10px;border-radius:999px;border:1px solid #bbf7d0">✓ Done</span>`
+          : t.status === 'revised'
+          ? `<span style="font-size:11px;color:#9d174d;font-weight:700;background:#fce7f3;padding:4px 10px;border-radius:999px;border:1px solid #fbcfe8">🔄 Revised</span>`
+          : `<span style="font-size:11px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:4px 10px;border-radius:999px;border:1px solid #fca5a5">⏳ Pending</span>`;
+        return `<tr style="transition:background .15s" onmouseover="this.style.background='#fafbfc'" onmouseout="this.style.background='transparent'">
           <td>${typeBadge}</td>
-          <td>${dtEscape(t.description || '')}</td>
-          <td style="white-space:nowrap">${dtEscape(t.doer || '—')}</td>
-          <td style="white-space:nowrap">${fmtDate(t.due_date || '')}</td>
-          <td style="white-space:nowrap"><span style="color:${statusColor};font-weight:700;font-size:12px">${statusLabel}</span></td>
+          <td style="font-weight:500;color:#0f172a">${dtEscape(t.description || '')}</td>
+          <td style="white-space:nowrap;color:#475569">${dtEscape(t.doer || '—')}</td>
+          <td style="white-space:nowrap;color:#64748b;font-size:12px">${fmtDate(t.due_date || '')}</td>
+          <td style="white-space:nowrap">${statusPill}</td>
         </tr>`;
       }).join('')
-    : '<tr><td colspan="5" class="empty" style="padding:20px">No tasks in this window</td></tr>';
+    : `<tr><td colspan="5" style="padding:32px;text-align:center;color:#94a3b8">
+         <div style="font-size:32px;margin-bottom:6px">📭</div>
+         No tasks in this window yet
+       </td></tr>`;
 
   const meetingsHtml = (meet.recent || []).length
     ? meet.recent.map(m => {
         const statusPill = m.status === 'cancelled'
-          ? '<span style="font-size:10px;color:#b91c1c;background:#fee2e2;padding:2px 8px;border-radius:10px;font-weight:700">CANCELLED</span>'
+          ? '<span style="font-size:10px;color:#b91c1c;background:#fee2e2;padding:3px 8px;border-radius:10px;font-weight:700">CANCELLED</span>'
           : m.status === 'done'
-          ? '<span style="font-size:10px;color:#16a34a;background:#dcfce7;padding:2px 8px;border-radius:10px;font-weight:700">DONE</span>'
-          : '<span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:2px 8px;border-radius:10px;font-weight:700">SCHEDULED</span>';
-        return `<div style="padding:10px 14px;border-bottom:1px solid #f1f5f9">
-          <div style="font-weight:600;color:#0f172a;font-size:13px">${dtEscape(m.title)} ${statusPill}</div>
-          <div style="font-size:11px;color:#64748b;margin-top:3px">${fmtDate(m.meeting_date)} · ${m.start_time}–${m.end_time}${m.organizer_name ? ` · 👤 ${dtEscape(m.organizer_name)}` : ''}</div>
+          ? '<span style="font-size:10px;color:#15803d;background:#dcfce7;padding:3px 8px;border-radius:10px;font-weight:700">DONE</span>'
+          : '<span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:3px 8px;border-radius:10px;font-weight:700">SCHEDULED</span>';
+        return `<div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;transition:background .15s" onmouseover="this.style.background='#fafbfc'" onmouseout="this.style.background='transparent'">
+          <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+            <div style="font-weight:600;color:#0f172a;font-size:13px;line-height:1.3">${dtEscape(m.title)}</div>
+            ${statusPill}
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span>📅 ${fmtDate(m.meeting_date)}</span>
+            <span>·</span>
+            <span>🕐 ${m.start_time}–${m.end_time}</span>
+            ${m.organizer_name ? `<span>·</span><span>👤 ${dtEscape(m.organizer_name)}</span>` : ''}
+          </div>
         </div>`;
       }).join('')
-    : '<div class="empty" style="padding:20px">No meetings in this window</div>';
+    : `<div style="padding:32px;text-align:center;color:#94a3b8">
+         <div style="font-size:32px;margin-bottom:6px">📅</div>
+         No meetings in this window
+       </div>`;
 
-  const statCard = (label, value, color, sub) => `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px">
-    <div style="font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px">${label}</div>
-    <div style="font-size:28px;font-weight:700;color:${color};margin-top:6px">${value}</div>
-    ${sub ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px">${sub}</div>` : ''}
+  // Icon + label + value stat card with subtle accent bar.
+  const statCard = (icon, label, value, color, sub, extra) => `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(15,23,42,.08)'" onmouseout="this.style.transform='none';this.style.boxShadow='none'">
+    <div style="position:absolute;top:0;left:0;width:4px;height:100%;background:${color}"></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+      <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${label}</div>
+      <div style="font-size:22px;opacity:.7">${icon}</div>
+    </div>
+    <div style="font-size:32px;font-weight:800;color:${color};line-height:1">${value}</div>
+    ${sub ? `<div style="font-size:11px;color:#94a3b8;margin-top:6px">${sub}</div>` : ''}
+    ${extra || ''}
   </div>`;
 
+  // Completion progress bar inside the Completed card.
+  const completedExtra = tasksTotal > 0
+    ? `<div style="margin-top:10px;background:#f1f5f9;border-radius:999px;height:6px;overflow:hidden"><div style="width:${completionPct}%;height:100%;background:linear-gradient(90deg,#10b981,#059669);border-radius:999px;transition:width .4s"></div></div>`
+    : '';
+
   return `
-    <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);padding:18px 24px;border-radius:12px;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
-        <div>
-          <div style="font-size:22px;font-weight:700;color:#0f172a">🏢 ${dtEscape(client.name || 'Client')}</div>
-          <div style="margin-top:8px">${handlerLine}</div>
+    <div style="background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 60%,#fde68a 100%);padding:24px 28px;border-radius:16px;margin-bottom:18px;border:1px solid #fde68a;box-shadow:0 4px 20px rgba(245,158,11,.08)">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px">
+        <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+          <div style="width:72px;height:72px;border-radius:18px;${avatarStyle};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:26px;box-shadow:0 6px 18px rgba(0,0,0,.12);flex-shrink:0">${initials}</div>
+          <div>
+            <div style="font-size:12px;color:#92400e;font-weight:600;text-transform:uppercase;letter-spacing:.6px">${greeting}</div>
+            <div style="font-size:26px;font-weight:800;color:#0f172a;line-height:1.1;margin-top:2px">${dtEscape(client.name || 'Client')}</div>
+            <div style="margin-top:10px">${handlerLine}</div>
+          </div>
         </div>
-        <button class="btn btn-primary" ${canDelegate ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'} onclick="cpOpenDelegate()">＋ New Task for Handler</button>
+        <button class="btn btn-primary" ${canDelegate ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'} onclick="cpOpenDelegate()" style="padding:12px 20px;font-size:14px;font-weight:600;border-radius:10px;box-shadow:0 4px 12px rgba(26,86,219,.25)">＋ New Task for Handler</button>
       </div>
-      <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fffbeb;padding:10px 14px;border-radius:8px;border:1px solid #fde68a">
-        <label style="font-size:11px;color:#92400e;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Range</label>
+      <div style="margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:rgba(255,255,255,.7);padding:10px 14px;border-radius:10px;border:1px solid rgba(254,243,199,.8)">
+        <label style="font-size:11px;color:#92400e;font-weight:700;text-transform:uppercase;letter-spacing:.4px">📅 Range</label>
         <input type="date" id="cpFrom" value="${range.from || ''}" style="padding:6px 10px;border:1.5px solid #fde68a;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
         <span style="font-size:11px;color:#92400e">to</span>
         <input type="date" id="cpTo" value="${range.to || ''}" style="padding:6px 10px;border:1.5px solid #fde68a;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
         <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="cpApplyRange()">Apply</button>
-        <span style="font-size:11px;color:#92400e">Default: current month</span>
+        <span style="font-size:11px;color:#a16207;margin-left:auto">Showing: <strong>${fmtDate(range.from)} → ${fmtDate(range.to)}</strong></span>
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
-      ${statCard('Total Tasks', tasksTotal, '#1a56db', `${del.total||0} delegation · ${chl.total||0} checklist`)}
-      ${statCard('Pending', pendingTotal, '#ef4444', overdueTotal > 0 ? `${overdueTotal} overdue` : 'On track')}
-      ${statCard('Completed', completedTotal, '#10b981', `${completionPct}% completion rate`)}
-      ${statCard('Revised', revisedTotal, '#f59e0b', revisedTotal > 0 ? 'Needs rework' : 'None')}
-      ${statCard('Meetings', meetingsTotal, '#7c3aed', `${meetingsScheduled} scheduled · ${meetingsCancelled} cancelled`)}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:18px">
+      ${statCard('📊', 'Total Tasks', tasksTotal, '#1a56db', `${del.total||0} delegation · ${chl.total||0} checklist`)}
+      ${statCard('⏳', 'Pending', pendingTotal, '#ef4444', overdueTotal > 0 ? `${overdueTotal} overdue` : 'On track')}
+      ${statCard('✅', 'Completed', completedTotal, '#10b981', `${completionPct}% completion rate`, completedExtra)}
+      ${statCard('🔄', 'Revised', revisedTotal, '#f59e0b', revisedTotal > 0 ? 'Needs rework' : 'None')}
+      ${statCard('📅', 'Meetings', meetingsTotal, '#7c3aed', `${meetingsScheduled} scheduled · ${meetingsCancelled} cancelled`)}
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 360px;gap:16px">
-      <div class="task-table-card" style="padding:0">
-        <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
-          <div class="card-head-title">Recent Activity</div>
+      <div class="task-table-card" style="padding:0;border-radius:14px">
+        <div class="card-head" style="padding:16px 18px;border-bottom:1px solid #e2e8f0">
+          <div class="card-head-title" style="font-size:15px">📋 Recent Activity</div>
         </div>
         <div style="overflow-x:auto">
           <table style="width:100%;min-width:580px">
-            <thead><tr>
+            <thead><tr style="background:#f8fafc">
               <th>Type</th><th>Description</th><th>Doer</th><th>Date</th><th>Status</th>
             </tr></thead>
             <tbody>${recentHtml}</tbody>
           </table>
         </div>
       </div>
-      <div class="task-table-card" style="padding:0">
-        <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
-          <div class="card-head-title">Meetings (this window)</div>
+      <div class="task-table-card" style="padding:0;border-radius:14px">
+        <div class="card-head" style="padding:16px 18px;border-bottom:1px solid #e2e8f0">
+          <div class="card-head-title" style="font-size:15px">📅 Meetings (this window)</div>
         </div>
         <div>${meetingsHtml}</div>
       </div>
