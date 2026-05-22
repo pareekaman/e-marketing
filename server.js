@@ -3047,6 +3047,9 @@ const _clientsTableMigrationsPromise = (async () => {
   // default doer in the "Delegate Task" shortcut on the Client Master row.
   await sa(`ALTER TABLE clients ADD COLUMN handler_id INT DEFAULT NULL AFTER name`);
   await sa(`ALTER TABLE clients ADD INDEX idx_handler (handler_id)`);
+  // Logo — base64 data URL (client-side resized to 256x256 JPEG so payloads
+  // stay small enough for the DB without external object storage).
+  await sa(`ALTER TABLE clients ADD COLUMN logo_url LONGTEXT DEFAULT NULL AFTER handler_id`);
   // Allow "client" as a login role + back-link users to clients so the client
   // portal can resolve "my client" from the session.
   await sa(`ALTER TABLE users MODIFY COLUMN role ENUM('admin','hod','pc','user','client') DEFAULT 'user'`);
@@ -3753,7 +3756,7 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
     if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
     const id = u.client_id;
     const [[client]] = await db.query(
-      `SELECT c.id, c.name, c.handler_id, u.name AS handler_name, u.email AS handler_email
+      `SELECT c.id, c.name, c.handler_id, c.logo_url, u.name AS handler_name, u.email AS handler_email
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
     const ist = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
     const y = ist.getUTCFullYear(), m = ist.getUTCMonth();
@@ -3869,10 +3872,32 @@ app.get('/api/client-portal/tasks', requireAuth, async (req, res) => {
 app.get('/api/clients', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT c.id, c.name, c.handler_id, u.name AS handler_name
+      `SELECT c.id, c.name, c.handler_id, c.logo_url, u.name AS handler_name
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id
        ORDER BY c.name ASC`);
     res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Update / clear client logo. Body: { logo: <data-URL string> | null }.
+// 1.5 MB cap on payload — base64 expansion + headroom for a 256x256 JPEG.
+app.put('/api/clients/:id/logo', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const id = req.params.id;
+    let { logo } = req.body;
+    if (logo === undefined) return res.status(400).json({ error: 'logo field required (string or null)' });
+    if (logo !== null && typeof logo === 'string') {
+      if (!/^data:image\/(png|jpe?g|webp|gif);base64,/.test(logo)) {
+        return res.status(400).json({ error: 'logo must be a data:image/* base64 URL' });
+      }
+      if (logo.length > 1_500_000) return res.status(413).json({ error: 'Logo too large — keep under 1 MB after resize' });
+    } else if (logo !== null) {
+      return res.status(400).json({ error: 'logo must be a string or null' });
+    }
+    const [[exists]] = await db.query('SELECT id FROM clients WHERE id=?', [id]);
+    if (!exists) return res.status(404).json({ error: 'Client not found' });
+    await db.query('UPDATE clients SET logo_url=? WHERE id=?', [logo, id]);
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -3979,7 +4004,7 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res
   try {
     const id = req.params.id;
     const [[client]] = await db.query(
-      `SELECT c.id, c.name, c.handler_id, u.name AS handler_name, u.email AS handler_email
+      `SELECT c.id, c.name, c.handler_id, c.logo_url, u.name AS handler_name, u.email AS handler_email
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
@@ -4058,7 +4083,7 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res
 
     res.json({
       client: {
-        id: client.id, name: client.name,
+        id: client.id, name: client.name, logo_url: client.logo_url,
         handler_id: client.handler_id, handler_name: client.handler_name, handler_email: client.handler_email
       },
       login: loginUser ? { provisioned: true, email: loginUser.email } : { provisioned: false },

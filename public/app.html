@@ -8731,6 +8731,56 @@ function cmApplyDateFilter(id) {
   cmShowDetail(id, from, to);
 }
 
+// Resize an uploaded image File to a 256x256 JPEG dataURL (preserves aspect
+// ratio, centers + lets background show through on letterbox).
+function cmResizeImage(file, maxDim = 256) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith('image/')) return reject(new Error('Not an image'));
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Read failed'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Image decode failed'));
+      img.onload = () => {
+        const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
+        const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+        const c = document.createElement('canvas');
+        c.width = maxDim; c.height = maxDim;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, maxDim, maxDim);
+        ctx.drawImage(img, (maxDim - w) / 2, (maxDim - h) / 2, w, h);
+        resolve(c.toDataURL('image/jpeg', 0.85));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function cmUploadLogo(id, fileInput) {
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+  try {
+    const dataUrl = await cmResizeImage(file, 256);
+    const r = await api(`/api/clients/${id}/logo`, 'PUT', { logo: dataUrl });
+    if (r?.error) { showToast(r.error, 'error'); return; }
+    showToast('✅ Logo updated');
+    cmShowDetail(id);
+  } catch (e) { showToast('Logo upload failed: ' + e.message, 'error'); }
+  finally { fileInput.value = ''; }
+}
+
+async function cmRemoveLogo(id) {
+  if (!await appConfirm('Remove the client logo?')) return;
+  try {
+    const r = await api(`/api/clients/${id}/logo`, 'PUT', { logo: null });
+    if (r?.error) { showToast(r.error, 'error'); return; }
+    showToast('Logo removed');
+    cmShowDetail(id);
+  } catch (e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
 function cmOpenLoginModal(id, existingEmail) {
   document.getElementById('cmLoginErr').style.display = 'none';
   document.getElementById('cmLoginClientId').value = id;
@@ -8822,15 +8872,33 @@ function cmRenderDetailHtml(s, id) {
     ${sub ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px">${sub}</div>` : ''}
   </div>`;
 
+  // Logo block — actual image if uploaded, else gradient initials avatar.
+  const initials = dtEscape(cmInitials(client.name || 'C'));
+  const avatarStyle = cmAvatarStyle(client.name || 'C');
+  const logoBlock = client.logo_url
+    ? `<img src="${client.logo_url}" alt="${dtEscape(client.name)}" style="width:60px;height:60px;border-radius:12px;object-fit:cover;border:1px solid #e2e8f0;flex-shrink:0"/>`
+    : `<div style="width:60px;height:60px;border-radius:12px;${avatarStyle};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:22px;flex-shrink:0">${initials}</div>`;
+  const logoBtns = client.logo_url
+    ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="document.getElementById('cmLogoInput_${client.id}').click()">Change</button>
+       <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;color:#dc2626;border-color:#fca5a5" onclick="cmRemoveLogo(${client.id})">Remove</button>`
+    : `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="document.getElementById('cmLogoInput_${client.id}').click()">＋ Upload Logo</button>`;
+
   return `
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin-bottom:16px">
       <button class="btn btn-outline" onclick="cmBackToList()" style="padding:6px 12px;font-size:12px;margin-bottom:12px">← Back to Clients</button>
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
-        <div>
-          <div style="font-size:22px;font-weight:700;color:#0f172a">${dtEscape(client.name)}</div>
-          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            ${handlerLine}
-            <span style="font-size:11px;color:#94a3b8">Client #${client.id}</span>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          ${logoBlock}
+          <div>
+            <div style="font-size:22px;font-weight:700;color:#0f172a">${dtEscape(client.name)}</div>
+            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              ${handlerLine}
+              <span style="font-size:11px;color:#94a3b8">Client #${client.id}</span>
+            </div>
+            <div style="margin-top:8px;display:flex;gap:6px">
+              ${logoBtns}
+              <input type="file" id="cmLogoInput_${client.id}" accept="image/*" style="display:none" onchange="cmUploadLogo(${client.id}, this)"/>
+            </div>
           </div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -10053,9 +10121,12 @@ function cpRenderHtml(s) {
   const completionPct = tasksTotal > 0 ? Math.round((completedTotal / tasksTotal) * 100) : 0;
   const canDelegate = !!client.handler_id;
 
-  // Avatar — gradient circle with client initials (reuses cmInitials/cmAvatarStyle).
+  // Avatar — real logo if uploaded, else gradient circle with initials.
   const initials = dtEscape(cmInitials(client.name || 'C'));
   const avatarStyle = cmAvatarStyle(client.name || 'C');
+  const avatarHtml = client.logo_url
+    ? `<img src="${client.logo_url}" alt="${dtEscape(client.name)}" style="width:72px;height:72px;border-radius:18px;object-fit:cover;box-shadow:0 6px 18px rgba(0,0,0,.12);flex-shrink:0;background:#fff"/>`
+    : `<div style="width:72px;height:72px;border-radius:18px;${avatarStyle};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:26px;box-shadow:0 6px 18px rgba(0,0,0,.12);flex-shrink:0">${initials}</div>`;
 
   // Time-of-day greeting (IST).
   const istHour = (new Date(Date.now() + (5.5*60*60*1000))).getUTCHours();
@@ -10140,7 +10211,7 @@ function cpRenderHtml(s) {
     <div style="background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 60%,#fde68a 100%);padding:24px 28px;border-radius:16px;margin-bottom:18px;border:1px solid #fde68a;box-shadow:0 4px 20px rgba(245,158,11,.08)">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px">
         <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
-          <div style="width:72px;height:72px;border-radius:18px;${avatarStyle};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:26px;box-shadow:0 6px 18px rgba(0,0,0,.12);flex-shrink:0">${initials}</div>
+          ${avatarHtml}
           <div>
             <div style="font-size:12px;color:#92400e;font-weight:600;text-transform:uppercase;letter-spacing:.6px">${greeting}</div>
             <div style="font-size:26px;font-weight:800;color:#0f172a;line-height:1.1;margin-top:2px">${dtEscape(client.name || 'Client')}</div>
