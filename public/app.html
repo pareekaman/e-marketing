@@ -8715,7 +8715,7 @@ function cmToggleBulk(){
   panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }
 
-async function cmShowDetail(id) {
+async function cmShowDetail(id, from, to) {
   // Hide list, show detail container; fetch + render.
   document.getElementById('cmListView').style.display = 'none';
   const detail = document.getElementById('cmDetailView');
@@ -8723,12 +8723,19 @@ async function cmShowDetail(id) {
   detail.innerHTML = '<div class="empty" style="padding:40px">Loading client details…</div>';
   window.scrollTo(0, 0);
   try {
-    const s = await api('/api/clients/' + id + '/stats');
+    const qs = (from && to) ? `?from=${from}&to=${to}` : '';
+    const s = await api('/api/clients/' + id + '/stats' + qs);
     if (s.error) { detail.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed: ${s.error}</div>`; return; }
     detail.innerHTML = cmRenderDetailHtml(s, id);
   } catch (e) {
     detail.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed to load: ${e.message}</div>`;
   }
+}
+
+function cmApplyDateFilter(id) {
+  const from = document.getElementById('cmDetailFrom')?.value;
+  const to   = document.getElementById('cmDetailTo')?.value;
+  cmShowDetail(id, from, to);
 }
 
 function cmBackToList() {
@@ -8738,32 +8745,24 @@ function cmBackToList() {
 
 function cmRenderDetailHtml(s, id) {
   const client = s.client || {};
-  const time = s.time || {};
   const del = s.delegation || {}, chl = s.checklist || {};
+  const meet = s.meetings || {};
+  const range = s.range || {};
   const tasksTotal = (parseInt(del.total)||0) + (parseInt(chl.total)||0);
   const pendingTotal = (parseInt(del.pending)||0) + (parseInt(chl.pending)||0);
   const completedTotal = (parseInt(del.completed)||0) + (parseInt(chl.completed)||0);
   const overdueTotal = (parseInt(del.overdue)||0) + (parseInt(chl.overdue)||0);
   const revisedTotal = parseInt(del.revised)||0;
-  const totalHrs = ((time.total_minutes || 0) / 60).toFixed(1);
+  const meetingsTotal = parseInt(meet.total)||0;
+  const meetingsScheduled = parseInt(meet.scheduled)||0;
+  const meetingsCancelled = parseInt(meet.cancelled)||0;
   const completionPct = tasksTotal > 0 ? Math.round((completedTotal / tasksTotal) * 100) : 0;
   const handlerLine = client.handler_name
     ? `<span style="background:#ccfbf1;color:#0f766e;padding:3px 10px;border-radius:6px;font-weight:600;font-size:12px">👤 ${dtEscape(client.handler_name)}${client.handler_email ? ` · ${dtEscape(client.handler_email)}` : ''}</span>`
     : `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:6px;font-weight:600;font-size:12px">⚠️ No handler</span>`;
   const handlerOpts = '<option value="">— None —</option>' +
     CM_USERS.map(u => `<option value="${u.id}" ${String(u.id)===String(client.handler_id)?'selected':''}>${dtEscape(u.name)}</option>`).join('');
-  const medals = ['🥇','🥈','🥉','4.','5.'];
-  const workersHtml = (s.top_workers || []).length
-    ? s.top_workers.map((w,i) => {
-        const hrs = ((w.total_minutes || 0) / 60).toFixed(1);
-        return `<div style="display:grid;grid-template-columns:24px 1fr auto auto;gap:10px;align-items:center;padding:8px 4px;border-bottom:1px solid #f1f5f9;font-size:13px">
-          <span>${medals[i]||''}</span>
-          <span style="font-weight:600;color:#0f172a">${dtEscape(w.name)}</span>
-          <span style="color:#64748b;font-size:12px">${dtEscape(w.department || '')}</span>
-          <span style="color:#1a56db;font-weight:700">${hrs} hrs · ${w.task_count}</span>
-        </div>`;
-      }).join('')
-    : '<div style="color:#94a3b8;font-size:13px;padding:12px 0">No time logged yet</div>';
+
   const recentHtml = (s.recent || []).length
     ? s.recent.map(t => {
         const typeBadge = t.type === 'checklist'
@@ -8779,7 +8778,21 @@ function cmRenderDetailHtml(s, id) {
           <td style="white-space:nowrap"><span style="color:${statusColor};font-weight:700;font-size:12px">${statusLabel}</span></td>
         </tr>`;
       }).join('')
-    : '<tr><td colspan="5" class="empty" style="padding:20px">No tasks yet</td></tr>';
+    : '<tr><td colspan="5" class="empty" style="padding:20px">No tasks in this window</td></tr>';
+
+  const meetingsHtml = (meet.recent || []).length
+    ? meet.recent.map(m => {
+        const statusPill = m.status === 'cancelled'
+          ? '<span style="font-size:10px;color:#b91c1c;background:#fee2e2;padding:2px 8px;border-radius:10px;font-weight:700">CANCELLED</span>'
+          : m.status === 'done'
+          ? '<span style="font-size:10px;color:#16a34a;background:#dcfce7;padding:2px 8px;border-radius:10px;font-weight:700">DONE</span>'
+          : '<span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:2px 8px;border-radius:10px;font-weight:700">SCHEDULED</span>';
+        return `<div style="padding:10px 14px;border-bottom:1px solid #f1f5f9">
+          <div style="font-weight:600;color:#0f172a;font-size:13px">${dtEscape(m.title)} ${statusPill}</div>
+          <div style="font-size:11px;color:#64748b;margin-top:3px">${fmtDate(m.meeting_date)} · ${m.start_time}–${m.end_time}${m.organizer_name ? ` · 👤 ${dtEscape(m.organizer_name)}` : ''}</div>
+        </div>`;
+      }).join('')
+    : '<div class="empty" style="padding:20px">No meetings in this window</div>';
 
   const statCard = (label, value, color, sub) => `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px">
     <div style="font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px">${label}</div>
@@ -8798,13 +8811,21 @@ function cmRenderDetailHtml(s, id) {
             <span style="font-size:11px;color:#94a3b8">Client #${client.id}</span>
           </div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <label style="font-size:11px;color:#64748b;font-weight:600">Change handler:</label>
-          <select onchange="cmUpdateHandler(${id}, this.value); cmShowDetail(${id})"
+          <select onchange="cmUpdateHandler(${id}, this.value); cmApplyDateFilter(${id})"
             style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff;outline:none">
             ${handlerOpts}
           </select>
         </div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:10px 14px;border-radius:8px">
+        <label style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Range</label>
+        <input type="date" id="cmDetailFrom" value="${range.from || ''}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
+        <span style="font-size:11px;color:#94a3b8">to</span>
+        <input type="date" id="cmDetailTo" value="${range.to || ''}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
+        <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="cmApplyDateFilter(${id})">Apply</button>
+        <span style="font-size:11px;color:#64748b">Default: current month</span>
       </div>
     </div>
 
@@ -8813,13 +8834,13 @@ function cmRenderDetailHtml(s, id) {
       ${statCard('Pending', pendingTotal, '#ef4444', overdueTotal > 0 ? `${overdueTotal} overdue` : 'On track')}
       ${statCard('Completed', completedTotal, '#10b981', `${completionPct}% completion rate`)}
       ${statCard('Revised', revisedTotal, '#f59e0b', revisedTotal > 0 ? 'Needs rework' : 'None')}
-      ${statCard('Time Logged', totalHrs + ' hrs', '#7c3aed', `${time.log_count||0} daily entries`)}
+      ${statCard('Meetings', meetingsTotal, '#7c3aed', `${meetingsScheduled} scheduled · ${meetingsCancelled} cancelled`)}
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 360px;gap:16px">
       <div class="task-table-card" style="padding:0">
         <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
-          <div class="card-head-title">Recent Activity (last 20)</div>
+          <div class="card-head-title">Recent Activity</div>
         </div>
         <div style="overflow-x:auto">
           <table style="width:100%;min-width:580px">
@@ -8832,9 +8853,9 @@ function cmRenderDetailHtml(s, id) {
       </div>
       <div class="task-table-card" style="padding:0">
         <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
-          <div class="card-head-title">Top Contributors</div>
+          <div class="card-head-title">Meetings (this window)</div>
         </div>
-        <div style="padding:8px 14px">${workersHtml}</div>
+        <div>${meetingsHtml}</div>
       </div>
     </div>
   `;

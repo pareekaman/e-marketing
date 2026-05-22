@@ -3878,8 +3878,9 @@ app.post('/api/clients/bulk', requireAuth, requireAdminOrPC, async (req, res) =>
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Client stats — full client snapshot for the detail page (all-time +
-// per-status task counts, recent activity, top contributors).
+// Client stats — full client snapshot for the detail page. Defaults to the
+// current month (IST). Accepts ?from=YYYY-MM-DD&to=YYYY-MM-DD to widen the
+// window. Includes delegation/checklist task counts + meetings + recent rows.
 app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res) => {
   try {
     const id = req.params.id;
@@ -3888,12 +3889,16 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
-    // Time spent (from daily_tasks logged against this client name)
-    const [[totals]] = await db.query(
-      'SELECT COALESCE(SUM(duration_min),0) AS total_minutes, COUNT(*) AS log_count FROM daily_tasks WHERE client_name=?',
-      [client.name]);
+    // Default window — current month (IST)
+    const ist = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+    const y = ist.getUTCFullYear(), m = ist.getUTCMonth();
+    const defaultFrom = `${y}-${String(m+1).padStart(2,'0')}-01`;
+    const lastDay = new Date(Date.UTC(y, m+1, 0)).getUTCDate();
+    const defaultTo = `${y}-${String(m+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+    const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+    const from = isDate(req.query.from) ? req.query.from : defaultFrom;
+    const to   = isDate(req.query.to)   ? req.query.to   : defaultTo;
 
-    // Task counts by status — delegation and checklist tagged with client_id
     const [[del]] = await db.query(
       `SELECT
         COUNT(*) AS total,
@@ -3901,26 +3906,34 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res
         SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
         SUM(CASE WHEN status='revised'   THEN 1 ELSE 0 END) AS revised,
         SUM(CASE WHEN status='pending' AND due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
-       FROM delegation_tasks WHERE client_id=?`, [id]);
+       FROM delegation_tasks WHERE client_id=? AND due_date BETWEEN ? AND ?`, [id, from, to]);
     const [[chl]] = await db.query(
       `SELECT
         COUNT(*) AS total,
         SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending,
         SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
         SUM(CASE WHEN status='pending' AND due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
-       FROM checklist_tasks WHERE client_id=?`, [id]);
+       FROM checklist_tasks WHERE client_id=? AND due_date BETWEEN ? AND ?`, [id, from, to]);
 
-    const [topWorkers] = await db.query(
-      `SELECT u.name, COALESCE(u.department,'') AS department,
-              SUM(dt.duration_min) AS total_minutes, COUNT(*) AS task_count
-       FROM daily_tasks dt
-       JOIN users u ON dt.user_id = u.id
-       WHERE dt.client_name = ?
-       GROUP BY dt.user_id, u.name, u.department
-       ORDER BY total_minutes DESC
-       LIMIT 5`, [client.name]);
+    // Meetings tied to this client (by client_id)
+    const [[meet]] = await db.query(
+      `SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status='scheduled' THEN 1 ELSE 0 END) AS scheduled,
+        SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) AS cancelled,
+        SUM(CASE WHEN status='done'      THEN 1 ELSE 0 END) AS done
+       FROM meetings WHERE client_id=? AND meeting_date BETWEEN ? AND ?`, [id, from, to]);
+    const [meetRecent] = await db.query(
+      `SELECT m.id, m.title, m.status,
+              DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS meeting_date,
+              TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
+              TIME_FORMAT(m.end_time,'%H:%i')   AS end_time,
+              u.name AS organizer_name
+       FROM meetings m LEFT JOIN users u ON m.organizer_id = u.id
+       WHERE m.client_id=? AND m.meeting_date BETWEEN ? AND ?
+       ORDER BY m.meeting_date DESC, m.start_time DESC LIMIT 15`, [id, from, to]);
 
-    // Recent activity — last 10 tasks (delegation + checklist) touching this client
+    // Recent activity — tasks (delegation + checklist) created in the window
     const [recentDel] = await db.query(
       `SELECT t.id, 'delegation' AS type, t.description, t.status, t.priority,
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
@@ -3929,7 +3942,8 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res
        FROM delegation_tasks t
        JOIN users u1 ON t.assigned_to=u1.id
        LEFT JOIN users u2 ON t.assigned_by=u2.id
-       WHERE t.client_id=? ORDER BY t.created_at DESC LIMIT 15`, [id]);
+       WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
+       ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
     const [recentChl] = await db.query(
       `SELECT t.id, 'checklist' AS type, t.description, t.status, t.priority,
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
@@ -3938,7 +3952,8 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res
        FROM checklist_tasks t
        JOIN users u1 ON t.assigned_to=u1.id
        LEFT JOIN users u2 ON t.assigned_by=u2.id
-       WHERE t.client_id=? ORDER BY t.created_at DESC LIMIT 15`, [id]);
+       WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
+       ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
     const recent = [...recentDel, ...recentChl]
       .sort((a,b) => (b.created||'').localeCompare(a.created||''))
       .slice(0, 20);
@@ -3948,9 +3963,8 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res
         id: client.id, name: client.name,
         handler_id: client.handler_id, handler_name: client.handler_name, handler_email: client.handler_email
       },
-      time: { total_minutes: totals.total_minutes, log_count: totals.log_count },
-      delegation: del, checklist: chl,
-      top_workers: topWorkers,
+      range: { from, to },
+      delegation: del, checklist: chl, meetings: { ...meet, recent: meetRecent },
       recent
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
