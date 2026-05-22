@@ -3747,6 +3747,11 @@ app.get('/api/client-portal/me', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Names excluded from client-portal Top Performers panel. These are internal
+// roles (admin / owner) whose completion counts shouldn't show on a client-
+// facing leaderboard. Match is case-insensitive on the trimmed name.
+const TOP_PERFORMER_EXCLUDE_NAMES = ['Abhishek Jain', 'Simran Gurnani'];
+
 // Client-portal stats — same shape as /api/clients/:id/stats but auto-resolves
 // the client_id from the logged-in client session. Defaults to current month.
 app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
@@ -3832,11 +3837,31 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
     const createdByDay = {}, doneByDay = {};
     for (const r of [...dailyDel, ...dailyChl]) createdByDay[r.d] = (createdByDay[r.d]||0) + (parseInt(r.c)||0);
     for (const r of [...dailyDone, ...dailyDoneChl]) doneByDay[r.d] = (doneByDay[r.d]||0) + (parseInt(r.c)||0);
+    // Top performers — users who completed the most client tasks in the window.
+    // Excludes hardcoded internal names so the leaderboard stays meaningful.
+    const excludeList = TOP_PERFORMER_EXCLUDE_NAMES;
+    const exclPlaceholders = excludeList.map(()=>'?').join(',');
+    const [topPerformers] = await db.query(
+      `SELECT u.id, u.name, COUNT(*) AS completed_count
+       FROM (
+         SELECT assigned_to FROM delegation_tasks
+          WHERE client_id=? AND status='completed' AND due_date BETWEEN ? AND ?
+         UNION ALL
+         SELECT assigned_to FROM checklist_tasks
+          WHERE client_id=? AND status='completed' AND due_date BETWEEN ? AND ?
+       ) t
+       JOIN users u ON t.assigned_to = u.id
+       WHERE u.name NOT IN (${exclPlaceholders})
+       GROUP BY u.id, u.name
+       ORDER BY completed_count DESC, u.name ASC
+       LIMIT 5`,
+      [id, from, to, id, from, to, ...excludeList]);
     res.json({
       client, range: { from, to },
       delegation: del, checklist: chl, meetings: { ...meet, recent: meetRecent },
       recent,
-      daily: { created: createdByDay, completed: doneByDay }
+      daily: { created: createdByDay, completed: doneByDay },
+      top_performers: topPerformers
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
