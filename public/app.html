@@ -9940,6 +9940,8 @@ async function loadLeaveApprovals(){
 // CLIENT PORTAL — only role='client' sees this
 // ══════════════════════════════════════════════════════
 let _cpMe = null;
+let _cpStatusChart = null;
+let _cpActivityChart = null;
 
 async function loadClientPortal(from, to) {
   const wrap = document.getElementById('cpContent');
@@ -9950,8 +9952,82 @@ async function loadClientPortal(from, to) {
     if (s.error) { wrap.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">${s.error}</div>`; return; }
     _cpMe = s.client || {};
     wrap.innerHTML = cpRenderHtml(s);
+    // Render charts after the DOM is in place.
+    setTimeout(() => cpRenderCharts(s), 0);
   } catch(e) {
     wrap.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed to load: ${e.message || 'error'}</div>`;
+  }
+}
+
+function cpRenderCharts(s) {
+  if (_cpStatusChart)   { try { _cpStatusChart.destroy(); }   catch {} _cpStatusChart = null; }
+  if (_cpActivityChart) { try { _cpActivityChart.destroy(); } catch {} _cpActivityChart = null; }
+
+  // Status doughnut — pending / completed / revised
+  const del = s.delegation || {}, chl = s.checklist || {};
+  const pending   = (parseInt(del.pending)||0)   + (parseInt(chl.pending)||0);
+  const completed = (parseInt(del.completed)||0) + (parseInt(chl.completed)||0);
+  const revised   = parseInt(del.revised)||0;
+  const statusCanvas = document.getElementById('cpStatusChart');
+  if (statusCanvas && (pending + completed + revised > 0)) {
+    _cpStatusChart = new Chart(statusCanvas.getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Completed','Pending','Revised'],
+        datasets: [{
+          data: [completed, pending, revised],
+          backgroundColor: ['#10b981','#ef4444','#f59e0b'],
+          borderWidth: 3, borderColor: '#fff', hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '65%',
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { size: 12 }, padding: 14 } },
+          tooltip: { callbacks: { label: c => ` ${c.label}: ${c.raw}` } }
+        }
+      }
+    });
+  }
+
+  // Daily activity bar — created vs completed across the window
+  const range = s.range || {};
+  const daily = s.daily || { created: {}, completed: {} };
+  const activityCanvas = document.getElementById('cpActivityChart');
+  if (activityCanvas && range.from && range.to) {
+    const days = [];
+    const cur = new Date(range.from + 'T00:00:00');
+    const end = new Date(range.to   + 'T00:00:00');
+    while (cur <= end) {
+      days.push(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`);
+      cur.setDate(cur.getDate() + 1);
+    }
+    // Cap to last 31 days for readability if range is longer
+    const trimmedDays = days.length > 31 ? days.slice(-31) : days;
+    const created   = trimmedDays.map(d => daily.created[d]   || 0);
+    const completedD= trimmedDays.map(d => daily.completed[d] || 0);
+    const labels = trimmedDays.map(d => d.split('-').slice(1).reverse().join('/'));
+    _cpActivityChart = new Chart(activityCanvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Created',   data: created,    backgroundColor: '#1a56db', borderRadius: 4, maxBarThickness: 18 },
+          { label: 'Completed', data: completedD, backgroundColor: '#10b981', borderRadius: 4, maxBarThickness: 18 }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { stacked: false, ticks: { font: { size: 10 } }, grid: { display: false } },
+          y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } }, grid: { color: '#f1f5f9' } }
+        },
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 12, usePointStyle: true } },
+          tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.raw}` } }
+        }
+      }
+    });
   }
 }
 
@@ -10089,6 +10165,23 @@ function cpRenderHtml(s) {
       ${statCard('✅', 'Completed', completedTotal, '#10b981', `${completionPct}% completion rate`, completedExtra)}
       ${statCard('🔄', 'Revised', revisedTotal, '#f59e0b', revisedTotal > 0 ? 'Needs rework' : 'None')}
       ${statCard('📅', 'Meetings', meetingsTotal, '#7c3aed', `${meetingsScheduled} scheduled · ${meetingsCancelled} cancelled`)}
+    </div>
+
+    <div style="display:grid;grid-template-columns:300px 1fr;gap:16px;margin-bottom:18px">
+      <div class="task-table-card" style="padding:16px 18px;border-radius:14px">
+        <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px">🥧 Task Status</div>
+        <div style="position:relative;height:220px">
+          <canvas id="cpStatusChart"></canvas>
+          ${(pendingTotal + completedTotal + revisedTotal === 0) ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;text-align:center;padding:0 12px">No tasks in this window — pie chart will appear once activity starts.</div>` : ''}
+        </div>
+      </div>
+      <div class="task-table-card" style="padding:16px 18px;border-radius:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:13px;font-weight:700;color:#0f172a">📈 Daily Activity</div>
+          <div style="font-size:11px;color:#94a3b8">Created vs Completed per day</div>
+        </div>
+        <div style="position:relative;height:220px"><canvas id="cpActivityChart"></canvas></div>
+      </div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 360px;gap:16px">

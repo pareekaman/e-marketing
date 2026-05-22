@@ -3808,10 +3808,32 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
     const recent = [...recentDel, ...recentChl]
       .sort((a,b) => (b.created||'').localeCompare(a.created||''))
       .slice(0, 20);
+    // Daily activity buckets — tasks created per day in the window. Used by
+    // the bar chart in the client portal.
+    const [dailyDel] = await db.query(
+      `SELECT DATE_FORMAT(created_at,'%Y-%m-%d') AS d, COUNT(*) AS c
+       FROM delegation_tasks WHERE client_id=? AND DATE(created_at) BETWEEN ? AND ?
+       GROUP BY d`, [id, from, to]);
+    const [dailyChl] = await db.query(
+      `SELECT DATE_FORMAT(created_at,'%Y-%m-%d') AS d, COUNT(*) AS c
+       FROM checklist_tasks WHERE client_id=? AND DATE(created_at) BETWEEN ? AND ?
+       GROUP BY d`, [id, from, to]);
+    const [dailyDone] = await db.query(
+      `SELECT DATE_FORMAT(due_date,'%Y-%m-%d') AS d, COUNT(*) AS c
+       FROM delegation_tasks WHERE client_id=? AND status='completed' AND due_date BETWEEN ? AND ?
+       GROUP BY d`, [id, from, to]);
+    const [dailyDoneChl] = await db.query(
+      `SELECT DATE_FORMAT(due_date,'%Y-%m-%d') AS d, COUNT(*) AS c
+       FROM checklist_tasks WHERE client_id=? AND status='completed' AND due_date BETWEEN ? AND ?
+       GROUP BY d`, [id, from, to]);
+    const createdByDay = {}, doneByDay = {};
+    for (const r of [...dailyDel, ...dailyChl]) createdByDay[r.d] = (createdByDay[r.d]||0) + (parseInt(r.c)||0);
+    for (const r of [...dailyDone, ...dailyDoneChl]) doneByDay[r.d] = (doneByDay[r.d]||0) + (parseInt(r.c)||0);
     res.json({
       client, range: { from, to },
       delegation: del, checklist: chl, meetings: { ...meet, recent: meetRecent },
-      recent
+      recent,
+      daily: { created: createdByDay, completed: doneByDay }
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
