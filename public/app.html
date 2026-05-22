@@ -10074,7 +10074,18 @@ function cpRenderCharts(s) {
     const trimmedDays = days.length > 31 ? days.slice(-31) : days;
     const created   = trimmedDays.map(d => daily.created[d]   || 0);
     const completedD= trimmedDays.map(d => daily.completed[d] || 0);
-    const labels = trimmedDays.map(d => d.split('-').slice(1).reverse().join('/'));
+    // X-axis just shows the day number (1, 2, 3 ...) — month is shown in the
+    // card header instead so the axis stays uncluttered.
+    const labels = trimmedDays.map(d => String(parseInt(d.split('-')[2], 10)));
+    // Build the month chip from the unique year-month pairs in this range.
+    const monthSet = new Set(trimmedDays.map(d => d.slice(0,7)));
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthLabel = [...monthSet].map(ym => {
+      const [y,m] = ym.split('-');
+      return `${monthNames[parseInt(m,10)-1]} ${y}`;
+    }).join(' · ');
+    const monthEl = document.getElementById('cpActivityMonth');
+    if (monthEl) monthEl.textContent = monthLabel;
     _cpActivityChart = new Chart(activityCanvas.getContext('2d'), {
       type: 'bar',
       data: {
@@ -10247,8 +10258,11 @@ function cpRenderHtml(s) {
         </div>
       </div>
       <div class="task-table-card" style="padding:16px 18px;border-radius:14px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div style="font-size:13px;font-weight:700;color:#0f172a">📈 Daily Activity</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:13px;font-weight:700;color:#0f172a">📈 Daily Activity</div>
+            <span id="cpActivityMonth" style="font-size:11px;font-weight:700;color:#1e40af;background:#dbeafe;padding:3px 10px;border-radius:999px;letter-spacing:.3px"></span>
+          </div>
           <div style="font-size:11px;color:#94a3b8">Created vs Completed per day</div>
         </div>
         <div style="position:relative;height:220px"><canvas id="cpActivityChart"></canvas></div>
