@@ -1635,6 +1635,29 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
   </div>
 
+  <!-- Provision / reset client login modal -->
+  <div class="modal-overlay" id="clientLoginModal">
+    <div class="modal" style="width:480px">
+      <button class="modal-close" onclick="closeModal('clientLoginModal')">×</button>
+      <h3 id="cmLoginTitle">Provision Client Login</h3>
+      <div class="alert error" id="cmLoginErr" style="display:none"></div>
+      <input type="hidden" id="cmLoginClientId" value=""/>
+      <div class="form-group">
+        <label>Login Email *</label>
+        <input type="email" id="cmLoginEmail" placeholder="client@example.com" autocomplete="off"/>
+      </div>
+      <div class="form-group">
+        <label>Password *</label>
+        <input type="text" id="cmLoginPassword" placeholder="Set a password" autocomplete="off"/>
+        <div style="font-size:11px;color:#64748b;margin-top:4px">Share these credentials with the client. They will log in at the same URL as everyone else.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('clientLoginModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="cmSaveLogin()">Save</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Add Client modal -->
   <div class="modal-overlay" id="clientAddModal">
     <div class="modal" style="width:520px">
@@ -8738,6 +8761,35 @@ function cmApplyDateFilter(id) {
   cmShowDetail(id, from, to);
 }
 
+function cmOpenLoginModal(id, existingEmail) {
+  document.getElementById('cmLoginErr').style.display = 'none';
+  document.getElementById('cmLoginClientId').value = id;
+  document.getElementById('cmLoginEmail').value = existingEmail || '';
+  document.getElementById('cmLoginPassword').value = '';
+  document.getElementById('cmLoginTitle').textContent = existingEmail ? 'Reset Client Login' : 'Provision Client Login';
+  document.getElementById('clientLoginModal').classList.add('open');
+  setTimeout(() => document.getElementById(existingEmail ? 'cmLoginPassword' : 'cmLoginEmail')?.focus(), 0);
+}
+
+async function cmSaveLogin() {
+  const err = document.getElementById('cmLoginErr');
+  err.style.display = 'none';
+  const id = document.getElementById('cmLoginClientId').value;
+  const email = document.getElementById('cmLoginEmail').value.trim();
+  const password = document.getElementById('cmLoginPassword').value;
+  if (!email || !password) { err.textContent = 'Email and password required'; err.style.display = 'block'; return; }
+  try {
+    const r = await api(`/api/clients/${id}/login`, 'POST', { email, password });
+    if (r?.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+    showToast('✅ Login saved — share credentials with the client');
+    closeModal('clientLoginModal');
+    cmShowDetail(id); // refresh to reflect new login state
+  } catch (e) {
+    err.textContent = 'Failed: ' + (e.message || 'error');
+    err.style.display = 'block';
+  }
+}
+
 function cmBackToList() {
   document.getElementById('cmDetailView').style.display = 'none';
   document.getElementById('cmListView').style.display = 'block';
@@ -8819,13 +8871,23 @@ function cmRenderDetailHtml(s, id) {
           </select>
         </div>
       </div>
-      <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:10px 14px;border-radius:8px">
-        <label style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Range</label>
-        <input type="date" id="cmDetailFrom" value="${range.from || ''}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
-        <span style="font-size:11px;color:#94a3b8">to</span>
-        <input type="date" id="cmDetailTo" value="${range.to || ''}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
-        <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="cmApplyDateFilter(${id})">Apply</button>
-        <span style="font-size:11px;color:#64748b">Default: current month</span>
+      <div style="margin-top:14px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;flex-wrap:wrap">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:10px 14px;border-radius:8px">
+          <label style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Range</label>
+          <input type="date" id="cmDetailFrom" value="${range.from || ''}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
+          <span style="font-size:11px;color:#94a3b8">to</span>
+          <input type="date" id="cmDetailTo" value="${range.to || ''}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
+          <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="cmApplyDateFilter(${id})">Apply</button>
+          <span style="font-size:11px;color:#64748b">Default: current month</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;background:#eff6ff;padding:10px 14px;border-radius:8px;border:1px solid #bfdbfe">
+          ${(s.login && s.login.provisioned)
+            ? `<span style="font-size:11px;color:#1e40af;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Login</span>
+               <span style="font-size:12px;color:#1e293b;font-weight:600">${dtEscape(s.login.email)}</span>
+               <button class="btn btn-outline" style="padding:5px 10px;font-size:11px" onclick="cmOpenLoginModal(${id}, '${dtEscape(s.login.email)}')">Reset</button>`
+            : `<span style="font-size:11px;color:#1e40af;font-weight:700;text-transform:uppercase;letter-spacing:.4px">No login set</span>
+               <button class="btn btn-primary" style="padding:5px 12px;font-size:12px" onclick="cmOpenLoginModal(${id}, '')">＋ Provision</button>`}
+        </div>
       </div>
     </div>
 

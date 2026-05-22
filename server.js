@@ -3889,6 +3889,10 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
+    // Login user (if provisioned) — there's at most one client login per client.
+    const [[loginUser]] = await db.query(
+      "SELECT id, email FROM users WHERE role='client' AND client_id=? LIMIT 1", [id]);
+
     // Default window — current month (IST)
     const ist = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
     const y = ist.getUTCFullYear(), m = ist.getUTCMonth();
@@ -3963,10 +3967,41 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res
         id: client.id, name: client.name,
         handler_id: client.handler_id, handler_name: client.handler_name, handler_email: client.handler_email
       },
+      login: loginUser ? { provisioned: true, email: loginUser.email } : { provisioned: false },
       range: { from, to },
       delegation: del, checklist: chl, meetings: { ...meet, recent: meetRecent },
       recent
     });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Provision or update client login. Creates the users row if missing, or
+// updates email/password on the existing one. Admin/PC only.
+app.post('/api/clients/:id/login', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const email = (req.body.email || '').trim().toLowerCase();
+    const password = req.body.password || '';
+    if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+    const [[client]] = await db.query('SELECT id, name FROM clients WHERE id=?', [id]);
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    const [[existing]] = await db.query(
+      "SELECT id FROM users WHERE role='client' AND client_id=? LIMIT 1", [id]);
+    const hash = bcrypt.hashSync(password, 10);
+    try {
+      if (existing) {
+        await db.query('UPDATE users SET email=?, password=? WHERE id=?', [email, hash, existing.id]);
+      } else {
+        await db.query(
+          `INSERT INTO users (name, email, password, role, user_role, client_id)
+           VALUES (?, ?, ?, 'client', 'client', ?)`,
+          [client.name, email, hash, id]);
+      }
+    } catch (e) {
+      if (e.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'That email is already in use' });
+      throw e;
+    }
+    res.json({ success: true, email });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
