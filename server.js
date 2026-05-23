@@ -3201,12 +3201,14 @@ async function buildAndSendReminder() {
   const today = off.today;
   const holidaysSet = off.holidaysSet;
 
-  // Get all users — excluding CXO department + flagged users (case-insensitive)
+  // Get all users — excluding CXO department + flagged users (case-insensitive).
+  // role='client' users are external client logins, not team members, so they
+  // never appear in the daily-report-not-filled list.
   const [users] = await db.query(
     `SELECT id, name, COALESCE(department,'') AS department,
             COALESCE(week_off,'') AS week_off, COALESCE(extra_off,'') AS extra_off,
             COALESCE(exclude_from_reminder,0) AS exclude_from_reminder
-     FROM users ORDER BY name ASC`
+     FROM users WHERE role <> 'client' ORDER BY name ASC`
   );
 
   // Users on approved leave today are excluded from the "report not filed" name list.
