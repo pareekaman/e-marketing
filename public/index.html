@@ -275,11 +275,15 @@
 </div>
 
 <script>
-// Agar already logged in hai toh seedha /app pe bhejo
+// Already-logged-in users skip the form. Clients go straight to their portal;
+// everyone else to the main app.
 (async function checkExistingSession() {
   try {
     const r = await fetch('/api/me', { credentials: 'include' });
-    if (r.ok) { window.location.replace('/app'); }
+    if (r.ok) {
+      const me = await r.json();
+      window.location.replace(me.role === 'client' ? '/client' : '/app');
+    }
   } catch(e) {}
 })();
 
@@ -295,7 +299,8 @@ async function login(){
     if(!r.ok){err.textContent=d.error||'Login failed';err.style.display='block';return;}
     // Token ko localStorage mein bhi save karo as backup (cookie block hone ki condition mein)
     if(d.token) localStorage.setItem('authToken', d.token);
-    window.location.replace('/app');
+    // Client logins land on the dedicated /client page; team members on /app.
+    window.location.replace(d.role === 'client' ? '/client' : '/app');
   }catch(e){err.textContent='Server error. Try again.';err.style.display='block';}
 }
 </script>

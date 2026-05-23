@@ -3168,6 +3168,8 @@ async function init() {
     }
     ME = await r.json();
     if (!ME || !ME.id) { window.location.replace('/'); return; }
+    // Client logins belong on the dedicated /client page, not the team app.
+    if (ME.role === 'client') { window.location.replace('/client'); return; }
     const initials = ME.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
     document.getElementById('sidebarName').textContent = ME.name;
     const roleLabel = ME.role==='admin' ? '👑 Admin' : ME.role==='hod' ? '🏢 HOD' : ME.role==='pc' ? '🖥️ PC' : ME.role==='client' ? '🏢 Client' : '👤 Employee';

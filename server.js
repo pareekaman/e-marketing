@@ -5308,6 +5308,9 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 // Auth check is handled client-side via /api/me in init() — removing server-side
 // requireAuth here prevents app.html from loading if cookie has any timing/domain issue
 app.get('/app', (req, res) => res.sendFile(path.join(__dirname, 'public', 'app.html')));
+// Standalone client portal — separate page so clients don't pull the full
+// team-app bundle. Role gate happens client-side in client.html via /api/me.
+app.get('/client', (req, res) => res.sendFile(path.join(__dirname, 'public', 'client.html')));
 
 // ══════════════════════════════════════════════════════
 // EXPORT FOR VERCEL (serverless) + LISTEN FOR LOCAL DEV
