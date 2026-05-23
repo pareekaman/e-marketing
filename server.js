@@ -3512,10 +3512,12 @@ app.get('/api/daily-reminder/preview', requireAuth, requireAdmin, async (req, re
     const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
     const today = istNow.toISOString().split('T')[0];
 
+    // Client logins (role='client') are external accounts — they never fill
+    // daily team reports and shouldn't show up in this preview.
     const [users] = await db.query(
       `SELECT id, name, email, COALESCE(department,'') AS department,
               COALESCE(exclude_from_reminder,0) AS exclude_from_reminder
-       FROM users ORDER BY name ASC`
+       FROM users WHERE role <> 'client' ORDER BY name ASC`
     );
     const isCxo = u => EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase());
     const eligible = users.filter(u => !isCxo(u) && !u.exclude_from_reminder);
