@@ -1613,6 +1613,7 @@ tbody tr:last-child td{border-bottom:none;}
         <div class="cm-add-row">
           <button class="cm-btn-primary" onclick="cmOpenAddModal()">+ Add Client</button>
           <button class="cm-btn-ghost" onclick="cmToggleBulk()" id="cmBulkBtn">📂 Bulk Upload</button>
+          <button class="cm-btn-ghost" onclick="cmExportExcel()">⬇ Excel</button>
         </div>
       </div>
 
@@ -8654,6 +8655,30 @@ async function loadClients(){
     document.getElementById('cmStatTotal').textContent = '0';
     document.getElementById('cmStatVisible').textContent = '0';
   }
+}
+
+function cmExportExcel() {
+  if (!CM_ALL || !CM_ALL.length) { showToast('No clients to export', 'error'); return; }
+  // Respect the active search filter so the export matches what's on screen.
+  const q = (document.getElementById('cmSearch')?.value || '').toLowerCase().trim();
+  const list = q ? CM_ALL.filter(c => (c.name || '').toLowerCase().includes(q)) : CM_ALL;
+  // CSV cell escaping — wrap in quotes, double any inner quotes.
+  const cell = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const header = ['#', 'Client Name', 'Handler', 'Client ID'];
+  const rows = list.map((c, i) => [i + 1, c.name || '', c.handler_name || '', c.id]);
+  // BOM so Excel reads UTF-8 (handles ₹, accents, etc.) correctly.
+  const csv = '﻿' + [header, ...rows].map(r => r.map(cell).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const today = new Date().toISOString().split('T')[0];
+  a.href = url;
+  a.download = `clients-${today}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`⬇ Exported ${list.length} client${list.length === 1 ? '' : 's'}`);
 }
 
 function cmOpenAddModal() {
