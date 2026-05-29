@@ -10436,8 +10436,10 @@ async function renderMtgMonth() {
     const iso = _mtgIso(d);
     const isOtherMonth = d.getMonth() !== month;
     const isSunday = d.getDay() === 0;
+    // Last Saturday of the month is a company off day.
+    const isLastSat = d.getDay() === 6 && (new Date(d.getTime() + 7*24*60*60*1000)).getMonth() !== d.getMonth();
     const isHoliday = _mtgHolidays && _mtgHolidays.has(iso);
-    const isOff = isSunday || isHoliday;
+    const isOff = isSunday || isHoliday || isLastSat;
     const isToday = iso === todayIso;
     const cls = ['mtg-cal-cell'];
     if (isOff) cls.push('is-off');
@@ -10451,8 +10453,8 @@ async function renderMtgMonth() {
     const moreHtml = items.length > 3
       ? `<div class="mtg-cal-more" onclick="event.stopPropagation();mtgJumpToDay('${iso}')">+ ${items.length - 3} more</div>`
       : '';
-    const offBadge = (isHoliday || isSunday)
-      ? `<div style="font-size:10px;color:#dc2626;font-weight:600">${isHoliday ? '⛱ Holiday' : 'Off'}</div>`
+    const offBadge = (isHoliday || isSunday || isLastSat)
+      ? `<div style="font-size:10px;color:#dc2626;font-weight:600">${isHoliday ? '⛱ Holiday' : isLastSat ? 'Off' : 'Off'}</div>`
       : '';
     const clickAttr = isOff ? '' : `onclick="mtgJumpToDay('${iso}')"`;
     cells.push(`<div class="${cls.join(' ')}" ${clickAttr}>

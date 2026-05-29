@@ -3700,6 +3700,8 @@ async function sendMeetingReminders() {
   // duplicate sends within the window.
   const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
   const today = istNow.toISOString().split('T')[0];
+  // Sunday + last-Saturday-of-month are off days — no meeting reminders.
+  if (istNow.getUTCDay() === 0 || isLastSaturdayOfMonth(today)) return { ok: true, skipped: 'off day' };
   const totalNow = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
   const minLow  = totalNow + 6, minHigh = totalNow + 14;
   if (minHigh > 24 * 60) return { ok: true, skipped: 'late-night window' };
@@ -4814,11 +4816,22 @@ async function loadHolidaysSet() {
 
 // Universal "no-message day" guard for all reminder/summary crons.
 // Returns { off: true, reason } if today is Sunday IST OR in the holidays table.
+// True if the given YYYY-MM-DD is the LAST Saturday of its month — a company
+// off day. (Saturday AND the next Saturday falls in a different month.)
+function isLastSaturdayOfMonth(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  if (d.getUTCDay() !== 6) return false; // 6 = Saturday
+  const next = new Date(d.getTime() + 7 * 24 * 60 * 60 * 1000);
+  return next.getUTCMonth() !== d.getUTCMonth();
+}
+
 async function getTodayOffIST() {
   const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
   const today = istNow.toISOString().split('T')[0];
   const istDay = istNow.getUTCDay(); // 0 = Sunday IST
   if (istDay === 0) return { off: true, reason: 'Sunday — reminders skipped', today };
+  // Last Saturday of every month is a company off day.
+  if (isLastSaturdayOfMonth(today)) return { off: true, reason: 'Last Saturday of month — reminders skipped', today };
   const holidaysSet = await loadHolidaysSet();
   if (holidaysSet.has(today)) return { off: true, reason: 'Holiday — reminders skipped', today, holidaysSet };
   return { off: false, today, holidaysSet };
@@ -5178,6 +5191,7 @@ app.get('/api/meetings/slots', requireAuth, async (req, res) => {
         const holidays = await loadHolidaysSet();
         const d = new Date(date + 'T00:00:00');
         if (d.getDay() === 0) return { off: true, reason: 'Sunday' };
+        if (isLastSaturdayOfMonth(date)) return { off: true, reason: 'Last Saturday (off)' };
         if (holidays.has(date)) return { off: true, reason: 'Holiday' };
         return { off: false };
       } catch { return { off: false }; }
