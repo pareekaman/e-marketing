@@ -4430,7 +4430,7 @@ function openAssignForActiveTab() {
 
 function openTaskDetail(t) {
   const priorityColors = { urgent:'#dc2626', high:'#ea580c', medium:'#d97706', low:'#16a34a' };
-  const statusLabels = { pending:'Pending', completed:'Completed', revised:'Revision Requested', transferred:'Transferred' };
+  const statusLabels = { pending:'Pending', completed:'Completed', revised:'Revised', transferred:'Transferred' };
   const row = (label, value) => value
     ? `<div style="display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid #f1f5f9;padding-bottom:10px">
         <span style="min-width:110px;color:#64748b;font-size:12px;font-weight:600;padding-top:1px">${label}</span>
@@ -4443,9 +4443,11 @@ function openTaskDetail(t) {
   const priorityBadge = t.priority
     ? `<span style="background:${priorityColors[t.priority]||'#64748b'}22;color:${priorityColors[t.priority]||'#64748b'};padding:2px 9px;border-radius:5px;font-weight:600;font-size:12px">${t.priority.charAt(0).toUpperCase()+t.priority.slice(1)}</span>`
     : null;
-  const statusBadge = t.status
-    ? `<span class="status-badge ${t.status}" style="font-size:12px">${statusLabels[t.status]||t.status}</span>`
-    : null;
+  const statusBadge = (t.waiting_approval == 1)
+    ? `<span class="status-badge revised" style="font-size:12px">⏳ Revision Requested — awaiting approval</span>`
+    : (t.status
+      ? `<span class="status-badge ${t.status}" style="font-size:12px">${statusLabels[t.status]||t.status}</span>`
+      : null);
 
   document.getElementById('tdTitle').textContent = '📋 ' + (t.description || 'Task Detail');
   document.getElementById('tdBody').innerHTML = [

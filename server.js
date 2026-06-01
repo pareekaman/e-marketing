@@ -1066,9 +1066,12 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
       return res.status(409).json({ error: 'Approval pending hai — approve hone tak na revise kar sakte ho na done.' });
     }
 
-    // REVISE (date push) ALWAYS needs the assigner's approval. The new date is held
-    // in the approval row and only applied to the task once approved.
-    if (status === 'revised' && supportsApproval && !isPrivileged && !reviserIsAssigner) {
+    // REVISE (date push) ALWAYS needs the assigner's approval — for every role,
+    // including admin and self-assigned tasks (the request just routes back to the
+    // assigner, who approves it on the Approvals screen). The requested new date is
+    // held in the approval row and applied to the task only once approved. Anyone
+    // who can directly change a date should use Edit, not Revise.
+    if (status === 'revised' && supportsApproval) {
       await db.query(
         `INSERT INTO task_approvals (task_id,task_type,requested_by,requested_to,action_type,new_date,status,note)
          VALUES (?,?,?,?,?,?,'pending',?)`,
