@@ -1234,11 +1234,11 @@ app.get('/api/approvals', requireAuth, async (req, res) => {
   try {
     const role = req.session.role;
     const isAdminOrPC = role === 'admin' || role === 'pc';
-    // Admin/PC sees all pending approvals; others see only theirs
-    const whereClause = isAdminOrPC
-      ? `WHERE ta.status='pending'`
-      : `WHERE ta.requested_to=? AND ta.status='pending'`;
-    const params = isAdminOrPC ? [] : [req.session.userId];
+    // Everyone — including admin/PC — sees only the approvals assigned to THEM
+    // (the assigner of the task). The red badge should ping the person who has
+    // to act, not every admin globally.
+    const whereClause = `WHERE ta.requested_to=? AND ta.status='pending'`;
+    const params = [req.session.userId];
     const [rows] = await db.query(`SELECT ta.*,DATE_FORMAT(ta.new_date,'%Y-%m-%d') AS reviseToDate,u1.name AS requestedByName,u2.name AS requestedToName,dt.description,dt.approval AS taskApproval,DATE_FORMAT(dt.due_date,'%Y-%m-%d') AS currentDue FROM task_approvals ta JOIN users u1 ON ta.requested_by=u1.id JOIN users u2 ON ta.requested_to=u2.id LEFT JOIN delegation_tasks dt ON ta.task_id=dt.id AND ta.task_type='delegation' ${whereClause} ORDER BY ta.created_at DESC`, params);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1246,11 +1246,12 @@ app.get('/api/approvals', requireAuth, async (req, res) => {
 
 app.get('/api/approvals/count', requireAuth, async (req, res) => {
   try {
-    const role = req.session.role;
-    const isAdminOrPC = role === 'admin' || role === 'pc';
-    const [rows] = isAdminOrPC
-      ? await db.query(`SELECT COUNT(*) AS count FROM task_approvals WHERE status='pending'`)
-      : await db.query(`SELECT COUNT(*) AS count FROM task_approvals WHERE requested_to=? AND status='pending'`, [req.session.userId]);
+    // Count only the approvals waiting on THIS user (the task's assigner), for
+    // every role. The badge is a personal "you need to act" indicator.
+    const [rows] = await db.query(
+      `SELECT COUNT(*) AS count FROM task_approvals WHERE requested_to=? AND status='pending'`,
+      [req.session.userId]
+    );
     res.json({ count: rows[0].count });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
