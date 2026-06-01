@@ -3943,7 +3943,6 @@ function renderDashTable(tasks, type) {
       : (t.waiting_approval==1 ? `
           ${revisedBadge}
           <span style="font-size:11px;color:#f59e0b;font-weight:600">⏳ Waiting Approval</span>
-          ${(!isPC || t.type==='checklist') ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>` : ''}
         ` : `
           ${revisedBadge}
           ${(!isPC || t.type==='checklist') ? `<button class="action-btn done" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>` : ''}
@@ -4250,8 +4249,7 @@ function _buildTaskRowHtml(t, ctx) {
       ${!isChecklist ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${tasksType}')">Revise</button>` : ''}
     ` : ''}
     ${isWaiting ? `
-      <button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>
-      <span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
+      <span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting Approval</span>` : ''}
   `;
   const clientCell = showClientCol
     ? `<td style="white-space:nowrap;font-size:12px">${t.client_name ? `<span style="background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span>` : '<span style="color:#94a3b8">—</span>'}</td>`
@@ -4472,8 +4470,9 @@ function toggleBlock(header) { header.nextElementSibling.classList.toggle('open'
 // ══════════════════════════════════════════════════════
 async function updateStatus(id, status, from, type) {
   const r = await api(`/api/tasks/${id}/status`,'PUT',{status, type: type || dashType});
+  if (r.error) { appAlert(r.error, 'Not allowed'); return; }
   if (r.needsApproval) {
-    showToast('✅ Approval request sent to your manager!');
+    showToast('✅ Approval request sent to the assigner!');
   }
   if (from==='dashboard') loadDashboard(); else loadAllTasks();
   loadApprovalBadge();
@@ -4552,7 +4551,7 @@ async function submitRevise() {
 
   closeModal('reviseDateModal');
   if (r.needsApproval) {
-    showToast('✅ Revision request sent to manager!');
+    showToast('✅ Revision request sent to the assigner for approval!');
   } else {
     showToast('Task revised with new date!');
   }
@@ -5441,7 +5440,7 @@ async function loadApprovals() {
                 <td style="font-weight:600">${a.requestedByName}</td>
                 ${isAdminOrPC ? `<td style="color:#64748b;font-size:12px">${a.requestedToName}</td>` : ''}
                 <td>${a.description||'—'}</td>
-                <td><span class="status-badge ${a.action_type}">${a.action_type==='completed'?'✅ Mark Complete':'🔄 Revision'}</span></td>
+                <td><span class="status-badge ${a.action_type}">${a.action_type==='completed'?'✅ Mark Complete':'🔄 Revision'}</span>${a.action_type==='revised' && a.reviseToDate ? `<div style="font-size:11px;color:#64748b;margin-top:3px">${a.currentDue?fmtDate(a.currentDue)+' → ':''}<b style="color:#9d174d">${fmtDate(a.reviseToDate)}</b></div>` : ''}</td>
                 <td style="color:#64748b;font-size:12px">${new Date(a.created_at).toLocaleDateString('en-IN')}</td>
                 <td>
                   <button class="action-btn done" onclick="handleApproval(${a.id},'approved')">Approve</button>

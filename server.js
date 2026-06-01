@@ -165,6 +165,7 @@ const _startupMigrationsPromise = (async () => {
     requested_by INT NOT NULL,
     requested_to INT NOT NULL,
     action_type VARCHAR(50) DEFAULT NULL,
+    new_date DATE DEFAULT NULL,
     status ENUM('pending','approved','rejected') DEFAULT 'pending',
     note TEXT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -300,6 +301,8 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`);
   await sa(`ALTER TABLE delegation_tasks ADD INDEX idx_client (client_id)`);
   await sa(`ALTER TABLE delegation_tasks ADD COLUMN url VARCHAR(2048) DEFAULT NULL AFTER client_id`);
+  // Revise approval holds the requested new due-date here until the assigner approves.
+  await sa(`ALTER TABLE task_approvals ADD COLUMN new_date DATE DEFAULT NULL AFTER action_type`);
   await sa(`ALTER TABLE checklist_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`);
   await sa(`ALTER TABLE checklist_tasks ADD INDEX idx_client (client_id)`);
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN col_letter VARCHAR(10) DEFAULT '' AFTER row_label`);
@@ -554,6 +557,7 @@ app.get('/api/setup', async (req, res) => {
     await sa(`CREATE TABLE IF NOT EXISTS task_approvals (
       id INT AUTO_INCREMENT PRIMARY KEY, task_id INT NOT NULL, task_type VARCHAR(20) NOT NULL,
       requested_by INT NOT NULL, requested_to INT NOT NULL, action_type VARCHAR(50),
+      new_date DATE DEFAULT NULL,
       status ENUM('pending','approved','rejected') DEFAULT 'pending', note TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_task (task_id, task_type), INDEX idx_requested_to (requested_to)
@@ -1044,29 +1048,58 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     const isAdmin = req.session.role === 'admin';
     const isPC = req.session.role === 'pc';
     const uid = req.session.userId;
+    const isPrivileged = isAdmin || isPC;
+    const tt = type || 'delegation';
     const [rows] = await db.query(`SELECT * FROM ${table} WHERE id=?`, [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Task not found' });
     const task = rows[0];
-    if (!isAdmin && !isPC && task.assigned_to !== uid) return res.status(403).json({ error: 'Not allowed' });
-    if (status === 'completed' && task.waiting_approval) {
-      await db.query(`DELETE FROM task_approvals WHERE task_id=? AND task_type=? AND status='pending'`, [req.params.id, type]);
-      if (type === 'checklist') await db.query(`UPDATE ${table} SET status='completed' WHERE id=?`, [req.params.id]);
-      else await db.query(`UPDATE ${table} SET status='completed',waiting_approval=0 WHERE id=?`, [req.params.id]);
-      return res.json({ success: true, needsApproval: false });
+    if (!isPrivileged && task.assigned_to !== uid) return res.status(403).json({ error: 'Not allowed' });
+
+    // Approval workflow only exists for delegation tasks (checklist has no approval column).
+    const supportsApproval = tt === 'delegation';
+    // The reviser is also the one who assigned the task → no separate approval needed.
+    const reviserIsAssigner = Number(task.assigned_by) === Number(uid);
+
+    // While a revise/approval is pending, the doer can neither revise again nor mark done.
+    // Privileged users (admin/PC) act directly; the assigner decides via the Approvals screen.
+    if (supportsApproval && task.waiting_approval && !isPrivileged) {
+      return res.status(409).json({ error: 'Approval pending hai — approve hone tak na revise kar sakte ho na done.' });
     }
-    const needsApproval = type === 'delegation' && task.approval === 'yes';
-    if (needsApproval && !isAdmin && !isPC) {
-      const [existing] = await db.query(`SELECT id FROM task_approvals WHERE task_id=? AND task_type=? AND status='pending'`, [req.params.id, type]);
-      if (existing[0]) return res.status(400).json({ error: 'Approval already pending' });
-      await db.query(`INSERT INTO task_approvals (task_id,task_type,requested_by,requested_to,action_type,status,note) VALUES (?,?,?,?,?,'pending',?)`, [req.params.id, type, uid, task.assigned_by, status, reason||'']);
-      if (newDate && status === 'revised') await db.query(`UPDATE ${table} SET waiting_approval=1,due_date=? WHERE id=?`, [newDate, req.params.id]);
-      else await db.query(`UPDATE ${table} SET waiting_approval=1 WHERE id=?`, [req.params.id]);
+
+    // REVISE (date push) ALWAYS needs the assigner's approval. The new date is held
+    // in the approval row and only applied to the task once approved.
+    if (status === 'revised' && supportsApproval && !isPrivileged && !reviserIsAssigner) {
+      await db.query(
+        `INSERT INTO task_approvals (task_id,task_type,requested_by,requested_to,action_type,new_date,status,note)
+         VALUES (?,?,?,?,?,?,'pending',?)`,
+        [req.params.id, tt, uid, task.assigned_by, 'revised', newDate || null, reason || '']
+      );
+      await db.query(`UPDATE ${table} SET waiting_approval=1 WHERE id=?`, [req.params.id]);
       return res.json({ success: true, needsApproval: true });
     }
-    if (newDate && status === 'revised') await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,due_date=? WHERE id=?`, [status, newDate, req.params.id]);
-    else {
+
+    // COMPLETION approval — only when the task was created with approval='yes'.
+    if (status === 'completed' && supportsApproval && task.approval === 'yes' && !isPrivileged && !reviserIsAssigner) {
+      await db.query(
+        `INSERT INTO task_approvals (task_id,task_type,requested_by,requested_to,action_type,status,note)
+         VALUES (?,?,?,?,?,'pending',?)`,
+        [req.params.id, tt, uid, task.assigned_by, 'completed', reason || '']
+      );
+      await db.query(`UPDATE ${table} SET waiting_approval=1 WHERE id=?`, [req.params.id]);
+      return res.json({ success: true, needsApproval: true });
+    }
+
+    // Direct apply: privileged user, self-assigner, plain completion, or checklist.
+    // If a privileged user overrides while a request was pending, cancel the stale one.
+    if (supportsApproval && task.waiting_approval && isPrivileged) {
+      await db.query(`DELETE FROM task_approvals WHERE task_id=? AND task_type=? AND status='pending'`, [req.params.id, tt]);
+    }
+    if (newDate && status === 'revised') {
+      if (tt === 'checklist') await db.query(`UPDATE ${table} SET status=?,due_date=? WHERE id=?`, [status, newDate, req.params.id]);
+      else await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,due_date=? WHERE id=?`, [status, newDate, req.params.id]);
+    } else {
       // checklist_tasks mein waiting_approval column nahi hota
-      if (type === 'checklist') await db.query(`UPDATE ${table} SET status=? WHERE id=?`, [status, req.params.id]);
+      if (tt === 'checklist') await db.query(`UPDATE ${table} SET status=? WHERE id=?`, [status, req.params.id]);
       else await db.query(`UPDATE ${table} SET status=?,waiting_approval=0 WHERE id=?`, [status, req.params.id]);
     }
     res.json({ success: true, needsApproval: false });
@@ -1206,7 +1239,7 @@ app.get('/api/approvals', requireAuth, async (req, res) => {
       ? `WHERE ta.status='pending'`
       : `WHERE ta.requested_to=? AND ta.status='pending'`;
     const params = isAdminOrPC ? [] : [req.session.userId];
-    const [rows] = await db.query(`SELECT ta.*,u1.name AS requestedByName,u2.name AS requestedToName,dt.description,dt.approval AS taskApproval FROM task_approvals ta JOIN users u1 ON ta.requested_by=u1.id JOIN users u2 ON ta.requested_to=u2.id LEFT JOIN delegation_tasks dt ON ta.task_id=dt.id AND ta.task_type='delegation' ${whereClause} ORDER BY ta.created_at DESC`, params);
+    const [rows] = await db.query(`SELECT ta.*,DATE_FORMAT(ta.new_date,'%Y-%m-%d') AS reviseToDate,u1.name AS requestedByName,u2.name AS requestedToName,dt.description,dt.approval AS taskApproval,DATE_FORMAT(dt.due_date,'%Y-%m-%d') AS currentDue FROM task_approvals ta JOIN users u1 ON ta.requested_by=u1.id JOIN users u2 ON ta.requested_to=u2.id LEFT JOIN delegation_tasks dt ON ta.task_id=dt.id AND ta.task_type='delegation' ${whereClause} ORDER BY ta.created_at DESC`, params);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1226,7 +1259,7 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
   try {
     const { action, note } = req.body;
     const role = req.session.role;
-    const [rows] = await db.query('SELECT * FROM task_approvals WHERE id=?', [req.params.id]);
+    const [rows] = await db.query(`SELECT *, DATE_FORMAT(new_date,'%Y-%m-%d') AS new_date_fmt FROM task_approvals WHERE id=?`, [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Approval not found' });
     const appr = rows[0];
     // PC and admin can approve any; others only their own
@@ -1234,8 +1267,17 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
     if (!canApprove) return res.status(403).json({ error: 'Not allowed' });
     await db.query('UPDATE task_approvals SET status=?,note=? WHERE id=?', [action, note||'', req.params.id]);
     const table = getTable(appr.task_type);
-    if (action === 'approved') await db.query(`UPDATE ${table} SET status=?,waiting_approval=0 WHERE id=?`, [appr.action_type, appr.task_id]);
-    else await db.query(`UPDATE ${table} SET waiting_approval=0 WHERE id=?`, [appr.task_id]);
+    if (action === 'approved') {
+      // Revise approved → push the held new date now. Other actions just set status.
+      if (appr.action_type === 'revised' && appr.new_date_fmt) {
+        await db.query(`UPDATE ${table} SET status='revised',waiting_approval=0,due_date=? WHERE id=?`, [appr.new_date_fmt, appr.task_id]);
+      } else {
+        await db.query(`UPDATE ${table} SET status=?,waiting_approval=0 WHERE id=?`, [appr.action_type, appr.task_id]);
+      }
+    } else {
+      // Rejected → drop the waiting flag; due_date and status stay unchanged.
+      await db.query(`UPDATE ${table} SET waiting_approval=0 WHERE id=?`, [appr.task_id]);
+    }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3554,8 +3596,81 @@ app.get('/api/daily-reminder/preview', requireAuth, requireAdmin, async (req, re
 // ══════════════════════════════════════════════════════
 // 📋 PENDING TASKS REMINDER — 12 PM daily (per-user consolidated WhatsApp)
 // Sends each user a single WhatsApp listing ALL their pending tasks
-// (delegation + checklist) due today or earlier.
+// (delegation + checklist + FMS) due today or earlier.
 // ══════════════════════════════════════════════════════
+
+// FMS pending rows (plan filled, actual blank) grouped by doer user-id.
+// Same row logic as the management Pending Task Summary, but attributed to each
+// step doer's id so individual users (e.g. FMS-only doers) get their own DM.
+// Each sheet is fetched once. Rows with a plan-date after `today` are skipped to
+// match the "due today or earlier" intent; rows with an unparseable plan-date are
+// kept (we can't tell, so we remind).
+async function buildFmsPendingByUser(today) {
+  const byUser = {};
+  try {
+    const [allSheets] = await db.query('SELECT * FROM fms_sheets');
+    if (!allSheets.length) return byUser;
+    const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']).catch(() => null);
+    if (!sheetsApi) return byUser;
+    for (const sheet of allSheets) {
+      const [steps] = await db.query('SELECT * FROM fms_steps WHERE fms_id=? ORDER BY step_order ASC', [sheet.id]);
+      if (!steps.length) continue;
+      for (const step of steps) {
+        const [doers] = await db.query(`SELECT u.id, u.name FROM fms_step_doers fsd JOIN users u ON fsd.user_id=u.id WHERE fsd.step_id=?`, [step.id]);
+        step.doers = doers;
+      }
+      try {
+        const spreadsheetId = extractSpreadsheetId(sheet.sheet_id);
+        const tabName = sheet.sheet_name || 'Sheet1';
+        const headerRowIdx = (sheet.header_row || 1) - 1;
+        const showColsByStep = steps.map(s => {
+          try { return JSON.parse(s.show_cols || '[]').filter(n => Number.isInteger(n) && n >= 0); }
+          catch { return []; }
+        });
+        const allCols = steps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)])
+          .concat(showColsByStep.flat()).filter(x => x >= 0);
+        if (!allCols.length) continue;
+        const maxCol = Math.max(...allCols);
+        const resp = await sheetsApi.spreadsheets.values.get({ spreadsheetId, range: `${tabName}!A:${idxToCol(maxCol)}` });
+        const data = resp.data.values || [];
+        const headers = data[headerRowIdx] || [];
+        const dataRows = data.slice(headerRowIdx + 1);
+        const blankClean = v => (v || '').toString().replace(/[\s ​‌‍﻿]+/g, '');
+        for (let si = 0; si < steps.length; si++) {
+          const step = steps[si];
+          if (!step.doers || !step.doers.length) continue;
+          const showCols = showColsByStep[si];
+          const planIdx = colToIdx(step.plan_col);
+          const actualIdx = colToIdx(step.actual_col);
+          if (planIdx < 0 || actualIdx < 0) continue;
+          dataRows.forEach(row => {
+            const planVal = (row[planIdx] || '').toString().trim();
+            const actualVal = (row[actualIdx] || '').toString().trim();
+            if (!blankClean(planVal) || blankClean(actualVal)) return;
+            const planDate = parseFmsPlanDate(planVal);
+            if (planDate && planDate > today) return; // future-dated → not due yet
+            let clientName = '';
+            for (const ci of showCols) {
+              if (/client/i.test(headers[ci] || '')) { clientName = (row[ci] || '').toString().trim(); break; }
+            }
+            const entry = {
+              type: 'FMS',
+              fmsName: sheet.fms_name || sheet.sheet_name,
+              stepName: step.step_name,
+              clientName,
+              planValue: planVal,
+              planDate: planDate || '',
+              due_date: planDate || ''
+            };
+            for (const d of step.doers) (byUser[d.id] = byUser[d.id] || []).push({ ...entry });
+          });
+        }
+      } catch (e) { /* skip this sheet on error */ }
+    }
+  } catch (e) { console.error('FMS per-user pending build err:', e.message); }
+  return byUser;
+}
+
 async function buildAndSendPendingTasksReminder() {
   // Sunday + holiday guard — no DMs to anyone on those days.
   const offCheck = await getTodayOffIST();
@@ -3589,6 +3704,16 @@ async function buildAndSendPendingTasksReminder() {
     if (!byUser[r.assigned_to]) byUser[r.assigned_to] = [];
     byUser[r.assigned_to].push({ ...r, type: 'Checklist' });
   }
+
+  // FMS pending rows (plan filled, actual blank) — same per-user DM as del/chl.
+  // Pulls in FMS-only doers (e.g. Purvi) who'd otherwise never get a reminder.
+  try {
+    const fmsByUser = await buildFmsPendingByUser(today);
+    for (const uid of Object.keys(fmsByUser)) {
+      if (!byUser[uid]) byUser[uid] = [];
+      byUser[uid].push(...fmsByUser[uid]);
+    }
+  } catch (e) { console.error('FMS reminder merge err:', e.message); }
 
   const userIds = Object.keys(byUser).map(Number);
   if (!userIds.length) {
@@ -3630,6 +3755,12 @@ async function buildAndSendPendingTasksReminder() {
     // Sort tasks: oldest due date first
     const tasks = byUser[uid].sort((a, b) => (a.due_date || '').localeCompare(b.due_date || ''));
     const lines = tasks.map((t, i) => {
+      if (t.type === 'FMS') {
+        const when = t.planDate ? t.planDate.split('-').reverse().join('-') : (t.planValue || '');
+        const overdue = t.planDate && t.planDate < today ? ' ⚠️ overdue' : '';
+        const client = t.clientName ? ` (${t.clientName})` : '';
+        return `${i+1}. ${t.fmsName} — ${t.stepName}${client}\n   📅 ${when}${overdue} · FMS`;
+      }
       const dueFmt = (t.due_date || '').split('-').reverse().join('-');
       const overdue = t.due_date && t.due_date < today ? ' ⚠️ overdue' : '';
       return `${i+1}. ${t.description}\n   📅 ${dueFmt}${overdue} · ${t.type}${t.priority && t.priority !== 'low' ? ' · ' + t.priority.toUpperCase() : ''}`;
