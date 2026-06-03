@@ -17,7 +17,16 @@ body{font-family:'Inter',sans-serif;background:#f5f6fa;color:#0f172a;min-height:
 .topbar-sub{font-size:11px;color:#64748b;}
 .logout-btn{padding:8px 14px;border:1.5px solid #e2e8f0;background:#fff;border-radius:8px;font-size:13px;font-weight:600;color:#475569;cursor:pointer;transition:background .15s,border-color .15s;font-family:inherit;}
 .logout-btn:hover{background:#fef2f2;border-color:#fca5a5;color:#dc2626;}
-.main{padding:22px 28px;max-width:1320px;margin:0 auto;}
+.main{padding:14px 22px;max-width:1340px;margin:0 auto;}
+.cp-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:12px;}
+.cp-content-top{display:grid;grid-template-columns:250px minmax(0,1fr) 300px;gap:12px;margin-bottom:12px;align-items:stretch;}
+.cp-card{background:#fff;border:1px solid #e8eaf0;border-radius:13px;box-shadow:0 1px 3px rgba(16,24,40,.04);display:flex;flex-direction:column;overflow:hidden;}
+.cp-card-head{padding:11px 15px;border-bottom:1px solid #eef1f6;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.cp-card-head h4{font-size:13px;font-weight:700;color:#0f172a;margin:0;}
+.cp-scroll{overflow-y:auto;}
+.cp-scroll::-webkit-scrollbar{width:6px;}
+.cp-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px;}
+@media(max-width:1080px){.cp-stats{grid-template-columns:repeat(2,1fr);}.cp-content-top{grid-template-columns:1fr;}}
 .btn{padding:8px 16px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;border:none;font-family:inherit;transition:transform .1s,box-shadow .15s;}
 .btn:hover{transform:translateY(-1px);}
 .btn-primary{background:#1a56db;color:#fff;}
@@ -213,8 +222,8 @@ function cpRenderHtml(s){
   const initials = dtEscape(cpInitials(client.name || 'C'));
   const avatarStyle = cpAvatarStyle(client.name || 'C');
   const avatarHtml = client.logo_url
-    ? `<img src="${client.logo_url}" alt="${dtEscape(client.name)}" style="width:72px;height:72px;border-radius:18px;object-fit:cover;box-shadow:0 6px 18px rgba(0,0,0,.12);flex-shrink:0;background:#fff"/>`
-    : `<div style="width:72px;height:72px;border-radius:18px;${avatarStyle};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:26px;box-shadow:0 6px 18px rgba(0,0,0,.12);flex-shrink:0">${initials}</div>`;
+    ? `<img src="${client.logo_url}" alt="${dtEscape(client.name)}" style="width:54px;height:54px;border-radius:14px;object-fit:cover;box-shadow:0 4px 12px rgba(0,0,0,.12);flex-shrink:0;background:#fff"/>`
+    : `<div style="width:54px;height:54px;border-radius:14px;${avatarStyle};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:21px;box-shadow:0 4px 12px rgba(0,0,0,.12);flex-shrink:0">${initials}</div>`;
   const istHour = (new Date(Date.now() + (5.5*60*60*1000))).getUTCHours();
   const greeting = istHour < 12 ? 'Good morning' : istHour < 17 ? 'Good afternoon' : 'Good evening';
   const handlerLine = client.handler_name
@@ -267,78 +276,77 @@ function cpRenderHtml(s){
       }).join('')
     : `<div style="padding:32px;text-align:center;color:#94a3b8"><div style="font-size:32px;margin-bottom:6px">📅</div>No meetings in this window</div>`;
 
-  const statCard = (icon, label, value, color, sub, extra) => `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;position:relative;overflow:hidden">
+  const statCard = (icon, label, value, color, sub, extra) => `<div style="background:#fff;border:1px solid #e8eaf0;border-radius:12px;padding:12px 15px;position:relative;overflow:hidden;box-shadow:0 1px 3px rgba(16,24,40,.04)">
     <div style="position:absolute;top:0;left:0;width:4px;height:100%;background:${color}"></div>
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-      <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${label}</div>
-      <div style="font-size:22px;opacity:.7">${icon}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+      <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${label}</div>
+      <div style="font-size:16px;opacity:.65">${icon}</div>
     </div>
-    <div style="font-size:32px;font-weight:800;color:${color};line-height:1">${value}</div>
-    ${sub ? `<div style="font-size:11px;color:#94a3b8;margin-top:6px">${sub}</div>` : ''}
+    <div style="font-size:26px;font-weight:800;color:${color};line-height:1.05">${value}</div>
+    ${sub ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px">${sub}</div>` : ''}
     ${extra || ''}
   </div>`;
 
   const completedExtra = tasksTotal > 0
-    ? `<div style="margin-top:10px;background:#f1f5f9;border-radius:999px;height:6px;overflow:hidden"><div style="width:${completionPct}%;height:100%;background:linear-gradient(90deg,#10b981,#059669);border-radius:999px;transition:width .4s"></div></div>`
+    ? `<div style="margin-top:7px;background:#f1f5f9;border-radius:999px;height:5px;overflow:hidden"><div style="width:${completionPct}%;height:100%;background:linear-gradient(90deg,#10b981,#059669);border-radius:999px;transition:width .4s"></div></div>`
     : '';
 
   return `
-    <div style="background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 60%,#fde68a 100%);padding:24px 28px;border-radius:16px;margin-bottom:18px;border:1px solid #fde68a;box-shadow:0 4px 20px rgba(245,158,11,.08)">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px">
-        <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+    <div style="background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 58%,#fde68a 100%);padding:14px 20px;border-radius:14px;margin-bottom:12px;border:1px solid #fde68a;box-shadow:0 2px 14px rgba(245,158,11,.10)">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
           ${avatarHtml}
           <div>
-            <div style="font-size:12px;color:#92400e;font-weight:600;text-transform:uppercase;letter-spacing:.6px">${greeting}</div>
-            <div style="font-size:26px;font-weight:800;color:#0f172a;line-height:1.1;margin-top:2px">${dtEscape(client.name || 'Client')}</div>
-            <div style="margin-top:10px">${handlerLine}</div>
+            <div style="font-size:10.5px;color:#92400e;font-weight:700;text-transform:uppercase;letter-spacing:.6px">${greeting}</div>
+            <div style="font-size:21px;font-weight:800;color:#0f172a;line-height:1.1;margin-top:1px">${dtEscape(client.name || 'Client')}</div>
+            <div style="margin-top:7px">${handlerLine}</div>
           </div>
         </div>
-        <button class="btn btn-primary" ${canDelegate ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'} onclick="cpOpenDelegate()" style="padding:12px 20px;font-size:14px;font-weight:600;border-radius:10px;box-shadow:0 4px 12px rgba(26,86,219,.25)">＋ New Task for Handler</button>
-      </div>
-      <div style="margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:rgba(255,255,255,.7);padding:10px 14px;border-radius:10px;border:1px solid rgba(254,243,199,.8)">
-        <label style="font-size:11px;color:#92400e;font-weight:700;text-transform:uppercase;letter-spacing:.4px">📅 Range</label>
-        <input type="date" id="cpFrom" value="${range.from || ''}" style="padding:6px 10px;border:1.5px solid #fde68a;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
-        <span style="font-size:11px;color:#92400e">to</span>
-        <input type="date" id="cpTo" value="${range.to || ''}" style="padding:6px 10px;border:1.5px solid #fde68a;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
-        <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="cpApplyRange()">Apply</button>
-        <span style="font-size:11px;color:#a16207;margin-left:auto">Showing: <strong>${fmtDate(range.from)} → ${fmtDate(range.to)}</strong></span>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;background:rgba(255,255,255,.75);padding:6px 10px;border-radius:9px;border:1px solid rgba(254,243,199,.9)">
+            <label style="font-size:10px;color:#92400e;font-weight:700;text-transform:uppercase;letter-spacing:.4px">📅</label>
+            <input type="date" id="cpFrom" value="${range.from || ''}" style="padding:5px 8px;border:1.5px solid #fde68a;border-radius:6px;font-size:12px;background:#fff;outline:none"/>
+            <span style="font-size:11px;color:#92400e">–</span>
+            <input type="date" id="cpTo" value="${range.to || ''}" style="padding:5px 8px;border:1.5px solid #fde68a;border-radius:6px;font-size:12px;background:#fff;outline:none"/>
+            <button class="btn btn-primary" style="padding:6px 12px;font-size:12px" onclick="cpApplyRange()">Apply</button>
+          </div>
+          <button class="btn btn-primary" ${canDelegate ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'} onclick="cpOpenDelegate()" style="padding:10px 16px;font-size:13px;font-weight:600;border-radius:10px;box-shadow:0 4px 12px rgba(26,86,219,.25)">＋ New Task</button>
+        </div>
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:18px">
-      ${statCard('📊', 'Total Tasks', tasksTotal, '#1a56db', `${del.total||0} delegation · ${chl.total||0} checklist`)}
+    <div class="cp-stats">
+      ${statCard('📊', 'Total Tasks', tasksTotal, '#1a56db', `${del.total||0} del · ${chl.total||0} chk`)}
       ${statCard('⏳', 'Pending', pendingTotal, '#ef4444', overdueTotal > 0 ? `${overdueTotal} overdue` : 'On track')}
-      ${statCard('✅', 'Completed', completedTotal, '#10b981', `${completionPct}% completion rate`, completedExtra)}
+      ${statCard('✅', 'Completed', completedTotal, '#10b981', `${completionPct}% done`, completedExtra)}
       ${statCard('🔄', 'Revised', revisedTotal, '#f59e0b', revisedTotal > 0 ? 'Needs rework' : 'None')}
-      ${statCard('📅', 'Meetings', meetingsTotal, '#7c3aed', `${meetingsScheduled} scheduled · ${meetingsCancelled} cancelled`)}
+      ${statCard('📅', 'Meetings', meetingsTotal, '#7c3aed', `${meetingsScheduled} sched · ${meetingsCancelled} canc`)}
     </div>
 
-    <div style="display:grid;grid-template-columns:300px 1fr;gap:16px;margin-bottom:18px">
-      <div class="task-table-card" style="padding:16px 18px;border-radius:14px">
-        <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px">🥧 Task Status</div>
-        <div style="position:relative;height:220px">
+    <div class="cp-content-top">
+      <div class="cp-card" style="height:220px">
+        <div class="cp-card-head"><h4>🥧 Task Status</h4></div>
+        <div style="position:relative;flex:1;padding:8px 10px">
           <canvas id="cpStatusChart"></canvas>
-          ${(pendingTotal + completedTotal + revisedTotal === 0) ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;text-align:center;padding:0 12px">No tasks in this window — pie chart will appear once activity starts.</div>` : ''}
+          ${(pendingTotal + completedTotal + revisedTotal === 0) ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px;text-align:center;padding:0 14px">No tasks in this window yet</div>` : ''}
         </div>
       </div>
       ${cpRenderUpcomingHtml(s.upcoming || [])}
+      <div class="cp-card" style="height:220px">
+        <div class="cp-card-head"><h4>📅 Meetings</h4><span style="font-size:11px;color:#94a3b8">${meetingsTotal} total</span></div>
+        <div class="cp-scroll" style="flex:1">${meetingsHtml}</div>
+      </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 360px;gap:16px">
-      <div class="task-table-card" style="padding:0;border-radius:14px">
-        <div class="card-head" style="padding:16px 18px"><div class="card-head-title" style="font-size:15px">📋 Recent Activity</div></div>
-        <div style="overflow-x:auto">
-          <table>
-            <thead><tr style="background:#f8fafc">
-              <th>Type</th><th>Description</th><th>Doer</th><th>Date</th><th>Status</th>
-            </tr></thead>
-            <tbody>${recentHtml}</tbody>
-          </table>
-        </div>
-      </div>
-      <div class="task-table-card" style="padding:0;border-radius:14px">
-        <div class="card-head" style="padding:16px 18px"><div class="card-head-title" style="font-size:15px">📅 Meetings (this window)</div></div>
-        <div>${meetingsHtml}</div>
+    <div class="cp-card">
+      <div class="cp-card-head"><h4>📋 Recent Activity</h4><span style="font-size:11px;color:#94a3b8">${(s.recent||[]).length} item${(s.recent||[]).length===1?'':'s'}</span></div>
+      <div class="cp-scroll" style="max-height:188px">
+        <table>
+          <thead><tr style="background:#f8fafc;position:sticky;top:0;z-index:1">
+            <th>Type</th><th>Description</th><th>Doer</th><th>Date</th><th>Status</th>
+          </tr></thead>
+          <tbody>${recentHtml}</tbody>
+        </table>
       </div>
     </div>
   `;
@@ -346,10 +354,10 @@ function cpRenderHtml(s){
 
 function cpRenderUpcomingHtml(upcoming){
   if (!upcoming.length) {
-    return `<div class="task-table-card" style="padding:16px 18px;border-radius:14px;height:252px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8">
-      <div style="font-size:13px;font-weight:700;color:#0f172a;align-self:flex-start">📌 Upcoming Deadlines</div>
-      <div style="text-align:center;margin:auto;padding:0 14px">
-        <div style="font-size:32px;margin-bottom:6px">✨</div>
+    return `<div class="cp-card" style="height:220px">
+      <div class="cp-card-head"><h4>📌 Upcoming Deadlines</h4></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8;text-align:center;padding:0 14px">
+        <div style="font-size:30px;margin-bottom:6px">✨</div>
         <div style="font-size:12px">Nothing pending — all caught up!</div>
       </div>
     </div>`;
@@ -382,12 +390,9 @@ function cpRenderUpcomingHtml(upcoming){
     </div>
     ${urgencyPill(t.due_date)}
   </div>`).join('');
-  return `<div class="task-table-card" style="padding:0;border-radius:14px;display:flex;flex-direction:column">
-    <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
-      <div style="font-size:13px;font-weight:700;color:#0f172a">📌 Upcoming Deadlines</div>
-      <div style="font-size:11px;color:#94a3b8">${upcoming.length} pending</div>
-    </div>
-    <div style="overflow-y:auto;max-height:220px">${rows}</div>
+  return `<div class="cp-card" style="height:220px">
+    <div class="cp-card-head"><h4>📌 Upcoming Deadlines</h4><span style="font-size:11px;color:#94a3b8">${upcoming.length} pending</span></div>
+    <div class="cp-scroll" style="flex:1">${rows}</div>
   </div>`;
 }
 
