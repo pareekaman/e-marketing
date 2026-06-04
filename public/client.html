@@ -17,25 +17,27 @@ body{font-family:'Inter',sans-serif;background:#f5f6fa;color:#0f172a;min-height:
 .topbar-sub{font-size:11px;color:#64748b;}
 .logout-btn{padding:8px 14px;border:1.5px solid #e2e8f0;background:#fff;border-radius:8px;font-size:13px;font-weight:600;color:#475569;cursor:pointer;transition:background .15s,border-color .15s;font-family:inherit;}
 .logout-btn:hover{background:#fef2f2;border-color:#fca5a5;color:#dc2626;}
-.cp-layout{display:flex;min-height:100vh;}
-.cp-sidebar{width:208px;flex-shrink:0;background:#fff;border-right:1px solid #e2e8f0;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;}
-.cp-brand{display:flex;align-items:center;gap:10px;padding:15px 16px;border-bottom:1px solid #eef1f6;}
-.cp-brand img{width:32px;height:32px;border-radius:7px;object-fit:cover;}
-.cp-brand-title{font-weight:800;font-size:15px;color:#0f172a;line-height:1.1;}
-.cp-brand-sub{font-size:10.5px;color:#64748b;max-width:138px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.cp-nav{display:flex;flex-direction:column;gap:3px;padding:12px 10px;flex:1;}
-.cp-nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border:none;background:none;border-radius:9px;font-size:13.5px;font-weight:600;color:#475569;cursor:pointer;font-family:inherit;text-align:left;transition:background .12s,color .12s;}
-.cp-nav-item:hover{background:#f1f5f9;}
-.cp-nav-item.active{background:#eff6ff;color:#1a56db;}
-.cp-nav-item span{font-size:16px;width:20px;text-align:center;}
-.cp-main{flex:1;min-width:0;padding:16px 22px;overflow-x:hidden;}
-@media(max-width:760px){
-  .cp-layout{flex-direction:column;}
-  .cp-sidebar{width:auto;height:auto;position:static;flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px;}
-  .cp-brand{border-bottom:none;flex:1;}
-  .cp-nav{flex-direction:row;flex:initial;padding:8px;}
-  .cp-sidebar .logout-btn{margin:8px;}
-}
+.cp-sidebar{width:62px;background:#0f172a;position:fixed;top:0;left:0;bottom:0;z-index:100;display:flex;flex-direction:column;transition:width .25s ease;overflow:hidden;}
+.cp-sidebar:hover{width:212px;}
+.cp-brand{display:flex;align-items:center;gap:10px;padding:14px 13px;border-bottom:1px solid rgba(255,255,255,.08);min-height:60px;white-space:nowrap;overflow:hidden;}
+.cp-brand img{width:34px;height:34px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#fff;}
+.cp-brand-text{opacity:0;transition:opacity .2s .1s;white-space:nowrap;}
+.cp-sidebar:hover .cp-brand-text{opacity:1;}
+.cp-brand-title{font-weight:800;font-size:14px;color:#fff;line-height:1.1;}
+.cp-brand-sub{font-size:10.5px;color:#94a3b8;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cp-nav{display:flex;flex-direction:column;gap:3px;padding:10px 9px;flex:1;overflow:hidden;}
+.cp-nav-item{display:flex;align-items:center;gap:11px;padding:11px 11px;border:none;background:none;border-radius:8px;font-size:13.5px;font-weight:500;color:#94a3b8;cursor:pointer;font-family:inherit;text-align:left;white-space:nowrap;overflow:hidden;transition:background .2s,color .2s;}
+.cp-nav-item:hover{background:rgba(255,255,255,.06);color:#e2e8f0;}
+.cp-nav-item.active{background:rgba(59,130,246,.2);color:#60a5fa;}
+.cp-nav-ico{font-size:17px;width:22px;text-align:center;flex-shrink:0;}
+.cp-nav-label{opacity:0;transition:opacity .2s .1s;}
+.cp-sidebar:hover .cp-nav-label{opacity:1;}
+.cp-sidebar .logout-btn{display:flex;align-items:center;gap:11px;margin:10px 9px;padding:11px;border-radius:8px;border:none;background:none;color:#f87171;font-family:'Inter',sans-serif;font-size:13.5px;font-weight:500;cursor:pointer;white-space:nowrap;overflow:hidden;transition:background .2s;}
+.cp-sidebar .logout-btn:hover{background:rgba(248,113,113,.1);border-color:transparent;color:#f87171;}
+.cp-logout-label{opacity:0;transition:opacity .2s .1s;}
+.cp-sidebar:hover .cp-logout-label{opacity:1;}
+.cp-main{margin-left:62px;min-height:100vh;padding:16px 22px;overflow-x:hidden;}
+@media(max-width:760px){ .cp-main{margin-left:62px;} }
 .cp-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:12px;}
 .cp-content-top{display:grid;grid-template-columns:250px minmax(0,1fr) 300px;gap:12px;margin-bottom:12px;align-items:stretch;}
 .cp-card{background:#fff;border:1px solid #e8eaf0;border-radius:13px;box-shadow:0 1px 3px rgba(16,24,40,.04);display:flex;flex-direction:column;overflow:hidden;}
@@ -84,17 +86,17 @@ table td{padding:10px 14px;border-bottom:1px solid #f1f5f9;color:#1e293b;}
   <aside class="cp-sidebar">
     <div class="cp-brand">
       <img src="emarketing-logo.png" alt="Logo" onerror="this.style.display='none'"/>
-      <div>
+      <div class="cp-brand-text">
         <div class="cp-brand-title">Client Portal</div>
         <div class="cp-brand-sub" id="topbarSub">E-Marketing</div>
       </div>
     </div>
     <nav class="cp-nav">
-      <button class="cp-nav-item active" id="cpNavDashboard" onclick="cpNav('dashboard')"><span>🏠</span> Dashboard</button>
-      <button class="cp-nav-item" id="cpNavAbout" onclick="cpNav('about')"><span>ℹ️</span> About Us</button>
-      <button class="cp-nav-item" id="cpNavProfile" onclick="cpNav('profile')"><span>👤</span> Profile</button>
+      <button class="cp-nav-item active" id="cpNavDashboard" onclick="cpNav('dashboard')"><span class="cp-nav-ico">🏠</span><span class="cp-nav-label">Dashboard</span></button>
+      <button class="cp-nav-item" id="cpNavAbout" onclick="cpNav('about')"><span class="cp-nav-ico">ℹ️</span><span class="cp-nav-label">About Us</span></button>
+      <button class="cp-nav-item" id="cpNavProfile" onclick="cpNav('profile')"><span class="cp-nav-ico">👤</span><span class="cp-nav-label">Profile</span></button>
     </nav>
-    <button class="logout-btn" style="margin:14px" onclick="logout()">Logout →</button>
+    <button class="logout-btn" onclick="logout()"><span class="cp-nav-ico">↩</span><span class="cp-logout-label">Logout</span></button>
   </aside>
   <main class="cp-main">
     <div id="cpDashboard"><div id="cpContent"><div class="empty" style="padding:60px">Loading…</div></div></div>
