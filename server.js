@@ -3977,7 +3977,7 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
         SUM(CASE WHEN status='done'      THEN 1 ELSE 0 END) AS done
        FROM meetings WHERE client_id=? AND meeting_date BETWEEN ? AND ?`, [id, from, to]);
     const [meetRecent] = await db.query(
-      `SELECT m.id, m.title, m.status,
+      `SELECT m.id, m.title, m.status, m.meet_link,
               DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS meeting_date,
               TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
               TIME_FORMAT(m.end_time,'%H:%i')   AS end_time,
@@ -4260,7 +4260,7 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res
         SUM(CASE WHEN status='done'      THEN 1 ELSE 0 END) AS done
        FROM meetings WHERE client_id=? AND meeting_date BETWEEN ? AND ?`, [id, from, to]);
     const [meetRecent] = await db.query(
-      `SELECT m.id, m.title, m.status,
+      `SELECT m.id, m.title, m.status, m.meet_link,
               DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS meeting_date,
               TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
               TIME_FORMAT(m.end_time,'%H:%i')   AS end_time,
@@ -5486,6 +5486,22 @@ app.put('/api/meetings/:id', requireAuth, async (req, res) => {
     }
     sendMeetingNotification(id, rescheduled ? 'rescheduled' : 'created').catch(e => console.error('notify err:', e.message));
     res.json({ ok: true, rescheduled });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Change meeting status — mark done / reopen. Organizer or admin only.
+app.put('/api/meetings/:id/status', requireAuth, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const status = String(req.body.status || '');
+    if (!['scheduled', 'done', 'cancelled'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    const [[existing]] = await db.query('SELECT organizer_id FROM meetings WHERE id=?', [id]);
+    if (!existing) return res.status(404).json({ error: 'not found' });
+    if (existing.organizer_id !== req.session.userId && req.session.role !== 'admin') {
+      return res.status(403).json({ error: 'only organizer or admin can change status' });
+    }
+    await db.query('UPDATE meetings SET status=? WHERE id=?', [status, id]);
+    res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

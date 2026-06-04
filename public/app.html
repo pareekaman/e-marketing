@@ -230,6 +230,7 @@ tbody tr:last-child td{border-bottom:none;}
 .mtg-cal-cell.is-other-month .mtg-cal-daynum{color:#cbd5e1;}
 .mtg-cal-mpill{font-size:11px;padding:2px 6px;border-radius:4px;background:#dbeafe;color:#1e40af;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
 .mtg-cal-mpill.cancelled{background:#fee2e2;color:#991b1b;text-decoration:line-through;}
+.mtg-cal-mpill.done{background:#dcfce7;color:#15803d;}
 .mtg-cal-more{font-size:10px;color:#64748b;font-weight:600;cursor:pointer;}
 /* Day-view timeline */
 .mtg-day-hour{display:grid;grid-template-columns:60px 1fr;border-bottom:1px solid #f1f5f9;min-height:60px;position:relative;}
@@ -239,6 +240,7 @@ tbody tr:last-child td{border-bottom:none;}
 .mtg-day-hour-body.half-hour-mark::before{content:'';position:absolute;top:30px;left:0;right:0;border-top:1px dashed #f1f5f9;}
 .mtg-day-block{position:absolute;left:6px;right:6px;background:#dbeafe;border-left:3px solid #1a56db;border-radius:6px;padding:6px 10px;font-size:12px;color:#1e40af;overflow:hidden;cursor:pointer;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.06);}
 .mtg-day-block.cancelled{background:#fee2e2;border-left-color:#dc2626;color:#991b1b;text-decoration:line-through;}
+.mtg-day-block.done{background:#dcfce7;border-left-color:#16a34a;color:#15803d;}
 .mtg-day-block strong{display:block;font-weight:700;margin-bottom:2px;}
 .form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:#3b82f6;}
 .form-group textarea{resize:vertical;min-height:70px;}
@@ -2001,7 +2003,10 @@ tbody tr:last-child td{border-bottom:none;}
         <input type="text" id="mtgLink" placeholder="https://meet.google.com/..."/>
       </div>
       <div class="modal-footer" style="justify-content:space-between">
-        <button id="mtgDeleteBtn" class="btn btn-outline" style="color:#dc2626;border-color:#fca5a5;display:none" onclick="deleteMeeting()">Cancel Meeting</button>
+        <div style="display:flex;gap:8px">
+          <button id="mtgDeleteBtn" class="btn btn-outline" style="color:#dc2626;border-color:#fca5a5;display:none" onclick="deleteMeeting()">Cancel Meeting</button>
+          <button id="mtgDoneBtn" class="btn btn-outline" style="color:#15803d;border-color:#86efac;display:none" onclick="markMeetingDone(document.getElementById('mtgEditId').value)">✓ Mark Done</button>
+        </div>
         <div style="display:flex;gap:8px;margin-left:auto">
           <button class="btn btn-outline" onclick="closeModal('meetingModal')">Close</button>
           <button class="btn btn-primary" onclick="saveMeeting()">Save</button>
@@ -10516,7 +10521,7 @@ async function renderMtgMonth() {
     const items = byDate[iso] || [];
     const pillsHtml = items.slice(0, 3).map(m => {
       const time = m.start_time || '';
-      return `<div class="mtg-cal-mpill ${m.status==='cancelled'?'cancelled':''}" onclick="event.stopPropagation();openMeetingModal(${m.id})" title="${dtEscape(m.title)} — ${time}">${time} ${dtEscape(m.title)}</div>`;
+      return `<div class="mtg-cal-mpill ${m.status==='cancelled'?'cancelled':''} ${m.status==='done'?'done':''}" onclick="event.stopPropagation();openMeetingModal(${m.id})" title="${dtEscape(m.title)} — ${time}">${m.status==='done'?'✓ ':''}${time} ${dtEscape(m.title)}</div>`;
     }).join('');
     const moreHtml = items.length > 3
       ? `<div class="mtg-cal-more" onclick="event.stopPropagation();mtgJumpToDay('${iso}')">+ ${items.length - 3} more</div>`
@@ -10565,9 +10570,14 @@ async function renderMtgDay() {
       const att = (m.attendees || []).map(a => dtEscape(a.name)).join(', ') || '—';
       const statusPill = m.status === 'cancelled'
         ? '<span style="font-size:10px;background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:10px;font-weight:700">CANCELLED</span>'
+        : m.status === 'done'
+        ? '<span style="font-size:10px;background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:10px;font-weight:700">✓ DONE</span>'
         : '';
-      const linkBtn = m.meet_link && m.status !== 'cancelled'
+      const active = m.status !== 'cancelled' && m.status !== 'done';
+      const linkBtn = m.meet_link && active
         ? `<a href="${dtEscape(m.meet_link)}" target="_blank" rel="noopener" class="btn btn-primary" style="padding:4px 10px;font-size:11px">Join</a>` : '';
+      const doneBtn = active
+        ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px;color:#15803d;border-color:#86efac" onclick="markMeetingDone(${m.id})">✓ Done</button>` : '';
       return `<div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;${m.status==='cancelled'?'opacity:0.55':''}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div style="flex:1">
@@ -10577,7 +10587,8 @@ async function renderMtgDay() {
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
             ${linkBtn}
-            ${m.status !== 'cancelled' ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openMeetingModal(${m.id})">Edit</button>` : ''}
+            ${doneBtn}
+            ${active ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openMeetingModal(${m.id})">Edit</button>` : ''}
           </div>
         </div>
       </div>`;
@@ -10618,7 +10629,7 @@ async function renderMtgDay() {
     const top = Math.max(0, startMin) * (ROW_PX / 60);
     const height = Math.max(20, (endMin - Math.max(0, startMin)) * (ROW_PX / 60));
     const block = document.createElement('div');
-    block.className = 'mtg-day-block';
+    block.className = 'mtg-day-block' + (m.status === 'cancelled' ? ' cancelled' : '') + (m.status === 'done' ? ' done' : '');
     block.style.top = top + 'px';
     block.style.height = (height - 2) + 'px';
     block.style.pointerEvents = 'auto';
@@ -10655,6 +10666,7 @@ async function openMeetingModal(id, prefillStart) {
   document.getElementById('mtgEditId').value = id || '';
   document.getElementById('meetingModalTitle').textContent = id ? 'Edit Meeting' : 'Schedule Meeting';
   document.getElementById('mtgDeleteBtn').style.display = id ? 'inline-block' : 'none';
+  document.getElementById('mtgDoneBtn').style.display = 'none';
 
   // Populate dropdowns from cache
   await Promise.all([_mtgEnsureClients(), _mtgEnsureUsers()]);
@@ -10689,6 +10701,7 @@ async function openMeetingModal(id, prefillStart) {
       document.getElementById('mtgTitle').value = m.title || '';
       document.getElementById('mtgAgenda').value = m.agenda || '';
       document.getElementById('mtgLink').value = m.meet_link || '';
+      document.getElementById('mtgDoneBtn').style.display = (m.status === 'scheduled') ? 'inline-block' : 'none';
       document.getElementById('mtgFormDate').value = m.meeting_date || '';
       document.getElementById('mtgStart').value = m.start_time || '10:00';
       clientSel.value = m.client_id || '';
@@ -10814,6 +10827,18 @@ async function saveMeeting() {
     _mtgMonthCache = {};
     loadMeetings();
   } catch (e) { showToast('Save failed: ' + e.message); }
+}
+
+async function markMeetingDone(id) {
+  if (!await appConfirm('Mark this meeting as done?')) return;
+  try {
+    const r = await api(`/api/meetings/${id}/status`, 'PUT', { status: 'done' });
+    if (r?.error) { appAlert(r.error, 'Error'); return; }
+    showToast('✅ Meeting marked done');
+    closeModal('meetingModal');
+    _mtgMonthCache = {};
+    loadMeetings();
+  } catch (e) { appAlert('Failed: ' + e.message, 'Error'); }
 }
 
 async function deleteMeeting() {
