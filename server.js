@@ -4353,9 +4353,9 @@ app.get('/api/departments', requireAuth, async (req, res) => {
        ORDER BY department ASC`
     );
     const fromUsers = rows.map(r => r.department);
-    const extras = ['YouTube', 'LinkedIn'];
+    const extras = ['YouTube', 'LinkedIn', 'MDO'];
     // Departments to hide from the daily-form dropdown (kept on user records).
-    const hidden = new Set(['mis executive', 'mdo']);
+    const hidden = new Set(['mis executive']);
     const merged = [...new Set([...fromUsers, ...extras])]
       .filter(d => !hidden.has(String(d).trim().toLowerCase()))
       .sort((a,b) => a.localeCompare(b));
@@ -4649,10 +4649,37 @@ app.get('/api/compliance/employee/:id', requireAuth, requireAdmin, async (req, r
       recent: mtgRecent
     };
 
+    // ── Scorecard — each section scored 0-100 (higher = better), null if N/A.
+    // Average = equal-weight mean of available sections. Final = weighted, where
+    // delegation/checklist/daily-report carry the most weight (re-normalised over
+    // whatever sections actually apply to this employee).
+    const clamp = n => Math.max(0, Math.min(100, n));
+    const r1 = n => Math.round(n * 10) / 10;
+    const cat = {
+      delegation: delegation.total > 0
+        ? r1(clamp((delegation.completed / delegation.total) * 100 - (delegation.overdue / delegation.total) * 30 - (delegation.revised / delegation.total) * 15))
+        : null,
+      checklist: checklist.total > 0
+        ? r1(clamp((checklist.completed / checklist.total) * 100 - (checklist.overdue / checklist.total) * 30))
+        : null,
+      dailyReport: dailyReport.workingDays > 0 ? r1(clamp(dailyReport.fillPct)) : null,
+      meetings: meetings.organized.total > 0 ? r1(clamp((meetings.organized.done / meetings.organized.total) * 100)) : null,
+      clients: clients.total > 0 ? r1(clamp((clients.active / clients.total) * 100)) : null
+    };
+    const weights = { delegation: 30, checklist: 25, dailyReport: 20, meetings: 15, clients: 10 };
+    const present = Object.keys(weights).filter(k => cat[k] !== null);
+    const average = present.length ? r1(present.reduce((a, k) => a + cat[k], 0) / present.length) : null;
+    let wSum = 0, wTot = 0;
+    for (const k of present) { wSum += cat[k] * weights[k]; wTot += weights[k]; }
+    const final = wTot ? r1(wSum / wTot) : null;
+    const grade = final == null ? 'N/A'
+      : final >= 85 ? 'Excellent' : final >= 70 ? 'Good' : final >= 50 ? 'Average' : 'Needs Improvement';
+    const scores = { categories: cat, weights, average, final, grade };
+
     res.json({
       range: { from, to },
       user: { id: user.id, name: user.name, email: user.email, role: user.role, department: user.department },
-      delegation, checklist, dailyReport, recentEntries, clients, meetings
+      delegation, checklist, dailyReport, recentEntries, clients, meetings, scores
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

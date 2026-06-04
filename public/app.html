@@ -653,6 +653,22 @@ tbody tr:last-child td{border-bottom:none;}
 .e3-badge-off{background:#f1f5f9;color:#64748b;}
 .e3-toggle{cursor:pointer;border:none;font-family:inherit;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;transition:filter .15s;}
 .e3-toggle:hover{filter:brightness(.95);}
+/* Final score box in header */
+.e3-finalbox{text-align:center;border-radius:12px;padding:8px 16px;background:rgba(255,255,255,.16);min-width:96px;}
+.e3-finalbox-num{font-size:26px;font-weight:800;line-height:1;}
+.e3-finalbox-num small{font-size:12px;font-weight:600;opacity:.85;}
+.e3-finalbox-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-top:3px;opacity:.95;}
+/* Scorecard */
+.e3-scoretable td,.e3-scoretable th{padding:10px 12px;}
+.e3-score-sum td{border-top:2px solid #fed7aa;background:#fffbeb;}
+.e3-score-final td{background:#fff7ed;border-bottom:none;}
+.e3-scorepill{display:inline-block;min-width:46px;text-align:center;padding:4px 10px;border-radius:20px;font-size:13px;font-weight:800;}
+.e3-scorepill-lg{font-size:16px;padding:6px 14px;min-width:60px;}
+.e3-sc-exc{background:#d1fae5;color:#065f46;}
+.e3-sc-good{background:#dbeafe;color:#1e40af;}
+.e3-sc-avg{background:#fef3c7;color:#92400e;}
+.e3-sc-bad{background:#fee2e2;color:#991b1b;}
+.e3-sc-na{background:#f1f5f9;color:#94a3b8;}
 @media print{
   .sidebar,.topbar,.tab-group,.cp-filter-row,.nav-item,.e3-toggle{display:none !important;}
   .cp-card{box-shadow:none;border:none;padding:0;}
@@ -9369,8 +9385,11 @@ function renderEmp360(){
   const d = EMP360_DATA;
   if (!d) return;
   const u = d.user, del = d.delegation, chl = d.checklist, dr = d.dailyReport, mt = d.meetings, cl = d.clients;
+  const sc = d.scores || { categories:{}, weights:{}, average:null, final:null, grade:'N/A' };
   const fmtRange = `${d.range.from} → ${d.range.to}`;
   const fillClass = dr.fillPct >= 80 ? 'e3-done' : dr.fillPct >= 50 ? 'e3-pend' : 'e3-over';
+  const scoreTone = v => v == null ? 'e3-sc-na' : v >= 85 ? 'e3-sc-exc' : v >= 70 ? 'e3-sc-good' : v >= 50 ? 'e3-sc-avg' : 'e3-sc-bad';
+  const scoreTxt = v => v == null ? '—' : v;
 
   const taskCard = (title, icon, t) => `
     <div class="e3-card">
@@ -9390,7 +9409,13 @@ function renderEmp360(){
         <div class="e3-name">${dtEscape(u.name)}</div>
         <div class="e3-meta">${dtEscape(u.role.toUpperCase())} · ${dtEscape(u.department)} · ${dtEscape(u.email)}</div>
       </div>
-      <div class="e3-range">📆 ${fmtRange}</div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:14px;">
+        <div class="e3-range">📆 ${fmtRange}</div>
+        <div class="e3-finalbox ${scoreTone(sc.final)}">
+          <div class="e3-finalbox-num">${scoreTxt(sc.final)}<small>/100</small></div>
+          <div class="e3-finalbox-lbl">${dtEscape(sc.grade)}</div>
+        </div>
+      </div>
     </div>
 
     <div class="e3-cards">
@@ -9423,6 +9448,37 @@ function renderEmp360(){
         </div>
       </div>
     </div>`;
+
+  // Scorecard — per-section scores → average → weighted final
+  const scRows = [
+    ['Delegation', 'delegation'],
+    ['Checklist', 'checklist'],
+    ['Daily Reports', 'dailyReport'],
+    ['Meetings', 'meetings'],
+    ['Clients (active)', 'clients']
+  ];
+  html += `<div class="e3-section-title">📊 Scorecard</div>`;
+  html += `<table class="e3-table e3-scoretable"><thead><tr>
+    <th>Section</th><th>Weight</th><th style="text-align:right">Score / 100</th></tr></thead><tbody>`;
+  for (const [label, key] of scRows) {
+    const v = sc.categories[key];
+    html += `<tr>
+      <td>${label}</td>
+      <td>${sc.weights[key]}%</td>
+      <td style="text-align:right"><span class="e3-scorepill ${scoreTone(v)}">${scoreTxt(v)}</span></td>
+    </tr>`;
+  }
+  html += `<tr class="e3-score-sum">
+      <td><b>Average Score</b><div style="font-size:11px;color:#94a3b8;font-weight:600">equal weight, applicable sections only</div></td>
+      <td>—</td>
+      <td style="text-align:right"><span class="e3-scorepill ${scoreTone(sc.average)}">${scoreTxt(sc.average)}</span></td>
+    </tr>`;
+  html += `<tr class="e3-score-final">
+      <td><b>Final Score</b><div style="font-size:11px;color:#94a3b8;font-weight:600">weighted · ${dtEscape(sc.grade)}</div></td>
+      <td>—</td>
+      <td style="text-align:right"><span class="e3-scorepill e3-scorepill-lg ${scoreTone(sc.final)}">${scoreTxt(sc.final)}</span></td>
+    </tr>`;
+  html += `</tbody></table>`;
 
   // Clients table with active/inactive toggle
   html += `<div class="e3-section-title">🏢 Clients Handled</div>`;
