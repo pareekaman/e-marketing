@@ -421,11 +421,17 @@ function cpRenderSystemLinksHtml(links){
   const rows = links.map(l => {
     const safeUrl = /^https?:\/\//i.test(l.url) ? l.url : 'https://' + l.url;
     const ic = favicon(safeUrl);
-    return `<a href="${dtEscape(safeUrl)}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #f1f5f9;text-decoration:none;color:#0f172a;transition:background .12s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+    const dateLine = l.liveDate
+      ? `<div style="font-size:11px;color:#0f766e;margin-top:1px">🟢 Live: ${fmtDate(l.liveDate)}</div>`
+      : '';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid #f1f5f9">
       <span style="width:26px;height:26px;border-radius:7px;background:#eff6ff;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden">${ic ? `<img src="${ic}" style="width:18px;height:18px" onerror="this.parentNode.textContent='🔗'"/>` : '🔗'}</span>
-      <span style="flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dtEscape(l.label||'')}</span>
-      <span style="color:#94a3b8;font-size:13px;flex-shrink:0">↗</span>
-    </a>`;
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dtEscape(l.label||'')}</div>
+        ${dateLine}
+      </div>
+      <a href="${dtEscape(safeUrl)}" target="_blank" rel="noopener" style="flex-shrink:0;background:#1a56db;color:#fff;font-size:12px;font-weight:600;padding:6px 12px;border-radius:7px;text-decoration:none;white-space:nowrap">Open ↗</a>
+    </div>`;
   }).join('');
   return `<div class="cp-card" style="height:230px">
     <div class="cp-card-head"><h4>🔗 System Links</h4><span style="font-size:11px;color:#94a3b8">${links.length} link${links.length===1?'':'s'}</span></div>

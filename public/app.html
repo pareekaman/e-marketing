@@ -8965,17 +8965,6 @@ function cmRenderDetailHtml(s, id) {
       </div>
     </div>
 
-    <div class="task-table-card" style="padding:14px 18px;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-        <div class="card-head-title">🔗 System Links <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on this client's portal</span></div>
-        <button class="btn btn-outline" style="padding:5px 11px;font-size:12px" onclick="cmAddLinkRow()">＋ Add Link</button>
-      </div>
-      <div id="cmLinksList"></div>
-      <div style="display:flex;justify-content:flex-end;margin-top:10px">
-        <button class="btn btn-primary" style="padding:6px 16px;font-size:12px" onclick="cmSaveLinks(${id})">💾 Save Links</button>
-      </div>
-    </div>
-
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
       ${statCard('Total Tasks', tasksTotal, '#1a56db', `${del.total||0} delegation · ${chl.total||0} checklist`)}
       ${statCard('Pending', pendingTotal, '#ef4444', overdueTotal > 0 ? `${overdueTotal} overdue` : 'On track')}
@@ -9005,6 +8994,17 @@ function cmRenderDetailHtml(s, id) {
         <div>${meetingsHtml}</div>
       </div>
     </div>
+
+    <div class="task-table-card" id="cmLinksCard" style="padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div class="card-head-title">🔗 System Links <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on this client's portal</span></div>
+        <button class="btn btn-outline" style="padding:5px 11px;font-size:12px" onclick="cmAddLinkRow()">＋ Add Link</button>
+      </div>
+      <div id="cmLinksList"></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px">
+        <button class="btn btn-primary" id="cmSaveLinksBtn" style="padding:6px 16px;font-size:12px;transition:background .2s" onclick="cmSaveLinks(${id})">💾 Save Links</button>
+      </div>
+    </div>
   `;
 }
 
@@ -9017,24 +9017,51 @@ function cmRenderLinksRows(){
     box.innerHTML = `<div style="color:#94a3b8;font-size:12px;padding:8px 2px">No links yet — click "Add Link" to add the systems this client should see (e.g. IMS, CRM).</div>`;
     return;
   }
-  box.innerHTML = CM_LINKS.map((l, i) => `
-    <div style="display:grid;grid-template-columns:200px 1fr auto;gap:8px;align-items:center;margin-bottom:8px">
-      <input type="text" value="${dtEscape(l.label||'')}" placeholder="Label (e.g. IMS Store)" oninput="CM_LINKS[${i}].label=this.value" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;outline:none"/>
-      <input type="url" value="${dtEscape(l.url||'')}" placeholder="https://…" oninput="CM_LINKS[${i}].url=this.value" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;outline:none"/>
-      <button class="btn btn-outline" style="padding:6px 10px;font-size:12px;color:#dc2626;border-color:#fca5a5" onclick="cmRemoveLinkRow(${i})" title="Remove">🗑</button>
+  const inp = 'padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;outline:none;font-family:inherit';
+  box.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 150px 1.4fr 38px;gap:8px;margin-bottom:6px;padding:0 2px">
+      <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px">Name</div>
+      <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px">Live Date</div>
+      <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px">Open (URL)</div>
+      <div></div>
+    </div>` +
+    CM_LINKS.map((l, i) => `
+    <div style="display:grid;grid-template-columns:1fr 150px 1.4fr 38px;gap:8px;align-items:center;margin-bottom:8px">
+      <input type="text" value="${dtEscape(l.label||'')}" placeholder="e.g. IMS Store" oninput="CM_LINKS[${i}].label=this.value" style="${inp}"/>
+      <input type="date" value="${dtEscape(l.liveDate||'')}" oninput="CM_LINKS[${i}].liveDate=this.value" style="${inp}"/>
+      <input type="url" value="${dtEscape(l.url||'')}" placeholder="https://…" oninput="CM_LINKS[${i}].url=this.value" style="${inp}"/>
+      <button class="btn btn-outline" style="padding:6px 8px;font-size:12px;color:#dc2626;border-color:#fca5a5" onclick="cmRemoveLinkRow(${i})" title="Remove">🗑</button>
     </div>`).join('');
 }
-function cmAddLinkRow(){ CM_LINKS.push({ label:'', url:'' }); cmRenderLinksRows(); }
+function cmAddLinkRow(){ CM_LINKS.push({ label:'', url:'', liveDate:'' }); cmRenderLinksRows(); }
 function cmRemoveLinkRow(i){ CM_LINKS.splice(i,1); cmRenderLinksRows(); }
 async function cmSaveLinks(id){
   const clean = CM_LINKS
-    .map(l => ({ label:(l.label||'').trim(), url:(l.url||'').trim() }))
+    .map(l => ({ label:(l.label||'').trim(), url:(l.url||'').trim(), liveDate:(l.liveDate||'').trim() }))
     .filter(l => l.label && l.url);
+  const btn = document.getElementById('cmSaveLinksBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   const r = await api('/api/clients/' + id, 'PUT', { system_links: clean });
-  if (r.error) { appAlert(r.error, 'Error'); return; }
+  if (r.error) {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save Links'; }
+    appAlert(r.error, 'Error'); return;
+  }
   CM_LINKS = clean;
   cmRenderLinksRows();
   showToast('🔗 System links saved');
+  // Clear green-flash confirmation so it's obvious the save went through.
+  const card = document.getElementById('cmLinksCard');
+  if (card) {
+    card.style.boxShadow = '0 0 0 2px #10b981';
+    card.style.borderColor = '#10b981';
+    setTimeout(() => { card.style.boxShadow = ''; card.style.borderColor = ''; }, 1600);
+  }
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = '✓ Saved!';
+    btn.style.background = '#10b981';
+    setTimeout(() => { btn.textContent = '💾 Save Links'; btn.style.background = ''; }, 1600);
+  }
 }
 
 async function cmAdd(){

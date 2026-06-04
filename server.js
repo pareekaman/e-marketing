@@ -3886,7 +3886,7 @@ function parseSystemLinks(raw) {
     const a = typeof raw === 'string' ? JSON.parse(raw) : raw;
     if (!Array.isArray(a)) return [];
     return a
-      .map(l => ({ label: String(l.label || '').trim(), url: String(l.url || '').trim() }))
+      .map(l => ({ label: String(l.label || '').trim(), url: String(l.url || '').trim(), liveDate: String(l.liveDate || '').trim() }))
       .filter(l => l.label && l.url);
   } catch { return []; }
 }
@@ -3896,7 +3896,11 @@ function sanitizeSystemLinks(input) {
   if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch { arr = []; } }
   if (!Array.isArray(arr)) arr = [];
   const clean = arr
-    .map(l => ({ label: String(l && l.label || '').trim().slice(0, 60), url: String(l && l.url || '').trim().slice(0, 500) }))
+    .map(l => ({
+      label: String(l && l.label || '').trim().slice(0, 60),
+      url: String(l && l.url || '').trim().slice(0, 500),
+      liveDate: String(l && l.liveDate || '').trim().slice(0, 10)
+    }))
     .filter(l => l.label && l.url)
     .slice(0, 20);
   return JSON.stringify(clean);
