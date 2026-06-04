@@ -4353,8 +4353,12 @@ app.get('/api/departments', requireAuth, async (req, res) => {
        ORDER BY department ASC`
     );
     const fromUsers = rows.map(r => r.department);
-    const extras = ['YouTube'];
-    const merged = [...new Set([...fromUsers, ...extras])].sort((a,b) => a.localeCompare(b));
+    const extras = ['YouTube', 'LinkedIn'];
+    // Departments to hide from the daily-form dropdown (kept on user records).
+    const hidden = new Set(['mis executive', 'mdo']);
+    const merged = [...new Set([...fromUsers, ...extras])]
+      .filter(d => !hidden.has(String(d).trim().toLowerCase()))
+      .sort((a,b) => a.localeCompare(b));
     res.json(merged);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
