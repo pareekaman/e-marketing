@@ -3099,6 +3099,9 @@ const _clientsTableMigrationsPromise = (async () => {
   // System Links — per-client quick links shown on the client portal. Stored as
   // a JSON array of { label, url }. Managed by admin/PC on the Client detail page.
   await sa(`ALTER TABLE clients ADD COLUMN system_links LONGTEXT DEFAULT NULL AFTER logo_url`);
+  // Active flag — admin/PC marks a client active or inactive (e.g. churned). Drives
+  // the active/inactive split in the Compliance → Employee 360 view used at increment time.
+  await sa(`ALTER TABLE clients ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER system_links`);
   // Allow "client" as a login role + back-link users to clients so the client
   // portal can resolve "my client" from the session.
   await sa(`ALTER TABLE users MODIFY COLUMN role ENUM('admin','hod','pc','user','client') DEFAULT 'user'`);
@@ -4083,7 +4086,7 @@ app.get('/api/client-portal/tasks', requireAuth, async (req, res) => {
 app.get('/api/clients', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT c.id, c.name, c.handler_id, c.logo_url, u.name AS handler_name
+      `SELECT c.id, c.name, c.handler_id, c.logo_url, COALESCE(c.is_active,1) AS is_active, u.name AS handler_name
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id
        ORDER BY c.name ASC`);
     res.json(rows);
@@ -4164,6 +4167,7 @@ app.put('/api/clients/:id', requireAuth, requireAdminOrPC, async (req, res) => {
     if (name !== null) { sets.push('name=?'); params.push(name); }
     if (handlerId !== undefined) { sets.push('handler_id=?'); params.push(handlerId); }
     if (req.body.system_links !== undefined) { sets.push('system_links=?'); params.push(sanitizeSystemLinks(req.body.system_links)); }
+    if (req.body.is_active !== undefined) { sets.push('is_active=?'); params.push(req.body.is_active ? 1 : 0); }
     if (!sets.length) return res.json({ success: true, noop: true });
     params.push(id);
     await db.query(`UPDATE clients SET ${sets.join(', ')} WHERE id=?`, params);
@@ -4500,6 +4504,152 @@ app.get('/api/compliance/last7', requireAuth, requireAdmin, async (req, res) => 
     }));
 
     res.json({ dates, users: grid, holidays: [...holidaysSet] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Employee 360 — everything about one employee in one place for increment review:
+// delegation + checklist task stats, daily-report compliance, handled clients
+// (active/inactive + activity in window), and meetings. Window defaults to the
+// current month (IST); ?from=YYYY-MM-DD&to=YYYY-MM-DD widens it.
+app.get('/api/compliance/employee/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid employee id' });
+
+    // Default window — current month (IST)
+    const ist = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+    const yy = ist.getUTCFullYear(), mm = ist.getUTCMonth();
+    const defaultFrom = `${yy}-${String(mm+1).padStart(2,'0')}-01`;
+    const lastDay = new Date(Date.UTC(yy, mm+1, 0)).getUTCDate();
+    const defaultTo = `${yy}-${String(mm+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+    const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+    const from = isDate(req.query.from) ? req.query.from : defaultFrom;
+    const to   = isDate(req.query.to)   ? req.query.to   : defaultTo;
+
+    const [[user]] = await db.query(
+      `SELECT id, name, email, role, COALESCE(department,'—') AS department,
+              COALESCE(week_off,'') AS week_off, COALESCE(extra_off,'') AS extra_off
+       FROM users WHERE id=?`, [id]);
+    if (!user) return res.status(404).json({ error: 'Employee not found' });
+
+    const N = v => Number(v) || 0;
+
+    // ── Delegation + checklist task stats (by due_date in window) ──
+    const [[del]] = await db.query(
+      `SELECT COUNT(*) AS total,
+        SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+        SUM(CASE WHEN status='revised'   THEN 1 ELSE 0 END) AS revised,
+        SUM(CASE WHEN status='pending' AND due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
+       FROM delegation_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ?`, [id, from, to]);
+    const [[chl]] = await db.query(
+      `SELECT COUNT(*) AS total,
+        SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+        SUM(CASE WHEN status='pending' AND due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
+       FROM checklist_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ?`, [id, from, to]);
+    const delegation = { total: N(del.total), pending: N(del.pending), completed: N(del.completed), revised: N(del.revised), overdue: N(del.overdue) };
+    const checklist  = { total: N(chl.total), pending: N(chl.pending), completed: N(chl.completed), revised: 0, overdue: N(chl.overdue) };
+
+    // ── Daily-report compliance ──
+    const [[dr]] = await db.query(
+      `SELECT COUNT(*) AS entries, COALESCE(SUM(duration_min),0) AS minutes,
+              COUNT(DISTINCT entry_date) AS days_filled
+       FROM daily_tasks WHERE user_id=? AND entry_date BETWEEN ? AND ?`, [id, from, to]);
+    const holidaysSet = await loadHolidaysSet();
+    let workingDays = 0;
+    {
+      let cur = new Date(from + 'T00:00:00Z');
+      const endU = new Date(to + 'T00:00:00Z');
+      let guard = 0;
+      while (cur <= endU && guard++ < 1000) {
+        const ds = cur.toISOString().split('T')[0];
+        const off = cur.getUTCDay() === 0           // Sunday
+                 || isLastSaturdayOfMonth(ds)        // company off Saturday
+                 || isUserOffOn(user, ds, holidaysSet); // holidays
+        if (!off) workingDays++;
+        cur.setUTCDate(cur.getUTCDate() + 1);
+      }
+    }
+    const daysFilled = N(dr.days_filled);
+    const dailyReport = {
+      entries: N(dr.entries), minutes: N(dr.minutes), hours: Math.round(N(dr.minutes) / 6) / 10,
+      daysFilled, workingDays,
+      fillPct: workingDays > 0 ? Math.round((daysFilled / workingDays) * 100) : 0
+    };
+    const [recentEntries] = await db.query(
+      `SELECT id, DATE_FORMAT(entry_date,'%Y-%m-%d') AS entry_date,
+              client_name, COALESCE(department,'') AS department, description, duration_min
+       FROM daily_tasks WHERE user_id=? AND entry_date BETWEEN ? AND ?
+       ORDER BY entry_date DESC, id DESC LIMIT 20`, [id, from, to]);
+
+    // ── Clients handled by this employee (handler) + activity in window ──
+    const [clientRows] = await db.query(
+      `SELECT id, name, COALESCE(is_active,1) AS is_active, logo_url
+       FROM clients WHERE handler_id=? ORDER BY COALESCE(is_active,1) DESC, name ASC`, [id]);
+    if (clientRows.length) {
+      const ids = clientRows.map(c => c.id);
+      const ph = ids.map(() => '?').join(',');
+      const [dc] = await db.query(
+        `SELECT client_id, COUNT(*) AS total, SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending
+         FROM delegation_tasks WHERE client_id IN (${ph}) AND due_date BETWEEN ? AND ? GROUP BY client_id`, [...ids, from, to]);
+      const [cc] = await db.query(
+        `SELECT client_id, COUNT(*) AS total, SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending
+         FROM checklist_tasks WHERE client_id IN (${ph}) AND due_date BETWEEN ? AND ? GROUP BY client_id`, [...ids, from, to]);
+      const [mc] = await db.query(
+        `SELECT client_id, COUNT(*) AS total FROM meetings
+         WHERE client_id IN (${ph}) AND meeting_date BETWEEN ? AND ? GROUP BY client_id`, [...ids, from, to]);
+      const dMap = Object.fromEntries(dc.map(r => [r.client_id, r]));
+      const cMap = Object.fromEntries(cc.map(r => [r.client_id, r]));
+      const mMap = Object.fromEntries(mc.map(r => [r.client_id, r]));
+      for (const c of clientRows) {
+        c.is_active = N(c.is_active);
+        const d = dMap[c.id] || {}, k = cMap[c.id] || {}, m = mMap[c.id] || {};
+        c.tasks = N(d.total) + N(k.total);
+        c.pending = N(d.pending) + N(k.pending);
+        c.meetings = N(m.total);
+        c.activity = c.tasks + c.meetings; // any touch in window
+      }
+    }
+    const clients = {
+      total: clientRows.length,
+      active: clientRows.filter(c => c.is_active).length,
+      inactive: clientRows.filter(c => !c.is_active).length,
+      list: clientRows
+    };
+
+    // ── Meetings (organized + attended) ──
+    const [[mo]] = await db.query(
+      `SELECT COUNT(*) AS total,
+        SUM(CASE WHEN status='scheduled' THEN 1 ELSE 0 END) AS scheduled,
+        SUM(CASE WHEN status='done'      THEN 1 ELSE 0 END) AS done,
+        SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) AS cancelled
+       FROM meetings WHERE organizer_id=? AND meeting_date BETWEEN ? AND ?`, [id, from, to]);
+    const [[ma]] = await db.query(
+      `SELECT COUNT(DISTINCT m.id) AS total
+       FROM meetings m JOIN meeting_attendees mt ON mt.meeting_id=m.id
+       WHERE mt.user_id=? AND m.meeting_date BETWEEN ? AND ?`, [id, from, to]);
+    const [mtgRecent] = await db.query(
+      `SELECT m.id, m.title, m.status,
+              DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS meeting_date,
+              TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
+              c.name AS client_name,
+              CASE WHEN m.organizer_id=? THEN 'Organizer' ELSE 'Attendee' END AS my_role
+       FROM meetings m LEFT JOIN clients c ON m.client_id=c.id
+       WHERE (m.organizer_id=? OR EXISTS (SELECT 1 FROM meeting_attendees mt WHERE mt.meeting_id=m.id AND mt.user_id=?))
+         AND m.meeting_date BETWEEN ? AND ?
+       ORDER BY m.meeting_date DESC, m.start_time DESC LIMIT 20`, [id, id, id, from, to]);
+    const meetings = {
+      organized: { total: N(mo.total), scheduled: N(mo.scheduled), done: N(mo.done), cancelled: N(mo.cancelled) },
+      attended: N(ma.total),
+      recent: mtgRecent
+    };
+
+    res.json({
+      range: { from, to },
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, department: user.department },
+      delegation, checklist, dailyReport, recentEntries, clients, meetings
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

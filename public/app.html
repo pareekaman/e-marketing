@@ -626,6 +626,39 @@ tbody tr:last-child td{border-bottom:none;}
 .cp-summary-bad{background:#fee2e2;color:#991b1b;}
 .cp-summary-meh{background:#fef3c7;color:#92400e;}
 
+/* ── Employee 360 ── */
+.e3-head{display:flex;align-items:center;gap:14px;padding:16px 18px;background:linear-gradient(135deg,#FF9800,#F39C12);border-radius:14px;color:#fff;margin-bottom:16px;}
+.e3-head .e3-name{font-size:19px;font-weight:800;letter-spacing:-.01em;}
+.e3-head .e3-meta{font-size:12px;opacity:.92;font-weight:600;margin-top:2px;}
+.e3-head .e3-range{margin-left:auto;font-size:12px;font-weight:700;background:rgba(255,255,255,.18);padding:6px 12px;border-radius:10px;white-space:nowrap;}
+.e3-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:18px;}
+.e3-card{background:#fff;border:1px solid #fef3c7;border-radius:14px;padding:16px 18px;box-shadow:0 2px 10px rgba(243,156,18,.06);}
+.e3-card-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#92400e;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+.e3-big{font-size:26px;font-weight:800;color:#1e293b;line-height:1;}
+.e3-big small{font-size:13px;font-weight:600;color:#94a3b8;}
+.e3-row{display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0;border-top:1px dashed #f1f5f9;}
+.e3-row:first-of-type{border-top:none;}
+.e3-row b{font-weight:700;}
+.e3-k{color:#64748b;}
+.e3-pend{color:#b45309;font-weight:700;}
+.e3-over{color:#dc2626;font-weight:700;}
+.e3-done{color:#059669;font-weight:700;}
+.e3-section-title{font-size:14px;font-weight:800;color:#1e293b;margin:22px 0 10px;}
+.e3-table{width:100%;border-collapse:collapse;font-size:13px;}
+.e3-table th{background:#fff7ed;color:#92400e;padding:9px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #fed7aa;}
+.e3-table td{padding:9px 10px;border-bottom:1px solid #fef3c7;color:#334155;}
+.e3-table tr:hover td{background:#fffbeb;}
+.e3-badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;}
+.e3-badge-on{background:#d1fae5;color:#065f46;}
+.e3-badge-off{background:#f1f5f9;color:#64748b;}
+.e3-toggle{cursor:pointer;border:none;font-family:inherit;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;transition:filter .15s;}
+.e3-toggle:hover{filter:brightness(.95);}
+@media print{
+  .sidebar,.topbar,.tab-group,.cp-filter-row,.nav-item,.e3-toggle{display:none !important;}
+  .cp-card{box-shadow:none;border:none;padding:0;}
+  .e3-card,.e3-table{break-inside:avoid;}
+}
+
 /* ══════════════════════════════════════════════
    DAILY REPORTS (month-wise admin view)
    ══════════════════════════════════════════════ */
@@ -1701,23 +1734,49 @@ tbody tr:last-child td{border-bottom:none;}
        ══════════════════════════════════════════════════════ -->
   <div id="page-compliance" class="page">
     <div class="cp-card">
-      <div class="cp-header" style="justify-content:flex-end">
-        <button class="dt-btn dt-btn-add" onclick="loadCompliance()">🔄 Refresh</button>
-      </div>
-      <p class="cp-sub">Last 7 days — who filled the Daily Task and when. <span class="cp-dot cp-dot-yes"></span> = filled · <span class="cp-dot cp-dot-no"></span> = missed</p>
-
-      <div class="cp-filter-row">
-        <input type="text" id="cpSearch" placeholder="🔍 Search by name / email / department..." oninput="renderCompliance()"/>
-        <select id="cpRoleFilter" onchange="renderCompliance()">
-          <option value="">All Roles</option>
-          <option value="admin">Admin</option>
-          <option value="hod">HOD</option>
-          <option value="pc">PC</option>
-          <option value="user">User</option>
-        </select>
+      <div class="tab-group" style="margin-bottom:18px">
+        <div class="tab active" id="cpTabDaily" onclick="cpTab('daily',this)">📅 Daily Fill (7-day)</div>
+        <div class="tab" id="cpTabEmp" onclick="cpTab('emp360',this)">👤 Employee 360</div>
       </div>
 
-      <div id="cpGridWrap" class="cp-grid-wrap"><div class="empty">Loading...</div></div>
+      <!-- ── Daily fill grid (original) ── -->
+      <div id="cpTab-daily">
+        <div class="cp-header" style="justify-content:flex-end">
+          <button class="dt-btn dt-btn-add" onclick="loadCompliance()">🔄 Refresh</button>
+        </div>
+        <p class="cp-sub">Last 7 days — who filled the Daily Task and when. <span class="cp-dot cp-dot-yes"></span> = filled · <span class="cp-dot cp-dot-no"></span> = missed</p>
+
+        <div class="cp-filter-row">
+          <input type="text" id="cpSearch" placeholder="🔍 Search by name / email / department..." oninput="renderCompliance()"/>
+          <select id="cpRoleFilter" onchange="renderCompliance()">
+            <option value="">All Roles</option>
+            <option value="admin">Admin</option>
+            <option value="hod">HOD</option>
+            <option value="pc">PC</option>
+            <option value="user">User</option>
+          </select>
+        </div>
+
+        <div id="cpGridWrap" class="cp-grid-wrap"><div class="empty">Loading...</div></div>
+      </div>
+
+      <!-- ── Employee 360 — full snapshot for increment review ── -->
+      <div id="cpTab-emp360" style="display:none">
+        <p class="cp-sub">One employee, everything in one place — delegation, checklist, daily reports, clients (active/inactive) &amp; meetings. Built for increment-time review.</p>
+        <div class="cp-filter-row">
+          <select id="empSelect" onchange="loadEmp360()" style="flex:1;min-width:220px;">
+            <option value="">— Select employee —</option>
+          </select>
+          <input type="date" id="empFrom" onchange="loadEmp360()" title="From"/>
+          <input type="date" id="empTo" onchange="loadEmp360()" title="To"/>
+          <button class="dt-btn dt-btn-add" onclick="emp360Preset('month')">This Month</button>
+          <button class="dt-btn dt-btn-add" onclick="emp360Preset(3)">3M</button>
+          <button class="dt-btn dt-btn-add" onclick="emp360Preset(6)">6M</button>
+          <button class="dt-btn dt-btn-add" onclick="emp360Preset(12)">12M</button>
+          <button class="dt-btn dt-btn-submit" onclick="window.print()">🖨 Print</button>
+        </div>
+        <div id="emp360Wrap"><div class="empty">Select an employee to see the full 360° view.</div></div>
+      </div>
     </div>
   </div>
 
@@ -9247,6 +9306,192 @@ function renderCompliance(){
   }
   html += `</tbody></table>`;
   wrap.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════
+// 👤 EMPLOYEE 360 — full snapshot for increment review
+// ══════════════════════════════════════════════════════
+let EMP360_USERS = null;   // cached employee list for the picker
+let EMP360_DATA  = null;   // last loaded 360 payload
+
+function cpTab(which, el){
+  document.querySelectorAll('#cpTabDaily,#cpTabEmp').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('cpTab-daily').style.display  = which === 'daily'  ? 'block' : 'none';
+  document.getElementById('cpTab-emp360').style.display = which === 'emp360' ? 'block' : 'none';
+  if (which === 'emp360' && !EMP360_USERS) emp360InitPicker();
+}
+
+async function emp360InitPicker(){
+  try {
+    const users = await api('/api/users');
+    EMP360_USERS = (Array.isArray(users) ? users : []).filter(u => u.role !== 'client');
+    const sel = document.getElementById('empSelect');
+    sel.innerHTML = '<option value="">— Select employee —</option>' +
+      EMP360_USERS.map(u => `<option value="${u.id}">${dtEscape(u.name)}${u.department ? ' · ' + dtEscape(u.department) : ''}</option>`).join('');
+    // Default range = current month
+    if (!document.getElementById('empFrom').value) emp360Preset('month', true);
+  } catch(e) {
+    document.getElementById('emp360Wrap').innerHTML = '<div class="empty">Failed to load employee list</div>';
+  }
+}
+
+function emp360Preset(p, skipLoad){
+  const to = new Date();
+  let from = new Date();
+  if (p === 'month') { from = new Date(to.getFullYear(), to.getMonth(), 1); }
+  else { from.setMonth(from.getMonth() - Number(p)); }
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  document.getElementById('empFrom').value = fmt(from);
+  document.getElementById('empTo').value   = fmt(to);
+  if (!skipLoad) loadEmp360();
+}
+
+async function loadEmp360(){
+  const id = document.getElementById('empSelect').value;
+  const wrap = document.getElementById('emp360Wrap');
+  if (!id) { wrap.innerHTML = '<div class="empty">Select an employee to see the full 360° view.</div>'; return; }
+  const from = document.getElementById('empFrom').value;
+  const to   = document.getElementById('empTo').value;
+  wrap.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const qs = (from && to) ? `?from=${from}&to=${to}` : '';
+    const d = await api('/api/compliance/employee/' + id + qs);
+    if (d.error) throw new Error(d.error);
+    EMP360_DATA = d;
+    renderEmp360();
+  } catch(e) {
+    wrap.innerHTML = `<div class="empty">Failed: ${dtEscape(e.message)}</div>`;
+  }
+}
+
+function renderEmp360(){
+  const d = EMP360_DATA;
+  if (!d) return;
+  const u = d.user, del = d.delegation, chl = d.checklist, dr = d.dailyReport, mt = d.meetings, cl = d.clients;
+  const fmtRange = `${d.range.from} → ${d.range.to}`;
+  const fillClass = dr.fillPct >= 80 ? 'e3-done' : dr.fillPct >= 50 ? 'e3-pend' : 'e3-over';
+
+  const taskCard = (title, icon, t) => `
+    <div class="e3-card">
+      <div class="e3-card-title">${icon} ${title}</div>
+      <div class="e3-big">${t.total}<small> tasks</small></div>
+      <div style="margin-top:10px">
+        <div class="e3-row"><span class="e3-k">Completed</span><b class="e3-done">${t.completed}</b></div>
+        <div class="e3-row"><span class="e3-k">Pending</span><b class="e3-pend">${t.pending}</b></div>
+        <div class="e3-row"><span class="e3-k">Overdue</span><b class="e3-over">${t.overdue}</b></div>
+        ${t.revised ? `<div class="e3-row"><span class="e3-k">Revised</span><b>${t.revised}</b></div>` : ''}
+      </div>
+    </div>`;
+
+  let html = `
+    <div class="e3-head">
+      <div>
+        <div class="e3-name">${dtEscape(u.name)}</div>
+        <div class="e3-meta">${dtEscape(u.role.toUpperCase())} · ${dtEscape(u.department)} · ${dtEscape(u.email)}</div>
+      </div>
+      <div class="e3-range">📆 ${fmtRange}</div>
+    </div>
+
+    <div class="e3-cards">
+      ${taskCard('Delegation', '📋', del)}
+      ${taskCard('Checklist', '✅', chl)}
+      <div class="e3-card">
+        <div class="e3-card-title">📝 Daily Reports</div>
+        <div class="e3-big ${fillClass}">${dr.fillPct}%<small> filled</small></div>
+        <div style="margin-top:10px">
+          <div class="e3-row"><span class="e3-k">Days filled</span><b>${dr.daysFilled}/${dr.workingDays}</b></div>
+          <div class="e3-row"><span class="e3-k">Entries</span><b>${dr.entries}</b></div>
+          <div class="e3-row"><span class="e3-k">Hours logged</span><b>${dr.hours}h</b></div>
+        </div>
+      </div>
+      <div class="e3-card">
+        <div class="e3-card-title">📅 Meetings</div>
+        <div class="e3-big">${mt.organized.total}<small> organized</small></div>
+        <div style="margin-top:10px">
+          <div class="e3-row"><span class="e3-k">Done</span><b class="e3-done">${mt.organized.done}</b></div>
+          <div class="e3-row"><span class="e3-k">Scheduled</span><b>${mt.organized.scheduled}</b></div>
+          <div class="e3-row"><span class="e3-k">Attended</span><b>${mt.attended}</b></div>
+        </div>
+      </div>
+      <div class="e3-card">
+        <div class="e3-card-title">🏢 Clients</div>
+        <div class="e3-big">${cl.total}<small> handled</small></div>
+        <div style="margin-top:10px">
+          <div class="e3-row"><span class="e3-k">Active</span><b class="e3-done">${cl.active}</b></div>
+          <div class="e3-row"><span class="e3-k">Inactive</span><b class="e3-k">${cl.inactive}</b></div>
+        </div>
+      </div>
+    </div>`;
+
+  // Clients table with active/inactive toggle
+  html += `<div class="e3-section-title">🏢 Clients Handled</div>`;
+  if (!cl.list.length) {
+    html += `<div class="empty">No clients assigned to this employee.</div>`;
+  } else {
+    html += `<table class="e3-table"><thead><tr>
+      <th>Client</th><th>Status</th><th>Tasks</th><th>Pending</th><th>Meetings</th><th></th></tr></thead><tbody>`;
+    for (const c of cl.list) {
+      const on = !!c.is_active;
+      html += `<tr>
+        <td><b>${dtEscape(c.name)}</b></td>
+        <td><span class="e3-badge ${on?'e3-badge-on':'e3-badge-off'}">${on?'Active':'Inactive'}</span></td>
+        <td>${c.tasks}</td>
+        <td>${c.pending ? `<span class="e3-pend">${c.pending}</span>` : '0'}</td>
+        <td>${c.meetings}</td>
+        <td><button class="e3-toggle ${on?'e3-badge-off':'e3-badge-on'}" onclick="emp360ToggleClient(${c.id},${on?0:1})">${on?'Mark inactive':'Mark active'}</button></td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+
+  // Recent daily entries
+  html += `<div class="e3-section-title">📝 Recent Daily Report Entries</div>`;
+  if (!d.recentEntries.length) {
+    html += `<div class="empty">No daily entries in this range.</div>`;
+  } else {
+    html += `<table class="e3-table"><thead><tr>
+      <th>Date</th><th>Client</th><th>Task</th><th>Min</th></tr></thead><tbody>`;
+    for (const e of d.recentEntries) {
+      html += `<tr>
+        <td style="white-space:nowrap">${e.entry_date}</td>
+        <td>${dtEscape(e.client_name || '—')}</td>
+        <td>${dtEscape(e.description || '')}</td>
+        <td>${e.duration_min || 0}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+
+  // Recent meetings
+  if (mt.recent.length) {
+    html += `<div class="e3-section-title">📅 Recent Meetings</div>`;
+    html += `<table class="e3-table"><thead><tr>
+      <th>Date</th><th>Title</th><th>Client</th><th>Role</th><th>Status</th></tr></thead><tbody>`;
+    for (const m of mt.recent) {
+      html += `<tr>
+        <td style="white-space:nowrap">${m.meeting_date} ${m.start_time||''}</td>
+        <td>${dtEscape(m.title || '—')}</td>
+        <td>${dtEscape(m.client_name || '—')}</td>
+        <td>${dtEscape(m.my_role)}</td>
+        <td>${dtEscape(m.status)}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+
+  document.getElementById('emp360Wrap').innerHTML = html;
+}
+
+async function emp360ToggleClient(clientId, makeActive){
+  try {
+    const r = await api('/api/clients/' + clientId, 'PUT', { is_active: makeActive });
+    if (r.error) throw new Error(r.error);
+    showToast(makeActive ? 'Client marked active' : 'Client marked inactive');
+    loadEmp360(); // refresh counts + badges
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
 }
 
 // ══════════════════════════════════════════════════════
