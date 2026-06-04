@@ -8753,7 +8753,9 @@ async function cmShowDetail(id, from, to) {
     const qs = (from && to) ? `?from=${from}&to=${to}` : '';
     const s = await api('/api/clients/' + id + '/stats' + qs);
     if (s.error) { detail.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed: ${s.error}</div>`; return; }
+    CM_LINKS = Array.isArray(s.client?.system_links) ? s.client.system_links.map(l => ({ ...l })) : [];
     detail.innerHTML = cmRenderDetailHtml(s, id);
+    cmRenderLinksRows();
   } catch (e) {
     detail.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed to load: ${e.message}</div>`;
   }
@@ -8963,6 +8965,17 @@ function cmRenderDetailHtml(s, id) {
       </div>
     </div>
 
+    <div class="task-table-card" style="padding:14px 18px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div class="card-head-title">🔗 System Links <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on this client's portal</span></div>
+        <button class="btn btn-outline" style="padding:5px 11px;font-size:12px" onclick="cmAddLinkRow()">＋ Add Link</button>
+      </div>
+      <div id="cmLinksList"></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px">
+        <button class="btn btn-primary" style="padding:6px 16px;font-size:12px" onclick="cmSaveLinks(${id})">💾 Save Links</button>
+      </div>
+    </div>
+
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
       ${statCard('Total Tasks', tasksTotal, '#1a56db', `${del.total||0} delegation · ${chl.total||0} checklist`)}
       ${statCard('Pending', pendingTotal, '#ef4444', overdueTotal > 0 ? `${overdueTotal} overdue` : 'On track')}
@@ -8993,6 +9006,35 @@ function cmRenderDetailHtml(s, id) {
       </div>
     </div>
   `;
+}
+
+// ── System Links editor (admin client detail) ───────────────────────
+var CM_LINKS = [];
+function cmRenderLinksRows(){
+  const box = document.getElementById('cmLinksList');
+  if (!box) return;
+  if (!CM_LINKS.length) {
+    box.innerHTML = `<div style="color:#94a3b8;font-size:12px;padding:8px 2px">No links yet — click "Add Link" to add the systems this client should see (e.g. IMS, CRM).</div>`;
+    return;
+  }
+  box.innerHTML = CM_LINKS.map((l, i) => `
+    <div style="display:grid;grid-template-columns:200px 1fr auto;gap:8px;align-items:center;margin-bottom:8px">
+      <input type="text" value="${dtEscape(l.label||'')}" placeholder="Label (e.g. IMS Store)" oninput="CM_LINKS[${i}].label=this.value" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;outline:none"/>
+      <input type="url" value="${dtEscape(l.url||'')}" placeholder="https://…" oninput="CM_LINKS[${i}].url=this.value" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;outline:none"/>
+      <button class="btn btn-outline" style="padding:6px 10px;font-size:12px;color:#dc2626;border-color:#fca5a5" onclick="cmRemoveLinkRow(${i})" title="Remove">🗑</button>
+    </div>`).join('');
+}
+function cmAddLinkRow(){ CM_LINKS.push({ label:'', url:'' }); cmRenderLinksRows(); }
+function cmRemoveLinkRow(i){ CM_LINKS.splice(i,1); cmRenderLinksRows(); }
+async function cmSaveLinks(id){
+  const clean = CM_LINKS
+    .map(l => ({ label:(l.label||'').trim(), url:(l.url||'').trim() }))
+    .filter(l => l.label && l.url);
+  const r = await api('/api/clients/' + id, 'PUT', { system_links: clean });
+  if (r.error) { appAlert(r.error, 'Error'); return; }
+  CM_LINKS = clean;
+  cmRenderLinksRows();
+  showToast('🔗 System links saved');
 }
 
 async function cmAdd(){

@@ -3096,6 +3096,9 @@ const _clientsTableMigrationsPromise = (async () => {
   // Logo — base64 data URL (client-side resized to 256x256 JPEG so payloads
   // stay small enough for the DB without external object storage).
   await sa(`ALTER TABLE clients ADD COLUMN logo_url LONGTEXT DEFAULT NULL AFTER handler_id`);
+  // System Links — per-client quick links shown on the client portal. Stored as
+  // a JSON array of { label, url }. Managed by admin/PC on the Client detail page.
+  await sa(`ALTER TABLE clients ADD COLUMN system_links LONGTEXT DEFAULT NULL AFTER logo_url`);
   // Allow "client" as a login role + back-link users to clients so the client
   // portal can resolve "my client" from the session.
   await sa(`ALTER TABLE users MODIFY COLUMN role ENUM('admin','hod','pc','user','client') DEFAULT 'user'`);
@@ -3876,6 +3879,43 @@ app.get('/api/cron/meeting-reminder', async (req, res) => {
 // Client portal — only callable by users with role='client'. Returns the
 // linked client info + handler + all tasks (delegation + checklist) tagged
 // to that client.
+// Parse the JSON system_links column into a clean [{label,url}] array (safe on null/garbage).
+function parseSystemLinks(raw) {
+  if (!raw) return [];
+  try {
+    const a = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!Array.isArray(a)) return [];
+    return a
+      .map(l => ({ label: String(l.label || '').trim(), url: String(l.url || '').trim() }))
+      .filter(l => l.label && l.url);
+  } catch { return []; }
+}
+// Sanitize incoming system_links (from admin) → JSON string ready for the DB.
+function sanitizeSystemLinks(input) {
+  let arr = input;
+  if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch { arr = []; } }
+  if (!Array.isArray(arr)) arr = [];
+  const clean = arr
+    .map(l => ({ label: String(l && l.label || '').trim().slice(0, 60), url: String(l && l.url || '').trim().slice(0, 500) }))
+    .filter(l => l.label && l.url)
+    .slice(0, 20);
+  return JSON.stringify(clean);
+}
+
+// Client changes their own portal login password.
+app.put('/api/client-portal/password', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
+    const { currentPassword, newPassword } = req.body || {};
+    if (!newPassword || String(newPassword).length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    const [[u]] = await db.query('SELECT password FROM users WHERE id=?', [req.session.userId]);
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    if (!currentPassword || !bcrypt.compareSync(currentPassword, u.password)) return res.status(400).json({ error: 'Current password is incorrect' });
+    await db.query('UPDATE users SET password=? WHERE id=?', [bcrypt.hashSync(String(newPassword), 10), req.session.userId]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/client-portal/me', requireAuth, async (req, res) => {
   try {
     if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
@@ -3902,8 +3942,9 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
     if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
     const id = u.client_id;
     const [[client]] = await db.query(
-      `SELECT c.id, c.name, c.handler_id, c.logo_url, u.name AS handler_name, u.email AS handler_email
+      `SELECT c.id, c.name, c.handler_id, c.logo_url, c.system_links, u.name AS handler_name, u.email AS handler_email
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
+    if (client) client.system_links = parseSystemLinks(client.system_links);
     const ist = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
     const y = ist.getUTCFullYear(), m = ist.getUTCMonth();
     const defaultFrom = `${y}-${String(m+1).padStart(2,'0')}-01`;
@@ -4118,6 +4159,7 @@ app.put('/api/clients/:id', requireAuth, requireAdminOrPC, async (req, res) => {
     const sets = [], params = [];
     if (name !== null) { sets.push('name=?'); params.push(name); }
     if (handlerId !== undefined) { sets.push('handler_id=?'); params.push(handlerId); }
+    if (req.body.system_links !== undefined) { sets.push('system_links=?'); params.push(sanitizeSystemLinks(req.body.system_links)); }
     if (!sets.length) return res.json({ success: true, noop: true });
     params.push(id);
     await db.query(`UPDATE clients SET ${sets.join(', ')} WHERE id=?`, params);
@@ -4170,9 +4212,10 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res
   try {
     const id = req.params.id;
     const [[client]] = await db.query(
-      `SELECT c.id, c.name, c.handler_id, c.logo_url, u.name AS handler_name, u.email AS handler_email
+      `SELECT c.id, c.name, c.handler_id, c.logo_url, c.system_links, u.name AS handler_name, u.email AS handler_email
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
+    client.system_links = parseSystemLinks(client.system_links);
 
     // Login user (if provisioned) — there's at most one client login per client.
     const [[loginUser]] = await db.query(
@@ -4250,7 +4293,8 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res
     res.json({
       client: {
         id: client.id, name: client.name, logo_url: client.logo_url,
-        handler_id: client.handler_id, handler_name: client.handler_name, handler_email: client.handler_email
+        handler_id: client.handler_id, handler_name: client.handler_name, handler_email: client.handler_email,
+        system_links: client.system_links
       },
       login: loginUser ? { provisioned: true, email: loginUser.email } : { provisioned: false },
       range: { from, to },
