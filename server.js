@@ -4975,12 +4975,15 @@ async function getTodayOffIST() {
 // User IDs who have filed a leave covering `today` — pending or approved both
 // count (only rejected leaves leave the user on the missing-names list).
 // extra_working is the OPPOSITE of leave so it's deliberately excluded.
+// work_from_home is ALSO excluded — WFH people are still working, so they must
+// fill the daily report (and still get task reminders) and should appear in the
+// "report not filled" list if they don't.
 async function usersOnLeaveSet(today) {
   try {
     const [rows] = await db.query(
       `SELECT DISTINCT user_id FROM leave_requests
         WHERE status <> 'rejected'
-          AND leave_type IN ('full_day','half_day','work_from_home')
+          AND leave_type IN ('full_day','half_day')
           AND from_date <= ? AND to_date >= ?`,
       [today, today]);
     return new Set(rows.map(r => r.user_id));
