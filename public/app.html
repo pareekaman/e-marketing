@@ -220,10 +220,10 @@ tbody tr:last-child td{border-bottom:none;}
 .mtg-cal-daynames{display:grid;grid-template-columns:repeat(7,1fr);background:#f8fafc;border-bottom:1px solid #e2e8f0;}
 .mtg-cal-daynames > div{padding:10px 8px;font-size:11px;font-weight:700;color:#64748b;letter-spacing:.6px;text-align:center;}
 .mtg-cal-month-grid{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:minmax(108px,1fr);}
-.mtg-cal-cell{border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;padding:6px 8px;cursor:pointer;transition:background .15s;min-height:108px;display:flex;flex-direction:column;gap:4px;background:#fff;}
+.mtg-cal-cell{border-right:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;padding:6px 8px;cursor:pointer;transition:background .15s;min-height:108px;display:flex;flex-direction:column;gap:4px;background:#fff;min-width:0;overflow:hidden;}
 .mtg-cal-cell:hover{background:#f8fafc;}
-.mtg-cal-cell.is-off{background:#fafafa;color:#cbd5e1;cursor:default;}
-.mtg-cal-cell.is-off:hover{background:#fafafa;}
+.mtg-cal-cell.is-off{background:#fafafa;cursor:pointer;}
+.mtg-cal-cell.is-off:hover{background:#f1f5f9;}
 .mtg-cal-cell.is-other-month{color:#cbd5e1;background:#fafbfc;}
 .mtg-cal-cell.is-today .mtg-cal-daynum{background:#1a56db;color:#fff;}
 .mtg-cal-daynum{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;font-size:13px;font-weight:600;color:#0f172a;}
@@ -233,7 +233,7 @@ tbody tr:last-child td{border-bottom:none;}
 .mtg-cal-mpill.done{background:#dcfce7;color:#15803d;}
 .mtg-cal-more{font-size:10px;color:#64748b;font-weight:600;cursor:pointer;}
 /* Task pills on the calendar (delegation / checklist / fms) */
-.mtg-cal-tpill{font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:3px;border-left:3px solid transparent;}
+.mtg-cal-tpill{font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:3px solid transparent;max-width:100%;}
 .mtg-cal-tpill.t-delegation{background:#fff7ed;color:#c2410c;border-left-color:#fb923c;}
 .mtg-cal-tpill.t-checklist{background:#eef2ff;color:#4338ca;border-left-color:#818cf8;}
 .mtg-cal-tpill.t-fms{background:#faf5ff;color:#7e22ce;border-left-color:#c084fc;}
@@ -251,10 +251,11 @@ tbody tr:last-child td{border-bottom:none;}
 .mtg-day-hour-body{position:relative;cursor:pointer;transition:background .15s;}
 .mtg-day-hour-body:hover{background:#f0f9ff;}
 .mtg-day-hour-body.half-hour-mark::before{content:'';position:absolute;top:30px;left:0;right:0;border-top:1px dashed #f1f5f9;}
-.mtg-day-block{position:absolute;left:6px;right:6px;background:#dbeafe;border-left:3px solid #1a56db;border-radius:6px;padding:6px 10px;font-size:12px;color:#1e40af;overflow:hidden;cursor:pointer;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.mtg-day-block{position:absolute;left:6px;right:6px;background:#dbeafe;border-left:3px solid #1a56db;border-radius:6px;padding:4px 9px;font-size:12px;line-height:1.25;color:#1e40af;overflow:hidden;cursor:pointer;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.06);}
 .mtg-day-block.cancelled{background:#fee2e2;border-left-color:#dc2626;color:#991b1b;text-decoration:line-through;}
 .mtg-day-block.done{background:#dcfce7;border-left-color:#16a34a;color:#15803d;}
-.mtg-day-block strong{display:block;font-weight:700;margin-bottom:2px;}
+.mtg-day-block strong{display:block;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mtg-day-block .mtg-day-block-meta{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:#3b82f6;}
 .form-group textarea{resize:vertical;min-height:70px;}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
@@ -10883,7 +10884,9 @@ async function renderMtgMonth() {
     const offBadge = (isHoliday || isSunday || isLastSat)
       ? `<div style="font-size:10px;color:#dc2626;font-weight:600">${isHoliday ? '⛱ Holiday' : isLastSat ? 'Off' : 'Off'}</div>`
       : '';
-    const clickAttr = isOff ? '' : `onclick="mtgJumpToDay('${iso}')"`;
+    // All 7 days are clickable so meetings/tasks on off days (Sun/last-Sat/holiday)
+    // can still be viewed in the day panel — the "Off" badge stays as a marker.
+    const clickAttr = `onclick="mtgJumpToDay('${iso}')"`;
     cells.push(`<div class="${cls.join(' ')}" ${clickAttr}>
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span class="mtg-cal-daynum">${d.getDate()}</span>
@@ -11000,22 +11003,62 @@ async function renderMtgDay() {
   overlay.style.cssText = `position:absolute;top:0;left:60px;right:0;pointer-events:none`;
   // Compute the height of one hour row to position blocks correctly.
   const ROW_PX = 60;
-  for (const m of (meetings || [])) {
-    if (m.status === 'cancelled') continue;
-    const [sh,sm] = (m.start_time||'').split(':').map(Number);
-    const [eh,em] = (m.end_time||'').split(':').map(Number);
-    if (!Number.isFinite(sh) || !Number.isFinite(eh)) continue;
-    const startMin = (sh - startHour) * 60 + sm;
-    const endMin   = (eh - startHour) * 60 + em;
-    if (endMin <= 0 || startMin >= (endHour - startHour) * 60) continue; // outside window
-    const top = Math.max(0, startMin) * (ROW_PX / 60);
-    const height = Math.max(20, (endMin - Math.max(0, startMin)) * (ROW_PX / 60));
+  // Build the visible meeting set with their minute-offsets, then lay overlapping
+  // meetings into side-by-side columns so names don't sit on top of each other.
+  const winMax = (endHour - startHour) * 60;
+  const blocks = (meetings || [])
+    .filter(m => m.status !== 'cancelled')
+    .map(m => {
+      const [sh,sm] = (m.start_time||'').split(':').map(Number);
+      const [eh,em] = (m.end_time||'').split(':').map(Number);
+      if (!Number.isFinite(sh) || !Number.isFinite(eh)) return null;
+      return { m, s: (sh - startHour) * 60 + sm, e: (eh - startHour) * 60 + em };
+    })
+    .filter(b => b && b.e > 0 && b.s < winMax)
+    .sort((a,b) => a.s - b.s || a.e - b.e);
+
+  // Cluster consecutive overlapping meetings; within each cluster assign columns.
+  let i = 0;
+  while (i < blocks.length) {
+    let j = i, clusterEnd = blocks[i].e;
+    const cluster = [blocks[i]];
+    while (j + 1 < blocks.length && blocks[j+1].s < clusterEnd) {
+      j++; cluster.push(blocks[j]); clusterEnd = Math.max(clusterEnd, blocks[j].e);
+    }
+    const colEnds = [];
+    for (const b of cluster) {
+      let placed = false;
+      for (let c = 0; c < colEnds.length; c++) {
+        if (colEnds[c] <= b.s) { b.col = c; colEnds[c] = b.e; placed = true; break; }
+      }
+      if (!placed) { b.col = colEnds.length; colEnds.push(b.e); }
+    }
+    for (const b of cluster) b.nCols = colEnds.length;
+    i = j + 1;
+  }
+
+  for (const b of blocks) {
+    const m = b.m;
+    const top = Math.max(0, b.s) * (ROW_PX / 60);
+    const height = Math.max(20, (b.e - Math.max(0, b.s)) * (ROW_PX / 60));
+    const nCols = b.nCols || 1, col = b.col || 0, gap = 2;
     const block = document.createElement('div');
-    block.className = 'mtg-day-block' + (m.status === 'cancelled' ? ' cancelled' : '') + (m.status === 'done' ? ' done' : '');
+    block.className = 'mtg-day-block' + (m.status === 'done' ? ' done' : '');
     block.style.top = top + 'px';
     block.style.height = (height - 2) + 'px';
+    block.style.left = `calc(${(col / nCols) * 100}% + ${gap}px)`;
+    block.style.width = `calc(${(1 / nCols) * 100}% - ${gap * 2}px)`;
+    block.style.right = 'auto';
     block.style.pointerEvents = 'auto';
-    block.innerHTML = `<strong>${dtEscape(m.title)}</strong>${m.start_time}–${m.end_time}${m.client_name ? ` · ${dtEscape(m.client_name)}` : ''}`;
+    const meta = `${m.start_time}–${m.end_time}${m.client_name ? ` · ${dtEscape(m.client_name)}` : ''}`;
+    block.title = `${m.title} · ${m.start_time}–${m.end_time}${m.client_name ? ` · ${m.client_name}` : ''}`;
+    // Short blocks (≈30 min) can't fit two lines — show time + title on a single
+    // ellipsised line. Taller blocks get the title plus a time/client meta line.
+    if (height < 44) {
+      block.innerHTML = `<strong>${m.start_time} ${dtEscape(m.title)}</strong>`;
+    } else {
+      block.innerHTML = `<strong>${dtEscape(m.title)}</strong><span class="mtg-day-block-meta">${meta}</span>`;
+    }
     block.onclick = () => openMeetingModal(m.id);
     overlay.appendChild(block);
   }
