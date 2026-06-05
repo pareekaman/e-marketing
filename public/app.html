@@ -2206,6 +2206,10 @@ tbody tr:last-child td{border-bottom:none;}
       <div class="form-group">
         <label>Due Date</label>
         <input type="date" id="dDate"/>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:12px;color:#475569;font-weight:500;cursor:pointer">
+          <input type="checkbox" id="dDoerSetsDate" onchange="onDoerSetsDateChange()" style="width:auto;margin:0"/>
+          Doer khud due date set karega (occupancy unknown)
+        </label>
       </div>
     </div>
     <div class="form-row">
@@ -2266,6 +2270,23 @@ tbody tr:last-child td{border-bottom:none;}
         <button class="btn btn-outline btn-sm" onclick="downloadSample()">⬇ Sample</button>
       </div>
       <div style="font-size:11px;color:#94a3b8;margin-top:6px">Format: doer_email, approver_email, due_date, priority, approval, description, remarks, client_name</div>
+    </div>
+  </div>
+</div>
+
+<!-- Set Due Date (doer-defines-date delegation) -->
+<div class="modal-overlay" id="setDueDateModal">
+  <div class="modal" style="max-width:380px">
+    <h3>🗓 Set Due Date</h3>
+    <p style="font-size:12px;color:#64748b;margin:-6px 0 12px">Apni occupancy ke hisab se realistic due date chuno.</p>
+    <div class="alert error" id="setDueErr"></div>
+    <div class="form-group">
+      <label>Due Date</label>
+      <input type="date" id="setDueInput"/>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+      <button class="btn btn-outline" onclick="closeModal('setDueDateModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitSetDueDate()">Save</button>
     </div>
   </div>
 </div>
@@ -4119,10 +4140,16 @@ function renderDashTable(tasks, type) {
     const revisedBadge = isRevised
       ? `<span style="font-size:10px;color:#9d174d;font-weight:700;background:#fce7f3;padding:2px 8px;border-radius:10px;border:1px solid #fbcfe8;margin-right:6px">🔄 Revised</span>`
       : '';
+    const canSetDue = t.awaiting_due_date==1 && (isAdmin || isPC || String(t.assigned_to)===String(ME.id) || String(t.assigned_by)===String(ME.id));
     const actionCell = isCompleted
       ? `<span style="font-size:11px;color:#16a34a;font-weight:700;background:#dcfce7;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0">✅ Completed</span>
          ${(isAdmin || isPC || String(t.assigned_to)===String(ME.id)) ? `<button class="action-btn reopen" style="margin-left:6px" onclick="event.stopPropagation();reopenTask(${t.id},'dashboard','${t.type}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}`
-      : (t.waiting_approval==1 ? `
+      : (t.awaiting_due_date==1 ? `
+          ${revisedBadge}
+          ${canSetDue
+            ? `<button class="action-btn" style="background:#fef9c3;color:#854d0e;border:1px solid #fde68a" onclick="openSetDueDate(${t.id})">🗓 Set due date</button>`
+            : `<span style="font-size:11px;color:#854d0e;font-weight:600">🗓 Awaiting doer's date</span>`}
+        ` : t.waiting_approval==1 ? `
           ${revisedBadge}
           <span style="font-size:11px;color:#f59e0b;font-weight:600">⏳ Waiting Approval</span>
         ` : `
@@ -4134,7 +4161,7 @@ function renderDashTable(tasks, type) {
       <td style="white-space:nowrap">${typeBadge(t)}</td>
       <td style="max-width:240px;word-break:break-word">${t.description||t.desc}</td>
       <td>${(isAdmin||isPC)?t.assignedToName:t.assignedByName}</td>
-      <td>${fmtDate(t.due_date||t.date)}</td>
+      <td>${t.awaiting_due_date==1 ? `<span style="font-size:10px;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fde68a;white-space:nowrap">🗓 Awaiting date</span>` : fmtDate(t.due_date||t.date)}</td>
       ${clientCell}
       ${showPriority ? `<td>${isDeleg ? `<span class="priority-badge ${t.priority||'low'}">${t.priority||'low'}</span>` : '—'}</td>` : ''}
       <td onclick="event.stopPropagation()">${actionCell}</td>
@@ -4894,6 +4921,8 @@ async function openDelegate(prefill = {}) {
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('dDate').value=today;
   document.getElementById('dDate').min=today;
+  document.getElementById('dDate').disabled=false;
+  document.getElementById('dDoerSetsDate').checked=false;
   const [users, clients] = await Promise.all([api('/api/users'), api('/api/clients')]);
   // Cache for email lookup in onDelegateApproverChange()
   window._delegateUsers = users || [];
@@ -4912,6 +4941,36 @@ async function openDelegate(prefill = {}) {
     if (prefill.doerId)   document.getElementById('dDoer').value   = String(prefill.doerId);
   }
   document.getElementById('delegateModal').classList.add('open');
+}
+
+// Doer (or assigner/admin) sets the due date on a "doer-defines-date" task.
+let _setDueTaskId = null;
+function openSetDueDate(id) {
+  _setDueTaskId = id;
+  document.getElementById('setDueErr').style.display = 'none';
+  const inp = document.getElementById('setDueInput');
+  inp.value = '';
+  inp.min = new Date().toISOString().split('T')[0];
+  document.getElementById('setDueDateModal').classList.add('open');
+}
+async function submitSetDueDate() {
+  const err = document.getElementById('setDueErr'); err.style.display = 'none';
+  const date = document.getElementById('setDueInput').value;
+  if (!date) { err.textContent = 'Please pick a date'; err.style.display = 'block'; return; }
+  const r = await api(`/api/tasks/${_setDueTaskId}/due-date`, 'PUT', { date });
+  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+  closeModal('setDueDateModal');
+  showToast(r.effectiveDate ? `Due date set: ${fmtDate(r.effectiveDate)}` : 'Due date set');
+  loadDashboard();
+}
+
+// When ticked, the doer will pick their own due date — disable the date field here.
+function onDoerSetsDateChange() {
+  const on = document.getElementById('dDoerSetsDate').checked;
+  const d = document.getElementById('dDate');
+  d.disabled = on;
+  if (on) d.value = '';
+  else if (!d.value) d.value = new Date().toISOString().split('T')[0];
 }
 
 function onDelegateApprovalChange() {
@@ -4952,15 +5011,18 @@ async function saveDelegate() {
   const url = document.getElementById('dUrl').value.trim() || null;
   const approver = approval === 'yes' ? document.getElementById('dApprover').value : '';
   const client_id = document.getElementById('dClient').value || null;
+  const doerSetsDueDate = document.getElementById('dDoerSetsDate').checked;
   if (!doer) { err.textContent='Please select a doer'; err.style.display='block'; return; }
-  if (!date) { err.textContent='Please select a date'; err.style.display='block'; return; }
+  if (!doerSetsDueDate && !date) { err.textContent='Please select a date'; err.style.display='block'; return; }
   if (!desc) { err.textContent='Description is required'; err.style.display='block'; return; }
   if (!client_id) { err.textContent='Please select a client'; err.style.display='block'; return; }
   if (approval === 'yes' && !approver) { err.textContent='Please select an approver'; err.style.display='block'; return; }
-  const r = await api('/api/tasks','POST',{type:'delegation',desc,assignedTo:doer,date,priority,approval,approver,remarks,client_id,url});
+  const r = await api('/api/tasks','POST',{type:'delegation',desc,assignedTo:doer,date,priority,approval,approver,remarks,client_id,url,doerSetsDueDate});
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
   closeModal('delegateModal');
-  if (r.adjusted) {
+  if (doerSetsDueDate) {
+    showToast('Task delegated! 🗓 Doer apni due date set karega.');
+  } else if (r.adjusted) {
     showToast(`Task delegated! 📅 Moved to ${r.effectiveDate} (holiday/week-off)`);
   } else {
     showToast('Task delegated successfully!');

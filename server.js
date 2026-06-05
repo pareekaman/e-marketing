@@ -301,6 +301,9 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`);
   await sa(`ALTER TABLE delegation_tasks ADD INDEX idx_client (client_id)`);
   await sa(`ALTER TABLE delegation_tasks ADD COLUMN url VARCHAR(2048) DEFAULT NULL AFTER client_id`);
+  // Delegation where the doer sets their own due date (assigner doesn't know occupancy).
+  // due_date stays NULL until the doer (or assigner) picks one; then this flips to 0.
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN awaiting_due_date TINYINT(1) DEFAULT 0 AFTER waiting_approval`);
   // Revise approval holds the requested new due-date here until the assigner approves.
   await sa(`ALTER TABLE task_approvals ADD COLUMN new_date DATE DEFAULT NULL AFTER action_type`);
   await sa(`ALTER TABLE checklist_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`);
@@ -538,6 +541,7 @@ app.get('/api/setup', async (req, res) => {
     await sa(`UPDATE users SET user_role=role WHERE user_role IS NULL`, 'backfill user_role from role');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`, 'delegation_tasks.client_id');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN url VARCHAR(2048) DEFAULT NULL AFTER client_id`, 'delegation_tasks.url');
+    await sa(`ALTER TABLE delegation_tasks ADD COLUMN awaiting_due_date TINYINT(1) DEFAULT 0 AFTER waiting_approval`, 'delegation_tasks.awaiting_due_date');
     await sa(`ALTER TABLE checklist_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`, 'checklist_tasks.client_id');
 
     await sa(`CREATE TABLE IF NOT EXISTS delegation_tasks (
@@ -895,11 +899,11 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
 
     let delegationRows = [], checklistRows = [];
     if (taskType === 'delegation' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,t.remarks,t.url,t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${delDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, params);
+      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${delDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, params);
       delegationRows = rows;
     }
     if (taskType === 'checklist' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,t.remarks,t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${chlDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, params);
+      const [rows] = await db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${chlDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, params);
       checklistRows = rows;
     }
     // `todayPending` kept for backwards compatibility (regular pending load still uses it).
@@ -958,7 +962,7 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
       where += ' AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)';
     }
 
-    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,t.remarks,t.url,":"'no' AS approval,0 AS waiting_approval,t.remarks,NULL AS url,"}t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
+    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,"}t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
 
     // mine=1 mode me hamesha flat tasks return karte hain (grouped nahi)
     if (isMine) {
@@ -979,6 +983,9 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
 app.post('/api/tasks', requireAuth, async (req, res) => {
   try {
     const { type, desc, assignedTo, approverEmail, approver, date, priority, approval, remarks, client_id, clientId, url } = req.body;
+    // Delegation only: assigner leaves the due date to the doer (their occupancy).
+    const doerWillSet = (req.body.doerSetsDueDate === true || req.body.doerSetsDueDate === 'true')
+      && (type || 'checklist') === 'delegation';
     // Accept either client_id or clientId from request body
     const clientIdInt = (() => {
       const raw = client_id != null ? client_id : clientId;
@@ -1003,12 +1010,14 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
       // Admin, HOD and regular users can all assign to others; fallback to self if not specified
       targetUser = (isAdmin || isHod || isUser) && assignedTo ? parseInt(assignedTo) : req.session.userId;
     }
-    if (!desc || !date) return res.status(400).json({ error: 'Description and date required' });
+    if (!desc) return res.status(400).json({ error: 'Description required' });
+    if (!doerWillSet && !date) return res.status(400).json({ error: 'Description and date required' });
 
-    // Holiday / week-off check — auto-adjust due_date if needed
-    let effectiveDate = date;
+    // Holiday / week-off check — auto-adjust due_date if needed.
+    // Skipped entirely when the doer will set their own date (none yet to adjust).
+    let effectiveDate = doerWillSet ? null : date;
     let adjusted = false, adjustedReason = '';
-    try {
+    if (!doerWillSet) try {
       const holidaysSet = await loadHolidaysSet();
       const [[doerUser]] = await db.query('SELECT week_off, extra_off FROM users WHERE id=? LIMIT 1', [targetUser]);
       if (doerUser && isUserOffOn(doerUser, date, holidaysSet)) {
@@ -1038,7 +1047,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
           if (aprRows.length) assignedBy = aprRows[0].id;
         }
       }
-      await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url) VALUES (?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null]);
+      await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0]);
       // 📧 Send delegation email + 📱 WhatsApp (non-blocking — fire and forget)
       (async () => {
         const target = await getNotifyTarget(targetUser);
@@ -1051,7 +1060,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
             delegationEmailHtml({
               assigneeName: target.name,
               assignerName,
-              desc, dueDate: effectiveDate,
+              desc, dueDate: doerWillSet ? 'Aap set karein' : effectiveDate,
               priority: priority||'low',
               approval: approval||'no',
               remarks: remarks||''
@@ -1062,7 +1071,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         try {
           const [[doerRow]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [targetUser]);
           if (doerRow && doerRow.phone) {
-            const dueFmt = (effectiveDate||'').split('-').reverse().join('-');
+            const dueFmt = doerWillSet ? 'Aap set karein 👉 task me due date daalein' : (effectiveDate||'').split('-').reverse().join('-');
             const msg = `Hello ${doerRow.name || ''},\n\n📋 *New Task Delegated*\n\n` +
               `*By:* ${assignerName}\n` +
               `*Due:* ${dueFmt}\n` +
@@ -1079,6 +1088,34 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
       await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks,client_id) VALUES (?,?,?,?,?,?,?,?)`, [desc, targetUser, req.session.userId, effectiveDate, 'pending', priority||'low', remarks||'', enforcedClientId]);
     }
     res.json({ success: true, adjusted, effectiveDate, adjustedReason });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Doer sets the due date on a "doer-defines-date" delegation (applies directly,
+// no approval). Assigner/admin can also set it as a fallback if the doer delays.
+app.put('/api/tasks/:id/due-date', requireAuth, async (req, res) => {
+  try {
+    const { date } = req.body;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return res.status(400).json({ error: 'Valid date (YYYY-MM-DD) required' });
+    const uid = req.session.userId;
+    const isPrivileged = req.session.role === 'admin' || req.session.role === 'pc';
+    const [rows] = await db.query('SELECT * FROM delegation_tasks WHERE id=?', [parseInt(req.params.id, 10)]);
+    const task = rows[0];
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    if (!task.awaiting_due_date) return res.status(409).json({ error: 'Is task pe due date pehle se set hai' });
+    // Doer, assigner, or admin/PC only.
+    if (!isPrivileged && task.assigned_to !== uid && task.assigned_by !== uid) {
+      return res.status(403).json({ error: 'Not allowed' });
+    }
+    // Nudge past a holiday / week-off, same as a normal delegation date.
+    let effectiveDate = date;
+    try {
+      const holidaysSet = await loadHolidaysSet();
+      const [[doerUser]] = await db.query('SELECT week_off, extra_off FROM users WHERE id=? LIMIT 1', [task.assigned_to]);
+      if (doerUser && isUserOffOn(doerUser, date, holidaysSet)) effectiveDate = nextWorkingDay(doerUser, date, holidaysSet);
+    } catch (e) { console.error('due-date holiday check err:', e.message); }
+    await db.query('UPDATE delegation_tasks SET due_date=?, awaiting_due_date=0 WHERE id=?', [effectiveDate, task.id]);
+    res.json({ success: true, effectiveDate });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -3539,7 +3576,7 @@ async function buildPendingSummaryMessages() {
       for (const t of grouped[name]) {
         out += `\nTask ID - ${t.id}`;
         out += `\nTask - ${t.description || '—'}`;
-        out += `\nTarget Date - ${fmtIN(t.due_date)}`;
+        out += `\nTarget Date - ${t.due_date ? fmtIN(t.due_date) : 'Doer ko set karni hai'}`;
         out += `\nPriority - ${(t.priority || 'low').replace(/^./, c => c.toUpperCase())}`;
         out += `\nClient Name - ${t.client_name || '-'}\n`;
       }
