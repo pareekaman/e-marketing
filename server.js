@@ -764,8 +764,17 @@ function setAuthCookie(res, token) {
   });
 }
 
-app.post('/api/admin/impersonate', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/admin/impersonate', requireAuth, async (req, res) => {
   try {
+    // Allowed for a real admin, or for an admin who is already impersonating
+    // (so they can hop straight from one user's dashboard to another).
+    if (req.session.role !== 'admin' && !req.session.impersonatedBy) {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+    // The true admin behind the wheel — stays constant across hops so "exit"
+    // always returns to the real admin, never a previously-viewed user.
+    const adminId   = req.session.impersonatedBy   || req.session.userId;
+    const adminName = req.session.impersonatorName || req.session.name;
     const targetId = parseInt(req.body.userId, 10);
     if (!targetId) return res.status(400).json({ error: 'userId required' });
     const [rows] = await db.query('SELECT id, name, role FROM users WHERE id=?', [targetId]);
@@ -774,7 +783,7 @@ app.post('/api/admin/impersonate', requireAuth, requireAdmin, async (req, res) =
     if (target.role === 'client') return res.status(400).json({ error: 'Cannot view as a client login' });
     const token = jwt.sign(
       { userId: target.id, role: target.role, name: target.name,
-        impersonatedBy: req.session.userId, impersonatorName: req.session.name },
+        impersonatedBy: adminId, impersonatorName: adminName },
       JWT_SECRET,
       { expiresIn: '1d' }
     );

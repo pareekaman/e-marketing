@@ -1246,7 +1246,12 @@ tbody tr:last-child td{border-bottom:none;}
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
     <div class="topbar-title" id="topbarTitle">Dashboard</div>
-    <div class="topbar-right" id="topbarActions"></div>
+    <div class="topbar-right" id="topbarActions" style="display:none;align-items:center;gap:8px">
+      <span style="font-size:13px;color:#64748b;font-weight:600;white-space:nowrap">👁 Dashboard:</span>
+      <select id="dashUserSwitcher" onchange="onDashUserSwitch(this.value)"
+        title="Open another user's dashboard"
+        style="padding:6px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff;font-weight:600;cursor:pointer;max-width:240px"></select>
+    </div>
   </div>
 
   <!-- ── DASHBOARD ── -->
@@ -1269,10 +1274,6 @@ tbody tr:last-child td{border-bottom:none;}
         </div>
       </div>
       <div class="dash-topbar-btns" id="dashBtns"></div>
-    </div>
-    <div id="viewAsBanner" style="display:none;align-items:center;gap:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;font-weight:600">
-      <span>👁 Viewing dashboard as <b id="viewAsName">—</b></span>
-      <button class="btn btn-sm" style="margin-left:auto;background:#1d4ed8;color:#fff;border:none;padding:6px 12px;border-radius:8px;font-family:'Inter',sans-serif;font-weight:600;cursor:pointer" onclick="exitViewAs()">✕ Exit view</button>
     </div>
     <div class="overview-cards">
       <div class="ov-card total"     onclick="goToAllTasksFromDash('all')"       title="Open All Tasks with these rows"><div class="label">Total</div><div class="number" id="dTotal">—</div></div>
@@ -1418,9 +1419,9 @@ tbody tr:last-child td{border-bottom:none;}
 
       <!-- Profile Image Section -->
       <div style="display:flex;align-items:center;gap:20px;margin-bottom:22px;">
-        <div style="position:relative;cursor:pointer" onclick="document.getElementById('profileImgInput').click()">
-          <div id="profileAvatar" style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#1a56db,#3b82f6);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0;border:3px solid #e2e8f0;">?</div>
-          <div style="position:absolute;bottom:0;right:0;width:24px;height:24px;background:#1a56db;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;">
+        <div style="position:relative">
+          <div id="profileAvatar" title="Click to view photo" onclick="viewProfileImage()" style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#1a56db,#3b82f6);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0;border:3px solid #e2e8f0;cursor:pointer;">?</div>
+          <div title="Change photo" onclick="document.getElementById('profileImgInput').click()" style="position:absolute;bottom:0;right:0;width:24px;height:24px;background:#1a56db;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;cursor:pointer;">
             <span style="color:#fff;font-size:12px">✏️</span>
           </div>
         </div>
@@ -1432,6 +1433,15 @@ tbody tr:last-child td{border-bottom:none;}
         </div>
       </div>
       <input type="file" id="profileImgInput" accept="image/*" style="display:none" onchange="handleProfileImage(event)"/>
+
+      <!-- Profile photo viewer (lightbox) -->
+      <div id="profileImgViewer" onclick="closeProfileImage()"
+        style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.85);align-items:center;justify-content:center;cursor:zoom-out">
+        <img id="profileImgViewerImg" src="" alt="Profile photo"
+          style="max-width:90vw;max-height:90vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5);object-fit:contain"/>
+        <button onclick="closeProfileImage()" aria-label="Close"
+          style="position:absolute;top:20px;right:24px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.15);color:#fff;border:none;font-size:22px;cursor:pointer;line-height:1">✕</button>
+      </div>
 
       <div class="alert success" id="profileSuccess"></div>
       <div class="alert error" id="profileError"></div>
@@ -2843,23 +2853,6 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
   </div>
 </div>
-<div class="modal-overlay" id="viewAsModal">
-  <div class="modal" style="max-width:440px">
-    <h3>👁 View as Employee</h3>
-    <p style="font-size:13px;color:#64748b;margin:-4px 0 14px">Select a user to open their dashboard — see exactly the tasks and pending items they see.</p>
-    <div class="form-group">
-      <label>Employee</label>
-      <select id="viewAsSelect"
-        style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;background:#fff">
-        <option value="">-- Select user --</option>
-      </select>
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
-      <button class="btn btn-outline" onclick="closeModal('viewAsModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="confirmViewAs()">Open Dashboard</button>
-    </div>
-  </div>
-</div>
 
 <div class="modal-overlay" id="transferModal">
   <div class="modal" style="max-width:600px">
@@ -3312,14 +3305,9 @@ async function init() {
 
     setAvatarDisplay(ME.profile_image, initials);
 
-    // "View as Employee" banner — shown whenever an admin is impersonating a user.
-    if (ME.impersonatedBy) {
-      const b = document.getElementById('viewAsBanner');
-      if (b) {
-        document.getElementById('viewAsName').textContent = ME.name;
-        b.style.display = 'flex';
-      }
-    }
+    // Dashboard user-switcher (top-right) — admins, or while impersonating, can
+    // jump straight into any user's dashboard from here.
+    if (ME.role === 'admin' || ME.impersonatedBy) buildDashUserSwitcher();
 
     if (ME.role === 'admin') {
       document.getElementById('nav-users').style.display = 'flex';
@@ -3419,6 +3407,18 @@ function setAvatarDisplay(imageData, initials) {
   }
 }
 
+// View profile photo full-size. No photo set → fall back to the file picker so
+// the click still does something useful.
+function viewProfileImage() {
+  if (!ME || !ME.profile_image) { document.getElementById('profileImgInput').click(); return; }
+  document.getElementById('profileImgViewerImg').src = ME.profile_image;
+  document.getElementById('profileImgViewer').style.display = 'flex';
+}
+function closeProfileImage() {
+  document.getElementById('profileImgViewer').style.display = 'none';
+  document.getElementById('profileImgViewerImg').src = '';
+}
+
 // Handle image file selection
 function handleProfileImage(event) {
   const file = event.target.files[0];
@@ -3486,6 +3486,9 @@ function navigate(page, el) {
   document.getElementById('page-'+page).classList.add('active');
   if (el) el.classList.add('active');
   document.getElementById('topbarTitle').textContent = pageTitles[page] || page;
+  // Dashboard user-switcher lives on the dashboard header only.
+  const ta = document.getElementById('topbarActions');
+  if (ta) ta.style.display = (page === 'dashboard' && (ME.role === 'admin' || ME.impersonatedBy)) ? 'flex' : 'none';
   // Auto-close mobile drawer after navigation
   if (window.innerWidth <= 768) closeSidebar();
   const pageLoaders = {
@@ -3563,7 +3566,6 @@ async function loadDashboard() {
 
     if (isAdmin) {
       document.getElementById('dashBtns').innerHTML = `
-        <button class="btn btn-outline" style="border-color:#0284c7;color:#0284c7" onclick="openViewAsEmployee()">👁 View as Employee</button>
         <button class="btn btn-yellow" onclick="openHoliday()">🗓 Holidays</button>
         <button class="btn btn-green" onclick="openChecklist()">+ Checklist</button>
         <button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>`;
@@ -3708,41 +3710,46 @@ function clearPCDateFilter() {
   onPCFilterChange();
 }
 
-// ── View as Employee — admin picks a user and the dashboard shows THAT user's
-// task manager (their cards + pending tasks), via the existing employee filter. ──
-let _viewAsUsers = null;
-async function openViewAsEmployee(){
-  if (ME.role !== 'admin') return;
-  const sel = document.getElementById('viewAsSelect');
-  if (!_viewAsUsers) {
-    try { const u = await api('/api/users'); _viewAsUsers = (Array.isArray(u) ? u : []).filter(x => x.role !== 'client'); }
-    catch { _viewAsUsers = []; }
-    sel.innerHTML = '<option value="">-- Select user --</option>' +
-      _viewAsUsers.map(u => `<option value="${u.id}">${dtEscape(u.name)}${u.department ? ' · ' + dtEscape(u.department) : ''}</option>`).join('');
+// ── Dashboard user-switcher — the top-right dropdown that shows whose dashboard
+// is open and lets an admin jump into any other user's dashboard (real
+// impersonation: a fresh user-scoped token, so the whole app renders as them). ──
+let _dashSwitchUsers = null;
+async function buildDashUserSwitcher(){
+  if (!(ME.role === 'admin' || ME.impersonatedBy)) return;
+  const sel = document.getElementById('dashUserSwitcher');
+  const bar = document.getElementById('topbarActions');
+  if (!sel || !bar) return;
+  if (!_dashSwitchUsers) {
+    try { const u = await api('/api/users'); _dashSwitchUsers = (Array.isArray(u) ? u : []).filter(x => x.role !== 'client'); }
+    catch { _dashSwitchUsers = []; }
   }
-  // Preselect whatever the dashboard is already filtered to.
-  const cur = document.getElementById('dashEmployeeFilter')?.value;
-  sel.value = (cur && cur !== 'all') ? cur : '';
-  document.getElementById('viewAsModal').classList.add('open');
+  // While impersonating, offer a clear way back to the admin's own dashboard.
+  let opts = ME.impersonatedBy ? `<option value="__self__">⤺ Back to my dashboard</option>` : '';
+  opts += _dashSwitchUsers.map(u => `<option value="${u.id}">${dtEscape(u.name)}${u.department ? ' · ' + dtEscape(u.department) : ''}</option>`).join('');
+  sel.innerHTML = opts;
+  sel.value = String(ME.id);   // currently-open dashboard owner
+  bar.style.display = 'flex';
 }
 
-async function confirmViewAs(){
-  const sel = document.getElementById('viewAsSelect');
-  const id = sel.value;
-  if (!id) { showToast('Please select a user', 'error'); return; }
+async function onDashUserSwitch(val){
+  if (val === '__self__') {
+    try { await api('/api/admin/stop-impersonate', 'POST', {}); } catch (e) {}
+    window.location.href = '/app';
+    return;
+  }
+  const id = parseInt(val, 10);
+  if (!id || id === ME.id) return;
   try {
-    const r = await api('/api/admin/impersonate', 'POST', { userId: parseInt(id, 10) });
-    if (r && r.error) { showToast(r.error, 'error'); return; }
-    // Fresh token is now set as a cookie — reload the app so it renders entirely
-    // as that user (their tabs, buttons, tasks — exactly what they see).
+    const r = await api('/api/admin/impersonate', 'POST', { userId: id });
+    if (r && r.error) {
+      showToast(r.error, 'error');
+      const sel = document.getElementById('dashUserSwitcher'); if (sel) sel.value = String(ME.id);
+      return;
+    }
+    // Fresh token is set as a cookie — reload so the app renders entirely as that
+    // user (their tabs, buttons, tasks — exactly what they see).
     window.location.href = '/app';
   } catch (e) { showToast(e.message || 'Failed to open dashboard', 'error'); }
-}
-
-async function exitViewAs(){
-  try { await api('/api/admin/stop-impersonate', 'POST', {}); }
-  catch (e) { /* fall through to reload anyway */ }
-  window.location.href = '/app';
 }
 
 // Refresh PC employee dropdown — show only users with pending tasks
