@@ -259,6 +259,7 @@ tbody tr:last-child td{border-bottom:none;}
 .action-btn.revise{background:#fffbeb;color:#d97706;}.action-btn.revise:hover{background:#fef3c7;}
 .action-btn.edit{background:#eff6ff;color:#1d4ed8;}.action-btn.edit:hover{background:#dbeafe;}
 .action-btn.delete{background:#fef2f2;color:#dc2626;}.action-btn.delete:hover{background:#fecaca;}
+.action-btn.reopen{background:#fef9c3;color:#a16207;}.action-btn.reopen:hover{background:#fef08a;}
 
 .role-badge{font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;}
 .role-badge.admin{background:#eff6ff;color:#1d4ed8;}
@@ -4019,7 +4020,8 @@ function renderDashTable(tasks, type) {
       ? `<span style="font-size:10px;color:#9d174d;font-weight:700;background:#fce7f3;padding:2px 8px;border-radius:10px;border:1px solid #fbcfe8;margin-right:6px">🔄 Revised</span>`
       : '';
     const actionCell = isCompleted
-      ? `<span style="font-size:11px;color:#16a34a;font-weight:700;background:#dcfce7;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0">✅ Completed</span>`
+      ? `<span style="font-size:11px;color:#16a34a;font-weight:700;background:#dcfce7;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0">✅ Completed</span>
+         ${(isAdmin || isPC || String(t.assigned_to)===String(ME.id)) ? `<button class="action-btn reopen" style="margin-left:6px" onclick="event.stopPropagation();reopenTask(${t.id},'dashboard','${t.type}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}`
       : (t.waiting_approval==1 ? `
           ${revisedBadge}
           <span style="font-size:11px;color:#f59e0b;font-weight:600">⏳ Waiting Approval</span>
@@ -4317,10 +4319,12 @@ function _buildTaskRowHtml(t, ctx) {
     <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px;margin-left:3px" onclick="openComments(${t.id},'${editType}')" title="Comments">💬</button>
     ${!isCompleted && !isWaiting ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${editType}')">Done</button>` : ''}
     ${!isChecklist && !isCompleted && !isWaiting ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${editType}')">Revise</button>` : ''}
+    ${isCompleted ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${editType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
     ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
   ` : (ME.role==='pc') ? `
     <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
     ${isChecklist && !isCompleted && !isWaiting ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>` : ''}
+    ${isChecklist && isCompleted ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${tasksType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
     ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
   ` : `
     <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
@@ -4328,6 +4332,7 @@ function _buildTaskRowHtml(t, ctx) {
       <button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>
       ${!isChecklist ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${tasksType}')">Revise</button>` : ''}
     ` : ''}
+    ${isCompleted ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${tasksType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
     ${isWaiting ? `
       <span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting Approval</span>` : ''}
   `;
@@ -4556,6 +4561,18 @@ async function updateStatus(id, status, from, type) {
   if (r.needsApproval) {
     showToast('✅ Approval request sent to the assigner!');
   }
+  if (from==='dashboard') loadDashboard(); else loadAllTasks();
+  loadApprovalBadge();
+}
+
+// Reopen a completed task → back to pending (in case it was marked done by mistake).
+// Confirms first so it can't fire on a stray click; the same status endpoint applies
+// it (the doer or admin/PC are allowed by the server).
+async function reopenTask(id, from, type) {
+  if (!await appConfirm('Reopen this task? It will move back to Pending.')) return;
+  const r = await api(`/api/tasks/${id}/status`,'PUT',{status:'pending', type: type || dashType});
+  if (r.error) { appAlert(r.error, 'Not allowed'); return; }
+  showToast('↩ Task reopened — moved to Pending');
   if (from==='dashboard') loadDashboard(); else loadAllTasks();
   loadApprovalBadge();
 }
