@@ -3022,6 +3022,40 @@ app.get('/api/my-week-fms-tasks', requireAuth, async (req, res) => {
   }
 });
 
+// Calendar feed — the caller's own tasks (delegation + checklist + FMS) whose
+// due/plan date falls in [from, to]. Returned as a flat list with a `date` field
+// so the Meetings calendar can show tasks alongside meetings on each day.
+app.get('/api/calendar/tasks', requireAuth, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+    if (!isDate(from) || !isDate(to)) return res.status(400).json({ error: 'from, to (YYYY-MM-DD) required' });
+    const uid = req.session.userId;
+
+    const [del] = await db.query(
+      `SELECT t.id, t.description, t.status, COALESCE(t.priority,'low') AS priority,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS date, c.name AS client_name
+         FROM delegation_tasks t LEFT JOIN clients c ON t.client_id=c.id
+        WHERE t.assigned_to=? AND t.due_date BETWEEN ? AND ?`, [uid, from, to]);
+    const [chl] = await db.query(
+      `SELECT t.id, t.description, t.status, COALESCE(t.priority,'low') AS priority,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS date, c.name AS client_name
+         FROM checklist_tasks t LEFT JOIN clients c ON t.client_id=c.id
+        WHERE t.assigned_to=? AND t.due_date BETWEEN ? AND ?`, [uid, from, to]);
+
+    let fms = [];
+    try { fms = await fmsTasksForUserInRange(uid, from, to, { applyDateFilter: true }); } catch (e) { /* FMS optional */ }
+
+    const items = [
+      ...del.map(t => ({ type: 'delegation', id: t.id, date: t.date, title: t.description, status: t.status, priority: t.priority, client_name: t.client_name })),
+      ...chl.map(t => ({ type: 'checklist', id: t.id, date: t.date, title: t.description, status: t.status, priority: t.priority, client_name: t.client_name })),
+      ...fms.map(t => ({ type: 'fms', date: t.planDate, title: `${t.fmsName} · ${t.stepName}`, status: t.status }))
+    ].filter(x => x.date);
+
+    res.json({ items });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Admin / HOD endpoint — FMS rows for ANY user in a date range (used by Race
 // Tracker / MIS detail drill-down).
 app.get('/api/mis/fms-detail', requireAuth, requireAdminOrHodOnly, async (req, res) => {

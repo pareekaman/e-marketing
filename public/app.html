@@ -232,6 +232,19 @@ tbody tr:last-child td{border-bottom:none;}
 .mtg-cal-mpill.cancelled{background:#fee2e2;color:#991b1b;text-decoration:line-through;}
 .mtg-cal-mpill.done{background:#dcfce7;color:#15803d;}
 .mtg-cal-more{font-size:10px;color:#64748b;font-weight:600;cursor:pointer;}
+/* Task pills on the calendar (delegation / checklist / fms) */
+.mtg-cal-tpill{font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:3px;border-left:3px solid transparent;}
+.mtg-cal-tpill.t-delegation{background:#fff7ed;color:#c2410c;border-left-color:#fb923c;}
+.mtg-cal-tpill.t-checklist{background:#eef2ff;color:#4338ca;border-left-color:#818cf8;}
+.mtg-cal-tpill.t-fms{background:#faf5ff;color:#7e22ce;border-left-color:#c084fc;}
+.mtg-cal-tpill.is-done{opacity:.6;text-decoration:line-through;}
+.mtg-cal-tmore{font-size:10px;color:#64748b;font-weight:600;}
+.mtg-day-task{padding:9px 14px;border-bottom:1px solid #f1f5f9;display:flex;align-items:flex-start;gap:8px;}
+.mtg-day-task .mtg-day-task-dot{width:8px;height:8px;border-radius:2px;margin-top:5px;flex-shrink:0;}
+.mtg-day-task.t-delegation .mtg-day-task-dot{background:#fb923c;}
+.mtg-day-task.t-checklist .mtg-day-task-dot{background:#818cf8;}
+.mtg-day-task.t-fms .mtg-day-task-dot{background:#c084fc;}
+.mtg-day-tasks-head{padding:10px 14px;font-size:11px;font-weight:700;color:#64748b;letter-spacing:.5px;text-transform:uppercase;background:#f8fafc;border-bottom:1px solid #f1f5f9;}
 /* Day-view timeline */
 .mtg-day-hour{display:grid;grid-template-columns:60px 1fr;border-bottom:1px solid #f1f5f9;min-height:60px;position:relative;}
 .mtg-day-hour-label{font-size:11px;color:#64748b;font-weight:600;padding:4px 8px;text-align:right;border-right:1px solid #f1f5f9;}
@@ -2007,6 +2020,7 @@ tbody tr:last-child td{border-bottom:none;}
         </div>
         <div id="mtgDayTimeline" style="position:relative;overflow:auto;max-height:560px"></div>
         <div id="mtgDayList" style="border-top:1px solid #f1f5f9;max-height:200px;overflow:auto"></div>
+        <div id="mtgDayTasks" style="border-top:1px solid #f1f5f9;max-height:240px;overflow:auto"></div>
       </div>
     </div>
   </div>
@@ -10747,6 +10761,7 @@ let _mtgEditing = null;
 let _mtgMonthAnchor = null; // month-anchor Date (1st of viewed month)
 let _mtgDayAnchor   = null; // currently focused day in the right-pane timeline
 let _mtgMonthCache = {};
+let _mtgTaskCache = {};   // calendar task feed, keyed by grid range
 let _mtgHolidays = null;
 
 function _mtgTodayIso() {
@@ -10820,6 +10835,17 @@ async function renderMtgMonth() {
   const byDate = {};
   for (const m of (meetings || [])) (byDate[m.meeting_date] = byDate[m.meeting_date] || []).push(m);
 
+  // Tasks (delegation + checklist + FMS) due in the visible grid — shown alongside meetings.
+  let tasks = _mtgTaskCache[cacheKey];
+  if (!tasks) {
+    const fromStr = _mtgIso(gridStart), toStr = _mtgIso(gridEnd);
+    try { const r = await api(`/api/calendar/tasks?from=${fromStr}&to=${toStr}`); tasks = Array.isArray(r?.items) ? r.items : []; }
+    catch { tasks = []; }
+    _mtgTaskCache[cacheKey] = tasks;
+  }
+  const tasksByDate = {};
+  for (const t of tasks) (tasksByDate[t.date] = tasksByDate[t.date] || []).push(t);
+
   const todayIso = _mtgTodayIso();
   const grid = document.getElementById('mtgMonthGrid');
   const cells = [];
@@ -10844,6 +10870,16 @@ async function renderMtgMonth() {
     const moreHtml = items.length > 3
       ? `<div class="mtg-cal-more" onclick="event.stopPropagation();mtgJumpToDay('${iso}')">+ ${items.length - 3} more</div>`
       : '';
+    // Task pills (max 2) — delegation/checklist/fms due this day.
+    const tItems = tasksByDate[iso] || [];
+    const tIcon = { delegation: '📋', checklist: '✅', fms: '🔁' };
+    const tPills = tItems.slice(0, 2).map(t => {
+      const done = t.status === 'completed';
+      return `<div class="mtg-cal-tpill t-${t.type} ${done?'is-done':''}" title="${dtEscape(t.title)}">${tIcon[t.type]||'•'} ${dtEscape(t.title)}</div>`;
+    }).join('');
+    const tMore = tItems.length > 2
+      ? `<div class="mtg-cal-tmore" onclick="event.stopPropagation();mtgJumpToDay('${iso}')">+ ${tItems.length - 2} task${tItems.length-2===1?'':'s'}</div>`
+      : '';
     const offBadge = (isHoliday || isSunday || isLastSat)
       ? `<div style="font-size:10px;color:#dc2626;font-weight:600">${isHoliday ? '⛱ Holiday' : isLastSat ? 'Off' : 'Off'}</div>`
       : '';
@@ -10855,6 +10891,8 @@ async function renderMtgMonth() {
       </div>
       ${pillsHtml}
       ${moreHtml}
+      ${tPills}
+      ${tMore}
     </div>`);
   }
   grid.innerHTML = cells.join('');
@@ -10872,13 +10910,39 @@ async function renderMtgDay() {
 
   const tlEl = document.getElementById('mtgDayTimeline');
   const listEl = document.getElementById('mtgDayList');
+  const taskEl = document.getElementById('mtgDayTasks');
   tlEl.innerHTML = '<div style="padding:24px;color:#94a3b8;text-align:center;font-size:12px">Loading…</div>';
   listEl.innerHTML = '<div class="empty" style="padding:24px">Loading…</div>';
+  if (taskEl) taskEl.innerHTML = '';
 
-  const [meetings, slotResp] = await Promise.all([
+  const [meetings, slotResp, taskResp] = await Promise.all([
     api(`/api/meetings?from=${iso}&to=${iso}`),
-    api(`/api/meetings/slots?date=${iso}`)
+    api(`/api/meetings/slots?date=${iso}`),
+    api(`/api/calendar/tasks?from=${iso}&to=${iso}`).catch(() => ({ items: [] }))
   ]);
+
+  // Tasks due this day (delegation + checklist + FMS)
+  if (taskEl) {
+    const tItems = Array.isArray(taskResp?.items) ? taskResp.items : [];
+    if (!tItems.length) {
+      taskEl.innerHTML = '<div class="mtg-day-tasks-head">Tasks due</div><div class="empty" style="padding:18px">No tasks due on this date</div>';
+    } else {
+      const tIcon = { delegation: '📋', checklist: '✅', fms: '🔁' };
+      const tLabel = { delegation: 'Delegation', checklist: 'Checklist', fms: 'FMS' };
+      const rows = tItems.map(t => {
+        const done = t.status === 'completed';
+        const client = t.client_name ? ` · 🏢 ${dtEscape(t.client_name)}` : '';
+        return `<div class="mtg-day-task t-${t.type}">
+          <span class="mtg-day-task-dot"></span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;color:#0f172a;font-weight:600;${done?'text-decoration:line-through;opacity:.6':''}">${tIcon[t.type]||'•'} ${dtEscape(t.title)}</div>
+            <div style="font-size:11px;color:#64748b;margin-top:1px">${tLabel[t.type]||t.type}${client} · ${done?'<span style="color:#15803d;font-weight:700">✓ Done</span>':'<span style="color:#d97706;font-weight:700">Pending</span>'}</div>
+          </div>
+        </div>`;
+      }).join('');
+      taskEl.innerHTML = `<div class="mtg-day-tasks-head">Tasks due (${tItems.length})</div>${rows}`;
+    }
+  }
 
   // Meetings list panel
   if (!Array.isArray(meetings) || !meetings.length) {
@@ -11143,6 +11207,7 @@ async function saveMeeting() {
     _mtgDayAnchor = _mtgParseIso(payload.meeting_date);
     _mtgMonthAnchor = new Date(_mtgDayAnchor.getFullYear(), _mtgDayAnchor.getMonth(), 1);
     _mtgMonthCache = {};
+    _mtgTaskCache = {};
     loadMeetings();
   } catch (e) { showToast('Save failed: ' + e.message); }
 }
@@ -11155,6 +11220,7 @@ async function markMeetingDone(id) {
     showToast('✅ Meeting marked done');
     closeModal('meetingModal');
     _mtgMonthCache = {};
+    _mtgTaskCache = {};
     loadMeetings();
   } catch (e) { appAlert('Failed: ' + e.message, 'Error'); }
 }
@@ -11169,6 +11235,7 @@ async function deleteMeeting() {
     showToast('Meeting cancelled · WhatsApp sent');
     closeModal('meetingModal');
     _mtgMonthCache = {};
+    _mtgTaskCache = {};
     loadMeetings();
   } catch (e) { showToast('Cancel failed: ' + e.message); }
 }
