@@ -1270,6 +1270,10 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
       <div class="dash-topbar-btns" id="dashBtns"></div>
     </div>
+    <div id="viewAsBanner" style="display:none;align-items:center;gap:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;font-weight:600">
+      <span>👁 Viewing dashboard as <b id="viewAsName">—</b></span>
+      <button class="btn btn-sm" style="margin-left:auto;background:#1d4ed8;color:#fff;border:none;padding:6px 12px;border-radius:8px;font-family:'Inter',sans-serif;font-weight:600;cursor:pointer" onclick="exitViewAs()">✕ Exit view</button>
+    </div>
     <div class="overview-cards">
       <div class="ov-card total"     onclick="goToAllTasksFromDash('all')"       title="Open All Tasks with these rows"><div class="label">Total</div><div class="number" id="dTotal">—</div></div>
       <div class="ov-card completed" onclick="goToAllTasksFromDash('completed')" title="Open All Tasks → Completed"><div class="label">Completed</div><div class="number" id="dCompleted">—</div></div>
@@ -2839,6 +2843,24 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="viewAsModal">
+  <div class="modal" style="max-width:440px">
+    <h3>👁 View as Employee</h3>
+    <p style="font-size:13px;color:#64748b;margin:-4px 0 14px">Select a user to open their dashboard — see exactly the tasks and pending items they see.</p>
+    <div class="form-group">
+      <label>Employee</label>
+      <select id="viewAsSelect"
+        style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;background:#fff">
+        <option value="">-- Select user --</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+      <button class="btn btn-outline" onclick="closeModal('viewAsModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmViewAs()">Open Dashboard</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="transferModal">
   <div class="modal" style="max-width:600px">
     <h3>🔀 Transfer Tasks</h3>
@@ -3532,6 +3554,8 @@ async function loadDashboard() {
 
     if (isAdmin) {
       document.getElementById('dashBtns').innerHTML = `
+        <button class="btn btn-outline" style="border-color:#0284c7;color:#0284c7" onclick="openViewAsEmployee()">👁 View as Employee</button>
+        <button class="btn btn-outline" style="border-color:#7c3aed;color:#7c3aed" onclick="openEmployee360()">👤 Employee 360</button>
         <button class="btn btn-yellow" onclick="openHoliday()">🗓 Holidays</button>
         <button class="btn btn-green" onclick="openChecklist()">+ Checklist</button>
         <button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>`;
@@ -3674,6 +3698,50 @@ function clearPCDateFilter() {
   if (df) df.value = '';
   if (dt) dt.value = '';
   onPCFilterChange();
+}
+
+// ── View as Employee — admin picks a user and the dashboard shows THAT user's
+// task manager (their cards + pending tasks), via the existing employee filter. ──
+let _viewAsUsers = null;
+async function openViewAsEmployee(){
+  if (ME.role !== 'admin') return;
+  const sel = document.getElementById('viewAsSelect');
+  if (!_viewAsUsers) {
+    try { const u = await api('/api/users'); _viewAsUsers = (Array.isArray(u) ? u : []).filter(x => x.role !== 'client'); }
+    catch { _viewAsUsers = []; }
+    sel.innerHTML = '<option value="">-- Select user --</option>' +
+      _viewAsUsers.map(u => `<option value="${u.id}">${dtEscape(u.name)}${u.department ? ' · ' + dtEscape(u.department) : ''}</option>`).join('');
+  }
+  // Preselect whatever the dashboard is already filtered to.
+  const cur = document.getElementById('dashEmployeeFilter')?.value;
+  sel.value = (cur && cur !== 'all') ? cur : '';
+  document.getElementById('viewAsModal').classList.add('open');
+}
+
+function confirmViewAs(){
+  const sel = document.getElementById('viewAsSelect');
+  const id = sel.value;
+  if (!id) { showToast('Please select a user', 'error'); return; }
+  const name = sel.options[sel.selectedIndex].textContent;
+  const empFilter = document.getElementById('dashEmployeeFilter');
+  if (empFilter) {
+    if (!Array.from(empFilter.options).some(o => o.value === id)) {
+      const opt = document.createElement('option'); opt.value = id; opt.textContent = name; empFilter.appendChild(opt);
+    }
+    empFilter.value = id;
+  }
+  document.getElementById('viewAsName').textContent = name;
+  document.getElementById('viewAsBanner').style.display = 'flex';
+  closeModal('viewAsModal');
+  loadDashboard();
+  window.scrollTo(0, 0);
+}
+
+function exitViewAs(){
+  const empFilter = document.getElementById('dashEmployeeFilter');
+  if (empFilter) empFilter.value = 'all';
+  document.getElementById('viewAsBanner').style.display = 'none';
+  loadDashboard();
 }
 
 // Refresh PC employee dropdown — show only users with pending tasks
@@ -9386,6 +9454,15 @@ function cpTab(which, el){
   document.getElementById('cpTab-daily').style.display  = which === 'daily'  ? 'block' : 'none';
   document.getElementById('cpTab-emp360').style.display = which === 'emp360' ? 'block' : 'none';
   if (which === 'emp360' && !EMP360_USERS) emp360InitPicker();
+}
+
+// Shortcut from the dashboard — jump straight to Compliance → Employee 360
+// with the employee picker ready (pick a user, see their full snapshot). Admin only.
+function openEmployee360(){
+  if (ME.role !== 'admin') return;
+  navigate('compliance', document.getElementById('nav-compliance'));
+  const empTab = document.getElementById('cpTabEmp');
+  if (empTab) cpTab('emp360', empTab);
 }
 
 async function emp360InitPicker(){
