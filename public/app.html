@@ -3544,7 +3544,9 @@ async function loadDashboard() {
   updateDashStats(dashType);
 
   if (isAdmin || isHod || isPC) {
-    empFilter.style.display = 'block';
+    // Only admin (and PC) may switch the dashboard to another employee's view.
+    // HOD sees their department's aggregate but cannot drill into individuals.
+    empFilter.style.display = (isAdmin || isPC) ? 'block' : 'none';
 
     if (isPC) {
       // Show date range filter for PC
@@ -3552,12 +3554,9 @@ async function loadDashboard() {
       if (drFilter) drFilter.style.display = 'flex';
       // Smart dropdown: show only users with pending tasks
       await refreshPCEmployeeDropdown();
-    } else if (empFilter.options.length <= 1) {
+    } else if (isAdmin && empFilter.options.length <= 1) {
       const users = await api('/api/users');
-      const filtered = isHod
-        ? users.filter(u => u.department === ME.department)
-        : users;
-      filtered.forEach(u => {
+      users.forEach(u => {
         const opt = document.createElement('option');
         opt.value = u.id; opt.textContent = u.name;
         empFilter.appendChild(opt);

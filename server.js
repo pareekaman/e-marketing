@@ -834,30 +834,29 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
     } else if (isAdmin) {
       userFilter = ''; params = [];
     } else if (isHod) {
-      if (filterEmployee && filterEmployee !== 'all') {
-        userFilter = 'AND t.assigned_to = ?'; params = [filterEmployee];
+      // HOD cannot drill into a single employee — they always see their whole
+      // department's aggregate. Only admin (and PC) may switch the view, so the
+      // `employee` query param is intentionally ignored here.
+      // HOD ka department DB se fetch karo — query param pe depend mat karo
+      let resolvedDept = hodDept;
+      if (!resolvedDept) {
+        const [meRow] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
+        resolvedDept = meRow[0]?.department || '';
+      }
+      if (!resolvedDept) {
+        // Department set nahi hai — sirf apni tasks dikhao
+        userFilter = 'AND t.assigned_to = ?'; params = [uid];
       } else {
-        // HOD ka department DB se fetch karo — query param pe depend mat karo
-        let resolvedDept = hodDept;
-        if (!resolvedDept) {
-          const [meRow] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
-          resolvedDept = meRow[0]?.department || '';
-        }
-        if (!resolvedDept) {
-          // Department set nahi hai — sirf apni tasks dikhao
+        const [deptUsers] = await db.query('SELECT id FROM users WHERE department=? AND role NOT IN (?,?)', [resolvedDept, 'admin','hod']);
+        if (!deptUsers.length) {
+          // Dept mein koi user nahi — apni tasks dikhao
           userFilter = 'AND t.assigned_to = ?'; params = [uid];
         } else {
-          const [deptUsers] = await db.query('SELECT id FROM users WHERE department=? AND role NOT IN (?,?)', [resolvedDept, 'admin','hod']);
-          if (!deptUsers.length) {
-            // Dept mein koi user nahi — apni tasks dikhao
-            userFilter = 'AND t.assigned_to = ?'; params = [uid];
-          } else {
-            const ids = deptUsers.map(u=>u.id);
-            // HOD khud bhi include karo
-            if (!ids.includes(uid)) ids.push(uid);
-            userFilter = `AND t.assigned_to IN (${ids.map(()=>'?').join(',')})`;
-            params = ids;
-          }
+          const ids = deptUsers.map(u=>u.id);
+          // HOD khud bhi include karo
+          if (!ids.includes(uid)) ids.push(uid);
+          userFilter = `AND t.assigned_to IN (${ids.map(()=>'?').join(',')})`;
+          params = ids;
         }
       }
     } else {
