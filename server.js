@@ -409,7 +409,12 @@ function requireAuth(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.session = { userId: decoded.userId, role: decoded.role, name: decoded.name };
+    req.session = {
+      userId: decoded.userId, role: decoded.role, name: decoded.name,
+      // Set only while an admin is viewing the app AS another user.
+      impersonatedBy: decoded.impersonatedBy || null,
+      impersonatorName: decoded.impersonatorName || null
+    };
     next();
   } catch(e) { res.status(401).json({ error: 'Invalid token' }); }
 }
@@ -738,7 +743,62 @@ app.get('/api/me', requireAuth, async (req, res) => {
     } catch(e) { rows[0].extra_off = ''; }
     rows[0].extra_access = parseExtraAccess(rows[0].extra_access);
     rows[0].canViewAllLeaves = isLeaveReportViewer(rows[0]);
+    // When an admin is "viewing as" this user, expose who's really behind the wheel
+    // so the UI can show an exit-impersonation banner.
+    rows[0].impersonatedBy = req.session.impersonatedBy || null;
+    rows[0].impersonatorName = req.session.impersonatorName || null;
     res.json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── View as Employee (impersonation) ──────────────────────────────
+// Admin picks a user and gets a fresh token scoped to THAT user, so the whole
+// app renders exactly what the employee sees. The token carries impersonatedBy
+// so we can revert and so the UI can show a banner.
+function setAuthCookie(res, token) {
+  res.cookie('token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+}
+
+app.post('/api/admin/impersonate', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const targetId = parseInt(req.body.userId, 10);
+    if (!targetId) return res.status(400).json({ error: 'userId required' });
+    const [rows] = await db.query('SELECT id, name, role FROM users WHERE id=?', [targetId]);
+    const target = rows[0];
+    if (!target) return res.status(404).json({ error: 'User not found' });
+    if (target.role === 'client') return res.status(400).json({ error: 'Cannot view as a client login' });
+    const token = jwt.sign(
+      { userId: target.id, role: target.role, name: target.name,
+        impersonatedBy: req.session.userId, impersonatorName: req.session.name },
+      JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+    setAuthCookie(res, token);
+    res.json({ ok: true, name: target.name, role: target.role });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Stop impersonation — only auth required (the effective role is the employee's,
+// so requireAdmin would block it). Guarded by the impersonatedBy marker.
+app.post('/api/admin/stop-impersonate', requireAuth, async (req, res) => {
+  try {
+    const adminId = req.session.impersonatedBy;
+    if (!adminId) return res.status(400).json({ error: 'Not impersonating' });
+    const [rows] = await db.query('SELECT id, name, role FROM users WHERE id=?', [adminId]);
+    const admin = rows[0];
+    if (!admin) return res.status(404).json({ error: 'Original user not found' });
+    const token = jwt.sign(
+      { userId: admin.id, role: admin.role, name: admin.name },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    setAuthCookie(res, token);
+    res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -3077,7 +3137,7 @@ app.get('/api/mis/fms-detail', requireAuth, requireAdminOrHodOnly, async (req, r
 // ══════════════════════════════════════════════════════
 // DEBUG ENDPOINT (remove after fixing)
 // ══════════════════════════════════════════════════════
-app.get('/api/debug', async (req, res) => {
+app.get('/api/debug', requireAuth, requireAdmin, async (req, res) => {
   const result = { time: new Date().toISOString(), env: {}, db: {}, tables: {} };
   result.env = {
     NODE_ENV: process.env.NODE_ENV || '(not set)',

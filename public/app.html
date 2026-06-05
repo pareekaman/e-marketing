@@ -3312,6 +3312,15 @@ async function init() {
 
     setAvatarDisplay(ME.profile_image, initials);
 
+    // "View as Employee" banner — shown whenever an admin is impersonating a user.
+    if (ME.impersonatedBy) {
+      const b = document.getElementById('viewAsBanner');
+      if (b) {
+        document.getElementById('viewAsName').textContent = ME.name;
+        b.style.display = 'flex';
+      }
+    }
+
     if (ME.role === 'admin') {
       document.getElementById('nav-users').style.display = 'flex';
       document.getElementById('nav-mis').style.display = 'flex';
@@ -3523,7 +3532,7 @@ async function loadDashboard() {
     document.getElementById('dTotal').textContent = 'Err';
     document.getElementById('dCompleted').textContent = 'Err';
     document.getElementById('dPending').textContent = 'Err';
-    document.getElementById('dashTbody').innerHTML = `<tr><td colspan="6" style="color:red;padding:16px;text-align:center">⚠️ Data load failed: ${errMsg}<br><small>Check /api/debug for details</small></td></tr>`;
+    document.getElementById('dashTbody').innerHTML = `<tr><td colspan="6" style="color:red;padding:16px;text-align:center">⚠️ Data load failed: ${dtEscape(errMsg)}<br><small>Please refresh, or contact your administrator if this persists.</small></td></tr>`;
     return;
   }
 
@@ -3555,7 +3564,6 @@ async function loadDashboard() {
     if (isAdmin) {
       document.getElementById('dashBtns').innerHTML = `
         <button class="btn btn-outline" style="border-color:#0284c7;color:#0284c7" onclick="openViewAsEmployee()">👁 View as Employee</button>
-        <button class="btn btn-outline" style="border-color:#7c3aed;color:#7c3aed" onclick="openEmployee360()">👤 Employee 360</button>
         <button class="btn btn-yellow" onclick="openHoliday()">🗓 Holidays</button>
         <button class="btn btn-green" onclick="openChecklist()">+ Checklist</button>
         <button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>`;
@@ -3718,30 +3726,23 @@ async function openViewAsEmployee(){
   document.getElementById('viewAsModal').classList.add('open');
 }
 
-function confirmViewAs(){
+async function confirmViewAs(){
   const sel = document.getElementById('viewAsSelect');
   const id = sel.value;
   if (!id) { showToast('Please select a user', 'error'); return; }
-  const name = sel.options[sel.selectedIndex].textContent;
-  const empFilter = document.getElementById('dashEmployeeFilter');
-  if (empFilter) {
-    if (!Array.from(empFilter.options).some(o => o.value === id)) {
-      const opt = document.createElement('option'); opt.value = id; opt.textContent = name; empFilter.appendChild(opt);
-    }
-    empFilter.value = id;
-  }
-  document.getElementById('viewAsName').textContent = name;
-  document.getElementById('viewAsBanner').style.display = 'flex';
-  closeModal('viewAsModal');
-  loadDashboard();
-  window.scrollTo(0, 0);
+  try {
+    const r = await api('/api/admin/impersonate', 'POST', { userId: parseInt(id, 10) });
+    if (r && r.error) { showToast(r.error, 'error'); return; }
+    // Fresh token is now set as a cookie — reload the app so it renders entirely
+    // as that user (their tabs, buttons, tasks — exactly what they see).
+    window.location.href = '/app';
+  } catch (e) { showToast(e.message || 'Failed to open dashboard', 'error'); }
 }
 
-function exitViewAs(){
-  const empFilter = document.getElementById('dashEmployeeFilter');
-  if (empFilter) empFilter.value = 'all';
-  document.getElementById('viewAsBanner').style.display = 'none';
-  loadDashboard();
+async function exitViewAs(){
+  try { await api('/api/admin/stop-impersonate', 'POST', {}); }
+  catch (e) { /* fall through to reload anyway */ }
+  window.location.href = '/app';
 }
 
 // Refresh PC employee dropdown — show only users with pending tasks
