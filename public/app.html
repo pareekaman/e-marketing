@@ -2855,19 +2855,29 @@ tbody tr:last-child td{border-bottom:none;}
       </div>
     </div>
 
-    <!-- STEP 2: Date selection -->
+    <!-- STEP 2: Date selection (range) -->
     <div id="transferStep2" style="display:none">
       <div class="form-group">
-        <label>Select Date</label>
-        <input type="date" id="transferDate" onchange="onTransferDateChange()"
-          style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
+        <label>Select Date Range <span style="font-weight:400;color:#94a3b8;font-size:11px">(leave “To” empty for a single day)</span></label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="flex:1;min-width:140px">
+            <div style="font-size:11px;color:#64748b;margin-bottom:4px">From</div>
+            <input type="date" id="transferDate" onchange="onTransferDateChange()"
+              style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
+          </div>
+          <div style="flex:1;min-width:140px">
+            <div style="font-size:11px;color:#64748b;margin-bottom:4px">To</div>
+            <input type="date" id="transferDateTo" onchange="onTransferDateChange()"
+              style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
+          </div>
+        </div>
       </div>
     </div>
 
     <!-- STEP 3: Tasks list -->
     <div id="transferStep3" style="display:none">
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">
-        Tasks on selected date — <span id="transferDateLabel" style="color:#7c3aed"></span>
+        Tasks in selected range — <span id="transferDateLabel" style="color:#7c3aed"></span>
       </div>
       <div id="transferTasksListNew" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;max-height:220px;overflow-y:auto;margin-bottom:12px"></div>
 
@@ -8357,6 +8367,7 @@ async function openNewTransferModal() {
   document.getElementById('transferStep3').style.display = 'none';
   document.getElementById('transferCancelBtn').style.display = 'block';
   document.getElementById('transferDate').value = '';
+  document.getElementById('transferDateTo').value = '';
   document.getElementById('transferTasksListNew').innerHTML = '';
   document.getElementById('transferToUser').innerHTML = '<option value="">-- Select user --</option>';
   _transferFromUserId = null;
@@ -8387,23 +8398,28 @@ async function onTransferFromChange() {
   _transferFromUserId = parseInt(val);
   document.getElementById('transferStep2').style.display = 'block';
   document.getElementById('transferDate').value = '';
+  document.getElementById('transferDateTo').value = '';
   document.getElementById('transferStep3').style.display = 'none';
 }
 
 async function onTransferDateChange() {
-  const date = document.getElementById('transferDate').value;
-  if (!date || !_transferFromUserId) return;
+  const fromV = document.getElementById('transferDate').value;
+  let toV = document.getElementById('transferDateTo').value || fromV; // empty "To" → single day
+  if (!fromV || !_transferFromUserId) return;
+  // Tolerate a reversed range — swap so from <= to.
+  let from = fromV, to = toV;
+  if (to < from) { const tmp = from; from = to; to = tmp; }
 
   document.getElementById('transferErr').style.display = 'none';
   document.getElementById('transferTasksListNew').innerHTML =
     '<div style="padding:10px;color:#94a3b8;font-size:13px">Loading...</div>';
   document.getElementById('transferStep3').style.display = 'block';
   document.getElementById('transferCancelBtn').style.display = 'none';
-  document.getElementById('transferDateLabel').textContent = date;
+  document.getElementById('transferDateLabel').textContent = from === to ? from : `${from} → ${to}`;
 
   const [delData, chlData] = await Promise.all([
-    api('/api/tasks?type=delegation'),
-    api('/api/tasks?type=checklist')
+    api(`/api/tasks?type=delegation&from=${from}&to=${to}`),
+    api(`/api/tasks?type=checklist&from=${from}&to=${to}`)
   ]);
 
   const allTasks = [];
@@ -8411,15 +8427,16 @@ async function onTransferDateChange() {
     const list = data.grouped
       ? (data.grouped.find(g => g.userId === _transferFromUserId)?.tasks || [])
       : (data.tasks || []);
-    list.forEach(t => { if (t.due_date === date && t.status === 'pending') allTasks.push({...t, taskType: type}); });
+    list.forEach(t => { if (t.due_date >= from && t.due_date <= to && t.status === 'pending') allTasks.push({...t, taskType: type}); });
   };
   pick(delData, 'delegation');
   pick(chlData, 'checklist');
+  allTasks.sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '') || (a.taskType < b.taskType ? -1 : 1));
   _transferDateTasks = allTasks;
 
   if (!allTasks.length) {
     document.getElementById('transferTasksListNew').innerHTML =
-      '<div style="padding:12px;color:#94a3b8;font-size:13px;text-align:center">No pending tasks on this date</div>';
+      '<div style="padding:12px;color:#94a3b8;font-size:13px;text-align:center">No pending tasks in this range</div>';
   } else {
     const pendingRes = await api('/api/transfers/pending-tasks');
     const pendingIds = new Set((pendingRes||[]).map(p=>`${p.task_type}_${p.task_id}`));
@@ -8430,6 +8447,7 @@ async function onTransferDateChange() {
           ? `<span style="font-size:10px;background:#fef9c3;color:#92400e;padding:2px 7px;border-radius:10px;font-weight:600;border:1px solid #fde68a;white-space:nowrap">⏳ Sent</span>`
           : `<input type="checkbox" class="tr-date-cb" data-idx="${i}" checked
               style="width:15px;height:15px;accent-color:#7c3aed;cursor:pointer;flex-shrink:0"/>`}
+        <span style="font-size:10px;background:#f1f5f9;color:#475569;padding:2px 6px;border-radius:6px;font-weight:600;white-space:nowrap">${t.due_date||'—'}</span>
         <span style="font-size:13px;flex:1">${t.description||'—'}</span>
         <span style="font-size:11px;background:#eff6ff;color:#1d4ed8;padding:2px 7px;border-radius:8px;font-weight:600">${t.taskType}</span>
       </div>`;
