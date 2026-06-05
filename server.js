@@ -1786,6 +1786,15 @@ app.get('/api/mis/all', requireAuth, requireAdminOrHodOnly, async (req, res) => 
       return { ...u, fms: { ...fms, score: fmsScore }, totalAll, pendingAll, overdueAll, revisedAll, completedAll, overallScore, plan };
     }).filter(u => u.totalAll > 0).sort((a,b) => a.name.localeCompare(b.name));
 
+    // Attach profile photos (used as the race-tracker runner avatars).
+    const ids = result.map(u => u.userId);
+    if (ids.length) {
+      const [imgs] = await db.query(`SELECT id, profile_image FROM users WHERE id IN (${ids.map(()=>'?').join(',')})`, ids);
+      const imgBy = {};
+      for (const r of imgs) imgBy[r.id] = r.profile_image || null;
+      for (const u of result) u.profileImage = imgBy[u.userId] || null;
+    }
+
     res.json(result);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -6837,6 +6837,10 @@ function renderRaceTracker(data) {
     const pct = Math.max(0, Math.min(100, 100 + score));
     const initials = emp.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
     const car = pickCar(idx);
+    // Runner avatar = profile photo if set, else the car emoji.
+    const runnerBody = emp.profileImage
+      ? `<img src="${emp.profileImage}" alt="" style="width:34px;height:34px;border-radius:50%;object-fit:cover;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)"/>`
+      : car;
 
     // Binary: green if no pending tasks, red otherwise. Finish-line variant when score reaches 0.
     let runnerClass, scoreClass;
@@ -6869,7 +6873,7 @@ function renderRaceTracker(data) {
           <div class="race-track-finish"></div>
           <div class="race-runner ${runnerClass}" style="left:${pct}%" title="${score > 0 ? '+' : ''}${score.toFixed(1)}%">
             <span class="race-runner-initials">${initials}</span>
-            ${car}
+            ${runnerBody}
           </div>
         </div>
         <div class="race-score-cell" onclick="openAllMISDetail(${emp.userId}, '${safeName}')" title="Click for ${escapeHtml(emp.name)}'s full task breakdown">
