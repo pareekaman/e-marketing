@@ -4815,10 +4815,66 @@ app.get('/api/compliance/employee/:id', requireAuth, requireAdmin, async (req, r
       : final >= 85 ? 'Excellent' : final >= 70 ? 'Good' : final >= 50 ? 'Average' : 'Needs Improvement';
     const scores = { categories: cat, weights, average, final, grade };
 
+    // ── Weekly Planned (committed) vs Actual (achieved) scoring ──
+    // Planned = score the employee committed in their Monday "My Week" check-in.
+    // Actual  = score auto-computed from that week's task performance (scoreFor).
+    // regression = committed score worse than the PREVIOUS week's achieved score.
+    const weekly = [];
+    {
+      const firstMon = istMondayOf(new Date(from + 'T00:00:00Z'));
+      const mondays = [];
+      for (let m = firstMon; m <= to; m = addDays(m, 7)) mondays.push(m);
+      // Include one week before the first as the regression baseline.
+      const baselineMon = addDays(firstMon, -7);
+      const allMons = [baselineMon, ...mondays];
+      const rangeStart = baselineMon;
+      const rangeEnd = mondays.length ? addDays(mondays[mondays.length - 1], 6) : addDays(baselineMon, 6);
+      const [planRows] = await db.query(
+        `SELECT DATE_FORMAT(start_date,'%Y-%m-%d') AS mon, user_committed_score
+           FROM week_plans WHERE employee_id=? AND start_date IN (${allMons.map(()=>'?').join(',')})`,
+        [id, ...allMons]);
+      const committedBy = {};
+      for (const r of planRows) committedBy[r.mon] = r.user_committed_score == null ? null : Number(r.user_committed_score);
+      // Achieved score per week — bucket tasks by their Monday (WEEKDAY: Mon=0), 2 grouped queries.
+      const wkExpr = `DATE_FORMAT(DATE_SUB(due_date, INTERVAL WEEKDAY(due_date) DAY),'%Y-%m-%d')`;
+      const [delWk] = await db.query(
+        `SELECT ${wkExpr} AS wk, COUNT(*) AS total,
+          SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
+          SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END) AS revised,
+          SUM(CASE WHEN status='pending' AND due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
+         FROM delegation_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ? GROUP BY wk`, [id, rangeStart, rangeEnd]);
+      const [chlWk] = await db.query(
+        `SELECT ${wkExpr} AS wk, COUNT(*) AS total,
+          SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
+          SUM(CASE WHEN status='pending' AND due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
+         FROM checklist_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ? GROUP BY wk`, [id, rangeStart, rangeEnd]);
+      const agg = {};
+      const bump = (wk, t, p, o, r) => { const a = agg[wk] || (agg[wk] = { total:0, pending:0, overdue:0, revised:0 }); a.total+=t; a.pending+=p; a.overdue+=o; a.revised+=r; };
+      for (const r of delWk) bump(r.wk, N(r.total), N(r.pending), N(r.overdue), N(r.revised));
+      for (const r of chlWk) bump(r.wk, N(r.total), N(r.pending), N(r.overdue), 0);
+      const achievedBy = {};
+      for (const wkMon of allMons) {
+        const a = agg[wkMon];
+        achievedBy[wkMon] = a ? scoreFor(a.total, a.pending, a.overdue, a.revised) : null;
+      }
+      for (const wkMon of mondays) {
+        const committed = wkMon in committedBy ? committedBy[wkMon] : null;
+        const achieved = achievedBy[wkMon];
+        const prevAchieved = achievedBy[addDays(wkMon, -7)];
+        weekly.push({
+          weekStart: wkMon, weekEnd: addDays(wkMon, 6),
+          committed, achieved,
+          prevAchieved: prevAchieved == null ? null : prevAchieved,
+          gap: (committed !== null && achieved !== null) ? Math.round((achieved - committed) * 10) / 10 : null,
+          regression: committed !== null && prevAchieved != null && committed < prevAchieved
+        });
+      }
+    }
+
     res.json({
       range: { from, to },
       user: { id: user.id, name: user.name, email: user.email, role: user.role, department: user.department },
-      delegation, checklist, dailyReport, recentEntries, clients, meetings, scores
+      delegation, checklist, dailyReport, recentEntries, clients, meetings, scores, weekly
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

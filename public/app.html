@@ -3044,6 +3044,7 @@ tbody tr:last-child td{border-bottom:none;}
       <div class="mw-target-line">
         Target <b id="mwPreviewVal">-10</b> · <span id="mwPreviewEmoji">⭐</span> <b id="mwPreviewRank">Achiever</b>
       </div>
+      <div id="mwRegressWarn" style="display:none;margin:10px 0 0;background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:10px;padding:9px 12px;font-size:12px;line-height:1.5;font-weight:600"></div>
     </div>
 
     <div class="mw-actions">
@@ -5919,6 +5920,17 @@ function mwRefreshPreview() {
   document.getElementById('mwPreviewVal').textContent   = (v > 0 ? '+' : '') + v;
   document.getElementById('mwPreviewEmoji').textContent = rank.icon;
   document.getElementById('mwPreviewRank').textContent  = rank.title;
+  // Warn if committing worse than last week's ACHIEVED score (regression).
+  const lastActual = MW_DATA?.lastWeek?.stats?.overall?.score;
+  const warn = document.getElementById('mwRegressWarn');
+  if (warn) {
+    if (lastActual !== null && lastActual !== undefined && v < lastActual) {
+      warn.style.display = 'block';
+      warn.innerHTML = `⚠️ Last week you <b>achieved ${mwFmtScore(lastActual)}</b> — you're committing <b>${mwFmtScore(v)}</b>, which is worse. Aim to match or beat it. (Admin ko ye flag dikhega.)`;
+    } else {
+      warn.style.display = 'none';
+    }
+  }
 }
 
 function mwSetPick(val) {
@@ -9675,6 +9687,32 @@ function renderEmp360(){
       <td style="text-align:right"><span class="e3-scorepill e3-scorepill-lg ${scoreTone(sc.final)}">${scoreTxt(sc.final)}</span></td>
     </tr>`;
   html += `</tbody></table>`;
+
+  // Weekly Planned (committed) vs Actual (achieved) scoring
+  const weekly = Array.isArray(d.weekly) ? d.weekly : [];
+  html += `<div class="e3-section-title">🎯 Weekly Planned vs Actual <span style="font-size:11px;color:#94a3b8;font-weight:600">(committed vs achieved · scale −100…0, higher = better)</span></div>`;
+  if (!weekly.length) {
+    html += `<div class="empty">No weeks in this range.</div>`;
+  } else {
+    const f = v => (v === null || v === undefined) ? '—' : (v > 0 ? '+' : '') + v;
+    html += `<table class="e3-table"><thead><tr>
+      <th>Week</th><th style="text-align:right">Planned</th><th style="text-align:right">Actual</th><th style="text-align:right">Gap</th><th></th></tr></thead><tbody>`;
+    for (const w of weekly) {
+      const gapTone = w.gap == null ? '' : w.gap >= 0 ? 'color:#16a34a;font-weight:700' : 'color:#dc2626;font-weight:700';
+      const flag = w.regression
+        ? `<span style="font-size:10px;background:#fffbeb;color:#92400e;border:1px solid #fde68a;padding:2px 8px;border-radius:10px;font-weight:700" title="Committed worse than previous week's achieved (${f(w.prevAchieved)})">⚠️ Below last week</span>`
+        : '';
+      html += `<tr${w.regression ? ' style="background:#fffbeb"' : ''}>
+        <td>${fmtDate(w.weekStart)} – ${fmtDate(w.weekEnd)}</td>
+        <td style="text-align:right">${f(w.committed)}</td>
+        <td style="text-align:right">${f(w.achieved)}</td>
+        <td style="text-align:right;${gapTone}">${f(w.gap)}</td>
+        <td>${flag}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+    html += `<div style="font-size:11px;color:#94a3b8;margin-top:6px">Planned = score committed in Monday check-in · Actual = achieved from tasks · Gap = Actual − Planned (green = beat commitment). ⚠️ = committed worse than previous week's achieved.</div>`;
+  }
 
   // Clients table with active/inactive toggle
   html += `<div class="e3-section-title">🏢 Clients Handled</div>`;
