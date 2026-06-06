@@ -1817,7 +1817,7 @@ app.get('/api/dashboard/activity', requireAuth, requireAdminOrHodOnly, async (re
       deptParams = [dept];
     }
     const [rows] = await db.query(
-      `SELECT u.id AS userId, u.name, u.department,
+      `SELECT u.id AS userId, u.name, u.department, u.profile_image AS profileImage,
          COALESCE((SELECT COUNT(*) FROM delegation_tasks dt
                    WHERE dt.assigned_to=u.id AND dt.due_date BETWEEN ? AND ?), 0)
          + COALESCE((SELECT COUNT(*) FROM checklist_tasks ct
@@ -1837,6 +1837,7 @@ app.get('/api/dashboard/activity', requireAuth, requireAdminOrHodOnly, async (re
         userId: r.userId,
         name: r.name,
         department: r.department || '',
+        profileImage: r.profileImage || null,
         active_tasks: Number(r.active_tasks) || 0,
         delegated_to_others: Number(r.delegated_to_others) || 0,
         revises_triggered: Number(r.revises_triggered) || 0,

@@ -3658,8 +3658,8 @@ async function loadDashboardPerfCharts(){
   const top    = [...completables].sort((a, b) => (parseInt(b.completedAll)||0) - (parseInt(a.completedAll)||0)).slice(0, 5);
   const bottomPool = racers.filter(r => r.overallScore !== null && r.overallScore !== undefined);
   const bottom = [...bottomPool].sort((a, b) => a.overallScore - b.overallScore).slice(0, 5);
-  renderDashPerfChart('dashTopChart',    'top',    top.map(r => r.name),    top.map(r => parseInt(r.completedAll)||0), '#16a34a', 'Tasks completed');
-  renderDashPerfChart('dashBottomChart', 'bottom', bottom.map(r => r.name), bottom.map(r => r.overallScore),           '#dc2626', 'Score');
+  renderDashPerfChart('dashTopChart',    'top',    top.map(r => r.name),    top.map(r => parseInt(r.completedAll)||0), '#16a34a', 'Tasks completed', null, top.map(r => r.profileImage));
+  renderDashPerfChart('dashBottomChart', 'bottom', bottom.map(r => r.name), bottom.map(r => r.overallScore),           '#dc2626', 'Score', null, bottom.map(r => r.profileImage));
 
   // Most Active — composite engagement: active tasks + tasks delegated to others + revises triggered + leaves submitted.
   const active = (Array.isArray(activityData) ? activityData : [])
@@ -3670,11 +3670,71 @@ async function loadDashboardPerfCharts(){
     active.map(r => r.activityScore || 0),
     '#1a56db',
     'Activity points',
-    active.map(r => `Active tasks: ${r.active_tasks} · Delegated to others: ${r.delegated_to_others} · Revises: ${r.revises_triggered} · Leaves: ${r.leaves_submitted}`)
+    active.map(r => `Active tasks: ${r.active_tasks} · Delegated to others: ${r.delegated_to_others} · Revises: ${r.revises_triggered} · Leaves: ${r.leaves_submitted}`),
+    active.map(r => r.profileImage)
   );
 }
 
-function renderDashPerfChart(canvasId, key, labels, values, color, axisLabel, breakdown){
+// Chart.js plugin — draws a circular profile photo (or initials fallback) plus the
+// name in the left gutter of a horizontal bar chart, replacing the native y labels.
+const perfAvatarPlugin = {
+  id: 'perfAvatars',
+  afterDraw(chart, _args, opts) {
+    const y = chart.scales.y;
+    if (!y) return;
+    const ctx = chart.ctx;
+    const labels = chart.data.labels || [];
+    const images = (opts && opts.images) || [];
+    const size = 24, ax = 6, textX = ax + size + 7;
+    const maxTextW = Math.max(20, chart.chartArea.left - textX - 4);
+    if (!chart._perfImgs) chart._perfImgs = {};
+    ctx.save();
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < labels.length; i++) {
+      const yPos = y.getPixelForTick(i);
+      const name = String(labels[i] || '');
+      const initials = name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+      const url = images[i];
+      const cx = ax + size / 2;
+      const drawInitials = () => {
+        ctx.save();
+        ctx.fillStyle = '#e2e8f0';
+        ctx.beginPath(); ctx.arc(cx, yPos, size / 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#475569'; ctx.font = "700 9px Inter, sans-serif"; ctx.textAlign = 'center';
+        ctx.fillText(initials, cx, yPos);
+        ctx.restore();
+      };
+      if (url) {
+        let img = chart._perfImgs[url];
+        if (!img) {
+          img = new Image();
+          img.onload = () => { try { chart.draw(); } catch (e) {} };
+          img.src = url;
+          chart._perfImgs[url] = img;
+        }
+        if (img.complete && img.naturalWidth) {
+          ctx.save();
+          ctx.beginPath(); ctx.arc(cx, yPos, size / 2, 0, Math.PI * 2); ctx.closePath(); ctx.clip();
+          ctx.drawImage(img, ax, yPos - size / 2, size, size);
+          ctx.restore();
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(cx, yPos, size / 2, 0, Math.PI * 2); ctx.stroke();
+        } else { drawInitials(); }
+      } else { drawInitials(); }
+      // Name (truncate to fit the gutter)
+      ctx.fillStyle = '#0f172a'; ctx.font = "600 11px Inter, sans-serif"; ctx.textAlign = 'left';
+      let txt = name;
+      if (ctx.measureText(txt).width > maxTextW) {
+        while (txt.length > 1 && ctx.measureText(txt + '…').width > maxTextW) txt = txt.slice(0, -1);
+        txt += '…';
+      }
+      ctx.fillText(txt, textX, yPos);
+    }
+    ctx.restore();
+  }
+};
+
+function renderDashPerfChart(canvasId, key, labels, values, color, axisLabel, breakdown, images){
   let wrap = document.getElementById(canvasId)?.parentElement;
   if (!wrap) wrap = document.querySelector(`#${canvasId}`)?.parentElement;
   if (!wrap) return;
@@ -3688,18 +3748,22 @@ function renderDashPerfChart(canvasId, key, labels, values, color, axisLabel, br
   }
   const ctx = document.getElementById(canvasId).getContext('2d');
   if (dashPerfCharts[key]) dashPerfCharts[key].destroy();
+  const hasImages = Array.isArray(images);
   dashPerfCharts[key] = new Chart(ctx, {
     type: 'bar',
     data: {
       labels,
       datasets: [{ label: axisLabel, data: values, backgroundColor: color, borderRadius: 6, maxBarThickness: 22 }]
     },
+    plugins: hasImages ? [perfAvatarPlugin] : [],
     options: {
       indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
+      layout: hasImages ? { padding: { left: 150 } } : {},
       plugins: {
         legend: { display: false },
+        perfAvatars: { images: images || [] },
         tooltip: {
           callbacks: {
             label: c => ` ${axisLabel}: ${typeof c.raw === 'number' ? c.raw.toFixed(1) : c.raw}`,
@@ -3709,7 +3773,7 @@ function renderDashPerfChart(canvasId, key, labels, values, color, axisLabel, br
       },
       scales: {
         x: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, color: '#64748b' } },
-        y: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' }, color: '#0f172a' } }
+        y: { grid: { display: false }, ticks: { display: !hasImages, font: { size: 11, weight: '600' }, color: '#0f172a' } }
       }
     }
   });
