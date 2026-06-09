@@ -1414,8 +1414,8 @@ app.get('/api/mis', requireAuth, requireAdminOrHodOnly, async (req, res) => {
       let score = total > 0 ? Math.max(-100, Math.round((0-(pending/total)*100-(overdue/total)*50-(revised/total)*25)*10)/10) : 0;
       return { ...r, delayed: overdue, score };
     });
-    const [delRows] = await db.query(`SELECT u.id AS userId,u.name,COUNT(*) AS total,SUM(CASE WHEN t.status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS completed,SUM(CASE WHEN t.status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN t.status='pending' AND t.due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue FROM delegation_tasks t JOIN users u ON t.assigned_to=u.id WHERE t.due_date BETWEEN ? AND ? ${deptFilter} GROUP BY u.id,u.name ORDER BY u.name`, deptParams);
-    const [chlRows] = await db.query(`SELECT u.id AS userId,u.name,COUNT(*) AS total,SUM(CASE WHEN t.status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS completed,0 AS revised,SUM(CASE WHEN t.status='pending' AND t.due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue FROM checklist_tasks t JOIN users u ON t.assigned_to=u.id WHERE t.due_date BETWEEN ? AND ? ${deptFilter} GROUP BY u.id,u.name ORDER BY u.name`, deptParams);
+    const [delRows] = await db.query(`SELECT u.id AS userId,u.name,COUNT(*) AS total,SUM(CASE WHEN t.status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS completed,SUM(CASE WHEN t.status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN t.status='pending' AND t.due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue FROM delegation_tasks t JOIN users u ON t.assigned_to=u.id WHERE t.due_date BETWEEN ? AND ? AND u.role <> 'client' AND u.client_id IS NULL ${deptFilter} GROUP BY u.id,u.name ORDER BY u.name`, deptParams);
+    const [chlRows] = await db.query(`SELECT u.id AS userId,u.name,COUNT(*) AS total,SUM(CASE WHEN t.status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS completed,0 AS revised,SUM(CASE WHEN t.status='pending' AND t.due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue FROM checklist_tasks t JOIN users u ON t.assigned_to=u.id WHERE t.due_date BETWEEN ? AND ? AND u.role <> 'client' AND u.client_id IS NULL ${deptFilter} GROUP BY u.id,u.name ORDER BY u.name`, deptParams);
     res.json({ delegation: calc(delRows), checklist: calc(chlRows) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1638,7 +1638,7 @@ app.get('/api/mis/all', requireAuth, requireAdminOrHodOnly, async (req, res) => 
         SUM(CASE WHEN t.status='revised' THEN 1 ELSE 0 END) AS revised,
         SUM(CASE WHEN t.status='pending' AND t.due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
        FROM delegation_tasks t JOIN users u ON t.assigned_to=u.id
-       WHERE t.due_date BETWEEN ? AND ? ${deptFilter}
+       WHERE t.due_date BETWEEN ? AND ? AND u.role <> 'client' AND u.client_id IS NULL ${deptFilter}
        GROUP BY u.id, u.name, u.department ORDER BY u.name`, deptParams);
 
     const [chlRows] = await db.query(
@@ -1649,7 +1649,7 @@ app.get('/api/mis/all', requireAuth, requireAdminOrHodOnly, async (req, res) => 
         0 AS revised,
         SUM(CASE WHEN t.status='pending' AND t.due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
        FROM checklist_tasks t JOIN users u ON t.assigned_to=u.id
-       WHERE t.due_date BETWEEN ? AND ? ${deptFilter}
+       WHERE t.due_date BETWEEN ? AND ? AND u.role <> 'client' AND u.client_id IS NULL ${deptFilter}
        GROUP BY u.id, u.name, u.department ORDER BY u.name`, deptParams);
 
     // Merge by userId
@@ -1829,7 +1829,7 @@ app.get('/api/dashboard/activity', requireAuth, requireAdminOrHodOnly, async (re
          COALESCE((SELECT COUNT(*) FROM leave_requests lr
                    WHERE lr.user_id=u.id AND DATE(lr.created_at) BETWEEN ? AND ?), 0) AS leaves_submitted
        FROM users u
-       WHERE 1=1${deptFilter}`,
+       WHERE u.role <> 'client' AND u.client_id IS NULL${deptFilter}`,
       [start, end, start, end, start, end, start, end, start, end, ...deptParams]
     );
     const scored = rows
@@ -2027,7 +2027,7 @@ app.get('/api/users', requireAuth, async (req, res) => {
               phone,department,week_off,extra_off,
               COALESCE(exclude_from_reminder,0) AS exclude_from_reminder,
               extra_access
-       FROM users ORDER BY name ASC`
+       FROM users WHERE role <> 'client' AND client_id IS NULL ORDER BY name ASC`
     );
     for (const r of rows) r.extra_access = parseExtraAccess(r.extra_access);
     res.json(rows);
