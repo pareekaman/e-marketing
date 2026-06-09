@@ -1006,6 +1006,12 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
       if (!c?.handler_id) return res.status(400).json({ error: 'Your client does not have a handler assigned yet — contact admin' });
       targetUser = c.handler_id;
       enforcedClientId = me.client_id; // force tag the task to client's own id
+      // Clients must give the handler lead time — due date can't be earlier than today + 2 days (IST).
+      const ist = new Date(Date.now() + (5.5*60*60*1000));
+      const minDate = new Date(ist.getTime() + 2*24*60*60*1000).toISOString().split('T')[0];
+      if (!date || date < minDate) {
+        return res.status(400).json({ error: `Due date kam se kam 2 din baad (${minDate}) ki honi chahiye` });
+      }
     } else {
       // Admin, HOD and regular users can all assign to others; fallback to self if not specified
       targetUser = (isAdmin || isHod || isUser) && assignedTo ? parseInt(assignedTo) : req.session.userId;

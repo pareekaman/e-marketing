@@ -565,9 +565,10 @@ function cpOpenDelegate(){
   document.getElementById('cpDelDesc').value = '';
   document.getElementById('cpDelRemarks').value = '';
   document.getElementById('cpDelPriority').value = 'low';
-  const today = new Date().toISOString().split('T')[0];
-  document.getElementById('cpDelDate').value = today;
-  document.getElementById('cpDelDate').min = today;
+  // Clients must give the handler lead time — earliest selectable due date is today + 2 days.
+  const minDate = new Date(Date.now() + 2*24*60*60*1000).toISOString().split('T')[0];
+  document.getElementById('cpDelDate').value = minDate;
+  document.getElementById('cpDelDate').min = minDate;
   document.getElementById('clientDelegateModal').classList.add('open');
 }
 
@@ -580,6 +581,8 @@ async function cpSaveDelegate(){
   const remarks = document.getElementById('cpDelRemarks').value.trim();
   if (!desc) { err.textContent = 'Description required'; err.style.display = 'block'; return; }
   if (!date) { err.textContent = 'Due date required'; err.style.display = 'block'; return; }
+  const minDate = new Date(Date.now() + 2*24*60*60*1000).toISOString().split('T')[0];
+  if (date < minDate) { err.textContent = 'Due date kam se kam 2 din baad ki honi chahiye'; err.style.display = 'block'; return; }
   const r = await api('/api/tasks', 'POST', { type:'delegation', desc, date, priority, remarks, approval:'no' });
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
   showToast('✅ Task sent to your handler');
