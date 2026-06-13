@@ -1170,6 +1170,13 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     const supportsApproval = tt === 'delegation';
     // The reviser is also the one who assigned the task → no separate approval needed.
     const reviserIsAssigner = Number(task.assigned_by) === Number(uid);
+    // Client-delegated task: the assigner is a client login (no approvals screen),
+    // so a doer's revise applies directly — no approval step.
+    let assignerIsClient = false;
+    try {
+      const [[asg]] = await db.query('SELECT role, client_id FROM users WHERE id=? LIMIT 1', [task.assigned_by]);
+      assignerIsClient = !!asg && (asg.role === 'client' || asg.client_id != null);
+    } catch (e) {}
 
     // While a revise/approval is pending, the doer can neither revise again nor mark done.
     // Privileged users (admin/PC) act directly; the assigner decides via the Approvals screen.
@@ -1183,6 +1190,12 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     // held in the approval row and applied to the task only once approved. Anyone
     // who can directly change a date should use Edit, not Revise.
     if (status === 'revised' && supportsApproval) {
+      // Client-delegated → apply the revise directly (push the new date), no approval.
+      if (assignerIsClient) {
+        if (newDate) await db.query(`UPDATE ${table} SET status='revised', waiting_approval=0, due_date=? WHERE id=?`, [newDate, req.params.id]);
+        else         await db.query(`UPDATE ${table} SET status='revised', waiting_approval=0 WHERE id=?`, [req.params.id]);
+        return res.json({ success: true, applied: true });
+      }
       await db.query(
         `INSERT INTO task_approvals (task_id,task_type,requested_by,requested_to,action_type,new_date,status,note)
          VALUES (?,?,?,?,?,?,'pending',?)`,
