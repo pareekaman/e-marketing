@@ -1361,10 +1361,12 @@ app.get('/api/approvals', requireAuth, async (req, res) => {
   try {
     const role = req.session.role;
     const isAdminOrPC = role === 'admin' || role === 'pc';
-    // Everyone — including admin/PC — sees only the approvals assigned to THEM
-    // (the assigner of the task). The red badge should ping the person who has
-    // to act, not every admin globally.
-    const whereClause = `WHERE ta.requested_to=? AND ta.status='pending'`;
+    // Everyone sees the approvals assigned to THEM (the task's assigner).
+    // Admin/PC ALSO see approvals routed to a client login — clients have no
+    // approvals screen, so those would otherwise be stuck with nobody able to act.
+    const whereClause = isAdminOrPC
+      ? `WHERE ta.status='pending' AND (ta.requested_to=? OR ta.requested_to IN (SELECT id FROM users WHERE role='client' OR client_id IS NOT NULL))`
+      : `WHERE ta.requested_to=? AND ta.status='pending'`;
     const params = [req.session.userId];
     const [rows] = await db.query(`SELECT ta.*,DATE_FORMAT(ta.new_date,'%Y-%m-%d') AS reviseToDate,u1.name AS requestedByName,u2.name AS requestedToName,dt.description,dt.approval AS taskApproval,DATE_FORMAT(dt.due_date,'%Y-%m-%d') AS currentDue FROM task_approvals ta JOIN users u1 ON ta.requested_by=u1.id JOIN users u2 ON ta.requested_to=u2.id LEFT JOIN delegation_tasks dt ON ta.task_id=dt.id AND ta.task_type='delegation' ${whereClause} ORDER BY ta.created_at DESC`, params);
     res.json(rows);
@@ -1373,12 +1375,13 @@ app.get('/api/approvals', requireAuth, async (req, res) => {
 
 app.get('/api/approvals/count', requireAuth, async (req, res) => {
   try {
-    // Count only the approvals waiting on THIS user (the task's assigner), for
-    // every role. The badge is a personal "you need to act" indicator.
-    const [rows] = await db.query(
-      `SELECT COUNT(*) AS count FROM task_approvals WHERE requested_to=? AND status='pending'`,
-      [req.session.userId]
-    );
+    // Count approvals waiting on THIS user; admin/PC also count client-routed
+    // (orphaned) ones so they surface in the badge instead of getting stuck.
+    const isAdminOrPC = req.session.role === 'admin' || req.session.role === 'pc';
+    const sql = isAdminOrPC
+      ? `SELECT COUNT(*) AS count FROM task_approvals WHERE status='pending' AND (requested_to=? OR requested_to IN (SELECT id FROM users WHERE role='client' OR client_id IS NOT NULL))`
+      : `SELECT COUNT(*) AS count FROM task_approvals WHERE requested_to=? AND status='pending'`;
+    const [rows] = await db.query(sql, [req.session.userId]);
     res.json({ count: rows[0].count });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
