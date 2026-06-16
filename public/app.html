@@ -4553,7 +4553,7 @@ function _buildTaskRowHtml(t, ctx) {
     <td style="white-space:nowrap;padding-right:12px" onclick="event.stopPropagation()">${actionBtns}</td>
     <td>${t.description||''}</td>
     <td style="white-space:nowrap">${t.assignedToName||''}</td>
-    <td style="white-space:nowrap">${t.assignedByName||''}</td>
+    <td style="white-space:nowrap">${(t.assignedByName && t.assignedByName.trim() && t.assignedByName !== '—') ? t.assignedByName : 'Simran Gurnani'}</td>
     <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}</td>
     ${clientCell}
     <td style="color:#64748b;max-width:220px;word-break:break-word;overflow-wrap:anywhere;font-size:12px">${t.remarks||'—'}</td>
@@ -4745,7 +4745,7 @@ function openTaskDetail(t) {
   document.getElementById('tdBody').innerHTML = [
     row('Description', dtEscape(t.description||'')),
     row('Doer', dtEscape(t.assignedToName||'')),
-    row('Assigned By', dtEscape(t.assignedByName||'')),
+    row('Assigned By', dtEscape((t.assignedByName && t.assignedByName.trim() && t.assignedByName !== '—') ? t.assignedByName : 'Simran Gurnani')),
     row('Due Date', fmtDate(t.due_date||'')),
     row('Client', t.client_name ? `<span style="background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span>` : null),
     row('Priority', priorityBadge),
