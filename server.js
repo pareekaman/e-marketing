@@ -1412,6 +1412,25 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Bulk-approve ALL pending revise requests (admin/PC). Applies each held new date
+// to its task and clears the waiting flag — clears orphaned/stuck revises in one go.
+app.post('/api/approvals/approve-all-revises', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const [pending] = await db.query(
+      `SELECT id, task_id, task_type, DATE_FORMAT(new_date,'%Y-%m-%d') AS nd
+         FROM task_approvals WHERE status='pending' AND action_type='revised'`);
+    let approved = 0;
+    for (const a of pending) {
+      const table = getTable(a.task_type);
+      if (a.nd) await db.query(`UPDATE ${table} SET status='revised', waiting_approval=0, due_date=? WHERE id=?`, [a.nd, a.task_id]);
+      else      await db.query(`UPDATE ${table} SET status='revised', waiting_approval=0 WHERE id=?`, [a.task_id]);
+      await db.query(`UPDATE task_approvals SET status='approved' WHERE id=?`, [a.id]);
+      approved++;
+    }
+    res.json({ ok: true, approved });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ══════════════════════════════════════════════════════
 // MIS
 // ══════════════════════════════════════════════════════

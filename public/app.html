@@ -5768,7 +5768,13 @@ async function loadApprovals() {
   if (!approvals.length) {
     container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">✅ No pending task approvals!</div>`;
   } else {
-    container.innerHTML = `
+    const reviseCount = approvals.filter(a => a.action_type === 'revised').length;
+    const bulkBtn = (reviseCount > 0 && (ME.role === 'admin' || ME.role === 'pc'))
+      ? `<div style="margin-bottom:12px;display:flex;justify-content:flex-end">
+           <button class="btn btn-primary" onclick="approveAllRevises()">✅ Approve all ${reviseCount} revise request${reviseCount>1?'s':''}</button>
+         </div>`
+      : '';
+    container.innerHTML = bulkBtn + `
       <div class="flat-tasks-table">
         <table>
           <thead><tr>
@@ -5790,6 +5796,15 @@ async function loadApprovals() {
         </table>
       </div>`;
   }
+}
+
+async function approveAllRevises() {
+  if (!await appConfirm('Saare pending revise requests approve kar dein? (proposed dates apply ho jayengi)')) return;
+  const r = await api('/api/approvals/approve-all-revises', 'POST', {});
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast(`✅ ${r.approved||0} revise request approved`);
+  loadApprovals();
+  loadApprovalBadge();
 }
 
 async function handleApproval(id, action) {
