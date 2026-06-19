@@ -5532,7 +5532,7 @@ function downloadUsersCSV() {
     u.phone || '',
     u.department || '',
     u.role || '',
-    u.userRole || ''
+    u.user_role || ''
   ].map(v => '"' + String(v).replace(/"/g, '""') + '"'));
   const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
