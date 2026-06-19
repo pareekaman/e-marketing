@@ -9380,8 +9380,8 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
                 style="padding:5px 12px;border:1.5px solid #7c3aed;border-radius:6px;font-size:12px;background:#fff;color:#7c3aed;font-weight:600;cursor:pointer">
                 👥 <span id="cmHandlerCount_${id}">${selIds.size ? selIds.size + ' selected' : 'Select handlers'}</span> ▾
               </button>
-              ${selIds.size ? `<button onclick="cmSaveHandlers(${id})"
-                style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;background:#7c3aed;color:#fff;font-weight:600;cursor:pointer">Save</button>` : ''}
+              <button onclick="cmSaveHandlers(${id})"
+                style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;background:#7c3aed;color:#fff;font-weight:600;cursor:pointer">Save</button>
             </div>
             <div id="cmHandlerDropdown_${id}" style="display:none;position:absolute;top:34px;left:0;z-index:99;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:240px;max-height:260px;overflow-y:auto;padding:6px 0">
               ${CM_USERS.filter(u=>u.role!=='client').map(u=>`
