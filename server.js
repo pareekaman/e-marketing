@@ -4945,21 +4945,21 @@ app.get('/api/compliance/employee/:id/week-tasks', requireAuth, requireAdmin, as
     const to   = isDate(req.query.to)   ? req.query.to   : null;
     if (!from || !to) return res.status(400).json({ error: 'from and to required' });
     const [delTasks] = await db.query(
-      `SELECT dt.id, dt.title, dt.status, DATE_FORMAT(dt.due_date,'%Y-%m-%d') AS due_date,
+      `SELECT dt.id, dt.description AS title, dt.status, DATE_FORMAT(dt.due_date,'%Y-%m-%d') AS due_date,
               COALESCE(c.name,'—') AS client_name, 'delegation' AS task_type,
               COALESCE(u2.name,'—') AS assigned_by
        FROM delegation_tasks dt
        LEFT JOIN clients c ON c.id = dt.client_id
-       LEFT JOIN users u2 ON u2.id = dt.created_by
+       LEFT JOIN users u2 ON u2.id = dt.assigned_by
        WHERE dt.assigned_to=? AND dt.due_date BETWEEN ? AND ?
        ORDER BY dt.due_date, dt.id`, [id, from, to]);
     const [chlTasks] = await db.query(
-      `SELECT ct.id, ct.title, ct.status, DATE_FORMAT(ct.due_date,'%Y-%m-%d') AS due_date,
+      `SELECT ct.id, ct.description AS title, ct.status, DATE_FORMAT(ct.due_date,'%Y-%m-%d') AS due_date,
               COALESCE(c.name,'—') AS client_name, 'checklist' AS task_type,
               COALESCE(u2.name,'—') AS assigned_by
        FROM checklist_tasks ct
        LEFT JOIN clients c ON c.id = ct.client_id
-       LEFT JOIN users u2 ON u2.id = ct.created_by
+       LEFT JOIN users u2 ON u2.id = ct.assigned_by
        WHERE ct.assigned_to=? AND ct.due_date BETWEEN ? AND ?
        ORDER BY ct.due_date, ct.id`, [id, from, to]);
     res.json([...delTasks, ...chlTasks].sort((a,b) => a.due_date < b.due_date ? -1 : 1));
