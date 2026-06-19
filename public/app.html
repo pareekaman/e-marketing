@@ -3628,11 +3628,13 @@ async function loadDashboard() {
       document.getElementById('dashBtns').innerHTML = `
         <button class="btn btn-yellow" onclick="openHoliday()">🗓 Holidays</button>
         <button class="btn btn-green" onclick="openChecklist()">+ Checklist</button>
-        <button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>`;
+        <button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>
+        <button class="btn" style="background:#7c3aed;color:#fff" onclick="openNewTransferModal()">🔀 Transfer</button>`;
     } else if (isHod) {
       document.getElementById('dashBtns').innerHTML = `
         <button class="btn btn-green" onclick="openChecklist()">+ Checklist</button>
-        <button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>`;
+        <button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>
+        <button class="btn" style="background:#7c3aed;color:#fff" onclick="openNewTransferModal()">🔀 Transfer</button>`;
     } else if (ME.role === 'user') {
       document.getElementById('dashBtns').innerHTML = `
         <button class="btn btn-primary" onclick="openDelegate()">+ Assign Task</button>`;
@@ -4260,7 +4262,6 @@ function renderDashTable(tasks, type) {
           ${revisedBadge}
           ${(!isPC || t.type==='checklist') ? `<button class="action-btn done" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>` : ''}
           ${(!isPC && t.type!=='checklist') ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${t.type}')">Revise</button>` : ''}
-          ${(isAdmin || isHod || isPC) ? `<button class="action-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;margin-left:3px" onclick="event.stopPropagation();openNewTransferModal()">🔀 Transfer</button>` : ''}
         `);
     return `<tr onclick="window._dashTaskMap[${t.id}]&&openTaskDetail(window._dashTaskMap[${t.id}])" style="cursor:pointer" title="Click to view details">
       <td style="white-space:nowrap">${typeBadge(t)}</td>
