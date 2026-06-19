@@ -1418,6 +1418,10 @@ tbody tr:last-child td{border-bottom:none;}
             style="padding:8px 12px 8px 32px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;width:260px"/>
         </div>
         <button class="btn btn-primary" onclick="openAddUser()">+ Add User</button>
+        <button class="btn btn-outline" onclick="downloadUsersCSV()" style="display:flex;align-items:center;gap:6px;white-space:nowrap">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download CSV
+        </button>
       </div>
     </div>
     <div class="users-grid">
@@ -5516,6 +5520,28 @@ function filterUsers() {
     (u.phone||'').includes(q)
   );
   renderUsersTable(filtered);
+}
+
+function downloadUsersCSV() {
+  const data = allUsersData;
+  if (!data || !data.length) { alert('No user data to download.'); return; }
+  const headers = ['Name','Email','Phone','Department','App Role','User Role'];
+  const rows = data.map(u => [
+    u.name || '',
+    u.email || '',
+    u.phone || '',
+    u.department || '',
+    u.role || '',
+    u.userRole || ''
+  ].map(v => '"' + String(v).replace(/"/g, '""') + '"'));
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'users.csv';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // Map to store full user data for safe edit access (avoids inline special-char bugs)
