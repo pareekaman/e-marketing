@@ -8725,7 +8725,7 @@ async function onTransferDateChange() {
     const list = data.grouped
       ? (data.grouped.find(g => g.userId === _transferFromUserId)?.tasks || [])
       : (data.tasks || []);
-    list.forEach(t => { if (t.due_date >= from && t.due_date <= to && t.status === 'pending') allTasks.push({...t, taskType: type}); });
+    list.forEach(t => { if (t.due_date >= from && t.due_date <= to && (t.status === 'pending' || t.status === 'revised')) allTasks.push({...t, taskType: type}); });
   };
   pick(delData, 'delegation');
   pick(chlData, 'checklist');
@@ -8734,7 +8734,7 @@ async function onTransferDateChange() {
 
   if (!allTasks.length) {
     document.getElementById('transferTasksListNew').innerHTML =
-      '<div style="padding:12px;color:#94a3b8;font-size:13px;text-align:center">No pending tasks in this range</div>';
+      '<div style="padding:12px;color:#94a3b8;font-size:13px;text-align:center">No pending or revised tasks in this range</div>';
   } else {
     const pendingRes = await api('/api/transfers/pending-tasks');
     const pendingIds = new Set((pendingRes||[]).map(p=>`${p.task_type}_${p.task_id}`));
