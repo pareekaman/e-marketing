@@ -1367,7 +1367,7 @@ app.get('/api/approvals', requireAuth, async (req, res) => {
     let whereClause, params;
     if (isAdminOrPC) { whereClause = `WHERE ta.status='pending'`; params = []; }
     else { whereClause = `WHERE ta.requested_to=? AND ta.status='pending'`; params = [req.session.userId]; }
-    const [rows] = await db.query(`SELECT ta.*,DATE_FORMAT(ta.new_date,'%Y-%m-%d') AS reviseToDate,u1.name AS requestedByName,u2.name AS requestedToName,dt.description,dt.approval AS taskApproval,DATE_FORMAT(dt.due_date,'%Y-%m-%d') AS currentDue FROM task_approvals ta JOIN users u1 ON ta.requested_by=u1.id JOIN users u2 ON ta.requested_to=u2.id LEFT JOIN delegation_tasks dt ON ta.task_id=dt.id AND ta.task_type='delegation' ${whereClause} ORDER BY ta.created_at DESC`, params);
+    const [rows] = await db.query(`SELECT ta.*,DATE_FORMAT(ta.new_date,'%Y-%m-%d') AS reviseToDate,COALESCE(u1.name,'(deleted)') AS requestedByName,COALESCE(u2.name,'(deleted)') AS requestedToName,COALESCE(dt.description,ct.description) AS description,dt.approval AS taskApproval,DATE_FORMAT(COALESCE(dt.due_date,ct.due_date),'%Y-%m-%d') AS currentDue FROM task_approvals ta LEFT JOIN users u1 ON ta.requested_by=u1.id LEFT JOIN users u2 ON ta.requested_to=u2.id LEFT JOIN delegation_tasks dt ON ta.task_id=dt.id AND ta.task_type='delegation' LEFT JOIN checklist_tasks ct ON ta.task_id=ct.id AND ta.task_type='checklist' ${whereClause} ORDER BY ta.created_at DESC`, params);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1400,7 +1400,9 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
     if (action === 'approved') {
       // Revise approved → push the held new date now. Other actions just set status.
       if (appr.action_type === 'revised' && appr.new_date_fmt) {
-        await db.query(`UPDATE ${table} SET status='revised',waiting_approval=0,due_date=? WHERE id=?`, [appr.new_date_fmt, appr.task_id]);
+        await db.query(`UPDATE ${table} SET status='pending',waiting_approval=0,due_date=? WHERE id=?`, [appr.new_date_fmt, appr.task_id]);
+      } else if (appr.action_type === 'revised') {
+        await db.query(`UPDATE ${table} SET status='pending',waiting_approval=0 WHERE id=?`, [appr.task_id]);
       } else {
         await db.query(`UPDATE ${table} SET status=?,waiting_approval=0 WHERE id=?`, [appr.action_type, appr.task_id]);
       }
@@ -1422,8 +1424,8 @@ app.post('/api/approvals/approve-all-revises', requireAuth, requireAdminOrPC, as
     let approved = 0;
     for (const a of pending) {
       const table = getTable(a.task_type);
-      if (a.nd) await db.query(`UPDATE ${table} SET status='revised', waiting_approval=0, due_date=? WHERE id=?`, [a.nd, a.task_id]);
-      else      await db.query(`UPDATE ${table} SET status='revised', waiting_approval=0 WHERE id=?`, [a.task_id]);
+      if (a.nd) await db.query(`UPDATE ${table} SET status='pending', waiting_approval=0, due_date=? WHERE id=?`, [a.nd, a.task_id]);
+      else      await db.query(`UPDATE ${table} SET status='pending', waiting_approval=0 WHERE id=?`, [a.task_id]);
       await db.query(`UPDATE task_approvals SET status='approved' WHERE id=?`, [a.id]);
       approved++;
     }
@@ -4911,12 +4913,16 @@ app.get('/api/compliance/employee/:id', requireAuth, requireAdmin, async (req, r
         const committed = wkMon in committedBy ? committedBy[wkMon] : null;
         const achieved = achievedBy[wkMon];
         const prevAchieved = achievedBy[addDays(wkMon, -7)];
+        const wAgg = agg[wkMon] || { total: 0, pending: 0, revised: 0 };
         weekly.push({
           weekStart: wkMon, weekEnd: addDays(wkMon, 6),
           committed, achieved,
           prevAchieved: prevAchieved == null ? null : prevAchieved,
           gap: (committed !== null && achieved !== null) ? Math.round((achieved - committed) * 10) / 10 : null,
-          regression: committed !== null && prevAchieved != null && committed < prevAchieved
+          regression: committed !== null && prevAchieved != null && committed < prevAchieved,
+          taskTotal: wAgg.total,
+          taskPending: wAgg.pending,
+          taskCompleted: Math.max(0, wAgg.total - wAgg.pending - (wAgg.revised || 0))
         });
       }
     }
@@ -4926,6 +4932,37 @@ app.get('/api/compliance/employee/:id', requireAuth, requireAdmin, async (req, r
       user: { id: user.id, name: user.name, email: user.email, role: user.role, department: user.department },
       delegation, checklist, dailyReport, recentEntries, clients, meetings, scores, weekly
     });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Week-level task detail for Employee 360 weekly table drill-down
+app.get('/api/compliance/employee/:id/week-tasks', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid employee id' });
+    const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+    const from = isDate(req.query.from) ? req.query.from : null;
+    const to   = isDate(req.query.to)   ? req.query.to   : null;
+    if (!from || !to) return res.status(400).json({ error: 'from and to required' });
+    const [delTasks] = await db.query(
+      `SELECT dt.id, dt.title, dt.status, DATE_FORMAT(dt.due_date,'%Y-%m-%d') AS due_date,
+              COALESCE(c.name,'—') AS client_name, 'delegation' AS task_type,
+              COALESCE(u2.name,'—') AS assigned_by
+       FROM delegation_tasks dt
+       LEFT JOIN clients c ON c.id = dt.client_id
+       LEFT JOIN users u2 ON u2.id = dt.created_by
+       WHERE dt.assigned_to=? AND dt.due_date BETWEEN ? AND ?
+       ORDER BY dt.due_date, dt.id`, [id, from, to]);
+    const [chlTasks] = await db.query(
+      `SELECT ct.id, ct.title, ct.status, DATE_FORMAT(ct.due_date,'%Y-%m-%d') AS due_date,
+              COALESCE(c.name,'—') AS client_name, 'checklist' AS task_type,
+              COALESCE(u2.name,'—') AS assigned_by
+       FROM checklist_tasks ct
+       LEFT JOIN clients c ON c.id = ct.client_id
+       LEFT JOIN users u2 ON u2.id = ct.created_by
+       WHERE ct.assigned_to=? AND ct.due_date BETWEEN ? AND ?
+       ORDER BY ct.due_date, ct.id`, [id, from, to]);
+    res.json([...delTasks, ...chlTasks].sort((a,b) => a.due_date < b.due_date ? -1 : 1));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

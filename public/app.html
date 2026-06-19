@@ -2700,6 +2700,19 @@ tbody tr:last-child td{border-bottom:none;}
 </div>
 
 <!-- ══════════════════════════════════════
+     WEEK TASK DRILL-DOWN MODAL (Employee 360)
+══════════════════════════════════════ -->
+<div class="modal-overlay" id="weekTaskModal" style="display:none;align-items:flex-start;padding-top:60px" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal" style="max-width:780px;width:95%;max-height:80vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-shrink:0">
+      <h3 style="margin:0;font-size:16px">📋 Tasks: <span id="weekTaskTitle"></span></h3>
+      <button onclick="document.getElementById('weekTaskModal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8;line-height:1">&times;</button>
+    </div>
+    <div id="weekTaskBody" style="overflow-y:auto;flex:1"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
      ADD/EDIT USER MODAL
 ══════════════════════════════════════ -->
 <div class="modal-overlay" id="userModal">
@@ -9823,17 +9836,25 @@ function renderEmp360(){
   } else {
     const f = v => (v === null || v === undefined) ? '—' : (v > 0 ? '+' : '') + v;
     html += `<table class="e3-table"><thead><tr>
-      <th>Week</th><th style="text-align:right">Planned</th><th style="text-align:right">Actual</th><th style="text-align:right">Gap</th><th></th></tr></thead><tbody>`;
+      <th>Week</th><th style="text-align:right">Planned</th><th style="text-align:right">Actual</th><th style="text-align:right">Gap</th>
+      <th style="text-align:right">Total Tasks</th><th style="text-align:right">Completed</th><th style="text-align:right">Pending</th>
+      <th></th></tr></thead><tbody>`;
+    const empId = document.getElementById('empSelect').value;
     for (const w of weekly) {
       const gapTone = w.gap == null ? '' : w.gap >= 0 ? 'color:#16a34a;font-weight:700' : 'color:#dc2626;font-weight:700';
       const flag = w.regression
         ? `<span style="font-size:10px;background:#fffbeb;color:#92400e;border:1px solid #fde68a;padding:2px 8px;border-radius:10px;font-weight:700" title="Committed worse than previous week's achieved (${f(w.prevAchieved)})">⚠️ Below last week</span>`
         : '';
+      const clickStyle = 'cursor:pointer;text-decoration:underline dotted;color:#2563eb;font-weight:600';
+      const pendStyle  = w.taskPending > 0 ? 'cursor:pointer;text-decoration:underline dotted;color:#dc2626;font-weight:700' : 'color:#94a3b8';
       html += `<tr${w.regression ? ' style="background:#fffbeb"' : ''}>
         <td>${fmtDate(w.weekStart)} – ${fmtDate(w.weekEnd)}</td>
         <td style="text-align:right">${f(w.committed)}</td>
         <td style="text-align:right">${f(w.achieved)}</td>
         <td style="text-align:right;${gapTone}">${f(w.gap)}</td>
+        <td style="text-align:right"><span style="${clickStyle}" onclick="emp360WeekDrill(${empId},'${w.weekStart}','${w.weekEnd}','all')">${w.taskTotal}</span></td>
+        <td style="text-align:right"><span style="${w.taskCompleted>0?clickStyle:'color:#94a3b8'}" onclick="emp360WeekDrill(${empId},'${w.weekStart}','${w.weekEnd}','completed')">${w.taskCompleted}</span></td>
+        <td style="text-align:right"><span style="${pendStyle}" onclick="emp360WeekDrill(${empId},'${w.weekStart}','${w.weekEnd}','pending')">${w.taskPending}</span></td>
         <td>${flag}</td>
       </tr>`;
     }
@@ -9908,6 +9929,51 @@ async function emp360ToggleClient(clientId, makeActive){
     loadEmp360(); // refresh counts + badges
   } catch(e) {
     showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+async function emp360WeekDrill(empId, weekStart, weekEnd, filter) {
+  const modal = document.getElementById('weekTaskModal');
+  const body  = document.getElementById('weekTaskBody');
+  document.getElementById('weekTaskTitle').textContent =
+    fmtDate(weekStart) + ' – ' + fmtDate(weekEnd);
+  body.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8">Loading…</div>';
+  modal.style.display = 'flex';
+  try {
+    const tasks = await api('/api/compliance/employee/' + empId + '/week-tasks?from=' + weekStart + '&to=' + weekEnd);
+    if (!Array.isArray(tasks) || tasks.error) throw new Error(tasks.error || 'Failed');
+    const filtered = filter === 'all' ? tasks
+      : tasks.filter(t => t.status === filter);
+    if (!filtered.length) {
+      body.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8">No tasks found.</div>';
+      return;
+    }
+    const statusBadge = s =>
+      s==='completed' ? '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">Completed</span>'
+      : s==='pending'   ? '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">Pending</span>'
+      : s==='revised'   ? '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">Revised</span>'
+      : `<span style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:10px;font-size:11px">${dtEscape(s)}</span>`;
+    const typeLabel = t => t==='delegation'
+      ? '<span style="font-size:10px;color:#6366f1;font-weight:600">Delegation</span>'
+      : '<span style="font-size:10px;color:#0891b2;font-weight:600">Checklist</span>';
+    body.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:#f8fafc;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.05em">
+        <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #e2e8f0">Task</th>
+        <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #e2e8f0">Type</th>
+        <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #e2e8f0">Client</th>
+        <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #e2e8f0">Due</th>
+        <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #e2e8f0">Status</th>
+      </tr></thead><tbody>` +
+      filtered.map(t => `<tr style="border-bottom:1px solid #f1f5f9">
+        <td style="padding:8px 10px;font-weight:500">${dtEscape(t.title)}</td>
+        <td style="padding:8px 10px">${typeLabel(t.task_type)}</td>
+        <td style="padding:8px 10px;color:#64748b">${dtEscape(t.client_name)}</td>
+        <td style="padding:8px 10px;color:#64748b">${fmtDate(t.due_date)}</td>
+        <td style="padding:8px 10px">${statusBadge(t.status)}</td>
+      </tr>`).join('') +
+      '</tbody></table>';
+  } catch(e) {
+    body.innerHTML = '<div style="color:#dc2626;padding:16px">Failed: ' + dtEscape(e.message) + '</div>';
   }
 }
 
