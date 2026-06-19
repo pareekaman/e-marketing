@@ -3293,6 +3293,15 @@ const _clientsTableMigrationsPromise = (async () => {
   // Active flag — admin/PC marks a client active or inactive (e.g. churned). Drives
   // the active/inactive split in the Compliance → Employee 360 view used at increment time.
   await sa(`ALTER TABLE clients ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER system_links`);
+  // Multiple handlers per client (many-to-many). handler_id stays as primary handler for backward compat.
+  await sa(`CREATE TABLE IF NOT EXISTS client_handlers (
+    client_id INT NOT NULL,
+    user_id   INT NOT NULL,
+    PRIMARY KEY (client_id, user_id),
+    KEY idx_ch_user (user_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  // Seed from existing handler_id values so old data is preserved.
+  await sa(`INSERT IGNORE INTO client_handlers (client_id, user_id) SELECT id, handler_id FROM clients WHERE handler_id IS NOT NULL`);
   // Allow "client" as a login role + back-link users to clients so the client
   // portal can resolve "my client" from the session.
   await sa(`ALTER TABLE users MODIFY COLUMN role ENUM('admin','hod','pc','user','client') DEFAULT 'user'`);
@@ -4367,6 +4376,36 @@ app.put('/api/clients/:id', requireAuth, requireAdminOrPC, async (req, res) => {
     if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Client name already exists' });
     res.status(500).json({ error: err.message });
   }
+});
+
+// Multi-handler support — get all handlers for a client
+app.get('/api/clients/:id/handlers', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT ch.user_id AS id, u.name, COALESCE(u.department,'') AS department
+       FROM client_handlers ch JOIN users u ON u.id=ch.user_id
+       WHERE ch.client_id=? ORDER BY u.name`, [req.params.id]);
+    res.json(rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// Multi-handler support — replace all handlers for a client
+app.put('/api/clients/:id/handlers', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const userIds = Array.isArray(req.body.user_ids)
+      ? req.body.user_ids.map(Number).filter(n => Number.isFinite(n) && n > 0)
+      : [];
+    await db.query('DELETE FROM client_handlers WHERE client_id=?', [id]);
+    if (userIds.length) {
+      await db.query(
+        `INSERT INTO client_handlers (client_id, user_id) VALUES ${userIds.map(() => '(?,?)').join(',')}`,
+        userIds.flatMap(uid => [id, uid]));
+    }
+    // Keep primary handler_id in sync with first selected (for backward compat)
+    await db.query('UPDATE clients SET handler_id=? WHERE id=?', [userIds[0] || null, id]);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 app.delete('/api/clients/:id', requireAuth, requireAdmin, async (req, res) => {
