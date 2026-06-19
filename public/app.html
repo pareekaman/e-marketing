@@ -9367,31 +9367,25 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
             </div>
           </div>
         </div>
-        <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;margin-top:8px">
-          <label style="font-size:11px;color:#64748b;font-weight:600;padding-top:6px">Handlers:</label>
-          <div style="position:relative" id="cmHandlerWidget_${id}">
-            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-              <select id="cmDeptFilter_${id}" onchange="cmFilterHandlerList(${id})"
-                style="padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;outline:none">
-                <option value="">All Departments</option>
-                ${[...new Set(CM_USERS.map(u=>u.department||'').filter(Boolean))].sort().map(d=>`<option value="${dtEscape(d)}">${dtEscape(d)}</option>`).join('')}
-              </select>
-              <button onclick="cmToggleHandlerDropdown(${id})"
-                style="padding:5px 12px;border:1.5px solid #7c3aed;border-radius:6px;font-size:12px;background:#fff;color:#7c3aed;font-weight:600;cursor:pointer">
-                👥 <span id="cmHandlerCount_${id}">${selIds.size ? selIds.size + ' selected' : 'Select handlers'}</span> ▾
-              </button>
-              <button onclick="cmSaveHandlers(${id})"
-                style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;background:#7c3aed;color:#fff;font-weight:600;cursor:pointer">Save</button>
-            </div>
-            <div id="cmHandlerDropdown_${id}" style="display:none;position:absolute;top:34px;left:0;z-index:99;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:240px;max-height:260px;overflow-y:auto;padding:6px 0">
-              ${CM_USERS.filter(u=>u.role!=='client').map(u=>`
-                <label data-dept="${dtEscape(u.department||'')}" style="display:flex;align-items:center;gap:8px;padding:7px 14px;cursor:pointer;font-size:13px;transition:background .1s" onmouseover="this.style.background='#f8f5ff'" onmouseout="this.style.background=''">
-                  <input type="checkbox" class="cm-handler-cb_${id}" value="${u.id}" ${selIds.has(String(u.id))?'checked':''}
-                    style="width:15px;height:15px;accent-color:#7c3aed;cursor:pointer" onchange="cmHandlerCbChange(${id})"/>
-                  <span>${dtEscape(u.name)}</span>
-                  ${u.department?`<span style="font-size:10px;color:#94a3b8;margin-left:auto">${dtEscape(u.department)}</span>`:''}
-                </label>`).join('')}
-            </div>
+        <div style="margin-top:10px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:12px 14px">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+            <label style="font-size:11px;color:#64748b;font-weight:600">Department:</label>
+            <select id="cmDeptFilter_${id}" onchange="cmFilterHandlerList(${id})"
+              style="padding:5px 12px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer">
+              <option value="">All Departments</option>
+              ${[...new Set(CM_USERS.filter(u=>u.role!=='client').map(u=>u.department||'').filter(Boolean))].sort().map(d=>`<option value="${dtEscape(d)}">${dtEscape(d)}</option>`).join('')}
+            </select>
+            <span id="cmHandlerCount_${id}" style="font-size:11px;color:#7c3aed;font-weight:600;margin-left:4px">${selIds.size ? selIds.size + ' selected' : ''}</span>
+            <button onclick="cmSaveHandlers(${id})"
+              style="margin-left:auto;padding:5px 16px;border:none;border-radius:6px;font-size:12px;background:#7c3aed;color:#fff;font-weight:600;cursor:pointer">Save</button>
+          </div>
+          <div id="cmHandlerList_${id}" style="display:flex;flex-wrap:wrap;gap:4px 0">
+            ${CM_USERS.filter(u=>u.role!=='client').map(u=>`
+              <label data-dept="${dtEscape(u.department||'')}" style="display:flex;align-items:center;gap:7px;padding:6px 12px;cursor:pointer;font-size:13px;border-radius:6px;width:50%;box-sizing:border-box;transition:background .1s" onmouseover="this.style.background='#f0e9ff'" onmouseout="this.style.background=''">
+                <input type="checkbox" class="cm-handler-cb_${id}" value="${u.id}" ${selIds.has(String(u.id))?'checked':''}
+                  style="width:15px;height:15px;accent-color:#7c3aed;cursor:pointer;flex-shrink:0" onchange="cmHandlerCbChange(${id})"/>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dtEscape(u.name)}</span>
+              </label>`).join('')}
           </div>
         </div>
       </div>
@@ -9556,26 +9550,11 @@ async function cmUpdateHandler(clientId, handlerId) {
   } catch(e) { showToast('Update failed', 'error'); }
 }
 
-function cmInitHandlerWidget(id) {
-  // Close dropdown when clicking outside
-  document.addEventListener('click', function _close(e) {
-    const w = document.getElementById('cmHandlerWidget_' + id);
-    if (!w || !w.contains(e.target)) {
-      const dd = document.getElementById('cmHandlerDropdown_' + id);
-      if (dd) dd.style.display = 'none';
-      document.removeEventListener('click', _close);
-    }
-  });
-}
-
-function cmToggleHandlerDropdown(id) {
-  const dd = document.getElementById('cmHandlerDropdown_' + id);
-  if (dd) dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
-}
+function cmInitHandlerWidget(id) { /* no-op: list is always visible */ }
 
 function cmFilterHandlerList(id) {
   const dept = document.getElementById('cmDeptFilter_' + id)?.value || '';
-  document.querySelectorAll(`#cmHandlerDropdown_${id} label`).forEach(lbl => {
+  document.querySelectorAll(`#cmHandlerList_${id} label`).forEach(lbl => {
     lbl.style.display = (!dept || lbl.dataset.dept === dept) ? 'flex' : 'none';
   });
 }
