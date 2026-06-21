@@ -4239,7 +4239,7 @@ function openInvAddModal() {
   document.getElementById('invPhotoPreview').style.display = 'none';
   document.getElementById('invAddErr').style.display = 'none';
   _invPhotoBase64 = null;
-  openModal('invAddModal');
+  document.getElementById('invAddModal').classList.add('open');
 }
 
 async function saveInventoryItem() {
@@ -4278,7 +4278,7 @@ async function openInvAssignModal(itemId, itemName) {
   const sel = document.getElementById('invAssignUser');
   sel.innerHTML = '<option value="">Select employee…</option>' +
     (users||[]).filter(u=>u.role!=='client').map(u=>`<option value="${u.id}">${esc(u.name)} (${esc(u.department||'')})</option>`).join('');
-  openModal('invAssignModal');
+  document.getElementById('invAssignModal').classList.add('open');
 }
 
 async function doAssign() {
@@ -4296,7 +4296,7 @@ function openInvHandoverModal(assignmentId, itemName, userName) {
   document.getElementById('invHandoverDesc').textContent = `Item: ${itemName} — currently with ${userName}`;
   document.getElementById('invHandoverNotes').value = '';
   document.getElementById('invHandoverErr').style.display = 'none';
-  openModal('invHandoverModal');
+  document.getElementById('invHandoverModal').classList.add('open');
 }
 
 async function doHandover() {
@@ -4443,7 +4443,7 @@ function openHrmAddModal() {
   document.getElementById('hrmCDate').value = '';
   document.getElementById('hrmCTime').value = '';
   document.getElementById('hrmAddErr').style.display = 'none';
-  openModal('hrmAddModal');
+  document.getElementById('hrmAddModal').classList.add('open');
 }
 
 async function saveHrmCandidate() {
@@ -4478,7 +4478,7 @@ function openHrmStatusModal(id) {
   document.getElementById('hrmReschedFields').style.display  = 'none';
   document.getElementById('hrmOfferFields').style.display    = 'none';
   document.getElementById('hrmStatusWaNote').style.display   = 'none';
-  openModal('hrmStatusModal');
+  document.getElementById('hrmStatusModal').classList.add('open');
 }
 
 function onHrmStatusChange() {
