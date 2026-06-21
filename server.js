@@ -6535,7 +6535,8 @@ const HRM_COMPANY         = process.env.HRM_COMPANY || 'E-Marketing';
 async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateName, action) {
   let status = 'Failed', errorDetail = '';
   try {
-    const resp = await fetch(endpoint, {
+    const fetchFn = global.fetch || (await import('node-fetch')).default;
+    const resp = await fetchFn(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': HRM_AMUFIY_API_KEY },
       body: JSON.stringify(payload)
@@ -6683,7 +6684,8 @@ app.post('/api/hrm/messages/:id/retry', requireAuth, async (req, res) => {
 
     let status = 'Failed', errorDetail = '';
     try {
-      const resp = await fetch(parsed.endpoint, {
+      const fetchFn = global.fetch || (await import('node-fetch')).default;
+      const resp = await fetchFn(parsed.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': HRM_AMUFIY_API_KEY },
         body: JSON.stringify(parsed.body)

@@ -11,7 +11,12 @@
       "Bash(gh auth *)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\USER\\\\Downloads\\\\emarketing-task-manager\\\\emarketing\" -Recurse -File)",
       "Bash(Select-Object -ExpandProperty Name -First 50)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(node --check server.js)",
+      "Bash(node -e ' *)"
     ]
   }
 }
