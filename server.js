@@ -392,24 +392,8 @@ const _startupMigrationsPromise = (async () => {
   // Add reschedule_reason column to existing installs
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN IF NOT EXISTS reschedule_reason TEXT DEFAULT ''`);
 
-  // ── Role Permissions table ────────────────────────────
-  await sa(`CREATE TABLE IF NOT EXISTS role_permissions (
-    role ENUM('hod','pc','user') PRIMARY KEY,
-    pages TEXT DEFAULT '[]',
-    actions TEXT DEFAULT '[]'
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
-
-  const defaultRolePerms = {
-    hod:  { pages: ['dashboard','alltasks','approvals','mis','hrm','leaves','meetings','daily','fms-tasks','inventory'],
-             actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','hrm_schedule','hrm_update_status','delete_leave'] },
-    pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory'],
-             actions: ['approve_revision','bulk_approve','create_task','reopen_task'] },
-    user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory'],
-             actions: ['create_task'] }
-  };
-  for (const [role, perms] of Object.entries(defaultRolePerms)) {
-    await sa(`INSERT IGNORE INTO role_permissions (role, pages, actions) VALUES ('${role}', '${JSON.stringify(perms.pages)}', '${JSON.stringify(perms.actions)}')`);
-  }
+  // Per-user permissions column (replaces role_permissions)
+  await sa(`ALTER TABLE users ADD COLUMN IF NOT EXISTS user_permissions TEXT DEFAULT NULL AFTER extra_access`);
 
   console.log('  ✅ DB migrations checked');
 
@@ -924,7 +908,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
     const [rows] = await db.query(
       `SELECT id,name,email,notification_email,role,
               COALESCE(user_role, role) AS user_role,
-              phone,profile_image,department,week_off,extra_access
+              phone,profile_image,department,week_off,extra_access,user_permissions
        FROM users WHERE id=?`, [req.session.userId]);
     if (!rows[0]) return res.status(404).json({ error: 'User not found' });
     // extra_off fetch separately — safe if column not yet added
@@ -933,6 +917,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
       rows[0].extra_off = ex[0]?.extra_off || '';
     } catch(e) { rows[0].extra_off = ''; }
     rows[0].extra_access = parseExtraAccess(rows[0].extra_access);
+    rows[0].user_permissions = rows[0].user_permissions ? (() => { try { return JSON.parse(rows[0].user_permissions); } catch { return null; } })() : null;
     rows[0].canViewAllLeaves = isLeaveReportViewer(rows[0]);
     // When an admin is "viewing as" this user, expose who's really behind the wheel
     // so the UI can show an exit-impersonation banner.
@@ -2258,10 +2243,11 @@ app.get('/api/users', requireAuth, async (req, res) => {
               COALESCE(user_role, role) AS user_role,
               phone,department,week_off,extra_off,
               COALESCE(exclude_from_reminder,0) AS exclude_from_reminder,
-              extra_access
+              extra_access,user_permissions
        FROM users WHERE role <> 'client' AND client_id IS NULL ORDER BY name ASC`
     );
     for (const r of rows) r.extra_access = parseExtraAccess(r.extra_access);
+    for (const r of rows) r.user_permissions = r.user_permissions ? (() => { try { return JSON.parse(r.user_permissions); } catch { return null; } })() : null;
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2327,39 +2313,20 @@ app.post('/api/users/bulk', requireAuth, requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ══════════════════════════════════════════════════════
-// ROLE PERMISSIONS
-// ══════════════════════════════════════════════════════
-const VALID_RP_PAGES   = new Set(['dashboard','alltasks','approvals','mis','race','fms','fms-tasks','daily','clients','compliance','dailyreports','leaves','meetings','inventory','hrm','users']);
-const VALID_RP_ACTIONS = new Set(['edit_task','delete_task','create_task','create_checklist','approve_revision','bulk_approve','transfer_task','reopen_task','delete_leave','set_plan','hrm_schedule','hrm_update_status']);
+// Per-user permission overrides
+const VALID_UP_PAGES   = new Set(['dashboard','alltasks','approvals','mis','race','fms','fms-tasks','daily','clients','compliance','dailyreports','leaves','meetings','inventory','hrm','users']);
+const VALID_UP_ACTIONS = new Set(['edit_task','delete_task','create_task','create_checklist','approve_revision','bulk_approve','transfer_task','reopen_task','delete_leave','set_plan','hrm_schedule','hrm_update_status']);
 
-app.get('/api/role-permissions', requireAuth, async (req, res) => {
+app.put('/api/user-permissions/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT role, pages, actions FROM role_permissions');
-    const result = { admin: { pages: 'all', actions: 'all' } };
-    for (const r of rows) {
-      result[r.role] = {
-        pages:   (() => { try { return JSON.parse(r.pages);   } catch { return []; } })(),
-        actions: (() => { try { return JSON.parse(r.actions); } catch { return []; } })()
-      };
-    }
-    res.json(result);
-  } catch(err) { res.status(500).json({ error: err.message }); }
-});
-
-app.put('/api/role-permissions/:role', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const validRoles = ['hod','pc','user'];
-    const { role } = req.params;
-    if (!validRoles.includes(role)) return res.status(400).json({ error: 'Invalid role' });
+    const userId = parseInt(req.params.id);
+    if (!userId) return res.status(400).json({ error: 'Invalid user ID' });
     const { pages, actions } = req.body;
-    if (!Array.isArray(pages) || !Array.isArray(actions)) return res.status(400).json({ error: 'pages and actions must be arrays' });
-    const cleanPages   = pages.filter(p => VALID_RP_PAGES.has(p));
-    const cleanActions = actions.filter(a => VALID_RP_ACTIONS.has(a));
-    await db.query(
-      'INSERT INTO role_permissions (role,pages,actions) VALUES (?,?,?) ON DUPLICATE KEY UPDATE pages=VALUES(pages),actions=VALUES(actions)',
-      [role, JSON.stringify(cleanPages), JSON.stringify(cleanActions)]
-    );
+    if (!Array.isArray(pages) || !Array.isArray(actions)) return res.status(400).json({ error: 'Invalid data' });
+    const cleanPages   = pages.filter(p => VALID_UP_PAGES.has(p));
+    const cleanActions = actions.filter(a => VALID_UP_ACTIONS.has(a));
+    await db.query('UPDATE users SET user_permissions=? WHERE id=?',
+      [JSON.stringify({ pages: cleanPages, actions: cleanActions }), userId]);
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
