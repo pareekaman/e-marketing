@@ -1232,6 +1232,15 @@ tbody tr:last-child td{border-bottom:none;}
       <span class="nav-label-text">Daily Reports</span>
     </div>
     <div class="nav-divider"></div>
+    <div class="nav-item" id="nav-inventory" onclick="navigate('inventory',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+      <span class="nav-label-text">Inventory</span>
+    </div>
+    <div class="nav-item" id="nav-hrm" style="display:none" onclick="navigate('hrm',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      <span class="nav-label-text">HR Portal</span>
+    </div>
+    <div class="nav-divider"></div>
     <div class="nav-item" onclick="navigate('profile',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
       <span class="nav-label-text">Profile</span>
@@ -1410,25 +1419,54 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- ── USERS ── -->
   <div id="page-users" class="page">
-    <div class="page-header">
-      <div style="display:flex;align-items:center;gap:10px">
+    <!-- Tab bar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div class="tab-group" style="width:fit-content">
+        <div class="tab active" id="usersSubTab-users" onclick="switchUsersTab('users',this)">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:5px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          Users
+        </div>
+        <div class="tab" id="usersSubTab-access" onclick="switchUsersTab('access',this)">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:5px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+          Access Control
+        </div>
+      </div>
+      <!-- Users tab actions -->
+      <div id="usersTabActions" style="display:flex;gap:8px;align-items:center">
         <div style="position:relative">
           <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#94a3b8">🔍</span>
           <input type="text" id="userSearch" placeholder="Search by name, email, dept, role…" oninput="filterUsers()"
-            style="padding:8px 12px 8px 32px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;width:260px"/>
+            style="padding:8px 12px 8px 32px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;width:240px"/>
         </div>
         <button class="btn btn-primary" onclick="openAddUser()">+ Add User</button>
         <button class="btn btn-outline" onclick="downloadUsersCSV()" style="display:flex;align-items:center;gap:6px;white-space:nowrap">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Download CSV
+          CSV
         </button>
       </div>
     </div>
-    <div class="users-grid">
-      <table>
-        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Department</th><th>Role</th><th>Action</th></tr></thead>
-        <tbody id="usersTbody"></tbody>
-      </table>
+
+    <!-- Users sub-panel -->
+    <div id="usersSubPanel-users">
+      <div class="users-grid">
+        <table>
+          <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Department</th><th>Role</th><th>Action</th></tr></thead>
+          <tbody id="usersTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Access Control sub-panel -->
+    <div id="usersSubPanel-access" style="display:none">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:auto">
+        <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:14px;font-weight:700">Page Access Control</div>
+            <div style="font-size:12px;color:#64748b;margin-top:2px">Toggle which pages each user can see. Grayed toggles = granted by role (can't remove).</div>
+          </div>
+        </div>
+        <div id="accessMatrix"><div class="empty">Loading…</div></div>
+      </div>
     </div>
   </div>
 
@@ -1986,6 +2024,378 @@ tbody tr:last-child td{border-bottom:none;}
        Client Detail page but without the admin-only controls. ── -->
   <div id="page-client-portal" class="page">
     <div id="cpContent"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       INVENTORY PAGE
+  ══════════════════════════════════════ -->
+  <div id="page-inventory" class="page">
+    <div class="page-header">
+      <h2>📦 Inventory</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="invFilterType" onchange="renderInventory()" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
+          <option value="">All Types</option>
+          <option value="laptop">💻 Laptop</option>
+          <option value="keyboard">⌨️ Keyboard</option>
+          <option value="mouse">🖱️ Mouse</option>
+          <option value="mobile">📱 Mobile</option>
+          <option value="sim">📶 SIM</option>
+          <option value="charger">🔌 Charger</option>
+          <option value="other">📦 Other</option>
+        </select>
+        <select id="invFilterStatus" onchange="renderInventory()" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
+          <option value="">All Status</option>
+          <option value="available">Available</option>
+          <option value="assigned">Assigned</option>
+          <option value="damaged">Damaged</option>
+          <option value="retired">Retired</option>
+        </select>
+        <button id="invAddBtn" class="btn btn-primary" style="display:none" onclick="openInvAddModal()">＋ Add Item</button>
+      </div>
+    </div>
+
+    <!-- Tab: My Items / All Items / Assignments (admin) -->
+    <div class="tab-group" id="invTabs" style="margin-bottom:16px;width:fit-content">
+      <div class="tab active" onclick="switchInvTab('mine',this)">My Equipment</div>
+      <div class="tab" id="invTabAll" style="display:none" onclick="switchInvTab('all',this)">All Equipment</div>
+      <div class="tab" id="invTabAssign" style="display:none" onclick="switchInvTab('assignments',this)">Assignments</div>
+    </div>
+
+    <!-- Stats row (admin only) -->
+    <div id="invStats" style="display:none;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">
+        <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Total Items</div>
+        <div id="invStatTotal" style="font-size:26px;font-weight:700;color:#1a56db">0</div>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">
+        <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Assigned</div>
+        <div id="invStatAssigned" style="font-size:26px;font-weight:700;color:#f59e0b">0</div>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">
+        <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Available</div>
+        <div id="invStatAvailable" style="font-size:26px;font-weight:700;color:#10b981">0</div>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">
+        <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Handover Pending</div>
+        <div id="invStatHandover" style="font-size:26px;font-weight:700;color:#ef4444">0</div>
+      </div>
+    </div>
+
+    <div id="invContent"><div class="empty">Loading…</div></div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       HRM PAGE
+  ══════════════════════════════════════ -->
+  <div id="page-hrm" class="page">
+    <!-- Sub-navigation tabs -->
+    <div class="tab-group" style="margin-bottom:18px;width:fit-content">
+      <div class="tab active" onclick="switchHrmTab('dashboard',this)">Dashboard</div>
+      <div class="tab" onclick="switchHrmTab('candidates',this)">Candidates</div>
+      <div class="tab" onclick="switchHrmTab('messages',this)">Message Status</div>
+    </div>
+
+    <!-- HRM Dashboard -->
+    <div id="hrm-dashboard">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;border-top:3px solid #1a56db">
+          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Total Candidates</div>
+          <div id="hrm-stat-total" style="font-size:30px;font-weight:700;color:#1a56db">0</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;border-top:3px solid #f59e0b">
+          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Today's Interviews</div>
+          <div id="hrm-stat-today" style="font-size:30px;font-weight:700;color:#f59e0b">0</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;border-top:3px solid #10b981">
+          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Selected</div>
+          <div id="hrm-stat-selected" style="font-size:30px;font-weight:700;color:#10b981">0</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;border-top:3px solid #7c3aed">
+          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Offers Sent</div>
+          <div id="hrm-stat-offers" style="font-size:30px;font-weight:700;color:#7c3aed">0</div>
+        </div>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+        <div class="card-head">
+          <div class="card-head-title">Recent Candidates</div>
+          <button class="btn btn-primary btn-sm" onclick="openHrmAddModal()">＋ Schedule Interview</button>
+        </div>
+        <div id="hrm-recent-table"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- HRM Candidates list -->
+    <div id="hrm-candidates" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="hrmSearch" type="text" placeholder="🔍 Search name / phone…" oninput="renderHrmTable()"
+            style="padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;width:200px;font-family:inherit">
+          <select id="hrmFilterStatus" onchange="renderHrmTable()"
+            style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
+            <option value="">All Status</option>
+            <option>Scheduled</option>
+            <option>Rescheduled</option>
+            <option>Selected</option>
+            <option>Rejected</option>
+            <option>Offer Sent</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openHrmAddModal()">＋ Schedule Interview</button>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+        <div id="hrm-candidates-table"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- HRM Message Status -->
+    <div id="hrm-messages" style="display:none">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px">
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;border-top:3px solid #10b981">
+          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Sent</div>
+          <div id="hrm-msg-sent" style="font-size:28px;font-weight:700;color:#10b981">0</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;border-top:3px solid #ef4444">
+          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Failed</div>
+          <div id="hrm-msg-failed" style="font-size:28px;font-weight:700;color:#ef4444">0</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;border-top:3px solid #64748b">
+          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Total Messages</div>
+          <div id="hrm-msg-total" style="font-size:28px;font-weight:700;color:#64748b">0</div>
+        </div>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+        <div class="card-head">
+          <div class="card-head-title">All WhatsApp Messages</div>
+          <select id="hrmMsgFilter" onchange="renderHrmMsgTable()"
+            style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;font-family:inherit;outline:none">
+            <option value="">All</option><option value="Sent">Sent</option><option value="Failed">Failed</option>
+          </select>
+        </div>
+        <div id="hrm-msg-table"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INVENTORY: Add Item Modal -->
+  <div class="modal-overlay" id="invAddModal">
+    <div class="modal" style="width:540px">
+      <button class="modal-close" onclick="closeModal('invAddModal')">×</button>
+      <h3>＋ Add Equipment</h3>
+      <div class="alert error" id="invAddErr" style="display:none"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Item Name *</label>
+          <input type="text" id="invName" placeholder="e.g. Dell Laptop XPS 15">
+        </div>
+        <div class="form-group">
+          <label>Type *</label>
+          <select id="invType">
+            <option value="laptop">💻 Laptop</option>
+            <option value="keyboard">⌨️ Keyboard</option>
+            <option value="mouse">🖱️ Mouse</option>
+            <option value="mobile">📱 Mobile</option>
+            <option value="sim">📶 SIM</option>
+            <option value="charger">🔌 Charger</option>
+            <option value="other">📦 Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Brand</label>
+          <input type="text" id="invBrand" placeholder="e.g. Dell, Apple, Samsung">
+        </div>
+        <div class="form-group">
+          <label>Model</label>
+          <input type="text" id="invModel" placeholder="e.g. XPS 15, iPhone 14">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Serial Number</label>
+          <input type="text" id="invSerial" placeholder="Serial / IMEI / SIM No.">
+        </div>
+        <div class="form-group">
+          <label>Condition</label>
+          <select id="invCondition">
+            <option value="new">New</option>
+            <option value="good" selected>Good</option>
+            <option value="fair">Fair</option>
+            <option value="poor">Poor</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="invNotes" rows="2" placeholder="Any extra details…"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Photo</label>
+        <input type="file" id="invPhotoFile" accept="image/*" onchange="previewInvPhoto(event)"
+          style="padding:6px;font-size:13px">
+        <img id="invPhotoPreview" src="" alt="" style="display:none;margin-top:8px;max-height:120px;border-radius:8px;border:1px solid #e2e8f0">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('invAddModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveInventoryItem()">Save Item</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- INVENTORY: Assign Modal -->
+  <div class="modal-overlay" id="invAssignModal">
+    <div class="modal" style="width:420px">
+      <button class="modal-close" onclick="closeModal('invAssignModal')">×</button>
+      <h3>Assign Equipment</h3>
+      <div class="alert error" id="invAssignErr" style="display:none"></div>
+      <p id="invAssignItemName" style="font-size:14px;font-weight:600;margin-bottom:16px;color:#1e293b"></p>
+      <div class="form-group">
+        <label>Assign To *</label>
+        <select id="invAssignUser">
+          <option value="">Select employee…</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('invAssignModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="doAssign()">Assign</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- INVENTORY: Handover Modal -->
+  <div class="modal-overlay" id="invHandoverModal">
+    <div class="modal" style="width:420px">
+      <button class="modal-close" onclick="closeModal('invHandoverModal')">×</button>
+      <h3>Initiate Handover</h3>
+      <div class="alert error" id="invHandoverErr" style="display:none"></div>
+      <p style="font-size:13px;color:#64748b;margin-bottom:14px" id="invHandoverDesc">Mark this item as pending return when employee is leaving.</p>
+      <div class="form-group">
+        <label>Handover Notes</label>
+        <textarea id="invHandoverNotes" rows="3" placeholder="Reason / condition at handover…"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('invHandoverModal')">Cancel</button>
+        <button class="btn btn-yellow" onclick="doHandover()">Mark as Handover Pending</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- INVENTORY: View Photo Modal -->
+  <div class="modal-overlay" id="invPhotoViewer" onclick="closeModal('invPhotoViewer')" style="background:rgba(0,0,0,.85)">
+    <img id="invPhotoViewerImg" src="" alt="" style="max-width:92vw;max-height:92vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+  </div>
+
+  <!-- HRM: Schedule Interview Modal -->
+  <div class="modal-overlay" id="hrmAddModal">
+    <div class="modal" style="width:540px">
+      <button class="modal-close" onclick="closeModal('hrmAddModal')">×</button>
+      <h3>📅 Schedule Interview</h3>
+      <div class="alert error" id="hrmAddErr" style="display:none"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input type="text" id="hrmCName" placeholder="Candidate name">
+        </div>
+        <div class="form-group">
+          <label>Position / Profile *</label>
+          <input type="text" id="hrmCProfile" placeholder="e.g. Frontend Developer">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Candidate WhatsApp *</label>
+          <input type="tel" id="hrmCPhone" placeholder="9876543210">
+        </div>
+        <div class="form-group">
+          <label>Interviewer WhatsApp</label>
+          <input type="tel" id="hrmCInterviewer" placeholder="Interviewer number">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Interview Date *</label>
+          <input type="date" id="hrmCDate">
+        </div>
+        <div class="form-group">
+          <label>Interview Time *</label>
+          <input type="time" id="hrmCTime">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Meeting Link (Zoom / Meet)</label>
+        <input type="url" id="hrmCLink" placeholder="https://meet.google.com/…">
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="hrmCNotes" rows="2" placeholder="Any additional information…"></textarea>
+      </div>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;font-size:12px;color:#166534;margin-bottom:4px">
+        💬 WhatsApp will be sent to candidate &amp; interviewer automatically.
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('hrmAddModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveHrmCandidate()">📅 Schedule &amp; Send WA</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HRM: Status Update Modal -->
+  <div class="modal-overlay" id="hrmStatusModal">
+    <div class="modal" style="width:480px">
+      <button class="modal-close" onclick="closeModal('hrmStatusModal')">×</button>
+      <h3>✏️ Update Status</h3>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:16px">
+        <div style="font-weight:700;font-size:14px" id="hrm-modal-name"></div>
+        <div style="font-size:12px;color:#64748b;margin-top:2px" id="hrm-modal-profile"></div>
+        <div style="font-size:12px;color:#10b981;margin-top:2px" id="hrm-modal-phone"></div>
+      </div>
+      <div class="form-group">
+        <label>New Status *</label>
+        <select id="hrmNewStatus" onchange="onHrmStatusChange()">
+          <option value="">— Select —</option>
+          <option value="Scheduled">📅 Scheduled</option>
+          <option value="Rescheduled">🔄 Rescheduled</option>
+          <option value="Selected">✅ Selected</option>
+          <option value="Rejected">❌ Rejected</option>
+          <option value="Offer Sent">📄 Offer Sent</option>
+        </select>
+      </div>
+      <div id="hrmReschedFields" style="display:none">
+        <div class="form-row">
+          <div class="form-group">
+            <label>New Date *</label>
+            <input type="date" id="hrmRDate">
+          </div>
+          <div class="form-group">
+            <label>New Time *</label>
+            <input type="time" id="hrmRTime">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Reason (optional)</label>
+          <textarea id="hrmRReason" rows="2" placeholder="Reason for reschedule…"></textarea>
+        </div>
+      </div>
+      <div id="hrmOfferFields" style="display:none">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Joining Date *</label>
+            <input type="date" id="hrmOJoining">
+          </div>
+          <div class="form-group">
+            <label>Salary / CTC</label>
+            <input type="text" id="hrmOSalary" placeholder="e.g. 6 LPA">
+          </div>
+        </div>
+      </div>
+      <div id="hrmStatusWaNote" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;font-size:12px;color:#166534;margin-top:8px">
+        💬 A WhatsApp message will be sent to the candidate.
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('hrmStatusModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitHrmStatus()">💾 Update &amp; Send WA</button>
+      </div>
+    </div>
   </div>
 
   <!-- Client-portal delegate modal: doer is locked to the handler -->
@@ -3379,11 +3789,13 @@ async function init() {
       document.getElementById('nav-compliance').style.display = 'flex';
       document.getElementById('nav-dailyreports').style.display = 'flex';
       document.getElementById('bulkDeleteBtn').style.display = 'inline-flex';
+      document.getElementById('nav-hrm').style.display = 'flex';
     }
     if (ME.role === 'hod') {
       // HOD can view MIS for their own department
       document.getElementById('nav-mis').style.display = 'flex';
       document.getElementById('setPlanBtn').style.display = 'inline-flex';
+      document.getElementById('nav-hrm').style.display = 'flex';
     }
     if (ME.role === 'pc') {
       // PC: can view all tasks + approve, but cannot edit/delete delegations.
@@ -3401,7 +3813,8 @@ async function init() {
     if (Array.isArray(ME.extra_access) && ME.extra_access.length) {
       const NAV_BY_KEY = {
         race: 'nav-race', mis: 'nav-mis', fms: 'nav-fms', users: 'nav-users',
-        clients: 'nav-clients', compliance: 'nav-compliance', dailyreports: 'nav-dailyreports'
+        clients: 'nav-clients', compliance: 'nav-compliance', dailyreports: 'nav-dailyreports',
+        hrm: 'nav-hrm'
       };
       for (const key of ME.extra_access) {
         const navId = NAV_BY_KEY[key];
@@ -3521,7 +3934,567 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Meetings','client-portal':'🏢 My Portal'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Meetings','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal'};
+
+// ══════════════════════════════════════════════════════
+// USERS PAGE — TAB SWITCHER + ACCESS CONTROL
+// ══════════════════════════════════════════════════════
+const ACCESS_MODULES = [
+  { key: 'mis',          label: 'MIS Report',    icon: '📊', roleDefault: ['admin','hod'] },
+  { key: 'race',         label: 'Race Tracker',  icon: '🏁', roleDefault: ['admin'] },
+  { key: 'fms',          label: 'FMS Admin',     icon: '📋', roleDefault: ['admin'] },
+  { key: 'users',        label: 'User Mgmt',     icon: '👥', roleDefault: ['admin'] },
+  { key: 'clients',      label: 'Client Master', icon: '🏢', roleDefault: ['admin','pc'] },
+  { key: 'compliance',   label: 'Compliance',    icon: '✅', roleDefault: ['admin'] },
+  { key: 'dailyreports', label: 'Daily Reports', icon: '📈', roleDefault: ['admin'] },
+  { key: 'hrm',          label: 'HR Portal',     icon: '🤝', roleDefault: ['admin','hod'] },
+];
+
+function switchUsersTab(tab, el) {
+  document.querySelectorAll('#page-users .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('usersSubPanel-users').style.display  = tab === 'users'  ? 'block' : 'none';
+  document.getElementById('usersSubPanel-access').style.display = tab === 'access' ? 'block' : 'none';
+  document.getElementById('usersTabActions').style.display      = tab === 'users'  ? 'flex'  : 'none';
+  if (tab === 'access') renderAccessMatrix();
+}
+
+function renderAccessMatrix() {
+  const users = (allUsersData || []).filter(u => u.role !== 'client');
+  if (!users.length) { document.getElementById('accessMatrix').innerHTML = '<div class="empty">No users found. Load the Users page first.</div>'; return; }
+
+  const roleLabel = r => r==='admin'?'👑 Admin':r==='hod'?'🏢 HOD':r==='pc'?'🖥️ PC':'👤 User';
+
+  const headerCols = ACCESS_MODULES.map(m =>
+    `<th style="text-align:center;white-space:nowrap;padding:10px 12px;font-size:11px;font-weight:600;color:#64748b;letter-spacing:.5px;text-transform:uppercase">
+      <div>${m.icon}</div><div style="margin-top:3px">${m.label}</div>
+    </th>`
+  ).join('');
+
+  const rows = users.map(u => {
+    const extra = Array.isArray(u.extra_access) ? u.extra_access : [];
+    const cells = ACCESS_MODULES.map(m => {
+      const viaRole = m.roleDefault.includes(u.role);
+      const checked = viaRole || extra.includes(m.key);
+      const disabled = viaRole;
+      const title = viaRole ? `Granted by role (${u.role})` : '';
+      return `<td style="text-align:center;padding:10px 12px;border-bottom:1px solid #f1f5f9">
+        <label class="acc-toggle${disabled?' acc-toggle--role':''}" title="${title}">
+          <input type="checkbox" ${checked?'checked':''} ${disabled?'disabled':''}
+            onchange="toggleAccess(${u.id},'${m.key}',this.checked)"
+            style="display:none">
+          <span class="acc-track"></span>
+        </label>
+      </td>`;
+    }).join('');
+
+    return `<tr id="acc-row-${u.id}">
+      <td style="padding:10px 14px;border-bottom:1px solid #f1f5f9;min-width:180px;white-space:nowrap">
+        <div style="font-weight:600;font-size:13px">${esc(u.name)}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:1px">${roleLabel(u.role)} · ${esc(u.department||'—')}</div>
+      </td>
+      ${cells}
+      <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;width:28px">
+        <span id="acc-save-${u.id}" style="font-size:12px;opacity:0;transition:opacity .4s"></span>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('accessMatrix').innerHTML = `
+    <style>
+      .acc-toggle{display:inline-block;cursor:pointer;user-select:none}
+      .acc-toggle--role{cursor:default;opacity:.55}
+      .acc-track{display:block;width:34px;height:20px;background:#e2e8f0;border-radius:20px;position:relative;transition:background .2s}
+      .acc-toggle input:checked+.acc-track{background:#1a56db}
+      .acc-toggle--role input:checked+.acc-track{background:#10b981}
+      .acc-track::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;background:#fff;border-radius:50%;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+      .acc-toggle input:checked+.acc-track::after{left:17px}
+    </style>
+    <div style="overflow-x:auto">
+    <table style="border-collapse:collapse;width:100%;min-width:700px">
+      <thead style="background:#f8fafc">
+        <tr>
+          <th style="text-align:left;padding:10px 14px;font-size:11px;font-weight:600;color:#64748b;letter-spacing:.5px;text-transform:uppercase">User</th>
+          ${headerCols}
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    </div>`;
+}
+
+async function toggleAccess(userId, moduleKey, enabled) {
+  const u = (allUsersData||[]).find(x=>x.id===userId);
+  if (!u) return;
+  let extra = Array.isArray(u.extra_access) ? [...u.extra_access] : [];
+  if (enabled) { if (!extra.includes(moduleKey)) extra.push(moduleKey); }
+  else          { extra = extra.filter(k => k !== moduleKey); }
+  u.extra_access = extra;
+
+  const indicator = document.getElementById(`acc-save-${userId}`);
+  if (indicator) { indicator.textContent = '⏳'; indicator.style.opacity = '1'; }
+
+  const r = await api(`/api/users/${userId}`, 'PUT', {
+    name: u.name, email: u.email, role: u.role, user_role: u.user_role || u.role,
+    phone: u.phone||'', department: u.department||'',
+    notification_email: u.notification_email||'',
+    exclude_from_reminder: !!u.exclude_from_reminder,
+    extra_access: extra
+  });
+
+  if (indicator) {
+    indicator.textContent = r.error ? '❌' : '✓';
+    indicator.style.color = r.error ? '#ef4444' : '#10b981';
+    indicator.style.opacity = '1';
+    setTimeout(() => { indicator.style.opacity = '0'; }, 2000);
+  }
+  if (r.error) showToast(r.error, 'error');
+}
+
+// ══════════════════════════════════════════════════════
+// INVENTORY JS
+// ══════════════════════════════════════════════════════
+let _invItems = [], _invAssignments = [], _invTab = 'mine', _invAssignItemId = null, _invHandoverAssignId = null;
+let _invPhotoBase64 = null;
+
+const INV_TYPE_LABELS = {laptop:'💻 Laptop',keyboard:'⌨️ Keyboard',mouse:'🖱️ Mouse',mobile:'📱 Mobile',sim:'📶 SIM',charger:'🔌 Charger',other:'📦 Other'};
+const INV_STATUS_COLORS = {available:'#10b981',assigned:'#f59e0b',damaged:'#ef4444',retired:'#94a3b8'};
+
+async function loadInventory() {
+  const isAdmin = ME.role === 'admin' || ME.role === 'hod';
+  if (isAdmin) {
+    document.getElementById('invAddBtn').style.display = 'inline-flex';
+    document.getElementById('invTabAll').style.display = 'inline-flex';
+    document.getElementById('invTabAssign').style.display = 'inline-flex';
+    document.getElementById('invStats').style.display = 'grid';
+  }
+  const [items, assignments] = await Promise.all([
+    api('/api/inventory/items'),
+    isAdmin ? api('/api/inventory/assignments') : Promise.resolve([])
+  ]);
+  _invItems = Array.isArray(items) ? items : [];
+  _invAssignments = Array.isArray(assignments) ? assignments : [];
+
+  if (isAdmin) {
+    document.getElementById('invStatTotal').textContent = _invItems.length;
+    document.getElementById('invStatAssigned').textContent = _invItems.filter(i=>i.status==='assigned').length;
+    document.getElementById('invStatAvailable').textContent = _invItems.filter(i=>i.status==='available').length;
+    document.getElementById('invStatHandover').textContent = _invItems.filter(i=>i.handover_status==='pending_handover').length;
+  }
+  renderInventory();
+}
+
+function switchInvTab(tab, el) {
+  _invTab = tab;
+  document.querySelectorAll('#invTabs .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  renderInventory();
+}
+
+function renderInventory() {
+  const typeFilter = document.getElementById('invFilterType').value;
+  const statusFilter = document.getElementById('invFilterStatus').value;
+  const el = document.getElementById('invContent');
+  const isAdmin = ME.role === 'admin' || ME.role === 'hod';
+
+  if (_invTab === 'assignments' && isAdmin) {
+    renderAssignmentsTable(el);
+    return;
+  }
+
+  let items = _invTab === 'mine'
+    ? _invItems.filter(i => i.assigned_to_id && String(i.assigned_to_id) === String(ME.id))
+    : _invItems;
+  if (typeFilter) items = items.filter(i=>i.type===typeFilter);
+  if (statusFilter) items = items.filter(i=>i.status===statusFilter);
+
+  if (!items.length) { el.innerHTML = '<div class="empty">No equipment found.</div>'; return; }
+
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;padding:20px">${items.map(item=>invCard(item, isAdmin)).join('')}</div>`;
+}
+
+function invCard(item, isAdmin) {
+  const statusColor = INV_STATUS_COLORS[item.status] || '#94a3b8';
+  const photoHtml = item.photo
+    ? `<img src="${esc(item.photo)}" alt="" onclick="viewInvPhoto('${esc(item.photo)}')"
+        style="width:100%;height:140px;object-fit:cover;cursor:pointer;border-radius:8px 8px 0 0">`
+    : `<div style="width:100%;height:140px;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);display:flex;align-items:center;justify-content:center;border-radius:8px 8px 0 0;font-size:36px">${invTypeEmoji(item.type)}</div>`;
+  const assignedBadge = item.assigned_to_name
+    ? `<div style="font-size:11px;color:#f59e0b;margin-top:4px">👤 ${esc(item.assigned_to_name)}</div>` : '';
+
+  let actions = '';
+  if (isAdmin) {
+    if (item.status === 'available') {
+      actions += `<button class="action-btn edit" onclick="openInvAssignModal(${item.id},'${esc(item.name)}')">Assign</button>`;
+    }
+    if (item.handover_status === 'active' && item.assignment_id) {
+      actions += `<button class="action-btn revise" onclick="openInvHandoverModal(${item.assignment_id},'${esc(item.name)}','${esc(item.assigned_to_name||'')}')">Handover</button>`;
+    }
+    if (item.handover_status === 'pending_handover' && item.assignment_id) {
+      actions += `<button class="action-btn done" onclick="doReturn(${item.assignment_id})">Mark Returned</button>`;
+    }
+    actions += `<button class="action-btn delete" onclick="deleteInvItem(${item.id})">Delete</button>`;
+  }
+
+  return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+    ${photoHtml}
+    <div style="padding:12px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+        <div style="font-weight:700;font-size:14px;color:#0f172a">${esc(item.name)}</div>
+        <div style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:${statusColor}1a;color:${statusColor}">${item.status}</div>
+      </div>
+      <div style="font-size:12px;color:#64748b">${INV_TYPE_LABELS[item.type]||item.type}${item.brand?' · '+esc(item.brand):''}</div>
+      ${item.model?`<div style="font-size:11px;color:#94a3b8">${esc(item.model)}</div>`:''}
+      ${item.serial_number?`<div style="font-size:11px;color:#94a3b8;font-family:monospace">SN: ${esc(item.serial_number)}</div>`:''}
+      ${assignedBadge}
+      ${item.handover_status==='pending_handover'?`<div style="font-size:11px;color:#ef4444;font-weight:600;margin-top:4px">⚠️ Handover Pending</div>`:''}
+      ${actions?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${actions}</div>`:''}
+    </div>
+  </div>`;
+}
+
+function invTypeEmoji(type) {
+  return {laptop:'💻',keyboard:'⌨️',mouse:'🖱️',mobile:'📱',sim:'📶',charger:'🔌',other:'📦'}[type]||'📦';
+}
+
+function renderAssignmentsTable(el) {
+  if (!_invAssignments.length) { el.innerHTML = '<div class="empty">No assignments found.</div>'; return; }
+  const rows = _invAssignments.map(a=>{
+    const hsBadge = a.handover_status === 'pending_handover'
+      ? '<span style="color:#ef4444;font-weight:600">⚠️ Pending Return</span>'
+      : a.handover_status === 'returned'
+        ? '<span style="color:#94a3b8">Returned</span>'
+        : '<span style="color:#10b981">Active</span>';
+    const btnReturn = a.handover_status === 'pending_handover'
+      ? `<button class="action-btn done" onclick="doReturn(${a.id})">Mark Returned</button>` : '';
+    const btnHandover = a.handover_status === 'active'
+      ? `<button class="action-btn revise" onclick="openInvHandoverModal(${a.id},'${esc(a.item_name||'')}','${esc(a.user_name||'')}')">Handover</button>` : '';
+    const photo = a.photo
+      ? `<img src="${esc(a.photo)}" onclick="viewInvPhoto('${esc(a.photo)}')"
+           style="width:36px;height:36px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #e2e8f0">`
+      : `<div style="width:36px;height:36px;background:#f1f5f9;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px">${invTypeEmoji(a.item_type)}</div>`;
+    return `<tr>
+      <td>${photo}</td>
+      <td><div style="font-weight:600">${esc(a.item_name||'')}</div><div style="font-size:11px;color:#64748b">${INV_TYPE_LABELS[a.item_type]||a.item_type}${a.serial_number?' · SN:'+esc(a.serial_number):''}</div></td>
+      <td><div style="font-weight:600">${esc(a.user_name||'')}</div><div style="font-size:11px;color:#64748b">${esc(a.department||'')}</div></td>
+      <td>${new Date(a.assigned_at).toLocaleDateString('en-IN')}</td>
+      <td>${hsBadge}</td>
+      <td><div style="display:flex;gap:6px">${btnHandover}${btnReturn}</div></td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<table><thead><tr><th></th><th>Item</th><th>Assigned To</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function previewInvPhoto(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (file.size > 3 * 1024 * 1024) { showToast('Image must be under 3MB', 'error'); event.target.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    _invPhotoBase64 = e.target.result;
+    const preview = document.getElementById('invPhotoPreview');
+    preview.src = _invPhotoBase64;
+    preview.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function viewInvPhoto(src) {
+  document.getElementById('invPhotoViewerImg').src = src;
+  document.getElementById('invPhotoViewer').style.display = 'flex';
+  document.getElementById('invPhotoViewer').classList.add('open');
+}
+
+function openInvAddModal() {
+  document.getElementById('invName').value = '';
+  document.getElementById('invType').value = 'laptop';
+  document.getElementById('invBrand').value = '';
+  document.getElementById('invModel').value = '';
+  document.getElementById('invSerial').value = '';
+  document.getElementById('invCondition').value = 'good';
+  document.getElementById('invNotes').value = '';
+  document.getElementById('invPhotoFile').value = '';
+  document.getElementById('invPhotoPreview').style.display = 'none';
+  document.getElementById('invAddErr').style.display = 'none';
+  _invPhotoBase64 = null;
+  openModal('invAddModal');
+}
+
+async function saveInventoryItem() {
+  const name = document.getElementById('invName').value.trim();
+  const type = document.getElementById('invType').value;
+  if (!name) { showInvErr('invAddErr','Name is required'); return; }
+  const body = {
+    name, type,
+    brand: document.getElementById('invBrand').value.trim(),
+    model: document.getElementById('invModel').value.trim(),
+    serial_number: document.getElementById('invSerial').value.trim(),
+    item_condition: document.getElementById('invCondition').value,
+    notes: document.getElementById('invNotes').value.trim(),
+    photo: _invPhotoBase64 || null
+  };
+  const r = await api('/api/inventory/items','POST', body);
+  if (r.error) { showInvErr('invAddErr', r.error); return; }
+  closeModal('invAddModal');
+  showToast('Equipment added!');
+  loadInventory();
+}
+
+async function deleteInvItem(id) {
+  if (!confirm('Delete this item?')) return;
+  const r = await api(`/api/inventory/items/${id}`, 'DELETE');
+  if (r.error) { showToast(r.error,'error'); return; }
+  showToast('Item deleted');
+  loadInventory();
+}
+
+async function openInvAssignModal(itemId, itemName) {
+  _invAssignItemId = itemId;
+  document.getElementById('invAssignItemName').textContent = `Item: ${itemName}`;
+  document.getElementById('invAssignErr').style.display = 'none';
+  const users = await api('/api/users');
+  const sel = document.getElementById('invAssignUser');
+  sel.innerHTML = '<option value="">Select employee…</option>' +
+    (users||[]).filter(u=>u.role!=='client').map(u=>`<option value="${u.id}">${esc(u.name)} (${esc(u.department||'')})</option>`).join('');
+  openModal('invAssignModal');
+}
+
+async function doAssign() {
+  const userId = document.getElementById('invAssignUser').value;
+  if (!userId) { showInvErr('invAssignErr','Select an employee'); return; }
+  const r = await api('/api/inventory/assign','POST',{item_id:_invAssignItemId, user_id:userId});
+  if (r.error) { showInvErr('invAssignErr',r.error); return; }
+  closeModal('invAssignModal');
+  showToast('Equipment assigned!');
+  loadInventory();
+}
+
+function openInvHandoverModal(assignmentId, itemName, userName) {
+  _invHandoverAssignId = assignmentId;
+  document.getElementById('invHandoverDesc').textContent = `Item: ${itemName} — currently with ${userName}`;
+  document.getElementById('invHandoverNotes').value = '';
+  document.getElementById('invHandoverErr').style.display = 'none';
+  openModal('invHandoverModal');
+}
+
+async function doHandover() {
+  const notes = document.getElementById('invHandoverNotes').value.trim();
+  const r = await api(`/api/inventory/handover/${_invHandoverAssignId}`,'POST',{notes});
+  if (r.error) { showInvErr('invHandoverErr',r.error); return; }
+  closeModal('invHandoverModal');
+  showToast('Handover pending marked!');
+  loadInventory();
+}
+
+async function doReturn(assignmentId) {
+  if (!confirm('Mark item as fully returned?')) return;
+  const r = await api(`/api/inventory/return/${assignmentId}`,'POST',{});
+  if (r.error) { showToast(r.error,'error'); return; }
+  showToast('Item returned to inventory!');
+  loadInventory();
+}
+
+function showInvErr(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ══════════════════════════════════════════════════════
+// HRM JS
+// ══════════════════════════════════════════════════════
+let _hrmCandidates = [], _hrmMessages = [], _hrmCurrentId = null;
+
+const HRM_STATUS_COLORS = {'Scheduled':'#1a56db','Rescheduled':'#f59e0b','Selected':'#10b981','Rejected':'#ef4444','Offer Sent':'#7c3aed'};
+const HRM_STATUS_BG = {'Scheduled':'#eff6ff','Rescheduled':'#fffbeb','Selected':'#f0fdf4','Rejected':'#fef2f2','Offer Sent':'#f5f3ff'};
+
+async function loadHRM() {
+  const [stats, candidates, messages] = await Promise.all([
+    api('/api/hrm/stats'),
+    api('/api/hrm/candidates'),
+    api('/api/hrm/messages')
+  ]);
+  _hrmCandidates = Array.isArray(candidates) ? candidates : [];
+  _hrmMessages   = Array.isArray(messages)   ? messages   : [];
+
+  if (stats && !stats.error) {
+    document.getElementById('hrm-stat-total').textContent    = stats.total || 0;
+    document.getElementById('hrm-stat-today').textContent    = stats.today_interviews || 0;
+    document.getElementById('hrm-stat-selected').textContent = stats.selected || 0;
+    document.getElementById('hrm-stat-offers').textContent   = stats.offer_sent || 0;
+    const sent   = _hrmMessages.filter(m=>m.status==='Sent').length;
+    const failed = _hrmMessages.filter(m=>m.status==='Failed').length;
+    document.getElementById('hrm-msg-sent').textContent   = sent;
+    document.getElementById('hrm-msg-failed').textContent = failed;
+    document.getElementById('hrm-msg-total').textContent  = _hrmMessages.length;
+  }
+  renderHrmRecent();
+  renderHrmTable();
+  renderHrmMsgTable();
+}
+
+function switchHrmTab(tab, el) {
+  document.querySelectorAll('#page-hrm .tab-group .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  ['dashboard','candidates','messages'].forEach(s => {
+    document.getElementById('hrm-'+s).style.display = s===tab ? 'block' : 'none';
+  });
+  if (tab==='messages') renderHrmMsgTable();
+}
+
+function renderHrmRecent() {
+  const recent = _hrmCandidates.slice(0,8);
+  document.getElementById('hrm-recent-table').innerHTML = renderHrmRows(recent);
+}
+
+function renderHrmTable() {
+  const search = (document.getElementById('hrmSearch')?.value||'').toLowerCase();
+  const status = document.getElementById('hrmFilterStatus')?.value||'';
+  let list = _hrmCandidates;
+  if (status) list = list.filter(c=>c.status===status);
+  if (search) list = list.filter(c=>(c.name||'').toLowerCase().includes(search)||(c.phone||'').includes(search));
+  document.getElementById('hrm-candidates-table').innerHTML = renderHrmRows(list);
+}
+
+function renderHrmRows(list) {
+  if (!list.length) return '<div class="empty">No candidates found.</div>';
+  const rows = list.map(c=>{
+    const color = HRM_STATUS_COLORS[c.status]||'#64748b';
+    const bg    = HRM_STATUS_BG[c.status]||'#f8fafc';
+    const initials = (c.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const dateStr = c.interview_date ? new Date(c.interview_date).toLocaleDateString('en-IN') : '—';
+    const reDateStr = c.reschedule_date ? new Date(c.reschedule_date).toLocaleDateString('en-IN') : '';
+    const canUpdate = c.status !== 'Rejected';
+    return `<tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:34px;height:34px;border-radius:50%;background:${bg};color:${color};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${initials}</div>
+          <div>
+            <div style="font-weight:600">${esc(c.name)}</div>
+            <div style="font-size:11px;color:#64748b">${esc(c.phone)}</div>
+          </div>
+        </div>
+      </td>
+      <td style="font-size:13px">${esc(c.profile_position||'—')}</td>
+      <td style="font-size:13px">${dateStr}${c.interview_time?' '+esc(c.interview_time):''}${reDateStr?`<div style="font-size:11px;color:#f59e0b">→ ${reDateStr}`:''}</td>
+      <td><span style="font-size:11px;font-weight:600;padding:3px 9px;border-radius:12px;background:${bg};color:${color}">${c.status}</span></td>
+      <td>
+        ${canUpdate?`<button class="action-btn edit" onclick="openHrmStatusModal(${c.id})">Update</button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+  return `<table><thead><tr><th>Candidate</th><th>Position</th><th>Interview</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderHrmMsgTable() {
+  const filter = document.getElementById('hrmMsgFilter')?.value||'';
+  let list = _hrmMessages;
+  if (filter) list = list.filter(m=>m.status===filter);
+  const el = document.getElementById('hrm-msg-table');
+  if (!list.length) { el.innerHTML = '<div class="empty">No messages.</div>'; return; }
+  const rows = list.map(m=>{
+    const color = m.status==='Sent' ? '#10b981' : '#ef4444';
+    const bg    = m.status==='Sent' ? '#f0fdf4' : '#fef2f2';
+    const retryBtn = m.status==='Failed'
+      ? `<button class="action-btn edit" onclick="retryHrmMsg(${m.id})">Retry</button>` : '';
+    const ts = m.created_at ? new Date(m.created_at).toLocaleString('en-IN') : '';
+    return `<tr>
+      <td style="font-size:12px;color:#64748b">${ts}</td>
+      <td><div style="font-weight:600;font-size:13px">${esc(m.candidate_name)}</div><div style="font-size:11px;color:#64748b">${esc(m.phone)}</div></td>
+      <td style="font-size:12px">${esc(m.action)}</td>
+      <td><span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${bg};color:${color}">${m.status}</span></td>
+      <td style="font-size:11px;color:#64748b">${m.retry_count>0?`Retried ${m.retry_count}×`:''}</td>
+      <td>${retryBtn}${m.error_detail?`<div style="font-size:10px;color:#ef4444;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.error_detail)}">${esc(m.error_detail.slice(0,80))}</div>`:''}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<table><thead><tr><th>Time</th><th>Candidate</th><th>Action</th><th>Status</th><th>Retries</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function retryHrmMsg(id) {
+  const r = await api(`/api/hrm/messages/${id}/retry`,'POST',{});
+  if (r.ok) { showToast('Message resent!'); } else { showToast(r.message||'Retry failed','error'); }
+  loadHRM();
+}
+
+function openHrmAddModal() {
+  ['hrmCName','hrmCProfile','hrmCPhone','hrmCInterviewer','hrmCLink','hrmCNotes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('hrmCDate').value = '';
+  document.getElementById('hrmCTime').value = '';
+  document.getElementById('hrmAddErr').style.display = 'none';
+  openModal('hrmAddModal');
+}
+
+async function saveHrmCandidate() {
+  const name  = document.getElementById('hrmCName').value.trim();
+  const phone = document.getElementById('hrmCPhone').value.trim();
+  const date  = document.getElementById('hrmCDate').value;
+  const time  = document.getElementById('hrmCTime').value;
+  if (!name||!phone) { showErrIn('hrmAddErr','Name and phone are required'); return; }
+  if (!date||!time) { showErrIn('hrmAddErr','Interview date and time are required'); return; }
+  const r = await api('/api/hrm/candidates','POST',{
+    name, phone,
+    profile_position: document.getElementById('hrmCProfile').value.trim(),
+    interview_date: date, interview_time: time,
+    notes: document.getElementById('hrmCNotes').value.trim(),
+    meeting_link: document.getElementById('hrmCLink').value.trim(),
+    interviewer_phone: document.getElementById('hrmCInterviewer').value.trim()
+  });
+  if (r.error) { showErrIn('hrmAddErr',r.error); return; }
+  closeModal('hrmAddModal');
+  showToast('Interview scheduled! WhatsApp queued.');
+  loadHRM();
+}
+
+function openHrmStatusModal(id) {
+  _hrmCurrentId = id;
+  const c = _hrmCandidates.find(x=>String(x.id)===String(id));
+  if (!c) return;
+  document.getElementById('hrm-modal-name').textContent    = c.name;
+  document.getElementById('hrm-modal-profile').textContent = c.profile_position||'';
+  document.getElementById('hrm-modal-phone').textContent   = c.phone;
+  document.getElementById('hrmNewStatus').value = '';
+  document.getElementById('hrmReschedFields').style.display  = 'none';
+  document.getElementById('hrmOfferFields').style.display    = 'none';
+  document.getElementById('hrmStatusWaNote').style.display   = 'none';
+  openModal('hrmStatusModal');
+}
+
+function onHrmStatusChange() {
+  const s = document.getElementById('hrmNewStatus').value;
+  document.getElementById('hrmReschedFields').style.display = s==='Rescheduled' ? 'block' : 'none';
+  document.getElementById('hrmOfferFields').style.display   = s==='Offer Sent'  ? 'block' : 'none';
+  document.getElementById('hrmStatusWaNote').style.display  = s ? 'block' : 'none';
+}
+
+async function submitHrmStatus() {
+  const status = document.getElementById('hrmNewStatus').value;
+  if (!status) { showToast('Select a status','error'); return; }
+  const body = { status };
+  if (status==='Rescheduled') {
+    body.reschedule_date   = document.getElementById('hrmRDate').value;
+    body.reschedule_time   = document.getElementById('hrmRTime').value;
+    body.reschedule_reason = document.getElementById('hrmRReason').value.trim();
+    if (!body.reschedule_date||!body.reschedule_time) { showToast('New date and time required','error'); return; }
+  }
+  if (status==='Offer Sent') {
+    body.joining_date = document.getElementById('hrmOJoining').value;
+    body.salary       = document.getElementById('hrmOSalary').value.trim();
+    if (!body.joining_date) { showToast('Joining date required','error'); return; }
+  }
+  const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/status`,'PUT',body);
+  if (r.error) { showToast(r.error,'error'); return; }
+  closeModal('hrmStatusModal');
+  showToast('Status updated! WhatsApp queued.');
+  loadHRM();
+}
+
+function showErrIn(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
 
 function toggleSidebar() {
   const sb = document.getElementById('sidebar');
@@ -3557,7 +4530,8 @@ function navigate(page, el) {
     approvals: loadApprovals, fms: loadFMSAdmin, 'fms-tasks': loadFMSTasks,
     daily: loadDailyForm, clients: loadClients, compliance: loadCompliance,
     dailyreports: loadDailyReports, leaves: loadLeaves, race: loadRaceTracker,
-    meetings: loadMeetings, 'client-portal': loadClientPortal
+    meetings: loadMeetings, 'client-portal': loadClientPortal,
+    inventory: loadInventory, hrm: loadHRM
   };
   const loaderFn = pageLoaders[page];
   if (typeof loaderFn === 'function') withPageLoader(loaderFn);
@@ -9187,6 +10161,7 @@ async function cmShowDetail(id, from, to) {
     detail.innerHTML = cmRenderDetailHtml(s, id, Array.isArray(handlers) ? handlers : []);
     cmRenderLinksRows();
     cmInitHandlerWidget(id);
+    cmDmsLoad(id);
   } catch (e) {
     detail.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed to load: ${e.message}</div>`;
   }
@@ -9455,6 +10430,13 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
         <button class="btn btn-primary" id="cmSaveLinksBtn" style="padding:6px 16px;font-size:12px;transition:background .2s" onclick="cmSaveLinks(${id})">💾 Save Links</button>
       </div>
     </div>
+
+    <div class="task-table-card" style="padding:14px 18px;margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div class="card-head-title">📁 Documents <span style="font-weight:400;color:#94a3b8;font-size:12px">— Google Drive</span></div>
+      </div>
+      <div id="cmDmsContent"><div style="color:#94a3b8;font-size:12px;padding:8px 0">Loading…</div></div>
+    </div>
   `;
 }
 
@@ -9512,6 +10494,161 @@ async function cmSaveLinks(id){
     btn.style.background = '#10b981';
     setTimeout(() => { btn.textContent = '💾 Save Links'; btn.style.background = ''; }, 1600);
   }
+}
+
+// ── DMS (Document Management System) ───────────────────────────────────
+var DMS_STATE = {};
+
+async function cmDmsLoad(clientId) {
+  var box = document.getElementById('cmDmsContent');
+  if (!box) return;
+  var data = await api('/api/clients/' + clientId + '/dms');
+  if (data.error) {
+    box.innerHTML = '<div style="color:#dc2626;font-size:12px;padding:8px 0">Failed to load DMS: ' + dtEscape(data.error) + '</div>';
+    return;
+  }
+  var prevDept = DMS_STATE.activeDept;
+  DMS_STATE = { clientId: clientId, files: [], loading: false, activeDept: null,
+    drive_configured: data.drive_configured, drive_folder_id: data.drive_folder_id,
+    drive_auth_url: data.drive_auth_url || null,
+    departments: data.departments || [] };
+  // Keep the previously selected dept active if it still exists, else default to first
+  var keepDept = DMS_STATE.departments.find(function(d){ return d.department_name === prevDept; });
+  DMS_STATE.activeDept = keepDept ? keepDept.department_name
+    : (DMS_STATE.departments.length ? DMS_STATE.departments[0].department_name : null);
+  cmDmsRender();
+  if (DMS_STATE.activeDept) {
+    var dept = DMS_STATE.departments.find(function(d){ return d.department_name === DMS_STATE.activeDept; });
+    if (dept) cmDmsLoadFiles(dept.drive_folder_id);
+  }
+}
+
+function cmDmsRender() {
+  var box = document.getElementById('cmDmsContent');
+  if (!box) return;
+  var s = DMS_STATE;
+  if (!s.drive_configured) {
+    var missingMsg = s.drive_auth_url
+      ? '<a href="' + s.drive_auth_url + '" style="color:#1d4ed8;font-weight:600">Connect Google Drive</a> to enable the document manager.'
+      : 'Set <code>GOOGLE_OAUTH_CLIENT_ID</code>, <code>GOOGLE_OAUTH_CLIENT_SECRET</code>, and <code>GOOGLE_DRIVE_ROOT_FOLDER_ID</code> in environment variables, then visit <code>/api/google/auth</code> to authorize.';
+    box.innerHTML = '<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e">' + missingMsg + '</div>';
+    return;
+  }
+  if (!s.drive_folder_id) {
+    box.innerHTML = '<div style="text-align:center;padding:24px">' +
+      '<div style="color:#64748b;font-size:13px;margin-bottom:12px">No Drive folder set up for this client yet.</div>' +
+      '<button class="btn btn-primary" style="padding:8px 18px;font-size:13px" onclick="cmDmsSetup(' + s.clientId + ',this)">☁️ Create Drive Folder</button>' +
+      '</div>';
+    return;
+  }
+  var allDepts = s.departments || [];
+  var tabsHtml = allDepts.map(function(d) {
+    var active = d.department_name === s.activeDept;
+    var dn = d.department_name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return '<span style="display:inline-flex;align-items:center">' +
+      '<button onclick="cmDmsSelectDept(\'' + dn + '\')" style="padding:6px 14px;border:none;border-right:none;border-radius:6px 0 0 6px;font-size:12px;font-weight:600;cursor:pointer;' + (active ? 'background:#7c3aed;color:#fff' : 'background:#f1f5f9;color:#475569') + '">' + dtEscape(d.department_name) + '</button>' +
+      '<button onclick="cmDmsRemoveDept(\'' + dn + '\',' + s.clientId + ')" title="Remove" style="padding:6px 7px;border:none;border-radius:0 6px 6px 0;font-size:11px;cursor:pointer;' + (active ? 'background:#6d28d9;color:#ddd' : 'background:#e2e8f0;color:#94a3b8') + '">✕</button>' +
+      '</span>';
+  }).join('');
+  box.innerHTML =
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">' +
+      tabsHtml +
+      '<button onclick="cmDmsShowAddDept(' + s.clientId + ')" style="padding:6px 12px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;color:#7c3aed;font-weight:600;background:#fff;cursor:pointer">＋ Department</button>' +
+    '</div>' +
+    '<div id="cmDmsFiles">' + cmDmsFilesHtml() + '</div>';
+}
+
+function cmDmsFilesHtml() {
+  var s = DMS_STATE;
+  if (!s.activeDept) return '<div style="color:#94a3b8;font-size:13px;padding:12px 0">Add a department folder above to get started.</div>';
+  if (s.loading) return '<div style="color:#94a3b8;font-size:13px;padding:12px 0">Loading files…</div>';
+  var dept = (s.departments || []).find(function(d){ return d.department_name === s.activeDept; });
+  if (!dept) return '<div style="color:#94a3b8;font-size:13px;padding:12px 0">Department not found.</div>';
+  var mimeIcon = function(m) {
+    if (m.includes('spreadsheet')) return '📊';
+    if (m.includes('document')) return '📄';
+    if (m.includes('presentation')) return '📽️';
+    if (m.includes('folder')) return '📁';
+    return '📎';
+  };
+  var files = s.files || [];
+  var filesHtml = files.length
+    ? files.map(function(f) {
+        var date = f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:#f8fafc;margin-bottom:6px" ' +
+          'onmouseover="this.style.background=\'#f1f5f9\'" onmouseout="this.style.background=\'#f8fafc\'">' +
+          '<span style="font-size:18px">' + mimeIcon(f.mimeType) + '</span>' +
+          '<a href="' + f.webViewLink + '" target="_blank" rel="noopener" style="font-size:13px;color:#1d4ed8;font-weight:600;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + dtEscape(f.name) + '</a>' +
+          '<span style="font-size:11px;color:#94a3b8;white-space:nowrap;flex-shrink:0">' + date + '</span>' +
+          '</div>';
+      }).join('')
+    : '<div style="color:#94a3b8;font-size:13px;padding:12px 0">No files yet — create one with the buttons above.</div>';
+  var fid = dept.drive_folder_id;
+  var cid = s.clientId;
+  return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">' +
+      '<div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px">' + dtEscape(s.activeDept) + '</div>' +
+      '<div style="display:flex;gap:6px">' +
+        '<button onclick="cmDmsCreateFile(\'doc\',\'' + fid + '\',' + cid + ')" style="padding:5px 12px;border:none;border-radius:6px;font-size:12px;background:#eff6ff;color:#1d4ed8;font-weight:600;cursor:pointer">＋ Doc</button>' +
+        '<button onclick="cmDmsCreateFile(\'sheet\',\'' + fid + '\',' + cid + ')" style="padding:5px 12px;border:none;border-radius:6px;font-size:12px;background:#f0fdf4;color:#16a34a;font-weight:600;cursor:pointer">＋ Sheet</button>' +
+        '<button onclick="cmDmsLoadFiles(\'' + fid + '\')" title="Refresh" style="padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;color:#64748b;background:#fff;cursor:pointer">↺</button>' +
+      '</div>' +
+    '</div>' + filesHtml;
+}
+
+function cmDmsSelectDept(deptName) {
+  DMS_STATE.activeDept = deptName;
+  DMS_STATE.files = [];
+  cmDmsRender();
+  var dept = (DMS_STATE.departments || []).find(function(d){ return d.department_name === deptName; });
+  if (dept) cmDmsLoadFiles(dept.drive_folder_id);
+}
+
+async function cmDmsRemoveDept(deptName, clientId) {
+  if (!confirm('Remove "' + deptName + '" folder link?\n(The Google Drive folder itself is NOT deleted.)')) return;
+  var r = await api('/api/clients/' + clientId + '/dms/departments/' + encodeURIComponent(deptName), 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  await cmDmsLoad(clientId);
+}
+
+async function cmDmsLoadFiles(folderId) {
+  DMS_STATE.loading = true;
+  var filesDiv = document.getElementById('cmDmsFiles');
+  if (filesDiv) filesDiv.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:12px 0">Loading…</div>';
+  var files = await api('/api/clients/' + DMS_STATE.clientId + '/dms/folders/' + folderId + '/files');
+  DMS_STATE.files = Array.isArray(files) ? files : [];
+  DMS_STATE.loading = false;
+  filesDiv = document.getElementById('cmDmsFiles');
+  if (filesDiv) filesDiv.innerHTML = cmDmsFilesHtml();
+}
+
+async function cmDmsSetup(clientId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+  var r = await api('/api/clients/' + clientId + '/dms/setup', 'POST');
+  if (r.error) {
+    showToast(r.error, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '☁️ Create Drive Folder'; }
+    return;
+  }
+  await cmDmsLoad(clientId);
+}
+
+async function cmDmsShowAddDept(clientId) {
+  var dept = (prompt('Department name to add (e.g. Accounts, Audit, Compliance):') || '').trim();
+  if (!dept) return;
+  var r = await api('/api/clients/' + clientId + '/dms/departments', 'POST', { department_name: dept });
+  if (r.error) { showToast(r.error, 'error'); return; }
+  DMS_STATE.activeDept = dept; // select the new dept after reload
+  await cmDmsLoad(clientId);
+}
+
+async function cmDmsCreateFile(kind, folderId, clientId) {
+  var label = kind === 'sheet' ? 'Google Sheet' : 'Google Doc';
+  var name = (prompt('Name for the new ' + label + ':') || '').trim();
+  if (!name) return;
+  var r = await api('/api/clients/' + clientId + '/dms/folders/' + folderId + '/files', 'POST', { name: name, kind: kind });
+  if (r.error) { showToast(r.error, 'error'); return; }
+  if (r.web_view_link) window.open(r.web_view_link, '_blank');
+  cmDmsLoadFiles(folderId);
 }
 
 async function cmAdd(){

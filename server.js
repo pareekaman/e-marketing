@@ -314,6 +314,80 @@ const _startupMigrationsPromise = (async () => {
   // Required flag — default 1 so existing rows continue to be mandatory (backward compat)
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN required TINYINT(1) DEFAULT 1 AFTER dropdown_options`);
 
+  // ── Inventory tables ──────────────────────────────────
+  await sa(`CREATE TABLE IF NOT EXISTS inventory_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    type ENUM('laptop','keyboard','mouse','mobile','sim','charger','other') NOT NULL,
+    brand VARCHAR(255) DEFAULT '',
+    model VARCHAR(255) DEFAULT '',
+    serial_number VARCHAR(255) DEFAULT '',
+    photo LONGTEXT DEFAULT NULL,
+    item_condition ENUM('new','good','fair','poor') DEFAULT 'good',
+    status ENUM('available','assigned','damaged','retired') DEFAULT 'available',
+    notes TEXT DEFAULT '',
+    created_by INT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_status (status),
+    INDEX idx_type (type)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+  await sa(`CREATE TABLE IF NOT EXISTS inventory_assignments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    item_id INT NOT NULL,
+    user_id INT NOT NULL,
+    assigned_by INT NOT NULL,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    returned_at TIMESTAMP NULL DEFAULT NULL,
+    handover_status ENUM('active','pending_handover','returned') DEFAULT 'active',
+    handover_notes TEXT DEFAULT '',
+    INDEX idx_item (item_id),
+    INDEX idx_user (user_id),
+    INDEX idx_handover (handover_status)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+  // ── HRM tables ────────────────────────────────────────
+  await sa(`CREATE TABLE IF NOT EXISTS hrm_candidates (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(50) NOT NULL,
+    profile_position VARCHAR(255) DEFAULT '',
+    interview_date DATE DEFAULT NULL,
+    interview_time VARCHAR(20) DEFAULT '',
+    status ENUM('Scheduled','Rescheduled','Selected','Rejected','Offer Sent') DEFAULT 'Scheduled',
+    reschedule_date DATE DEFAULT NULL,
+    reschedule_time VARCHAR(20) DEFAULT '',
+    joining_date DATE DEFAULT NULL,
+    offer_sent TINYINT(1) DEFAULT 0,
+    salary VARCHAR(100) DEFAULT '',
+    notes TEXT DEFAULT '',
+    meeting_link VARCHAR(1024) DEFAULT '',
+    interviewer_phone VARCHAR(50) DEFAULT '',
+    created_by INT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_status (status),
+    INDEX idx_interview_date (interview_date)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+  await sa(`CREATE TABLE IF NOT EXISTS hrm_message_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    candidate_id INT DEFAULT NULL,
+    candidate_name VARCHAR(255) DEFAULT '',
+    phone VARCHAR(50) DEFAULT '',
+    action VARCHAR(255) DEFAULT '',
+    type ENUM('text','image','file') DEFAULT 'text',
+    status ENUM('Sent','Failed') DEFAULT 'Failed',
+    error_detail TEXT DEFAULT '',
+    payload_json LONGTEXT DEFAULT '',
+    retry_count INT DEFAULT 0,
+    last_retry_at TIMESTAMP NULL DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_candidate (candidate_id),
+    INDEX idx_status (status)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
   console.log('  ✅ DB migrations checked');
 
   // ── Auto-seed default admin if no users exist ─────────
@@ -481,6 +555,94 @@ async function getSheetsClient(scopes) {
     console.log('  ✅ Google Auth pre-warmed');
   } catch(e) { console.log('  ⚠️ Google Auth pre-warm failed:', e.message); }
 })();
+
+// ══════════════════════════════════════════════════════
+// GOOGLE DRIVE HELPERS (DMS) — OAuth 2.0 dedicated account
+// ══════════════════════════════════════════════════════
+let _driveClient = null;
+
+function _dmsOAuthClient() {
+  const { google } = require('googleapis');
+  const clientId     = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  const redirectUri  = (process.env.APP_URL || 'http://localhost:3000') + '/api/google/callback';
+  if (!clientId || !clientSecret) throw new Error('GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET not set');
+  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+}
+
+async function _dmsRefreshToken() {
+  // Env var takes priority; DB fallback so Vercel deployments work without redeploy
+  if (process.env.GOOGLE_OAUTH_REFRESH_TOKEN) return process.env.GOOGLE_OAUTH_REFRESH_TOKEN;
+  const [[row]] = await db.query(
+    "SELECT value FROM app_settings WHERE key_name='google_oauth_refresh_token' LIMIT 1"
+  ).catch(() => [[null]]);
+  return row?.value || null;
+}
+
+async function getDriveClient() {
+  if (_driveClient) return _driveClient;
+  const { google } = require('googleapis');
+  const refreshToken = await _dmsRefreshToken();
+  if (!refreshToken) throw new Error('Google Drive not authorized — visit /api/google/auth to connect');
+  const oauth2 = _dmsOAuthClient();
+  oauth2.setCredentials({ refresh_token: refreshToken });
+  _driveClient = google.drive({ version: 'v3', auth: oauth2 });
+  return _driveClient;
+}
+
+async function dmsCreateFolder(name, parentId) {
+  const drive = await getDriveClient();
+  const res = await drive.files.create({
+    requestBody: {
+      name,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: [parentId],
+    },
+    fields: 'id,webViewLink',
+    supportsAllDrives: true,
+  });
+  return res.data; // { id, webViewLink }
+}
+
+async function dmsShareFolder(folderId, email, role = 'writer') {
+  const drive = await getDriveClient();
+  await drive.permissions.create({
+    fileId: folderId,
+    requestBody: { type: 'user', role, emailAddress: email },
+    sendNotificationEmail: false,
+    supportsAllDrives: true,
+  });
+}
+
+async function dmsListFiles(folderId) {
+  const drive = await getDriveClient();
+  const res = await drive.files.list({
+    q: `'${folderId}' in parents and trashed = false`,
+    fields: 'files(id,name,mimeType,webViewLink,modifiedTime)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+    orderBy: 'modifiedTime desc',
+  });
+  return res.data.files || [];
+}
+
+const DMS_MIME_TYPES = {
+  doc: 'application/vnd.google-apps.document',
+  sheet: 'application/vnd.google-apps.spreadsheet',
+  slide: 'application/vnd.google-apps.presentation',
+};
+
+async function dmsCreateFile(name, kind, parentId) {
+  const mimeType = DMS_MIME_TYPES[kind];
+  if (!mimeType) throw new Error('Invalid kind — use doc, sheet, or slide');
+  const drive = await getDriveClient();
+  const res = await drive.files.create({
+    requestBody: { name, mimeType, parents: [parentId] },
+    fields: 'id,webViewLink',
+    supportsAllDrives: true,
+  });
+  return res.data.webViewLink;
+}
 
 function extractSpreadsheetId(raw) {
   const s = (raw || '').trim();
@@ -3355,6 +3517,25 @@ const _clientsTableMigrationsPromise = (async () => {
   await sa(`ALTER TABLE meetings ADD COLUMN reminder_sent TINYINT(1) DEFAULT 0 AFTER status`);
   await sa(`ALTER TABLE meetings ADD INDEX idx_reminder (meeting_date, start_time, reminder_sent, status)`);
 
+  // Generic key-value store for runtime settings (e.g. OAuth refresh tokens)
+  await sa(`CREATE TABLE IF NOT EXISTS app_settings (
+    key_name  VARCHAR(100) PRIMARY KEY,
+    value     TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+  // DMS — Google Drive folder IDs per client and per department
+  await sa(`ALTER TABLE clients ADD COLUMN drive_folder_id VARCHAR(255) DEFAULT NULL AFTER is_active`);
+  await sa(`CREATE TABLE IF NOT EXISTS client_department_folders (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    client_id INT NOT NULL,
+    department_name VARCHAR(255) NOT NULL,
+    drive_folder_id VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_client_dept (client_id, department_name),
+    INDEX idx_cdf_client (client_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
   console.log('  ✅ Daily Task + Meetings tables ready');
 })();
 
@@ -4346,6 +4527,13 @@ app.post('/api/clients', requireAuth, requireAdminOrPC, async (req, res) => {
         });
       }
     }
+    // Auto-create Drive folder if root folder is configured (fire-and-forget, never blocks the response)
+    const rootFolderId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
+    if (rootFolderId) {
+      dmsCreateFolder(name, rootFolderId)
+        .then(folder => db.query('UPDATE clients SET drive_folder_id=? WHERE id=?', [folder.id, newClientId]))
+        .catch(e => console.error('DMS auto-folder creation failed for client', newClientId, e.message));
+    }
     res.json({ success: true, client_id: newClientId });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Client already exists' });
@@ -4569,6 +4757,185 @@ app.post('/api/clients/:id/login', requireAuth, requireAdminOrPC, async (req, re
       throw e;
     }
     res.json({ success: true, email });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// GOOGLE OAUTH — one-time flow to authorize Drive access
+// ══════════════════════════════════════════════════════
+
+// Step 1 — admin visits this URL, gets redirected to Google consent screen
+app.get('/api/google/auth', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const oauth2 = _dmsOAuthClient();
+    const url = oauth2.generateAuthUrl({
+      access_type: 'offline',
+      scope: ['https://www.googleapis.com/auth/drive'],
+      prompt: 'consent', // always return refresh_token
+    });
+    res.redirect(url);
+  } catch (e) { res.status(400).send('<p>' + e.message + '</p>'); }
+});
+
+// Step 2 — Google redirects here with ?code=... after admin approves
+app.get('/api/google/callback', async (req, res) => {
+  const { code, error } = req.query;
+  if (error) return res.send(`<p style="font-family:sans-serif;color:#dc2626">Authorization denied: ${error}</p>`);
+  if (!code) return res.status(400).send('<p>Missing code</p>');
+  try {
+    const oauth2 = _dmsOAuthClient();
+    const { tokens } = await oauth2.getToken(code);
+    if (!tokens.refresh_token) {
+      return res.send(`<p style="font-family:sans-serif;color:#b45309">No refresh token returned.<br>
+        Revoke app access at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a> then try again.</p>`);
+    }
+    await db.query(
+      `INSERT INTO app_settings (key_name, value) VALUES ('google_oauth_refresh_token', ?)
+       ON DUPLICATE KEY UPDATE value=?, updated_at=NOW()`,
+      [tokens.refresh_token, tokens.refresh_token]
+    );
+    _driveClient = null; // reset so next call picks up the new token
+    res.send(`<p style="font-family:sans-serif;color:#16a34a;font-size:18px">
+      ✅ Google Drive connected successfully!<br><br>
+      <a href="/app" style="font-size:14px">← Back to app</a></p>`);
+  } catch (e) { res.status(500).send('<p style="color:#dc2626">' + e.message + '</p>'); }
+});
+
+// OAuth status — is Drive connected?
+app.get('/api/google/drive-status', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const token = await _dmsRefreshToken();
+    const hasClientCreds = !!(process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET);
+    res.json({ connected: !!token, has_client_credentials: hasClientCreds });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// DMS — Document Management System (Google Drive)
+// ══════════════════════════════════════════════════════
+
+// Get DMS status for a client
+app.get('/api/clients/:id/dms', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const [[client]] = await db.query(
+      'SELECT id, name, drive_folder_id FROM clients WHERE id=?', [id]);
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    const [depts] = await db.query(
+      'SELECT department_name, drive_folder_id FROM client_department_folders WHERE client_id=? ORDER BY department_name',
+      [id]);
+    const refreshToken = await _dmsRefreshToken();
+    const drive_configured = !!(
+      process.env.GOOGLE_OAUTH_CLIENT_ID &&
+      process.env.GOOGLE_OAUTH_CLIENT_SECRET &&
+      refreshToken &&
+      process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID
+    );
+    res.json({
+      client_id: client.id,
+      client_name: client.name,
+      drive_folder_id: client.drive_folder_id || null,
+      drive_configured,
+      drive_auth_url: drive_configured ? null : '/api/google/auth',
+      departments: depts,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Create the client's root Drive folder (one-time setup)
+app.post('/api/clients/:id/dms/setup', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const rootFolderId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
+    if (!rootFolderId) return res.status(400).json({ error: 'GOOGLE_DRIVE_ROOT_FOLDER_ID env var not set' });
+    const id = req.params.id;
+    const [[client]] = await db.query('SELECT id, name, drive_folder_id FROM clients WHERE id=?', [id]);
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (client.drive_folder_id) {
+      return res.json({ success: true, drive_folder_id: client.drive_folder_id, already_exists: true });
+    }
+    const folder = await dmsCreateFolder(client.name, rootFolderId);
+    await db.query('UPDATE clients SET drive_folder_id=? WHERE id=?', [folder.id, id]);
+    res.json({ success: true, drive_folder_id: folder.id, web_view_link: folder.webViewLink });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Add a department subfolder under the client's Drive folder
+app.post('/api/clients/:id/dms/departments', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const dept = (req.body.department_name || '').trim();
+    if (!dept) return res.status(400).json({ error: 'department_name required' });
+    const [[client]] = await db.query('SELECT id, name, drive_folder_id FROM clients WHERE id=?', [id]);
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (!client.drive_folder_id) return res.status(400).json({ error: 'Set up the client Drive folder first' });
+    const [[existing]] = await db.query(
+      'SELECT drive_folder_id FROM client_department_folders WHERE client_id=? AND department_name=?',
+      [id, dept]);
+    if (existing) return res.json({ success: true, drive_folder_id: existing.drive_folder_id, already_exists: true });
+    const folder = await dmsCreateFolder(dept, client.drive_folder_id);
+    await db.query(
+      'INSERT INTO client_department_folders (client_id, department_name, drive_folder_id) VALUES (?,?,?)',
+      [id, dept, folder.id]);
+    // Share with all users in this department + all admins (fire-and-forget)
+    db.query(
+      `SELECT DISTINCT email FROM users
+       WHERE email IS NOT NULL AND email != ''
+         AND (department=? OR role='admin')
+         AND role != 'client'`,
+      [dept]
+    ).then(([members]) => {
+      return Promise.all(members.map(m => dmsShareFolder(folder.id, m.email).catch(() => {})));
+    }).catch(() => {});
+    res.json({ success: true, drive_folder_id: folder.id, web_view_link: folder.webViewLink });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Remove a department mapping (does NOT delete the Drive folder)
+app.delete('/api/clients/:id/dms/departments/:dept', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const dept = decodeURIComponent(req.params.dept);
+    await db.query(
+      'DELETE FROM client_department_folders WHERE client_id=? AND department_name=?', [id, dept]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// List files in a Drive folder (must belong to this client)
+app.get('/api/clients/:id/dms/folders/:folderId/files', requireAuth, async (req, res) => {
+  try {
+    const { id, folderId } = req.params;
+    const [[clientRow]] = await db.query('SELECT drive_folder_id FROM clients WHERE id=?', [id]);
+    const [deptRows] = await db.query(
+      'SELECT drive_folder_id FROM client_department_folders WHERE client_id=?', [id]);
+    const validIds = new Set([
+      clientRow?.drive_folder_id,
+      ...deptRows.map(r => r.drive_folder_id),
+    ].filter(Boolean));
+    if (!validIds.has(folderId)) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    const files = await dmsListFiles(folderId);
+    res.json(files);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Create a Google Doc / Sheet / Slide in a folder
+app.post('/api/clients/:id/dms/folders/:folderId/files', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const { id, folderId } = req.params;
+    const [[clientRow]] = await db.query('SELECT drive_folder_id FROM clients WHERE id=?', [id]);
+    const [deptRows] = await db.query(
+      'SELECT drive_folder_id FROM client_department_folders WHERE client_id=?', [id]);
+    const validIds = new Set([
+      clientRow?.drive_folder_id,
+      ...deptRows.map(r => r.drive_folder_id),
+    ].filter(Boolean));
+    if (!validIds.has(folderId)) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    const name = (req.body.name || '').trim();
+    const kind = (req.body.kind || '').toLowerCase();
+    if (!name) return res.status(400).json({ error: 'name required' });
+    if (!DMS_MIME_TYPES[kind]) return res.status(400).json({ error: 'kind must be doc, sheet, or slide' });
+    const webViewLink = await dmsCreateFile(name, kind, folderId);
+    res.json({ success: true, web_view_link: webViewLink });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -6019,6 +6386,318 @@ app.delete('/api/meetings/:id', requireAuth, async (req, res) => {
     await db.query("UPDATE meetings SET status='cancelled' WHERE id=?", [id]);
     sendMeetingNotification(id, 'cancelled').catch(e => console.error('notify err:', e.message));
     res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// INVENTORY MANAGEMENT
+// ══════════════════════════════════════════════════════
+
+// Get all items (admin/hod see all; others see only assigned to them)
+app.get('/api/inventory/items', requireAuth, async (req, res) => {
+  try {
+    const isAdmin = ['admin','hod'].includes(req.session.role);
+    let rows;
+    if (isAdmin) {
+      [rows] = await db.query(`
+        SELECT i.*, u.name AS assigned_to_name, u.id AS assigned_to_id,
+               a.id AS assignment_id, a.assigned_at, a.handover_status
+        FROM inventory_items i
+        LEFT JOIN inventory_assignments a ON a.item_id = i.id AND a.handover_status IN ('active','pending_handover')
+        LEFT JOIN users u ON u.id = a.user_id
+        ORDER BY i.created_at DESC`);
+    } else {
+      [rows] = await db.query(`
+        SELECT i.*, u.name AS assigned_to_name, u.id AS assigned_to_id,
+               a.id AS assignment_id, a.assigned_at, a.handover_status
+        FROM inventory_items i
+        JOIN inventory_assignments a ON a.item_id = i.id AND a.user_id = ? AND a.handover_status IN ('active','pending_handover')
+        JOIN users u ON u.id = a.user_id
+        ORDER BY i.created_at DESC`, [req.session.userId]);
+    }
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Add new item (admin only)
+app.post('/api/inventory/items', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
+  try {
+    const { name, type, brand, model, serial_number, photo, item_condition, notes } = req.body;
+    if (!name || !type) return res.status(400).json({ error: 'name and type required' });
+    const validTypes = ['laptop','keyboard','mouse','mobile','sim','charger','other'];
+    if (!validTypes.includes(type)) return res.status(400).json({ error: 'Invalid type' });
+    const [r] = await db.query(
+      `INSERT INTO inventory_items (name,type,brand,model,serial_number,photo,item_condition,notes,created_by)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      [name, type, brand||'', model||'', serial_number||'', photo||null, item_condition||'good', notes||'', req.session.userId]);
+    res.json({ ok: true, id: r.insertId });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Update item (admin only)
+app.put('/api/inventory/items/:id', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
+  try {
+    const { name, brand, model, serial_number, photo, item_condition, status, notes } = req.body;
+    await db.query(
+      `UPDATE inventory_items SET name=COALESCE(?,name), brand=COALESCE(?,brand), model=COALESCE(?,model),
+       serial_number=COALESCE(?,serial_number), photo=COALESCE(?,photo), item_condition=COALESCE(?,item_condition),
+       status=COALESCE(?,status), notes=COALESCE(?,notes) WHERE id=?`,
+      [name||null, brand||null, model||null, serial_number||null, photo||null,
+       item_condition||null, status||null, notes||null, req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Delete item (admin only, only if not currently assigned)
+app.delete('/api/inventory/items/:id', requireAuth, async (req, res) => {
+  if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  try {
+    const [[item]] = await db.query('SELECT status FROM inventory_items WHERE id=?', [req.params.id]);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    if (item.status === 'assigned') return res.status(400).json({ error: 'Cannot delete an assigned item. Return it first.' });
+    await db.query('DELETE FROM inventory_items WHERE id=?', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Assign item to user (admin only)
+app.post('/api/inventory/assign', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
+  try {
+    const { item_id, user_id } = req.body;
+    if (!item_id || !user_id) return res.status(400).json({ error: 'item_id and user_id required' });
+    const [[item]] = await db.query('SELECT status FROM inventory_items WHERE id=?', [item_id]);
+    if (!item) return res.status(404).json({ error: 'Item not found' });
+    if (item.status === 'assigned') return res.status(400).json({ error: 'Item already assigned' });
+    await db.query(
+      `INSERT INTO inventory_assignments (item_id, user_id, assigned_by) VALUES (?,?,?)`,
+      [item_id, user_id, req.session.userId]);
+    await db.query(`UPDATE inventory_items SET status='assigned' WHERE id=?`, [item_id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Get all assignments (admin/hod)
+app.get('/api/inventory/assignments', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
+  try {
+    const [rows] = await db.query(`
+      SELECT a.*, i.name AS item_name, i.type AS item_type, i.brand, i.model, i.serial_number, i.photo,
+             u.name AS user_name, u.department,
+             ab.name AS assigned_by_name
+      FROM inventory_assignments a
+      JOIN inventory_items i ON i.id = a.item_id
+      JOIN users u ON u.id = a.user_id
+      LEFT JOIN users ab ON ab.id = a.assigned_by
+      ORDER BY a.assigned_at DESC`);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Initiate handover (admin marks item as pending return when user leaves)
+app.post('/api/inventory/handover/:assignment_id', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
+  try {
+    const { notes } = req.body;
+    const [[a]] = await db.query('SELECT * FROM inventory_assignments WHERE id=?', [req.params.assignment_id]);
+    if (!a) return res.status(404).json({ error: 'Assignment not found' });
+    await db.query(
+      `UPDATE inventory_assignments SET handover_status='pending_handover', handover_notes=? WHERE id=?`,
+      [notes||'', req.params.assignment_id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Complete handover — item returned
+app.post('/api/inventory/return/:assignment_id', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
+  try {
+    const [[a]] = await db.query('SELECT * FROM inventory_assignments WHERE id=?', [req.params.assignment_id]);
+    if (!a) return res.status(404).json({ error: 'Assignment not found' });
+    await db.query(
+      `UPDATE inventory_assignments SET handover_status='returned', returned_at=NOW() WHERE id=?`,
+      [req.params.assignment_id]);
+    await db.query(`UPDATE inventory_items SET status='available' WHERE id=?`, [a.item_id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// HRM — INTERVIEW MANAGEMENT
+// ══════════════════════════════════════════════════════
+const HRM_AMUFIY_API_KEY  = process.env.HRM_AMUFIY_API_KEY  || 'sl_f7f604b7eeb89f938399b888621a341f2183bceea4bcb9650f3b8a529d396bfe';
+const HRM_TEXT_ENDPOINT   = 'https://api.aumpfy.com/api/apis/trigger/emk-dbde65';
+const HRM_FILE_ENDPOINT   = 'https://api.aumpfy.com/api/apis/trigger/hrm-file-6b7116';
+const HRM_COMPANY         = process.env.HRM_COMPANY || 'E-Marketing';
+
+async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateName, action) {
+  let status = 'Failed', errorDetail = '';
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': HRM_AMUFIY_API_KEY },
+      body: JSON.stringify(payload)
+    });
+    if (resp.ok) { status = 'Sent'; } else {
+      const txt = await resp.text();
+      errorDetail = `HTTP ${resp.status}: ${txt.slice(0,200)}`;
+    }
+  } catch (e) { errorDetail = e.message; }
+
+  const payloadJson = JSON.stringify({ endpoint, body: payload });
+  await db.query(
+    `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json)
+     VALUES (?,?,?,?,?,?,?,?)`,
+    [candidateId||null, candidateName||'', payload.to||'', action||type, type, status, errorDetail, payloadJson]
+  ).catch(()=>{});
+  return status === 'Sent';
+}
+
+function hrmFormatPhone(phone) {
+  const clean = String(phone||'').replace(/[\s\-\+\(\)]/g,'');
+  return clean.startsWith('91') ? clean : '91'+clean;
+}
+
+// Dashboard stats
+app.get('/api/hrm/stats', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const [[totals]] = await db.query(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(status='Scheduled')  AS scheduled,
+        SUM(status='Rescheduled') AS rescheduled,
+        SUM(status='Selected')   AS selected,
+        SUM(status='Rejected')   AS rejected,
+        SUM(status='Offer Sent') AS offer_sent,
+        SUM(DATE(interview_date)=CURDATE() AND status='Scheduled') AS today_interviews
+      FROM hrm_candidates`);
+    res.json(totals);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Get all candidates
+app.get('/api/hrm/candidates', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const [rows] = await db.query('SELECT * FROM hrm_candidates ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Add candidate + schedule interview
+app.post('/api/hrm/candidates', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { name, phone, profile_position, interview_date, interview_time, notes, meeting_link, interviewer_phone } = req.body;
+    if (!name || !phone) return res.status(400).json({ error: 'name and phone required' });
+    const [r] = await db.query(
+      `INSERT INTO hrm_candidates (name,phone,profile_position,interview_date,interview_time,notes,meeting_link,interviewer_phone,created_by)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      [name, phone, profile_position||'', interview_date||null, interview_time||'', notes||'', meeting_link||'', interviewer_phone||'', req.session.userId]);
+    const cid = r.insertId;
+
+    const meetLine = meeting_link ? `\n🔗 Meeting Link: ${meeting_link}` : '';
+    hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(phone), text:
+`Hello ${name}! 👋\n\nYour interview has been scheduled.\n\n🏢 Company: ${HRM_COMPANY}\n💼 Position: ${profile_position||''}\n📅 Date: ${interview_date||''}\n⏰ Time: ${interview_time||''}${meetLine}\n\nPlease be available on time.\n\n— ${HRM_COMPANY} HR Team`
+    }, 'text', cid, name, 'Interview Scheduled - Candidate');
+
+    if (interviewer_phone) {
+      hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(interviewer_phone), text:
+`📋 *New Interview Scheduled*\n\n👤 Candidate: ${name}\n📱 Phone: ${phone}\n💼 Position: ${profile_position||''}\n📅 Date: ${interview_date||''}\n⏰ Time: ${interview_time||''}${meetLine}\n\n— ${HRM_COMPANY} HR Portal`
+      }, 'text', cid, name, 'Interview Scheduled - Interviewer');
+    }
+
+    res.json({ ok: true, id: cid });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Update candidate status
+app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { status, reschedule_date, reschedule_time, reschedule_reason, joining_date, salary } = req.body;
+    const validStatuses = ['Scheduled','Rescheduled','Selected','Rejected','Offer Sent'];
+    if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
+    if (!c) return res.status(404).json({ error: 'Not found' });
+
+    const updates = { status, updated_at: new Date() };
+    if (status === 'Rescheduled') { updates.reschedule_date = reschedule_date||null; updates.reschedule_time = reschedule_time||''; }
+    if (status === 'Offer Sent')  { updates.joining_date = joining_date||null; updates.salary = salary||''; updates.offer_sent = 1; }
+
+    const fields = Object.keys(updates).map(k => `${k}=?`).join(',');
+    await db.query(`UPDATE hrm_candidates SET ${fields} WHERE id=?`, [...Object.values(updates), req.params.id]);
+
+    const meetLine = c.meeting_link ? `\n🔗 Meeting Link: ${c.meeting_link}` : '';
+
+    if (status === 'Rescheduled') {
+      hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+`Hello ${c.name}! 🔄\n\nYour interview has been rescheduled.\n\n💼 Position: ${c.profile_position}\n📅 New Date: ${reschedule_date||''}\n⏰ New Time: ${reschedule_time||''}${meetLine}${reschedule_reason ? '\n\n📝 Reason: '+reschedule_reason : ''}\n\nSorry for the inconvenience.\n\n— ${HRM_COMPANY} HR Team`
+      }, 'text', c.id, c.name, 'Rescheduled - Candidate');
+      if (c.interviewer_phone) {
+        hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.interviewer_phone), text:
+`🔄 *Interview Rescheduled*\n\n👤 Candidate: ${c.name}\n💼 Position: ${c.profile_position}\n📅 New Date: ${reschedule_date||''}\n⏰ New Time: ${reschedule_time||''}${meetLine}\n\n— ${HRM_COMPANY} HR Portal`
+        }, 'text', c.id, c.name, 'Rescheduled - Interviewer');
+      }
+    }
+    if (status === 'Selected') {
+      hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+`Congratulations ${c.name}! 🎉\n\nYou have been selected for ${c.profile_position}.\n\nWelcome to ${HRM_COMPANY}. Our HR team will share offer details soon.\n\nPlease keep documents ready:\n- Educational certificates\n- Experience letters\n- ID proof\n- 2 passport-size photos\n\n— ${HRM_COMPANY} HR Team`
+      }, 'text', c.id, c.name, 'Selected');
+    }
+    if (status === 'Rejected') {
+      hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+`Hello ${c.name},\n\nThank you for applying for ${c.profile_position}.\n\nAfter careful review, we are unable to move forward at this time. We may consider you for future openings.\n\nBest wishes.\n\n— ${HRM_COMPANY} HR Team`
+      }, 'text', c.id, c.name, 'Rejected');
+    }
+    if (status === 'Offer Sent') {
+      hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+`Hello ${c.name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${c.profile_position}.\n\n📅 Joining Date: ${joining_date||''}\n💰 CTC: ${salary||'To be discussed'}\n\nPlease confirm your acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
+      }, 'text', c.id, c.name, 'Offer Sent');
+    }
+
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Get message log
+app.get('/api/hrm/messages', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const [rows] = await db.query('SELECT * FROM hrm_message_log ORDER BY created_at DESC LIMIT 500');
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Retry failed message
+app.post('/api/hrm/messages/:id/retry', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const [[msg]] = await db.query('SELECT * FROM hrm_message_log WHERE id=?', [req.params.id]);
+    if (!msg) return res.status(404).json({ error: 'Not found' });
+    let parsed;
+    try { parsed = JSON.parse(msg.payload_json); } catch { return res.status(400).json({ error: 'Payload corrupt' }); }
+
+    let status = 'Failed', errorDetail = '';
+    try {
+      const resp = await fetch(parsed.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': HRM_AMUFIY_API_KEY },
+        body: JSON.stringify(parsed.body)
+      });
+      if (resp.ok) { status = 'Sent'; } else {
+        const txt = await resp.text();
+        errorDetail = `HTTP ${resp.status}: ${txt.slice(0,200)}`;
+      }
+    } catch (e) { errorDetail = e.message; }
+
+    await db.query(
+      `UPDATE hrm_message_log SET status=?, error_detail=?, retry_count=retry_count+1, last_retry_at=NOW() WHERE id=?`,
+      [status, errorDetail, req.params.id]);
+    res.json({ ok: status === 'Sent', status, message: status === 'Sent' ? 'Resent successfully' : 'Retry failed: '+errorDetail });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
