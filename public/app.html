@@ -1540,14 +1540,23 @@ tbody tr:last-child td{border-bottom:none;}
 
     <!-- Access Control sub-panel -->
     <div id="usersSubPanel-access" style="display:none">
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:auto">
-        <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between">
-          <div>
-            <div style="font-size:14px;font-weight:700">Page Access Control</div>
-            <div style="font-size:12px;color:#64748b;margin-top:2px">Toggle which pages each user can see. Grayed toggles = granted by role (can't remove).</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button class="tab active" id="accTab-role" onclick="switchAccTab('role',this)" style="font-size:13px">🔐 Role Permissions</button>
+        <button class="tab" id="accTab-user" onclick="switchAccTab('user',this)" style="font-size:13px">👤 Individual Overrides</button>
+      </div>
+      <!-- Role permissions panel -->
+      <div id="accPanel-role">
+        <div id="roleMatrix"><div class="empty">Loading…</div></div>
+      </div>
+      <!-- Per-user override panel -->
+      <div id="accPanel-user" style="display:none">
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:auto">
+          <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0">
+            <div style="font-size:14px;font-weight:700">Individual Page Overrides</div>
+            <div style="font-size:12px;color:#64748b;margin-top:2px">Grant individual users extra pages beyond their role permissions.</div>
           </div>
+          <div id="accessMatrix"><div class="empty">Loading…</div></div>
         </div>
-        <div id="accessMatrix"><div class="empty">Loading…</div></div>
       </div>
     </div>
   </div>
@@ -3822,6 +3831,24 @@ function renderDbmTable() {
 // STATE
 // ══════════════════════════════════════════════════════
 let ME = null;
+let ROLE_PERMS = {}; // Loaded at init from /api/role-permissions
+
+function canSee(page) {
+  if (!ME) return false;
+  if (ME.role === 'admin') return true;
+  if (ME.role === 'client') return page === 'client-portal';
+  const perms = ROLE_PERMS[ME.role] || {};
+  if (Array.isArray(ME.extra_access) && ME.extra_access.includes(page)) return true;
+  return Array.isArray(perms.pages) && perms.pages.includes(page);
+}
+
+function canDo(action) {
+  if (!ME) return false;
+  if (ME.role === 'admin') return true;
+  const perms = ROLE_PERMS[ME.role] || {};
+  return Array.isArray(perms.actions) && perms.actions.includes(action);
+}
+
 let dashType = 'all';
 let tasksType = 'delegation';
 let dashChartInst = null;
@@ -3868,59 +3895,54 @@ async function init() {
     // jump straight into any user's dashboard from here.
     if (ME.role === 'admin' || ME.impersonatedBy) buildDashUserSwitcher();
 
-    if (ME.role === 'admin') {
-      document.getElementById('nav-users').style.display = 'flex';
-      document.getElementById('nav-mis').style.display = 'flex';
-      document.getElementById('nav-race').style.display = 'flex';
-      document.getElementById('nav-fms').style.display = 'flex';
-      document.getElementById('nav-clients').style.display = 'flex';
-      document.getElementById('nav-compliance').style.display = 'flex';
-      document.getElementById('nav-dailyreports').style.display = 'flex';
-      document.getElementById('bulkDeleteBtn').style.display = 'inline-flex';
-      document.getElementById('nav-hrm').style.display = 'flex';
+    // Load role-based permissions before applying nav visibility
+    try {
+      const rp = await api('/api/role-permissions');
+      if (rp && !rp.error) ROLE_PERMS = rp;
+    } catch(e) { console.warn('role-permissions load failed', e); }
+
+    // Apply nav visibility via canSee() — driven by role_permissions table
+    const NAV_MAP = {
+      'nav-users':        'users',
+      'nav-mis':          'mis',
+      'nav-race':         'race',
+      'nav-fms':          'fms',
+      'nav-clients':      'clients',
+      'nav-compliance':   'compliance',
+      'nav-dailyreports': 'dailyreports',
+      'nav-hrm':          'hrm',
+      'nav-meetings':     'meetings',
+      'nav-inventory':    'inventory',
+    };
+    for (const [navId, page] of Object.entries(NAV_MAP)) {
+      const el = document.getElementById(navId);
+      if (el) el.style.display = canSee(page) ? 'flex' : 'none';
     }
-    if (ME.role === 'hod') {
-      // HOD can view MIS for their own department
-      document.getElementById('nav-mis').style.display = 'flex';
-      document.getElementById('setPlanBtn').style.display = 'inline-flex';
-      document.getElementById('nav-hrm').style.display = 'flex';
+
+    // Action buttons driven by canDo()
+    if (canDo('delete_task')) {
+      const bb = document.getElementById('bulkDeleteBtn');
+      if (bb) bb.style.display = ME.role === 'admin' ? 'inline-flex' : 'none';
     }
-    if (ME.role === 'pc') {
-      // PC: can view all tasks + approve, but cannot edit/delete delegations.
-      // Allowed to manage the Clients list (add / bulk-upload / delete).
-      document.getElementById('nav-clients').style.display = 'flex';
+    if (canDo('set_plan')) {
+      const sp = document.getElementById('setPlanBtn');
+      if (sp) sp.style.display = 'inline-flex';
     }
-    // Leave Tracker — HOD / Admin / PC and special leave-report viewers see Team tab
-    if (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc' || ME.canViewAllLeaves) {
+
+    // Leave Tracker — team tab for roles with leave oversight
+    if (canSee('leaves') && (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc' || ME.canViewAllLeaves)) {
       const tTeam = document.getElementById('lvTabTeam');
       if (tTeam) tTeam.style.display = 'flex';
     }
 
-    // Per-user extra page access — admin grants via the Users edit modal.
-    // Reveals additional sidebar nav items without code changes.
-    if (Array.isArray(ME.extra_access) && ME.extra_access.length) {
-      const NAV_BY_KEY = {
-        race: 'nav-race', mis: 'nav-mis', fms: 'nav-fms', users: 'nav-users',
-        clients: 'nav-clients', compliance: 'nav-compliance', dailyreports: 'nav-dailyreports',
-        hrm: 'nav-hrm'
-      };
-      for (const key of ME.extra_access) {
-        const navId = NAV_BY_KEY[key];
-        if (!navId) continue;
-        const el = document.getElementById(navId);
-        if (el) el.style.display = 'flex';
-      }
-    }
-    // FMS Tasks nav — hide for users who are not a doer in any FMS step.
-    // Admin / PC see it regardless (overview / approval role).
+    // FMS Tasks — show if user has fms-tasks permission OR is assigned as a doer
     (async () => {
       const fmsNav = document.getElementById('nav-fms-tasks');
       if (!fmsNav) return;
-      if (ME.role === 'admin' || ME.role === 'pc') { fmsNav.style.display = 'flex'; return; }
+      if (canSee('fms-tasks')) { fmsNav.style.display = 'flex'; return; }
       try {
         const list = await api('/api/fms-tasks');
-        const hasFMS = Array.isArray(list) && list.length > 0;
-        fmsNav.style.display = hasFMS ? 'flex' : 'none';
+        fmsNav.style.display = (Array.isArray(list) && list.length > 0) ? 'flex' : 'none';
       } catch { fmsNav.style.display = 'none'; }
     })();
     setMinDates();
@@ -4050,7 +4072,153 @@ function switchUsersTab(tab, el) {
   document.getElementById('usersSubPanel-users').style.display  = tab === 'users'  ? 'block' : 'none';
   document.getElementById('usersSubPanel-access').style.display = tab === 'access' ? 'block' : 'none';
   document.getElementById('usersTabActions').style.display      = tab === 'users'  ? 'flex'  : 'none';
-  if (tab === 'access') renderAccessMatrix();
+  if (tab === 'access') { renderRoleMatrix(); }
+}
+
+function switchAccTab(tab, el) {
+  document.querySelectorAll('#usersSubPanel-access .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('accPanel-role').style.display = tab === 'role' ? 'block' : 'none';
+  document.getElementById('accPanel-user').style.display = tab === 'user' ? 'block' : 'none';
+  if (tab === 'role') renderRoleMatrix();
+  if (tab === 'user') renderAccessMatrix();
+}
+
+const RP_PAGES = [
+  { key:'dashboard',    label:'Dashboard',      icon:'🏠' },
+  { key:'alltasks',     label:'All Tasks',       icon:'✅' },
+  { key:'approvals',    label:'Approvals',       icon:'☑️' },
+  { key:'mis',          label:'MIS Report',      icon:'📊' },
+  { key:'race',         label:'Race Tracker',    icon:'🏁' },
+  { key:'fms',          label:'FMS Admin',       icon:'📋' },
+  { key:'fms-tasks',    label:'FMS Tasks',       icon:'📝' },
+  { key:'daily',        label:'Daily Task',      icon:'📅' },
+  { key:'clients',      label:'Client Master',   icon:'🏢' },
+  { key:'compliance',   label:'Compliance',      icon:'✅' },
+  { key:'dailyreports', label:'Daily Reports',   icon:'📈' },
+  { key:'leaves',       label:'Leave Tracker',   icon:'🏖️' },
+  { key:'meetings',     label:'Meetings',        icon:'📆' },
+  { key:'inventory',    label:'Inventory',       icon:'📦' },
+  { key:'hrm',          label:'HR Portal',       icon:'👥' },
+  { key:'users',        label:'User Mgmt',       icon:'👤' },
+];
+const RP_ACTIONS = [
+  { key:'edit_task',         label:'Edit Tasks',            icon:'✏️' },
+  { key:'delete_task',       label:'Delete Tasks',          icon:'🗑️' },
+  { key:'create_task',       label:'Delegate/Assign Task',  icon:'➕' },
+  { key:'create_checklist',  label:'Create Checklist',      icon:'📋' },
+  { key:'approve_revision',  label:'Approve Revisions',     icon:'✅' },
+  { key:'bulk_approve',      label:'Bulk Approve',          icon:'⚡' },
+  { key:'transfer_task',     label:'Transfer Tasks',        icon:'↔️' },
+  { key:'reopen_task',       label:'Reopen Tasks',          icon:'🔄' },
+  { key:'delete_leave',      label:'Delete Leave',          icon:'❌' },
+  { key:'set_plan',          label:'Set Weekly Plan',       icon:'📆' },
+  { key:'hrm_schedule',      label:'Schedule Interviews',   icon:'🗓️' },
+  { key:'hrm_update_status', label:'Update Candidate',      icon:'📝' },
+];
+
+async function renderRoleMatrix() {
+  const box = document.getElementById('roleMatrix');
+  if (!box) return;
+  box.innerHTML = '<div class="empty">Loading…</div>';
+
+  // Refresh from server so UI always reflects saved state
+  try {
+    const rp = await api('/api/role-permissions');
+    if (!rp || rp.error) throw new Error(rp?.error || 'Failed');
+    ROLE_PERMS = rp;
+  } catch(e) {
+    box.innerHTML = `<div class="empty" style="color:#ef4444">Failed to load: ${esc(e.message)}</div>`;
+    return;
+  }
+
+  const ROLES = [
+    { key:'hod',  label:'🏢 HOD' },
+    { key:'pc',   label:'🖥️ PC' },
+    { key:'user', label:'👤 User' },
+  ];
+
+  function buildSection(title, items, type) {
+    const headerCells = ROLES.map(r =>
+      `<th style="text-align:center;padding:10px 20px;font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;background:#f8fafc;border-bottom:2px solid #e2e8f0">${r.label}</th>`
+    ).join('');
+
+    const rows = items.map(item => {
+      const cells = ROLES.map(r => {
+        const perms = ROLE_PERMS[r.key] || {};
+        const list = type === 'pages' ? (perms.pages || []) : (perms.actions || []);
+        const checked = list.includes(item.key);
+        return `<td style="text-align:center;padding:9px 20px;border-bottom:1px solid #f1f5f9">
+          <label class="acc-toggle" style="cursor:pointer">
+            <input type="checkbox" ${checked ? 'checked' : ''} style="display:none"
+              onchange="toggleRolePerm('${r.key}','${type}','${item.key}',this.checked)">
+            <span class="acc-track"></span>
+          </label>
+        </td>`;
+      }).join('');
+      return `<tr>
+        <td style="padding:9px 14px;border-bottom:1px solid #f1f5f9;white-space:nowrap">
+          <span style="font-size:16px;margin-right:6px">${item.icon}</span>
+          <span style="font-size:13px;font-weight:500;color:#1e293b">${item.label}</span>
+        </td>${cells}
+      </tr>`;
+    }).join('');
+
+    return `<div style="margin-bottom:20px">
+      <div style="font-size:13px;font-weight:700;color:#1e293b;padding:12px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;border-top:1px solid #e2e8f0">${title}</div>
+      <div style="overflow-x:auto">
+        <table style="border-collapse:collapse;width:100%;min-width:560px">
+          <thead><tr>
+            <th style="text-align:left;padding:10px 14px;font-size:11px;font-weight:600;color:#64748b;letter-spacing:.5px;text-transform:uppercase;background:#f8fafc;border-bottom:2px solid #e2e8f0">Permission</th>
+            ${headerCells}
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
+  box.innerHTML = `
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:14px;font-weight:700">Role-Based Permissions</div>
+          <div style="font-size:12px;color:#64748b;margin-top:2px">Control what each role can see and do. Admin always has full access. Changes apply immediately.</div>
+        </div>
+        <span style="background:#dcfce7;color:#15803d;font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px">👑 Admin = Full Access</span>
+      </div>
+      ${buildSection('📄 Page Visibility — which pages appear in the sidebar', RP_PAGES, 'pages')}
+      ${buildSection('⚡ Action Permissions — which buttons are visible', RP_ACTIONS, 'actions')}
+    </div>
+    <div id="rpSaveStatus" style="text-align:right;margin-top:8px;font-size:12px;color:#10b981;min-height:18px"></div>`;
+}
+
+async function toggleRolePerm(role, type, key, enabled) {
+  const perms = ROLE_PERMS[role] || { pages: [], actions: [] };
+  let list = [...(type === 'pages' ? (perms.pages || []) : (perms.actions || []))];
+  if (enabled) { if (!list.includes(key)) list.push(key); }
+  else          { list = list.filter(k => k !== key); }
+  if (type === 'pages') perms.pages = list;
+  else                  perms.actions = list;
+  ROLE_PERMS[role] = perms;
+
+  const st = document.getElementById('rpSaveStatus');
+  if (st) { st.textContent = '⏳ Saving…'; st.style.color = '#f59e0b'; }
+
+  const r = await api(`/api/role-permissions/${role}`, 'PUT', {
+    pages: perms.pages || [],
+    actions: perms.actions || []
+  });
+
+  if (st) {
+    if (r && !r.error) {
+      st.textContent = '✓ Saved'; st.style.color = '#10b981';
+      setTimeout(() => { if (st) st.textContent = ''; }, 2000);
+    } else {
+      st.textContent = '❌ ' + (r?.error || 'Save failed'); st.style.color = '#ef4444';
+    }
+  }
+  if (r && r.error) showToast(r.error, 'error');
 }
 
 async function renderAccessMatrix() {
@@ -4715,20 +4883,14 @@ async function loadDashboard() {
       });
     }
 
-    if (isAdmin) {
-      document.getElementById('dashBtns').innerHTML = `
-        <button class="btn btn-yellow" onclick="openHoliday()">🗓 Holidays</button>
-        <button class="btn btn-green" onclick="openChecklist()">+ Checklist</button>
-        <button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>
-        <button class="btn" style="background:#7c3aed;color:#fff" onclick="openNewTransferModal()">🔀 Transfer</button>`;
-    } else if (isHod) {
-      document.getElementById('dashBtns').innerHTML = `
-        <button class="btn btn-green" onclick="openChecklist()">+ Checklist</button>
-        <button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>
-        <button class="btn" style="background:#7c3aed;color:#fff" onclick="openNewTransferModal()">🔀 Transfer</button>`;
-    } else if (ME.role === 'user') {
-      document.getElementById('dashBtns').innerHTML = `
-        <button class="btn btn-primary" onclick="openDelegate()">+ Assign Task</button>`;
+    {
+      const btns = [];
+      if (ME.role === 'admin') btns.push(`<button class="btn btn-yellow" onclick="openHoliday()">🗓 Holidays</button>`);
+      if (canDo('create_checklist')) btns.push(`<button class="btn btn-green" onclick="openChecklist()">+ Checklist</button>`);
+      if (canDo('create_task'))      btns.push(`<button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>`);
+      if (canDo('transfer_task'))    btns.push(`<button class="btn" style="background:#7c3aed;color:#fff" onclick="openNewTransferModal()">🔀 Transfer</button>`);
+      const db2 = document.getElementById('dashBtns');
+      if (db2) db2.innerHTML = btns.join('');
     }
   }
 
@@ -5636,19 +5798,17 @@ function _buildTaskRowHtml(t, ctx) {
   if (isClickable) window._taskDetailMap[t.id] = t;
 
   const isMyDelegation = (tasksType === 'delegation' || isDelegateByMe) && String(t.assigned_by) === String(ME.id);
-  const canEdit = isAdmin || isDelegateByMe || isMyDelegation;
-  const actionBtns = canEdit ? `
-    <button class="action-btn edit" style="padding:4px 7px" onclick="openEditTask(${t.id},'${editType}')" title="Edit">✏️</button>
-    <button class="action-btn delete" style="padding:4px 7px;margin-left:3px" onclick="deleteTask(${t.id},'${editType}')" title="Delete">🗑</button>
+  const canEditThis   = (isAdmin || isDelegateByMe || isMyDelegation) && canDo('edit_task');
+  const canDeleteThis = (isAdmin || isDelegateByMe || isMyDelegation) && canDo('delete_task');
+  const canReopenThis = canDo('reopen_task');
+  const hasFullCtrl   = canEditThis || canDeleteThis;
+  const actionBtns = hasFullCtrl ? `
+    ${canEditThis  ? `<button class="action-btn edit" style="padding:4px 7px" onclick="openEditTask(${t.id},'${editType}')" title="Edit">✏️</button>` : ''}
+    ${canDeleteThis? `<button class="action-btn delete" style="padding:4px 7px;margin-left:3px" onclick="deleteTask(${t.id},'${editType}')" title="Delete">🗑</button>` : ''}
     <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px;margin-left:3px" onclick="openComments(${t.id},'${editType}')" title="Comments">💬</button>
     ${!isCompleted && !isWaiting ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${editType}')">Done</button>` : ''}
     ${!isChecklist && !isCompleted && !isWaiting ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${editType}')">Revise</button>` : ''}
-    ${isCompleted ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${editType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
-    ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
-  ` : (ME.role==='pc') ? `
-    <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
-    ${isChecklist && !isCompleted && !isWaiting ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>` : ''}
-    ${isChecklist && isCompleted ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${tasksType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
+    ${isCompleted && canReopenThis ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${editType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
     ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
   ` : `
     <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
@@ -5656,9 +5816,8 @@ function _buildTaskRowHtml(t, ctx) {
       <button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>
       ${!isChecklist ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${tasksType}')">Revise</button>` : ''}
     ` : ''}
-    ${isCompleted ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${tasksType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
-    ${isWaiting ? `
-      <span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting Approval</span>` : ''}
+    ${isCompleted && canReopenThis ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${tasksType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
+    ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting Approval</span>` : ''}
   `;
   const clientCell = showClientCol
     ? `<td style="white-space:nowrap;font-size:12px">${t.client_name ? `<span style="background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span>` : '<span style="color:#94a3b8">—</span>'}</td>`
