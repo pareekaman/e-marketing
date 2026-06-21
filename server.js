@@ -908,16 +908,20 @@ app.get('/api/me', requireAuth, async (req, res) => {
     const [rows] = await db.query(
       `SELECT id,name,email,notification_email,role,
               COALESCE(user_role, role) AS user_role,
-              phone,profile_image,department,week_off,extra_access,user_permissions
+              phone,profile_image,department,week_off,extra_access
        FROM users WHERE id=?`, [req.session.userId]);
     if (!rows[0]) return res.status(404).json({ error: 'User not found' });
-    // extra_off fetch separately — safe if column not yet added
+    // extra_off + user_permissions fetched separately — safe if columns not yet added
     try {
       const [ex] = await db.query('SELECT extra_off FROM users WHERE id=?', [req.session.userId]);
       rows[0].extra_off = ex[0]?.extra_off || '';
     } catch(e) { rows[0].extra_off = ''; }
+    try {
+      const [up] = await db.query('SELECT user_permissions FROM users WHERE id=?', [req.session.userId]);
+      const raw = up[0]?.user_permissions;
+      rows[0].user_permissions = raw ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : null;
+    } catch(e) { rows[0].user_permissions = null; }
     rows[0].extra_access = parseExtraAccess(rows[0].extra_access);
-    rows[0].user_permissions = rows[0].user_permissions ? (() => { try { return JSON.parse(rows[0].user_permissions); } catch { return null; } })() : null;
     rows[0].canViewAllLeaves = isLeaveReportViewer(rows[0]);
     // When an admin is "viewing as" this user, expose who's really behind the wheel
     // so the UI can show an exit-impersonation banner.
@@ -2243,11 +2247,22 @@ app.get('/api/users', requireAuth, async (req, res) => {
               COALESCE(user_role, role) AS user_role,
               phone,department,week_off,extra_off,
               COALESCE(exclude_from_reminder,0) AS exclude_from_reminder,
-              extra_access,user_permissions
+              extra_access
        FROM users WHERE role <> 'client' AND client_id IS NULL ORDER BY name ASC`
     );
     for (const r of rows) r.extra_access = parseExtraAccess(r.extra_access);
-    for (const r of rows) r.user_permissions = r.user_permissions ? (() => { try { return JSON.parse(r.user_permissions); } catch { return null; } })() : null;
+    // user_permissions fetched separately — safe before server restart runs migration
+    try {
+      const ids = rows.map(r=>r.id);
+      if (ids.length) {
+        const [ups] = await db.query(`SELECT id,user_permissions FROM users WHERE id IN (${ids.map(()=>'?').join(',')})`, ids);
+        const upMap = Object.fromEntries(ups.map(u=>[u.id, u.user_permissions]));
+        for (const r of rows) {
+          const raw = upMap[r.id];
+          r.user_permissions = raw ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : null;
+        }
+      }
+    } catch(e) { for (const r of rows) r.user_permissions = null; }
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
