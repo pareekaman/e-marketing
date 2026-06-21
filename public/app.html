@@ -449,6 +449,57 @@ tbody tr:last-child td{border-bottom:none;}
 .fms-done-btn:hover{background:#059669;transform:translateY(-1px);}
 .fms-status-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:#fef9c3;color:#854d0e;}
 
+/* ── HRM — HR Portal ───────────────────────────────────── */
+.hrm-stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
+.hrm-msg-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px;}
+.hrm-stat-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px 18px;position:relative;overflow:hidden;transition:box-shadow .15s;}
+.hrm-stat-card:hover{box-shadow:0 4px 16px rgba(15,23,42,.08);}
+.hrm-stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+.hrm-stat-card.blue::before{background:#1a56db;}
+.hrm-stat-card.amber::before{background:#f59e0b;}
+.hrm-stat-card.green::before{background:#10b981;}
+.hrm-stat-card.purple::before{background:#7c3aed;}
+.hrm-stat-card.red::before{background:#ef4444;}
+.hrm-stat-card.slate::before{background:#64748b;}
+.hrm-stat-label{font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+.hrm-stat-val{font-size:30px;font-weight:700;line-height:1;}
+.hrm-stat-card.blue .hrm-stat-val{color:#1a56db;}
+.hrm-stat-card.amber .hrm-stat-val{color:#f59e0b;}
+.hrm-stat-card.green .hrm-stat-val{color:#10b981;}
+.hrm-stat-card.purple .hrm-stat-val{color:#7c3aed;}
+.hrm-stat-card.red .hrm-stat-val{color:#ef4444;}
+.hrm-stat-card.slate .hrm-stat-val{color:#64748b;}
+.hrm-msg-stat-val{font-size:28px;font-weight:700;line-height:1;}
+.hrm-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
+.hrm-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.hrm-search{padding:9px 13px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit;background:#f8fafc;min-width:200px;}
+.hrm-search:focus{border-color:#1a56db;background:#fff;box-shadow:0 0 0 3px rgba(26,86,219,.1);}
+.hrm-filter-select{padding:9px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#fff;cursor:pointer;}
+.hrm-filter-select:focus{border-color:#1a56db;}
+.hrm-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;}
+.hrm-badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;}
+.hrm-badge.Scheduled{background:#eff6ff;color:#1a56db;}
+.hrm-badge.Rescheduled{background:#fffbeb;color:#d97706;}
+.hrm-badge.Selected{background:#f0fdf4;color:#059669;}
+.hrm-badge.Rejected{background:#fef2f2;color:#dc2626;}
+.hrm-badge.offer{background:#f5f3ff;color:#7c3aed;}
+.hrm-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;}
+.hrm-candidate-name{font-weight:600;font-size:13px;color:#0f172a;}
+.hrm-candidate-sub{font-size:11px;color:#64748b;margin-top:1px;}
+.hrm-date-cell{font-size:13px;color:#1e293b;}
+.hrm-redate{font-size:11px;color:#d97706;margin-top:2px;}
+.hrm-wa-note{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;font-size:12px;color:#166534;margin-bottom:4px;}
+.hrm-candidate-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:16px;}
+.hrm-candidate-card-name{font-weight:700;font-size:14px;color:#0f172a;}
+.hrm-candidate-card-sub{font-size:12px;color:#64748b;margin-top:2px;}
+.hrm-candidate-card-phone{font-size:12px;color:#059669;margin-top:2px;font-weight:500;}
+.hrm-msg-status-sent{display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:10px;background:#f0fdf4;color:#059669;}
+.hrm-msg-status-failed{display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:10px;background:#fef2f2;color:#dc2626;}
+.hrm-msg-search{padding:9px 13px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit;background:#f8fafc;min-width:180px;}
+.hrm-msg-search:focus{border-color:#1a56db;background:#fff;box-shadow:0 0 0 3px rgba(26,86,219,.1);}
+.hrm-view-all{font-size:12px;color:#1a56db;font-weight:600;cursor:pointer;text-decoration:none;padding:4px 8px;border-radius:6px;background:transparent;border:none;font-family:inherit;}
+.hrm-view-all:hover{background:#eff6ff;}
+
 /* Header select dropdowns in step config */
 .header-select{width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;background:#fff;color:#1e293b;}
 .header-select:focus{border-color:#3b82f6;}
@@ -1026,6 +1077,14 @@ tbody tr:last-child td{border-bottom:none;}
   .tab.tab-action{padding:5px 10px;font-size:11px;}
 
   /* ── Set Plan / MIS modals get same treatment via .modal global rule above ── */
+
+  /* ── HRM responsive ── */
+  .hrm-stat-grid{grid-template-columns:repeat(2,1fr);gap:10px;}
+  .hrm-msg-grid{grid-template-columns:1fr 1fr;gap:10px;}
+  .hrm-search,.hrm-msg-search{min-width:0;width:100%;}
+  .hrm-toolbar{flex-direction:column;align-items:stretch;}
+  .hrm-filters{width:100%;}
+  .hrm-filter-select{flex:1;}
 }
 
 /* ── Extra small (phones <380px) ── */
@@ -1033,6 +1092,8 @@ tbody tr:last-child td{border-bottom:none;}
   .overview-cards{grid-template-columns:1fr;}
   .topbar-title{font-size:14px;}
   .dr-stats{grid-template-columns:1fr;}
+  .hrm-stat-grid{grid-template-columns:1fr 1fr;}
+  .hrm-msg-grid{grid-template-columns:1fr;}
 }
 
 /* ══════════════════════════════════════════════
@@ -2105,28 +2166,31 @@ tbody tr:last-child td{border-bottom:none;}
 
     <!-- HRM Dashboard -->
     <div id="hrm-dashboard">
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;border-top:3px solid #1a56db">
-          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Total Candidates</div>
-          <div id="hrm-stat-total" style="font-size:30px;font-weight:700;color:#1a56db">0</div>
+      <div class="hrm-stat-grid">
+        <div class="hrm-stat-card blue">
+          <div class="hrm-stat-label">Total Candidates</div>
+          <div id="hrm-stat-total" class="hrm-stat-val">0</div>
         </div>
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;border-top:3px solid #f59e0b">
-          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Today's Interviews</div>
-          <div id="hrm-stat-today" style="font-size:30px;font-weight:700;color:#f59e0b">0</div>
+        <div class="hrm-stat-card amber">
+          <div class="hrm-stat-label">Today's Interviews</div>
+          <div id="hrm-stat-today" class="hrm-stat-val">0</div>
         </div>
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;border-top:3px solid #10b981">
-          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Selected</div>
-          <div id="hrm-stat-selected" style="font-size:30px;font-weight:700;color:#10b981">0</div>
+        <div class="hrm-stat-card green">
+          <div class="hrm-stat-label">Selected</div>
+          <div id="hrm-stat-selected" class="hrm-stat-val">0</div>
         </div>
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;border-top:3px solid #7c3aed">
-          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Offers Sent</div>
-          <div id="hrm-stat-offers" style="font-size:30px;font-weight:700;color:#7c3aed">0</div>
+        <div class="hrm-stat-card purple">
+          <div class="hrm-stat-label">Offers Sent</div>
+          <div id="hrm-stat-offers" class="hrm-stat-val">0</div>
         </div>
       </div>
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div class="hrm-card">
         <div class="card-head">
           <div class="card-head-title">Recent Candidates</div>
-          <button class="btn btn-primary btn-sm" onclick="openHrmAddModal()">＋ Schedule Interview</button>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="hrm-view-all" onclick="switchHrmTab('candidates',document.querySelector('#page-hrm .tab-group .tab:nth-child(2)'))">View All →</button>
+            <button class="btn btn-primary btn-sm" onclick="openHrmAddModal()">＋ Schedule Interview</button>
+          </div>
         </div>
         <div id="hrm-recent-table"><div class="empty">Loading…</div></div>
       </div>
@@ -2134,12 +2198,10 @@ tbody tr:last-child td{border-bottom:none;}
 
     <!-- HRM Candidates list -->
     <div id="hrm-candidates" style="display:none">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <input id="hrmSearch" type="text" placeholder="🔍 Search name / phone…" oninput="renderHrmTable()"
-            style="padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;width:200px;font-family:inherit">
-          <select id="hrmFilterStatus" onchange="renderHrmTable()"
-            style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
+      <div class="hrm-toolbar">
+        <div class="hrm-filters">
+          <input id="hrmSearch" type="text" placeholder="🔍 Search name / phone…" oninput="renderHrmTable()" class="hrm-search">
+          <select id="hrmFilterStatus" onchange="renderHrmTable()" class="hrm-filter-select">
             <option value="">All Status</option>
             <option>Scheduled</option>
             <option>Rescheduled</option>
@@ -2147,37 +2209,42 @@ tbody tr:last-child td{border-bottom:none;}
             <option>Rejected</option>
             <option>Offer Sent</option>
           </select>
+          <select id="hrmFilterPosition" onchange="renderHrmTable()" class="hrm-filter-select" style="min-width:140px">
+            <option value="">All Positions</option>
+          </select>
         </div>
         <button class="btn btn-primary btn-sm" onclick="openHrmAddModal()">＋ Schedule Interview</button>
       </div>
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div class="hrm-card">
         <div id="hrm-candidates-table"><div class="empty">Loading…</div></div>
       </div>
     </div>
 
     <!-- HRM Message Status -->
     <div id="hrm-messages" style="display:none">
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px">
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;border-top:3px solid #10b981">
-          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Sent</div>
-          <div id="hrm-msg-sent" style="font-size:28px;font-weight:700;color:#10b981">0</div>
+      <div class="hrm-msg-grid">
+        <div class="hrm-stat-card green">
+          <div class="hrm-stat-label">Sent</div>
+          <div id="hrm-msg-sent" class="hrm-msg-stat-val" style="color:#10b981">0</div>
         </div>
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;border-top:3px solid #ef4444">
-          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Failed</div>
-          <div id="hrm-msg-failed" style="font-size:28px;font-weight:700;color:#ef4444">0</div>
+        <div class="hrm-stat-card red">
+          <div class="hrm-stat-label">Failed</div>
+          <div id="hrm-msg-failed" class="hrm-msg-stat-val" style="color:#ef4444">0</div>
         </div>
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;border-top:3px solid #64748b">
-          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Total Messages</div>
-          <div id="hrm-msg-total" style="font-size:28px;font-weight:700;color:#64748b">0</div>
+        <div class="hrm-stat-card slate">
+          <div class="hrm-stat-label">Total Messages</div>
+          <div id="hrm-msg-total" class="hrm-msg-stat-val" style="color:#64748b">0</div>
         </div>
       </div>
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div class="hrm-card">
         <div class="card-head">
-          <div class="card-head-title">All WhatsApp Messages</div>
-          <select id="hrmMsgFilter" onchange="renderHrmMsgTable()"
-            style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;font-family:inherit;outline:none">
-            <option value="">All</option><option value="Sent">Sent</option><option value="Failed">Failed</option>
-          </select>
+          <div class="card-head-title">WhatsApp Message Log</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="hrmMsgSearch" type="text" placeholder="Search candidate…" oninput="renderHrmMsgTable()" class="hrm-msg-search">
+            <select id="hrmMsgFilter" onchange="renderHrmMsgTable()" class="hrm-filter-select">
+              <option value="">All</option><option value="Sent">Sent</option><option value="Failed">Failed</option>
+            </select>
+          </div>
         </div>
         <div id="hrm-msg-table"><div class="empty">Loading…</div></div>
       </div>
@@ -2337,7 +2404,7 @@ tbody tr:last-child td{border-bottom:none;}
         <label>Notes</label>
         <textarea id="hrmCNotes" rows="2" placeholder="Any additional information…"></textarea>
       </div>
-      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;font-size:12px;color:#166534;margin-bottom:4px">
+      <div class="hrm-wa-note">
         💬 WhatsApp will be sent to candidate &amp; interviewer automatically.
       </div>
       <div class="modal-footer">
@@ -2352,10 +2419,10 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="modal" style="width:480px">
       <button class="modal-close" onclick="closeModal('hrmStatusModal')">×</button>
       <h3>✏️ Update Status</h3>
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:16px">
-        <div style="font-weight:700;font-size:14px" id="hrm-modal-name"></div>
-        <div style="font-size:12px;color:#64748b;margin-top:2px" id="hrm-modal-profile"></div>
-        <div style="font-size:12px;color:#10b981;margin-top:2px" id="hrm-modal-phone"></div>
+      <div class="hrm-candidate-card">
+        <div class="hrm-candidate-card-name" id="hrm-modal-name"></div>
+        <div class="hrm-candidate-card-sub" id="hrm-modal-profile"></div>
+        <div class="hrm-candidate-card-phone" id="hrm-modal-phone"></div>
       </div>
       <div class="form-group">
         <label>New Status *</label>
@@ -2396,7 +2463,7 @@ tbody tr:last-child td{border-bottom:none;}
           </div>
         </div>
       </div>
-      <div id="hrmStatusWaNote" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;font-size:12px;color:#166534;margin-top:8px">
+      <div id="hrmStatusWaNote" class="hrm-wa-note" style="display:none;margin-top:8px;margin-bottom:0">
         💬 A WhatsApp message will be sent to the candidate.
       </div>
       <div class="modal-footer">
@@ -4344,11 +4411,18 @@ async function loadHRM() {
     document.getElementById('hrm-stat-today').textContent    = stats.today_interviews || 0;
     document.getElementById('hrm-stat-selected').textContent = stats.selected || 0;
     document.getElementById('hrm-stat-offers').textContent   = stats.offer_sent || 0;
-    const sent   = _hrmMessages.filter(m=>m.status==='Sent').length;
-    const failed = _hrmMessages.filter(m=>m.status==='Failed').length;
-    document.getElementById('hrm-msg-sent').textContent   = sent;
-    document.getElementById('hrm-msg-failed').textContent = failed;
-    document.getElementById('hrm-msg-total').textContent  = _hrmMessages.length;
+  }
+  const sent   = _hrmMessages.filter(m=>m.status==='Sent').length;
+  const failed = _hrmMessages.filter(m=>m.status==='Failed').length;
+  document.getElementById('hrm-msg-sent').textContent   = sent;
+  document.getElementById('hrm-msg-failed').textContent = failed;
+  document.getElementById('hrm-msg-total').textContent  = _hrmMessages.length;
+  // Populate position filter
+  const positions = [...new Set(_hrmCandidates.map(c=>c.profile_position).filter(Boolean))].sort();
+  const posEl = document.getElementById('hrmFilterPosition');
+  if (posEl) {
+    const cur = posEl.value;
+    posEl.innerHTML = '<option value="">All Positions</option>' + positions.map(p=>`<option${p===cur?' selected':''}>${esc(p)}</option>`).join('');
   }
   renderHrmRecent();
   renderHrmTable();
@@ -4370,17 +4444,20 @@ function renderHrmRecent() {
 }
 
 function renderHrmTable() {
-  const search = (document.getElementById('hrmSearch')?.value||'').toLowerCase();
-  const status = document.getElementById('hrmFilterStatus')?.value||'';
+  const search   = (document.getElementById('hrmSearch')?.value||'').toLowerCase();
+  const status   = document.getElementById('hrmFilterStatus')?.value||'';
+  const position = document.getElementById('hrmFilterPosition')?.value||'';
   let list = _hrmCandidates;
-  if (status) list = list.filter(c=>c.status===status);
-  if (search) list = list.filter(c=>(c.name||'').toLowerCase().includes(search)||(c.phone||'').includes(search));
+  if (status)   list = list.filter(c=>c.status===status);
+  if (position) list = list.filter(c=>c.profile_position===position);
+  if (search)   list = list.filter(c=>(c.name||'').toLowerCase().includes(search)||(c.phone||'').includes(search));
   document.getElementById('hrm-candidates-table').innerHTML = renderHrmRows(list);
 }
 
 function renderHrmRows(list) {
   if (!list.length) return '<div class="empty">No candidates found.</div>';
   const rows = list.map(c=>{
+    const badgeClass = c.status === 'Offer Sent' ? 'offer' : c.status;
     const color = HRM_STATUS_COLORS[c.status]||'#64748b';
     const bg    = HRM_STATUS_BG[c.status]||'#f8fafc';
     const initials = (c.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
@@ -4390,18 +4467,21 @@ function renderHrmRows(list) {
     return `<tr>
       <td>
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:34px;height:34px;border-radius:50%;background:${bg};color:${color};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${initials}</div>
+          <div class="hrm-avatar" style="background:${bg};color:${color}">${initials}</div>
           <div>
-            <div style="font-weight:600">${esc(c.name)}</div>
-            <div style="font-size:11px;color:#64748b">${esc(c.phone)}</div>
+            <div class="hrm-candidate-name">${esc(c.name)}</div>
+            <div class="hrm-candidate-sub">${esc(c.phone)}</div>
           </div>
         </div>
       </td>
-      <td style="font-size:13px">${esc(c.profile_position||'—')}</td>
-      <td style="font-size:13px">${dateStr}${c.interview_time?' '+esc(c.interview_time):''}${reDateStr?`<div style="font-size:11px;color:#f59e0b">→ ${reDateStr}`:''}</td>
-      <td><span style="font-size:11px;font-weight:600;padding:3px 9px;border-radius:12px;background:${bg};color:${color}">${c.status}</span></td>
+      <td class="hrm-date-cell">${esc(c.profile_position||'—')}</td>
       <td>
-        ${canUpdate?`<button class="action-btn edit" onclick="openHrmStatusModal(${c.id})">Update</button>`:''}
+        <div class="hrm-date-cell">${dateStr}${c.interview_time ? ' ' + esc(c.interview_time) : ''}</div>
+        ${reDateStr ? `<div class="hrm-redate">→ Rescheduled: ${reDateStr}${c.reschedule_time?' '+esc(c.reschedule_time):''}</div>` : ''}
+      </td>
+      <td><span class="hrm-badge ${badgeClass}">${c.status}</span></td>
+      <td>
+        ${canUpdate ? `<button class="action-btn edit" onclick="openHrmStatusModal(${c.id})">Update</button>` : '<span style="font-size:11px;color:#94a3b8">Closed</span>'}
       </td>
     </tr>`;
   }).join('');
@@ -4410,23 +4490,24 @@ function renderHrmRows(list) {
 
 function renderHrmMsgTable() {
   const filter = document.getElementById('hrmMsgFilter')?.value||'';
+  const search = (document.getElementById('hrmMsgSearch')?.value||'').toLowerCase();
   let list = _hrmMessages;
   if (filter) list = list.filter(m=>m.status===filter);
+  if (search) list = list.filter(m=>(m.candidate_name||'').toLowerCase().includes(search)||(m.phone||'').includes(search));
   const el = document.getElementById('hrm-msg-table');
-  if (!list.length) { el.innerHTML = '<div class="empty">No messages.</div>'; return; }
+  if (!list.length) { el.innerHTML = '<div class="empty">No messages found.</div>'; return; }
   const rows = list.map(m=>{
-    const color = m.status==='Sent' ? '#10b981' : '#ef4444';
-    const bg    = m.status==='Sent' ? '#f0fdf4' : '#fef2f2';
+    const statusCls = m.status==='Sent' ? 'hrm-msg-status-sent' : 'hrm-msg-status-failed';
     const retryBtn = m.status==='Failed'
       ? `<button class="action-btn edit" onclick="retryHrmMsg(${m.id})">Retry</button>` : '';
     const ts = m.created_at ? new Date(m.created_at).toLocaleString('en-IN') : '';
     return `<tr>
-      <td style="font-size:12px;color:#64748b">${ts}</td>
-      <td><div style="font-weight:600;font-size:13px">${esc(m.candidate_name)}</div><div style="font-size:11px;color:#64748b">${esc(m.phone)}</div></td>
-      <td style="font-size:12px">${esc(m.action)}</td>
-      <td><span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${bg};color:${color}">${m.status}</span></td>
-      <td style="font-size:11px;color:#64748b">${m.retry_count>0?`Retried ${m.retry_count}×`:''}</td>
-      <td>${retryBtn}${m.error_detail?`<div style="font-size:10px;color:#ef4444;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.error_detail)}">${esc(m.error_detail.slice(0,80))}</div>`:''}</td>
+      <td style="font-size:12px;color:#64748b;white-space:nowrap">${ts}</td>
+      <td><div class="hrm-candidate-name">${esc(m.candidate_name)}</div><div class="hrm-candidate-sub">${esc(m.phone)}</div></td>
+      <td style="font-size:12px;color:#475569">${esc(m.action)}</td>
+      <td><span class="${statusCls}">${m.status}</span></td>
+      <td style="font-size:11px;color:#64748b">${m.retry_count>0?`${m.retry_count}×`:''}</td>
+      <td>${retryBtn}${m.error_detail?`<div style="font-size:10px;color:#dc2626;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.error_detail)}">${esc(m.error_detail.slice(0,80))}</div>`:''}</td>
     </tr>`;
   }).join('');
   el.innerHTML = `<table><thead><tr><th>Time</th><th>Candidate</th><th>Action</th><th>Status</th><th>Retries</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>`;

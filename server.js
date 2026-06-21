@@ -358,6 +358,7 @@ const _startupMigrationsPromise = (async () => {
     status ENUM('Scheduled','Rescheduled','Selected','Rejected','Offer Sent') DEFAULT 'Scheduled',
     reschedule_date DATE DEFAULT NULL,
     reschedule_time VARCHAR(20) DEFAULT '',
+    reschedule_reason TEXT DEFAULT '',
     joining_date DATE DEFAULT NULL,
     offer_sent TINYINT(1) DEFAULT 0,
     salary VARCHAR(100) DEFAULT '',
@@ -387,6 +388,9 @@ const _startupMigrationsPromise = (async () => {
     INDEX idx_candidate (candidate_id),
     INDEX idx_status (status)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+  // Add reschedule_reason column to existing installs
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN IF NOT EXISTS reschedule_reason TEXT DEFAULT ''`);
 
   console.log('  ✅ DB migrations checked');
 
@@ -6552,13 +6556,15 @@ async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateNa
     `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json)
      VALUES (?,?,?,?,?,?,?,?)`,
     [candidateId||null, candidateName||'', payload.to||'', action||type, type, status, errorDetail, payloadJson]
-  ).catch(()=>{});
+  ).catch(e => console.error('hrm_message_log insert failed:', e.message));
   return status === 'Sent';
 }
 
 function hrmFormatPhone(phone) {
   const clean = String(phone||'').replace(/[\s\-\+\(\)]/g,'');
-  return clean.startsWith('91') ? clean : '91'+clean;
+  if (clean.length >= 12 && clean.startsWith('91')) return clean;
+  if (clean.startsWith('0')) return '91' + clean.slice(1);
+  return '91' + clean;
 }
 
 // Dashboard stats
@@ -6573,7 +6579,7 @@ app.get('/api/hrm/stats', requireAuth, async (req, res) => {
         SUM(status='Selected')   AS selected,
         SUM(status='Rejected')   AS rejected,
         SUM(status='Offer Sent') AS offer_sent,
-        SUM(DATE(interview_date)=CURDATE() AND status='Scheduled') AS today_interviews
+        SUM((DATE(interview_date)=CURDATE() AND status='Scheduled') OR (DATE(reschedule_date)=CURDATE() AND status='Rescheduled')) AS today_interviews
       FROM hrm_candidates`);
     res.json(totals);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -6603,12 +6609,12 @@ app.post('/api/hrm/candidates', requireAuth, async (req, res) => {
     const meetLine = meeting_link ? `\n🔗 Meeting Link: ${meeting_link}` : '';
     hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(phone), text:
 `Hello ${name}! 👋\n\nYour interview has been scheduled.\n\n🏢 Company: ${HRM_COMPANY}\n💼 Position: ${profile_position||''}\n📅 Date: ${interview_date||''}\n⏰ Time: ${interview_time||''}${meetLine}\n\nPlease be available on time.\n\n— ${HRM_COMPANY} HR Team`
-    }, 'text', cid, name, 'Interview Scheduled - Candidate');
+    }, 'text', cid, name, 'Interview Scheduled - Candidate').catch(e => console.error('HRM WA candidate err:', e.message));
 
     if (interviewer_phone) {
       hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(interviewer_phone), text:
 `📋 *New Interview Scheduled*\n\n👤 Candidate: ${name}\n📱 Phone: ${phone}\n💼 Position: ${profile_position||''}\n📅 Date: ${interview_date||''}\n⏰ Time: ${interview_time||''}${meetLine}\n\n— ${HRM_COMPANY} HR Portal`
-      }, 'text', cid, name, 'Interview Scheduled - Interviewer');
+      }, 'text', cid, name, 'Interview Scheduled - Interviewer').catch(e => console.error('HRM WA interviewer err:', e.message));
     }
 
     res.json({ ok: true, id: cid });
@@ -6625,8 +6631,8 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
     const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
     if (!c) return res.status(404).json({ error: 'Not found' });
 
-    const updates = { status, updated_at: new Date() };
-    if (status === 'Rescheduled') { updates.reschedule_date = reschedule_date||null; updates.reschedule_time = reschedule_time||''; }
+    const updates = { status };
+    if (status === 'Rescheduled') { updates.reschedule_date = reschedule_date||null; updates.reschedule_time = reschedule_time||''; updates.reschedule_reason = reschedule_reason||''; }
     if (status === 'Offer Sent')  { updates.joining_date = joining_date||null; updates.salary = salary||''; updates.offer_sent = 1; }
 
     const fields = Object.keys(updates).map(k => `${k}=?`).join(',');
@@ -6637,27 +6643,27 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
     if (status === 'Rescheduled') {
       hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
 `Hello ${c.name}! 🔄\n\nYour interview has been rescheduled.\n\n💼 Position: ${c.profile_position}\n📅 New Date: ${reschedule_date||''}\n⏰ New Time: ${reschedule_time||''}${meetLine}${reschedule_reason ? '\n\n📝 Reason: '+reschedule_reason : ''}\n\nSorry for the inconvenience.\n\n— ${HRM_COMPANY} HR Team`
-      }, 'text', c.id, c.name, 'Rescheduled - Candidate');
+      }, 'text', c.id, c.name, 'Rescheduled - Candidate').catch(e => console.error('HRM WA resched candidate err:', e.message));
       if (c.interviewer_phone) {
         hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.interviewer_phone), text:
 `🔄 *Interview Rescheduled*\n\n👤 Candidate: ${c.name}\n💼 Position: ${c.profile_position}\n📅 New Date: ${reschedule_date||''}\n⏰ New Time: ${reschedule_time||''}${meetLine}\n\n— ${HRM_COMPANY} HR Portal`
-        }, 'text', c.id, c.name, 'Rescheduled - Interviewer');
+        }, 'text', c.id, c.name, 'Rescheduled - Interviewer').catch(e => console.error('HRM WA resched interviewer err:', e.message));
       }
     }
     if (status === 'Selected') {
       hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
 `Congratulations ${c.name}! 🎉\n\nYou have been selected for ${c.profile_position}.\n\nWelcome to ${HRM_COMPANY}. Our HR team will share offer details soon.\n\nPlease keep documents ready:\n- Educational certificates\n- Experience letters\n- ID proof\n- 2 passport-size photos\n\n— ${HRM_COMPANY} HR Team`
-      }, 'text', c.id, c.name, 'Selected');
+      }, 'text', c.id, c.name, 'Selected').catch(e => console.error('HRM WA selected err:', e.message));
     }
     if (status === 'Rejected') {
       hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
 `Hello ${c.name},\n\nThank you for applying for ${c.profile_position}.\n\nAfter careful review, we are unable to move forward at this time. We may consider you for future openings.\n\nBest wishes.\n\n— ${HRM_COMPANY} HR Team`
-      }, 'text', c.id, c.name, 'Rejected');
+      }, 'text', c.id, c.name, 'Rejected').catch(e => console.error('HRM WA rejected err:', e.message));
     }
     if (status === 'Offer Sent') {
       hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
 `Hello ${c.name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${c.profile_position}.\n\n📅 Joining Date: ${joining_date||''}\n💰 CTC: ${salary||'To be discussed'}\n\nPlease confirm your acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
-      }, 'text', c.id, c.name, 'Offer Sent');
+      }, 'text', c.id, c.name, 'Offer Sent').catch(e => console.error('HRM WA offer err:', e.message));
     }
 
     res.json({ ok: true });
@@ -6679,6 +6685,7 @@ app.post('/api/hrm/messages/:id/retry', requireAuth, async (req, res) => {
   try {
     const [[msg]] = await db.query('SELECT * FROM hrm_message_log WHERE id=?', [req.params.id]);
     if (!msg) return res.status(404).json({ error: 'Not found' });
+    if (msg.status === 'Sent') return res.status(400).json({ ok: false, message: 'Message already sent successfully' });
     let parsed;
     try { parsed = JSON.parse(msg.payload_json); } catch { return res.status(400).json({ error: 'Payload corrupt' }); }
 
