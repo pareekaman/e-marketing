@@ -3947,6 +3947,10 @@ const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approv
 // ══════════════════════════════════════════════════════
 // USERS PAGE — TAB SWITCHER + ACCESS CONTROL
 // ══════════════════════════════════════════════════════
+// Global alias — the only escape fn in scope is escapeHtml (defined below init).
+// All my render functions use esc() for brevity.
+const esc = s => escapeHtml(String(s == null ? '' : s));
+
 const ACCESS_MODULES = [
   { key: 'mis',          label: 'MIS Report',    icon: '📊', roleDefault: ['admin','hod'] },
   { key: 'race',         label: 'Race Tracker',  icon: '🏁', roleDefault: ['admin'] },
