@@ -60,8 +60,9 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 .nav-label-text{opacity:0;transition:opacity .2s .1s;}
 .sidebar:hover .nav-label-text{opacity:1;}
 .nav-item:hover{background:rgba(255,255,255,.06);color:#e2e8f0;}
-.nav-item.active{background:rgba(59,130,246,.2);color:#60a5fa;}
-.nav-divider{border-top:1px solid rgba(255,255,255,.06);margin:8px 0;}
+.nav-item.active{background:rgba(96,165,250,.15);color:#60a5fa;border-left:2px solid #3b82f6;}
+.nav-item:not(.active){border-left:2px solid transparent;}
+.nav-divider{border-top:1px solid rgba(255,255,255,.08);margin:8px 0;}
 
 .sidebar-user{
   padding:12px;border-top:1px solid rgba(255,255,255,.08);
@@ -76,7 +77,7 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 .su-info{opacity:0;transition:opacity .2s .1s;}
 .sidebar:hover .su-info{opacity:1;}
 .su-name{font-size:12px;font-weight:600;color:#e2e8f0;}
-.su-role{font-size:11px;color:#64748b;}
+.su-role{font-size:11px;color:#94a3b8;}
 
 .sidebar-bottom{padding:10px 8px;overflow:hidden;}
 .logout-btn{
@@ -85,7 +86,9 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
   color:#f87171;transition:all .2s;width:100%;white-space:nowrap;
   background:none;border:none;font-family:'Inter',sans-serif;
 }
-.logout-btn:hover{background:rgba(248,113,113,.1);}
+.logout-btn:hover{background:rgba(248,113,113,.18);border-left:2px solid #f87171;}
+.sidebar-user{cursor:pointer;transition:background .15s;border-radius:8px;}
+.sidebar-user:hover{background:rgba(255,255,255,.04);}
 .logout-label{opacity:0;transition:opacity .2s .1s;}
 .sidebar:hover .logout-label{opacity:1;}
 
@@ -97,15 +100,21 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
   background:#fff;border-bottom:1px solid #e2e8f0;
   padding:0 24px;height:60px;display:flex;align-items:center;
   justify-content:space-between;position:sticky;top:0;z-index:90;
+  box-shadow:0 1px 4px rgba(15,23,42,.06);
 }
 .topbar-title{font-size:18px;font-weight:700;color:#1e293b;}
 .topbar-right{display:flex;align-items:center;gap:8px;}
 
 .btn{padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:all .2s;border:none;display:inline-flex;align-items:center;gap:6px;}
+.btn:active{transform:translateY(1px);}
+.btn:focus-visible{outline:2px solid #1a56db;outline-offset:2px;}
 .btn-primary{background:#1a56db;color:#fff;}.btn-primary:hover{background:#1648c0;}
+.btn-primary:focus-visible{outline-color:#1a56db;}
 .btn-outline{background:#fff;color:#374151;border:1.5px solid #e2e8f0;}.btn-outline:hover{border-color:#3b82f6;color:#3b82f6;}
 .btn-danger{background:#ef4444;color:#fff;}.btn-danger:hover{background:#dc2626;}
+.btn-danger:focus-visible{outline-color:#ef4444;}
 .btn-green{background:#10b981;color:#fff;}.btn-green:hover{background:#059669;}
+.btn-green:focus-visible{outline-color:#10b981;}
 .btn-yellow{background:#f59e0b;color:#fff;}.btn-yellow:hover{background:#d97706;}
 .btn-sm{padding:5px 10px;font-size:12px;}
 
@@ -147,9 +156,9 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 .dash-perf-card h4{font-size:13px;font-weight:700;color:#1e293b;margin:0 0 10px;display:flex;align-items:center;gap:6px;}
 .dash-perf-card .perf-chart-wrap{position:relative;height:200px;}
 .dash-perf-card .perf-empty{font-size:12px;color:#94a3b8;text-align:center;padding:60px 10px;}
-@media (max-width:960px){ .dash-perf-grid{grid-template-columns:1fr;} }
+@media (max-width:960px){ .dash-perf-grid{grid-template-columns:1fr;} .dash-bottom{grid-template-columns:1fr;} }
 .task-table-card{background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;}
-.card-head{padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;}
+.card-head{padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#fafafa;}
 .card-head-title{font-size:14px;font-weight:700;}
 .tab-group{display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:8px;}
 .tab{padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;color:#64748b;transition:all .2s;}
@@ -159,14 +168,15 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 
 table{width:100%;border-collapse:collapse;}
 thead th{font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:#94a3b8;padding:10px 14px;text-align:left;border-bottom:1px solid #e2e8f0;background:#f8fafc;}
+tbody tr{transition:background .1s;}
 tbody tr:hover{background:#f8fafc;}
 tbody td{padding:11px 14px;font-size:13px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
 tbody tr:last-child td{border-bottom:none;}
 
 .status-badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;display:inline-block;}
-.status-badge.pending{background:#fef2f2;color:#dc2626;}
+.status-badge.pending{background:#fef2f2;color:#b91c1c;}
 .status-badge.completed{background:#f0fdf4;color:#16a34a;}
-.status-badge.revised{background:#fffbeb;color:#d97706;}
+.status-badge.revised{background:#fffbeb;color:#92400e;}
 
 .chart-card{background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:18px;}
 .chart-card h3{font-size:14px;font-weight:700;margin-bottom:14px;}
@@ -199,7 +209,7 @@ tbody tr:last-child td{border-bottom:none;}
 /* ══════════════════════════════════════
    MODALS
 ══════════════════════════════════════ */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:none;align-items:center;justify-content:center;}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);}
 .modal-overlay.open{display:flex;}
 .modal{position:relative;background:#fff;border-radius:14px;padding:24px;width:480px;max-width:95vw;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);}
 .modal-close{position:absolute;top:10px;right:10px;width:30px;height:30px;border-radius:50%;background:#f1f5f9;color:#64748b;border:none;cursor:pointer;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;transition:background .15s,color .15s;z-index:2;}
@@ -277,6 +287,7 @@ tbody tr:last-child td{border-bottom:none;}
 .empty{text-align:center;padding:36px;color:#94a3b8;font-size:13px;}
 
 .action-btn{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:'Inter',sans-serif;transition:all .2s;}
+.action-btn:focus-visible{outline:2px solid currentColor;outline-offset:2px;}
 .action-btn.done{background:#dcfce7;color:#16a34a;}.action-btn.done:hover{background:#bbf7d0;}
 .action-btn.revise{background:#fffbeb;color:#d97706;}.action-btn.revise:hover{background:#fef3c7;}
 .action-btn.edit{background:#eff6ff;color:#1d4ed8;}.action-btn.edit:hover{background:#dbeafe;}
@@ -286,14 +297,13 @@ tbody tr:last-child td{border-bottom:none;}
 .role-badge{font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;}
 .role-badge.admin{background:#eff6ff;color:#1d4ed8;}
 .role-badge.pc{background:#fdf4ff;color:#7c3aed;}
-.role-badge.pc{background:#fdf4ff;color:#7c3aed;}
-.role-badge.hod{background:#fdf4ff;color:#7e22ce;}
+.role-badge.hod{background:#ede9fe;color:#6b21a8;}
 .role-badge.user{background:#f0fdf4;color:#16a34a;}
 
 .priority-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;text-transform:uppercase;}
 .priority-badge.low{background:#f0fdf4;color:#16a34a;}
 .priority-badge.medium{background:#eff6ff;color:#1d4ed8;}
-.priority-badge.high{background:#fffbeb;color:#d97706;}
+.priority-badge.high{background:#fffbeb;color:#92400e;}
 .priority-badge.urgent{background:#fef2f2;color:#dc2626;}
 
 /* Holiday list */
@@ -404,6 +414,7 @@ tbody tr:last-child td{border-bottom:none;}
 .fms-name-tab:hover:not(.active){border-color:#1a56db;color:#1a56db;}
 .fms-step-tab{padding:6px 18px;border-radius:8px;background:#f8fafc;border:1.5px solid #e2e8f0;font-size:12px;font-weight:600;cursor:pointer;color:#374151;transition:all .2s;white-space:nowrap;}
 .fms-step-tab.active{background:#1a56db;color:#fff;border-color:#1a56db;}
+.fms-step-tab:hover:not(.active){border-color:#1a56db;color:#1a56db;background:#eff6ff;}
 .fms-step-box{background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;position:relative;transition:box-shadow .2s;}
 .fms-step-box.drag-over{border-color:#1a56db;box-shadow:0 0 0 3px rgba(26,86,219,.15);}
 .fms-step-box.selected{border-color:#ef4444;background:#fff5f5;}
@@ -448,6 +459,8 @@ tbody tr:last-child td{border-bottom:none;}
 .fms-done-btn{background:#10b981;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:'Inter',sans-serif;}
 .fms-done-btn:hover{background:#059669;transform:translateY(-1px);}
 .fms-status-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:#fef9c3;color:#854d0e;}
+.fms-status-badge.done{background:#dcfce7;color:#15803d;}
+.fms-status-badge.pending{background:#fef9c3;color:#854d0e;}
 
 /* ── HRM — HR Portal ───────────────────────────────────── */
 .hrm-stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
@@ -863,7 +876,7 @@ tbody tr:last-child td{border-bottom:none;}
 .lv-btn-approve:hover{background:#059669;}
 .lv-btn-reject{background:#ef4444;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;}
 .lv-btn-reject:hover{background:#dc2626;}
-.lv-btn-delete{background:transparent;color:#ef4444;border:1.5px solid #fecaca;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;}
+.lv-btn-delete{background:transparent;color:#ef4444;border:1.5px solid #fecaca;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;}
 .lv-btn-delete:hover{background:#ef4444;color:#fff;}
 
 /* Modal */
@@ -1092,7 +1105,7 @@ tbody tr:last-child td{border-bottom:none;}
   .overview-cards{grid-template-columns:1fr;}
   .topbar-title{font-size:14px;}
   .dr-stats{grid-template-columns:1fr;}
-  .hrm-stat-grid{grid-template-columns:1fr 1fr;}
+  .hrm-stat-grid{grid-template-columns:1fr;}
   .hrm-msg-grid{grid-template-columns:1fr;}
 }
 
@@ -3778,11 +3791,11 @@ function renderDbmTable() {
   const rows = filtered.map(t => {
     const isOverdue = t.status === 'pending' && t.due_date && t.due_date < today;
     return `<tr>
-      <td style="font-size:13px">${t.description||'—'}</td>
-      <td style="white-space:nowrap;font-size:13px">${t.assignedToName||'—'}</td>
+      <td style="font-size:13px">${esc(t.description||'—')}</td>
+      <td style="white-space:nowrap;font-size:13px">${esc(t.assignedToName||'—')}</td>
       <td style="white-space:nowrap;font-size:12px">${fmtDate(t.due_date||'')||'—'}${isOverdue?' <span style="color:#dc2626;font-weight:600;font-size:10px">⏰ Overdue</span>':''}</td>
-      <td style="font-size:12px;color:#64748b">${t.remarks||'—'}</td>
-      <td><span class="status-badge ${t.status}">${t.status==='revised'?'Revision':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
+      <td style="font-size:12px;color:#64748b">${esc(t.remarks||'—')}</td>
+      <td><span class="status-badge ${['pending','completed','revised'].includes(t.status)?t.status:'pending'}">${t.status==='revised'?'Revision':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
     </tr>`;
   }).join('');
 
@@ -3924,9 +3937,11 @@ async function init() {
     loadDashboard();
     loadApprovalBadge();
     loadTransferBadge();
-    // Refresh badges every 30 seconds
-    setInterval(loadApprovalBadge, 30000);
-    setInterval(loadTransferBadge, 30000);
+    // Refresh badges every 30 seconds — guard against duplicate intervals on re-init
+    if (window._badgeTimer1) clearInterval(window._badgeTimer1);
+    if (window._badgeTimer2) clearInterval(window._badgeTimer2);
+    window._badgeTimer1 = setInterval(loadApprovalBadge, 30000);
+    window._badgeTimer2 = setInterval(loadTransferBadge, 30000);
     // Monday weekly check-in — fire-and-forget; modal opens if needed.
     mwMaybeOpen();
   } catch(e) { console.error('Init error:', e); window.location.replace('/'); }
@@ -5653,13 +5668,13 @@ function _buildTaskRowHtml(t, ctx) {
     : '';
   return `<tr ${trClick}>
     <td style="white-space:nowrap;padding-right:12px" onclick="event.stopPropagation()">${actionBtns}</td>
-    <td>${t.description||''}</td>
-    <td style="white-space:nowrap">${t.assignedToName||''}</td>
-    <td style="white-space:nowrap">${(t.assignedByName && t.assignedByName.trim() && t.assignedByName !== '—') ? t.assignedByName : 'Simran Gurnani'}</td>
+    <td>${esc(t.description||'')}</td>
+    <td style="white-space:nowrap">${esc(t.assignedToName||'')}</td>
+    <td style="white-space:nowrap">${esc((t.assignedByName && t.assignedByName.trim() && t.assignedByName !== '—') ? t.assignedByName : 'Simran Gurnani')}</td>
     <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}</td>
     ${clientCell}
-    <td style="color:#64748b;max-width:220px;word-break:break-word;overflow-wrap:anywhere;font-size:12px">${t.remarks||'—'}</td>
-    <td style="white-space:nowrap"><span class="status-badge ${t.status}">${t.status==='revised'?'Revised':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
+    <td style="color:#64748b;max-width:220px;word-break:break-word;overflow-wrap:anywhere;font-size:12px">${esc(t.remarks||'—')}</td>
+    <td style="white-space:nowrap"><span class="status-badge ${['pending','completed','revised'].includes(t.status)?t.status:'pending'}">${t.status==='revised'?'Revised':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
   </tr>`;
 }
 
@@ -6049,13 +6064,13 @@ async function loadComments(taskId, taskType) {
   container.innerHTML = comments.map(c => `
     <div class="comment-item">
       <div class="comment-header">
-        <span class="comment-author">👤 ${c.userName}</span>
+        <span class="comment-author">👤 ${esc(c.userName)}</span>
         <div style="display:flex;align-items:center;gap:8px">
           <span class="comment-time">${new Date(c.created_at).toLocaleString('en-IN')}</span>
           <button class="action-btn delete" style="padding:2px 7px;font-size:10px" onclick="deleteComment(${c.id})">✕</button>
         </div>
       </div>
-      <div class="comment-text">${c.comment}</div>
+      <div class="comment-text">${esc(c.comment)}</div>
     </div>`).join('');
   container.scrollTop = container.scrollHeight;
 }
@@ -6357,8 +6372,8 @@ async function saveChecklist() {
   const skippedNote = result.skipped ? ` (${result.skipped} holiday date${result.skipped===1?'':'s'} skipped)` : '';
   suc.textContent = `✅ ${result.count || dates.length} tasks generated!${skippedNote}`;
   suc.style.display='block';
-
-  setTimeout(()=>{ closeModal('checklistModal'); loadDashboard(); }, 2000);
+  closeModal('checklistModal');
+  loadDashboard();
 }
 
 // ══════════════════════════════════════════════════════
@@ -6659,13 +6674,13 @@ function renderUsersTable(users) {
     const showBoth = userRole !== u.role;
     return `
     <tr>
-      <td style="font-weight:600">${u.name}</td>
-      <td style="color:#64748b">${u.email}</td>
-      <td style="color:#64748b">${u.phone||'—'}</td>
-      <td style="color:#64748b">${u.department||'—'}</td>
+      <td style="font-weight:600">${esc(u.name)}</td>
+      <td style="color:#64748b">${esc(u.email)}</td>
+      <td style="color:#64748b">${esc(u.phone||'—')}</td>
+      <td style="color:#64748b">${esc(u.department||'—')}</td>
       <td>
-        <span class="role-badge ${u.role}" title="App Role — permissions">${roleLabel(u.role)}</span>
-        ${showBoth ? `<br><span class="role-badge ${userRole}" style="font-size:10px;margin-top:3px;display:inline-block;opacity:.85" title="User Role — leave hierarchy">→ ${roleLabel(userRole)}</span>` : ''}
+        <span class="role-badge ${['admin','hod','pc','user'].includes(u.role)?u.role:'user'}" title="App Role — permissions">${roleLabel(u.role)}</span>
+        ${showBoth ? `<br><span class="role-badge ${['admin','hod','pc','user'].includes(userRole)?userRole:'user'}" style="font-size:10px;margin-top:3px;display:inline-block;opacity:.85" title="User Role — leave hierarchy">→ ${roleLabel(userRole)}</span>` : ''}
       </td>
       <td>
         <button class="action-btn edit" onclick="openEditUser(${u.id})">Edit</button>
@@ -7315,6 +7330,7 @@ async function api(url,method='GET',body=null) {
   }
   try {
     const data = await r.json();
+    if (!r.ok && !data.error) data.error = `HTTP ${r.status}`;
     return data;
   } catch(e) {
     console.error('API error:', url, r.status, e);
@@ -7970,7 +7986,8 @@ async function openAllMISDetail(userId, userName) {
 function setDefaultMISDates() {
   const today = new Date();
   const monday = new Date(today);
-  monday.setDate(today.getDate() - today.getDay() + 1);
+  const dow = today.getDay();
+  monday.setDate(today.getDate() + (dow === 0 ? -6 : 1 - dow));
   document.getElementById('misStart').value = monday.toISOString().split('T')[0];
   document.getElementById('misEnd').value = today.toISOString().split('T')[0];
   // Race Tracker uses the same default window
@@ -9919,7 +9936,8 @@ function dtTickClock(){
   const el = document.getElementById('dtNow');
   if (el) el.textContent = t;
 }
-setInterval(dtTickClock, 1000);
+if (window._clockTimer) clearInterval(window._clockTimer);
+window._clockTimer = setInterval(dtTickClock, 1000);
 
 async function loadDailyForm(){
   dtTickClock();
@@ -10680,7 +10698,7 @@ function cmDmsFilesHtml() {
         return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:#f8fafc;margin-bottom:6px" ' +
           'onmouseover="this.style.background=\'#f1f5f9\'" onmouseout="this.style.background=\'#f8fafc\'">' +
           '<span style="font-size:18px">' + mimeIcon(f.mimeType) + '</span>' +
-          '<a href="' + f.webViewLink + '" target="_blank" rel="noopener" style="font-size:13px;color:#1d4ed8;font-weight:600;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + dtEscape(f.name) + '</a>' +
+          '<a href="' + (/^https?:\/\//i.test(f.webViewLink) ? f.webViewLink : '#') + '" target="_blank" rel="noopener" style="font-size:13px;color:#1d4ed8;font-weight:600;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + dtEscape(f.name) + '</a>' +
           '<span style="font-size:11px;color:#94a3b8;white-space:nowrap;flex-shrink:0">' + date + '</span>' +
           '</div>';
       }).join('')
@@ -12696,7 +12714,7 @@ async function renderMtgDay() {
         : '';
       const active = m.status !== 'cancelled' && m.status !== 'done';
       const linkBtn = m.meet_link && active
-        ? `<a href="${dtEscape(m.meet_link)}" target="_blank" rel="noopener" class="btn btn-primary" style="padding:4px 10px;font-size:11px">Join</a>` : '';
+        ? `<a href="${/^https?:\/\//i.test(m.meet_link) ? dtEscape(m.meet_link) : '#'}" target="_blank" rel="noopener" class="btn btn-primary" style="padding:4px 10px;font-size:11px">Join</a>` : '';
       const doneBtn = active
         ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px;color:#15803d;border-color:#86efac" onclick="markMeetingDone(${m.id})">✓ Done</button>` : '';
       return `<div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;${m.status==='cancelled'?'opacity:0.55':''}">

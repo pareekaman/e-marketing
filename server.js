@@ -677,6 +677,8 @@ function idxToCol(idx) {
 // Useful when auto-migrations on startup fail silently
 // ══════════════════════════════════════════════════════
 app.get('/api/setup', async (req, res) => {
+  const secret = process.env.SETUP_SECRET;
+  if (!secret || req.query.secret !== secret) return res.status(403).json({ error: 'Forbidden — set SETUP_SECRET env and pass ?secret=...' });
   const log = [];
   const sa = async (sql, label) => {
     try { await db.query(sql); log.push(`✅ ${label}`); }
@@ -938,7 +940,8 @@ app.post('/api/admin/impersonate', requireAuth, async (req, res) => {
   try {
     // Allowed for a real admin, or for an admin who is already impersonating
     // (so they can hop straight from one user's dashboard to another).
-    if (req.session.role !== 'admin' && !req.session.impersonatedBy) {
+    const realRole = req.session.impersonatedBy ? 'admin' : req.session.role;
+    if (realRole !== 'admin') {
       return res.status(403).json({ error: 'Admin only' });
     }
     // The true admin behind the wheel — stays constant across hops so "exit"
@@ -1037,13 +1040,13 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
     //   Delegation: ALL dates (matches FMS — no date cap, sab pending dikhane hain)
     //   Checklist : today + next 10 days (upcoming visibility for recurring tasks)
     // PC: agar date range diya hai toh woh use karo (overrides both)
-    const usingPCRange = isPC && dateFrom && dateTo;
-    const delDateClause = usingPCRange
-      ? `AND t.due_date BETWEEN '${dateFrom}' AND '${dateTo}'`
-      : '';
-    const chlDateClause = usingPCRange
-      ? `AND t.due_date BETWEEN '${dateFrom}' AND '${dateTo}'`
-      : `AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 10 DAY)`;
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    const validDates = dateFrom && dateTo && dateRe.test(dateFrom) && dateRe.test(dateTo);
+    const usingPCRange = isPC && validDates;
+    const delDateClause = usingPCRange ? 'AND t.due_date BETWEEN ? AND ?' : '';
+    const chlDateClause = usingPCRange ? 'AND t.due_date BETWEEN ? AND ?' : 'AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 10 DAY)';
+    const delParams = usingPCRange ? [...params, dateFrom, dateTo] : params;
+    const chlParams = usingPCRange ? [...params, dateFrom, dateTo] : params;
 
     const taskType = req.query.taskType || 'both';
     // status filter for the returned task rows. Default 'pending' for backward compat.
@@ -1055,21 +1058,21 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
     let pending = 0, revised = 0, completed = 0;
 
     if (!skipStats && (taskType === 'delegation' || taskType === 'both')) {
-      const [d] = await db.query(`SELECT SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed FROM delegation_tasks t WHERE 1=1 ${userFilter} ${delDateClause}`, params);
+      const [d] = await db.query(`SELECT SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed FROM delegation_tasks t WHERE 1=1 ${userFilter} ${delDateClause}`, delParams);
       pending += parseInt(d[0].pending)||0; revised += parseInt(d[0].revised)||0; completed += parseInt(d[0].completed)||0;
     }
     if (!skipStats && (taskType === 'checklist' || taskType === 'both')) {
-      const [d] = await db.query(`SELECT SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed FROM checklist_tasks t WHERE 1=1 ${userFilter} ${chlDateClause}`, params);
+      const [d] = await db.query(`SELECT SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed FROM checklist_tasks t WHERE 1=1 ${userFilter} ${chlDateClause}`, chlParams);
       pending += parseInt(d[0].pending)||0; revised += parseInt(d[0].revised)||0; completed += parseInt(d[0].completed)||0;
     }
 
     let delegationRows = [], checklistRows = [];
     if (taskType === 'delegation' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${delDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, params);
+      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${delDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, delParams);
       delegationRows = rows;
     }
     if (taskType === 'checklist' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${chlDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, params);
+      const [rows] = await db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${chlDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, chlParams);
       checklistRows = rows;
     }
     // `todayPending` kept for backwards compatibility (regular pending load still uses it).
@@ -2177,8 +2180,10 @@ app.get('/api/mis/fms', requireAuth, requireAdminOrHodOnly, async (req, res) => 
 app.get('/api/users/with-pending-tasks', requireAuth, async (req, res) => {
   try {
     const { dateFrom, dateTo } = req.query;
-    let dateFilter = 'AND t.due_date <= CURDATE()';
-    if (dateFrom && dateTo) dateFilter = `AND t.due_date BETWEEN '${dateFrom}' AND '${dateTo}'`;
+    const dateRe2 = /^\d{4}-\d{2}-\d{2}$/;
+    const hasRange = dateFrom && dateTo && dateRe2.test(dateFrom) && dateRe2.test(dateTo);
+    const dateFilter = hasRange ? 'AND t.due_date BETWEEN ? AND ?' : 'AND t.due_date <= CURDATE()';
+    const dateParams = hasRange ? [dateFrom, dateTo, dateFrom, dateTo] : [];
     const [rows] = await db.query(`
       SELECT DISTINCT u.id, u.name FROM users u
       WHERE u.id IN (
@@ -2186,7 +2191,7 @@ app.get('/api/users/with-pending-tasks', requireAuth, async (req, res) => {
         UNION
         SELECT DISTINCT assigned_to FROM checklist_tasks t WHERE status='pending' ${dateFilter}
       ) AND u.role NOT IN ('admin','pc')
-      ORDER BY u.name ASC`);
+      ORDER BY u.name ASC`, dateParams);
     res.json(rows);
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -2945,7 +2950,7 @@ app.post('/api/week-plan', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const { employeeId, startDate, targetCount, hodId, improvementPct } = req.body;
     if (!employeeId || !startDate) {
-      return res.json({ error: 'employeeId and startDate required' });
+      return res.status(400).json({ error: 'employeeId and startDate required' });
     }
     const impPct = (improvementPct !== undefined && improvementPct !== null && improvementPct !== '') ? parseInt(improvementPct) : null;
     // Upsert: insert or update if same employee+startDate exists
@@ -3930,7 +3935,7 @@ app.post('/api/pending-summary/send', requireAuth, requireAdmin, async (_req, re
 app.get('/api/cron/pending-summary', async (req, res) => {
   const authHeader = req.headers.authorization || '';
   const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
-  if (process.env.CRON_SECRET && authHeader !== expected) {
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
     return res.status(401).json({ error: 'Unauthorized cron request' });
   }
   try {
@@ -4186,7 +4191,7 @@ app.post('/api/pending-reminder/send', requireAuth, requireAdmin, async (req, re
 app.get('/api/cron/pending-reminder', async (req, res) => {
   const authHeader = req.headers['authorization'] || '';
   const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
-  if (process.env.CRON_SECRET && authHeader !== expected) {
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
     return res.status(401).json({ error: 'Unauthorized cron request' });
   }
   try {
@@ -4205,7 +4210,7 @@ app.get('/api/cron/daily-reminder', async (req, res) => {
   // Vercel Cron sends header: authorization: Bearer <CRON_SECRET>
   const authHeader = req.headers['authorization'] || '';
   const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
-  if (process.env.CRON_SECRET && authHeader !== expected) {
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
     return res.status(401).json({ error: 'Unauthorized cron request' });
   }
   try {
@@ -4252,7 +4257,7 @@ async function sendMeetingReminders() {
 app.get('/api/cron/meeting-reminder', async (req, res) => {
   const authHeader = req.headers['authorization'] || '';
   const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
-  if (process.env.CRON_SECRET && authHeader !== expected) {
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
     return res.status(401).json({ error: 'Unauthorized cron request' });
   }
   try {
@@ -6631,10 +6636,13 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
     const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
     if (!c) return res.status(404).json({ error: 'Not found' });
 
+    const HRM_ALLOWED_COLS = new Set(['status','reschedule_date','reschedule_time','reschedule_reason','joining_date','salary','offer_sent']);
     const updates = { status };
     if (status === 'Rescheduled') { updates.reschedule_date = reschedule_date||null; updates.reschedule_time = reschedule_time||''; updates.reschedule_reason = reschedule_reason||''; }
     if (status === 'Offer Sent')  { updates.joining_date = joining_date||null; updates.salary = salary||''; updates.offer_sent = 1; }
 
+    const invalidCol = Object.keys(updates).find(k => !HRM_ALLOWED_COLS.has(k));
+    if (invalidCol) return res.status(400).json({ error: `Invalid field: ${invalidCol}` });
     const fields = Object.keys(updates).map(k => `${k}=?`).join(',');
     await db.query(`UPDATE hrm_candidates SET ${fields} WHERE id=?`, [...Object.values(updates), req.params.id]);
 
