@@ -234,18 +234,19 @@ tbody tr:last-child td{border-bottom:none;}
 .acc-track::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;background:#fff;border-radius:50%;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
 .acc-toggle input:checked+.acc-track::after{left:17px}
 /* Access Control Matrix */
-.acc-matrix{border-collapse:collapse;white-space:nowrap;font-size:12px;width:100%}
-.acc-user-th{text-align:left;padding:10px 16px;background:#f8fafc;border-bottom:2px solid #e2e8f0;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;min-width:190px;position:sticky;left:0;z-index:2;border-right:2px solid #e2e8f0}
-.acc-pg-hdr{text-align:center;padding:8px 4px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:700;color:#1e293b;min-width:52px}
-.acc-sub-hdr{text-align:center;padding:4px 8px;background:#f8fafc;border-bottom:2px solid #e2e8f0;font-size:10px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
-.acc-col-sep{border-left:2px solid #e2e8f0}
-.acc-user-td{padding:10px 14px;border-bottom:1px solid #f1f5f9;position:sticky;left:0;background:#fff;border-right:2px solid #e2e8f0;z-index:1;min-width:190px}
-.acc-user-name{font-weight:600;font-size:13px;color:#1e293b}
-.acc-matrix td:not(.acc-user-td){text-align:center;padding:8px 6px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
-.acc-admin-row td{background:#fafafa}
-.acc-toggle.acc-dim .acc-track{opacity:.3;cursor:not-allowed}
-.acc-matrix tr:hover td:not(.acc-user-td){background:#fafbff}
-.acc-matrix tr.acc-admin-row:hover td{background:#fafafa}
+.acc-user-item{padding:10px 14px;border-bottom:1px solid #f1f5f9;cursor:pointer;transition:background .12s;border-left:3px solid transparent}
+.acc-user-item:hover{background:#f8fafc}
+.acc-user-item.active{background:#eff6ff;border-left-color:#3b82f6}
+.acc-user-item-name{font-size:13px;font-weight:600;color:#1e293b}
+.acc-page-row{border-bottom:1px solid #f1f5f9;padding:12px 18px;transition:background .12s}
+.acc-page-row:hover{background:#fafbff}
+.acc-page-row-main{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.acc-action-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px;padding-left:32px}
+.acc-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border:1.5px solid #e2e8f0;border-radius:20px;cursor:pointer;font-size:12px;color:#64748b;transition:all .15s;user-select:none;background:#fff}
+.acc-chip:has(input:checked){background:#eff6ff;border-color:#93c5fd;color:#1d4ed8;font-weight:600}
+.acc-chip.acc-dim{opacity:.35;cursor:not-allowed;pointer-events:none}
+.acc-chip-dot{width:7px;height:7px;border-radius:50%;background:#cbd5e1;flex-shrink:0;transition:background .15s}
+.acc-chip:has(input:checked) .acc-chip-dot{background:#3b82f6}
 /* Meetings calendar */
 .mtg-cal-toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding:6px 0;}
 .mtg-cal-daynames{display:grid;grid-template-columns:repeat(7,1fr);background:#f8fafc;border-bottom:1px solid #e2e8f0;}
@@ -4102,6 +4103,7 @@ const PERM_TREE = [
 let _accPerms = {};
 let _accUsers = [];
 let _accSaveTimers = {};
+let _accSelUser = null;
 
 async function renderAccessMatrix() {
   const box = document.getElementById('accessMatrix');
@@ -4121,156 +4123,171 @@ async function renderAccessMatrix() {
   _accPerms = {};
   for (const u of _accUsers) {
     if (u.user_permissions && Array.isArray(u.user_permissions.pages)) {
-      _accPerms[u.id] = { pages: [...u.user_permissions.pages], actions: [...(u.user_permissions.actions||[])] };
+      _accPerms[u.id] = { pages:[...u.user_permissions.pages], actions:[...(u.user_permissions.actions||[])] };
     } else {
-      const def = ROLE_DEFAULTS[u.role] || { pages: [], actions: [] };
+      const def = ROLE_DEFAULTS[u.role] || { pages:[], actions:[] };
       _accPerms[u.id] = {
-        pages:   def.pages   === 'all' ? PERM_TREE.map(p=>p.page) : [...(def.pages||[])],
-        actions: def.actions === 'all' ? PERM_TREE.flatMap(p=>p.actions.map(a=>a.key)) : [...(def.actions||[])]
+        pages:   def.pages==='all'   ? PERM_TREE.map(p=>p.page) : [...(def.pages||[])],
+        actions: def.actions==='all' ? PERM_TREE.flatMap(p=>p.actions.map(a=>a.key)) : [...(def.actions||[])]
       };
     }
   }
 
   const roleLabel = r => r==='admin'?'👑 Admin':r==='hod'?'🏢 HOD':r==='pc'?'🖥️ PC':'👤 User';
-  const totalDataCols = PERM_TREE.reduce((s,pg)=>s+1+pg.actions.length,0);
 
-  // Header row 1 — page group headers
-  let hdr1 = `<th rowspan="2" class="acc-user-th">User</th>`;
-  PERM_TREE.forEach((pg,i) => {
-    const colspan = 1 + pg.actions.length;
-    hdr1 += `<th colspan="${colspan}" class="acc-pg-hdr${i>0?' acc-col-sep':''}">
-      <div style="font-size:15px">${pg.icon}</div>
-      <div>${pg.label}</div>
-    </th>`;
-  });
-
-  // Header row 2 — sub-column labels
-  let hdr2 = '';
-  PERM_TREE.forEach((pg,i) => {
-    hdr2 += `<th class="acc-sub-hdr${i>0?' acc-col-sep':''}">View</th>`;
-    pg.actions.forEach(ac => {
-      hdr2 += `<th class="acc-sub-hdr">${ac.label}</th>`;
-    });
-  });
-
-  // User rows
-  const rows = _accUsers.map(u => {
-    const isAdmin = u.role === 'admin';
-    const perms = _accPerms[u.id] || { pages:[], actions:[] };
-    if (isAdmin) {
-      return `<tr class="acc-admin-row">
-        <td class="acc-user-td">
-          <div class="acc-user-name">${esc(u.name)}</div>
-          <span class="role-badge admin" style="font-size:10px">👑 Admin</span>
-        </td>
-        <td colspan="${totalDataCols}" style="text-align:center;color:#94a3b8;font-size:12px;font-style:italic;padding:12px">
-          Full access to everything — not configurable
-        </td>
-      </tr>`;
-    }
-    let cells = '';
-    PERM_TREE.forEach((pg,i) => {
-      const pgOn = perms.pages.includes(pg.page);
-      cells += `<td class="${i>0?'acc-col-sep':''}">
-        <label class="acc-toggle">
-          <input type="checkbox" ${pgOn?'checked':''} style="display:none"
-            onchange="onAccToggle(${u.id},'page','${pg.page}',this.checked,this)">
-          <span class="acc-track"></span>
-        </label>
-      </td>`;
-      pg.actions.forEach(ac => {
-        const acOn = perms.actions.includes(ac.key);
-        cells += `<td>
-          <label class="acc-toggle${!pgOn?' acc-dim':''}">
-            <input type="checkbox" ${acOn&&pgOn?'checked':''} ${!pgOn?'disabled':''} style="display:none"
-              onchange="onAccToggle(${u.id},'action','${ac.key}',this.checked,this)">
-            <span class="acc-track"></span>
-          </label>
-        </td>`;
-      });
-    });
-    return `<tr id="acc-row-${u.id}">
-      <td class="acc-user-td">
-        <div class="acc-user-name">${esc(u.name)}</div>
-        <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
-          <span class="role-badge ${u.role}" style="font-size:10px;padding:1px 6px">${roleLabel(u.role)}</span>
-          <span style="font-size:11px;color:#94a3b8">${esc(u.department||'')}</span>
-        </div>
-        <span id="acc-st-${u.id}" style="font-size:10px;color:#10b981;opacity:0;transition:opacity .3s;display:block;margin-top:2px"></span>
-      </td>
-      ${cells}
-    </tr>`;
-  }).join('');
+  const userItems = _accUsers.map(u => `
+    <div class="acc-user-item" id="acc-li-${u.id}" onclick="loadUserPerms(${u.id})">
+      <div class="acc-user-item-name">${esc(u.name)}</div>
+      <div style="display:flex;align-items:center;gap:5px;margin-top:3px;flex-wrap:wrap">
+        <span class="role-badge ${u.role}" style="font-size:10px;padding:1px 6px">${roleLabel(u.role)}</span>
+        ${u.department?`<span style="font-size:11px;color:#94a3b8">${esc(u.department)}</span>`:''}
+      </div>
+    </div>`).join('');
 
   box.innerHTML = `
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
-      <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-        <div>
-          <div style="font-size:14px;font-weight:700;color:#1e293b">Access Control Matrix</div>
-          <div style="font-size:12px;color:#64748b;margin-top:2px">Toggle pages and buttons per user. Changes save automatically.</div>
+    <div style="display:grid;grid-template-columns:250px 1fr;gap:0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;min-height:480px">
+      <div style="border-right:1px solid #e2e8f0;display:flex;flex-direction:column">
+        <div style="padding:12px 14px;border-bottom:1px solid #e2e8f0;background:#f8fafc">
+          <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:8px">👥 Users (${_accUsers.length})</div>
+          <input id="accSearch" type="text" placeholder="🔍 Search…" oninput="filterAccMatrix(this.value)"
+            style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;font-size:12px;outline:none">
         </div>
-        <input id="accSearch" type="text" placeholder="🔍 Search user…" oninput="filterAccMatrix(this.value)"
-          style="border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;font-size:13px;outline:none;width:200px">
+        <div id="accUserList" style="overflow-y:auto;flex:1;max-height:520px">${userItems}</div>
       </div>
-      <div style="overflow-x:auto">
-        <table class="acc-matrix">
-          <thead>
-            <tr>${hdr1}</tr>
-            <tr>${hdr2}</tr>
-          </thead>
-          <tbody id="accMatrixTbody">${rows}</tbody>
-        </table>
+      <div id="accPermPanel" style="background:#fff">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;padding:40px;text-align:center">
+          <div style="font-size:36px;margin-bottom:12px">🔐</div>
+          <div style="font-size:14px;font-weight:600;color:#64748b;margin-bottom:6px">Select a user</div>
+          <div style="font-size:13px">Click on a user from the left to view and edit their page and button permissions.</div>
+        </div>
       </div>
     </div>`;
+
+  if (_accSelUser) loadUserPerms(_accSelUser);
 }
 
-async function onAccToggle(userId, type, key, checked, el) {
+function loadUserPerms(userId) {
+  _accSelUser = userId;
+  document.querySelectorAll('.acc-user-item').forEach(el => el.classList.remove('active'));
+  const li = document.getElementById(`acc-li-${userId}`);
+  if (li) { li.classList.add('active'); li.scrollIntoView({ block:'nearest' }); }
+
+  const u = _accUsers.find(x => x.id === userId);
+  const panel = document.getElementById('accPermPanel');
+  if (!u || !panel) return;
+
+  const roleLabel = r => r==='admin'?'👑 Admin':r==='hod'?'🏢 HOD':r==='pc'?'🖥️ PC':'👤 User';
+  const perms = _accPerms[userId] || { pages:[], actions:[] };
+
+  if (u.role === 'admin') {
+    panel.innerHTML = `
+      <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;background:#f8fafc">
+        <div style="font-size:15px;font-weight:700;color:#1e293b">${esc(u.name)}</div>
+        <span class="role-badge admin" style="font-size:11px;margin-top:4px;display:inline-block">👑 Admin</span>
+      </div>
+      <div style="padding:48px;text-align:center;color:#64748b">
+        <div style="font-size:48px;margin-bottom:14px">🔓</div>
+        <div style="font-size:15px;font-weight:600;color:#1e293b;margin-bottom:8px">Full Access</div>
+        <div style="font-size:13px">Admin has unrestricted access to all pages and actions. Not configurable.</div>
+      </div>`;
+    return;
+  }
+
+  const pageRows = PERM_TREE.map(pg => {
+    const pgOn = perms.pages.includes(pg.page);
+    const chips = pg.actions.map(ac => {
+      const acOn = pgOn && perms.actions.includes(ac.key);
+      return `<label class="acc-chip${!pgOn?' acc-dim':''}" title="${ac.label}">
+        <input type="checkbox" ${acOn?'checked':''} ${!pgOn?'disabled':''} style="display:none"
+          onchange="onAccToggle(${userId},'action','${ac.key}',this.checked)">
+        <span class="acc-chip-dot"></span>
+        <span>${ac.label}</span>
+      </label>`;
+    }).join('');
+
+    return `<div class="acc-page-row" id="acc-pg-${userId}-${pg.page}">
+      <div class="acc-page-row-main">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px;width:28px;text-align:center">${pg.icon}</span>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:${pgOn?'#1e293b':'#94a3b8'}">${pg.label}</div>
+            ${!pgOn && pg.actions.length ? `<div style="font-size:11px;color:#cbd5e1;margin-top:1px">${pg.actions.map(a=>a.label).join(' · ')}</div>` : ''}
+          </div>
+        </div>
+        <label class="acc-toggle" style="flex-shrink:0">
+          <input type="checkbox" ${pgOn?'checked':''} style="display:none"
+            onchange="onAccToggle(${userId},'page','${pg.page}',this.checked)">
+          <span class="acc-track"></span>
+        </label>
+      </div>
+      ${pgOn && pg.actions.length ? `<div class="acc-action-chips">${chips}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:15px;font-weight:700;color:#1e293b">${esc(u.name)}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+          <span class="role-badge ${u.role}" style="font-size:11px">${roleLabel(u.role)}</span>
+          ${u.department?`<span style="font-size:12px;color:#94a3b8">${esc(u.department)}</span>`:''}
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span id="acc-st-${userId}" style="font-size:12px;opacity:0;transition:opacity .3s"></span>
+        <button class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="resetUserPerms(${userId})">↺ Reset to Defaults</button>
+      </div>
+    </div>
+    <div style="overflow-y:auto;max-height:calc(100vh - 300px)">${pageRows}</div>`;
+}
+
+async function onAccToggle(userId, type, key, checked) {
   const perms = _accPerms[userId] || { pages:[], actions:[] };
   if (type === 'page') {
     if (checked) { if (!perms.pages.includes(key)) perms.pages.push(key); }
-    else { perms.pages = perms.pages.filter(k=>k!==key); }
-    // Enable/disable sub-action toggles for this page
-    const row = document.getElementById(`acc-row-${userId}`);
-    if (row) {
+    else {
+      perms.pages = perms.pages.filter(k=>k!==key);
       const pg = PERM_TREE.find(p=>p.page===key);
-      if (pg) pg.actions.forEach(ac => {
-        row.querySelectorAll(`input[onchange*="'action','${ac.key}',"]`).forEach(inp => {
-          inp.disabled = !checked;
-          const lbl = inp.closest('label');
-          if (lbl) { checked ? lbl.classList.remove('acc-dim') : lbl.classList.add('acc-dim'); }
-          if (!checked) inp.checked = false;
-        });
-      });
-      if (!checked) perms.actions = perms.actions.filter(a => {
-        const pg2 = PERM_TREE.find(p=>p.page===key);
-        return !(pg2 && pg2.actions.some(ac=>ac.key===a));
-      });
+      if (pg) perms.actions = perms.actions.filter(a => !pg.actions.some(ac=>ac.key===a));
     }
   } else {
     if (checked) { if (!perms.actions.includes(key)) perms.actions.push(key); }
     else { perms.actions = perms.actions.filter(k=>k!==key); }
   }
   _accPerms[userId] = perms;
+  // Re-render right panel to reflect chip state
+  loadUserPerms(userId);
 
   const st = document.getElementById(`acc-st-${userId}`);
   if (st) { st.textContent='⏳ Saving…'; st.style.color='#f59e0b'; st.style.opacity='1'; }
   if (_accSaveTimers[userId]) clearTimeout(_accSaveTimers[userId]);
   _accSaveTimers[userId] = setTimeout(async () => {
-    const r = await api(`/api/user-permissions/${userId}`, 'PUT', { pages: perms.pages, actions: perms.actions });
-    if (st) {
-      st.textContent = r && !r.error ? '✓ Saved' : '❌ Error';
-      st.style.color = r && !r.error ? '#10b981' : '#ef4444';
-      if (!r?.error) setTimeout(()=>{ if(st) st.style.opacity='0'; }, 2000);
+    const r = await api(`/api/user-permissions/${userId}`, 'PUT', { pages:perms.pages, actions:perms.actions });
+    const s2 = document.getElementById(`acc-st-${userId}`);
+    if (s2) {
+      s2.textContent = r&&!r.error ? '✓ Saved' : '❌ Error';
+      s2.style.color  = r&&!r.error ? '#10b981' : '#ef4444';
+      if (!r?.error) setTimeout(()=>{ if(s2) s2.style.opacity='0'; }, 2000);
     }
     if (r?.error) showToast(r.error, 'error');
   }, 600);
 }
 
+async function resetUserPerms(userId) {
+  const u = _accUsers.find(x=>x.id===userId);
+  if (!u) return;
+  const def = ROLE_DEFAULTS[u.role] || { pages:[], actions:[] };
+  _accPerms[userId] = { pages:[...(def.pages||[])], actions:[...(def.actions||[])] };
+  const r = await api(`/api/user-permissions/${userId}`, 'PUT', _accPerms[userId]);
+  if (!r?.error) { showToast('Reset to role defaults', 'success'); loadUserPerms(userId); }
+  else showToast(r.error, 'error');
+}
+
 function filterAccMatrix(q) {
   const s = (q||'').toLowerCase();
-  document.querySelectorAll('#accMatrixTbody tr').forEach(row => {
-    const name = row.querySelector('.acc-user-name')?.textContent?.toLowerCase() || '';
-    row.style.display = !s || name.includes(s) ? '' : 'none';
+  document.querySelectorAll('#accUserList .acc-user-item').forEach(el => {
+    const name = el.querySelector('.acc-user-item-name')?.textContent?.toLowerCase() || '';
+    el.style.display = !s || name.includes(s) ? '' : 'none';
   });
 }
 
