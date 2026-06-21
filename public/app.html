@@ -215,6 +215,14 @@ tbody tr:last-child td{border-bottom:none;}
   font-size:13px;font-family:'Inter',sans-serif;outline:none;
   transition:border .2s;color:#1e293b;background:#fff;
 }
+/* Access Control toggles */
+.acc-toggle{display:inline-block;cursor:pointer;user-select:none;vertical-align:middle}
+.acc-toggle--role{cursor:default;opacity:.55}
+.acc-track{display:block;width:34px;height:20px;background:#e2e8f0;border-radius:20px;position:relative;transition:background .2s}
+.acc-toggle input:checked+.acc-track{background:#1a56db}
+.acc-toggle--role input:checked+.acc-track{background:#10b981}
+.acc-track::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;background:#fff;border-radius:50%;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.acc-toggle input:checked+.acc-track::after{left:17px}
 /* Meetings calendar */
 .mtg-cal-toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding:6px 0;}
 .mtg-cal-daynames{display:grid;grid-template-columns:repeat(7,1fr);background:#f8fafc;border-bottom:1px solid #e2e8f0;}
@@ -3959,69 +3967,78 @@ function switchUsersTab(tab, el) {
   if (tab === 'access') renderAccessMatrix();
 }
 
-function renderAccessMatrix() {
-  const users = (allUsersData || []).filter(u => u.role !== 'client');
-  if (!users.length) { document.getElementById('accessMatrix').innerHTML = '<div class="empty">No users found. Load the Users page first.</div>'; return; }
+async function renderAccessMatrix() {
+  const box = document.getElementById('accessMatrix');
+  if (!box) return;
+  box.innerHTML = '<div class="empty">Loading…</div>';
+
+  // Always fetch fresh — don't rely on allUsersData timing
+  let users;
+  try {
+    const data = await api('/api/users');
+    users = (Array.isArray(data) ? data : []).filter(u => u.role !== 'client');
+    // Keep allUsersData in sync so the Users tab also benefits
+    if (Array.isArray(data)) allUsersData = data;
+  } catch(e) {
+    box.innerHTML = '<div class="empty">Failed to load users: ' + e.message + '</div>';
+    return;
+  }
+
+  if (!users.length) {
+    box.innerHTML = '<div class="empty">No users found.</div>';
+    return;
+  }
 
   const roleLabel = r => r==='admin'?'👑 Admin':r==='hod'?'🏢 HOD':r==='pc'?'🖥️ PC':'👤 User';
 
   const headerCols = ACCESS_MODULES.map(m =>
     `<th style="text-align:center;white-space:nowrap;padding:10px 12px;font-size:11px;font-weight:600;color:#64748b;letter-spacing:.5px;text-transform:uppercase">
-      <div>${m.icon}</div><div style="margin-top:3px">${m.label}</div>
+      <div style="font-size:16px">${m.icon}</div><div style="margin-top:3px">${m.label}</div>
     </th>`
   ).join('');
 
   const rows = users.map(u => {
-    const extra = Array.isArray(u.extra_access) ? u.extra_access : [];
+    // extra_access may arrive as a JSON string from the server — parse defensively
+    let extra = [];
+    if (Array.isArray(u.extra_access))         extra = u.extra_access;
+    else if (typeof u.extra_access === 'string' && u.extra_access) {
+      try { extra = JSON.parse(u.extra_access); } catch { extra = []; }
+    }
+
     const cells = ACCESS_MODULES.map(m => {
       const viaRole = m.roleDefault.includes(u.role);
-      const checked = viaRole || extra.includes(m.key);
+      const checked  = viaRole || extra.includes(m.key);
       const disabled = viaRole;
-      const title = viaRole ? `Granted by role (${u.role})` : '';
-      return `<td style="text-align:center;padding:10px 12px;border-bottom:1px solid #f1f5f9">
-        <label class="acc-toggle${disabled?' acc-toggle--role':''}" title="${title}">
-          <input type="checkbox" ${checked?'checked':''} ${disabled?'disabled':''}
-            onchange="toggleAccess(${u.id},'${m.key}',this.checked)"
-            style="display:none">
-          <span class="acc-track"></span>
-        </label>
-      </td>`;
+      const title    = viaRole ? 'Granted by role (' + u.role + ')' : '';
+      return '<td style="text-align:center;padding:10px 12px;border-bottom:1px solid #f1f5f9">'
+        + '<label class="acc-toggle' + (disabled ? ' acc-toggle--role' : '') + '" title="' + title + '">'
+        + '<input type="checkbox"' + (checked ? ' checked' : '') + (disabled ? ' disabled' : '')
+        + ' onchange="toggleAccess(' + u.id + ',\'' + m.key + '\',this.checked)" style="display:none">'
+        + '<span class="acc-track"></span>'
+        + '</label></td>';
     }).join('');
 
-    return `<tr id="acc-row-${u.id}">
-      <td style="padding:10px 14px;border-bottom:1px solid #f1f5f9;min-width:180px;white-space:nowrap">
-        <div style="font-weight:600;font-size:13px">${esc(u.name)}</div>
-        <div style="font-size:11px;color:#64748b;margin-top:1px">${roleLabel(u.role)} · ${esc(u.department||'—')}</div>
-      </td>
-      ${cells}
-      <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;width:28px">
-        <span id="acc-save-${u.id}" style="font-size:12px;opacity:0;transition:opacity .4s"></span>
-      </td>
-    </tr>`;
+    return '<tr id="acc-row-' + u.id + '">'
+      + '<td style="padding:10px 14px;border-bottom:1px solid #f1f5f9;min-width:180px;white-space:nowrap">'
+      + '<div style="font-weight:600;font-size:13px">' + esc(u.name) + '</div>'
+      + '<div style="font-size:11px;color:#64748b;margin-top:1px">' + roleLabel(u.role) + ' · ' + esc(u.department || '—') + '</div>'
+      + '</td>'
+      + cells
+      + '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;width:30px">'
+      + '<span id="acc-save-' + u.id + '" style="font-size:14px;opacity:0;transition:opacity .4s"></span>'
+      + '</td></tr>';
   }).join('');
 
-  document.getElementById('accessMatrix').innerHTML = `
-    <style>
-      .acc-toggle{display:inline-block;cursor:pointer;user-select:none}
-      .acc-toggle--role{cursor:default;opacity:.55}
-      .acc-track{display:block;width:34px;height:20px;background:#e2e8f0;border-radius:20px;position:relative;transition:background .2s}
-      .acc-toggle input:checked+.acc-track{background:#1a56db}
-      .acc-toggle--role input:checked+.acc-track{background:#10b981}
-      .acc-track::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;background:#fff;border-radius:50%;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
-      .acc-toggle input:checked+.acc-track::after{left:17px}
-    </style>
-    <div style="overflow-x:auto">
-    <table style="border-collapse:collapse;width:100%;min-width:700px">
-      <thead style="background:#f8fafc">
-        <tr>
-          <th style="text-align:left;padding:10px 14px;font-size:11px;font-weight:600;color:#64748b;letter-spacing:.5px;text-transform:uppercase">User</th>
-          ${headerCols}
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-    </div>`;
+  box.innerHTML =
+    '<div style="overflow-x:auto">'
+    + '<table style="border-collapse:collapse;width:100%;min-width:700px">'
+    + '<thead style="background:#f8fafc"><tr>'
+    + '<th style="text-align:left;padding:10px 14px;font-size:11px;font-weight:600;color:#64748b;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap">User</th>'
+    + headerCols
+    + '<th></th>'
+    + '</tr></thead>'
+    + '<tbody>' + rows + '</tbody>'
+    + '</table></div>';
 }
 
 async function toggleAccess(userId, moduleKey, enabled) {
