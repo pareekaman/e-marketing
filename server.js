@@ -3524,6 +3524,7 @@ const _clientsTableMigrationsPromise = (async () => {
     KEY idx_cfb_client (client_id),
     KEY idx_cfb_employee (employee_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  await sa(`ALTER TABLE client_feedback ADD COLUMN IF NOT EXISTS recipients TEXT DEFAULT ''`);
   // Allow "client" as a login role + back-link users to clients so the client
   // portal can resolve "my client" from the session.
   await sa(`ALTER TABLE users MODIFY COLUMN role ENUM('admin','hod','pc','user','client') DEFAULT 'user'`);
@@ -4536,14 +4537,17 @@ app.get('/api/client-portal/handlers', requireAuth, async (req, res) => {
       `SELECT ch.user_id AS id, u.name, u.department
        FROM client_handlers ch JOIN users u ON ch.user_id = u.id
        WHERE ch.client_id = ? AND u.role != 'client'`, [u.client_id]);
-    // Find HOD for each unique department
+    // Find HOD for each unique department (with id)
     const depts = [...new Set(handlers.map(h => h.department).filter(Boolean))];
     const hodMap = {};
     for (const dept of depts) {
-      const [[hod]] = await db.query(`SELECT name FROM users WHERE department=? AND role='hod' LIMIT 1`, [dept]);
-      if (hod) hodMap[dept] = hod.name;
+      const [[hod]] = await db.query(`SELECT id, name FROM users WHERE department=? AND role='hod' LIMIT 1`, [dept]);
+      if (hod) hodMap[dept] = { id: hod.id, name: hod.name };
     }
-    res.json({ handlers, hodMap });
+    // Fixed recipients: Abhishek Jain and Simran Gurnani
+    const [fixedRows] = await db.query(
+      `SELECT id, name FROM users WHERE name IN ('Abhishek Jain','Simran Gurnani') AND role != 'client'`);
+    res.json({ handlers, hodMap, fixedRecipients: fixedRows });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -4553,13 +4557,14 @@ app.post('/api/client-portal/feedback', requireAuth, async (req, res) => {
     if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
     const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
     if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
-    const { employee_id, rating, description } = req.body;
+    const { employee_id, rating, description, recipients } = req.body;
     if (!employee_id || !rating) return res.status(400).json({ error: 'Employee and rating are required' });
     const r = parseInt(rating);
     if (r < 1 || r > 5) return res.status(400).json({ error: 'Rating must be between 1 and 5' });
+    const recipientsStr = Array.isArray(recipients) ? recipients.join(',') : (recipients || '');
     await db.query(
-      'INSERT INTO client_feedback (client_id, employee_id, rating, description) VALUES (?, ?, ?, ?)',
-      [u.client_id, parseInt(employee_id), r, (description || '').trim()]);
+      'INSERT INTO client_feedback (client_id, employee_id, rating, description, recipients) VALUES (?, ?, ?, ?, ?)',
+      [u.client_id, parseInt(employee_id), r, (description || '').trim(), recipientsStr]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
