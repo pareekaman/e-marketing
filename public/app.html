@@ -1899,8 +1899,23 @@ tbody tr:last-child td{border-bottom:none;}
         <input type="text" id="cmFormName" placeholder="e.g. Acme Pvt Ltd"/>
       </div>
       <div class="form-group">
-        <label>Handler (account manager)</label>
-        <select id="cmFormHandler"><option value="">— None —</option></select>
+        <label>Handlers (Account Managers)</label>
+        <div id="cmAddHandlerWidget" style="position:relative">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <div class="multi-select-wrap" style="position:relative">
+              <button type="button" onclick="cmAddToggleDeptDrop()"
+                style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer;display:flex;align-items:center;gap:6px;min-width:170px">
+                <span id="cmAddDeptCount">All Departments</span> ▾
+              </button>
+              <div class="multi-select-dropdown" id="cmAddDeptDropdown"></div>
+            </div>
+            <button type="button" onclick="cmAddToggleHandlerDrop()"
+              style="padding:5px 12px;border:1.5px solid #7c3aed;border-radius:6px;font-size:12px;background:#fff;color:#7c3aed;font-weight:600;cursor:pointer">
+              👥 <span id="cmAddHandlerCount">Select handlers</span> ▾
+            </button>
+          </div>
+          <div id="cmAddHandlerDropdown" style="display:none;position:absolute;top:38px;left:0;z-index:99;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:240px;max-height:220px;overflow-y:auto;padding:6px 0"></div>
+        </div>
       </div>
       <div style="margin:14px 0 10px;padding:10px 12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px">
         <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Client Login (optional)</div>
@@ -10444,15 +10459,37 @@ function cmExportExcel() {
 }
 
 function cmOpenAddModal() {
-  // Reset form, populate handler list from cached users, open.
   document.getElementById('cmAddErr').style.display = 'none';
   document.getElementById('cmFormName').value = '';
   document.getElementById('cmFormLoginEmail').value = '';
   document.getElementById('cmFormLoginPassword').value = '';
-  const handlerSel = document.getElementById('cmFormHandler');
-  handlerSel.innerHTML = '<option value="">— None —</option>' +
-    CM_USERS.map(u => `<option value="${u.id}">${dtEscape(u.name)}</option>`).join('');
-  handlerSel.value = '';
+
+  // Populate dept filter dropdown
+  const depts = [...new Set(CM_USERS.filter(u=>u.role!=='client').map(u=>u.department||'').filter(Boolean))].sort();
+  document.getElementById('cmAddDeptDropdown').innerHTML =
+    `<div class="multi-select-item" onclick="cmAddSelectAllDepts()" style="font-weight:600;cursor:pointer;border-bottom:1px solid #e2e8f0">
+      <input type="checkbox" id="cmAddAllDeptsCb" checked style="width:14px;height:14px;accent-color:#1a56db;cursor:pointer;pointer-events:none;flex-shrink:0"/>
+      <span>All Departments</span>
+    </div>` +
+    depts.map(d=>`
+      <label class="multi-select-item" data-dept="${dtEscape(d)}" style="cursor:pointer">
+        <input type="checkbox" class="cmAddDeptCb" value="${dtEscape(d)}" onchange="cmAddFilterHandlers()" style="width:14px;height:14px;accent-color:#1a56db;cursor:pointer;flex-shrink:0"/>
+        <span>${dtEscape(d)}</span>
+      </label>`).join('');
+
+  // Populate handler list
+  document.getElementById('cmAddHandlerDropdown').innerHTML =
+    CM_USERS.filter(u=>u.role!=='client').map(u=>`
+      <label data-dept="${dtEscape(u.department||'')}" style="display:flex;align-items:center;gap:8px;padding:7px 14px;cursor:pointer;font-size:13px;transition:background .1s" onmouseover="this.style.background='#f8f5ff'" onmouseout="this.style.background=''">
+        <input type="checkbox" class="cmAddHandlerCb" value="${u.id}" style="width:15px;height:15px;accent-color:#7c3aed;cursor:pointer" onchange="cmAddHandlerCbChange()"/>
+        <span>${dtEscape(u.name)}</span>
+        ${u.department?`<span style="font-size:10px;color:#94a3b8;margin-left:auto">${dtEscape(u.department)}</span>`:''}
+      </label>`).join('');
+
+  document.getElementById('cmAddHandlerCount').textContent = 'Select handlers';
+  document.getElementById('cmAddDeptCount').textContent = 'All Departments';
+  document.getElementById('cmAddHandlerDropdown').style.display = 'none';
+
   document.getElementById('clientAddModal').classList.add('open');
   setTimeout(() => document.getElementById('cmFormName')?.focus(), 0);
 }
@@ -10707,11 +10744,24 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
           <label style="font-size:11px;color:#64748b;font-weight:600;padding-top:6px">Handlers:</label>
           <div style="position:relative" id="cmHandlerWidget_${id}">
             <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-              <select id="cmDeptFilter_${id}" onchange="cmFilterHandlerList(${id})"
-                style="padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;outline:none">
-                <option value="">All Departments</option>
-                ${[...new Set(CM_USERS.map(u=>u.department||'').filter(Boolean))].sort().map(d=>`<option value="${dtEscape(d)}">${dtEscape(d)}</option>`).join('')}
-              </select>
+              <div class="multi-select-wrap" id="cmDeptFilterWrap_${id}" style="position:relative;min-width:200px">
+                <button type="button" onclick="cmToggleDeptDropdown(${id})"
+                  style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:190px">
+                  <span id="cmDeptCount_${id}">All Departments</span> ▾
+                </button>
+                <div class="multi-select-dropdown" id="cmDeptDropdown_${id}">
+                  <div class="multi-select-item" onclick="cmSelectAllDepts(${id})" style="font-weight:600;cursor:pointer;border-bottom:1px solid #e2e8f0">
+                    <input type="checkbox" id="cmAllDeptsCb_${id}" checked style="width:14px;height:14px;accent-color:#1a56db;cursor:pointer;pointer-events:none;flex-shrink:0"/>
+                    <span>All Departments</span>
+                  </div>
+                  ${[...new Set(CM_USERS.map(u=>u.department||'').filter(Boolean))].sort().map(d=>`
+                    <label class="multi-select-item" data-dept="${dtEscape(d)}" style="cursor:pointer">
+                      <input type="checkbox" class="cm-dept-cb_${id}" value="${dtEscape(d)}" onchange="cmFilterHandlerList(${id})" style="width:14px;height:14px;accent-color:#1a56db;cursor:pointer;flex-shrink:0"/>
+                      <span>${dtEscape(d)}</span>
+                    </label>
+                  `).join('')}
+                </div>
+              </div>
               <button onclick="cmToggleHandlerDropdown(${id})"
                 style="padding:5px 12px;border:1.5px solid #7c3aed;border-radius:6px;font-size:12px;background:#fff;color:#7c3aed;font-weight:600;cursor:pointer">
                 👥 <span id="cmHandlerCount_${id}">${selIds.size ? selIds.size + ' selected' : 'Select handlers'}</span> ▾
@@ -11016,7 +11066,8 @@ async function cmAdd(){
   const err = document.getElementById('cmAddErr');
   err.style.display = 'none';
   const name = document.getElementById('cmFormName').value.trim();
-  const handler_id = document.getElementById('cmFormHandler').value || null;
+  const handler_ids = [...document.querySelectorAll('.cmAddHandlerCb:checked')].map(cb => parseInt(cb.value));
+  const handler_id = handler_ids[0] || null;
   const login_email = document.getElementById('cmFormLoginEmail').value.trim();
   const login_password = document.getElementById('cmFormLoginPassword').value;
   if (!name) { err.textContent = 'Client name required'; err.style.display = 'block'; return; }
@@ -11027,6 +11078,9 @@ async function cmAdd(){
   try {
     const r = await api('/api/clients', 'POST', { name, handler_id, login_email, login_password });
     if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+    if (r.client_id && handler_ids.length > 0) {
+      await api('/api/clients/' + r.client_id + '/handlers', 'PUT', { user_ids: handler_ids });
+    }
     if (r.warning) showToast(r.warning);
     else showToast(login_email ? '✅ Client added with login' : '✅ Client added');
     closeModal('clientAddModal');
@@ -11055,12 +11109,14 @@ async function cmUpdateHandler(clientId, handlerId) {
 }
 
 function cmInitHandlerWidget(id) {
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   document.addEventListener('click', function _close(e) {
     const w = document.getElementById('cmHandlerWidget_' + id);
     if (!w || !w.contains(e.target)) {
       const dd = document.getElementById('cmHandlerDropdown_' + id);
       if (dd) dd.style.display = 'none';
+      const dd2 = document.getElementById('cmDeptDropdown_' + id);
+      if (dd2) dd2.classList.remove('open');
       document.removeEventListener('click', _close);
     }
   });
@@ -11071,10 +11127,32 @@ function cmToggleHandlerDropdown(id) {
   if (dd) dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
 }
 
+function cmToggleDeptDropdown(id) {
+  const dd = document.getElementById('cmDeptDropdown_' + id);
+  if (dd) dd.classList.toggle('open');
+}
+
+function cmSelectAllDepts(id) {
+  document.querySelectorAll(`.cm-dept-cb_${id}`).forEach(cb => cb.checked = false);
+  const allCb = document.getElementById('cmAllDeptsCb_' + id);
+  if (allCb) allCb.checked = true;
+  cmFilterHandlerList(id);
+}
+
 function cmFilterHandlerList(id) {
-  const dept = document.getElementById('cmDeptFilter_' + id)?.value || '';
+  const selected = [...document.querySelectorAll(`.cm-dept-cb_${id}:checked`)].map(cb => cb.value);
+  const total = document.querySelectorAll(`.cm-dept-cb_${id}`).length;
+  const countEl = document.getElementById('cmDeptCount_' + id);
+  if (countEl) {
+    countEl.textContent = (!selected.length || selected.length === total)
+      ? 'All Departments'
+      : `${selected.length} selected`;
+  }
+  const allCb = document.getElementById('cmAllDeptsCb_' + id);
+  if (allCb) allCb.checked = (!selected.length || selected.length === total);
+  const showAll = !selected.length || selected.length === total;
   document.querySelectorAll(`#cmHandlerDropdown_${id} label`).forEach(lbl => {
-    lbl.style.display = (!dept || lbl.dataset.dept === dept) ? 'flex' : 'none';
+    lbl.style.display = showAll || selected.includes(lbl.dataset.dept) ? 'flex' : 'none';
   });
 }
 
@@ -11092,6 +11170,42 @@ async function cmSaveHandlers(id) {
     showToast('✅ Handlers saved');
     cmShowDetail(id);
   } catch(e) { showToast('Save failed', 'error'); }
+}
+
+function cmAddToggleDeptDrop() {
+  document.getElementById('cmAddDeptDropdown')?.classList.toggle('open');
+}
+
+function cmAddToggleHandlerDrop() {
+  const dd = document.getElementById('cmAddHandlerDropdown');
+  if (dd) dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+  document.getElementById('cmAddDeptDropdown')?.classList.remove('open');
+}
+
+function cmAddSelectAllDepts() {
+  document.querySelectorAll('.cmAddDeptCb').forEach(cb => cb.checked = false);
+  const allCb = document.getElementById('cmAddAllDeptsCb');
+  if (allCb) allCb.checked = true;
+  cmAddFilterHandlers();
+}
+
+function cmAddFilterHandlers() {
+  const selected = [...document.querySelectorAll('.cmAddDeptCb:checked')].map(cb => cb.value);
+  const total = document.querySelectorAll('.cmAddDeptCb').length;
+  const countEl = document.getElementById('cmAddDeptCount');
+  if (countEl) countEl.textContent = (!selected.length || selected.length === total) ? 'All Departments' : `${selected.length} selected`;
+  const allCb = document.getElementById('cmAddAllDeptsCb');
+  if (allCb) allCb.checked = (!selected.length || selected.length === total);
+  const showAll = !selected.length || selected.length === total;
+  document.querySelectorAll('#cmAddHandlerDropdown label').forEach(lbl => {
+    lbl.style.display = showAll || selected.includes(lbl.dataset.dept) ? 'flex' : 'none';
+  });
+}
+
+function cmAddHandlerCbChange() {
+  const cnt = document.querySelectorAll('.cmAddHandlerCb:checked').length;
+  const el = document.getElementById('cmAddHandlerCount');
+  if (el) el.textContent = cnt ? cnt + ' selected' : 'Select handlers';
 }
 
 async function cmDelete(id, name){
