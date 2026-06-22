@@ -4069,9 +4069,9 @@ async function init() {
       const el = document.getElementById(navId);
       if (el) el.style.display = canSee(page) ? 'flex' : 'none';
     }
-    // Feedback nav — visible to admin, pc, hod only
+    // Feedback nav — visible to all logged-in users (API filters by recipient)
     const fbNav = document.getElementById('nav-feedback');
-    if (fbNav) fbNav.style.display = ['admin','pc','hod'].includes(ME.role) ? 'flex' : 'none';
+    if (fbNav) fbNav.style.display = 'flex';
 
     // Action buttons driven by canDo()
     if (canDo('delete_task')) {

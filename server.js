@@ -4570,18 +4570,10 @@ app.post('/api/client-portal/feedback', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Admin / HOD feedback view.
+// Feedback view — only show entries where this user is in the recipients list.
 app.get('/api/feedback', requireAuth, async (req, res) => {
   try {
-    const role = req.session.role;
-    if (!['admin', 'pc', 'hod'].includes(role)) return res.status(403).json({ error: 'Access denied' });
-    let where = '', params = [];
-    if (role === 'hod') {
-      const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [req.session.userId]);
-      if (!me?.department) return res.json([]);
-      where = 'WHERE e.department = ?';
-      params = [me.department];
-    }
+    const userId = req.session.userId;
     const [rows] = await db.query(
       `SELECT f.id, f.rating, f.description, f.created_at,
               c.name AS client_name,
@@ -4591,8 +4583,8 @@ app.get('/api/feedback', requireAuth, async (req, res) => {
        JOIN clients c ON f.client_id = c.id
        JOIN users e ON f.employee_id = e.id
        LEFT JOIN users hod ON (hod.user_role = 'hod' OR hod.role = 'hod') AND hod.department = e.department
-       ${where}
-       ORDER BY f.created_at DESC`, params);
+       WHERE FIND_IN_SET(?, f.recipients)
+       ORDER BY f.created_at DESC`, [userId]);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
