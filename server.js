@@ -4651,7 +4651,11 @@ app.delete('/api/client-portal/feedback/:id', requireAuth, async (req, res) => {
 app.get('/api/clients', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT c.id, c.name, c.handler_id, c.logo_url, COALESCE(c.is_active,1) AS is_active, u.name AS handler_name
+      `SELECT c.id, c.name, c.handler_id, c.logo_url, COALESCE(c.is_active,1) AS is_active,
+              u.name AS handler_name,
+              (SELECT GROUP_CONCAT(u2.name ORDER BY u2.name SEPARATOR '||')
+               FROM client_handlers ch JOIN users u2 ON ch.user_id = u2.id
+               WHERE ch.client_id = c.id) AS all_handler_names
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id
        ORDER BY c.name ASC`);
     res.json(rows);

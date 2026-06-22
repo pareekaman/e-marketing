@@ -10551,8 +10551,11 @@ function cmRenderList(){
     const safeName = dtEscape(c.name);
     const initials = dtEscape(cmInitials(c.name));
     const avatarStyle = cmAvatarStyle(c.name);
-    const handlerLabel = c.handler_name
-      ? `<span style="font-size:11px;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:10px;font-weight:600">👤 ${dtEscape(c.handler_name)}</span>`
+    const handlerNames = c.all_handler_names
+      ? c.all_handler_names.split('||')
+      : (c.handler_name ? [c.handler_name] : []);
+    const handlerLabel = handlerNames.length
+      ? handlerNames.map(n => `<span style="font-size:11px;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:4px">👤 ${dtEscape(n)}</span>`).join('')
       : `<span style="font-size:11px;color:#94a3b8;background:#f1f5f9;padding:2px 8px;border-radius:10px;font-weight:600">No handler</span>`;
     html += `<div class="cm-client-row" data-cm-id="${c.id}" onclick="cmShowDetail(${c.id})">
         <div class="cm-client-info">
