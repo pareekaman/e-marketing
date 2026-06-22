@@ -1420,10 +1420,11 @@ tbody tr:last-child td{border-bottom:none;}
         <div class="card-head">
           <div class="card-head-title">All Pending Tasks</div>
           <div class="tab-group" id="dashTypeTabGroup">
-            <div class="tab active" id="dashTabAll"   onclick="dashTab('all',this)">All</div>
-            <div class="tab"        id="dashTabDel"   onclick="dashTab('delegation',this)">Delegation</div>
-            <div class="tab"        id="dashTabChl"   onclick="dashTab('checklist',this)">Checklist</div>
-            <div class="tab"        id="dashTabFMS"   onclick="dashTab('fms',this)">FMS</div>
+            <div class="tab active" id="dashTabAll"     onclick="dashTab('all',this)">All</div>
+            <div class="tab"        id="dashTabDel"     onclick="dashTab('delegation',this)">Delegation</div>
+            <div class="tab"        id="dashTabChl"     onclick="dashTab('checklist',this)">Checklist</div>
+            <div class="tab"        id="dashTabFMS"     onclick="dashTab('fms',this)">FMS</div>
+            <div class="tab"        id="dashTabRevised" onclick="dashTab('revised',this)" style="display:none">Revised</div>
           </div>
         </div>
         <div style="overflow-x:auto;max-height:370px;overflow-y:auto;">
@@ -5377,13 +5378,20 @@ async function goToAllTasksFromDash(status) {
                                    : status === 'upcoming'  ? 'Upcoming Tasks (Future Due Date)'
                                    : 'All Pending Tasks (incl. Revised)';
 
-  // Lazy-load completed/revised rows on first ask. Pending always needs revised
-  // alongside the default pending stream; "All" needs everything.
+  // Lazy-load completed/revised rows on first ask.
   if ((status === 'completed' || status === 'all') && !window._lastDashCompleted) {
     await loadDashCompleted();
   }
-  if ((status === 'pending' || status === 'all') && !window._lastDashRevised) {
+  if ((status === 'pending' || status === 'all' || status === 'upcoming') && !window._lastDashRevised) {
     await loadDashRevised();
+  }
+  // Show Revised tab only on upcoming view; hide on others
+  const revisedTab = document.getElementById('dashTabRevised');
+  if (revisedTab) revisedTab.style.display = status === 'upcoming' ? '' : 'none';
+  // If switching away from upcoming while Revised tab was active, reset to All
+  if (status !== 'upcoming' && dashType === 'revised') {
+    dashTab('all', document.getElementById('dashTabAll'));
+    return;
   }
   // Re-render with whatever cache we have.
   renderDashTable(window._lastDashTasks || [], dashType);
@@ -5563,7 +5571,10 @@ function renderDashTable(tasks, type) {
   // so we just render whatever it returned, no extra date hide here.
   const _todayStr = new Date().toISOString().split('T')[0];
   let allPending = combined.filter(t => {
-    const matchType = (!type || type === 'all') ? true : t.type === type;
+    // 'revised' is a pseudo-type tab — filter by status, not task type
+    const matchType = type === 'revised' ? t.status === 'revised'
+                    : (!type || type === 'all') ? true
+                    : t.type === type;
     const matchStatus = dashStatusFilter === 'all' ? true
                       : dashStatusFilter === 'completed' ? t.status === 'completed'
                       : dashStatusFilter === 'upcoming'  ? (t.status === 'pending' || t.status === 'revised' || !t.status) && t.due_date && t.due_date > _todayStr
