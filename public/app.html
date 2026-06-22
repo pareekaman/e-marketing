@@ -4070,9 +4070,14 @@ async function init() {
       const el = document.getElementById(navId);
       if (el) el.style.display = canSee(page) ? 'flex' : 'none';
     }
-    // Feedback nav — visible to all logged-in users (API filters by recipient)
+    // Feedback nav — check server if this user is a valid recipient (HOD / fixed recipients)
     const fbNav = document.getElementById('nav-feedback');
-    if (fbNav) fbNav.style.display = 'flex';
+    if (fbNav) {
+      fbNav.style.display = 'none'; // hidden until access confirmed
+      api('/api/feedback/access').then(r => {
+        if (r && r.canAccess) fbNav.style.display = 'flex';
+      }).catch(() => {});
+    }
 
     // Action buttons driven by canDo()
     if (canDo('delete_task')) {

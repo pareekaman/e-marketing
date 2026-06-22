@@ -4570,6 +4570,20 @@ app.post('/api/client-portal/feedback', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Check if logged-in user can access the feedback page.
+app.get('/api/feedback/access', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query(
+      `SELECT user_role, role, name FROM users WHERE id=?`, [req.session.userId]);
+    if (!me) return res.json({ canAccess: false });
+    const isHod = me.user_role === 'hod' || me.role === 'hod';
+    const [[fixed]] = await db.query(
+      `SELECT id FROM users WHERE id=? AND name IN ('Abhishek Jain','Simran Gurnani')`,
+      [req.session.userId]);
+    res.json({ canAccess: isHod || !!fixed });
+  } catch (err) { res.status(500).json({ canAccess: false }); }
+});
+
 // Feedback view — only show entries where this user is in the recipients list.
 app.get('/api/feedback', requireAuth, async (req, res) => {
   try {
