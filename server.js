@@ -313,6 +313,8 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN dropdown_options TEXT DEFAULT '' AFTER field_type`);
   // Required flag — default 1 so existing rows continue to be mandatory (backward compat)
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN required TINYINT(1) DEFAULT 1 AFTER dropdown_options`);
+  // Add new handlers to Pre-Order FMS "Handle by Doer Name" dropdown
+  await sa(`UPDATE fms_extra_rows SET dropdown_options = CONCAT(dropdown_options, ',Taran Jain,Rahul,Ashish Jha') WHERE row_label = 'Handle by Doer Name' AND dropdown_options NOT LIKE '%Taran Jain%'`);
 
   // ── Inventory tables ──────────────────────────────────
   await sa(`CREATE TABLE IF NOT EXISTS inventory_items (

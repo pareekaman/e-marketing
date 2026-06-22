@@ -1327,6 +1327,10 @@ tbody tr:last-child td{border-bottom:none;}
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
       <span class="nav-label-text">Daily Reports</span>
     </div>
+    <div class="nav-item" id="nav-dms" style="display:none" onclick="navigate('dms',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+      <span class="nav-label-text">DMS</span>
+    </div>
     <div class="nav-divider"></div>
     <div class="nav-item" id="nav-inventory" onclick="navigate('inventory',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
@@ -2112,6 +2116,115 @@ tbody tr:last-child td{border-bottom:none;}
        Client Detail page but without the admin-only controls. ── -->
   <div id="page-client-portal" class="page">
     <div id="cpContent"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       DMS PAGE — Document Management System
+  ══════════════════════════════════════ -->
+  <div id="page-dms" class="page">
+    <!-- Drive auth banner (admin only, shown when not connected) -->
+    <div id="dmsAuthBanner" style="display:none;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;padding:14px 18px;margin-bottom:18px;align-items:center;gap:12px">
+      <span style="font-size:20px">⚠️</span>
+      <div style="flex:1">
+        <div style="font-weight:600;color:#92400e">Google Drive not connected</div>
+        <div style="font-size:12px;color:#b45309;margin-top:2px">Connect your Google account to enable document management.</div>
+      </div>
+      <a id="dmsAuthLink" href="/api/google/auth" class="btn btn-primary" style="font-size:13px;padding:7px 16px;text-decoration:none">Connect Drive</a>
+    </div>
+
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+      <!-- Left panel: client list -->
+      <div style="width:240px;flex-shrink:0;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+        <div style="padding:14px 16px;border-bottom:1px solid #f1f5f9;font-weight:700;font-size:14px;color:#0f172a">Clients</div>
+        <div style="padding:10px">
+          <input type="text" id="dmsClientSearch" placeholder="Search..." oninput="dmsFilterClients()" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit"/>
+        </div>
+        <div id="dmsClientList" style="overflow-y:auto;max-height:calc(100vh - 260px)">
+          <div style="padding:16px;color:#94a3b8;font-size:13px;text-align:center">Loading…</div>
+        </div>
+      </div>
+
+      <!-- Right panel: DMS detail for selected client -->
+      <div style="flex:1;min-width:280px">
+        <div id="dmsDetail" style="display:none">
+          <!-- Client header -->
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-bottom:16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+              <div>
+                <div style="font-size:18px;font-weight:700;color:#0f172a" id="dmsClientName"></div>
+                <div id="dmsFolderLink" style="font-size:12px;margin-top:4px"></div>
+              </div>
+              <button id="dmsSetupBtn" class="btn btn-primary" style="font-size:13px" onclick="dmsSetupFolder()">Create Drive Folder</button>
+            </div>
+          </div>
+
+          <!-- Department folders -->
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-bottom:16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+              <div style="font-weight:700;font-size:14px;color:#0f172a">Department Folders</div>
+              <button id="dmsAddDeptBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="dmsOpenAddDept()">+ Add Department</button>
+            </div>
+            <div id="dmsDeptList"></div>
+          </div>
+
+          <!-- File browser -->
+          <div id="dmsFileBrowser" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+              <div style="font-weight:700;font-size:14px;color:#0f172a">Files — <span id="dmsBrowserFolderName" style="color:#1a56db"></span></div>
+              <button id="dmsCreateFileBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px;display:none" onclick="dmsOpenCreateFile()">+ New File</button>
+            </div>
+            <div id="dmsFileList"><div style="color:#94a3b8;font-size:13px">Select a folder above to browse files.</div></div>
+          </div>
+        </div>
+        <div id="dmsNoClient" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:48px 20px;text-align:center;color:#94a3b8;font-size:14px">
+          ← Select a client to manage their documents
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DMS: Add department modal -->
+  <div class="modal-overlay" id="dmsAddDeptModal">
+    <div class="modal" style="width:420px">
+      <button class="modal-close" onclick="closeModal('dmsAddDeptModal')">×</button>
+      <h3>Add Department Folder</h3>
+      <div class="alert error" id="dmsAddDeptErr" style="display:none"></div>
+      <div class="form-group">
+        <label>Department *</label>
+        <select id="dmsAddDeptSelect" style="width:100%;padding:9px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;font-family:inherit;outline:none">
+          <option value="">— select department —</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('dmsAddDeptModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="dmsSaveDept()">Create Folder</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DMS: Create file modal -->
+  <div class="modal-overlay" id="dmsCreateFileModal">
+    <div class="modal" style="width:420px">
+      <button class="modal-close" onclick="closeModal('dmsCreateFileModal')">×</button>
+      <h3>Create New File</h3>
+      <div class="alert error" id="dmsCreateFileErr" style="display:none"></div>
+      <div class="form-group">
+        <label>File Name *</label>
+        <input type="text" id="dmsFileName" placeholder="e.g. Q1 Report" style="width:100%;box-sizing:border-box"/>
+      </div>
+      <div class="form-group">
+        <label>Type *</label>
+        <select id="dmsFileKind" style="width:100%;padding:9px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;font-family:inherit;outline:none">
+          <option value="doc">📄 Google Doc</option>
+          <option value="sheet">📊 Google Sheet</option>
+          <option value="slide">📑 Google Slides</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('dmsCreateFileModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="dmsSaveFile()">Create</button>
+      </div>
+    </div>
   </div>
 
   <!-- ══════════════════════════════════════
@@ -3831,7 +3944,7 @@ let ME = null;
 const ROLE_DEFAULTS = {
   hod:  { pages: ['dashboard','alltasks','approvals','mis','hrm','leaves','meetings','daily','fms-tasks','inventory'],
            actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','hrm_schedule','hrm_update_status','delete_leave'] },
-  pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory'],
+  pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms'],
            actions: ['approve_revision','bulk_approve','create_task','reopen_task'] },
   user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory'],
            actions: ['create_task'] }
@@ -3913,6 +4026,7 @@ async function init() {
       'nav-hrm':          'hrm',
       'nav-meetings':     'meetings',
       'nav-inventory':    'inventory',
+      'nav-dms':          'dms',
     };
     for (const [navId, page] of Object.entries(NAV_MAP)) {
       const el = document.getElementById(navId);
@@ -4046,7 +4160,7 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Meetings','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Meetings','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS'};
 
 // ══════════════════════════════════════════════════════
 // USERS PAGE — TAB SWITCHER + ACCESS CONTROL
@@ -4784,7 +4898,7 @@ function navigate(page, el) {
     daily: loadDailyForm, clients: loadClients, compliance: loadCompliance,
     dailyreports: loadDailyReports, leaves: loadLeaves, race: loadRaceTracker,
     meetings: loadMeetings, 'client-portal': loadClientPortal,
-    inventory: loadInventory, hrm: loadHRM
+    inventory: loadInventory, hrm: loadHRM, dms: loadDMS
   };
   const loaderFn = pageLoaders[page];
   if (typeof loaderFn === 'function') withPageLoader(loaderFn);
@@ -13166,6 +13280,257 @@ async function deleteMeeting() {
 
 init();
 setDefaultMISDates();
+
+// ══════════════════════════════════════════════════════
+// DMS — Document Management System
+// ══════════════════════════════════════════════════════
+let _dmsClients = [];
+let _dmsSelectedClient = null;
+let _dmsBrowseFolderId = null;
+let _dmsBrowseFolderName = null;
+let _dmsDepts = [];
+
+async function loadDMS() {
+  _dmsSelectedClient = null;
+  _dmsBrowseFolderId = null;
+  document.getElementById('dmsDetail').style.display = 'none';
+  document.getElementById('dmsNoClient').style.display = 'block';
+
+  // Check Drive connection (admin only)
+  const banner = document.getElementById('dmsAuthBanner');
+  if (ME.role === 'admin') {
+    try {
+      const st = await api('/api/google/drive-status');
+      if (!st.connected) { banner.style.display = 'flex'; }
+      else { banner.style.display = 'none'; }
+    } catch { banner.style.display = 'none'; }
+  } else { banner.style.display = 'none'; }
+
+  // Load clients
+  const [clients] = await Promise.all([
+    api('/api/clients'),
+    dmsLoadDepts(),
+  ]);
+  _dmsClients = Array.isArray(clients) ? clients.filter(c => c.is_active !== 0) : [];
+  dmsRenderClientList();
+}
+
+async function dmsLoadDepts() {
+  try {
+    const depts = await api('/api/departments');
+    _dmsDepts = Array.isArray(depts) ? depts : [];
+  } catch { _dmsDepts = []; }
+}
+
+function dmsFilterClients() {
+  const q = (document.getElementById('dmsClientSearch')?.value || '').toLowerCase();
+  document.querySelectorAll('#dmsClientList .dms-client-row').forEach(row => {
+    row.style.display = row.dataset.name.includes(q) ? '' : 'none';
+  });
+}
+
+function dmsRenderClientList() {
+  const el = document.getElementById('dmsClientList');
+  if (!_dmsClients.length) {
+    el.innerHTML = '<div style="padding:16px;color:#94a3b8;font-size:13px;text-align:center">No clients found</div>';
+    return;
+  }
+  el.innerHTML = _dmsClients.map(c => `
+    <div class="dms-client-row" data-id="${c.id}" data-name="${dtEscape(c.name.toLowerCase())}"
+         onclick="dmsSelectClient(${c.id})"
+         style="padding:10px 14px;cursor:pointer;font-size:13px;border-bottom:1px solid #f8fafc;transition:background .1s;${_dmsSelectedClient?.id===c.id?'background:#eff6ff;color:#1d4ed8;font-weight:600;':'color:#334155;'}">
+      <div style="display:flex;align-items:center;gap:8px">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+        ${dtEscape(c.name)}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function dmsSelectClient(id) {
+  _dmsSelectedClient = _dmsClients.find(c => c.id === id);
+  if (!_dmsSelectedClient) return;
+
+  // Highlight selected in list
+  dmsRenderClientList();
+
+  document.getElementById('dmsDetail').style.display = 'block';
+  document.getElementById('dmsNoClient').style.display = 'none';
+  document.getElementById('dmsClientName').textContent = _dmsSelectedClient.name;
+  document.getElementById('dmsFolderLink').innerHTML = '';
+  document.getElementById('dmsSetupBtn').style.display = 'none';
+  document.getElementById('dmsDeptList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Loading…</div>';
+  document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Select a folder above to browse files.</div>';
+  document.getElementById('dmsBrowserFolderName').textContent = '';
+  document.getElementById('dmsCreateFileBtn').style.display = 'none';
+  _dmsBrowseFolderId = null;
+
+  try {
+    const data = await api(`/api/clients/${id}/dms`);
+
+    if (data.drive_folder_id) {
+      const driveUrl = `https://drive.google.com/drive/folders/${data.drive_folder_id}`;
+      document.getElementById('dmsFolderLink').innerHTML =
+        `<a href="${driveUrl}" target="_blank" style="color:#1a56db;font-size:12px;text-decoration:none">Open in Google Drive ↗</a>`;
+    }
+
+    if (!data.drive_folder_id) {
+      if (data.drive_configured) {
+        document.getElementById('dmsSetupBtn').style.display = 'inline-flex';
+      } else {
+        document.getElementById('dmsDeptList').innerHTML =
+          '<div style="color:#b45309;font-size:13px;padding:8px 0">Google Drive is not configured. Connect Drive first (admin setting).</div>';
+        return;
+      }
+    }
+
+    dmsRenderDepts(data.departments || [], id, !!data.drive_folder_id);
+
+    // Show add-dept button only if folder exists
+    const addDeptBtn = document.getElementById('dmsAddDeptBtn');
+    if (addDeptBtn) addDeptBtn.style.display = data.drive_folder_id ? 'inline-flex' : 'none';
+
+  } catch (e) {
+    document.getElementById('dmsDeptList').innerHTML =
+      `<div style="color:#dc2626;font-size:13px">Error: ${dtEscape(e.message)}</div>`;
+  }
+}
+
+function dmsRenderDepts(depts, clientId, hasDriveFolder) {
+  const el = document.getElementById('dmsDeptList');
+  if (!hasDriveFolder) {
+    el.innerHTML = '<div style="color:#94a3b8;font-size:13px">Create the client Drive folder first.</div>';
+    return;
+  }
+  if (!depts.length) {
+    el.innerHTML = '<div style="color:#94a3b8;font-size:13px">No department folders yet. Click "+ Add Department" to create one.</div>';
+    return;
+  }
+  el.innerHTML = depts.map(d => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f8fafc;border-radius:8px;margin-bottom:8px">
+      <button onclick="dmsBrowseFolder('${d.drive_folder_id}','${dtEscape(d.department_name)}')"
+        style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#334155;padding:0">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+        ${dtEscape(d.department_name)}
+      </button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <a href="https://drive.google.com/drive/folders/${d.drive_folder_id}" target="_blank"
+           style="font-size:11px;color:#1a56db;text-decoration:none">Open ↗</a>
+        ${(ME.role==='admin'||ME.role==='pc') ? `<button onclick="dmsRemoveDept('${dtEscape(d.department_name)}')" style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:18px;padding:0 2px;line-height:1" title="Remove">×</button>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function dmsBrowseFolder(folderId, folderName) {
+  if (!_dmsSelectedClient) return;
+  _dmsBrowseFolderId = folderId;
+  _dmsBrowseFolderName = folderName;
+  document.getElementById('dmsBrowserFolderName').textContent = folderName;
+  document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Loading files…</div>';
+  const canCreate = ME.role==='admin' || ME.role==='pc';
+  document.getElementById('dmsCreateFileBtn').style.display = canCreate ? 'inline-flex' : 'none';
+  try {
+    const files = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${folderId}/files`);
+    if (!files.length) {
+      document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">No files in this folder yet.</div>';
+      return;
+    }
+    const icons = { 'application/vnd.google-apps.document':'📄', 'application/vnd.google-apps.spreadsheet':'📊', 'application/vnd.google-apps.presentation':'📑', 'application/vnd.google-apps.folder':'📁' };
+    document.getElementById('dmsFileList').innerHTML = `
+      <div style="display:grid;gap:8px">
+        ${files.map(f => `
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f8fafc;border-radius:8px">
+            <span style="font-size:18px">${icons[f.mimeType]||'📄'}</span>
+            <div style="flex:1;min-width:0">
+              <a href="${f.webViewLink}" target="_blank" style="font-size:13px;font-weight:600;color:#1a56db;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">
+                ${dtEscape(f.name)}
+              </a>
+              <div style="font-size:11px;color:#94a3b8">${f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : ''}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch (e) {
+    document.getElementById('dmsFileList').innerHTML = `<div style="color:#dc2626;font-size:13px">Error: ${dtEscape(e.message)}</div>`;
+  }
+}
+
+async function dmsSetupFolder() {
+  if (!_dmsSelectedClient) return;
+  const btn = document.getElementById('dmsSetupBtn');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/setup`, 'POST');
+    if (r.error) { showToast(r.error); return; }
+    showToast('Drive folder created!');
+    dmsSelectClient(_dmsSelectedClient.id);
+  } catch (e) { showToast('Setup failed: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = 'Create Drive Folder'; }
+}
+
+function dmsOpenAddDept() {
+  const sel = document.getElementById('dmsAddDeptSelect');
+  sel.innerHTML = '<option value="">— select department —</option>' +
+    _dmsDepts.map(d => `<option value="${dtEscape(d)}">${dtEscape(d)}</option>`).join('');
+  document.getElementById('dmsAddDeptErr').style.display = 'none';
+  document.getElementById('dmsAddDeptModal').classList.add('open');
+}
+
+async function dmsSaveDept() {
+  const dept = document.getElementById('dmsAddDeptSelect').value.trim();
+  const errEl = document.getElementById('dmsAddDeptErr');
+  errEl.style.display = 'none';
+  if (!dept) { errEl.textContent = 'Please select a department'; errEl.style.display = 'block'; return; }
+  if (!_dmsSelectedClient) return;
+  try {
+    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/departments`, 'POST', { department_name: dept });
+    if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+    closeModal('dmsAddDeptModal');
+    showToast('Department folder created!');
+    dmsSelectClient(_dmsSelectedClient.id);
+  } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+}
+
+async function dmsRemoveDept(deptName) {
+  if (!_dmsSelectedClient) return;
+  if (!confirm(`Remove "${deptName}" folder mapping? (Drive folder is NOT deleted.)`)) return;
+  try {
+    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/departments/${encodeURIComponent(deptName)}`, 'DELETE');
+    if (r.error) { showToast(r.error); return; }
+    showToast('Department removed');
+    dmsSelectClient(_dmsSelectedClient.id);
+  } catch (e) { showToast('Remove failed: ' + e.message); }
+}
+
+function dmsOpenCreateFile() {
+  document.getElementById('dmsFileName').value = '';
+  document.getElementById('dmsFileKind').value = 'doc';
+  document.getElementById('dmsCreateFileErr').style.display = 'none';
+  document.getElementById('dmsCreateFileModal').classList.add('open');
+}
+
+async function dmsSaveFile() {
+  const name = document.getElementById('dmsFileName').value.trim();
+  const kind = document.getElementById('dmsFileKind').value;
+  const errEl = document.getElementById('dmsCreateFileErr');
+  errEl.style.display = 'none';
+  if (!name) { errEl.textContent = 'File name is required'; errEl.style.display = 'block'; return; }
+  if (!_dmsSelectedClient || !_dmsBrowseFolderId) return;
+  try {
+    const r = await api(
+      `/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/files`,
+      'POST', { name, kind }
+    );
+    if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+    closeModal('dmsCreateFileModal');
+    showToast('File created!');
+    if (r.web_view_link) window.open(r.web_view_link, '_blank');
+    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName);
+  } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+}
+
 </script>
 
 <!-- ── Searchable select: turns every <select> into a type-to-filter dropdown.
