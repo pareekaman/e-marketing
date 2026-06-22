@@ -5294,7 +5294,7 @@ function updateDashStats(type) {
   const _today = new Date().toISOString().split('T')[0];
   const _taskSrc = type === 'fms' ? (window._lastDashFMS||[])
                  : (window._lastDashTasks||[]).filter(t => !type || type === 'all' || t.type === type);
-  const upcomingCount = _taskSrc.filter(t => t.due_date && t.due_date > _today && (t.status === 'pending' || !t.status)).length;
+  const upcomingCount = _taskSrc.filter(t => t.due_date && t.due_date > _today && (t.status === 'pending' || t.status === 'revised' || !t.status)).length;
   const upEl = document.getElementById('dUpcoming');
   if (upEl) upEl.textContent = upcomingCount;
 
@@ -5542,7 +5542,7 @@ function renderDashTable(tasks, type) {
     const matchType = (!type || type === 'all') ? true : t.type === type;
     const matchStatus = dashStatusFilter === 'all' ? true
                       : dashStatusFilter === 'completed' ? t.status === 'completed'
-                      : dashStatusFilter === 'upcoming'  ? (t.status === 'pending' || !t.status) && t.due_date && t.due_date > _todayStr
+                      : dashStatusFilter === 'upcoming'  ? (t.status === 'pending' || t.status === 'revised' || !t.status) && t.due_date && t.due_date > _todayStr
                       : (t.status === 'pending' || t.status === 'revised' || !t.status);
     return matchType && matchStatus;
   });
