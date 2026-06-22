@@ -4542,8 +4542,8 @@ app.get('/api/client-portal/handlers', requireAuth, async (req, res) => {
     const depts = [...new Set(handlers.map(h => h.department).filter(Boolean))];
     const hodMap = {};
     for (const dept of depts) {
-      const [[hod]] = await db.query(`SELECT id, name FROM users WHERE department=? AND (user_role='hod' OR role='hod') LIMIT 1`, [dept]);
-      if (hod) hodMap[dept] = { id: hod.id, name: hod.name };
+      const [hods] = await db.query(`SELECT id, name FROM users WHERE department=? AND (user_role='hod' OR role='hod')`, [dept]);
+      if (hods.length) hodMap[dept] = hods;
     }
     // Fixed recipients: Abhishek Jain and Simran Gurnani
     const [fixedRows] = await db.query(

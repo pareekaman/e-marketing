@@ -645,8 +645,8 @@ async function cpLoadFeedbackPage(){
   }
 }
 
-function cpFbGetHod(dept){
-  return _cpFbHodMap[dept] || null;
+function cpFbGetHods(dept){
+  return Array.isArray(_cpFbHodMap[dept]) ? _cpFbHodMap[dept] : [];
 }
 
 function cpRenderFeedbackPage(history){
@@ -666,8 +666,8 @@ function cpRenderFeedbackPage(history){
         </select>
        </div>`;
 
-  const firstHod = handlers[0].is_hod ? null : cpFbGetHod(handlers[0].department || '');
-  const recipientRows = cpBuildRecipientRows(firstHod, handlers[0].id);
+  const firstHods = handlers[0].is_hod ? [] : cpFbGetHods(handlers[0].department || '');
+  const recipientRows = cpBuildRecipientRows(firstHods, handlers[0].id);
 
   // Past feedback history cards
   const historyHtml = history.length ? history.map(f => {
@@ -697,7 +697,7 @@ function cpRenderFeedbackPage(history){
       <!-- Tab bar -->
       <div style="display:flex;border-bottom:2px solid #e2e8f0;margin-bottom:16px">
         <button id="cpFbTabNew" onclick="cpFbSwitchTab('new')" style="flex:1;padding:12px 0;border:none;background:none;font-size:13px;font-weight:700;color:#1a56db;border-bottom:2px solid #1a56db;margin-bottom:-2px;cursor:pointer">⭐ Share Feedback</button>
-        <button id="cpFbTabHist" onclick="cpFbSwitchTab('history')" style="flex:1;padding:12px 0;border:none;background:none;font-size:13px;font-weight:600;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer">📋 My History ${historyCount ? `<span style="background:#1a56db;color:#fff;border-radius:999px;font-size:11px;padding:1px 7px;margin-left:4px">${historyCount}</span>` : ''}</button>
+        <button id="cpFbTabHist" onclick="cpFbSwitchTab('history')" style="flex:1;padding:12px 0;border:none;background:none;font-size:13px;font-weight:600;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer">📋 Feedback History ${historyCount ? `<span style="background:#1a56db;color:#fff;border-radius:999px;font-size:11px;padding:1px 7px;margin-left:4px">${historyCount}</span>` : ''}</button>
       </div>
 
       <!-- Past Feedback panel -->
@@ -754,7 +754,7 @@ function cpFbSwitchTab(tab){
   if (tHist) { tHist.style.color = isNew ? '#64748b' : '#1a56db'; tHist.style.borderBottomColor = isNew ? 'transparent' : '#1a56db'; tHist.style.fontWeight = isNew ? '600' : '700'; }
 }
 
-function cpBuildRecipientRows(hod, selectedEmployeeId, checkedIds){
+function cpBuildRecipientRows(hods, selectedEmployeeId, checkedIds){
   const ORDER = ['Abhishek Jain', 'Simran Gurnani'];
   const sorted = [..._cpFbFixed].sort((a, b) => {
     const ai = ORDER.indexOf(a.name), bi = ORDER.indexOf(b.name);
@@ -765,14 +765,17 @@ function cpBuildRecipientRows(hod, selectedEmployeeId, checkedIds){
       <input type="checkbox" class="cpFbRecipCb" value="${u.id}" ${isChecked(u.id)?'checked':''} style="width:16px;height:16px;cursor:pointer"/>
       <span>${dtEscape(u.name)}</span>
     </label>`);
-  if (hod && String(hod.id) !== String(selectedEmployeeId)) {
-    rows.push(`<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#0f172a;font-weight:600" id="cpFbHodRow">
-      <input type="checkbox" class="cpFbRecipCb" value="${hod.id}" ${isChecked(hod.id)?'checked':''} style="width:16px;height:16px;cursor:pointer"/>
-      <span>${dtEscape(hod.name)} <span style="font-weight:400;color:#64748b">(HOD)</span></span>
-    </label>`);
-  } else {
-    rows.push(`<div id="cpFbHodRow"></div>`);
+  // Show a checkbox for each HOD (excluding the selected employee themselves)
+  const visibleHods = (hods || []).filter(h => String(h.id) !== String(selectedEmployeeId));
+  if (visibleHods.length) {
+    visibleHods.forEach(h => {
+      rows.push(`<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#0f172a;font-weight:600">
+        <input type="checkbox" class="cpFbRecipCb cpFbHodCb" value="${h.id}" ${isChecked(h.id)?'checked':''} style="width:16px;height:16px;cursor:pointer"/>
+        <span>${dtEscape(h.name)} <span style="font-weight:400;color:#64748b">(HOD)</span></span>
+      </label>`);
+    });
   }
+  rows.push(`<div id="cpFbHodRow"></div>`);
   return rows.join('');
 }
 
@@ -783,16 +786,18 @@ function cpFbHandlerChange(){
   const dept = opt?.dataset.dept || '';
   const selectedId = opt?.value || '';
   const selectedIsHod = opt?.dataset.isHod === '1';
-  const hod = selectedIsHod ? null : cpFbGetHod(dept);
+  const hods = selectedIsHod ? [] : cpFbGetHods(dept);
+  const visibleHods = hods.filter(h => String(h.id) !== String(selectedId));
+  // Remove existing HOD checkboxes (they have class cpFbHodCb) + the placeholder div
+  document.querySelectorAll('.cpFbHodCb').forEach(el => el.closest('label')?.remove());
   const hodRow = document.getElementById('cpFbHodRow');
   if (!hodRow) return;
-  if (hod) {
-    hodRow.outerHTML = `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#0f172a;font-weight:600" id="cpFbHodRow">
-      <input type="checkbox" class="cpFbRecipCb" value="${hod.id}" checked style="width:16px;height:16px;cursor:pointer"/>
-      <span>${dtEscape(hod.name)} <span style="font-weight:400;color:#64748b">(HOD)</span></span>
-    </label>`;
-  } else {
-    hodRow.outerHTML = `<div id="cpFbHodRow"></div>`;
+  if (visibleHods.length) {
+    const newHtml = visibleHods.map(h => `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#0f172a;font-weight:600">
+      <input type="checkbox" class="cpFbRecipCb cpFbHodCb" value="${h.id}" checked style="width:16px;height:16px;cursor:pointer"/>
+      <span>${dtEscape(h.name)} <span style="font-weight:400;color:#64748b">(HOD)</span></span>
+    </label>`).join('');
+    hodRow.insertAdjacentHTML('beforebegin', newHtml);
   }
 }
 
@@ -823,9 +828,10 @@ function cpFbStartEdit(id){
 
     // Set recipients
     const checkedIds = f.recipients ? f.recipients.split(',') : [];
-    const dept = _cpFbHandlers.find(h => String(h.id) === String(f.employee_id))?.department || '';
-    const hod = cpFbGetHod(dept);
-    document.getElementById('cpFbRecipientList').innerHTML = cpBuildRecipientRows(hod, f.employee_id, checkedIds.length ? checkedIds : null);
+    const empHandler = _cpFbHandlers.find(h => String(h.id) === String(f.employee_id));
+    const dept = empHandler?.department || '';
+    const hods = empHandler?.is_hod ? [] : cpFbGetHods(dept);
+    document.getElementById('cpFbRecipientList').innerHTML = cpBuildRecipientRows(hods, f.employee_id, checkedIds.length ? checkedIds : null);
 
     // Set rating
     cpSetRating(f.rating);
@@ -851,8 +857,8 @@ function cpFbCancelEdit(){
   // Reset recipients to all checked
   const handlers = _cpFbHandlers;
   if (handlers.length) {
-    const hod = cpFbGetHod(handlers[0].department || '');
-    document.getElementById('cpFbRecipientList').innerHTML = cpBuildRecipientRows(hod, handlers[0].id);
+    const hods = handlers[0].is_hod ? [] : cpFbGetHods(handlers[0].department || '');
+    document.getElementById('cpFbRecipientList').innerHTML = cpBuildRecipientRows(hods, handlers[0].id);
   }
 }
 
