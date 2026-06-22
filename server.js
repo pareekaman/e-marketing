@@ -4597,8 +4597,9 @@ app.get('/api/feedback', requireAuth, async (req, res) => {
 });
 
 // Delete a feedback entry (admin/pc only).
-app.delete('/api/feedback/:id', requireAdmin, async (req, res) => {
+app.delete('/api/feedback/:id', requireAuth, async (req, res) => {
   try {
+    if (!['admin','pc'].includes(req.session.role)) return res.status(403).json({ error: 'Access denied' });
     await db.query('DELETE FROM client_feedback WHERE id=?', [parseInt(req.params.id)]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
