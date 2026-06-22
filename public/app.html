@@ -133,7 +133,7 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 .dash-topbar h2{font-size:20px;font-weight:700;}
 .dash-topbar-btns{display:flex;gap:8px;}
 
-.overview-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;}
+.overview-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
 .ov-card{background:#fff;border-radius:12px;padding:20px 22px;border:1px solid #e2e8f0;cursor:pointer;transition:transform .1s,box-shadow .15s,border-color .15s;}
 .ov-card:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(15,23,42,.08);border-color:#cbd5e1;}
 .ov-card.ov-card-active{border-color:#F39C12;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
@@ -143,6 +143,7 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 .ov-card.pending .number{color:#ef4444;}
 .ov-card.revised .number{color:#f59e0b;}
 .ov-card.completed .number{color:#10b981;}
+.ov-card.upcoming .number{color:#7c3aed;}
 
 .dash-bottom{display:grid;grid-template-columns:1fr 320px;gap:18px;}
 .dash-perf-section{margin-top:18px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;}
@@ -979,7 +980,7 @@ tbody tr:last-child td{border-bottom:none;}
   .dash-topbar h2{font-size:17px;}
   .dash-topbar-btns{flex-wrap:wrap;}
   .dash-topbar-btns .btn{flex:1;min-width:0;justify-content:center;font-size:12px;padding:8px 10px;}
-  .overview-cards{grid-template-columns:repeat(3,1fr);gap:8px;}
+  .overview-cards{grid-template-columns:repeat(2,1fr);gap:8px;}
   .ov-card{padding:12px 10px;}
   .ov-card .label{font-size:11px;}
   .ov-card .number{font-size:24px;}
@@ -1403,6 +1404,7 @@ tbody tr:last-child td{border-bottom:none;}
       <div class="ov-card total"     onclick="goToAllTasksFromDash('all')"       title="Open All Tasks with these rows"><div class="label">Total</div><div class="number" id="dTotal">—</div></div>
       <div class="ov-card completed" onclick="goToAllTasksFromDash('completed')" title="Open All Tasks → Completed"><div class="label">Completed</div><div class="number" id="dCompleted">—</div></div>
       <div class="ov-card pending"   onclick="goToAllTasksFromDash('pending')"   title="Open All Tasks → Pending (includes Revised)"><div class="label">Pending</div><div class="number" id="dPending">—</div><div id="dPendingBreakdown" style="font-size:11px;color:#f59e0b;font-weight:600;margin-top:4px;display:none">—</div></div>
+      <div class="ov-card upcoming"  onclick="goToAllTasksFromDash('upcoming')"  title="Pending tasks with future due date"><div class="label">Upcoming</div><div class="number" id="dUpcoming">—</div><div style="font-size:11px;color:#7c3aed;font-weight:600;margin-top:4px">Future tasks</div></div>
     </div>
     <div class="dash-bottom">
       <div class="task-table-card">
@@ -1904,10 +1906,10 @@ tbody tr:last-child td{border-bottom:none;}
           <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
             <div class="multi-select-wrap" style="position:relative">
               <button type="button" onclick="cmAddToggleDeptDrop()"
-                style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer;display:flex;align-items:center;gap:6px;min-width:170px">
+                style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer;display:flex;align-items:center;gap:6px;min-width:210px">
                 <span id="cmAddDeptCount">All Departments</span> ▾
               </button>
-              <div class="multi-select-dropdown" id="cmAddDeptDropdown"></div>
+              <div class="multi-select-dropdown" id="cmAddDeptDropdown" style="min-width:210px"></div>
             </div>
             <button type="button" onclick="cmAddToggleHandlerDrop()"
               style="padding:5px 12px;border:1.5px solid #7c3aed;border-radius:6px;font-size:12px;background:#fff;color:#7c3aed;font-weight:600;cursor:pointer">
@@ -5288,6 +5290,13 @@ function updateDashStats(type) {
     if (revised > 0) { pBreak.textContent = `+ ${revised} revised`; pBreak.style.display = 'block'; }
     else             { pBreak.style.display = 'none'; }
   }
+  // Upcoming = pending tasks with future due_date, computed from loaded task list
+  const _today = new Date().toISOString().split('T')[0];
+  const _taskSrc = type === 'fms' ? (window._lastDashFMS||[])
+                 : (window._lastDashTasks||[]).filter(t => !type || type === 'all' || t.type === type);
+  const upcomingCount = _taskSrc.filter(t => t.due_date && t.due_date > _today && (t.status === 'pending' || !t.status)).length;
+  const upEl = document.getElementById('dUpcoming');
+  if (upEl) upEl.textContent = upcomingCount;
 
   if (dashChartInst) dashChartInst.destroy();
   const canvas = document.getElementById('dashChart');
@@ -5333,6 +5342,7 @@ async function goToAllTasksFromDash(status) {
   document.querySelectorAll('.ov-card').forEach(c => c.classList.remove('ov-card-active'));
   const cardSel = status === 'completed' ? '.ov-card.completed'
                 : status === 'all'       ? '.ov-card.total'
+                : status === 'upcoming'  ? '.ov-card.upcoming'
                 : '.ov-card.pending';
   document.querySelector(cardSel)?.classList.add('ov-card-active');
 
@@ -5340,6 +5350,7 @@ async function goToAllTasksFromDash(status) {
   const titleEl = document.querySelector('#dashTbody')?.closest('.task-table-card')?.querySelector('.card-head-title');
   if (titleEl) titleEl.textContent = status === 'completed' ? 'Completed Tasks'
                                    : status === 'all'       ? 'All Tasks (Pending + Revised + Completed)'
+                                   : status === 'upcoming'  ? 'Upcoming Tasks (Future Due Date)'
                                    : 'All Pending Tasks (incl. Revised)';
 
   // Lazy-load completed/revised rows on first ask. Pending always needs revised
@@ -5526,10 +5537,12 @@ function renderDashTable(tasks, type) {
   // Filter by selected type tab + status filter (status comes from stat-card clicks).
   // Backend already caps checklist at today + 10 days and shows delegation/FMS in full —
   // so we just render whatever it returned, no extra date hide here.
+  const _todayStr = new Date().toISOString().split('T')[0];
   let allPending = combined.filter(t => {
     const matchType = (!type || type === 'all') ? true : t.type === type;
     const matchStatus = dashStatusFilter === 'all' ? true
                       : dashStatusFilter === 'completed' ? t.status === 'completed'
+                      : dashStatusFilter === 'upcoming'  ? (t.status === 'pending' || !t.status) && t.due_date && t.due_date > _todayStr
                       : (t.status === 'pending' || t.status === 'revised' || !t.status);
     return matchType && matchStatus;
   });
