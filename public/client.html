@@ -643,11 +643,11 @@ function cpRenderFeedbackPage(history){
     : `<div class="form-group" style="margin-bottom:20px">
         <label>Select Employee</label>
         <select id="cpFbEmployee" onchange="cpFbHandlerChange()" style="width:100%">
-          ${handlers.map(h=>`<option value="${h.id}" data-dept="${dtEscape(h.department||'')}">${dtEscape(h.name)} — ${dtEscape(h.department||'')}</option>`).join('')}
+          ${handlers.map(h=>`<option value="${h.id}" data-dept="${dtEscape(h.department||'')}" data-is-hod="${h.is_hod?'1':'0'}">${dtEscape(h.name)} — ${dtEscape(h.department||'')}</option>`).join('')}
         </select>
        </div>`;
 
-  const firstHod = cpFbGetHod(handlers[0].department || '');
+  const firstHod = handlers[0].is_hod ? null : cpFbGetHod(handlers[0].department || '');
   const recipientRows = cpBuildRecipientRows(firstHod, handlers[0].id);
 
   // Past feedback history cards
@@ -747,11 +747,11 @@ function cpFbHandlerChange(){
   const opt = sel.options[sel.selectedIndex];
   const dept = opt?.dataset.dept || '';
   const selectedId = opt?.value || '';
-  const hod = cpFbGetHod(dept);
+  const selectedIsHod = opt?.dataset.isHod === '1';
+  const hod = selectedIsHod ? null : cpFbGetHod(dept);
   const hodRow = document.getElementById('cpFbHodRow');
   if (!hodRow) return;
-  const checkedIds = Array.from(document.querySelectorAll('.cpFbRecipCb:checked')).map(c => c.value);
-  if (hod && String(hod.id) !== String(selectedId)) {
+  if (hod) {
     hodRow.outerHTML = `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#0f172a;font-weight:600" id="cpFbHodRow">
       <input type="checkbox" class="cpFbRecipCb" value="${hod.id}" checked style="width:16px;height:16px;cursor:pointer"/>
       <span>${dtEscape(hod.name)} <span style="font-weight:400;color:#64748b">(HOD)</span></span>

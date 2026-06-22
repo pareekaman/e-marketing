@@ -4534,7 +4534,8 @@ app.get('/api/client-portal/handlers', requireAuth, async (req, res) => {
     const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
     if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
     const [handlers] = await db.query(
-      `SELECT ch.user_id AS id, u.name, u.department
+      `SELECT ch.user_id AS id, u.name, u.department,
+              (u.user_role='hod' OR u.role='hod') AS is_hod
        FROM client_handlers ch JOIN users u ON ch.user_id = u.id
        WHERE ch.client_id = ? AND u.role != 'client'`, [u.client_id]);
     // Find HOD for each unique department (with id)
