@@ -642,7 +642,7 @@ function cpRenderFeedbackPage(){
        </div>`;
 
   const firstHod = cpFbGetHod(handlers[0].department || '');
-  const recipientRows = cpBuildRecipientRows(firstHod);
+  const recipientRows = cpBuildRecipientRows(firstHod, handlers[0].id);
 
   return `
     <div class="cp-card" style="max-width:560px;margin:0 auto">
@@ -678,21 +678,25 @@ function cpRenderFeedbackPage(){
     </div>`;
 }
 
-function cpBuildRecipientRows(hod){
-  const rows = [];
-  _cpFbFixed.forEach(u => {
-    rows.push(`<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#0f172a;font-weight:600">
+function cpBuildRecipientRows(hod, selectedEmployeeId){
+  // Fixed order: Abhishek Jain first, Simran Gurnani second
+  const ORDER = ['Abhishek Jain', 'Simran Gurnani'];
+  const sorted = [..._cpFbFixed].sort((a, b) => {
+    const ai = ORDER.indexOf(a.name), bi = ORDER.indexOf(b.name);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+  const rows = sorted.map(u => `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#0f172a;font-weight:600">
       <input type="checkbox" class="cpFbRecipCb" value="${u.id}" checked style="width:16px;height:16px;cursor:pointer"/>
       <span>${dtEscape(u.name)}</span>
     </label>`);
-  });
-  if (hod) {
+  // Only show HOD row if the selected employee is NOT the HOD
+  if (hod && String(hod.id) !== String(selectedEmployeeId)) {
     rows.push(`<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#0f172a;font-weight:600" id="cpFbHodRow">
       <input type="checkbox" class="cpFbRecipCb" value="${hod.id}" checked style="width:16px;height:16px;cursor:pointer"/>
       <span>${dtEscape(hod.name)} <span style="font-weight:400;color:#64748b">(HOD)</span></span>
     </label>`);
   } else {
-    rows.push(`<div id="cpFbHodRow" style="font-size:12px;color:#94a3b8;padding:2px 0">No HOD assigned for this department</div>`);
+    rows.push(`<div id="cpFbHodRow"></div>`);
   }
   return rows.join('');
 }
@@ -700,17 +704,19 @@ function cpBuildRecipientRows(hod){
 function cpFbHandlerChange(){
   const sel = document.getElementById('cpFbEmployee');
   if (!sel) return;
-  const dept = sel.options[sel.selectedIndex]?.dataset.dept || '';
+  const opt = sel.options[sel.selectedIndex];
+  const dept = opt?.dataset.dept || '';
+  const selectedId = opt?.value || '';
   const hod = cpFbGetHod(dept);
   const hodRow = document.getElementById('cpFbHodRow');
   if (!hodRow) return;
-  if (hod) {
+  if (hod && String(hod.id) !== String(selectedId)) {
     hodRow.outerHTML = `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#0f172a;font-weight:600" id="cpFbHodRow">
       <input type="checkbox" class="cpFbRecipCb" value="${hod.id}" checked style="width:16px;height:16px;cursor:pointer"/>
       <span>${dtEscape(hod.name)} <span style="font-weight:400;color:#64748b">(HOD)</span></span>
     </label>`;
   } else {
-    hodRow.outerHTML = `<div id="cpFbHodRow" style="font-size:12px;color:#94a3b8;padding:2px 0">No HOD assigned for this department</div>`;
+    hodRow.outerHTML = `<div id="cpFbHodRow"></div>`;
   }
 }
 
