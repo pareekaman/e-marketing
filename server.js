@@ -4596,6 +4596,14 @@ app.get('/api/feedback', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Delete a feedback entry (admin/pc only).
+app.delete('/api/feedback/:id', requireAdmin, async (req, res) => {
+  try {
+    await db.query('DELETE FROM client_feedback WHERE id=?', [parseInt(req.params.id)]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/clients', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(
