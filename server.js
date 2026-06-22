@@ -3524,7 +3524,7 @@ const _clientsTableMigrationsPromise = (async () => {
     KEY idx_cfb_client (client_id),
     KEY idx_cfb_employee (employee_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
-  await sa(`ALTER TABLE client_feedback ADD COLUMN IF NOT EXISTS recipients TEXT DEFAULT ''`);
+  await sa(`ALTER TABLE client_feedback ADD COLUMN recipients TEXT DEFAULT ''`);
   // Allow "client" as a login role + back-link users to clients so the client
   // portal can resolve "my client" from the session.
   await sa(`ALTER TABLE users MODIFY COLUMN role ENUM('admin','hod','pc','user','client') DEFAULT 'user'`);
