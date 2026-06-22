@@ -3513,6 +3513,17 @@ const _clientsTableMigrationsPromise = (async () => {
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   // Seed from existing handler_id values so old data is preserved.
   await sa(`INSERT IGNORE INTO client_handlers (client_id, user_id) SELECT id, handler_id FROM clients WHERE handler_id IS NOT NULL`);
+  // Client feedback submitted via the client portal.
+  await sa(`CREATE TABLE IF NOT EXISTS client_feedback (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    client_id INT NOT NULL,
+    employee_id INT NOT NULL,
+    rating TINYINT NOT NULL,
+    description TEXT DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_cfb_client (client_id),
+    KEY idx_cfb_employee (employee_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   // Allow "client" as a login role + back-link users to clients so the client
   // portal can resolve "my client" from the session.
   await sa(`ALTER TABLE users MODIFY COLUMN role ENUM('admin','hod','pc','user','client') DEFAULT 'user'`);
@@ -4510,6 +4521,73 @@ app.get('/api/client-portal/tasks', requireAuth, async (req, res) => {
        LEFT JOIN users u2 ON t.assigned_by=u2.id
        WHERE t.client_id=? ORDER BY t.due_date DESC LIMIT 500`, [cid]);
     res.json([...delegation, ...checklist]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Client feedback endpoints ─────────────────────────────────────────────
+
+// Returns handlers assigned to this client (for the feedback form).
+app.get('/api/client-portal/handlers', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
+    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
+    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const [handlers] = await db.query(
+      `SELECT ch.user_id AS id, u.name, u.department
+       FROM client_handlers ch JOIN users u ON ch.user_id = u.id
+       WHERE ch.client_id = ? AND u.role != 'client'`, [u.client_id]);
+    // Find HOD for each unique department
+    const depts = [...new Set(handlers.map(h => h.department).filter(Boolean))];
+    const hodMap = {};
+    for (const dept of depts) {
+      const [[hod]] = await db.query(`SELECT name FROM users WHERE department=? AND role='hod' LIMIT 1`, [dept]);
+      if (hod) hodMap[dept] = hod.name;
+    }
+    res.json({ handlers, hodMap });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Submit feedback from client portal.
+app.post('/api/client-portal/feedback', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
+    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
+    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const { employee_id, rating, description } = req.body;
+    if (!employee_id || !rating) return res.status(400).json({ error: 'Employee and rating are required' });
+    const r = parseInt(rating);
+    if (r < 1 || r > 5) return res.status(400).json({ error: 'Rating must be between 1 and 5' });
+    await db.query(
+      'INSERT INTO client_feedback (client_id, employee_id, rating, description) VALUES (?, ?, ?, ?)',
+      [u.client_id, parseInt(employee_id), r, (description || '').trim()]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Admin / HOD feedback view.
+app.get('/api/feedback', requireAuth, async (req, res) => {
+  try {
+    const role = req.session.role;
+    if (!['admin', 'pc', 'hod'].includes(role)) return res.status(403).json({ error: 'Access denied' });
+    let where = '', params = [];
+    if (role === 'hod') {
+      const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [req.session.userId]);
+      if (!me?.department) return res.json([]);
+      where = 'WHERE e.department = ?';
+      params = [me.department];
+    }
+    const [rows] = await db.query(
+      `SELECT f.id, f.rating, f.description, f.created_at,
+              c.name AS client_name,
+              e.name AS employee_name, e.department,
+              hod.name AS hod_name
+       FROM client_feedback f
+       JOIN clients c ON f.client_id = c.id
+       JOIN users e ON f.employee_id = e.id
+       LEFT JOIN users hod ON hod.role = 'hod' AND hod.department = e.department
+       ${where}
+       ORDER BY f.created_at DESC`, params);
+    res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

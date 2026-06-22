@@ -378,6 +378,11 @@ tbody tr:last-child td{border-bottom:none;}
 .race-score.s-lag{color:#dc2626;}
 .race-gap{font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:.2px;}
 
+/* Client feedback star rating */
+.cp-star-row{display:flex;gap:8px;margin:8px 0;}
+.cp-star{font-size:32px;cursor:pointer;color:#e2e8f0;transition:color .15s,transform .1s;}
+.cp-star.lit{color:#f59e0b;}
+.cp-star:hover{transform:scale(1.15);}
 /* Summary stat cards */
 .race-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:20px;}
 .race-stat{position:relative;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 18px 16px;transition:transform .2s,box-shadow .2s,border-color .2s;overflow:hidden;}
@@ -1332,6 +1337,10 @@ tbody tr:last-child td{border-bottom:none;}
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
       <span class="nav-label-text">DMS</span>
     </div>
+    <div class="nav-item" id="nav-feedback" style="display:none" onclick="navigate('feedback',this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
+      <span class="nav-label-text">Feedback</span>
+    </div>
     <div class="nav-divider"></div>
     <div class="nav-item" id="nav-inventory" onclick="navigate('inventory',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
@@ -1404,7 +1413,7 @@ tbody tr:last-child td{border-bottom:none;}
       <div class="ov-card total"     onclick="goToAllTasksFromDash('all')"       title="Open All Tasks with these rows"><div class="label">Total</div><div class="number" id="dTotal">—</div></div>
       <div class="ov-card completed" onclick="goToAllTasksFromDash('completed')" title="Open All Tasks → Completed"><div class="label">Completed</div><div class="number" id="dCompleted">—</div></div>
       <div class="ov-card pending"   onclick="goToAllTasksFromDash('pending')"   title="Open All Tasks → Pending (includes Revised)"><div class="label">Pending</div><div class="number" id="dPending">—</div><div id="dPendingBreakdown" style="font-size:11px;color:#f59e0b;font-weight:600;margin-top:4px;display:none">—</div></div>
-      <div class="ov-card upcoming"  onclick="goToAllTasksFromDash('upcoming')"  title="Pending tasks with future due date"><div class="label">Upcoming</div><div class="number" id="dUpcoming">—</div><div style="font-size:11px;color:#7c3aed;font-weight:600;margin-top:4px">Future tasks</div></div>
+      <div class="ov-card upcoming"  onclick="goToAllTasksFromDash('upcoming')"  title="Pending tasks with future due date"><div class="label">Upcoming</div><div class="number" id="dUpcoming">—</div><div style="font-size:11px;color:#7c3aed;font-weight:600;margin-top:4px"></div></div>
     </div>
     <div class="dash-bottom">
       <div class="task-table-card">
@@ -2133,6 +2142,17 @@ tbody tr:last-child td{border-bottom:none;}
        Client Detail page but without the admin-only controls. ── -->
   <div id="page-client-portal" class="page">
     <div id="cpContent"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       FEEDBACK PAGE — Admin / HOD view
+  ══════════════════════════════════════ -->
+  <div id="page-feedback" class="page">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+      <h2 style="margin:0;font-size:20px;font-weight:700;color:#0f172a">⭐ Client Feedback</h2>
+      <button class="btn btn-outline" onclick="loadFeedbackAdmin()" style="font-size:12px">🔄 Refresh</button>
+    </div>
+    <div id="feedbackContent"><div class="empty" style="padding:40px">Loading…</div></div>
   </div>
 
   <!-- ══════════════════════════════════════
@@ -4049,6 +4069,9 @@ async function init() {
       const el = document.getElementById(navId);
       if (el) el.style.display = canSee(page) ? 'flex' : 'none';
     }
+    // Feedback nav — visible to admin, pc, hod only
+    const fbNav = document.getElementById('nav-feedback');
+    if (fbNav) fbNav.style.display = ['admin','pc','hod'].includes(ME.role) ? 'flex' : 'none';
 
     // Action buttons driven by canDo()
     if (canDo('delete_task')) {
@@ -4177,7 +4200,7 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Meetings','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Meetings','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⭐ Client Feedback'};
 
 // ══════════════════════════════════════════════════════
 // USERS PAGE — TAB SWITCHER + ACCESS CONTROL
@@ -4915,7 +4938,8 @@ function navigate(page, el) {
     daily: loadDailyForm, clients: loadClients, compliance: loadCompliance,
     dailyreports: loadDailyReports, leaves: loadLeaves, race: loadRaceTracker,
     meetings: loadMeetings, 'client-portal': loadClientPortal,
-    inventory: loadInventory, hrm: loadHRM, dms: loadDMS
+    inventory: loadInventory, hrm: loadHRM, dms: loadDMS,
+    feedback: loadFeedbackAdmin
   };
   const loaderFn = pageLoaders[page];
   if (typeof loaderFn === 'function') withPageLoader(loaderFn);
@@ -12576,6 +12600,7 @@ let _cpStatusChart = null;
 async function loadClientPortal(from, to) {
   const wrap = document.getElementById('cpContent');
   wrap.innerHTML = '<div class="empty" style="padding:40px">Loading…</div>';
+  _cpFeedbackLoaded = false;
   try {
     const qs = (from && to) ? `?from=${from}&to=${to}` : '';
     const s = await api('/api/client-portal/stats' + qs);
@@ -12727,6 +12752,12 @@ function cpRenderHtml(s) {
     : '';
 
   return `
+    <div class="tab-group" style="margin-bottom:18px">
+      <div class="tab active" id="cpTabOverview" onclick="cpShowTab('overview',this)">📊 Overview</div>
+      <div class="tab" id="cpTabFeedback" onclick="cpShowTab('feedback',this)">⭐ Give Feedback</div>
+    </div>
+
+    <div id="cpPanelOverview">
     <div style="background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 60%,#fde68a 100%);padding:24px 28px;border-radius:16px;margin-bottom:18px;border:1px solid #fde68a;box-shadow:0 4px 20px rgba(245,158,11,.08)">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px">
         <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
@@ -12787,6 +12818,15 @@ function cpRenderHtml(s) {
           <div class="card-head-title" style="font-size:15px">📅 Meetings (this window)</div>
         </div>
         <div>${meetingsHtml}</div>
+      </div>
+    </div>
+    </div><!-- /cpPanelOverview -->
+
+    <div id="cpPanelFeedback" style="display:none">
+      <div class="task-table-card" style="max-width:600px;margin:0 auto;padding:28px 32px;border-radius:16px">
+        <div style="font-size:18px;font-weight:700;color:#0f172a;margin-bottom:6px">⭐ Share Your Feedback</div>
+        <div style="font-size:13px;color:#64748b;margin-bottom:24px">Your feedback helps us improve our service for you.</div>
+        <div id="cpFeedbackFormWrap"><div class="empty" style="padding:20px">Loading handlers…</div></div>
       </div>
     </div>
   `;
@@ -12873,6 +12913,168 @@ async function cpSaveDelegate() {
   showToast('✅ Task sent to your handler');
   closeModal('clientDelegateModal');
   loadClientPortal();
+}
+
+// ── Client portal tab switcher ────────────────────────
+let _cpFeedbackLoaded = false;
+function cpShowTab(tab, el) {
+  document.querySelectorAll('#cpContent .tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  document.getElementById('cpPanelOverview').style.display  = tab === 'overview'  ? '' : 'none';
+  document.getElementById('cpPanelFeedback').style.display  = tab === 'feedback'  ? '' : 'none';
+  if (tab === 'feedback' && !_cpFeedbackLoaded) { _cpFeedbackLoaded = true; cpLoadFeedbackForm(); }
+}
+
+// ── Client portal feedback form ───────────────────────
+let _cpFbRating = 0;
+let _cpFbHandlers = [];
+let _cpFbHodMap = {};
+
+async function cpLoadFeedbackForm() {
+  const wrap = document.getElementById('cpFeedbackFormWrap');
+  if (!wrap) return;
+  try {
+    const r = await api('/api/client-portal/handlers');
+    if (r.error) { wrap.innerHTML = `<div style="color:#dc2626">${dtEscape(r.error)}</div>`; return; }
+    _cpFbHandlers = r.handlers || [];
+    _cpFbHodMap   = r.hodMap   || {};
+    _cpFbRating   = 0;
+    wrap.innerHTML = cpBuildFeedbackForm();
+  } catch(e) {
+    wrap.innerHTML = `<div style="color:#dc2626">Failed to load handlers: ${e.message}</div>`;
+  }
+}
+
+function cpBuildFeedbackForm() {
+  const handlers = _cpFbHandlers;
+  if (!handlers.length) return `<div style="color:#64748b;text-align:center;padding:24px">No handlers assigned to your account yet.</div>`;
+
+  const handlerSection = handlers.length === 1
+    ? `<div style="background:#f8fafc;border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
+        <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1a56db,#7c3aed);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">${dtEscape(cmInitials(handlers[0].name))}</div>
+        <div><div style="font-weight:700;color:#0f172a;font-size:14px">${dtEscape(handlers[0].name)}</div><div style="font-size:12px;color:#64748b">${dtEscape(handlers[0].department||'—')}</div></div>
+        <input type="hidden" id="cpFbEmployee" value="${handlers[0].id}" onchange="cpFbHandlerChange()"/>
+       </div>`
+    : `<div style="margin-bottom:20px">
+        <label style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:8px">Select Employee</label>
+        <select id="cpFbEmployee" onchange="cpFbHandlerChange()" style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;background:#fff;outline:none">
+          ${handlers.map(h=>`<option value="${h.id}" data-dept="${dtEscape(h.department||'')}">${dtEscape(h.name)} — ${dtEscape(h.department||'')}</option>`).join('')}
+        </select>
+       </div>`;
+
+  const firstHandler = handlers[0];
+  const hodName = _cpFbHodMap[firstHandler.department] || '—';
+
+  return `
+    ${handlerSection}
+    <div id="cpFbRecipients" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#0369a1">
+      <div style="font-weight:700;margin-bottom:6px">📬 Feedback will be shared with:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <span style="background:#fff;border:1px solid #7dd3fc;padding:4px 12px;border-radius:999px;font-weight:600">Abhishek Jain</span>
+        <span style="background:#fff;border:1px solid #7dd3fc;padding:4px 12px;border-radius:999px;font-weight:600">Simran Gurnani</span>
+        <span id="cpFbHodPill" style="background:#fff;border:1px solid #7dd3fc;padding:4px 12px;border-radius:999px;font-weight:600">${dtEscape(hodName)} (HOD)</span>
+      </div>
+    </div>
+
+    <div style="margin-bottom:20px">
+      <label style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:8px">Rating *</label>
+      <div class="cp-star-row" id="cpFbStarRow">
+        ${[1,2,3,4,5].map(i=>`<span class="cp-star" data-val="${i}" onclick="cpSetRating(${i})" onmouseover="cpPreviewRating(${i})" onmouseout="cpPreviewRating(0)">★</span>`).join('')}
+      </div>
+      <div id="cpFbRatingLabel" style="font-size:12px;color:#94a3b8;margin-top:4px">Click a star to rate</div>
+    </div>
+
+    <div style="margin-bottom:24px">
+      <label style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:8px">Description</label>
+      <textarea id="cpFbDesc" rows="4" placeholder="Share your experience — what went well, what could be improved…"
+        style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;resize:vertical;font-family:inherit;outline:none;box-sizing:border-box"></textarea>
+    </div>
+
+    <div id="cpFbErr" style="display:none;color:#dc2626;font-size:13px;margin-bottom:12px"></div>
+    <button onclick="cpSubmitFeedback()" style="padding:12px 28px;background:#1a56db;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;width:100%">Submit Feedback</button>
+  `;
+}
+
+function cpFbHandlerChange() {
+  const sel = document.getElementById('cpFbEmployee');
+  if (!sel) return;
+  const dept = sel.options[sel.selectedIndex]?.dataset.dept || '';
+  const hodPill = document.getElementById('cpFbHodPill');
+  if (hodPill) hodPill.textContent = (_cpFbHodMap[dept] || '—') + ' (HOD)';
+}
+
+const _cpRatingLabels = ['','Poor','Fair','Good','Very Good','Excellent'];
+function cpSetRating(val) {
+  _cpFbRating = val;
+  cpPreviewRating(val);
+  const lbl = document.getElementById('cpFbRatingLabel');
+  if (lbl) lbl.textContent = val ? `${val}/5 — ${_cpRatingLabels[val]}` : 'Click a star to rate';
+}
+
+function cpPreviewRating(val) {
+  document.querySelectorAll('#cpFbStarRow .cp-star').forEach(s => {
+    s.classList.toggle('lit', parseInt(s.dataset.val) <= (val || _cpFbRating));
+  });
+}
+
+async function cpSubmitFeedback() {
+  const err = document.getElementById('cpFbErr');
+  err.style.display = 'none';
+  const empEl = document.getElementById('cpFbEmployee');
+  const employee_id = empEl?.value;
+  const description = (document.getElementById('cpFbDesc')?.value || '').trim();
+  if (!employee_id) { err.textContent = 'Please select an employee.'; err.style.display = 'block'; return; }
+  if (!_cpFbRating) { err.textContent = 'Please select a rating.'; err.style.display = 'block'; return; }
+  try {
+    const r = await api('/api/client-portal/feedback', 'POST', { employee_id, rating: _cpFbRating, description });
+    if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+    document.getElementById('cpFeedbackFormWrap').innerHTML = `
+      <div style="text-align:center;padding:32px 16px">
+        <div style="font-size:48px;margin-bottom:12px">🙏</div>
+        <div style="font-size:18px;font-weight:700;color:#0f172a;margin-bottom:6px">Thank you for your feedback!</div>
+        <div style="font-size:14px;color:#64748b;margin-bottom:20px">Your feedback has been shared with the management team.</div>
+        <button onclick="_cpFbRating=0;_cpFeedbackLoaded=false;cpLoadFeedbackForm()" style="padding:10px 24px;background:#1a56db;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Submit Another</button>
+      </div>`;
+  } catch(e) {
+    err.textContent = 'Submission failed. Please try again.';
+    err.style.display = 'block';
+  }
+}
+
+// ── Admin feedback view ───────────────────────────────
+async function loadFeedbackAdmin() {
+  const wrap = document.getElementById('feedbackContent');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty" style="padding:40px">Loading…</div>';
+  try {
+    const rows = await api('/api/feedback');
+    if (rows.error) { wrap.innerHTML = `<div class="empty" style="color:#dc2626">${dtEscape(rows.error)}</div>`; return; }
+    if (!rows.length) { wrap.innerHTML = '<div class="empty" style="padding:40px">No feedback received yet.</div>'; return; }
+    const stars = n => '★'.repeat(n) + '☆'.repeat(5-n);
+    const ratingColor = n => n >= 4 ? '#10b981' : n === 3 ? '#f59e0b' : '#ef4444';
+    wrap.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">` +
+      rows.map(f => `
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px 22px;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.08)'" onmouseout="this.style.boxShadow=''">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px">
+            <div>
+              <div style="font-weight:700;color:#0f172a;font-size:15px">${dtEscape(f.employee_name)}</div>
+              <div style="font-size:12px;color:#64748b;margin-top:2px">${dtEscape(f.department||'—')}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:20px;color:${ratingColor(f.rating)};letter-spacing:1px">${stars(f.rating)}</div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:2px">${f.rating}/5</div>
+            </div>
+          </div>
+          ${f.description ? `<div style="font-size:13px;color:#374151;background:#f8fafc;border-radius:8px;padding:10px 12px;margin-bottom:12px;line-height:1.5">"${dtEscape(f.description)}"</div>` : ''}
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:10px;margin-top:4px">
+            <span>From: <strong style="color:#475569">${dtEscape(f.client_name)}</strong></span>
+            <span>${new Date(f.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</span>
+          </div>
+          ${f.hod_name ? `<div style="font-size:11px;color:#7c3aed;margin-top:6px">HOD: ${dtEscape(f.hod_name)}</div>` : ''}
+        </div>`).join('') + `</div>`;
+  } catch(e) {
+    wrap.innerHTML = `<div class="empty" style="color:#dc2626">Failed to load: ${e.message}</div>`;
+  }
 }
 
 // ══════════════════════════════════════════════════════
