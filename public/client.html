@@ -602,19 +602,25 @@ let _cpFbRating = 0;
 let _cpFbHandlers = [];
 let _cpFbHodMap = {};
 let _cpFbFixed = [];
+let _cpFbEditId = null; // null = new submission, number = editing existing
 
 async function cpLoadFeedbackPage(){
   const wrap = document.getElementById('cpFeedback');
   if (!wrap) return;
   wrap.innerHTML = '<div class="empty" style="padding:40px">Loading…</div>';
   try {
-    const r = await api('/api/client-portal/handlers');
-    if (r.error) { wrap.innerHTML = `<div class="empty" style="color:#dc2626">${dtEscape(r.error)}</div>`; return; }
-    _cpFbHandlers = r.handlers || [];
-    _cpFbHodMap   = r.hodMap   || {};
-    _cpFbFixed    = r.fixedRecipients || [];
+    const [hr, fbr] = await Promise.all([
+      api('/api/client-portal/handlers'),
+      api('/api/client-portal/feedback')
+    ]);
+    if (hr.error) { wrap.innerHTML = `<div class="empty" style="color:#dc2626">${dtEscape(hr.error)}</div>`; return; }
+    _cpFbHandlers = hr.handlers || [];
+    _cpFbHodMap   = hr.hodMap   || {};
+    _cpFbFixed    = hr.fixedRecipients || [];
     _cpFbRating   = 0;
-    wrap.innerHTML = cpRenderFeedbackPage();
+    _cpFbEditId   = null;
+    const history = Array.isArray(fbr) ? fbr : [];
+    wrap.innerHTML = cpRenderFeedbackPage(history);
   } catch(e) {
     wrap.innerHTML = `<div class="empty" style="color:#dc2626">Failed to load: ${e.message}</div>`;
   }
@@ -624,7 +630,7 @@ function cpFbGetHod(dept){
   return _cpFbHodMap[dept] || null;
 }
 
-function cpRenderFeedbackPage(){
+function cpRenderFeedbackPage(history){
   const handlers = _cpFbHandlers;
   if (!handlers.length) return `<div class="cp-card" style="max-width:560px;margin:0 auto;padding:32px;text-align:center;color:#64748b"><div style="font-size:36px;margin-bottom:10px">🤝</div><div>No handlers assigned to your account yet.</div></div>`;
 
@@ -644,55 +650,89 @@ function cpRenderFeedbackPage(){
   const firstHod = cpFbGetHod(handlers[0].department || '');
   const recipientRows = cpBuildRecipientRows(firstHod, handlers[0].id);
 
+  // Past feedback history cards
+  const historyHtml = history.length ? history.map(f => {
+    const stars = '★'.repeat(f.rating) + '☆'.repeat(5 - f.rating);
+    const col = f.rating >= 4 ? '#10b981' : f.rating === 3 ? '#f59e0b' : '#ef4444';
+    const date = new Date(f.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+    return `<div id="cpFbHistCard-${f.id}" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+        <div>
+          <div style="font-weight:700;color:#0f172a;font-size:14px">${dtEscape(f.employee_name)}</div>
+          <div style="font-size:11px;color:#64748b">${dtEscape(f.department||'—')}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="font-size:18px;color:${col};letter-spacing:1px">${stars}</div>
+          <button onclick="cpFbStartEdit(${f.id})" style="background:#eff6ff;border:none;color:#1a56db;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer">✏️ Edit</button>
+          <button onclick="cpFbDelete(${f.id})" style="background:#fef2f2;border:none;color:#dc2626;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer">🗑 Delete</button>
+        </div>
+      </div>
+      ${f.description ? `<div style="font-size:13px;color:#374151;background:#f8fafc;border-radius:8px;padding:8px 12px;line-height:1.5">"${dtEscape(f.description)}"</div>` : ''}
+      <div style="font-size:11px;color:#94a3b8">${date}</div>
+    </div>`;
+  }).join('') : `<div style="font-size:13px;color:#94a3b8;text-align:center;padding:20px 0">No feedback submitted yet.</div>`;
+
   return `
-    <div class="cp-card" style="max-width:560px;margin:0 auto">
-      <div class="cp-card-head"><h4>⭐ Share Your Feedback</h4></div>
-      <div style="padding:22px 24px">
-        <div style="font-size:13px;color:#64748b;margin-bottom:20px">Your feedback helps us improve our service for you.</div>
+    <div style="max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+      <!-- Past Feedback -->
+      <div class="cp-card">
+        <div class="cp-card-head"><h4>📋 My Feedback History</h4></div>
+        <div id="cpFbHistoryList" style="padding:16px 18px;display:flex;flex-direction:column;gap:10px">${historyHtml}</div>
+      </div>
 
-        ${handlerSection}
+      <!-- Submit / Edit Form -->
+      <div class="cp-card" id="cpFbFormCard">
+        <div class="cp-card-head"><h4 id="cpFbFormTitle">⭐ Share Your Feedback</h4></div>
+        <div style="padding:22px 24px">
+          <div style="font-size:13px;color:#64748b;margin-bottom:20px">Your feedback helps us improve our service for you.</div>
+          <input type="hidden" id="cpFbEditId" value=""/>
 
-        <div class="form-group" style="margin-bottom:20px">
-          <label>📬 Send Feedback To</label>
-          <div id="cpFbRecipientList" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;display:flex;flex-direction:column;gap:8px;margin-top:6px">
-            ${recipientRows}
+          ${handlerSection}
+
+          <div class="form-group" style="margin-bottom:20px">
+            <label>📬 Send Feedback To</label>
+            <div id="cpFbRecipientList" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;display:flex;flex-direction:column;gap:8px;margin-top:6px">
+              ${recipientRows}
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Rating *</label>
+            <div class="cp-star-row" id="cpFbStarRow">
+              ${[1,2,3,4,5].map(i=>`<span class="cp-star" data-val="${i}" onclick="cpSetRating(${i})" onmouseover="cpPreviewRating(${i})" onmouseout="cpPreviewRating(0)">★</span>`).join('')}
+            </div>
+            <div id="cpFbRatingLabel" style="font-size:12px;color:#94a3b8;margin-top:2px">Click a star to rate</div>
+          </div>
+
+          <div class="form-group">
+            <label>Description</label>
+            <textarea id="cpFbDesc" rows="4" placeholder="Share your experience — what went well, what could be improved…"></textarea>
+          </div>
+
+          <div id="cpFbErr" class="alert error" style="display:none"></div>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-primary" style="flex:1;padding:12px" id="cpFbSubmitBtn" onclick="cpSubmitFeedback()">Submit Feedback</button>
+            <button class="btn btn-outline" style="padding:12px 16px;display:none" id="cpFbCancelBtn" onclick="cpFbCancelEdit()">Cancel</button>
           </div>
         </div>
-
-        <div class="form-group">
-          <label>Rating *</label>
-          <div class="cp-star-row" id="cpFbStarRow">
-            ${[1,2,3,4,5].map(i=>`<span class="cp-star" data-val="${i}" onclick="cpSetRating(${i})" onmouseover="cpPreviewRating(${i})" onmouseout="cpPreviewRating(0)">★</span>`).join('')}
-          </div>
-          <div id="cpFbRatingLabel" style="font-size:12px;color:#94a3b8;margin-top:2px">Click a star to rate</div>
-        </div>
-
-        <div class="form-group">
-          <label>Description</label>
-          <textarea id="cpFbDesc" rows="4" placeholder="Share your experience — what went well, what could be improved…"></textarea>
-        </div>
-
-        <div id="cpFbErr" class="alert error" style="display:none"></div>
-        <button class="btn btn-primary" style="width:100%;padding:12px" onclick="cpSubmitFeedback()">Submit Feedback</button>
       </div>
     </div>`;
 }
 
-function cpBuildRecipientRows(hod, selectedEmployeeId){
-  // Fixed order: Abhishek Jain first, Simran Gurnani second
+function cpBuildRecipientRows(hod, selectedEmployeeId, checkedIds){
   const ORDER = ['Abhishek Jain', 'Simran Gurnani'];
   const sorted = [..._cpFbFixed].sort((a, b) => {
     const ai = ORDER.indexOf(a.name), bi = ORDER.indexOf(b.name);
     return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
   });
+  const isChecked = id => !checkedIds || checkedIds.includes(String(id));
   const rows = sorted.map(u => `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#0f172a;font-weight:600">
-      <input type="checkbox" class="cpFbRecipCb" value="${u.id}" checked style="width:16px;height:16px;cursor:pointer"/>
+      <input type="checkbox" class="cpFbRecipCb" value="${u.id}" ${isChecked(u.id)?'checked':''} style="width:16px;height:16px;cursor:pointer"/>
       <span>${dtEscape(u.name)}</span>
     </label>`);
-  // Only show HOD row if the selected employee is NOT the HOD
   if (hod && String(hod.id) !== String(selectedEmployeeId)) {
     rows.push(`<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#0f172a;font-weight:600" id="cpFbHodRow">
-      <input type="checkbox" class="cpFbRecipCb" value="${hod.id}" checked style="width:16px;height:16px;cursor:pointer"/>
+      <input type="checkbox" class="cpFbRecipCb" value="${hod.id}" ${isChecked(hod.id)?'checked':''} style="width:16px;height:16px;cursor:pointer"/>
       <span>${dtEscape(hod.name)} <span style="font-weight:400;color:#64748b">(HOD)</span></span>
     </label>`);
   } else {
@@ -710,6 +750,7 @@ function cpFbHandlerChange(){
   const hod = cpFbGetHod(dept);
   const hodRow = document.getElementById('cpFbHodRow');
   if (!hodRow) return;
+  const checkedIds = Array.from(document.querySelectorAll('.cpFbRecipCb:checked')).map(c => c.value);
   if (hod && String(hod.id) !== String(selectedId)) {
     hodRow.outerHTML = `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:#0f172a;font-weight:600" id="cpFbHodRow">
       <input type="checkbox" class="cpFbRecipCb" value="${hod.id}" checked style="width:16px;height:16px;cursor:pointer"/>
@@ -718,6 +759,76 @@ function cpFbHandlerChange(){
   } else {
     hodRow.outerHTML = `<div id="cpFbHodRow"></div>`;
   }
+}
+
+// Pre-fill form for editing an existing feedback entry
+function cpFbStartEdit(id){
+  const card = document.getElementById(`cpFbHistCard-${id}`);
+  if (!card) return;
+  // Read data from the card's data (re-fetch from API to get full data)
+  api(`/api/client-portal/feedback`).then(rows => {
+    if (!Array.isArray(rows)) return;
+    const f = rows.find(x => x.id === id);
+    if (!f) return;
+    _cpFbEditId = id;
+    _cpFbRating = f.rating;
+
+    // Update form title and button
+    document.getElementById('cpFbFormTitle').textContent = '✏️ Edit Feedback';
+    document.getElementById('cpFbSubmitBtn').textContent = 'Update Feedback';
+    document.getElementById('cpFbCancelBtn').style.display = 'block';
+    document.getElementById('cpFbEditId').value = id;
+
+    // Set employee (for single-handler, it's fixed; for multi, set select)
+    const empSel = document.getElementById('cpFbEmployee');
+    if (empSel.tagName === 'SELECT') {
+      empSel.value = f.employee_id;
+      cpFbHandlerChange();
+    }
+
+    // Set recipients
+    const checkedIds = f.recipients ? f.recipients.split(',') : [];
+    const dept = _cpFbHandlers.find(h => String(h.id) === String(f.employee_id))?.department || '';
+    const hod = cpFbGetHod(dept);
+    document.getElementById('cpFbRecipientList').innerHTML = cpBuildRecipientRows(hod, f.employee_id, checkedIds.length ? checkedIds : null);
+
+    // Set rating
+    cpSetRating(f.rating);
+
+    // Set description
+    document.getElementById('cpFbDesc').value = f.description || '';
+
+    // Scroll to form
+    document.getElementById('cpFbFormCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+function cpFbCancelEdit(){
+  _cpFbEditId = null;
+  _cpFbRating = 0;
+  document.getElementById('cpFbFormTitle').textContent = '⭐ Share Your Feedback';
+  document.getElementById('cpFbSubmitBtn').textContent = 'Submit Feedback';
+  document.getElementById('cpFbCancelBtn').style.display = 'none';
+  document.getElementById('cpFbEditId').value = '';
+  document.getElementById('cpFbDesc').value = '';
+  cpSetRating(0);
+  // Reset recipients to all checked
+  const handlers = _cpFbHandlers;
+  if (handlers.length) {
+    const hod = cpFbGetHod(handlers[0].department || '');
+    document.getElementById('cpFbRecipientList').innerHTML = cpBuildRecipientRows(hod, handlers[0].id);
+  }
+}
+
+async function cpFbDelete(id){
+  if (!confirm('Delete this feedback? This cannot be undone.')) return;
+  const r = await api(`/api/client-portal/feedback/${id}`, 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  const card = document.getElementById(`cpFbHistCard-${id}`);
+  if (card) card.remove();
+  showToast('Feedback deleted');
+  // If currently editing this entry, cancel edit
+  if (_cpFbEditId === id) cpFbCancelEdit();
 }
 
 const _cpRatingLabels = ['','Poor','Fair','Good','Very Good','Excellent'];
@@ -740,19 +851,21 @@ async function cpSubmitFeedback(){
   const employee_id = document.getElementById('cpFbEmployee')?.value;
   const description = (document.getElementById('cpFbDesc')?.value || '').trim();
   const recipients = Array.from(document.querySelectorAll('.cpFbRecipCb:checked')).map(c => c.value);
+  const editId = _cpFbEditId;
   if (!employee_id) { err.textContent = 'Please select an employee.'; err.style.display = 'block'; return; }
   if (!_cpFbRating) { err.textContent = 'Please select a rating.'; err.style.display = 'block'; return; }
   if (!recipients.length) { err.textContent = 'Please select at least one recipient.'; err.style.display = 'block'; return; }
   try {
-    const r = await api('/api/client-portal/feedback', 'POST', { employee_id, rating: _cpFbRating, description, recipients });
+    let r;
+    if (editId) {
+      r = await api(`/api/client-portal/feedback/${editId}`, 'PUT', { rating: _cpFbRating, description, recipients });
+    } else {
+      r = await api('/api/client-portal/feedback', 'POST', { employee_id, rating: _cpFbRating, description, recipients });
+    }
     if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
-    document.getElementById('cpFeedback').innerHTML = `
-      <div class="cp-card" style="max-width:560px;margin:0 auto;padding:40px;text-align:center">
-        <div style="font-size:52px;margin-bottom:14px">🙏</div>
-        <div style="font-size:20px;font-weight:700;color:#0f172a;margin-bottom:8px">Thank you!</div>
-        <div style="font-size:14px;color:#64748b;margin-bottom:24px">Your feedback has been shared with the management team.</div>
-        <button class="btn btn-primary" onclick="_cpFbRating=0;cpLoadFeedbackPage()">Submit Another</button>
-      </div>`;
+    showToast(editId ? '✅ Feedback updated' : '✅ Feedback submitted');
+    _cpFbRating = 0;
+    cpLoadFeedbackPage();
   } catch(e) {
     err.textContent = 'Submission failed. Please try again.';
     err.style.display = 'block';

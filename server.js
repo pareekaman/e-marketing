@@ -4604,6 +4604,56 @@ app.delete('/api/feedback/:id', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Client: get own feedback history.
+app.get('/api/client-portal/feedback', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
+    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
+    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const [rows] = await db.query(
+      `SELECT f.id, f.employee_id, f.rating, f.description, f.recipients,
+              DATE_FORMAT(f.created_at,'%Y-%m-%dT%H:%i:%sZ') AS created_at,
+              e.name AS employee_name, e.department
+       FROM client_feedback f
+       JOIN users e ON f.employee_id = e.id
+       WHERE f.client_id = ?
+       ORDER BY f.created_at DESC`, [u.client_id]);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Client: edit own feedback.
+app.put('/api/client-portal/feedback/:id', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
+    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
+    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const { rating, description, recipients } = req.body;
+    const r = parseInt(rating);
+    if (!r || r < 1 || r > 5) return res.status(400).json({ error: 'Rating must be 1–5' });
+    const recipientsStr = Array.isArray(recipients) ? recipients.join(',') : (recipients || '');
+    const [result] = await db.query(
+      'UPDATE client_feedback SET rating=?, description=?, recipients=? WHERE id=? AND client_id=?',
+      [r, (description || '').trim(), recipientsStr, parseInt(req.params.id), u.client_id]);
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Feedback not found' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Client: delete own feedback.
+app.delete('/api/client-portal/feedback/:id', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
+    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
+    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const [result] = await db.query(
+      'DELETE FROM client_feedback WHERE id=? AND client_id=?',
+      [parseInt(req.params.id), u.client_id]);
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Feedback not found' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/clients', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(
