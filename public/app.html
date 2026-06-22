@@ -4635,7 +4635,7 @@ async function saveInventoryItem() {
 }
 
 async function deleteInvItem(id) {
-  if (!confirm('Delete this item?')) return;
+  if (!await appConfirm('This item will be permanently deleted.', 'Delete Item?')) return;
   const r = await api(`/api/inventory/items/${id}`, 'DELETE');
   if (r.error) { showToast(r.error,'error'); return; }
   showToast('Item deleted');
@@ -4681,7 +4681,7 @@ async function doHandover() {
 }
 
 async function doReturn(assignmentId) {
-  if (!confirm('Mark item as fully returned?')) return;
+  if (!await appConfirm('Mark this item as fully returned?', 'Confirm Return')) return;
   const r = await api(`/api/inventory/return/${assignmentId}`,'POST',{});
   if (r.error) { showToast(r.error,'error'); return; }
   showToast('Item returned to inventory!');
@@ -7722,26 +7722,6 @@ function showToast(msg,type='success') {
   t.textContent=msg;
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),3000);
-}
-
-function showConfirm(msg, onConfirm) {
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;display:flex;align-items:center;justify-content:center;animation:fadeIn .15s ease';
-  overlay.innerHTML = `
-    <div style="background:#fff;border-radius:16px;padding:28px 32px;max-width:360px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.18);text-align:center">
-      <div style="font-size:32px;margin-bottom:10px">🗑️</div>
-      <div style="font-size:15px;font-weight:600;color:#0f172a;margin-bottom:6px">Are you sure?</div>
-      <div style="font-size:13px;color:#64748b;margin-bottom:22px">${msg}</div>
-      <div style="display:flex;gap:10px;justify-content:center">
-        <button id="_cfmCancel" style="flex:1;padding:10px;border:1.5px solid #e2e8f0;background:#fff;color:#374151;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer">Cancel</button>
-        <button id="_cfmOk" style="flex:1;padding:10px;border:none;background:#dc2626;color:#fff;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer">Delete</button>
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
-  const close = () => overlay.remove();
-  overlay.querySelector('#_cfmCancel').onclick = close;
-  overlay.querySelector('#_cfmOk').onclick = () => { close(); onConfirm(); };
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 }
 
 // ── Page-level loader (tab/page switches) ─────────────────────────
@@ -11072,7 +11052,7 @@ function cmDmsSelectDept(deptName) {
 }
 
 async function cmDmsRemoveDept(deptName, clientId) {
-  if (!confirm('Remove "' + deptName + '" folder link?\n(The Google Drive folder itself is NOT deleted.)')) return;
+  if (!await appConfirm(`Remove "${deptName}" folder link? (The Google Drive folder itself is NOT deleted.)`, 'Remove Folder Link?')) return;
   var r = await api('/api/clients/' + clientId + '/dms/departments/' + encodeURIComponent(deptName), 'DELETE');
   if (r.error) { showToast(r.error, 'error'); return; }
   await cmDmsLoad(clientId);
@@ -13100,14 +13080,13 @@ async function loadFeedbackAdmin() {
   }
 }
 
-function deleteFeedback(id) {
-  showConfirm('This feedback will be permanently deleted.', async () => {
-    const r = await api(`/api/feedback/${id}`, 'DELETE');
-    if (r.error) { showToast(r.error, 'error'); return; }
-    const card = document.getElementById(`fb-card-${id}`);
-    if (card) card.remove();
-    showToast('Feedback deleted');
-  });
+async function deleteFeedback(id) {
+  if (!await appConfirm('This feedback will be permanently deleted.', 'Delete Feedback?')) return;
+  const r = await api(`/api/feedback/${id}`, 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  const card = document.getElementById(`fb-card-${id}`);
+  if (card) card.remove();
+  showToast('Feedback deleted');
 }
 
 // ══════════════════════════════════════════════════════
@@ -13628,7 +13607,7 @@ async function markMeetingDone(id) {
 async function deleteMeeting() {
   const id = document.getElementById('mtgEditId').value;
   if (!id) return;
-  if (!confirm('Cancel this meeting? WhatsApp notification will go out.')) return;
+  if (!await appConfirm('Cancel this meeting? WhatsApp notification will go out.', 'Cancel Meeting?')) return;
   try {
     const r = await api(`/api/meetings/${id}`, 'DELETE');
     if (r?.error) { showToast(r.error); return; }
@@ -13857,7 +13836,7 @@ async function dmsSaveDept() {
 
 async function dmsRemoveDept(deptName) {
   if (!_dmsSelectedClient) return;
-  if (!confirm(`Remove "${deptName}" folder mapping? (Drive folder is NOT deleted.)`)) return;
+  if (!await appConfirm(`Remove "${deptName}" folder mapping? (Drive folder is NOT deleted.)`, 'Remove Folder Mapping?')) return;
   try {
     const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/departments/${encodeURIComponent(deptName)}`, 'DELETE');
     if (r.error) { showToast(r.error); return; }
