@@ -7724,6 +7724,26 @@ function showToast(msg,type='success') {
   setTimeout(()=>t.remove(),3000);
 }
 
+function showConfirm(msg, onConfirm) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;display:flex;align-items:center;justify-content:center;animation:fadeIn .15s ease';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:28px 32px;max-width:360px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.18);text-align:center">
+      <div style="font-size:32px;margin-bottom:10px">🗑️</div>
+      <div style="font-size:15px;font-weight:600;color:#0f172a;margin-bottom:6px">Are you sure?</div>
+      <div style="font-size:13px;color:#64748b;margin-bottom:22px">${msg}</div>
+      <div style="display:flex;gap:10px;justify-content:center">
+        <button id="_cfmCancel" style="flex:1;padding:10px;border:1.5px solid #e2e8f0;background:#fff;color:#374151;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer">Cancel</button>
+        <button id="_cfmOk" style="flex:1;padding:10px;border:none;background:#dc2626;color:#fff;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer">Delete</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('#_cfmCancel').onclick = close;
+  overlay.querySelector('#_cfmOk').onclick = () => { close(); onConfirm(); };
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+}
+
 // ── Page-level loader (tab/page switches) ─────────────────────────
 // Refcounted so rapid switches don't flicker. withPageLoader() wraps
 // any sync or async work — overlay shows while the promise is pending.
@@ -13080,13 +13100,14 @@ async function loadFeedbackAdmin() {
   }
 }
 
-async function deleteFeedback(id) {
-  if (!confirm('Delete this feedback? This cannot be undone.')) return;
-  const r = await api(`/api/feedback/${id}`, 'DELETE');
-  if (r.error) { showToast(r.error, 'error'); return; }
-  const card = document.getElementById(`fb-card-${id}`);
-  if (card) card.remove();
-  showToast('Feedback deleted');
+function deleteFeedback(id) {
+  showConfirm('This feedback will be permanently deleted.', async () => {
+    const r = await api(`/api/feedback/${id}`, 'DELETE');
+    if (r.error) { showToast(r.error, 'error'); return; }
+    const card = document.getElementById(`fb-card-${id}`);
+    if (card) card.remove();
+    showToast('Feedback deleted');
+  });
 }
 
 // ══════════════════════════════════════════════════════
