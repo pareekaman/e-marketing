@@ -13302,13 +13302,17 @@ const CC_BANK_COLORS = {
   'AXIS':'#7c3aed','AMEX':'#0891b2','SBI':'#16a34a','SCB':'#b45309'
 };
 // _ccData[bank][cardNum] = [ { statement_date, payment_due_date, payable_amount, min_amount_due, transactions[] }, ... ]
-let _ccActiveBank = null;
-let _ccActiveCard = null;
-let _ccData = (()=>{ try { return JSON.parse(localStorage.getItem('cc_data')||'{}'); } catch(e){ return {}; } })();
+let _ccData       = (()=>{ try { return JSON.parse(localStorage.getItem('cc_data')||'{}'); } catch(e){ return {}; } })();
+let _ccActiveBank = localStorage.getItem('cc_active_bank') || null;
+let _ccActiveCard = localStorage.getItem('cc_active_card') || null;
 let _ccDepts = [];
 
 function ccSave() {
-  try { localStorage.setItem('cc_data', JSON.stringify(_ccData)); } catch(e) {}
+  try {
+    localStorage.setItem('cc_data', JSON.stringify(_ccData));
+    if (_ccActiveBank) localStorage.setItem('cc_active_bank', _ccActiveBank); else localStorage.removeItem('cc_active_bank');
+    if (_ccActiveCard) localStorage.setItem('cc_active_card', _ccActiveCard); else localStorage.removeItem('cc_active_card');
+  } catch(e) {}
 }
 
 async function loadCreditCards() {
@@ -13322,12 +13326,18 @@ async function loadCreditCards() {
     const users = await api('/api/users');
     _ccDepts = [...new Set((users||[]).map(u=>u.department).filter(Boolean))].sort();
   } catch(e) { _ccDepts = []; }
+  // Auto-restore: if no active bank but data exists, pick first bank with data
+  if (!_ccActiveBank) {
+    const firstBank = Object.keys(_ccData).find(b => Object.keys(_ccData[b]||{}).length > 0);
+    if (firstBank) { _ccActiveBank = firstBank; if (dd) dd.value = firstBank; }
+  }
   if (_ccActiveBank) ccRenderDetail();
 }
 
 function ccSelectBank(bank) {
   _ccActiveBank = bank || null;
   _ccActiveCard = null;
+  ccSave();
   const dd = document.getElementById('ccBankDropdown');
   if (dd && bank) dd.value = bank;
   ccRenderDetail();
@@ -13335,6 +13345,7 @@ function ccSelectBank(bank) {
 
 function ccSelectCard(cardNum) {
   _ccActiveCard = cardNum;
+  ccSave();
   ccRenderStatements();
 }
 
