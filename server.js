@@ -7056,6 +7056,22 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Read offer letter template text (to detect placeholder fields)
+app.get('/api/hrm/offer-template-preview', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const docs = await getDocsClient();
+    const doc = await docs.documents.get({ documentId: HRM_OFFER_TEMPLATE_ID });
+    let text = '';
+    for (const el of (doc.data.body?.content || [])) {
+      for (const para of (el.paragraph?.elements || [])) {
+        text += para.textRun?.content || '';
+      }
+    }
+    res.json({ ok: true, text });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Get message log
 app.get('/api/hrm/messages', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
