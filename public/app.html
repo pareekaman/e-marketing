@@ -4838,7 +4838,10 @@ function renderHrmRows(list) {
       <td><span class="hrm-badge ${badgeClass}">${c.status}</span></td>
       <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${canUpdate ? `<button class="action-btn edit" onclick="openHrmStatusModal(${c.id})">Update</button>` : '<span style="font-size:11px;color:#94a3b8">Closed</span>'}
-        ${c.status === 'Offer Sent' ? `<button class="action-btn" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="viewOfferLetter(${c.id})">📄 View Offer</button>` : ''}
+        ${c.status === 'Offer Sent' ? (c.offer_drive_id
+          ? `<a href="https://docs.google.com/document/d/${c.offer_drive_id}/edit" target="_blank" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📄 View Offer</a>`
+          : `<button class="action-btn" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="viewOfferLetter(${c.id})">📄 View Offer</button>`)
+          : ''}
       </td>
     </tr>`;
   }).join('');
