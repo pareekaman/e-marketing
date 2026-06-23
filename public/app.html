@@ -13409,11 +13409,15 @@ async function ccUploadExcel(input) {
   input.value = '';
 }
 
-function ccDeleteStatement(bank, cardNum, stmtIdx) {
+async function ccDeleteStatement(bank, cardNum, stmtIdx) {
   if (!_ccData[bank]?.[cardNum]) return;
+  const stmt = _ccData[bank][cardNum][stmtIdx];
+  const label = stmt?.statement_date ? `Statement: ${stmt.statement_date}` : 'this statement';
+  if (!await appConfirm(`${label} aur uski saari transactions hamesha ke liye delete ho jaayengi.`, 'Delete Statement?')) return;
   _ccData[bank][cardNum].splice(stmtIdx, 1);
   ccSave();
   ccRenderStatements();
+  showToast('Statement deleted');
 }
 
 function ccDeleteTransaction(bank, cardNum, stmtIdx, txIdx) {
