@@ -6845,18 +6845,30 @@ const HRM_COMPANY         = process.env.HRM_COMPANY || 'E-Marketing';
 const HRM_OFFER_FOLDER_ID   = process.env.HRM_OFFER_FOLDER_ID   || '1DWfwjSdkVP_sDEe62mM50Mc1mV52f6rA';
 const HRM_OFFER_TEMPLATE_ID = process.env.HRM_OFFER_TEMPLATE_ID || '11f3STYRR4Lyk2HaoBfo7Kiiw5DsEoyr0P3lZnpZR_G4';
 
-async function getDocsClient() {
+async function _hrmGoogleClients() {
   const { google } = require('googleapis');
-  const refreshToken = await _dmsRefreshToken();
-  if (!refreshToken) throw new Error('Google Drive not authorized');
-  const oauth2 = _dmsOAuthClient();
-  oauth2.setCredentials({ refresh_token: refreshToken });
-  return google.docs({ version: 'v1', auth: oauth2 });
+  let creds;
+  if (process.env.GOOGLE_CREDENTIALS) {
+    creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+  } else {
+    creds = require('./credentials.json');
+  }
+  const auth = new google.auth.GoogleAuth({
+    credentials: creds,
+    scopes: [
+      'https://www.googleapis.com/auth/drive',
+      'https://www.googleapis.com/auth/documents',
+    ],
+  });
+  const client = await auth.getClient();
+  return {
+    drive: google.drive({ version: 'v3', auth: client }),
+    docs:  google.docs({ version: 'v1', auth: client }),
+  };
 }
 
 async function hrmGenerateOfferDoc(candidate, joining_date, salary) {
-  const drive = await getDriveClient();
-  const docs  = await getDocsClient();
+  const { drive, docs } = await _hrmGoogleClients();
 
   const joiningFmt = joining_date
     ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
@@ -7060,7 +7072,7 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
 app.get('/api/hrm/offer-template-preview', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const docs = await getDocsClient();
+    const { docs } = await _hrmGoogleClients();
     const doc = await docs.documents.get({ documentId: HRM_OFFER_TEMPLATE_ID });
     let text = '';
     for (const el of (doc.data.body?.content || [])) {
