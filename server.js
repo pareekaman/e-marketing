@@ -395,6 +395,7 @@ const _startupMigrationsPromise = (async () => {
 
   // Add reschedule_reason column to existing installs
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN IF NOT EXISTS reschedule_reason TEXT DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN IF NOT EXISTS offer_drive_id VARCHAR(500) DEFAULT NULL`);
 
   // Per-user permissions column (replaces role_permissions)
   await sa(`ALTER TABLE users ADD COLUMN IF NOT EXISTS user_permissions TEXT DEFAULT NULL AFTER extra_access`);
@@ -6841,6 +6842,64 @@ const HRM_AMUFIY_API_KEY  = process.env.HRM_AMUFIY_API_KEY  || 'sl_f7f604b7eeb89
 const HRM_TEXT_ENDPOINT   = 'https://api.aumpfy.com/api/apis/trigger/emk-dbde65';
 const HRM_FILE_ENDPOINT   = 'https://api.aumpfy.com/api/apis/trigger/hrm-file-6b7116';
 const HRM_COMPANY         = process.env.HRM_COMPANY || 'E-Marketing';
+const HRM_OFFER_FOLDER_ID   = process.env.HRM_OFFER_FOLDER_ID   || '1DWfwjSdkVP_sDEe62mM50Mc1mV52f6rA';
+const HRM_OFFER_TEMPLATE_ID = process.env.HRM_OFFER_TEMPLATE_ID || '11f3STYRR4Lyk2HaoBfo7Kiiw5DsEoyr0P3lZnpZR_G4';
+
+async function getDocsClient() {
+  const { google } = require('googleapis');
+  const refreshToken = await _dmsRefreshToken();
+  if (!refreshToken) throw new Error('Google Drive not authorized');
+  const oauth2 = _dmsOAuthClient();
+  oauth2.setCredentials({ refresh_token: refreshToken });
+  return google.docs({ version: 'v1', auth: oauth2 });
+}
+
+async function hrmGenerateOfferDoc(candidate, joining_date, salary) {
+  const drive = await getDriveClient();
+  const docs  = await getDocsClient();
+
+  const joiningFmt = joining_date
+    ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+    : '';
+  const today  = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+  const refNo  = `EMK/HR/OL/${String(candidate.id).padStart(4, '0')}`;
+
+  // Copy template into the offer-letters folder
+  const copied = await drive.files.copy({
+    fileId: HRM_OFFER_TEMPLATE_ID,
+    requestBody: {
+      name: `Offer Letter - ${candidate.name} - ${candidate.profile_position || ''}`,
+      parents: [HRM_OFFER_FOLDER_ID],
+    },
+    supportsAllDrives: true,
+  });
+  const fileId = copied.data.id;
+
+  // Replace placeholders in the copied Google Doc
+  const replacements = [
+    ['{{NAME}}',         candidate.name            || ''],
+    ['{{POSITION}}',     candidate.profile_position || ''],
+    ['{{JOINING_DATE}}', joiningFmt],
+    ['{{SALARY}}',       salary                    || 'As per discussion'],
+    ['{{DATE}}',         today],
+    ['{{REF_NO}}',       refNo],
+    ['{{PHONE}}',        candidate.phone            || ''],
+  ];
+
+  await docs.documents.batchUpdate({
+    documentId: fileId,
+    requestBody: {
+      requests: replacements.map(([find, replace]) => ({
+        replaceAllText: {
+          containsText: { text: find, matchCase: true },
+          replaceText: replace,
+        },
+      })),
+    },
+  });
+
+  return fileId;
+}
 
 async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateName, action) {
   let status = 'Failed', errorDetail = '';
@@ -6973,9 +7032,27 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
 `Hello ${c.name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${c.profile_position}.\n\n📅 Joining Date: ${joining_date||''}\n💰 CTC: ${salary||'To be discussed'}\n\nPlease confirm your acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
       }, 'text', c.id, c.name, 'Offer Sent').catch(e => console.error('HRM WA offer err:', e.message));
+
+      // Generate offer letter doc from Drive template in background
+      hrmGenerateOfferDoc(c, joining_date, salary)
+        .then(fileId => db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]))
+        .catch(e => console.error('HRM offer doc generation failed:', e.message));
     }
 
     res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Generate / regenerate offer letter doc for an existing candidate
+app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
+    if (!c) return res.status(404).json({ error: 'Not found' });
+    if (c.status !== 'Offer Sent') return res.status(400).json({ error: 'Candidate status is not Offer Sent' });
+    const fileId = await hrmGenerateOfferDoc(c, c.joining_date, c.salary);
+    await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
+    res.json({ ok: true, fileId, url: `https://docs.google.com/document/d/${fileId}/edit` });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
