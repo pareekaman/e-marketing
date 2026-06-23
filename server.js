@@ -6428,9 +6428,16 @@ async function createGoogleMeetLink({ title, dateStr, startTime, endTime, attend
 
 function _meetingMsgBody(action, meeting, clientName, organizerName, attendeeNames, forClientGroup = false) {
   const fmtDate = d => (d || '').split('-').reverse().join('/');
+  const fmtTime12 = t => {
+    if (!t) return '';
+    const [h, m] = t.split(':').map(Number);
+    const period = h < 12 ? 'AM' : 'PM';
+    const h12 = h % 12 || 12;
+    return m === 0 ? `${h12} ${period}` : `${h12}:${String(m).padStart(2,'0')} ${period}`;
+  };
   const headline = action === 'created' ? '📅 *New Meeting Scheduled*'
                  : action === 'rescheduled' ? '🔄 *Meeting Rescheduled*'
-                 : action === 'reminder' ? '⏰ *Meeting in 10 minutes*'
+                 : action === 'reminder' ? `⏰ *${fmtTime12(meeting.start_time)} Meeting starts in 10 minutes!*`
                  : '❌ *Meeting Cancelled*';
   // Client group sees only the essentials — no organizer / team / agenda / client name.
   // Internal DMs (organizer + attendees) get the full context.
@@ -6455,7 +6462,7 @@ function _meetingMsgBody(action, meeting, clientName, organizerName, attendeeNam
     `*Organizer:* ${organizerName || '—'}`
   ];
   if (attendeeNames && attendeeNames.length) lines.push(`*Team:* ${attendeeNames.join(', ')}`);
-  if (meeting.agenda) lines.push('', `*Agenda:* ${meeting.agenda}`);
+  if (action !== 'reminder' && meeting.agenda) lines.push('', `*Agenda:* ${meeting.agenda}`);
   if (action !== 'cancelled' && meeting.meet_link) lines.push('', `*Join:* ${meeting.meet_link}`);
   return lines.join('\n');
 }
