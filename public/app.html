@@ -13272,19 +13272,19 @@ const CC_BANK_COLORS = {
   'RBL Bank':'#dc2626','ICICI':'#f97316','HDFC':'#1a56db',
   'AXIS':'#7c3aed','AMEX':'#0891b2','SBI':'#16a34a','SCB':'#b45309'
 };
+// _ccData[bank][cardNum] = [ { statement_date, payment_due_date, payable_amount, min_amount_due, transactions[] }, ... ]
 let _ccActiveBank = null;
+let _ccActiveCard = null;   // active card number within bank
 let _ccData = {};
 let _ccDepts = [];
 
 async function loadCreditCards() {
-  // Populate bank dropdown
   const dd = document.getElementById('ccBankDropdown');
   if (dd) {
     dd.innerHTML = '<option value="">— Select Bank —</option>' +
       CC_BANKS.map(b => `<option value="${b}">${b}</option>`).join('');
     if (_ccActiveBank) dd.value = _ccActiveBank;
   }
-  // Load departments for transaction rows
   try {
     const users = await api('/api/users');
     _ccDepts = [...new Set((users||[]).map(u=>u.department).filter(Boolean))].sort();
@@ -13294,9 +13294,15 @@ async function loadCreditCards() {
 
 function ccSelectBank(bank) {
   _ccActiveBank = bank || null;
+  _ccActiveCard = null;
   const dd = document.getElementById('ccBankDropdown');
   if (dd && bank) dd.value = bank;
   ccRenderDetail();
+}
+
+function ccSelectCard(cardNum) {
+  _ccActiveCard = cardNum;
+  ccRenderStatements();
 }
 
 async function ccUploadExcel(input) {
@@ -13309,7 +13315,7 @@ async function ccUploadExcel(input) {
     fd.append('file', file);
     const token = localStorage.getItem('authToken') || '';
     const r = await fetch('/api/credit-cards/upload-excel', {
-      method: 'POST',
+      method:'POST',
       headers: token ? { 'Authorization': 'Bearer ' + token } : {},
       body: fd
     });
@@ -13318,150 +13324,204 @@ async function ccUploadExcel(input) {
       if (status) status.innerHTML = `<span style="color:#dc2626">❌ ${dtEscape(data.error||'Upload failed')}</span>`;
       input.value = ''; return;
     }
-    const bank = data.bankName;
-    if (!_ccData[bank]) _ccData[bank] = { card_number:'', statement_date:'', payment_due_date:'', payable_amount:0, min_amount_due:0, transactions:[] };
-    if (data.cardNumber)     _ccData[bank].card_number     = data.cardNumber;
-    if (data.statementDate)  _ccData[bank].statement_date  = data.statementDate;
-    if (data.paymentDueDate) _ccData[bank].payment_due_date= data.paymentDueDate;
-    if (data.payableAmount)  _ccData[bank].payable_amount  = data.payableAmount;
-    if (data.minAmountDue)   _ccData[bank].min_amount_due  = data.minAmountDue;
-    // Append new transactions only (deduplicate by date+desc+amount)
-    const existing = new Set(_ccData[bank].transactions.map(t => t.date+'|'+t.description+'|'+t.amount));
-    const added = data.transactions.filter(t => !existing.has(t.date+'|'+t.description+'|'+t.amount));
-    _ccData[bank].transactions.push(...added);
+    const bank    = data.bankName;
+    const cardNum = data.cardNumber || 'Unknown Card';
+    if (!_ccData[bank])          _ccData[bank] = {};
+    if (!_ccData[bank][cardNum]) _ccData[bank][cardNum] = [];
+
+    // Check if a statement with same statement_date already exists for this card
+    const stmtDate = data.statementDate || '';
+    const existingStmt = _ccData[bank][cardNum].find(s => s.statement_date === stmtDate && stmtDate);
+    let addedCount = 0;
+    if (existingStmt) {
+      // Append only new transactions to existing statement
+      const seen = new Set(existingStmt.transactions.map(t => t.date+'|'+t.description+'|'+t.amount));
+      const fresh = data.transactions.filter(t => !seen.has(t.date+'|'+t.description+'|'+t.amount));
+      existingStmt.transactions.push(...fresh);
+      addedCount = fresh.length;
+    } else {
+      // New statement
+      _ccData[bank][cardNum].push({
+        statement_date:   data.statementDate   || '',
+        payment_due_date: data.paymentDueDate  || '',
+        payable_amount:   data.payableAmount   || 0,
+        min_amount_due:   data.minAmountDue    || 0,
+        transactions:     data.transactions    || []
+      });
+      addedCount = (data.transactions || []).length;
+    }
+
     _ccActiveBank = bank;
+    _ccActiveCard = cardNum;
     const dd = document.getElementById('ccBankDropdown');
     if (dd) dd.value = bank;
     ccRenderDetail();
-    if (status) status.innerHTML = `<span style="color:#16a34a">✅ ${bank}: ${added.length} new transaction${added.length!==1?'s':''} added</span>`;
-    showToast(`${bank}: ${added.length} transactions imported`);
+    if (status) status.innerHTML = `<span style="color:#16a34a">✅ ${bank} (${cardNum}): ${addedCount} transaction${addedCount!==1?'s':''} added</span>`;
+    showToast(`${bank}: ${addedCount} transactions imported`);
   } catch(e) {
     if (status) status.innerHTML = `<span style="color:#dc2626">❌ ${e.message}</span>`;
   }
   input.value = '';
 }
 
-function ccDeleteTransaction(bank, idx) {
-  if (!_ccData[bank]) return;
-  _ccData[bank].transactions.splice(idx, 1);
-  ccRenderDetail();
+function ccDeleteStatement(bank, cardNum, stmtIdx) {
+  if (!_ccData[bank]?.[cardNum]) return;
+  _ccData[bank][cardNum].splice(stmtIdx, 1);
+  ccRenderStatements();
 }
 
-function ccUpdateField(bank, idx, field, val) {
-  if (_ccData[bank] && _ccData[bank].transactions[idx] !== undefined) {
-    _ccData[bank].transactions[idx][field] = val;
-  }
+function ccDeleteTransaction(bank, cardNum, stmtIdx, txIdx) {
+  _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions.splice(txIdx, 1);
+  ccRenderStatements();
+}
+
+function ccUpdateField(bank, cardNum, stmtIdx, txIdx, field, val) {
+  const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
+  if (t) t[field] = val;
 }
 
 function ccRenderDetail() {
   const panel = document.getElementById('ccDetailContent');
   if (!panel) return;
   const bank = _ccActiveBank;
-  if (!bank) { panel.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:60px 20px;font-size:14px">Select a bank from the dropdown</div>'; return; }
-  const color = CC_BANK_COLORS[bank] || '#64748b';
-  const data  = _ccData[bank] || {};
-  const txns  = data.transactions || [];
-  const txSum = txns.reduce((s,t) => s + (parseFloat(t.amount)||0), 0);
-  const payable = data.payable_amount || txSum;
-  const minDue  = data.min_amount_due || 0;
-  const deptOpts = _ccDepts.map(d => `<option value="${dtEscape(d)}">${dtEscape(d)}</option>`).join('');
+  if (!bank) {
+    panel.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:60px 20px;font-size:14px">Select a bank from the dropdown</div>';
+    return;
+  }
+  const color    = CC_BANK_COLORS[bank] || '#64748b';
+  const bankData = _ccData[bank] || {};
+  const cards    = Object.keys(bankData);
+
+  // If no cards yet, show empty state
+  if (!cards.length) {
+    panel.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#94a3b8;font-size:14px">
+      No statements for <strong>${dtEscape(bank)}</strong> yet — upload an Excel file above.</div>`;
+    return;
+  }
+
+  // Auto-select first card if none active or active card not in this bank
+  if (!_ccActiveCard || !bankData[_ccActiveCard]) _ccActiveCard = cards[0];
+
+  // Card number tabs
+  const cardTabs = cards.map(cn => `
+    <button onclick="ccSelectCard('${cn.replace(/'/g,"\\'")}')"
+      style="padding:7px 16px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid ${cn===_ccActiveCard?color:'#e2e8f0'};background:${cn===_ccActiveCard?color:'#fff'};color:${cn===_ccActiveCard?'#fff':'#374151'};transition:all .15s;white-space:nowrap">
+      💳 ${dtEscape(cn)}
+    </button>`).join('');
 
   panel.innerHTML = `
-    <!-- Card Header -->
-    <div style="background:linear-gradient(135deg,${color}ee,${color}99);border-radius:14px;padding:22px 26px;color:#fff;margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px">
-      <div>
-        <div style="font-size:11px;opacity:.75;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Bank</div>
-        <div style="font-size:24px;font-weight:800">${dtEscape(bank)}</div>
-        <div style="margin-top:8px;font-size:13px;opacity:.85;letter-spacing:.14em">${dtEscape(data.card_number||'**** **** **** ****')}</div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.08em">Payable Amount</div>
-        <div style="font-size:30px;font-weight:800;margin-top:2px">₹${payable.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
-        ${minDue ? `<div style="font-size:12px;opacity:.8;margin-top:4px">Min Due: ₹${minDue.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>` : ''}
-        <div style="font-size:11px;opacity:.65;margin-top:4px">${txns.length} transaction${txns.length!==1?'s':''}</div>
-      </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+      ${cardTabs}
     </div>
+    <div id="ccStatementsWrap"></div>`;
 
-    <!-- Meta Row -->
-    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-      <div style="flex:1;min-width:140px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px">
-        <div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Statement Date</div>
-        <div style="font-size:15px;font-weight:700;color:#0f172a">${dtEscape(data.statement_date||'—')}</div>
-      </div>
-      <div style="flex:1;min-width:140px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px 16px">
-        <div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Payment Due Date</div>
-        <div style="font-size:15px;font-weight:700;color:#dc2626">${dtEscape(data.payment_due_date||'—')}</div>
-      </div>
-    </div>
+  ccRenderStatements();
+}
 
-    <!-- Transactions Table -->
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="font-size:14px;font-weight:700;color:#0f172a">Transaction Details</div>
-      <div style="font-size:12px;color:#64748b">Transaction Sum: <strong style="color:#0f172a">₹${txSum.toLocaleString('en-IN',{minimumFractionDigits:2})}</strong></div>
-    </div>
-    <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px">
-      <table style="width:100%;border-collapse:collapse;min-width:780px">
-        <thead>
-          <tr style="background:#f8fafc">
-            <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Date</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Description</th>
-            <th style="padding:10px 12px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Amount (₹)</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Expenses</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Department</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Ownership</th>
-            <th style="padding:10px 12px;width:36px"></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${txns.length ? txns.map((t,i) => `
-            <tr style="border-top:1px solid #f1f5f9;${i%2===1?'background:#fafafa':''}">
-              <td style="padding:8px 12px;font-size:13px;color:#475569;white-space:nowrap">${dtEscape(t.date||'—')}</td>
-              <td style="padding:8px 12px;font-size:13px;color:#0f172a;max-width:220px">${dtEscape(t.description||'—')}</td>
-              <td style="padding:8px 12px;font-size:13px;color:#0f172a;text-align:right;font-weight:600;white-space:nowrap">${(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
-              <td style="padding:6px 8px">
-                <input type="text" value="${dtEscape(t.expenses||'')}" placeholder="e.g. e-marketing"
-                  onchange="ccUpdateField('${bank}',${i},'expenses',this.value)"
-                  style="width:110px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:inherit"
-                  onfocus="this.style.borderColor='#1a56db'" onblur="this.style.borderColor='#e2e8f0'">
-              </td>
-              <td style="padding:6px 8px">
-                <select onchange="ccUpdateField('${bank}',${i},'department',this.value)"
-                  style="width:130px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:inherit">
-                  <option value="">— Dept —</option>
-                  ${deptOpts}
-                  ${t.department && !_ccDepts.includes(t.department) ? `<option value="${dtEscape(t.department)}" selected>${dtEscape(t.department)}</option>` : ''}
-                </select>
-              </td>
-              <td style="padding:6px 8px">
-                <input type="text" value="${dtEscape(t.ownership||'')}" placeholder="Owner"
-                  onchange="ccUpdateField('${bank}',${i},'ownership',this.value)"
-                  style="width:100px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:inherit"
-                  onfocus="this.style.borderColor='#1a56db'" onblur="this.style.borderColor='#e2e8f0'">
-              </td>
-              <td style="padding:6px 8px;text-align:center">
-                <button onclick="ccDeleteTransaction('${bank}',${i})" title="Delete"
-                  style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:15px;padding:3px 5px;border-radius:6px;line-height:1;transition:color .15s,background .15s"
-                  onmouseover="this.style.color='#dc2626';this.style.background='#fee2e2'"
-                  onmouseout="this.style.color='#94a3b8';this.style.background='none'">🗑</button>
-              </td>
-            </tr>`).join('') : `
-            <tr><td colspan="7" style="padding:40px;text-align:center;color:#94a3b8;font-size:13px">No transactions yet — upload an Excel statement for ${dtEscape(bank)}</td></tr>`}
-        </tbody>
-        ${txns.length ? `
-        <tfoot>
-          <tr style="border-top:2px solid #e2e8f0;background:#f8fafc">
-            <td colspan="2" style="padding:10px 12px;font-size:13px;font-weight:700;color:#0f172a">Total Payable</td>
-            <td style="padding:10px 12px;font-size:14px;font-weight:800;color:#dc2626;text-align:right">₹${payable.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
-            <td colspan="4"></td>
-          </tr>
-        </tfoot>` : ''}
-      </table>
+function ccRenderStatements() {
+  const wrap = document.getElementById('ccStatementsWrap');
+  if (!wrap) return;
+  const bank    = _ccActiveBank;
+  const cardNum = _ccActiveCard;
+  const color   = CC_BANK_COLORS[bank] || '#64748b';
+  const stmts   = _ccData[bank]?.[cardNum] || [];
+  const deptOpts = _ccDepts.map(d => `<option value="${dtEscape(d)}">${dtEscape(d)}</option>`).join('');
+  const safeCard = (cardNum||'').replace(/'/g,"\\'");
+  const safeBank = (bank||'').replace(/'/g,"\\'");
+
+  if (!stmts.length) {
+    wrap.innerHTML = `<div style="text-align:center;padding:40px;color:#94a3b8;font-size:14px">No statements for this card yet.</div>`;
+    return;
+  }
+
+  wrap.innerHTML = stmts.map((s, si) => {
+    const txns  = s.transactions || [];
+    const txSum = txns.reduce((acc,t) => acc + (parseFloat(t.amount)||0), 0);
+
+    const txRows = txns.map((t, ti) => `
+      <tr style="border-top:1px solid #f1f5f9;${ti%2===1?'background:#fafafa':''}">
+        <td style="padding:8px 12px;font-size:13px;color:#475569;white-space:nowrap">${dtEscape(t.date||'—')}</td>
+        <td style="padding:8px 12px;font-size:13px;color:#0f172a">${dtEscape(t.description||'—')}</td>
+        <td style="padding:8px 12px;font-size:13px;font-weight:600;color:#0f172a;text-align:right;white-space:nowrap">${(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+        <td style="padding:6px 8px">
+          <input type="text" value="${dtEscape(t.expenses||'')}" placeholder="e.g. e-marketing"
+            onchange="ccUpdateField('${safeBank}','${safeCard}',${si},${ti},'expenses',this.value)"
+            style="width:110px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:inherit"
+            onfocus="this.style.borderColor='#1a56db'" onblur="this.style.borderColor='#e2e8f0'">
+        </td>
+        <td style="padding:6px 8px">
+          <select data-dept-sel="${si}-${ti}"
+            onchange="ccUpdateField('${safeBank}','${safeCard}',${si},${ti},'department',this.value)"
+            style="width:130px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:inherit">
+            <option value="">— Dept —</option>
+            ${deptOpts}
+          </select>
+        </td>
+        <td style="padding:6px 8px;text-align:center">
+          <button onclick="ccDeleteTransaction('${safeBank}','${safeCard}',${si},${ti})" title="Delete row"
+            style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:15px;padding:3px 5px;border-radius:6px;line-height:1;transition:color .15s,background .15s"
+            onmouseover="this.style.color='#dc2626';this.style.background='#fee2e2'"
+            onmouseout="this.style.color='#94a3b8';this.style.background='none'">🗑</button>
+        </td>
+      </tr>`).join('');
+
+    return `
+    <div style="border:1px solid #e2e8f0;border-radius:12px;margin-bottom:16px;overflow:hidden">
+      <!-- Statement header -->
+      <div style="background:linear-gradient(135deg,${color}ee,${color}88);padding:16px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;color:#fff">
+        <div>
+          <div style="font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px">Statement</div>
+          <div style="font-size:16px;font-weight:800">${dtEscape(s.statement_date||'—')}</div>
+          <div style="font-size:12px;opacity:.8;margin-top:4px">Due: <strong>${dtEscape(s.payment_due_date||'—')}</strong>${s.min_amount_due?` &nbsp;·&nbsp; Min Due: ₹${s.min_amount_due.toLocaleString('en-IN')}`:''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px">
+          <div style="text-align:right">
+            <div style="font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.07em">Payable</div>
+            <div style="font-size:20px;font-weight:800">₹${(s.payable_amount||txSum).toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
+            <div style="font-size:11px;opacity:.65;margin-top:2px">${txns.length} txn${txns.length!==1?'s':''}</div>
+          </div>
+          <button onclick="ccDeleteStatement('${safeBank}','${safeCard}',${si})"
+            title="Delete this statement"
+            style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;backdrop-filter:blur(4px);white-space:nowrap"
+            onmouseover="this.style.background='rgba(220,38,38,.5)'"
+            onmouseout="this.style.background='rgba(255,255,255,.15)'">🗑 Delete Statement</button>
+        </div>
+      </div>
+      <!-- Transactions -->
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;min-width:640px">
+          <thead>
+            <tr style="background:#f8fafc">
+              <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Date</th>
+              <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Description</th>
+              <th style="padding:9px 12px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Amount (₹)</th>
+              <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Expenses</th>
+              <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Department</th>
+              <th style="padding:9px 12px;width:36px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${txRows || `<tr><td colspan="6" style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">No transactions in this statement</td></tr>`}
+          </tbody>
+          ${txns.length ? `
+          <tfoot>
+            <tr style="border-top:2px solid #e2e8f0;background:#f8fafc">
+              <td colspan="2" style="padding:9px 12px;font-size:13px;font-weight:700;color:#0f172a">Transaction Sum</td>
+              <td style="padding:9px 12px;font-size:13px;font-weight:800;color:#dc2626;text-align:right">₹${txSum.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+              <td colspan="3"></td>
+            </tr>
+          </tfoot>` : ''}
+        </table>
+      </div>
     </div>`;
+  }).join('');
 
-  // Set selected department for each row after render
-  txns.forEach((t, i) => {
-    const sel = panel.querySelectorAll('select')[i];
-    if (sel && t.department) sel.value = t.department;
+  // Set department dropdowns after render
+  stmts.forEach((s, si) => {
+    (s.transactions||[]).forEach((t, ti) => {
+      const sel = wrap.querySelector(`[data-dept-sel="${si}-${ti}"]`);
+      if (sel && t.department) sel.value = t.department;
+    });
   });
 }
 
