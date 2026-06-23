@@ -2173,8 +2173,8 @@ tbody tr:last-child td{border-bottom:none;}
       </select>
       <label style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:#1a56db;color:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s"
         onmouseover="this.style.background='#1e40af'" onmouseout="this.style.background='#1a56db'">
-        📊 Upload Excel
-        <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="ccUploadExcel(this)">
+        📄 Upload PDF Statement
+        <input type="file" accept=".pdf" style="display:none" onchange="ccUploadPdf(this)">
       </label>
       <div id="ccUploadStatus" style="font-size:12px;color:#64748b"></div>
     </div>
@@ -13301,15 +13301,14 @@ const CC_BANK_COLORS = {
   'RBL Bank':'#dc2626','ICICI':'#f97316','HDFC':'#1a56db',
   'AXIS':'#7c3aed','AMEX':'#0891b2','SBI':'#16a34a','SCB':'#b45309'
 };
-// _ccData[bank][cardNum] = [ { statement_date, payment_due_date, payable_amount, min_amount_due, transactions[] }, ... ]
-let _ccData       = (()=>{ try { return JSON.parse(localStorage.getItem('cc_data')||'{}'); } catch(e){ return {}; } })();
+// _ccData[bank][cardNum] = [ { id, statement_date, payment_due_date, payable_amount, min_amount_due, transactions[] }, ... ]
+let _ccData       = {};
 let _ccActiveBank = localStorage.getItem('cc_active_bank') || null;
 let _ccActiveCard = localStorage.getItem('cc_active_card') || null;
 let _ccDepts = [];
 
 function ccSave() {
   try {
-    localStorage.setItem('cc_data', JSON.stringify(_ccData));
     if (_ccActiveBank) localStorage.setItem('cc_active_bank', _ccActiveBank); else localStorage.removeItem('cc_active_bank');
     if (_ccActiveCard) localStorage.setItem('cc_active_card', _ccActiveCard); else localStorage.removeItem('cc_active_card');
   } catch(e) {}
@@ -13326,11 +13325,17 @@ async function loadCreditCards() {
     const users = await api('/api/users');
     _ccDepts = [...new Set((users||[]).map(u=>u.department).filter(Boolean))].sort();
   } catch(e) { _ccDepts = []; }
-  // Auto-restore: if no active bank but data exists, pick first bank with data
-  if (!_ccActiveBank) {
+  // Load from DB
+  try {
+    const fresh = await api('/api/credit-cards/data');
+    if (fresh && !fresh.error) _ccData = fresh;
+  } catch(e) {}
+  // Auto-restore active bank
+  if (!_ccActiveBank || !_ccData[_ccActiveBank]) {
     const firstBank = Object.keys(_ccData).find(b => Object.keys(_ccData[b]||{}).length > 0);
     if (firstBank) { _ccActiveBank = firstBank; if (dd) dd.value = firstBank; }
   }
+  if (_ccActiveBank && dd) dd.value = _ccActiveBank;
   if (_ccActiveBank) ccRenderDetail();
 }
 
@@ -13349,17 +13354,17 @@ function ccSelectCard(cardNum) {
   ccRenderStatements();
 }
 
-async function ccUploadExcel(input) {
+async function ccUploadPdf(input) {
   const file = input.files[0];
   if (!file) return;
   const status = document.getElementById('ccUploadStatus');
-  if (status) status.innerHTML = '<span style="color:#1a56db">⏳ Uploading & scanning…</span>';
+  if (status) status.innerHTML = '<span style="color:#1a56db">⏳ Scanning PDF… (30–60 sec)</span>';
   try {
     const fd = new FormData();
-    fd.append('file', file);
+    fd.append('pdf', file);
     const token = localStorage.getItem('authToken') || '';
-    const r = await fetch('/api/credit-cards/upload-excel', {
-      method:'POST',
+    const r = await fetch('/api/credit-cards/upload-pdf', {
+      method: 'POST',
       headers: token ? { 'Authorization': 'Bearer ' + token } : {},
       body: fd
     });
@@ -13368,41 +13373,18 @@ async function ccUploadExcel(input) {
       if (status) status.innerHTML = `<span style="color:#dc2626">❌ ${dtEscape(data.error||'Upload failed')}</span>`;
       input.value = ''; return;
     }
-    const bank    = data.bankName;
-    const cardNum = data.cardNumber || 'Unknown Card';
-    if (!_ccData[bank])          _ccData[bank] = {};
-    if (!_ccData[bank][cardNum]) _ccData[bank][cardNum] = [];
-
-    // Check if a statement with same statement_date already exists for this card
-    const stmtDate = data.statementDate || '';
-    const existingStmt = _ccData[bank][cardNum].find(s => s.statement_date === stmtDate && stmtDate);
-    let addedCount = 0;
-    if (existingStmt) {
-      // Append only new transactions to existing statement
-      const seen = new Set(existingStmt.transactions.map(t => t.date+'|'+t.description+'|'+t.amount));
-      const fresh = data.transactions.filter(t => !seen.has(t.date+'|'+t.description+'|'+t.amount));
-      existingStmt.transactions.push(...fresh);
-      addedCount = fresh.length;
-    } else {
-      // New statement
-      _ccData[bank][cardNum].push({
-        statement_date:   data.statementDate   || '',
-        payment_due_date: data.paymentDueDate  || '',
-        payable_amount:   data.payableAmount   || 0,
-        min_amount_due:   data.minAmountDue    || 0,
-        transactions:     data.transactions    || []
-      });
-      addedCount = (data.transactions || []).length;
-    }
-
-    _ccActiveBank = bank;
-    _ccActiveCard = cardNum;
+    // Reload from DB
+    const fresh = await api('/api/credit-cards/data');
+    if (fresh && !fresh.error) _ccData = fresh;
+    _ccActiveBank = data.bankName;
+    _ccActiveCard = data.cardNumber;
     ccSave();
     const dd = document.getElementById('ccBankDropdown');
-    if (dd) dd.value = bank;
+    if (dd) dd.value = data.bankName;
     ccRenderDetail();
-    if (status) { status.innerHTML = `<span style="color:#16a34a">✅ ${bank} (${cardNum}): ${addedCount} transaction${addedCount!==1?'s':''} added</span>`; setTimeout(() => { status.innerHTML = ''; }, 8000); }
-    showToast(`${bank}: ${addedCount} transactions imported`);
+    const n = data.transactionsAdded;
+    if (status) { status.innerHTML = `<span style="color:#16a34a">✅ ${dtEscape(data.bankName)} (${dtEscape(data.cardNumber)}): ${n} transaction${n!==1?'s':''} added</span>`; setTimeout(()=>{ status.innerHTML=''; }, 8000); }
+    showToast(`${data.bankName}: ${n} transactions imported`);
   } catch(e) {
     if (status) status.innerHTML = `<span style="color:#dc2626">❌ ${e.message}</span>`;
   }
@@ -13414,21 +13396,42 @@ async function ccDeleteStatement(bank, cardNum, stmtIdx) {
   const stmt = _ccData[bank][cardNum][stmtIdx];
   const label = stmt?.statement_date ? `Statement: ${stmt.statement_date}` : 'this statement';
   if (!await appConfirm(`${label} aur uski saari transactions hamesha ke liye delete ho jaayengi.`, 'Delete Statement?')) return;
+  if (stmt?.id) {
+    const token = localStorage.getItem('authToken') || '';
+    await fetch(`/api/credit-cards/statement/${stmt.id}`, { method:'DELETE', headers: token ? {'Authorization':'Bearer '+token} : {} });
+  }
   _ccData[bank][cardNum].splice(stmtIdx, 1);
-  ccSave();
   ccRenderStatements();
   showToast('Statement deleted');
 }
 
-function ccDeleteTransaction(bank, cardNum, stmtIdx, txIdx) {
+async function ccDeleteTransaction(bank, cardNum, stmtIdx, txIdx) {
+  const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
+  if (t?.id) {
+    const token = localStorage.getItem('authToken') || '';
+    await fetch(`/api/credit-cards/transaction/${t.id}`, { method:'DELETE', headers: token ? {'Authorization':'Bearer '+token} : {} });
+  }
   _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions.splice(txIdx, 1);
-  ccSave();
   ccRenderStatements();
 }
 
+let _ccUpdateTimer = {};
 function ccUpdateField(bank, cardNum, stmtIdx, txIdx, field, val) {
   const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
-  if (t) { t[field] = val; ccSave(); }
+  if (!t) return;
+  t[field] = val;
+  if (t.id) {
+    const key = `${t.id}`;
+    clearTimeout(_ccUpdateTimer[key]);
+    _ccUpdateTimer[key] = setTimeout(async () => {
+      const token = localStorage.getItem('authToken') || '';
+      await fetch(`/api/credit-cards/transaction/${t.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type':'application/json', ...(token ? {'Authorization':'Bearer '+token} : {}) },
+        body: JSON.stringify({ expenses: t.expenses, department: t.department })
+      });
+    }, 800);
+  }
 }
 
 function ccRenderDetail() {
@@ -13446,7 +13449,7 @@ function ccRenderDetail() {
   // If no cards yet, show empty state
   if (!cards.length) {
     panel.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#94a3b8;font-size:14px">
-      No statements for <strong>${dtEscape(bank)}</strong> yet — upload an Excel file above.</div>`;
+      No statements for <strong>${dtEscape(bank)}</strong> yet — upload a PDF statement above.</div>`;
     return;
   }
 

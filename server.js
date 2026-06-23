@@ -4576,7 +4576,8 @@ app.post('/api/client-portal/feedback', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════
 // CREDIT CARDS — Excel Upload + Parse
 // ══════════════════════════════════════════════════════
-const ccUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const ccUpload    = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const ccPdfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 const CC_BANK_KEYWORDS = {
   'RBL Bank': ['rbl'],
@@ -4670,6 +4671,211 @@ app.post('/api/credit-cards/upload-excel', requireAuth, ccUpload.single('file'),
 
     res.json({ bankName: canonicalBank, cardNumber, statementDate, paymentDueDate, payableAmount, minAmountDue, transactions, rowsParsed: transactions.length });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// CREDIT CARDS — DB tables + PDF upload
+// ══════════════════════════════════════════════════════
+const FLASK_EXTRACT_URL = process.env.FLASK_URL || 'http://localhost:5000/api/extract';
+const CC_OPENAI_KEY     = process.env.OPENAI_API_KEY || '';
+
+// Create tables once on startup
+;(async () => {
+  try {
+    await db.query(`CREATE TABLE IF NOT EXISTS cc_cards (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      bank_name  VARCHAR(50) NOT NULL,
+      card_number VARCHAR(50) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_card (bank_name, card_number)
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS cc_statements (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      card_id          INT NOT NULL,
+      statement_date   DATE,
+      payment_due_date DATE,
+      payable_amount   DECIMAL(12,2) DEFAULT 0,
+      min_amount_due   DECIMAL(12,2) DEFAULT 0,
+      statement_period VARCHAR(150),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (card_id) REFERENCES cc_cards(id) ON DELETE CASCADE,
+      UNIQUE KEY uq_stmt (card_id, statement_date)
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS cc_transactions (
+      id           INT AUTO_INCREMENT PRIMARY KEY,
+      statement_id INT NOT NULL,
+      txn_date     DATE,
+      description  VARCHAR(500),
+      amount       DECIMAL(12,2) DEFAULT 0,
+      txn_type     ENUM('debit','credit') DEFAULT 'debit',
+      expenses     VARCHAR(200),
+      department   VARCHAR(100),
+      created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (statement_id) REFERENCES cc_statements(id) ON DELETE CASCADE
+    )`);
+  } catch(e) { console.error('CC tables init:', e.message); }
+})();
+
+// ── Parsing helpers ─────────────────────────────────────
+function parseCCDateDMY(str) {
+  const m = String(str||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}` : null;
+}
+function parseCCDateLong(str) {
+  const MO = {january:'01',february:'02',march:'03',april:'04',may:'05',june:'06',july:'07',august:'08',september:'09',october:'10',november:'11',december:'12'};
+  const m = String(str||'').match(/(\w+)\s+(\d{1,2}),?\s+(\d{4})/i);
+  return (m && MO[m[1].toLowerCase()]) ? `${m[3]}-${MO[m[1].toLowerCase()]}-${m[2].padStart(2,'0')}` : null;
+}
+function parseCCAmount(str) {
+  return parseFloat(String(str||'').replace(/[^0-9.]/g,'')) || 0;
+}
+
+function parseAmexCC(j) {
+  let cardNumber = '';
+  for (const k of Object.keys(j)) {
+    if (k.startsWith('Membership Number')) { cardNumber = String(j[k]).trim(); break; }
+  }
+  const stmtDate = parseCCDateDMY(j['Date']);
+  const dueDate  = parseCCDateLong(j['Due by']) || parseCCDateLong(j['Minimum Payment Due']);
+  const payable  = parseCCAmount(j['Closing Balance Rs']);
+  const minDue   = parseCCAmount(j['Minimum Payment Rs'] || j['Minimum Payment']);
+  const period   = j['Statement Period'] || '';
+  const yearMatch = period.match(/(\d{4})/g);
+  const year = yearMatch ? yearMatch[yearMatch.length-1] : (stmtDate ? stmtDate.substring(0,4) : String(new Date().getFullYear()));
+  const MO = {jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
+  const transactions = [];
+  for (const [key, value] of Object.entries(j)) {
+    const parts = key.trim().split(/\s+/);
+    const mo = MO[parts[0]?.toLowerCase()];
+    if (!mo || !parts[1] || isNaN(parseInt(parts[1]))) continue;
+    const amtStr = String(value);
+    const isCredit = /\bCR\b/i.test(amtStr);
+    const amount = parseCCAmount(amtStr);
+    if (!amount) continue;
+    transactions.push({ txn_date:`${year}-${mo}-${parts[1].padStart(2,'0')}`, description:parts.slice(2).join(' ').trim(), amount, txn_type:isCredit?'credit':'debit' });
+  }
+  return { bankName:'AMEX', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
+}
+
+function parseCCJson(extracted, filename) {
+  const text  = JSON.stringify(extracted).toLowerCase();
+  const fname = (filename||'').toLowerCase();
+  if (text.includes('american express') || text.includes('membership number') || fname.includes('amex'))
+    return parseAmexCC(extracted);
+  const bank = detectBankName(text) || detectBankName(fname) || 'Unknown';
+  return { bankName:bank, cardNumber:'Unknown Card', statementDate:null, paymentDueDate:null, payableAmount:0, minAmountDue:0, statementPeriod:'', transactions:[] };
+}
+
+async function saveCCToDb(parsed) {
+  const { bankName, cardNumber, statementDate, paymentDueDate, payableAmount, minAmountDue, statementPeriod, transactions } = parsed;
+  await db.query('INSERT IGNORE INTO cc_cards (bank_name,card_number) VALUES (?,?)', [bankName, cardNumber]);
+  const [[card]] = await db.query('SELECT id FROM cc_cards WHERE bank_name=? AND card_number=?', [bankName, cardNumber]);
+  await db.query(`INSERT IGNORE INTO cc_statements (card_id,statement_date,payment_due_date,payable_amount,min_amount_due,statement_period) VALUES (?,?,?,?,?,?)`,
+    [card.id, statementDate, paymentDueDate, payableAmount, minAmountDue, statementPeriod]);
+  const [[stmt]] = await db.query('SELECT id FROM cc_statements WHERE card_id=? AND statement_date<=>?', [card.id, statementDate]);
+  let added = 0;
+  for (const t of transactions) {
+    const [[ex]] = await db.query('SELECT id FROM cc_transactions WHERE statement_id=? AND txn_date<=>? AND description=? AND amount=?',
+      [stmt.id, t.txn_date, t.description, t.amount]);
+    if (!ex) {
+      await db.query('INSERT INTO cc_transactions (statement_id,txn_date,description,amount,txn_type) VALUES (?,?,?,?,?)',
+        [stmt.id, t.txn_date, t.description, t.amount, t.txn_type||'debit']);
+      added++;
+    }
+  }
+  return { statementId:stmt.id, addedTransactions:added };
+}
+
+// POST /api/credit-cards/upload-pdf
+app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'), async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    if (!req.file) return res.status(400).json({ error:'No file uploaded' });
+    if (!CC_OPENAI_KEY) return res.status(500).json({ error:'OPENAI_API_KEY not set in .env' });
+
+    const fd = new FormData();
+    fd.append('api_key', CC_OPENAI_KEY);
+    fd.append('pdf', new Blob([req.file.buffer], { type:'application/pdf' }), req.file.originalname);
+
+    const flaskRes = await fetch(FLASK_EXTRACT_URL, { method:'POST', body:fd, signal:AbortSignal.timeout(180000) });
+    if (!flaskRes.ok) {
+      const txt = await flaskRes.text();
+      return res.status(502).json({ error:`Flask error (${flaskRes.status}): ${txt.substring(0,300)}` });
+    }
+    const flaskData = await flaskRes.json();
+    if (!flaskData.success) return res.status(422).json({ error:flaskData.error||'Extraction failed' });
+
+    const parsed = parseCCJson(flaskData.extracted_json, req.file.originalname);
+    if (parsed.bankName === 'Unknown') return res.status(422).json({ error:'Bank not detected. Supported: AMEX, HDFC, RBL Bank, ICICI, AXIS, SBI, SCB' });
+
+    const saved = await saveCCToDb(parsed);
+    res.json({ success:true, bankName:parsed.bankName, cardNumber:parsed.cardNumber, statementDate:parsed.statementDate, transactionsAdded:saved.addedTransactions, totalTransactions:parsed.transactions.length });
+  } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// GET /api/credit-cards/data
+app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    const [cards] = await db.query('SELECT * FROM cc_cards ORDER BY bank_name,card_number');
+    const [stmts] = await db.query('SELECT * FROM cc_statements ORDER BY statement_date DESC');
+    const [txns]  = await db.query('SELECT * FROM cc_transactions ORDER BY txn_date');
+    const result = {};
+    for (const card of cards) {
+      if (!result[card.bank_name]) result[card.bank_name] = {};
+      result[card.bank_name][card.card_number] = stmts.filter(s => s.card_id === card.id).map(s => ({
+        id: s.id,
+        statement_date:   s.statement_date   ? s.statement_date.toISOString().substring(0,10)   : '',
+        payment_due_date: s.payment_due_date ? s.payment_due_date.toISOString().substring(0,10) : '',
+        payable_amount:   parseFloat(s.payable_amount)||0,
+        min_amount_due:   parseFloat(s.min_amount_due)||0,
+        statement_period: s.statement_period||'',
+        transactions: txns.filter(t => t.statement_id === s.id).map(t => ({
+          id:          t.id,
+          date:        t.txn_date ? t.txn_date.toISOString().substring(0,10) : '',
+          description: t.description||'',
+          amount:      parseFloat(t.amount)||0,
+          txn_type:    t.txn_type||'debit',
+          expenses:    t.expenses||'',
+          department:  t.department||''
+        }))
+      }));
+    }
+    res.json(result);
+  } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// DELETE /api/credit-cards/statement/:id
+app.delete('/api/credit-cards/statement/:id', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    await db.query('DELETE FROM cc_statements WHERE id=?', [req.params.id]);
+    res.json({ success:true });
+  } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// DELETE /api/credit-cards/transaction/:id
+app.delete('/api/credit-cards/transaction/:id', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    await db.query('DELETE FROM cc_transactions WHERE id=?', [req.params.id]);
+    res.json({ success:true });
+  } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// PATCH /api/credit-cards/transaction/:id  (update expenses / department)
+app.patch('/api/credit-cards/transaction/:id', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    const { expenses, department } = req.body;
+    await db.query('UPDATE cc_transactions SET expenses=?,department=? WHERE id=?', [expenses??null, department??null, req.params.id]);
+    res.json({ success:true });
+  } catch(err) { res.status(500).json({ error:err.message }); }
 });
 
 // Check if logged-in user can access the feedback page.
