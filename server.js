@@ -4609,64 +4609,65 @@ app.post('/api/credit-cards/upload-excel', requireAuth, ccUpload.single('file'),
   try {
     const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
     if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error: 'Access denied' });
-
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: false });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
 
-    // Bank detection — check first 20 rows across all cells
-    let bankName = null;
-    const headerText = rows.slice(0, 20).flat().join(' ');
-    bankName = detectBankName(headerText);
-    // Also check sheet name
-    if (!bankName) bankName = detectBankName(wb.SheetNames[0]);
-    if (!bankName) return res.status(422).json({ error: 'Bank name not detected in file. Ensure the Excel contains one of: RBL Bank, ICICI, HDFC, AXIS, AMEX, SBI, SCB' });
+    // ── Sheet 1: Card meta (Bank Name, Card Number, Statement Date, Payment Due Date, Payable Amount, Min Amount Due)
+    const metaSheet = wb.Sheets[wb.SheetNames[0]];
+    const metaRows  = XLSX.utils.sheet_to_json(metaSheet, { header: 1, defval: '' });
 
-    // Find header row — look for a row containing "date" and "amount"/"debit"
-    let headerRowIdx = -1;
-    for (let i = 0; i < Math.min(rows.length, 30); i++) {
-      const row = rows[i].map(c => String(c).toLowerCase());
-      if (row.some(c => c.includes('date')) && row.some(c => c.includes('amount') || c.includes('debit') || c.includes('credit'))) {
-        headerRowIdx = i;
-        break;
-      }
+    let bankName = '', cardNumber = '', statementDate = '', paymentDueDate = '', payableAmount = 0, minAmountDue = 0;
+
+    if (metaRows.length >= 2) {
+      const hdrs = metaRows[0].map(h => String(h).toLowerCase().trim());
+      const data  = metaRows[1];
+      const col   = key => hdrs.findIndex(h => h.includes(key));
+
+      bankName       = String(data[col('bank')]      || '').trim();
+      cardNumber     = String(data[col('card')]      || '').trim();
+      statementDate  = parseExcelDate(data[col('statement')]);
+      paymentDueDate = parseExcelDate(data[Math.max(col('payment due'), col('due date'), col('due'))]);
+      payableAmount  = parseFloat(String(data[col('payable')] || '0').replace(/[^0-9.]/g,'')) || 0;
+      minAmountDue   = parseFloat(String(data[col('minimum')] || '0').replace(/[^0-9.]/g,'')) || 0;
     }
 
-    // Extract card/statement/due info from header rows
-    let cardNumber = '', statementDate = '', paymentDueDate = '';
-    const topText = rows.slice(0, Math.max(headerRowIdx, 10)).map(r => r.join(' ')).join('\n');
-    const cardMatch = topText.match(/\b(\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{4}|[Xx*]{4}[\s\-]?[Xx*]{4}[\s\-]?\d{4}|\d{4})\b/i);
-    if (cardMatch) cardNumber = cardMatch[1];
-    const stmtMatch = topText.match(/statement\s*date[:\s]+([0-9A-Za-z\s\-\/,]+)/i);
-    if (stmtMatch) statementDate = stmtMatch[1].trim().split('\n')[0];
-    const dueMatch = topText.match(/(?:payment\s*due|due\s*date)[:\s]+([0-9A-Za-z\s\-\/,]+)/i);
-    if (dueMatch) paymentDueDate = dueMatch[1].trim().split('\n')[0];
+    // Detect canonical bank name
+    const canonicalBank = detectBankName(bankName) || detectBankName(wb.SheetNames[0]) || detectBankName(metaRows.flat().join(' '));
+    if (!canonicalBank) return res.status(422).json({ error: 'Bank name not detected. Ensure Sheet 1 contains Bank Name column with: RBL Bank, ICICI, HDFC, AXIS, AMEX, SBI, or SCB' });
 
-    // Parse transactions
+    // ── Sheet 2: Transactions (Transaction Date, Description, Amount, Expenses, Department, Ownership)
     const transactions = [];
-    if (headerRowIdx >= 0) {
-      const headers = rows[headerRowIdx].map(c => String(c).toLowerCase().trim());
-      const dateCol   = headers.findIndex(h => h.includes('date'));
-      const descCol   = headers.findIndex(h => h.includes('desc') || h.includes('narr') || h.includes('particular') || h.includes('detail'));
-      const amtCol    = headers.findIndex(h => h.includes('amount') || h.includes('debit'));
-      const creditCol = headers.findIndex(h => h.includes('credit'));
+    if (wb.SheetNames.length >= 2) {
+      const txSheet = wb.Sheets[wb.SheetNames[1]];
+      const txRows  = XLSX.utils.sheet_to_json(txSheet, { header: 1, defval: '' });
 
-      for (let i = headerRowIdx + 1; i < rows.length; i++) {
-        const row = rows[i];
-        if (!row || row.every(c => c === '' || c === null)) continue;
-        const dateVal = parseExcelDate(row[dateCol]);
-        const desc    = String(row[descCol] || '').trim();
-        const rawAmt  = parseFloat(String(row[amtCol] || '0').replace(/[^0-9.\-]/g,'')) || 0;
-        // Skip rows that look like summary/total lines
-        if (!dateVal && !desc) continue;
-        if (desc.toLowerCase().includes('total') && !dateVal) continue;
-        transactions.push({ date: dateVal, description: desc, amount: rawAmt, department: '' });
+      if (txRows.length >= 2) {
+        const hdrs   = txRows[0].map(h => String(h).toLowerCase().trim());
+        const col    = key => hdrs.findIndex(h => h.includes(key));
+        const dateC  = col('date');
+        const descC  = col('desc');
+        const amtC   = col('amount');
+        const expC   = col('expense');
+        const deptC  = col('dept') >= 0 ? col('dept') : col('department');
+        const ownC   = col('owner');
+
+        for (let i = 1; i < txRows.length; i++) {
+          const row = txRows[i];
+          if (!row || row.every(c => c === '' || c === null || c === undefined)) continue;
+          const dateVal = parseExcelDate(row[dateC >= 0 ? dateC : 0]);
+          const desc    = String(row[descC >= 0 ? descC : 1] || '').trim();
+          const amt     = parseFloat(String(row[amtC >= 0 ? amtC : 2] || '0').replace(/[^0-9.]/g,'')) || 0;
+          const exp     = expC  >= 0 ? String(row[expC]  || '').trim() : '';
+          const dept    = deptC >= 0 ? String(row[deptC] || '').trim() : '';
+          const own     = ownC  >= 0 ? String(row[ownC]  || '').trim() : '';
+          if (!dateVal && !desc && !amt) continue;
+          transactions.push({ date: dateVal, description: desc, amount: amt, expenses: exp, department: dept, ownership: own });
+        }
       }
     }
 
-    res.json({ bankName, cardNumber, statementDate, paymentDueDate, transactions, rowsParsed: transactions.length });
+    res.json({ bankName: canonicalBank, cardNumber, statementDate, paymentDueDate, payableAmount, minAmountDue, transactions, rowsParsed: transactions.length });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

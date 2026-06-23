@@ -2671,6 +2671,18 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
   </div>
 
+  <!-- HRM: Offer Letter View Modal -->
+  <div class="modal-overlay" id="hrmOfferViewModal">
+    <div class="modal" style="width:480px">
+      <button class="modal-close" onclick="closeModal('hrmOfferViewModal')">×</button>
+      <h3>📄 Offer Letter Details</h3>
+      <div id="hrmOfferViewBody" style="margin-top:12px"></div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('hrmOfferViewModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Client-portal delegate modal: doer is locked to the handler -->
   <div class="modal-overlay" id="clientDelegateModal">
     <div class="modal" style="width:520px">
@@ -4823,8 +4835,9 @@ function renderHrmRows(list) {
         ${reDateStr ? `<div class="hrm-redate">→ Rescheduled: ${reDateStr}${c.reschedule_time?' '+esc(c.reschedule_time):''}</div>` : ''}
       </td>
       <td><span class="hrm-badge ${badgeClass}">${c.status}</span></td>
-      <td>
+      <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${canUpdate ? `<button class="action-btn edit" onclick="openHrmStatusModal(${c.id})">Update</button>` : '<span style="font-size:11px;color:#94a3b8">Closed</span>'}
+        ${c.status === 'Offer Sent' ? `<button class="action-btn" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="viewOfferLetter(${c.id})">📄 View Offer</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -4932,6 +4945,39 @@ async function submitHrmStatus() {
   closeModal('hrmStatusModal');
   showToast('Status updated! WhatsApp queued.');
   loadHRM();
+}
+
+function viewOfferLetter(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  if (!c) return;
+  const joiningFmt = c.joining_date ? new Date(c.joining_date).toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'}) : '—';
+  const sentFmt = c.updated_at ? new Date(c.updated_at).toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'}) : '';
+  document.getElementById('hrmOfferViewBody').innerHTML = `
+    <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+      <div style="background:linear-gradient(135deg,#7c3aed,#a855f7);padding:18px 20px;color:#fff">
+        <div style="font-size:13px;opacity:.85;margin-bottom:2px">OFFER LETTER</div>
+        <div style="font-size:20px;font-weight:700">${esc(c.name)}</div>
+        <div style="font-size:13px;opacity:.85">${esc(c.phone)}</div>
+      </div>
+      <div style="padding:18px 20px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;gap:12px">
+          <div style="flex:1;background:#f8fafc;border-radius:8px;padding:12px">
+            <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Position</div>
+            <div style="font-size:14px;font-weight:600;color:#1e293b">${esc(c.profile_position||'—')}</div>
+          </div>
+          <div style="flex:1;background:#f0fdf4;border-radius:8px;padding:12px">
+            <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Joining Date</div>
+            <div style="font-size:14px;font-weight:600;color:#16a34a">${joiningFmt}</div>
+          </div>
+        </div>
+        <div style="background:#fefce8;border-radius:8px;padding:12px">
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Salary / CTC</div>
+          <div style="font-size:16px;font-weight:700;color:#854d0e">${esc(c.salary||'To be discussed')}</div>
+        </div>
+        ${sentFmt ? `<div style="font-size:11px;color:#94a3b8;text-align:right">Offer sent on ${sentFmt}</div>` : ''}
+      </div>
+    </div>`;
+  document.getElementById('hrmOfferViewModal').classList.add('open');
 }
 
 function showErrIn(id, msg) {
@@ -13194,24 +13240,24 @@ async function ccUploadExcel(input) {
     const data = await r.json();
     if (!r.ok || data.error) {
       if (status) status.innerHTML = `<span style="color:#dc2626">❌ ${dtEscape(data.error||'Upload failed')}</span>`;
-      input.value = '';
-      return;
+      input.value = ''; return;
     }
     const bank = data.bankName;
-    if (!_ccData[bank]) _ccData[bank] = { card_number:'', statement_date:'', payment_due_date:'', transactions:[] };
-    if (data.cardNumber)      _ccData[bank].card_number     = data.cardNumber;
-    if (data.statementDate)   _ccData[bank].statement_date  = data.statementDate;
-    if (data.paymentDueDate)  _ccData[bank].payment_due_date= data.paymentDueDate;
-    // Append new transactions (avoid duplicates by date+desc)
-    const existing = new Set(_ccData[bank].transactions.map(t => t.date+'|'+t.description));
-    const added = data.transactions.filter(t => !existing.has(t.date+'|'+t.description));
+    if (!_ccData[bank]) _ccData[bank] = { card_number:'', statement_date:'', payment_due_date:'', payable_amount:0, min_amount_due:0, transactions:[] };
+    if (data.cardNumber)     _ccData[bank].card_number     = data.cardNumber;
+    if (data.statementDate)  _ccData[bank].statement_date  = data.statementDate;
+    if (data.paymentDueDate) _ccData[bank].payment_due_date= data.paymentDueDate;
+    if (data.payableAmount)  _ccData[bank].payable_amount  = data.payableAmount;
+    if (data.minAmountDue)   _ccData[bank].min_amount_due  = data.minAmountDue;
+    // Append new transactions only (deduplicate by date+desc+amount)
+    const existing = new Set(_ccData[bank].transactions.map(t => t.date+'|'+t.description+'|'+t.amount));
+    const added = data.transactions.filter(t => !existing.has(t.date+'|'+t.description+'|'+t.amount));
     _ccData[bank].transactions.push(...added);
-
     _ccActiveBank = bank;
     const dd = document.getElementById('ccBankDropdown');
     if (dd) dd.value = bank;
     ccRenderDetail();
-    if (status) status.innerHTML = `<span style="color:#16a34a">✅ ${bank}: ${added.length} new transactions added</span>`;
+    if (status) status.innerHTML = `<span style="color:#16a34a">✅ ${bank}: ${added.length} new transaction${added.length!==1?'s':''} added</span>`;
     showToast(`${bank}: ${added.length} transactions imported`);
   } catch(e) {
     if (status) status.innerHTML = `<span style="color:#dc2626">❌ ${e.message}</span>`;
@@ -13219,38 +13265,55 @@ async function ccUploadExcel(input) {
   input.value = '';
 }
 
+function ccDeleteTransaction(bank, idx) {
+  if (!_ccData[bank]) return;
+  _ccData[bank].transactions.splice(idx, 1);
+  ccRenderDetail();
+}
+
+function ccUpdateField(bank, idx, field, val) {
+  if (_ccData[bank] && _ccData[bank].transactions[idx] !== undefined) {
+    _ccData[bank].transactions[idx][field] = val;
+  }
+}
+
 function ccRenderDetail() {
   const panel = document.getElementById('ccDetailContent');
   if (!panel) return;
   const bank = _ccActiveBank;
+  if (!bank) { panel.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:60px 20px;font-size:14px">Select a bank from the dropdown</div>'; return; }
   const color = CC_BANK_COLORS[bank] || '#64748b';
-  const data = _ccData[bank] || {};
-  const txns = data.transactions || [];
-  const total = txns.reduce((s,t) => s + (parseFloat(t.amount)||0), 0);
+  const data  = _ccData[bank] || {};
+  const txns  = data.transactions || [];
+  const txSum = txns.reduce((s,t) => s + (parseFloat(t.amount)||0), 0);
+  const payable = data.payable_amount || txSum;
+  const minDue  = data.min_amount_due || 0;
+  const deptOpts = _ccDepts.map(d => `<option value="${dtEscape(d)}">${dtEscape(d)}</option>`).join('');
 
   panel.innerHTML = `
     <!-- Card Header -->
-    <div style="background:linear-gradient(135deg,${color}dd,${color}99);border-radius:14px;padding:22px 24px;color:#fff;margin-bottom:22px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+    <div style="background:linear-gradient(135deg,${color}ee,${color}99);border-radius:14px;padding:22px 26px;color:#fff;margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px">
       <div>
-        <div style="font-size:11px;opacity:.8;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">Bank</div>
-        <div style="font-size:22px;font-weight:800;letter-spacing:.02em">${dtEscape(bank)}</div>
-        <div style="margin-top:10px;font-size:13px;opacity:.85;letter-spacing:.12em">${dtEscape(data.card_number||'**** **** **** ****')}</div>
+        <div style="font-size:11px;opacity:.75;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">Bank</div>
+        <div style="font-size:24px;font-weight:800">${dtEscape(bank)}</div>
+        <div style="margin-top:8px;font-size:13px;opacity:.85;letter-spacing:.14em">${dtEscape(data.card_number||'**** **** **** ****')}</div>
       </div>
       <div style="text-align:right">
-        <div style="font-size:11px;opacity:.8;text-transform:uppercase;letter-spacing:.06em">Payable Amount</div>
-        <div style="font-size:28px;font-weight:800;margin-top:2px">₹${total.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
-        <div style="font-size:11px;opacity:.75;margin-top:6px">${txns.length} transaction${txns.length!==1?'s':''}</div>
+        <div style="font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.08em">Payable Amount</div>
+        <div style="font-size:30px;font-weight:800;margin-top:2px">₹${payable.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
+        ${minDue ? `<div style="font-size:12px;opacity:.8;margin-top:4px">Min Due: ₹${minDue.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>` : ''}
+        <div style="font-size:11px;opacity:.65;margin-top:4px">${txns.length} transaction${txns.length!==1?'s':''}</div>
       </div>
     </div>
 
     <!-- Meta Row -->
-    <div style="display:flex;gap:12px;margin-bottom:22px;flex-wrap:wrap">
+    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
       <div style="flex:1;min-width:140px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px">
-        <div style="font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Statement Date</div>
+        <div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Statement Date</div>
         <div style="font-size:15px;font-weight:700;color:#0f172a">${dtEscape(data.statement_date||'—')}</div>
       </div>
       <div style="flex:1;min-width:140px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px 16px">
-        <div style="font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Payment Due Date</div>
+        <div style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Payment Due Date</div>
         <div style="font-size:15px;font-weight:700;color:#dc2626">${dtEscape(data.payment_due_date||'—')}</div>
       </div>
     </div>
@@ -13258,40 +13321,72 @@ function ccRenderDetail() {
     <!-- Transactions Table -->
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div style="font-size:14px;font-weight:700;color:#0f172a">Transaction Details</div>
-      <div style="font-size:12px;color:#64748b">Total: <strong style="color:#0f172a">₹${total.toLocaleString('en-IN',{minimumFractionDigits:2})}</strong></div>
+      <div style="font-size:12px;color:#64748b">Transaction Sum: <strong style="color:#0f172a">₹${txSum.toLocaleString('en-IN',{minimumFractionDigits:2})}</strong></div>
     </div>
     <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px">
-      <table style="width:100%;border-collapse:collapse;min-width:560px">
+      <table style="width:100%;border-collapse:collapse;min-width:780px">
         <thead>
           <tr style="background:#f8fafc">
-            <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Date</th>
-            <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Description</th>
-            <th style="padding:10px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Amount (₹)</th>
-            <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Dept / Ownership</th>
+            <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Date</th>
+            <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Description</th>
+            <th style="padding:10px 12px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Amount (₹)</th>
+            <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Expenses</th>
+            <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Department</th>
+            <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Ownership</th>
+            <th style="padding:10px 12px;width:36px"></th>
           </tr>
         </thead>
         <tbody>
           ${txns.length ? txns.map((t,i) => `
             <tr style="border-top:1px solid #f1f5f9;${i%2===1?'background:#fafafa':''}">
-              <td style="padding:10px 14px;font-size:13px;color:#475569;white-space:nowrap">${dtEscape(t.date||'—')}</td>
-              <td style="padding:10px 14px;font-size:13px;color:#0f172a">${dtEscape(t.description||'—')}</td>
-              <td style="padding:10px 14px;font-size:13px;color:#0f172a;text-align:right;font-weight:600;white-space:nowrap">${(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
-              <td style="padding:10px 14px">
-                <span style="font-size:12px;background:#eff6ff;color:#1d4ed8;padding:2px 10px;border-radius:10px;font-weight:600">${dtEscape(t.department||'—')}</span>
+              <td style="padding:8px 12px;font-size:13px;color:#475569;white-space:nowrap">${dtEscape(t.date||'—')}</td>
+              <td style="padding:8px 12px;font-size:13px;color:#0f172a;max-width:220px">${dtEscape(t.description||'—')}</td>
+              <td style="padding:8px 12px;font-size:13px;color:#0f172a;text-align:right;font-weight:600;white-space:nowrap">${(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+              <td style="padding:6px 8px">
+                <input type="text" value="${dtEscape(t.expenses||'')}" placeholder="e.g. e-marketing"
+                  onchange="ccUpdateField('${bank}',${i},'expenses',this.value)"
+                  style="width:110px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:inherit"
+                  onfocus="this.style.borderColor='#1a56db'" onblur="this.style.borderColor='#e2e8f0'">
+              </td>
+              <td style="padding:6px 8px">
+                <select onchange="ccUpdateField('${bank}',${i},'department',this.value)"
+                  style="width:130px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:inherit">
+                  <option value="">— Dept —</option>
+                  ${deptOpts}
+                  ${t.department && !_ccDepts.includes(t.department) ? `<option value="${dtEscape(t.department)}" selected>${dtEscape(t.department)}</option>` : ''}
+                </select>
+              </td>
+              <td style="padding:6px 8px">
+                <input type="text" value="${dtEscape(t.ownership||'')}" placeholder="Owner"
+                  onchange="ccUpdateField('${bank}',${i},'ownership',this.value)"
+                  style="width:100px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:inherit"
+                  onfocus="this.style.borderColor='#1a56db'" onblur="this.style.borderColor='#e2e8f0'">
+              </td>
+              <td style="padding:6px 8px;text-align:center">
+                <button onclick="ccDeleteTransaction('${bank}',${i})" title="Delete"
+                  style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:15px;padding:3px 5px;border-radius:6px;line-height:1;transition:color .15s,background .15s"
+                  onmouseover="this.style.color='#dc2626';this.style.background='#fee2e2'"
+                  onmouseout="this.style.color='#94a3b8';this.style.background='none'">🗑</button>
               </td>
             </tr>`).join('') : `
-            <tr><td colspan="4" style="padding:40px;text-align:center;color:#94a3b8;font-size:13px">No transactions yet for ${dtEscape(bank)}</td></tr>`}
+            <tr><td colspan="7" style="padding:40px;text-align:center;color:#94a3b8;font-size:13px">No transactions yet — upload an Excel statement for ${dtEscape(bank)}</td></tr>`}
         </tbody>
         ${txns.length ? `
         <tfoot>
           <tr style="border-top:2px solid #e2e8f0;background:#f8fafc">
-            <td colspan="2" style="padding:10px 14px;font-size:13px;font-weight:700;color:#0f172a">Total Payable</td>
-            <td style="padding:10px 14px;font-size:14px;font-weight:800;color:#dc2626;text-align:right">₹${total.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
-            <td></td>
+            <td colspan="2" style="padding:10px 12px;font-size:13px;font-weight:700;color:#0f172a">Total Payable</td>
+            <td style="padding:10px 12px;font-size:14px;font-weight:800;color:#dc2626;text-align:right">₹${payable.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+            <td colspan="4"></td>
           </tr>
         </tfoot>` : ''}
       </table>
     </div>`;
+
+  // Set selected department for each row after render
+  txns.forEach((t, i) => {
+    const sel = panel.querySelectorAll('select')[i];
+    if (sel && t.department) sel.value = t.department;
+  });
 }
 
 // ══════════════════════════════════════════════════════
