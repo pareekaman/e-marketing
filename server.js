@@ -7068,9 +7068,17 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Read offer letter template text (to detect placeholder fields)
+// Read offer letter template text + show service account email
 app.get('/api/hrm/offer-template-preview', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+
+  // Always return service account email so user knows what to share with
+  let serviceAccountEmail = null;
+  try {
+    const raw = process.env.GOOGLE_CREDENTIALS ? JSON.parse(process.env.GOOGLE_CREDENTIALS) : require('./credentials.json');
+    serviceAccountEmail = raw.client_email || null;
+  } catch {}
+
   try {
     const { docs } = await _hrmGoogleClients();
     const doc = await docs.documents.get({ documentId: HRM_OFFER_TEMPLATE_ID });
@@ -7080,8 +7088,8 @@ app.get('/api/hrm/offer-template-preview', requireAuth, async (req, res) => {
         text += para.textRun?.content || '';
       }
     }
-    res.json({ ok: true, text });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    res.json({ ok: true, serviceAccountEmail, text });
+  } catch (err) { res.status(500).json({ error: err.message, serviceAccountEmail }); }
 });
 
 // Get message log
