@@ -13300,9 +13300,13 @@ const CC_BANK_COLORS = {
 };
 // _ccData[bank][cardNum] = [ { statement_date, payment_due_date, payable_amount, min_amount_due, transactions[] }, ... ]
 let _ccActiveBank = null;
-let _ccActiveCard = null;   // active card number within bank
-let _ccData = {};
+let _ccActiveCard = null;
+let _ccData = (()=>{ try { return JSON.parse(localStorage.getItem('cc_data')||'{}'); } catch(e){ return {}; } })();
 let _ccDepts = [];
+
+function ccSave() {
+  try { localStorage.setItem('cc_data', JSON.stringify(_ccData)); } catch(e) {}
+}
 
 async function loadCreditCards() {
   const dd = document.getElementById('ccBankDropdown');
@@ -13379,6 +13383,7 @@ async function ccUploadExcel(input) {
 
     _ccActiveBank = bank;
     _ccActiveCard = cardNum;
+    ccSave();
     const dd = document.getElementById('ccBankDropdown');
     if (dd) dd.value = bank;
     ccRenderDetail();
@@ -13393,17 +13398,19 @@ async function ccUploadExcel(input) {
 function ccDeleteStatement(bank, cardNum, stmtIdx) {
   if (!_ccData[bank]?.[cardNum]) return;
   _ccData[bank][cardNum].splice(stmtIdx, 1);
+  ccSave();
   ccRenderStatements();
 }
 
 function ccDeleteTransaction(bank, cardNum, stmtIdx, txIdx) {
   _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions.splice(txIdx, 1);
+  ccSave();
   ccRenderStatements();
 }
 
 function ccUpdateField(bank, cardNum, stmtIdx, txIdx, field, val) {
   const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
-  if (t) t[field] = val;
+  if (t) { t[field] = val; ccSave(); }
 }
 
 function ccRenderDetail() {
