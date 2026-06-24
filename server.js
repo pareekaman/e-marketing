@@ -7356,15 +7356,12 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary) {
   });
   const fileId = copied.data.id;
 
-  // Replace placeholders in the copied Google Doc
+  // Replace placeholders matching the actual Google Docs template
   const replacements = [
-    ['{{NAME}}',         candidate.name            || ''],
-    ['{{POSITION}}',     candidate.profile_position || ''],
-    ['{{JOINING_DATE}}', joiningFmt],
-    ['{{SALARY}}',       salary                    || 'As per discussion'],
-    ['{{DATE}}',         today],
-    ['{{REF_NO}}',       refNo],
-    ['{{PHONE}}',        candidate.phone            || ''],
+    ['{{CANDIDATE_NAME}}', candidate.name             || ''],
+    ['{{POSITION}}',       candidate.profile_position || ''],
+    ['{{JOINING_DATE}}',   joiningFmt],
+    ['{{ Today_Date}}',    today],
   ];
 
   await docs.documents.batchUpdate({
