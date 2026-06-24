@@ -409,23 +409,21 @@ const _startupMigrationsPromise = (async () => {
     approval_token VARCHAR(64) DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
-  // Ensure all required columns exist (silent no-op if already there)
-  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS description TEXT NOT NULL`);
-  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_to INT DEFAULT NULL`);
-  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_by INT DEFAULT NULL`);
-  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sender_phone VARCHAR(20) DEFAULT NULL`);
-  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sender_name VARCHAR(255) DEFAULT NULL`);
-  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date DATE DEFAULT NULL`);
-  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority ENUM('low','medium','high') DEFAULT 'low'`);
-  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS remarks TEXT DEFAULT ''`);
-  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_id INT DEFAULT NULL`);
-  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS url VARCHAR(2048) DEFAULT NULL`);
-  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS status ENUM('pending','approved','denied') DEFAULT 'pending'`);
-  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS approval_token VARCHAR(64) DEFAULT NULL`);
-  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS approved_task_id INT DEFAULT NULL`);
-  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
-  await sa(`ALTER TABLE tasks ADD UNIQUE INDEX IF NOT EXISTS idx_token (approval_token)`);
-  await sa(`ALTER TABLE tasks ADD INDEX IF NOT EXISTS idx_status (status)`);
+  // Ensure all required columns exist — no IF NOT EXISTS (MySQL 5.7 compat)
+  // sa() silently swallows "Duplicate column name" if column already exists
+  await sa(`ALTER TABLE tasks ADD COLUMN description TEXT DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN assigned_to INT DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN assigned_by INT DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN sender_phone VARCHAR(20) DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN sender_name VARCHAR(255) DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN due_date DATE DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN priority ENUM('low','medium','high') DEFAULT 'low'`);
+  await sa(`ALTER TABLE tasks ADD COLUMN remarks TEXT DEFAULT ''`);
+  await sa(`ALTER TABLE tasks ADD COLUMN client_id INT DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN url VARCHAR(2048) DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN approved_task_id INT DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD INDEX idx_status (status)`);
+  await sa(`ALTER TABLE tasks ADD UNIQUE INDEX idx_token (approval_token)`);
 
   console.log('  ✅ DB migrations checked');
 

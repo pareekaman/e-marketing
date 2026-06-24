@@ -1455,7 +1455,7 @@ tbody tr:last-child td{border-bottom:none;}
           <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#10b981;display:inline-block"></span>Completed</span>
           <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block"></span>Pending</span>
           <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#f59e0b;display:inline-block"></span>Revised</span>
-          <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#8b5cf6;display:inline-block"></span>Transfer</span>
+          <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#8b5cf6;display:inline-block"></span>Upcoming</span>
         </div>
       </div>
     </div>
@@ -5166,10 +5166,9 @@ async function loadDashboard() {
   const baseUrl = (isAdmin || isHod || isPC)
     ? `/api/dashboard?employee=${empVal}${hodParam}${dateParams}&taskType=`
     : `/api/dashboard?taskType=`;
-  const [dDel, dChl, dTr] = await Promise.all([
+  const [dDel, dChl] = await Promise.all([
     api(baseUrl + 'delegation'),
-    api(baseUrl + 'checklist'),
-    api('/api/transfers/count').catch(() => ({ count: 0 }))
+    api(baseUrl + 'checklist')
   ]);
 
   // Error check: show error to user if DB or API fails
@@ -5184,7 +5183,7 @@ async function loadDashboard() {
   }
 
   // Cache totals so the type-tab can re-derive cards + chart without re-fetching.
-  window._dashTotals = { del: dDel, chl: dChl, fmsPending: 0, fmsCompleted: 0, transferPending: dTr?.count || 0 };
+  window._dashTotals = { del: dDel, chl: dChl, fmsPending: 0, fmsCompleted: 0 };
   updateDashStats(dashType);
 
   if (isAdmin || isHod || isPC) {
@@ -5501,8 +5500,7 @@ function updateDashStats(type) {
     completed = (del.completed||0) + (chl.completed||0) + (t.fmsCompleted||0);
     revised   = del.revised || 0;
   }
-  const transferred = t.transferPending || 0;
-  const total = pending + completed + revised + transferred;
+  const total = pending + completed + revised;
   // Pending card shows the strict pending count; revised is surfaced as a
   // separate subtitle within the same card so the two numbers stay distinct.
   const totalEl = document.getElementById('dTotal');
@@ -5537,8 +5535,8 @@ function updateDashStats(type) {
   if (revised > 0 && (type === 'all' || type === 'delegation')) {
     labels.push('Revised'); data.push(revised); colors.push('#f59e0b');
   }
-  if (transferred > 0) {
-    labels.push('Transfer'); data.push(transferred); colors.push('#8b5cf6');
+  if (upcomingCount > 0) {
+    labels.push('Upcoming'); data.push(upcomingCount); colors.push('#8b5cf6');
   }
   dashChartInst = new Chart(canvas.getContext('2d'), {
     type:'pie',
@@ -13624,6 +13622,7 @@ function ccRenderStatements() {
       <!-- Statement header -->
       <div style="background:linear-gradient(135deg,${color}ee,${color}88);padding:16px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;color:#fff">
         <div>
+          <div style="font-size:14px;font-weight:800;opacity:.95;margin-bottom:2px">🏦 ${dtEscape(bank)}</div>
           <div style="font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px">Statement</div>
           <div style="font-size:16px;font-weight:800">${dtEscape(s.statement_date||'—')}</div>
           <div style="font-size:12px;opacity:.8;margin-top:4px">Due: <strong>${dtEscape(s.payment_due_date||'—')}</strong>${s.min_amount_due?` &nbsp;·&nbsp; Min Due: ₹${s.min_amount_due.toLocaleString('en-IN')}`:''}</div>
