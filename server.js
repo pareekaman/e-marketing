@@ -4940,8 +4940,28 @@ app.post('/api/credit-cards/upload-excel', requireAuth, ccUpload.single('file'),
 // ══════════════════════════════════════════════════════
 // CREDIT CARDS — DB tables + PDF upload
 // ══════════════════════════════════════════════════════
-const FLASK_EXTRACT_URL = process.env.FLASK_URL || 'http://localhost:5000/api/extract';
-const CC_OPENAI_KEY     = process.env.OPENAI_API_KEY || '';
+const { OpenAI } = require('openai');
+const CC_OPENAI_KEY   = process.env.OPENAI_API_KEY || '';
+const CC_OPENAI_MODEL = process.env.OPENAI_MODEL   || 'gpt-4.1-mini';
+
+const CC_EXTRACT_PROMPT = `You are a careful OCR and data-extraction engine reading a credit card statement PDF.
+Extract every visible field from the statement including card number, statement date, due date, balances, and all transactions.
+Return ONLY valid JSON in this exact structure:
+{"fields":{"Field Name":"value"}}
+Rules:
+- For each transaction use "Month Day Description" as key and amount as value (e.g. "May 11 IONOS INC 877-461-2631 15.00 UNITED STATES DOLLAR": "1,488.85")
+- Append " CR" to the value for credit/payment entries
+- Extract Membership Number / Card Number / Account Number exactly as printed
+- Extract Statement Date, Due Date, Closing Balance, Minimum Payment exactly
+- Return JSON only, no markdown fences`;
+
+function safeParseCC(text) {
+  text = String(text||'').trim().replace(/^```(?:json)?/m,'').replace(/```$/m,'').trim();
+  try { return JSON.parse(text); } catch(e) {}
+  const m = text.match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch(e) {} }
+  return {};
+}
 
 // Create tables once on startup
 ;(async () => {
@@ -5058,19 +5078,23 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
     if (!req.file) return res.status(400).json({ error:'No file uploaded' });
     if (!CC_OPENAI_KEY) return res.status(500).json({ error:'OPENAI_API_KEY not set in .env' });
 
-    const fd = new FormData();
-    fd.append('api_key', CC_OPENAI_KEY);
-    fd.append('pdf', new Blob([req.file.buffer], { type:'application/pdf' }), req.file.originalname);
+    const openai = new OpenAI({ apiKey: CC_OPENAI_KEY });
+    const pdfBase64 = req.file.buffer.toString('base64');
 
-    const flaskRes = await fetch(FLASK_EXTRACT_URL, { method:'POST', body:fd, signal:AbortSignal.timeout(180000) });
-    if (!flaskRes.ok) {
-      const txt = await flaskRes.text();
-      return res.status(502).json({ error:`Flask error (${flaskRes.status}): ${txt.substring(0,300)}` });
-    }
-    const flaskData = await flaskRes.json();
-    if (!flaskData.success) return res.status(422).json({ error:flaskData.error||'Extraction failed' });
+    const aiResp = await openai.responses.create({
+      model: CC_OPENAI_MODEL,
+      input: [{
+        role: 'user',
+        content: [
+          { type: 'input_file', input_file: { filename: req.file.originalname, file_data: `data:application/pdf;base64,${pdfBase64}` } },
+          { type: 'input_text', text: CC_EXTRACT_PROMPT }
+        ]
+      }]
+    });
 
-    const parsed = parseCCJson(flaskData.extracted_json, req.file.originalname);
+    const raw = safeParseCC(aiResp.output_text);
+    const fields = raw.fields || raw;
+    const parsed = parseCCJson(fields, req.file.originalname);
     if (parsed.bankName === 'Unknown') return res.status(422).json({ error:'Bank not detected. Supported: AMEX, HDFC, RBL Bank, ICICI, AXIS, SBI, SCB' });
 
     const saved = await saveCCToDb(parsed);

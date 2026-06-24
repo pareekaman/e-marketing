@@ -22,6 +22,7 @@
     "multer": "^2.2.0",
     "mysql2": "^3.20.0",
     "nodemailer": "^6.9.16",
+    "openai": "^6.44.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
