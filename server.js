@@ -3857,11 +3857,12 @@ app.get('/api/wa-delegation', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
     const [rows] = await db.query(
-      `SELECT wd.*,
-         u1.name AS assignedToName,
-         u2.name AS assignedByName,
-         c.name  AS clientName,
-         DATE_FORMAT(wd.due_date,'%Y-%m-%d') AS due_date
+      `SELECT wd.id, wd.description, wd.status, wd.sender_phone, wd.sender_name,
+              wd.due_date, wd.priority, wd.remarks, wd.created_at, wd.approval_token,
+              wd.assigned_to, wd.assigned_by, wd.client_id, wd.url, wd.approved_task_id,
+              u1.name AS assignedToName,
+              u2.name AS assignedByName,
+              c.name  AS clientName
        FROM tasks wd
        LEFT JOIN users u1 ON wd.assigned_to = u1.id
        LEFT JOIN users u2 ON wd.assigned_by = u2.id
@@ -3869,8 +3870,12 @@ app.get('/api/wa-delegation', requireAuth, async (req, res) => {
        WHERE wd.status = 'pending'
        ORDER BY wd.created_at DESC`
     );
+    console.log(`[wa-delegation] found ${rows.length} pending tasks`);
     res.json(rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    console.error('[wa-delegation] list error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/wa-delegation/count — badge count (pending only)
