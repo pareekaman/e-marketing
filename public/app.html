@@ -5183,7 +5183,10 @@ async function loadDashboard() {
   }
 
   // Cache totals so the type-tab can re-derive cards + chart without re-fetching.
-  window._dashTotals = { del: dDel, chl: dChl, fmsPending: 0, fmsCompleted: 0 };
+  window._dashTotals = { del: dDel, chl: dChl, fmsPending: 0, fmsCompleted: 0, upcoming: (dDel.upcoming||0) + (dChl.upcoming||0) };
+  // Show upcoming count immediately from server stats (no need to wait for full task list)
+  const upElEarly = document.getElementById('dUpcoming');
+  if (upElEarly) upElEarly.textContent = window._dashTotals.upcoming;
   updateDashStats(dashType);
 
   if (isAdmin || isHod || isPC) {
@@ -5257,10 +5260,16 @@ async function loadDashboardPerfCharts(){
   }
   if (fromEl.value > toEl.value) { showToast('From date must be before To date', 'error'); return; }
 
+  // Show loading skeleton while heavy queries run
+  const perfGrid = document.querySelector('.dash-perf-grid');
+  if (perfGrid) perfGrid.style.opacity = '0.4';
+
   const [scoreData, activityData] = await Promise.all([
     api(`/api/mis/all?start=${fromEl.value}&end=${toEl.value}`),
     api(`/api/dashboard/activity?start=${fromEl.value}&end=${toEl.value}`)
   ]);
+
+  if (perfGrid) perfGrid.style.opacity = '1';
 
   // Exclude internal owner / admin names from both leaderboards so the
   // ranking reflects regular doers only.
@@ -5514,11 +5523,8 @@ function updateDashStats(type) {
     if (revised > 0) { pBreak.textContent = `+ ${revised} revised`; pBreak.style.display = 'block'; }
     else             { pBreak.style.display = 'none'; }
   }
-  // Upcoming = pending tasks with future due_date, computed from loaded task list
-  const _today = new Date().toISOString().split('T')[0];
-  const _taskSrc = type === 'fms' ? (window._lastDashFMS||[])
-                 : (window._lastDashTasks||[]).filter(t => !type || type === 'all' || t.type === type);
-  const upcomingCount = _taskSrc.filter(t => t.due_date && t.due_date > _today && (t.status === 'pending' || t.status === 'revised' || !t.status)).length;
+  // Upcoming — use server-side count from _dashTotals (loads instantly with stats)
+  const upcomingCount = t.upcoming || 0;
   const upEl = document.getElementById('dUpcoming');
   if (upEl) upEl.textContent = upcomingCount;
 

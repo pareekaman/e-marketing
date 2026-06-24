@@ -1095,6 +1095,7 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
     const skipStats = req.query.skipStats === '1';
     let pending = 0, revised = 0, completed = 0;
 
+    let upcoming = 0;
     if (!skipStats && (taskType === 'delegation' || taskType === 'both')) {
       const [d] = await db.query(`SELECT SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed FROM delegation_tasks t WHERE 1=1 ${userFilter} ${delDateClause}`, delParams);
       pending += parseInt(d[0].pending)||0; revised += parseInt(d[0].revised)||0; completed += parseInt(d[0].completed)||0;
@@ -1102,6 +1103,14 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
     if (!skipStats && (taskType === 'checklist' || taskType === 'both')) {
       const [d] = await db.query(`SELECT SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed FROM checklist_tasks t WHERE 1=1 ${userFilter} ${chlDateClause}`, chlParams);
       pending += parseInt(d[0].pending)||0; revised += parseInt(d[0].revised)||0; completed += parseInt(d[0].completed)||0;
+    }
+    if (!skipStats && (taskType === 'delegation' || taskType === 'both')) {
+      const [[u1]] = await db.query(`SELECT COUNT(*) AS cnt FROM delegation_tasks t WHERE status IN ('pending','revised') AND due_date > CURDATE() ${userFilter}`, params);
+      upcoming += parseInt(u1.cnt)||0;
+    }
+    if (!skipStats && (taskType === 'checklist' || taskType === 'both')) {
+      const [[u2]] = await db.query(`SELECT COUNT(*) AS cnt FROM checklist_tasks t WHERE status IN ('pending','revised') AND due_date > CURDATE() ${userFilter}`, params);
+      upcoming += parseInt(u2.cnt)||0;
     }
 
     let delegationRows = [], checklistRows = [];
@@ -1115,7 +1124,7 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
     }
     // `todayPending` kept for backwards compatibility (regular pending load still uses it).
     // `tasks` is the generic field for any status filter.
-    res.json({ pending, revised, completed, todayPending: [...delegationRows, ...checklistRows], tasks: [...delegationRows, ...checklistRows], status: rowStatus });
+    res.json({ pending, revised, completed, upcoming, todayPending: [...delegationRows, ...checklistRows], tasks: [...delegationRows, ...checklistRows], status: rowStatus });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
