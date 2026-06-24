@@ -13596,7 +13596,7 @@ function ccRenderStatements() {
 
   wrap.innerHTML = stmts.map((s, si) => {
     const txns  = s.transactions || [];
-    const txSum = txns.reduce((acc,t) => acc + (parseFloat(t.amount)||0), 0);
+    const txSum = txns.reduce((acc,t) => acc + (t.txn_type === 'credit' ? 0 : (parseFloat(t.amount)||0)), 0);
 
     const txRows = txns.map((t, ti) => `
       <tr style="border-top:1px solid #f1f5f9;${ti%2===1?'background:#fafafa':''}">
