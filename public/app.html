@@ -6212,7 +6212,7 @@ function renderTasksTable() {
     // "Pending" tab includes revised rows — revise/pending are treated as one bucket of open work.
     const matchStatus = taskStatusFilter === 'all'
       || (taskStatusFilter === 'pending' && (t.status === 'pending' || t.status === 'revised'))
-      || (taskStatusFilter === 'upcoming' && (t.status === 'pending' || t.status === 'revised') && t.due_date && t.due_date > _todayStr)
+      || (taskStatusFilter === 'upcoming' && (t.status === 'pending' || t.status === 'revised') && t.due_date && t.due_date.slice(0,7) === _todayStr.slice(0,7))
       || t.status === taskStatusFilter;
     const matchSearch = !search ||
       (t.description||'').toLowerCase().includes(search) ||
