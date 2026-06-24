@@ -7097,7 +7097,7 @@ app.post('/api/meetings', requireAuth, async (req, res) => {
           values.flat());
       }
     }
-    await sendMeetingNotification(newId, 'created').catch(e => console.error('notify err:', e.message));
+    sendMeetingNotification(newId, 'created').catch(e => console.error('notify err:', e.message));
     res.json({ ok: true, id: newId, meet_link: finalLink });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -7133,7 +7133,7 @@ app.put('/api/meetings/:id', requireAuth, async (req, res) => {
           values.flat());
       }
     }
-    await sendMeetingNotification(id, rescheduled ? 'rescheduled' : 'created').catch(e => console.error('notify err:', e.message));
+    sendMeetingNotification(id, rescheduled ? 'rescheduled' : 'created').catch(e => console.error('notify err:', e.message));
     res.json({ ok: true, rescheduled });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -7164,7 +7164,7 @@ app.delete('/api/meetings/:id', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'only organizer or admin can cancel' });
     }
     await db.query("UPDATE meetings SET status='cancelled' WHERE id=?", [id]);
-    await sendMeetingNotification(id, 'cancelled').catch(e => console.error('notify err:', e.message));
+    sendMeetingNotification(id, 'cancelled').catch(e => console.error('notify err:', e.message));
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
