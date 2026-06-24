@@ -7364,15 +7364,14 @@ async function uploadUsersCSV() {
 
 // ══════════════════════════════════════════════════════
 async function loadApprovalBadge() {
-  const [d, lv, wa] = await Promise.all([
+  const [d, lv] = await Promise.all([
     api('/api/approvals/count'),
-    api('/api/leaves/pending-count'),
-    api('/api/wa-delegation/count')
+    api('/api/leaves/pending-count')
   ]);
   const taskCnt  = d.count  || 0;
   const leaveCnt = lv?.count || 0;
-  const waCnt    = wa?.count || 0;
-  const total = taskCnt + leaveCnt + waCnt;
+  const waCnt    = 0; // WhatsApp Tasks disabled
+  const total = taskCnt + leaveCnt;
   const badge = document.getElementById('approvalBadge');
   if (total > 0) {
     badge.textContent = total;
@@ -7420,10 +7419,10 @@ async function loadApprovals() {
   if (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc') {
     document.getElementById('apprTabTransfer').style.display = 'block';
   }
-  // Show WhatsApp Tasks tab for Naman Gupta or admin
-  if (ME.role === 'admin' || ME.name === 'Naman Gupta') {
-    document.getElementById('apprTabWa').style.display = 'block';
-  }
+  // WhatsApp Tasks tab — disabled (feature postponed)
+  // if (ME.role === 'admin' || ME.name === 'Naman Gupta') {
+  //   document.getElementById('apprTabWa').style.display = 'block';
+  // }
   // Also pre-load leave approvals (so badge stays in sync)
   loadLeaveApprovals();
 
