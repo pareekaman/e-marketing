@@ -7314,7 +7314,7 @@ const HRM_COMPANY         = process.env.HRM_COMPANY || 'E-Marketing';
 const HRM_OFFER_FOLDER_ID   = process.env.HRM_OFFER_FOLDER_ID   || '1DWfwjSdkVP_sDEe62mM50Mc1mV52f6rA';
 const HRM_OFFER_TEMPLATE_ID = process.env.HRM_OFFER_TEMPLATE_ID || '11f3STYRR4Lyk2HaoBfo7Kiiw5DsEoyr0P3lZnpZR_G4';
 
-async function _hrmGoogleClients() {
+async function _hrmDriveClient() {
   const { google } = require('googleapis');
   let creds;
   if (process.env.GOOGLE_CREDENTIALS) {
@@ -7324,59 +7324,46 @@ async function _hrmGoogleClients() {
   }
   const auth = new google.auth.GoogleAuth({
     credentials: creds,
-    scopes: [
-      'https://www.googleapis.com/auth/drive',
-      'https://www.googleapis.com/auth/documents',
-    ],
+    scopes: ['https://www.googleapis.com/auth/drive'],
   });
   const client = await auth.getClient();
-  return {
-    drive: google.drive({ version: 'v3', auth: client }),
-    docs:  google.docs({ version: 'v1', auth: client }),
-  };
+  return google.drive({ version: 'v3', auth: client });
 }
 
 async function hrmGenerateOfferDoc(candidate, joining_date, salary) {
-  const { drive, docs } = await _hrmGoogleClients();
+  const drive = await _hrmDriveClient();
 
   const joiningFmt = joining_date
     ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
     : '';
-  const today  = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-  const refNo  = `EMK/HR/OL/${String(candidate.id).padStart(4, '0')}`;
+  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
 
-  // Copy template into the offer-letters folder
-  const copied = await drive.files.copy({
-    fileId: HRM_OFFER_TEMPLATE_ID,
+  // 1. Export template as HTML (Drive API only — no Docs API needed)
+  const exported = await drive.files.export(
+    { fileId: HRM_OFFER_TEMPLATE_ID, mimeType: 'text/html' },
+    { responseType: 'text' }
+  );
+
+  // 2. Replace placeholders in HTML
+  let html = exported.data;
+  html = html.replace(/\{\{CANDIDATE_NAME\}\}/g, candidate.name || '');
+  html = html.replace(/\{\{POSITION\}\}/g,       candidate.profile_position || '');
+  html = html.replace(/\{\{JOINING_DATE\}\}/g,   joiningFmt);
+  html = html.replace(/\{\{\s*Today_Date\s*\}\}/g, today);
+
+  // 3. Upload modified HTML as new Google Doc in the offer folder
+  const { Readable } = require('stream');
+  const created = await drive.files.create({
     requestBody: {
       name: `Offer Letter - ${candidate.name} - ${candidate.profile_position || ''}`,
+      mimeType: 'application/vnd.google-apps.document',
       parents: [HRM_OFFER_FOLDER_ID],
     },
+    media: { mimeType: 'text/html', body: Readable.from([html]) },
     supportsAllDrives: true,
   });
-  const fileId = copied.data.id;
 
-  // Replace placeholders matching the actual Google Docs template
-  const replacements = [
-    ['{{CANDIDATE_NAME}}', candidate.name             || ''],
-    ['{{POSITION}}',       candidate.profile_position || ''],
-    ['{{JOINING_DATE}}',   joiningFmt],
-    ['{{ Today_Date}}',    today],
-  ];
-
-  await docs.documents.batchUpdate({
-    documentId: fileId,
-    requestBody: {
-      requests: replacements.map(([find, replace]) => ({
-        replaceAllText: {
-          containsText: { text: find, matchCase: true },
-          replaceText: replace,
-        },
-      })),
-    },
-  });
-
-  return fileId;
+  return created.data.id;
 }
 
 async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateName, action) {
@@ -7546,14 +7533,12 @@ app.get('/api/hrm/offer-template-preview', requireAuth, async (req, res) => {
   } catch {}
 
   try {
-    const { docs } = await _hrmGoogleClients();
-    const doc = await docs.documents.get({ documentId: HRM_OFFER_TEMPLATE_ID });
-    let text = '';
-    for (const el of (doc.data.body?.content || [])) {
-      for (const para of (el.paragraph?.elements || [])) {
-        text += para.textRun?.content || '';
-      }
-    }
+    const drive = await _hrmDriveClient();
+    const exported = await drive.files.export(
+      { fileId: HRM_OFFER_TEMPLATE_ID, mimeType: 'text/plain' },
+      { responseType: 'text' }
+    );
+    const text = exported.data || '';
     res.json({ ok: true, serviceAccountEmail, text });
   } catch (err) { res.status(500).json({ error: err.message, serviceAccountEmail }); }
 });
