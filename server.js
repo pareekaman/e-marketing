@@ -4943,6 +4943,9 @@ app.post('/api/credit-cards/upload-excel', requireAuth, ccUpload.single('file'),
 const { OpenAI } = require('openai');
 const pdfjsLib    = require('pdfjs-dist/legacy/build/pdf.js');
 const { createCanvas } = require('canvas');
+// Explicit require ensures pdf.worker.js is bundled by Vercel's nft
+require('pdfjs-dist/legacy/build/pdf.worker.js');
+pdfjsLib.GlobalWorkerOptions.workerSrc = require.resolve('pdfjs-dist/legacy/build/pdf.worker.js');
 const CC_OPENAI_KEY   = process.env.OPENAI_API_KEY || '';
 const CC_OPENAI_MODEL = process.env.OPENAI_MODEL   || 'gpt-4.1-mini';
 
