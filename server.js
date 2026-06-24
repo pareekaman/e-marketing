@@ -4983,7 +4983,10 @@ Rules:
 - For each transaction use "Month Day Description" as key and amount as value (e.g. "May 11 IONOS INC 877-461-2631 15.00 UNITED STATES DOLLAR": "1,488.85")
 - Append " CR" to the value for credit/payment entries
 - Extract Membership Number / Card Number / Account Number exactly as printed
-- Extract Statement Date, Due Date, Closing Balance, Minimum Payment exactly
+- Extract Statement Date as key "Date" with value in DD/MM/YYYY format
+- Extract the payment due date as key "Minimum Payment Due" with value in "Month DD, YYYY" format (e.g. "June 29, 2026")
+- Extract Closing Balance as key "Closing Balance Rs"
+- Extract minimum payment amount as key "Minimum Payment Rs"
 - Return JSON only, no markdown fences`;
 
 function safeParseCC(text) {
@@ -5033,13 +5036,17 @@ function safeParseCC(text) {
 
 // ── Parsing helpers ─────────────────────────────────────
 function parseCCDateDMY(str) {
-  const m = String(str||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  // DD/MM/YYYY or DD-MM-YYYY
+  const m = String(str||'').match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   return m ? `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}` : null;
 }
 function parseCCDateLong(str) {
   const MO = {january:'01',february:'02',march:'03',april:'04',may:'05',june:'06',july:'07',august:'08',september:'09',october:'10',november:'11',december:'12'};
   const m = String(str||'').match(/(\w+)\s+(\d{1,2}),?\s+(\d{4})/i);
   return (m && MO[m[1].toLowerCase()]) ? `${m[3]}-${MO[m[1].toLowerCase()]}-${m[2].padStart(2,'0')}` : null;
+}
+function parseCCDateAny(str) {
+  return parseCCDateLong(str) || parseCCDateDMY(str) || null;
 }
 function parseCCAmount(str) {
   return parseFloat(String(str||'').replace(/[^0-9.]/g,'')) || 0;
@@ -5050,8 +5057,13 @@ function parseAmexCC(j) {
   for (const k of Object.keys(j)) {
     if (k.startsWith('Membership Number')) { cardNumber = String(j[k]).trim(); break; }
   }
-  const stmtDate = parseCCDateDMY(j['Date']);
-  const dueDate  = parseCCDateLong(j['Due by']) || parseCCDateLong(j['Minimum Payment Due']);
+  const stmtDate = parseCCDateDMY(j['Date']) || parseCCDateLong(j['Date']);
+  const dueDate  = parseCCDateAny(j['Due by'])
+                || parseCCDateAny(j['Minimum Payment Due'])
+                || parseCCDateAny(j['Minimum Payment Due Date'])
+                || parseCCDateAny(j['Payment Due Date'])
+                || parseCCDateAny(j['Due Date'])
+                || parseCCDateAny(j['Payment Due']);
   const payable  = parseCCAmount(j['Closing Balance Rs']);
   const minDue   = parseCCAmount(j['Minimum Payment Rs'] || j['Minimum Payment']);
   const period   = j['Statement Period'] || '';
