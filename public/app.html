@@ -1529,6 +1529,7 @@ tbody tr:last-child td{border-bottom:none;}
       <div class="tab-group">
         <div class="tab" id="statusTabAll" onclick="filterTaskStatus('all',this)">All</div>
         <div class="tab active" id="statusTabPending" onclick="filterTaskStatus('pending',this)">Pending</div>
+        <div class="tab" id="statusTabUpcoming" onclick="filterTaskStatus('upcoming',this)">Upcoming</div>
         <div class="tab" id="statusTabCompleted" onclick="filterTaskStatus('completed',this)">Completed</div>
       </div>
     </div>
@@ -6206,10 +6207,12 @@ function renderTasksTable() {
   const dateTo = document.getElementById('tasksDateTo')?.value || '';
   const container = document.getElementById('tasksContent');
 
+  const _todayStr = new Date().toISOString().split('T')[0];
   let tasks = allTasksData.filter(t => {
     // "Pending" tab includes revised rows — revise/pending are treated as one bucket of open work.
     const matchStatus = taskStatusFilter === 'all'
       || (taskStatusFilter === 'pending' && (t.status === 'pending' || t.status === 'revised'))
+      || (taskStatusFilter === 'upcoming' && (t.status === 'pending' || t.status === 'revised') && t.due_date && t.due_date > _todayStr)
       || t.status === taskStatusFilter;
     const matchSearch = !search ||
       (t.description||'').toLowerCase().includes(search) ||
