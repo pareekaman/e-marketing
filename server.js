@@ -400,6 +400,33 @@ const _startupMigrationsPromise = (async () => {
   // Per-user permissions column (replaces role_permissions)
   await sa(`ALTER TABLE users ADD COLUMN IF NOT EXISTS user_permissions TEXT DEFAULT NULL AFTER extra_access`);
 
+  // WhatsApp bot delegation — approval queue before tasks reach the main table
+  // CREATE TABLE safely; if user already created it with different columns, ALTER statements below will fill the gaps
+  await sa(`CREATE TABLE IF NOT EXISTS tasks (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    description TEXT NOT NULL,
+    status ENUM('pending','approved','denied') DEFAULT 'pending',
+    approval_token VARCHAR(64) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  // Ensure all required columns exist (silent no-op if already there)
+  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS description TEXT NOT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_to INT DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_by INT DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sender_phone VARCHAR(20) DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sender_name VARCHAR(255) DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date DATE DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority ENUM('low','medium','high') DEFAULT 'low'`);
+  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS remarks TEXT DEFAULT ''`);
+  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_id INT DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS url VARCHAR(2048) DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS status ENUM('pending','approved','denied') DEFAULT 'pending'`);
+  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS approval_token VARCHAR(64) DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS approved_task_id INT DEFAULT NULL`);
+  await sa(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+  await sa(`ALTER TABLE tasks ADD UNIQUE INDEX IF NOT EXISTS idx_token (approval_token)`);
+  await sa(`ALTER TABLE tasks ADD INDEX IF NOT EXISTS idx_status (status)`);
+
   console.log('  ✅ DB migrations checked');
 
   // ── Auto-seed default admin if no users exist ─────────
@@ -3673,6 +3700,243 @@ app.get('/api/test-whatsapp', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════
+// WhatsApp Bot — Task Delegation Approval Flow
+// Bot sends task → pending in tasks → Naman approves/denies via link
+// → approved tasks move to delegation_tasks → sender gets WhatsApp notification
+// ══════════════════════════════════════════════════════
+
+function waDelegationPage(title, message, isSuccess) {
+  const color = isSuccess ? '#27ae60' : '#e74c3c';
+  const icon  = isSuccess ? '✅' : '❌';
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${title}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;background:#f5f5f5;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+  .card{background:#fff;border-radius:16px;padding:48px 40px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.1);max-width:400px;width:100%}
+  .icon{font-size:56px;margin-bottom:16px}
+  h1{color:${color};font-size:22px;margin-bottom:12px}
+  p{color:#666;font-size:15px;line-height:1.6}
+  .brand{color:#bbb;font-size:12px;margin-top:24px}
+</style></head>
+<body><div class="card">
+  <div class="icon">${icon}</div>
+  <h1>${title}</h1>
+  <p>${message}</p>
+  <p class="brand">E-Marketing Task Manager</p>
+</div></body></html>`;
+}
+
+// POST /api/wa-bot/task
+// Called by the WhatsApp bot when a user delegates a task via voice/text.
+// Auth: X-Bot-Key header (set BOT_API_KEY in .env; default: emk_bot_2026)
+app.post('/api/wa-bot/task', async (req, res) => {
+  try {
+    const botKey = req.headers['x-bot-key'] || req.body.bot_key;
+    if (!botKey || botKey !== (process.env.BOT_API_KEY || 'emk_bot_2026')) {
+      return res.status(401).json({ error: 'Invalid bot key' });
+    }
+
+    const { description, assigned_to, assigned_by, sender_phone, sender_name, due_date, priority, remarks, client_id, url } = req.body;
+    if (!description) return res.status(400).json({ error: 'description is required' });
+
+    const { randomBytes } = require('crypto');
+    const token = randomBytes(32).toString('hex');
+
+    const [result] = await db.query(
+      `INSERT INTO tasks
+         (description,assigned_to,assigned_by,sender_phone,sender_name,due_date,priority,remarks,client_id,url,approval_token)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [description, assigned_to||null, assigned_by||null, sender_phone||null, sender_name||null,
+       due_date||null, priority||'low', remarks||'', client_id||null, url||null, token]
+    );
+
+    // Look up Naman Gupta's phone from the users table
+    const [[naman]] = await db.query(`SELECT phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
+
+    const baseUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+
+    const waMsg =
+      `📋 *New WhatsApp Task — Approval Required*\n\n` +
+      `*Task:* ${description}\n` +
+      (due_date    ? `*Due Date:* ${due_date}\n`  : '') +
+      (priority    ? `*Priority:* ${priority}\n`  : '') +
+      (sender_name ? `*From:* ${sender_name}\n`   : '') +
+      (remarks     ? `*Remarks:* ${remarks}\n`    : '') +
+      `\n📲 *E-Marketing App* → Approvals → WhatsApp Tasks\n${baseUrl}/app`;
+
+    if (naman?.phone) {
+      sendWhatsApp(naman.phone, waMsg).catch(e => console.error('WA approval notify err:', e.message));
+    }
+
+    res.json({ ok: true, id: result.insertId, pending: true });
+  } catch (err) {
+    console.error('wa-bot/task err:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/wa-delegation/approve/:token — Naman clicks to approve the task
+app.get('/api/wa-delegation/approve/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const [[row]] = await db.query(
+      `SELECT * FROM tasks WHERE approval_token=? LIMIT 1`, [token]
+    );
+
+    if (!row) return res.status(404).send(waDelegationPage('Link Invalid', 'This approval link is invalid or has already expired.', false));
+    if (row.status === 'approved') return res.send(waDelegationPage('Already Approved ✅', 'This task was already approved and added to the system.', true));
+    if (row.status === 'denied')   return res.send(waDelegationPage('Already Denied', 'This task was already denied.', false));
+
+    // Move task into delegation_tasks
+    const [ins] = await db.query(
+      `INSERT INTO delegation_tasks
+         (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [row.description, row.assigned_to, row.assigned_by, row.due_date,
+       'pending', row.priority, 'no', row.remarks, row.client_id, row.url,
+       row.due_date ? 0 : 1]
+    );
+
+    await db.query(
+      `UPDATE tasks SET status='approved', approved_task_id=? WHERE id=?`,
+      [ins.insertId, row.id]
+    );
+
+    // Notify the sender via WhatsApp
+    if (row.sender_phone) {
+      const msg = `✅ *Task Approved!*\n\nAapka task approve ho gaya hai aur system mein add kar diya gaya hai.\n\n📋 *Task:* ${row.description}` +
+        (row.due_date ? `\n📅 *Due Date:* ${row.due_date}` : '');
+      sendWhatsApp(row.sender_phone, msg).catch(() => {});
+    }
+
+    return res.send(waDelegationPage('Task Approved ✅',
+      `Task has been approved and added to the delegation system.<br><br><em>"${row.description}"</em>`, true));
+  } catch (err) {
+    console.error('wa-delegation approve err:', err.message);
+    return res.status(500).send(waDelegationPage('Error', 'Something went wrong. Please try again.', false));
+  }
+});
+
+// GET /api/wa-delegation/deny/:token — Naman clicks to deny the task
+app.get('/api/wa-delegation/deny/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const [[row]] = await db.query(
+      `SELECT * FROM tasks WHERE approval_token=? LIMIT 1`, [token]
+    );
+
+    if (!row) return res.status(404).send(waDelegationPage('Link Invalid', 'This link is invalid or has already expired.', false));
+    if (row.status === 'approved') return res.send(waDelegationPage('Already Approved ✅', 'This task was already approved and added to the system.', true));
+    if (row.status === 'denied')   return res.send(waDelegationPage('Already Denied', 'This task was already denied.', false));
+
+    await db.query(`UPDATE tasks SET status='denied' WHERE id=?`, [row.id]);
+
+    // Notify the sender via WhatsApp
+    if (row.sender_phone) {
+      const msg = `❌ *Task Not Approved*\n\nAapka task review ke baad approve nahi kiya gaya.\n\n📋 *Task:* ${row.description}`;
+      sendWhatsApp(row.sender_phone, msg).catch(() => {});
+    }
+
+    return res.send(waDelegationPage('Task Denied ❌',
+      `Task has been denied.<br><br><em>"${row.description}"</em>`, false));
+  } catch (err) {
+    console.error('wa-delegation deny err:', err.message);
+    return res.status(500).send(waDelegationPage('Error', 'Something went wrong. Please try again.', false));
+  }
+});
+
+// ── Web app endpoints for WhatsApp delegation ─────────
+
+// GET /api/wa-delegation — pending tasks for Naman to review in the app
+app.get('/api/wa-delegation', requireAuth, async (req, res) => {
+  try {
+    const me = req.session;
+    if (me.role !== 'admin' && me.name !== 'Naman Gupta') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const [rows] = await db.query(
+      `SELECT wd.*,
+         u1.name AS assignedToName,
+         u2.name AS assignedByName,
+         c.name  AS clientName,
+         DATE_FORMAT(wd.due_date,'%Y-%m-%d') AS due_date
+       FROM tasks wd
+       LEFT JOIN users u1 ON wd.assigned_to = u1.id
+       LEFT JOIN users u2 ON wd.assigned_by = u2.id
+       LEFT JOIN clients c ON wd.client_id  = c.id
+       WHERE wd.status = 'pending'
+       ORDER BY wd.created_at DESC`
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/wa-delegation/count — badge count (pending only)
+app.get('/api/wa-delegation/count', requireAuth, async (req, res) => {
+  try {
+    const me = req.session;
+    if (me.role !== 'admin' && me.name !== 'Naman Gupta') {
+      return res.json({ count: 0 });
+    }
+    const [[{ cnt }]] = await db.query(
+      `SELECT COUNT(*) AS cnt FROM tasks WHERE status='pending'`
+    );
+    res.json({ count: cnt || 0 });
+  } catch (err) { res.json({ count: 0 }); }
+});
+
+// PUT /api/wa-delegation/:id — approve or deny from the web app
+app.put('/api/wa-delegation/:id', requireAuth, async (req, res) => {
+  try {
+    const me = req.session;
+    if (me.role !== 'admin' && me.name !== 'Naman Gupta') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { action } = req.body; // 'approved' | 'denied'
+    if (!['approved', 'denied'].includes(action)) {
+      return res.status(400).json({ error: 'action must be approved or denied' });
+    }
+
+    const [[row]] = await db.query(
+      `SELECT * FROM tasks WHERE id=? LIMIT 1`, [req.params.id]
+    );
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    if (row.status !== 'pending') return res.status(400).json({ error: `Already ${row.status}` });
+
+    if (action === 'approved') {
+      const [ins] = await db.query(
+        `INSERT INTO delegation_tasks
+           (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        [row.description, row.assigned_to, row.assigned_by, row.due_date,
+         'pending', row.priority, 'no', row.remarks, row.client_id, row.url,
+         row.due_date ? 0 : 1]
+      );
+      await db.query(
+        `UPDATE tasks SET status='approved', approved_task_id=? WHERE id=?`,
+        [ins.insertId, row.id]
+      );
+      // Notify the sender
+      if (row.sender_phone) {
+        const msg = `✅ *Task Approved!*\n\nAapka task approve ho gaya hai aur system mein add kar diya gaya hai.\n\n📋 *Task:* ${row.description}` +
+          (row.due_date ? `\n📅 *Due Date:* ${row.due_date}` : '');
+        sendWhatsApp(row.sender_phone, msg).catch(() => {});
+      }
+    } else {
+      await db.query(`UPDATE tasks SET status='denied' WHERE id=?`, [row.id]);
+      if (row.sender_phone) {
+        const msg = `❌ *Task Not Approved*\n\nAapka task review ke baad approve nahi kiya gaya.\n\n📋 *Task:* ${row.description}`;
+        sendWhatsApp(row.sender_phone, msg).catch(() => {});
+      }
+    }
+
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════
 // 📢 DAILY REMINDER — sends list of users who didn't fill today's task
 // to a WhatsApp group. Excludes CXO department.
 // ══════════════════════════════════════════════════════
@@ -6833,8 +7097,7 @@ app.post('/api/meetings', requireAuth, async (req, res) => {
           values.flat());
       }
     }
-    // Fire-and-forget notification so the request returns fast.
-    sendMeetingNotification(newId, 'created').catch(e => console.error('notify err:', e.message));
+    await sendMeetingNotification(newId, 'created').catch(e => console.error('notify err:', e.message));
     res.json({ ok: true, id: newId, meet_link: finalLink });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -6870,7 +7133,7 @@ app.put('/api/meetings/:id', requireAuth, async (req, res) => {
           values.flat());
       }
     }
-    sendMeetingNotification(id, rescheduled ? 'rescheduled' : 'created').catch(e => console.error('notify err:', e.message));
+    await sendMeetingNotification(id, rescheduled ? 'rescheduled' : 'created').catch(e => console.error('notify err:', e.message));
     res.json({ ok: true, rescheduled });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -6901,7 +7164,7 @@ app.delete('/api/meetings/:id', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'only organizer or admin can cancel' });
     }
     await db.query("UPDATE meetings SET status='cancelled' WHERE id=?", [id]);
-    sendMeetingNotification(id, 'cancelled').catch(e => console.error('notify err:', e.message));
+    await sendMeetingNotification(id, 'cancelled').catch(e => console.error('notify err:', e.message));
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
