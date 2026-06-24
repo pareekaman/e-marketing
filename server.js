@@ -4941,8 +4941,24 @@ app.post('/api/credit-cards/upload-excel', requireAuth, ccUpload.single('file'),
 // CREDIT CARDS — DB tables + PDF upload
 // ══════════════════════════════════════════════════════
 const { OpenAI } = require('openai');
+const pdfjsLib    = require('pdfjs-dist/legacy/build/pdf.js');
+const { createCanvas } = require('canvas');
 const CC_OPENAI_KEY   = process.env.OPENAI_API_KEY || '';
 const CC_OPENAI_MODEL = process.env.OPENAI_MODEL   || 'gpt-4.1-mini';
+
+async function pdfToBase64Images(pdfBuffer) {
+  const data = new Uint8Array(pdfBuffer);
+  const doc  = await pdfjsLib.getDocument({ data }).promise;
+  const imgs = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page     = await doc.getPage(p);
+    const viewport = page.getViewport({ scale: 2.0 });
+    const canvas   = createCanvas(viewport.width, viewport.height);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    imgs.push(canvas.toBuffer('image/png').toString('base64'));
+  }
+  return imgs;
+}
 
 const CC_EXTRACT_PROMPT = `You are a careful OCR and data-extraction engine reading a credit card statement PDF.
 Extract every visible field from the statement including card number, statement date, due date, balances, and all transactions.
@@ -5079,20 +5095,20 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
     if (!CC_OPENAI_KEY) return res.status(500).json({ error:'OPENAI_API_KEY not set in .env' });
 
     const openai = new OpenAI({ apiKey: CC_OPENAI_KEY });
-    const pdfBase64 = req.file.buffer.toString('base64');
+
+    // Convert each PDF page to PNG, then send all pages as images to OpenAI
+    const pageImages = await pdfToBase64Images(req.file.buffer);
+    const content = [{ type: 'input_text', text: CC_EXTRACT_PROMPT }];
+    for (const b64 of pageImages) {
+      content.push({ type: 'input_image', image_url: `data:image/png;base64,${b64}` });
+    }
 
     const aiResp = await openai.responses.create({
       model: CC_OPENAI_MODEL,
-      input: [{
-        role: 'user',
-        content: [
-          { type: 'input_file', input_file: { filename: req.file.originalname, file_data: `data:application/pdf;base64,${pdfBase64}` } },
-          { type: 'input_text', text: CC_EXTRACT_PROMPT }
-        ]
-      }]
+      input: [{ role: 'user', content }]
     });
 
-    const raw = safeParseCC(aiResp.output_text);
+    const raw    = safeParseCC(aiResp.output_text);
     const fields = raw.fields || raw;
     const parsed = parseCCJson(fields, req.file.originalname);
     if (parsed.bankName === 'Unknown') return res.status(422).json({ error:'Bank not detected. Supported: AMEX, HDFC, RBL Bank, ICICI, AXIS, SBI, SCB' });
