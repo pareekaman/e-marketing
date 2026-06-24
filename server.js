@@ -1105,11 +1105,11 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
       pending += parseInt(d[0].pending)||0; revised += parseInt(d[0].revised)||0; completed += parseInt(d[0].completed)||0;
     }
     if (!skipStats && (taskType === 'delegation' || taskType === 'both')) {
-      const [[u1]] = await db.query(`SELECT COUNT(*) AS cnt FROM delegation_tasks t WHERE status IN ('pending','revised') AND due_date > CURDATE() ${userFilter}`, params);
+      const [[u1]] = await db.query(`SELECT COUNT(*) AS cnt FROM delegation_tasks t WHERE status IN ('pending','revised') AND due_date > CURDATE() ${userFilter} ${delDateClause}`, delParams);
       upcoming += parseInt(u1.cnt)||0;
     }
     if (!skipStats && (taskType === 'checklist' || taskType === 'both')) {
-      const [[u2]] = await db.query(`SELECT COUNT(*) AS cnt FROM checklist_tasks t WHERE status IN ('pending','revised') AND due_date > CURDATE() ${userFilter}`, params);
+      const [[u2]] = await db.query(`SELECT COUNT(*) AS cnt FROM checklist_tasks t WHERE status IN ('pending','revised') AND due_date > CURDATE() ${userFilter} ${chlDateClause}`, chlParams);
       upcoming += parseInt(u2.cnt)||0;
     }
 
