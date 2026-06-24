@@ -1283,6 +1283,7 @@ tbody tr:last-child td{border-bottom:none;}
       <span class="nav-label-text">Approvals</span>
       <span id="approvalBadge" style="display:none;position:absolute;top:6px;right:8px;background:#ef4444;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;align-items:center;justify-content:center">0</span>
       <span id="transferBadge" style="display:none;position:absolute;top:6px;right:26px;background:#7c3aed;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;align-items:center;justify-content:center">0</span>
+      <span id="waDelegBadge" style="display:none;position:absolute;top:6px;right:44px;background:#25d366;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;align-items:center;justify-content:center">0</span>
     </div>
     <div class="nav-item" id="nav-users" style="display:none" onclick="navigate('users',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
@@ -1632,6 +1633,7 @@ tbody tr:last-child td{border-bottom:none;}
       <div class="tab active" id="apprTabTask" onclick="switchApprovalTab('task',this)">📋 Task Approvals</div>
       <div class="tab" id="apprTabTransfer" onclick="switchApprovalTab('transfer',this)" style="display:none">🔀 Transfer Requests</div>
       <div class="tab" id="apprTabLeave" onclick="switchApprovalTab('leave',this)">🗓 Leave Approvals <span id="apprLeaveBadge" style="display:none;background:#F39C12;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
+      <div class="tab" id="apprTabWa" onclick="switchApprovalTab('wa',this)" style="display:none">📱 WhatsApp Tasks <span id="apprWaBadge" style="display:none;background:#25d366;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
     </div>
 
     <!-- Task approvals panel -->
@@ -1651,6 +1653,13 @@ tbody tr:last-child td{border-bottom:none;}
     <!-- Leave approvals panel -->
     <div id="leaveApprovalsPanel" style="display:none">
       <div id="leaveApprovalsContent" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:6px">
+        <div class="empty">Loading…</div>
+      </div>
+    </div>
+
+    <!-- WhatsApp Tasks panel (Naman / admin only) -->
+    <div id="waDelPanel" style="display:none">
+      <div id="waDelContent" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden">
         <div class="empty">Loading…</div>
       </div>
     </div>
@@ -7352,13 +7361,15 @@ async function uploadUsersCSV() {
 
 // ══════════════════════════════════════════════════════
 async function loadApprovalBadge() {
-  const [d, lv] = await Promise.all([
+  const [d, lv, wa] = await Promise.all([
     api('/api/approvals/count'),
-    api('/api/leaves/pending-count')
+    api('/api/leaves/pending-count'),
+    api('/api/wa-delegation/count')
   ]);
-  const taskCnt = d.count || 0;
+  const taskCnt  = d.count  || 0;
   const leaveCnt = lv?.count || 0;
-  const total = taskCnt + leaveCnt;
+  const waCnt    = wa?.count || 0;
+  const total = taskCnt + leaveCnt + waCnt;
   const badge = document.getElementById('approvalBadge');
   if (total > 0) {
     badge.textContent = total;
@@ -7372,6 +7383,17 @@ async function loadApprovalBadge() {
     if (leaveCnt > 0) { tabBadge.textContent = leaveCnt; tabBadge.style.display = 'inline-block'; }
     else tabBadge.style.display = 'none';
   }
+  // WhatsApp tasks badge
+  const waTabBadge = document.getElementById('apprWaBadge');
+  if (waTabBadge) {
+    if (waCnt > 0) { waTabBadge.textContent = waCnt; waTabBadge.style.display = 'inline-block'; }
+    else waTabBadge.style.display = 'none';
+  }
+  const waDelegBadge = document.getElementById('waDelegBadge');
+  if (waDelegBadge) {
+    if (waCnt > 0) { waDelegBadge.textContent = waCnt; waDelegBadge.style.display = 'flex'; }
+    else waDelegBadge.style.display = 'none';
+  }
   // Also refresh transfer badge
   loadTransferBadge();
 }
@@ -7383,14 +7405,21 @@ function switchApprovalTab(tab, el) {
   document.getElementById('transferApprovalsPanel').style.display = tab==='transfer' ? 'block' : 'none';
   const leavePanel = document.getElementById('leaveApprovalsPanel');
   if (leavePanel) leavePanel.style.display = tab==='leave' ? 'block' : 'none';
+  const waPanel = document.getElementById('waDelPanel');
+  if (waPanel) waPanel.style.display = tab==='wa' ? 'block' : 'none';
   if (tab==='transfer') loadTransferApprovals();
   if (tab==='leave') loadLeaveApprovals();
+  if (tab==='wa') loadWaDelegations();
 }
 
 async function loadApprovals() {
   // Show Transfer tab for admin/HOD/PC
   if (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc') {
     document.getElementById('apprTabTransfer').style.display = 'block';
+  }
+  // Show WhatsApp Tasks tab for Naman Gupta or admin
+  if (ME.role === 'admin' || ME.name === 'Naman Gupta') {
+    document.getElementById('apprTabWa').style.display = 'block';
   }
   // Also pre-load leave approvals (so badge stays in sync)
   loadLeaveApprovals();
@@ -7445,6 +7474,67 @@ async function handleApproval(id, action) {
   await api(`/api/approvals/${id}`,'PUT',{action, note: note||''});
   showToast(action === 'approved' ? '✅ Approved!' : '❌ Rejected!');
   loadApprovals();
+  loadApprovalBadge();
+}
+
+// ── WhatsApp Delegation Functions ─────────────────────
+
+async function loadWaDelegations() {
+  const container = document.getElementById('waDelContent');
+  if (!container) return;
+  container.innerHTML = `<div class="empty">Loading…</div>`;
+  const rows = await api('/api/wa-delegation');
+  if (!Array.isArray(rows) || !rows.length) {
+    container.innerHTML = `<div class="empty" style="padding:36px">✅ Koi pending WhatsApp task nahi hai!</div>`;
+    return;
+  }
+  container.innerHTML = `
+    <div class="flat-tasks-table">
+      <table>
+        <thead><tr>
+          <th>Task</th>
+          <th>From (WhatsApp)</th>
+          <th>Assign To</th>
+          <th>Due Date</th>
+          <th>Priority</th>
+          <th>Remarks</th>
+          <th>Received</th>
+          <th style="min-width:140px">Action</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td style="max-width:220px;font-size:13px">${r.description||'—'}</td>
+              <td style="font-weight:600;font-size:13px">
+                ${r.sender_name ? `${r.sender_name}<br>` : ''}
+                <span style="color:#64748b;font-size:11px">${r.sender_phone||'—'}</span>
+              </td>
+              <td style="font-size:13px">${r.assignedToName||'—'}</td>
+              <td style="font-size:12px;color:#64748b">${r.due_date ? fmtDate(r.due_date) : '—'}</td>
+              <td><span class="status-badge ${r.priority||'low'}" style="font-size:10px;text-transform:capitalize">${r.priority||'low'}</span></td>
+              <td style="font-size:12px;color:#64748b;max-width:150px">${r.remarks||'—'}</td>
+              <td style="font-size:11px;color:#94a3b8">${new Date(r.created_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</td>
+              <td>
+                <button class="action-btn done" onclick="handleWaDelegation(${r.id},'approved')" style="margin-bottom:4px">✅ Approve</button>
+                <button class="action-btn delete" onclick="handleWaDelegation(${r.id},'denied')">❌ Deny</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function handleWaDelegation(id, action) {
+  const confirmed = await appConfirm(
+    action === 'approved'
+      ? 'Is task ko approve karein? Yeh delegation_tasks mein add ho jaayega aur sender ko WhatsApp notification jaayega.'
+      : 'Is task ko deny karein? Sender ko WhatsApp notification jaayega.'
+  );
+  if (!confirmed) return;
+  const r = await api(`/api/wa-delegation/${id}`, 'PUT', { action });
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast(action === 'approved' ? '✅ Task approved aur system mein add ho gaya!' : '❌ Task deny kar diya gaya');
+  loadWaDelegations();
   loadApprovalBadge();
 }
 
