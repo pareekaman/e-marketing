@@ -5031,13 +5031,13 @@ Rules for ALL banks:
   Transactions: description from "Description", amount from "Amount /₹"
 
 ════ AMEX (American Express) field names in the PDF: ════
-  Credit Card No.  ← "Membership Number"
-  Statement Date   ← "Date"
-  Billing Period   ← "Statement Period"
-  Total Amount Due ← "Closing Balance Rs"
-  Minimum Due      ← "Minimum Payment Rs"
-  Due Date         ← "Minimum Payment Due" (this is a date field)
-  Transactions: parse date and description both from the "Details" column`;
+  Credit Card No.  ← "Membership Number" or "Account No."
+  Statement Date   ← "Date" or "Statement Date"
+  Billing Period   ← "Statement Period" or "For the period" or "Billing Period"
+  Total Amount Due ← "Closing Balance Rs" or "Total Amount Due" or "New Balance"
+  Minimum Due      ← "Minimum Payment Rs" or "Minimum Amount Due" (numeric amount only)
+  Due Date         ← "Payment Due Date" or "Due Date" or "Pay By" (this is a date, DD/MM/YYYY or "Month DD, YYYY")
+  Transactions: each row in the "Details" column contains date + description together; split them — date is first (DD Mon or DD/MM/YYYY), rest is description; amount from "Amount Rs" column`;
 
 function safeParseCC(text) {
   text = String(text||'').trim().replace(/^```(?:json)?/m,'').replace(/```$/m,'').trim();
@@ -5102,6 +5102,18 @@ function parseCCAmount(str) {
   return parseFloat(String(str||'').replace(/[^0-9.]/g,'')) || 0;
 }
 
+// Deduplicate transactions: same date+amount → keep the one with the longest description
+function dedupeTxns(txns) {
+  const seen = new Map();
+  for (const t of txns) {
+    const key = `${t.txn_date}|${t.amount}|${t.txn_type}`;
+    const existing = seen.get(key);
+    if (!existing || String(t.description||'').length > String(existing.description||'').length)
+      seen.set(key, t);
+  }
+  return Array.from(seen.values());
+}
+
 function parseAmexCC(j, txns) {
   const f          = j.fields || j;
   const cardNumber = f['Credit Card No.'] || f['Membership Number']
@@ -5109,18 +5121,19 @@ function parseAmexCC(j, txns) {
                   || 'Unknown Card';
   const stmtDate   = parseCCDateDMY(f['Statement Date']) || parseCCDateLong(f['Statement Date'])
                   || parseCCDateDMY(f['Date']) || parseCCDateLong(f['Date']);
-  const dueDate    = parseCCDateAny(f['Due Date']) || parseCCDateAny(f['Minimum Payment Due'])
-                  || parseCCDateAny(f['Payment Due Date']) || parseCCDateAny(f['Due by']);
-  const payable    = parseCCAmount(f['Total Amount Due'] || f['Closing Balance Rs']);
-  const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Payment Rs'] || f['Minimum Payment']);
-  const period     = f['Billing Period'] || f['Statement Period'] || '';
-  const transactions = (txns || []).map(t => {
+  const dueDate    = parseCCDateAny(f['Due Date']) || parseCCDateAny(f['Payment Due Date'])
+                  || parseCCDateAny(f['Pay By']) || parseCCDateAny(f['Due by'])
+                  || parseCCDateAny(f['Minimum Payment Due']);
+  const payable    = parseCCAmount(f['Total Amount Due'] || f['Closing Balance Rs'] || f['New Balance']);
+  const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Amount Due'] || f['Minimum Payment Rs'] || f['Minimum Payment']);
+  const period     = f['Billing Period'] || f['Statement Period'] || f['For the period'] || '';
+  const transactions = dedupeTxns((txns || []).map(t => {
     const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
     const amount   = parseCCAmount(t.amount);
     if (!amount) return null;
     const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]) || parseCCDateLong(t.date);
     return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
-  }).filter(Boolean);
+  }).filter(Boolean));
   return { bankName:'AMEX', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
@@ -5133,15 +5146,13 @@ function parseHdfcCC(j, txns) {
   const payable    = parseCCAmount(f['Total Amount Due']);
   const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Amount Due']);
   const period     = f['Billing Period'] || '';
-  const transactions = (txns || []).map(t => {
+  const transactions = dedupeTxns((txns || []).map(t => {
     const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
     const amount   = parseCCAmount(t.amount);
     if (!amount) return null;
-    // parse date — "DD/MM/YYYY HH:MM:SS" or "DD/MM/YYYY"
-    const datePart = String(t.date || '').split(' ')[0];
-    const txn_date = parseCCDateDMY(datePart);
+    const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]);
     return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
-  }).filter(Boolean);
+  }).filter(Boolean));
   return { bankName:'HDFC', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
@@ -5155,13 +5166,13 @@ function parseAxisCC(j, txns) {
   const payable    = parseCCAmount(f['Total Amount Due'] || f['Total Payment Due'] || f['Payable Amount']);
   const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Amount Due'] || f['Minimum Payment Due']);
   const period     = f['Billing Period'] || f['Statement Period'] || '';
-  const transactions = (txns || []).map(t => {
+  const transactions = dedupeTxns((txns || []).map(t => {
     const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
     const amount   = parseCCAmount(t.amount);
     if (!amount) return null;
     const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]);
     return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
-  }).filter(Boolean);
+  }).filter(Boolean));
   return { bankName:'AXIS', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
@@ -5174,13 +5185,13 @@ function parseRblCC(j, txns) {
   const payable    = parseCCAmount(f['Total Amount Due'] || f['Payable Amount']);
   const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Amount Due'] || f['Minimum Payment Due']);
   const period     = f['Billing Period'] || f['Statement Period'] || '';
-  const transactions = (txns || []).map(t => {
+  const transactions = dedupeTxns((txns || []).map(t => {
     const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
     const amount   = parseCCAmount(t.amount);
     if (!amount) return null;
     const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]);
     return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
-  }).filter(Boolean);
+  }).filter(Boolean));
   return { bankName:'RBL Bank', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
