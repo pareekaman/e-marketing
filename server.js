@@ -4961,9 +4961,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = require.resolve('pdfjs-dist/legacy/buil
 const CC_OPENAI_KEY   = process.env.OPENAI_API_KEY || '';
 const CC_OPENAI_MODEL = process.env.OPENAI_MODEL   || 'gpt-4.1-mini';
 
-async function pdfToBase64Images(pdfBuffer) {
-  const data = new Uint8Array(pdfBuffer);
-  const doc  = await pdfjsLib.getDocument({ data }).promise;
+async function pdfToBase64Images(pdfBuffer, password = '') {
+  const data    = new Uint8Array(pdfBuffer);
+  const loadParams = { data };
+  if (password) loadParams.password = password;
+  const doc  = await pdfjsLib.getDocument(loadParams).promise;
   const imgs = [];
   for (let p = 1; p <= doc.numPages; p++) {
     const page     = await doc.getPage(p);
@@ -4976,18 +4978,65 @@ async function pdfToBase64Images(pdfBuffer) {
 }
 
 const CC_EXTRACT_PROMPT = `You are a careful OCR and data-extraction engine reading a credit card statement PDF.
-Extract every visible field from the statement including card number, statement date, due date, balances, and all transactions.
-Return ONLY valid JSON in this exact structure:
-{"fields":{"Field Name":"value"}}
-Rules:
-- For each transaction use "Month Day Description" as key and amount as value (e.g. "May 11 IONOS INC 877-461-2631 15.00 UNITED STATES DOLLAR": "1,488.85")
-- Append " CR" to the value for credit/payment entries
-- Extract Membership Number / Card Number / Account Number exactly as printed
-- Extract Statement Date as key "Date" with value in DD/MM/YYYY format
-- Extract the payment due date as key "Minimum Payment Due" with value in "Month DD, YYYY" format (e.g. "June 29, 2026")
-- Extract Closing Balance as key "Closing Balance Rs"
-- Extract minimum payment amount as key "Minimum Payment Rs"
-- Return JSON only, no markdown fences`;
+Return ONLY valid JSON — no markdown fences, no extra text.
+
+Output structure:
+{
+  "fields": {
+    "Bank Name": "...",
+    "Credit Card No.": "...",
+    "Statement Date": "DD/MM/YYYY",
+    "Billing Period": "...",
+    "Total Amount Due": "12345.67",
+    "Minimum Due": "1234.56",
+    "Due Date": "DD/MM/YYYY"
+  },
+  "transactions": [
+    {"date":"DD/MM/YYYY","description":"...","amount":"1234.56","type":"Dr or Cr"}
+  ]
+}
+
+Rules for ALL banks:
+- "type" must be exactly "Dr" for debits, "Cr" for credits/payments
+- "amount" must be numeric string only, no currency symbols
+- "transactions" must always be present ([] if none found)
+- All dates in DD/MM/YYYY format
+
+════ HDFC BANK field names in the PDF: ════
+  Credit Card No.  ← "Credit Card Number" or "Card Number"
+  Statement Date   ← "Statement Generation Date"
+  Billing Period   ← "Statement Period"
+  Total Amount Due ← "Total Payment Due"
+  Minimum Due      ← "Minimum Amount Due"
+  Due Date         ← "Payment Due Date"
+  Transactions: date includes time if printed (DD/MM/YYYY HH:MM:SS), description from "Transaction Description"
+
+════ AXIS BANK field names in the PDF: ════
+  Credit Card No.  ← "Card Number"
+  Statement Date   ← "Statement Generation Date"
+  Billing Period   ← "Statement Period"
+  Total Amount Due ← "Total Payment Due"
+  Minimum Due      ← "Minimum Amount Due"
+  Due Date         ← "Payment Due Date"
+  Transactions: description from "Transaction Details", amount from "Amount (Rs.)"
+
+════ RBL BANK field names in the PDF: ════
+  Credit Card No.  ← "Card Number"
+  Statement Date   ← "Statement Date"
+  Billing Period   ← "Statement Period"
+  Total Amount Due ← "Total Amount Due"
+  Minimum Due      ← "Minimum Amount Due"
+  Due Date         ← "Payment Due Date"
+  Transactions: description from "Description", amount from "Amount /₹"
+
+════ AMEX (American Express) field names in the PDF: ════
+  Credit Card No.  ← "Membership Number"
+  Statement Date   ← "Date"
+  Billing Period   ← "Statement Period"
+  Total Amount Due ← "Closing Balance Rs"
+  Minimum Due      ← "Minimum Payment Rs"
+  Due Date         ← "Minimum Payment Due" (this is a date field)
+  Transactions: parse date and description both from the "Details" column`;
 
 function safeParseCC(text) {
   text = String(text||'').trim().replace(/^```(?:json)?/m,'').replace(/```$/m,'').trim();
@@ -5052,43 +5101,103 @@ function parseCCAmount(str) {
   return parseFloat(String(str||'').replace(/[^0-9.]/g,'')) || 0;
 }
 
-function parseAmexCC(j) {
-  let cardNumber = '';
-  for (const k of Object.keys(j)) {
-    if (k.startsWith('Membership Number')) { cardNumber = String(j[k]).trim(); break; }
-  }
-  const stmtDate = parseCCDateDMY(j['Date']) || parseCCDateLong(j['Date']);
-  const dueDate  = parseCCDateAny(j['Due by'])
-                || parseCCDateAny(j['Minimum Payment Due'])
-                || parseCCDateAny(j['Minimum Payment Due Date'])
-                || parseCCDateAny(j['Payment Due Date'])
-                || parseCCDateAny(j['Due Date'])
-                || parseCCDateAny(j['Payment Due']);
-  const payable  = parseCCAmount(j['Closing Balance Rs']);
-  const minDue   = parseCCAmount(j['Minimum Payment Rs'] || j['Minimum Payment']);
-  const period   = j['Statement Period'] || '';
-  const yearMatch = period.match(/(\d{4})/g);
-  const year = yearMatch ? yearMatch[yearMatch.length-1] : (stmtDate ? stmtDate.substring(0,4) : String(new Date().getFullYear()));
-  const MO = {jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
-  const transactions = [];
-  for (const [key, value] of Object.entries(j)) {
-    const parts = key.trim().split(/\s+/);
-    const mo = MO[parts[0]?.toLowerCase()];
-    if (!mo || !parts[1] || isNaN(parseInt(parts[1]))) continue;
-    const amtStr = String(value);
-    const isCredit = /\bCR\b/i.test(amtStr);
-    const amount = parseCCAmount(amtStr);
-    if (!amount) continue;
-    transactions.push({ txn_date:`${year}-${mo}-${parts[1].padStart(2,'0')}`, description:parts.slice(2).join(' ').trim(), amount, txn_type:isCredit?'credit':'debit' });
-  }
+function parseAmexCC(j, txns) {
+  const f          = j.fields || j;
+  const cardNumber = f['Credit Card No.'] || f['Membership Number']
+                  || Object.entries(f).find(([k]) => k.startsWith('Membership Number'))?.[1]
+                  || 'Unknown Card';
+  const stmtDate   = parseCCDateDMY(f['Statement Date']) || parseCCDateLong(f['Statement Date'])
+                  || parseCCDateDMY(f['Date']) || parseCCDateLong(f['Date']);
+  const dueDate    = parseCCDateAny(f['Due Date']) || parseCCDateAny(f['Minimum Payment Due'])
+                  || parseCCDateAny(f['Payment Due Date']) || parseCCDateAny(f['Due by']);
+  const payable    = parseCCAmount(f['Total Amount Due'] || f['Closing Balance Rs']);
+  const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Payment Rs'] || f['Minimum Payment']);
+  const period     = f['Billing Period'] || f['Statement Period'] || '';
+  const transactions = (txns || []).map(t => {
+    const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
+    const amount   = parseCCAmount(t.amount);
+    if (!amount) return null;
+    const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]) || parseCCDateLong(t.date);
+    return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
+  }).filter(Boolean);
   return { bankName:'AMEX', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
+}
+
+function parseHdfcCC(j, txns) {
+  const f          = j.fields || j;
+  const cardNumber = f['Credit Card No.'] || f['Credit Card Number'] || f['Card Number'] || 'Unknown Card';
+  const stmtDate   = parseCCDateDMY(f['Statement Date']) || parseCCDateLong(f['Statement Date']);
+  const dueDate    = parseCCDateDMY(f['Due Date']) || parseCCDateLong(f['Due Date'])
+                  || parseCCDateDMY(f['Payment Due Date']) || parseCCDateLong(f['Payment Due Date']);
+  const payable    = parseCCAmount(f['Total Amount Due']);
+  const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Amount Due']);
+  const period     = f['Billing Period'] || '';
+  const transactions = (txns || []).map(t => {
+    const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
+    const amount   = parseCCAmount(t.amount);
+    if (!amount) return null;
+    // parse date — "DD/MM/YYYY HH:MM:SS" or "DD/MM/YYYY"
+    const datePart = String(t.date || '').split(' ')[0];
+    const txn_date = parseCCDateDMY(datePart);
+    return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
+  }).filter(Boolean);
+  return { bankName:'HDFC', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
+}
+
+function parseAxisCC(j, txns) {
+  const f          = j.fields || j;
+  const cardNumber = f['Credit Card No.'] || f['Card Number'] || f['Credit Card Number'] || 'Unknown Card';
+  const stmtDate   = parseCCDateDMY(f['Statement Date']) || parseCCDateLong(f['Statement Date'])
+                  || parseCCDateDMY(f['Statement Generation Date']) || parseCCDateLong(f['Statement Generation Date']);
+  const dueDate    = parseCCDateDMY(f['Due Date']) || parseCCDateLong(f['Due Date'])
+                  || parseCCDateDMY(f['Payment Due Date']) || parseCCDateLong(f['Payment Due Date']);
+  const payable    = parseCCAmount(f['Total Amount Due'] || f['Total Payment Due'] || f['Payable Amount']);
+  const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Amount Due'] || f['Minimum Payment Due']);
+  const period     = f['Billing Period'] || f['Statement Period'] || '';
+  const transactions = (txns || []).map(t => {
+    const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
+    const amount   = parseCCAmount(t.amount);
+    if (!amount) return null;
+    const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]);
+    return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
+  }).filter(Boolean);
+  return { bankName:'AXIS', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
+}
+
+function parseRblCC(j, txns) {
+  const f          = j.fields || j;
+  const cardNumber = f['Credit Card No.'] || f['Card Number'] || f['Credit Card Number'] || 'Unknown Card';
+  const stmtDate   = parseCCDateDMY(f['Statement Date']) || parseCCDateLong(f['Statement Date']);
+  const dueDate    = parseCCDateDMY(f['Due Date']) || parseCCDateLong(f['Due Date'])
+                  || parseCCDateDMY(f['Payment Due Date']) || parseCCDateLong(f['Payment Due Date']);
+  const payable    = parseCCAmount(f['Total Amount Due'] || f['Payable Amount']);
+  const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Amount Due'] || f['Minimum Payment Due']);
+  const period     = f['Billing Period'] || f['Statement Period'] || '';
+  const transactions = (txns || []).map(t => {
+    const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
+    const amount   = parseCCAmount(t.amount);
+    if (!amount) return null;
+    const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]);
+    return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
+  }).filter(Boolean);
+  return { bankName:'RBL Bank', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
 function parseCCJson(extracted, filename) {
   const text  = JSON.stringify(extracted).toLowerCase();
   const fname = (filename||'').toLowerCase();
+  // HDFC
+  if (text.includes('hdfc') || fname.includes('hdfc'))
+    return parseHdfcCC(extracted, extracted.transactions);
+  // AXIS
+  if (text.includes('axis') || fname.includes('axis'))
+    return parseAxisCC(extracted, extracted.transactions);
+  // RBL
+  if (text.includes('rbl') || fname.includes('rbl'))
+    return parseRblCC(extracted, extracted.transactions);
+  // AMEX
   if (text.includes('american express') || text.includes('membership number') || fname.includes('amex'))
-    return parseAmexCC(extracted);
+    return parseAmexCC(extracted, extracted.transactions);
   const bank = detectBankName(text) || detectBankName(fname) || 'Unknown';
   return { bankName:bank, cardNumber:'Unknown Card', statementDate:null, paymentDueDate:null, payableAmount:0, minAmountDue:0, statementPeriod:'', transactions:[] };
 }
@@ -5124,7 +5233,8 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
     const openai = new OpenAI({ apiKey: CC_OPENAI_KEY });
 
     // Convert each PDF page to PNG, then send all pages as images to OpenAI
-    const pageImages = await pdfToBase64Images(req.file.buffer);
+    const pdfPassword = req.body.password || '';
+    const pageImages = await pdfToBase64Images(req.file.buffer, pdfPassword);
     const content = [{ type: 'input_text', text: CC_EXTRACT_PROMPT }];
     for (const b64 of pageImages) {
       content.push({ type: 'input_image', image_url: `data:image/png;base64,${b64}` });
@@ -5136,13 +5246,18 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
     });
 
     const raw    = safeParseCC(aiResp.output_text);
-    const fields = raw.fields || raw;
-    const parsed = parseCCJson(fields, req.file.originalname);
+    const parsed = parseCCJson(raw, req.file.originalname);
     if (parsed.bankName === 'Unknown') return res.status(422).json({ error:'Bank not detected. Supported: AMEX, HDFC, RBL Bank, ICICI, AXIS, SBI, SCB' });
 
     const saved = await saveCCToDb(parsed);
     res.json({ success:true, bankName:parsed.bankName, cardNumber:parsed.cardNumber, statementDate:parsed.statementDate, transactionsAdded:saved.addedTransactions, totalTransactions:parsed.transactions.length });
-  } catch(err) { res.status(500).json({ error:err.message }); }
+  } catch(err) {
+    if (err.name === 'PasswordException') {
+      const wrongPwd = err.code === 2;
+      return res.status(400).json({ error: wrongPwd ? 'PDF_WRONG_PASSWORD' : 'PDF_PASSWORD_REQUIRED' });
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/credit-cards/data

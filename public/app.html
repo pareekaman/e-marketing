@@ -13460,14 +13460,31 @@ function ccSelectCard(cardNum) {
   ccRenderStatements();
 }
 
+let _ccPendingFile = null;
+
 async function ccUploadPdf(input) {
   const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  _ccPendingFile = file;
+  await _ccDoUpload('');
+}
+
+async function ccRetryWithPassword() {
+  const pwd = document.getElementById('ccPdfPwdRetry')?.value || '';
+  if (!pwd) return;
+  await _ccDoUpload(pwd);
+}
+
+async function _ccDoUpload(password) {
+  const file = _ccPendingFile;
   if (!file) return;
   const status = document.getElementById('ccUploadStatus');
   if (status) status.innerHTML = '<span style="color:#1a56db">⏳ Scanning PDF… (30–60 sec)</span>';
   try {
     const fd = new FormData();
     fd.append('pdf', file);
+    if (password) fd.append('password', password);
     const token = localStorage.getItem('authToken') || '';
     const r = await fetch('/api/credit-cards/upload-pdf', {
       method: 'POST',
@@ -13475,10 +13492,29 @@ async function ccUploadPdf(input) {
       body: fd
     });
     const data = await r.json();
+
+    if (data.error === 'PDF_PASSWORD_REQUIRED' || data.error === 'PDF_WRONG_PASSWORD') {
+      const wrongMsg = data.error === 'PDF_WRONG_PASSWORD' ? '<span style="color:#dc2626">❌ Wrong password.</span> ' : '';
+      if (status) status.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px">
+        ${wrongMsg}<span style="color:#d97706">🔒 PDF is password protected. Enter password:</span>
+        <input type="password" id="ccPdfPwdRetry" placeholder="Enter PDF password"
+          style="padding:5px 10px;border:1px solid #d97706;border-radius:6px;font-size:12px;width:160px;outline:none"
+          onkeydown="if(event.key==='Enter')ccRetryWithPassword()">
+        <button onclick="ccRetryWithPassword()"
+          style="padding:5px 12px;background:#d97706;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">
+          Unlock & Upload
+        </button>
+      </div>`;
+      setTimeout(() => document.getElementById('ccPdfPwdRetry')?.focus(), 50);
+      return;
+    }
+
     if (!r.ok || data.error) {
       if (status) status.innerHTML = `<span style="color:#dc2626">❌ ${dtEscape(data.error||'Upload failed')}</span>`;
-      input.value = ''; return;
+      return;
     }
+
+    _ccPendingFile = null;
     // Reload from DB
     const fresh = await api('/api/credit-cards/data');
     if (fresh && !fresh.error) _ccData = fresh;
@@ -13494,7 +13530,6 @@ async function ccUploadPdf(input) {
   } catch(e) {
     if (status) status.innerHTML = `<span style="color:#dc2626">❌ ${e.message}</span>`;
   }
-  input.value = '';
 }
 
 async function ccDeleteStatement(bank, cardNum, stmtIdx) {
