@@ -13412,6 +13412,8 @@ let _ccData       = {};
 let _ccActiveBank = localStorage.getItem('cc_active_bank') || null;
 let _ccActiveCard = localStorage.getItem('cc_active_card') || null;
 let _ccDepts = [];
+let _ccFilter  = { preset:'all', dateFrom:null, dateTo:null, amtMin:'', amtMax:'' };
+let _ccCal     = { show:false, leftYear:new Date().getFullYear(), leftMonth:new Date().getMonth()-1, tempFrom:null, tempTo:null, hover:null };
 
 function ccSave() {
   try {
@@ -13461,6 +13463,180 @@ function ccSelectCard(cardNum) {
 }
 
 let _ccPendingFile = null;
+
+// ── CC Filters ────────────────────────────────────────────
+const _CC_PRESETS = [
+  { key:'last7',     label:'Last 7 days'  },
+  { key:'last14',    label:'Last 14 days' },
+  { key:'last30',    label:'Last 30 days' },
+  { key:'last90',    label:'Last 90 days' },
+  { key:'thismonth', label:'This month'   },
+  { key:'lastmonth', label:'Last month'   },
+  { key:'ytd',       label:'Year to date' },
+  { key:'all',       label:'All time'     },
+];
+const _CC_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const _CC_DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+function ccPresetRange(key) {
+  const t = new Date(), fmt = d => d.toISOString().slice(0,10), ts = fmt(t);
+  const ago = n => { const d = new Date(t); d.setDate(d.getDate()-n); return fmt(d); };
+  if (key==='last7')     return [ago(6), ts];
+  if (key==='last14')    return [ago(13), ts];
+  if (key==='last30')    return [ago(29), ts];
+  if (key==='last90')    return [ago(89), ts];
+  if (key==='thismonth') return [fmt(new Date(t.getFullYear(),t.getMonth(),1)), ts];
+  if (key==='lastmonth') return [fmt(new Date(t.getFullYear(),t.getMonth()-1,1)), fmt(new Date(t.getFullYear(),t.getMonth(),0))];
+  if (key==='ytd')       return [`${t.getFullYear()}-01-01`, ts];
+  return [null, null];
+}
+
+function ccFilterLabel() {
+  const f = _ccFilter;
+  if (!f.dateFrom && !f.dateTo) return 'All time';
+  const p = _CC_PRESETS.find(p => p.key === f.preset);
+  if (p && f.preset !== 'all') return p.label;
+  return `${f.dateFrom} – ${f.dateTo}`;
+}
+
+function ccFilterSubLabel() {
+  const f = _ccFilter;
+  if (!f.dateFrom && !f.dateTo) return '';
+  return `${f.dateFrom||''} – ${f.dateTo||''}`;
+}
+
+function ccOpenDatePicker() {
+  const t = new Date();
+  _ccCal.leftYear  = t.getFullYear();
+  _ccCal.leftMonth = t.getMonth() - 1;
+  if (_ccCal.leftMonth < 0) { _ccCal.leftMonth = 11; _ccCal.leftYear--; }
+  _ccCal.tempFrom = _ccFilter.dateFrom;
+  _ccCal.tempTo   = _ccFilter.dateTo;
+  _ccCal.hover    = null;
+  _ccCal.show     = true;
+  ccCalRender();
+  document.getElementById('ccDatePickerWrap').style.display = 'block';
+}
+
+function ccCloseDatePicker() {
+  _ccCal.show = false;
+  const el = document.getElementById('ccDatePickerWrap');
+  if (el) el.style.display = 'none';
+}
+
+function ccCalNav(dir) {
+  _ccCal.leftMonth += dir;
+  if (_ccCal.leftMonth > 11) { _ccCal.leftMonth = 0; _ccCal.leftYear++; }
+  if (_ccCal.leftMonth < 0)  { _ccCal.leftMonth = 11; _ccCal.leftYear--; }
+  ccCalRender();
+}
+
+function ccCalClickDay(dateStr) {
+  if (!_ccCal.tempFrom || (_ccCal.tempFrom && _ccCal.tempTo)) {
+    _ccCal.tempFrom = dateStr; _ccCal.tempTo = null;
+  } else {
+    if (dateStr < _ccCal.tempFrom) { _ccCal.tempTo = _ccCal.tempFrom; _ccCal.tempFrom = dateStr; }
+    else _ccCal.tempTo = dateStr;
+  }
+  ccCalRender();
+}
+
+function ccCalHover(dateStr) {
+  if (_ccCal.tempFrom && !_ccCal.tempTo) { _ccCal.hover = dateStr; ccCalRender(); }
+}
+
+function ccCalSelectPreset(key) {
+  _ccCal.tempFrom = null; _ccCal.tempTo = null; _ccCal.hover = null;
+  const [from, to] = ccPresetRange(key);
+  _ccCal.tempFrom = from; _ccCal.tempTo = to;
+  // set active preset highlight
+  document.querySelectorAll('.cc-preset-btn').forEach(b => {
+    b.style.background = b.dataset.preset === key ? '#1a56db' : 'transparent';
+    b.style.color      = b.dataset.preset === key ? '#fff' : '#374151';
+  });
+  ccCalRender();
+}
+
+function ccCalApply() {
+  const key = document.querySelector('.cc-preset-btn[style*="1a56db"]')?.dataset.preset || 'custom';
+  _ccFilter.preset   = key;
+  _ccFilter.dateFrom = _ccCal.tempFrom || null;
+  _ccFilter.dateTo   = _ccCal.tempTo   || null;
+  ccCloseDatePicker();
+  ccUpdateFilterBar();
+  ccRenderStatements();
+}
+
+function ccFilterApplyAmt() {
+  _ccFilter.amtMin = document.getElementById('ccAmtMin')?.value || '';
+  _ccFilter.amtMax = document.getElementById('ccAmtMax')?.value || '';
+  ccRenderStatements();
+}
+
+function ccFilterClear() {
+  _ccFilter = { preset:'all', dateFrom:null, dateTo:null, amtMin:'', amtMax:'' };
+  const minEl = document.getElementById('ccAmtMin'), maxEl = document.getElementById('ccAmtMax');
+  if (minEl) minEl.value = ''; if (maxEl) maxEl.value = '';
+  ccUpdateFilterBar();
+  ccRenderStatements();
+}
+
+function ccUpdateFilterBar() {
+  const btn = document.getElementById('ccDateFilterBtn');
+  if (!btn) return;
+  const sub = ccFilterSubLabel();
+  btn.innerHTML = `<span style="font-size:15px">📅</span>
+    <div style="text-align:left;line-height:1.2">
+      <div style="font-weight:700;font-size:13px">${dtEscape(ccFilterLabel())}</div>
+      ${sub ? `<div style="font-size:11px;opacity:.7">${dtEscape(sub)}</div>` : ''}
+    </div>`;
+}
+
+function _ccCalMonthGrid(year, month) {
+  const firstDay    = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const tf = _ccCal.tempFrom, tt = _ccCal.tempTo, hv = _ccCal.hover;
+  const rangeEnd = tt || (tf && hv && hv > tf ? hv : null);
+  let html = `<div style="width:224px">
+    <div style="text-align:center;font-weight:700;font-size:14px;margin-bottom:10px;color:#0f172a">${_CC_MONTHS[month]} ${year}</div>
+    <div style="display:grid;grid-template-columns:repeat(7,32px);gap:0">
+      ${_CC_DAYS.map(d=>`<div style="text-align:center;font-size:11px;font-weight:600;color:#94a3b8;padding:4px 0">${d}</div>`).join('')}`;
+  for (let i=0;i<firstDay;i++) html+=`<div></div>`;
+  for (let d=1;d<=daysInMonth;d++) {
+    const ds   = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isFr = ds===tf, isTo = ds===tt;
+    const inRng = tf && rangeEnd && ds>tf && ds<rangeEnd;
+    let bg='transparent', col='#374151', brR='50%', fw='400';
+    if (isFr||isTo)     { bg='#1a56db'; col='#fff'; fw='700'; }
+    else if (inRng)     { bg='#dbeafe'; col='#1e40af'; brR='0'; }
+    if (isFr && rangeEnd && ds<rangeEnd) brR='50% 0 0 50%';
+    if (isTo && tf && ds>tf)             brR='0 50% 50% 0';
+    html+=`<div onclick="ccCalClickDay('${ds}')" onmouseenter="ccCalHover('${ds}')"
+      style="height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:${bg};border-radius:${brR};color:${col};font-size:13px;font-weight:${fw};transition:background .1s;user-select:none"
+      onmouseover="if(this.style.background==='transparent')this.style.background='#f1f5f9'"
+      onmouseout="this.style.background='${bg}'">${d}</div>`;
+  }
+  return html + '</div></div>';
+}
+
+function ccCalRender() {
+  const wrap = document.getElementById('ccCalBody');
+  if (!wrap) return;
+  let ry = _ccCal.leftYear, rm = _ccCal.leftMonth;
+  let rm2 = rm+1, ry2 = ry;
+  if (rm2>11) { rm2=0; ry2++; }
+  wrap.innerHTML = _ccCalMonthGrid(ry, rm) + _ccCalMonthGrid(ry2, rm2);
+  // highlight active preset
+  const tf=_ccCal.tempFrom, tt=_ccCal.tempTo;
+  document.querySelectorAll('.cc-preset-btn').forEach(b => {
+    const [pf,pt] = ccPresetRange(b.dataset.preset);
+    const match = b.dataset.preset==='all' ? (!tf&&!tt) : (pf===tf&&pt===tt);
+    b.style.background = match ? '#1a56db' : 'transparent';
+    b.style.color      = match ? '#fff'    : '#374151';
+    b.style.fontWeight = match ? '700' : '400';
+  });
+}
+// ─────────────────────────────────────────────────────────
 
 async function ccUploadPdf(input) {
   const file = input.files[0];
@@ -13542,7 +13718,15 @@ async function ccDeleteStatement(bank, cardNum, stmtIdx) {
     await fetch(`/api/credit-cards/statement/${stmt.id}`, { method:'DELETE', headers: token ? {'Authorization':'Bearer '+token} : {} });
   }
   _ccData[bank][cardNum].splice(stmtIdx, 1);
-  ccRenderStatements();
+  // If card has no statements left, remove the card tab too
+  if (_ccData[bank][cardNum].length === 0) {
+    delete _ccData[bank][cardNum];
+    const remaining = Object.keys(_ccData[bank] || {});
+    _ccActiveCard = remaining[0] || null;
+    ccRenderDetail();
+  } else {
+    ccRenderStatements();
+  }
   showToast('Statement deleted');
 }
 
@@ -13605,11 +13789,81 @@ function ccRenderDetail() {
     </button>`).join('');
 
   panel.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
       ${cardTabs}
     </div>
+
+    <!-- Filter bar -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;padding:12px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
+      <!-- Date filter -->
+      <div style="position:relative">
+        <button id="ccDateFilterBtn" onclick="ccOpenDatePicker()"
+          style="display:flex;align-items:center;gap:8px;padding:7px 14px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fff;cursor:pointer;min-width:160px;font-family:inherit">
+          <span style="font-size:15px">📅</span>
+          <div style="text-align:left;line-height:1.2">
+            <div style="font-weight:700;font-size:13px">All time</div>
+          </div>
+        </button>
+        <!-- Date picker dropdown -->
+        <div id="ccDatePickerWrap" style="display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:999;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.14);padding:0;overflow:hidden;min-width:600px">
+          <div style="display:flex">
+            <!-- Presets -->
+            <div style="padding:16px 8px;border-right:1px solid #f1f5f9;min-width:140px">
+              ${_CC_PRESETS.map(p=>`<button class="cc-preset-btn" data-preset="${p.key}" onclick="ccCalSelectPreset('${p.key}')"
+                style="display:block;width:100%;text-align:left;padding:8px 14px;border:none;border-radius:8px;background:transparent;cursor:pointer;font-size:13px;color:#374151;font-family:inherit;margin-bottom:2px;transition:background .1s"
+                onmouseover="if(this.style.background!=='rgb(26, 86, 219)')this.style.background='#f1f5f9'"
+                onmouseout="if(this.style.background!=='rgb(26, 86, 219)')this.style.background='transparent'">${p.label}</button>`).join('')}
+            </div>
+            <!-- Calendars -->
+            <div style="padding:20px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                <button onclick="ccCalNav(-1)" style="border:none;background:none;cursor:pointer;font-size:18px;color:#374151;padding:4px 8px;border-radius:6px"
+                  onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='none'">‹</button>
+                <div id="ccCalBody" style="display:flex;gap:24px"></div>
+                <button onclick="ccCalNav(1)"  style="border:none;background:none;cursor:pointer;font-size:18px;color:#374151;padding:4px 8px;border-radius:6px"
+                  onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='none'">›</button>
+              </div>
+            </div>
+          </div>
+          <!-- Footer -->
+          <div style="padding:12px 20px;border-top:1px solid #f1f5f9;display:flex;justify-content:flex-end;gap:10px;background:#fafafa">
+            <button onclick="ccCloseDatePicker()"
+              style="padding:7px 18px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit"
+              onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">Cancel</button>
+            <button onclick="ccCalApply()"
+              style="padding:7px 18px;border:none;border-radius:8px;background:#1a56db;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit"
+              onmouseover="this.style.background='#1e40af'" onmouseout="this.style.background='#1a56db'">Apply</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Amount filter -->
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:12px;color:#64748b;font-weight:600">₹</span>
+        <input id="ccAmtMin" type="number" placeholder="Min amount" value="${_ccFilter.amtMin||''}"
+          style="width:110px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit"
+          onfocus="this.style.borderColor='#1a56db'" onblur="this.style.borderColor='#e2e8f0'"
+          onkeydown="if(event.key==='Enter')ccFilterApplyAmt()">
+        <span style="color:#94a3b8">—</span>
+        <input id="ccAmtMax" type="number" placeholder="Max amount" value="${_ccFilter.amtMax||''}"
+          style="width:110px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit"
+          onfocus="this.style.borderColor='#1a56db'" onblur="this.style.borderColor='#e2e8f0'"
+          onkeydown="if(event.key==='Enter')ccFilterApplyAmt()">
+        <button onclick="ccFilterApplyAmt()"
+          style="padding:7px 14px;border:none;background:#1a56db;color:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit"
+          onmouseover="this.style.background='#1e40af'" onmouseout="this.style.background='#1a56db'">Apply</button>
+      </div>
+
+      <!-- Clear all -->
+      ${(_ccFilter.dateFrom||_ccFilter.amtMin||_ccFilter.amtMax)?`
+      <button onclick="ccFilterClear()"
+        style="padding:7px 14px;border:1.5px solid #fca5a5;background:#fff;color:#dc2626;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit"
+        onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='#fff'">✕ Clear filters</button>`:''}
+    </div>
+
     <div id="ccStatementsWrap"></div>`;
 
+  ccCalRender();
   ccRenderStatements();
 }
 
@@ -13630,57 +13884,103 @@ function ccRenderStatements() {
   }
 
   wrap.innerHTML = stmts.map((s, si) => {
-    const txns  = s.transactions || [];
+    const allTxns = s.transactions || [];
+    const txns = allTxns.map((t, i) => ({...t, _oi: i})).filter(t => {
+      if (_ccFilter.dateFrom && t.date && t.date < _ccFilter.dateFrom) return false;
+      if (_ccFilter.dateTo   && t.date && t.date > _ccFilter.dateTo)   return false;
+      const amt = parseFloat(t.amount)||0;
+      if (_ccFilter.amtMin !== '' && amt < parseFloat(_ccFilter.amtMin)) return false;
+      if (_ccFilter.amtMax !== '' && amt > parseFloat(_ccFilter.amtMax)) return false;
+      return true;
+    });
     const txSum = txns.reduce((acc,t) => acc + (t.txn_type === 'credit' ? 0 : (parseFloat(t.amount)||0)), 0);
 
-    const txRows = txns.map((t, ti) => `
+    const txRows = txns.map((t, ti) => {
+      const oi = t._oi; // original index in unfiltered array
+      return `
       <tr style="border-top:1px solid #f1f5f9;${ti%2===1?'background:#fafafa':''}">
         <td style="padding:8px 12px;font-size:13px;color:#475569;white-space:nowrap">${dtEscape(t.date||'—')}</td>
         <td style="padding:8px 12px;font-size:13px;color:#0f172a">${dtEscape(t.description||'—')}</td>
-        <td style="padding:8px 12px;font-size:13px;font-weight:600;color:#0f172a;text-align:right;white-space:nowrap">${(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+        <td style="padding:8px 12px;font-size:13px;font-weight:600;color:${t.txn_type==='credit'?'#16a34a':'#0f172a'};text-align:right;white-space:nowrap">${t.txn_type==='credit'?'+ ':''}${(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
         <td style="padding:6px 8px">
           <input type="text" value="${dtEscape(t.expenses||'')}" placeholder="e.g. e-marketing"
-            onchange="ccUpdateField('${safeBank}','${safeCard}',${si},${ti},'expenses',this.value)"
+            onchange="ccUpdateField('${safeBank}','${safeCard}',${si},${oi},'expenses',this.value)"
             style="width:110px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:inherit"
             onfocus="this.style.borderColor='#1a56db'" onblur="this.style.borderColor='#e2e8f0'">
         </td>
         <td style="padding:6px 8px">
-          <select data-dept-sel="${si}-${ti}"
-            onchange="ccUpdateField('${safeBank}','${safeCard}',${si},${ti},'department',this.value)"
+          <select data-dept-sel="${si}-${oi}"
+            onchange="ccUpdateField('${safeBank}','${safeCard}',${si},${oi},'department',this.value)"
             style="width:130px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:inherit">
             <option value="">— Dept —</option>
             ${deptOpts}
           </select>
         </td>
         <td style="padding:6px 8px;text-align:center">
-          <button onclick="ccDeleteTransaction('${safeBank}','${safeCard}',${si},${ti})" title="Delete row"
+          <button onclick="ccDeleteTransaction('${safeBank}','${safeCard}',${si},${oi})" title="Delete row"
             style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:15px;padding:3px 5px;border-radius:6px;line-height:1;transition:color .15s,background .15s"
             onmouseover="this.style.color='#dc2626';this.style.background='#fee2e2'"
             onmouseout="this.style.color='#94a3b8';this.style.background='none'">🗑</button>
         </td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
+
+    const prev      = stmts[si + 1]; // previous month's statement (stmts sorted newest-first)
+    const fmtDelta  = (cur, old) => {
+      if (!old || !cur) return '';
+      const diff = cur - old, pct = Math.abs(Math.round(diff/old*100));
+      const up = diff > 0, clr = up ? '#dc2626' : '#16a34a', arrow = up ? '↑' : '↓';
+      return `<div style="font-size:11px;color:${clr};font-weight:600;margin-top:3px">${arrow} ₹${Math.abs(diff).toLocaleString('en-IN',{minimumFractionDigits:2})} <span style="opacity:.7">(${pct}%)</span></div>`;
+    };
+    const fmtTxDelta = (cur, old) => {
+      if (old == null) return '';
+      const diff = cur - old;
+      if (diff === 0) return `<div style="font-size:11px;color:#64748b;margin-top:3px">= same as last</div>`;
+      const clr = diff > 0 ? '#d97706' : '#16a34a', arrow = diff > 0 ? '↑' : '↓';
+      return `<div style="font-size:11px;color:${clr};font-weight:600;margin-top:3px">${arrow} ${Math.abs(diff)} vs last</div>`;
+    };
+    const curPayable = s.payable_amount || txSum;
+    const prevPayable = prev ? (prev.payable_amount || (prev.transactions||[]).reduce((a,t)=>a+(t.txn_type==='credit'?0:parseFloat(t.amount)||0),0)) : null;
+    const prevTxCount = prev ? (prev.transactions||[]).length : null;
 
     return `
-    <div style="border:1px solid #e2e8f0;border-radius:12px;margin-bottom:16px;overflow:hidden">
-      <!-- Statement header -->
-      <div style="background:linear-gradient(135deg,${color}ee,${color}88);padding:16px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;color:#fff">
-        <div>
-          <div style="font-size:14px;font-weight:800;opacity:.95;margin-bottom:2px">🏦 ${dtEscape(bank)}</div>
-          <div style="font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px">Statement</div>
-          <div style="font-size:16px;font-weight:800">${dtEscape(s.statement_date||'—')}</div>
-          <div style="font-size:12px;opacity:.8;margin-top:4px">Due: <strong>${dtEscape(s.payment_due_date||'—')}</strong>${s.min_amount_due?` &nbsp;·&nbsp; Min Due: ₹${s.min_amount_due.toLocaleString('en-IN')}`:''}</div>
+    <div style="border:1px solid #e2e8f0;border-radius:14px;margin-bottom:20px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+      <!-- Top bar: bank name + delete -->
+      <div style="background:${color};padding:12px 20px;display:flex;justify-content:space-between;align-items:center">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="color:#fff;font-size:15px;font-weight:800;letter-spacing:.01em">🏦 ${dtEscape(bank)}</span>
+          <span style="background:rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px">${txns.length} transactions</span>
         </div>
-        <div style="display:flex;align-items:center;gap:16px">
-          <div style="text-align:right">
-            <div style="font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.07em">Payable</div>
-            <div style="font-size:20px;font-weight:800">₹${(s.payable_amount||txSum).toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
-            <div style="font-size:11px;opacity:.65;margin-top:2px">${txns.length} txn${txns.length!==1?'s':''}</div>
-          </div>
-          <button onclick="ccDeleteStatement('${safeBank}','${safeCard}',${si})"
-            title="Delete this statement"
-            style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;backdrop-filter:blur(4px);white-space:nowrap"
-            onmouseover="this.style.background='rgba(220,38,38,.5)'"
-            onmouseout="this.style.background='rgba(255,255,255,.15)'">🗑 Delete Statement</button>
+        <button onclick="ccDeleteStatement('${safeBank}','${safeCard}',${si})"
+          title="Delete this statement"
+          style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);color:#fff;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap"
+          onmouseover="this.style.background='rgba(220,38,38,.6)'"
+          onmouseout="this.style.background='rgba(255,255,255,.15)'">🗑 Delete</button>
+      </div>
+      <!-- Stats grid -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-bottom:1px solid #e2e8f0">
+        <div style="padding:14px 16px;border-right:1px solid #f1f5f9">
+          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Statement Date</div>
+          <div style="font-size:14px;font-weight:700;color:#0f172a">${dtEscape(s.statement_date||'—')}</div>
+        </div>
+        <div style="padding:14px 16px;border-right:1px solid #f1f5f9">
+          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Billing Period</div>
+          <div style="font-size:12px;font-weight:600;color:#0f172a;line-height:1.4">${dtEscape(s.statement_period||'—')}</div>
+        </div>
+        <div style="padding:14px 16px;border-right:1px solid #f1f5f9">
+          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Due Date</div>
+          <div style="font-size:14px;font-weight:700;color:#dc2626">${dtEscape(s.payment_due_date||'—')}</div>
+        </div>
+        <div style="padding:14px 16px;border-right:1px solid #f1f5f9">
+          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Minimum Due</div>
+          <div style="font-size:14px;font-weight:700;color:#d97706">${s.min_amount_due?'₹'+parseFloat(s.min_amount_due).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</div>
+          ${fmtDelta(s.min_amount_due, prev?.min_amount_due)}
+        </div>
+        <div style="padding:14px 16px;background:#f0fdf4">
+          <div style="font-size:10px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Total Payable</div>
+          <div style="font-size:18px;font-weight:800;color:#0f172a">₹${curPayable.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
+          ${fmtDelta(curPayable, prevPayable)}
+          ${fmtTxDelta(allTxns.length, prevTxCount)}
         </div>
       </div>
       <!-- Transactions -->
@@ -13712,10 +14012,10 @@ function ccRenderStatements() {
     </div>`;
   }).join('');
 
-  // Set department dropdowns after render
+  // Set department dropdowns after render (use original index oi)
   stmts.forEach((s, si) => {
-    (s.transactions||[]).forEach((t, ti) => {
-      const sel = wrap.querySelector(`[data-dept-sel="${si}-${ti}"]`);
+    (s.transactions||[]).forEach((t, oi) => {
+      const sel = wrap.querySelector(`[data-dept-sel="${si}-${oi}"]`);
       if (sel && t.department) sel.value = t.department;
     });
   });

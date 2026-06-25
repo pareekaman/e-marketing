@@ -4962,18 +4962,19 @@ const CC_OPENAI_KEY   = process.env.OPENAI_API_KEY || '';
 const CC_OPENAI_MODEL = process.env.OPENAI_MODEL   || 'gpt-4.1-mini';
 
 async function pdfToBase64Images(pdfBuffer, password = '') {
-  const data    = new Uint8Array(pdfBuffer);
+  const data       = new Uint8Array(pdfBuffer);
   const loadParams = { data };
   if (password) loadParams.password = password;
-  const doc  = await pdfjsLib.getDocument(loadParams).promise;
-  const imgs = [];
-  for (let p = 1; p <= doc.numPages; p++) {
+  const doc      = await pdfjsLib.getDocument(loadParams).promise;
+  const numPages = Math.min(doc.numPages, 8); // CC statements never need more than 8 pages
+  const pageNums = Array.from({ length: numPages }, (_, i) => i + 1);
+  const imgs = await Promise.all(pageNums.map(async p => {
     const page     = await doc.getPage(p);
-    const viewport = page.getViewport({ scale: 2.0 });
+    const viewport = page.getViewport({ scale: 1.5 }); // 1.5x is sufficient for OCR, 44% less pixels than 2x
     const canvas   = createCanvas(viewport.width, viewport.height);
     await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-    imgs.push(canvas.toBuffer('image/png').toString('base64'));
-  }
+    return canvas.toBuffer('image/jpeg', { quality: 0.85 }).toString('base64'); // JPEG ~5-10x smaller than PNG
+  }));
   return imgs;
 }
 
@@ -5237,7 +5238,7 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
     const pageImages = await pdfToBase64Images(req.file.buffer, pdfPassword);
     const content = [{ type: 'input_text', text: CC_EXTRACT_PROMPT }];
     for (const b64 of pageImages) {
-      content.push({ type: 'input_image', image_url: `data:image/png;base64,${b64}` });
+      content.push({ type: 'input_image', image_url: `data:image/jpeg;base64,${b64}` });
     }
 
     const aiResp = await openai.responses.create({
