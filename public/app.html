@@ -13863,11 +13863,14 @@ async function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
   if (btn) { btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; }
 
   try {
-    await fetch(CC_DRIVE_URL, {
+    const token = localStorage.getItem('authToken') || '';
+    const resp = await fetch('/api/credit-cards/drive-upload', {
       method: 'POST',
-      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization':'Bearer '+token} : {}) },
       body: JSON.stringify({ pdf: pdfB64, filename })
     });
+    const result = await resp.json();
+    if (!result.success) throw new Error(result.error || 'Upload failed');
     if (btn) {
       btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
       btn.style.opacity = '1';
