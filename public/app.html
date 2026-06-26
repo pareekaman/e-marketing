@@ -13781,28 +13781,8 @@ function ccOpenStatementDrive() {
   window.open(CC_DRIVE_FOLDER, '_blank');
 }
 
-function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
-  if (!CC_DRIVE_URL) { alert('Drive link not configured yet. Please contact the admin.'); return; }
-  const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
-  if (!t) return;
-  const wrap = document.getElementById('ccStatementsWrap');
-  const oi   = txIdx;
-  const ownSel  = wrap?.querySelector(`[data-own-sel="${stmtIdx}-${oi}"]`);
-  const deptSel = wrap?.querySelector(`[data-dept-sel="${stmtIdx}-${oi}"]`);
-  const owner = ownSel?.value || t.expenses || '';
-  const dept  = deptSel?.value || t.department || '';
-  if (!owner || !dept) { alert('Please select Owner and Department before saving to Drive.'); return; }
-  const params = new URLSearchParams({
-    date: t.date || '',
-    description: t.description || '',
-    amount: t.amount || '',
-    type: t.txn_type || '',
-    owner,
-    department: dept,
-    bank,
-    card: cardNum
-  });
-  window.open(CC_DRIVE_URL + '?' + params.toString(), '_blank');
+function ccSaveToDrive() {
+  window.open(CC_DRIVE_FOLDER, '_blank');
 }
 
 let _ccUpdateTimer = {};
@@ -14012,7 +13992,7 @@ function ccRenderStatements() {
           </select>
         </td>
         <td style="padding:6px 8px;text-align:center">
-          <button onclick="ccSaveToDrive('${safeBank}','${safeCard}',${si},${oi})" title="Save to Drive"
+          <button onclick="ccSaveToDrive()" title="Open Drive folder"
             style="background:none;border:none;cursor:pointer;padding:3px 5px;border-radius:6px;line-height:1;transition:background .15s;display:inline-flex;align-items:center;justify-content:center"
             onmouseover="this.style.background='#e8f5e9'"
             onmouseout="this.style.background='none'">
