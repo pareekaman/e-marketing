@@ -5436,16 +5436,21 @@ app.delete('/api/credit-cards/departments/:name', requireAuth, async (req, res) 
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/credit-cards/drive-upload — proxy PDF to Apps Script (avoids browser CORS)
+// POST /api/credit-cards/drive-upload — proxy transaction data to Apps Script via GET params
 const CC_DRIVE_SCRIPT = 'https://script.google.com/macros/s/AKfycbx2kW0zTzulQu7POp7YKmkowYeK-lLzcLQ3-590-YLfTGJqcLYcABSUNACJQHnvZZX5/exec';
 app.post('/api/credit-cards/drive-upload', requireAuth, async (req, res) => {
   try {
-    const response = await fetch(CC_DRIVE_SCRIPT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-      body: JSON.stringify(req.body),
-      redirect: 'follow'
+    const params = new URLSearchParams({
+      date:        req.body.date        || '',
+      description: req.body.description || '',
+      amount:      req.body.amount      || '',
+      type:        req.body.type        || '',
+      bank:        req.body.bank        || '',
+      card:        req.body.card        || '',
+      owner:       req.body.owner       || '',
+      department:  req.body.department  || ''
     });
+    const response = await fetch(`${CC_DRIVE_SCRIPT}?${params.toString()}`, { redirect: 'follow' });
     const text = await response.text();
     try { res.json(JSON.parse(text)); } catch { res.json({ success: true }); }
   } catch(err) { res.status(500).json({ error: err.message }); }
