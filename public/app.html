@@ -13782,68 +13782,103 @@ async function ccOpenStatementDrive(bank, cardNum, stmtIdx, btn) {
   const stmt = _ccData[bank]?.[cardNum]?.[stmtIdx];
   if (!stmt) return;
   const txns = stmt.transactions || [];
+  const rs = v => 'Rs. ' + Math.abs(parseFloat(v)||0).toLocaleString('en-IN',{minimumFractionDigits:2});
 
   if (btn) { btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; }
 
   try {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    const W = 210, pw = 14;
+    const W = 210, L = 14, R = 14, UW = W - L - R; // usable width = 182mm
 
-    doc.setFillColor(26, 86, 219); doc.rect(0, 0, W, 32, 'F');
-    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(18);
-    doc.text('E-Marketing', pw, 14);
+    // ── Header bar ──
+    doc.setFillColor(26, 86, 219); doc.rect(0, 0, W, 36, 'F');
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica','bold'); doc.setFontSize(20);
+    doc.text('E-Marketing', L, 16);
     doc.setFont('helvetica','normal'); doc.setFontSize(10);
-    doc.text('Credit Card Statement', pw, 22);
-    doc.text(new Date().toLocaleString('en-IN'), W - pw, 22, { align:'right' });
+    doc.text('Credit Card Statement', L, 25);
+    doc.setFontSize(9); doc.setTextColor(200,220,255);
+    doc.text(new Date().toLocaleString('en-IN'), W - R, 25, { align:'right' });
 
-    let y = 42;
-    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(15,23,42);
-    doc.text('Bank: ' + bank + '   |   Card: ' + cardNum, pw, y); y += 7;
-    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(100,116,139);
-    doc.text('Statement Date: ' + (stmt.statement_date||'—') + '   |   Due Date: ' + (stmt.payment_due_date||'—') + '   |   Total Payable: ₹' + parseFloat(stmt.payable_amount||0).toLocaleString('en-IN',{minimumFractionDigits:2}), pw, y);
-    y += 10;
+    // ── Info block ──
+    let y = 44;
+    doc.setFillColor(248,250,252); doc.roundedRect(L, y-4, UW, 22, 2, 2, 'F');
+    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.roundedRect(L, y-4, UW, 22, 2, 2, 'S');
 
-    const cols = [22, 94, 32, 24, 28]; // Date, Description, Amount, Owner, Department
-    const headers = ['Date','Description','Amount (₹)','Owner','Department'];
-    doc.setFillColor(241,245,249); doc.rect(pw, y, W - pw*2, 7, 'F');
-    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(100,116,139);
-    let x = pw + 1;
-    headers.forEach((h, i) => { doc.text(h, x, y + 5); x += cols[i]; });
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(15,23,42);
+    doc.text(bank + ' Bank', L+4, y+2);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(71,85,105);
+    doc.text('Card: ' + cardNum, L+4, y+8);
+
+    // Right side info
+    const infoRight = W - R - 4;
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(100,116,139);
+    doc.text('Statement Date', infoRight - 80, y+2, { align:'left' });
+    doc.text('Due Date', infoRight - 38, y+2, { align:'left' });
+    doc.text('Total Payable', infoRight - 0, y+2, { align:'right' });
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(15,23,42);
+    doc.text(stmt.statement_date||'—', infoRight - 80, y+9, { align:'left' });
+    doc.setTextColor(220,38,38);
+    doc.text(stmt.payment_due_date||'—', infoRight - 38, y+9, { align:'left' });
+    doc.setTextColor(22,163,74); doc.setFontSize(12);
+    doc.text(rs(stmt.payable_amount||0), infoRight, y+10, { align:'right' });
+
+    y += 28;
+
+    // ── Table header ──
+    // cols: Date=22, Description=74, Amount=26, Owner=32, Dept=28  → total=182 ✓
+    const cols  = [22, 74, 26, 32, 28];
+    const hdrs  = ['Date', 'Description', 'Amount (Rs.)', 'Owner', 'Department'];
+    const aligns= ['left','left','right','left','left'];
+
+    doc.setFillColor(26, 86, 219); doc.rect(L, y, UW, 8, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+    let x = L;
+    hdrs.forEach((h, i) => {
+      const cx = aligns[i]==='right' ? x+cols[i]-2 : x+2;
+      doc.text(h, cx, y+5.5, { align: aligns[i]==='right'?'right':'left' });
+      x += cols[i];
+    });
     y += 9;
 
-    doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+    // ── Rows ──
+    doc.setFontSize(8.5);
     txns.forEach((t, idx) => {
-      if (y > 270) { doc.addPage(); y = 20; }
-      if (idx % 2 === 1) { doc.setFillColor(248,250,252); doc.rect(pw, y-1, W-pw*2, 7, 'F'); }
-      x = pw + 1;
+      if (y > 272) { doc.addPage(); y = 16; }
+      const rh = 7.5;
+      if (idx % 2 === 1) { doc.setFillColor(248,250,252); doc.rect(L, y, UW, rh, 'F'); }
       const isCredit = t.txn_type === 'credit';
       const rowData = [
         t.date||'',
-        (t.description||'').substring(0,46),
-        (isCredit?'+ ':'') + (parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2}),
-        t.expenses||'',
-        t.department||''
+        (t.description||'').substring(0,40),
+        (isCredit?'+ ':'') + Math.abs(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2}),
+        (t.expenses||'').substring(0,18),
+        (t.department||'').substring(0,16)
       ];
+      x = L;
       rowData.forEach((val, i) => {
         if (i === 2) { if(isCredit) doc.setTextColor(22,163,74); else doc.setTextColor(15,23,42); }
-        else doc.setTextColor(15,23,42);
-        doc.text(String(val), x, y + 4.5);
+        else { doc.setFont('helvetica','normal'); doc.setTextColor(15,23,42); }
+        const cx = aligns[i]==='right' ? x+cols[i]-2 : x+2;
+        doc.text(String(val), cx, y+5, { align: aligns[i]==='right'?'right':'left' });
         x += cols[i];
       });
-      doc.setDrawColor(241,245,249); doc.setLineWidth(0.2);
-      doc.line(pw, y + 6, W - pw, y + 6);
-      y += 7;
+      doc.setDrawColor(226,232,240); doc.setLineWidth(0.15);
+      doc.line(L, y+rh, L+UW, y+rh);
+      y += rh;
     });
 
-    y += 4;
-    doc.setDrawColor(226,232,240); doc.setLineWidth(0.4); doc.line(pw, y, W-pw, y); y += 6;
+    // ── Footer total ──
+    y += 3;
+    doc.setDrawColor(71,85,105); doc.setLineWidth(0.5); doc.line(L, y, L+UW, y); y += 5;
+    const debits  = txns.filter(t=>t.txn_type!=='credit').reduce((s,t)=>s+parseFloat(t.amount||0),0);
+    const credits = txns.filter(t=>t.txn_type==='credit').reduce((s,t)=>s+parseFloat(t.amount||0),0);
+    const txSum   = debits - credits;
     doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(15,23,42);
-    const txSum = txns.filter(t=>t.txn_type!=='credit').reduce((s,t)=>s+parseFloat(t.amount||0),0)
-                - txns.filter(t=>t.txn_type==='credit').reduce((s,t)=>s+parseFloat(t.amount||0),0);
-    doc.text('Transaction Sum:', pw, y);
-    doc.setTextColor(220,38,38);
-    doc.text('₹' + txSum.toLocaleString('en-IN',{minimumFractionDigits:2}), pw + 42, y);
+    doc.text('Transaction Sum', L+2, y+4);
+    doc.setTextColor(txSum >= 0 ? 220 : 22, txSum >= 0 ? 38 : 163, txSum >= 0 ? 38 : 74);
+    doc.text('Rs. ' + Math.abs(txSum).toLocaleString('en-IN',{minimumFractionDigits:2}), L+UW-2, y+4, { align:'right' });
 
     const safe = s => String(s||'').replace(/[^a-zA-Z0-9_-]/g,'_').substring(0,20);
     const filename = 'CC_' + safe(bank) + '_' + safe(stmt.statement_date) + '_Statement.pdf';
