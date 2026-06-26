@@ -5290,15 +5290,28 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
         payable_amount:   parseFloat(s.payable_amount)||0,
         min_amount_due:   parseFloat(s.min_amount_due)||0,
         statement_period: s.statement_period||'',
-        transactions: txns.filter(t => t.statement_id === s.id).map(t => ({
-          id:          t.id,
-          date:        t.txn_date ? t.txn_date.toISOString().substring(0,10) : '',
-          description: t.description||'',
-          amount:      parseFloat(t.amount)||0,
-          txn_type:    t.txn_type||'debit',
-          expenses:    t.expenses||'',
-          department:  t.department||''
-        }))
+        transactions: (() => {
+          const raw = txns.filter(t => t.statement_id === s.id).map(t => ({
+            id:          t.id,
+            date:        t.txn_date ? t.txn_date.toISOString().substring(0,10) : '',
+            description: t.description||'',
+            amount:      parseFloat(t.amount)||0,
+            txn_type:    t.txn_type||'debit',
+            expenses:    t.expenses||'',
+            department:  t.department||''
+          }));
+          // Dedup by date+amount+type — keep row with longest description (or any saved expenses/dept)
+          const seen = new Map();
+          for (const t of raw) {
+            const key = `${t.date}|${t.amount}|${t.txn_type}`;
+            const ex = seen.get(key);
+            const prefer = !ex
+              || (t.expenses || t.department)                             // prefer saved metadata
+              || t.description.length > ex.description.length;           // else prefer longer desc
+            if (prefer) seen.set(key, t);
+          }
+          return Array.from(seen.values());
+        })()
       }));
     }
     res.json(result);
