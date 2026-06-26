@@ -13773,8 +13773,13 @@ async function ccDeleteTransaction(bank, cardNum, stmtIdx, txIdx) {
   ccRenderStatements();
 }
 
-// Google Drive / Apps Script URL — set when link is available
+// Google Drive folder URL for CC statements
 const CC_DRIVE_URL = '';
+const CC_DRIVE_FOLDER = 'https://drive.google.com/drive/folders/1G_wzP734PykkLoS6k0KKEqIs3V_TiWgH?usp=drive_link';
+
+function ccOpenStatementDrive() {
+  window.open(CC_DRIVE_FOLDER, '_blank');
+}
 
 function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
   if (!CC_DRIVE_URL) { alert('Drive link not configured yet. Please contact the admin.'); return; }
@@ -14050,11 +14055,26 @@ function ccRenderStatements() {
           <span style="color:#fff;font-size:15px;font-weight:800;letter-spacing:.01em">🏦 ${dtEscape(bank)}</span>
           <span style="background:rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px">${txns.length} transactions</span>
         </div>
-        <button onclick="ccDeleteStatement('${safeBank}','${safeCard}',${si})"
-          title="Delete this statement"
-          style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);color:#fff;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap"
-          onmouseover="this.style.background='rgba(220,38,38,.6)'"
-          onmouseout="this.style.background='rgba(255,255,255,.15)'">🗑 Delete</button>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button onclick="ccOpenStatementDrive()" title="Open Drive folder"
+            style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);border-radius:8px;padding:5px 10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center"
+            onmouseover="this.style.background='rgba(255,255,255,.35)'"
+            onmouseout="this.style.background='rgba(255,255,255,.15)'">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="16" viewBox="0 0 87.3 78" style="display:block">
+              <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#fff"/>
+              <path d="M43.65 25L29.9 1.2C28.55 2 27.4 3.1 26.6 4.5L1.2 49.5C.4 50.9 0 52.45 0 54h27.5z" fill="#fff"/>
+              <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H60l5.85 11.5z" fill="#fff"/>
+              <path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#fff"/>
+              <path d="M60 54H27.5L13.75 77.8c1.35.8 2.9 1.2 4.5 1.2h50.05c1.6 0 3.15-.45 4.5-1.2z" fill="#fff"/>
+              <path d="M73.4 27L60.7 4.5c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25 60 54h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#fff"/>
+            </svg>
+          </button>
+          <button onclick="ccDeleteStatement('${safeBank}','${safeCard}',${si})"
+            title="Delete this statement"
+            style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);color:#fff;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap"
+            onmouseover="this.style.background='rgba(220,38,38,.6)'"
+            onmouseout="this.style.background='rgba(255,255,255,.15)'">🗑 Delete</button>
+        </div>
       </div>
       <!-- Stats grid -->
       <div style="display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-bottom:1px solid #e2e8f0">
