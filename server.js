@@ -5030,13 +5030,13 @@ Rules for ALL banks:
   Due Date         ← "Payment Due Date"
   Transactions: description from "Description", amount from "Amount /₹"
 
-════ AMEX (American Express) field names in the PDF: ════
-  Credit Card No.  ← "Membership Number" or "Account No."
-  Statement Date   ← "Date" or "Statement Date"
-  Billing Period   ← "Statement Period" or "For the period" or "Billing Period" or "Billing Cycle" or "Statement Cycle"
-  Total Amount Due ← "Closing Balance Rs" or "Total Amount Due" or "New Balance" or "Total Dues"
-  Minimum Due      ← "Minimum Payment Rs" or "Minimum Amount Due" or "Minimum Due" (numeric amount only — e.g. 2073.00)
-  Due Date         ← "Payment Due Date" or "Due Date" or "Pay By" or "Minimum Payment Due" or "Due by" (this is a DATE value, DD/MM/YYYY or "Month DD, YYYY" — NOT a money amount)
+════ AMEX (American Express Banking Corp.) field names in the PDF: ════
+  Credit Card No.  ← "Membership Number"
+  Statement Date   ← "Date"
+  Billing Period   ← "Statement Period"
+  Total Amount Due ← "Closing Balance Rs"
+  Minimum Due      ← "Minimum Payment Rs" (numeric amount only — e.g. 2073.00)
+  Due Date         ← "Minimum Payment Due" — IMPORTANT: this field contains a DATE (e.g. "June 29, 2026" or "29/06/2026"), extract it as DD/MM/YYYY
   Transactions: each row in the "Details" column contains date + description together; split them — date is first (DD Mon or DD/MM/YYYY), rest is description; amount from "Amount Rs" column`;
 
 function safeParseCC(text) {
@@ -5121,12 +5121,12 @@ function parseAmexCC(j, txns) {
                   || 'Unknown Card';
   const stmtDate   = parseCCDateDMY(f['Statement Date']) || parseCCDateLong(f['Statement Date'])
                   || parseCCDateDMY(f['Date']) || parseCCDateLong(f['Date']);
-  const dueDate    = parseCCDateAny(f['Due Date']) || parseCCDateAny(f['Payment Due Date'])
-                  || parseCCDateAny(f['Pay By']) || parseCCDateAny(f['Due by'])
-                  || parseCCDateAny(f['Minimum Payment Due']);
-  const payable    = parseCCAmount(f['Total Amount Due'] || f['Closing Balance Rs'] || f['New Balance']);
-  const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Amount Due'] || f['Minimum Payment Rs'] || f['Minimum Payment']);
-  const period     = f['Billing Period'] || f['Statement Period'] || f['For the period'] || f['Billing Cycle'] || f['Statement Cycle'] || '';
+  const dueDate    = parseCCDateAny(f['Minimum Payment Due'])
+                  || parseCCDateAny(f['Due Date']) || parseCCDateAny(f['Payment Due Date'])
+                  || parseCCDateAny(f['Pay By']) || parseCCDateAny(f['Due by']);
+  const payable    = parseCCAmount(f['Closing Balance Rs'] || f['Total Amount Due'] || f['New Balance']);
+  const minDue     = parseCCAmount(f['Minimum Payment Rs'] || f['Minimum Due'] || f['Minimum Amount Due'] || f['Minimum Payment']);
+  const period     = f['Statement Period'] || f['Billing Period'] || f['For the period'] || '';
   const transactions = dedupeTxns((txns || []).map(t => {
     const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
     const amount   = parseCCAmount(t.amount);
