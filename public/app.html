@@ -13747,10 +13747,13 @@ async function ccDeleteStatement(bank, cardNum, stmtIdx) {
     const token = localStorage.getItem('authToken') || '';
     await fetch(`/api/credit-cards/statement/${stmt.id}`, { method:'DELETE', headers: token ? {'Authorization':'Bearer '+token} : {} });
   }
-  _ccData[bank][cardNum].splice(stmtIdx, 1);
-  // If card has no statements left, remove the card tab too
-  if (_ccData[bank][cardNum].length === 0) {
-    delete _ccData[bank][cardNum];
+  // Reload fresh data from server so card tabs always reflect actual DB state
+  try {
+    const fresh = await api('/api/credit-cards/data');
+    if (fresh && !fresh.error) _ccData = fresh;
+  } catch(e) {}
+  // If card no longer exists in fresh data, switch to another card
+  if (!_ccData[bank]?.[cardNum]) {
     const remaining = Object.keys(_ccData[bank] || {});
     _ccActiveCard = remaining[0] || null;
     ccRenderDetail();
