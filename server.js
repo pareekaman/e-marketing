@@ -5040,7 +5040,16 @@ Rules for ALL banks:
                      This is NOT the same as "Minimum Payment Rs" (which is an amount).
                      Also check "Payment Advice" section for "Due by June 29, 2026" or "by DD/MM/YYYY".
                      Output as DD/MM/YYYY.
-  Transactions: each row in the "Details" column contains date + description together; split them — date is first (DD Mon or DD/MM/YYYY), rest is description; amount from "Amount Rs" column`;
+  Transactions: each row in the "Details" column contains date + description together; split them — date is first (DD Mon or DD/MM/YYYY), rest is description; amount from "Amount Rs" column
+
+════ ICICI BANK field names in the PDF: ════
+  Credit Card No.  ← "Card Number" (printed below barcode, typically 16 digits)
+  Statement Date   ← "STATEMENT DATE"
+  Billing Period   ← Not explicitly labeled; derive from statement footer or "Statement for the period" if present; otherwise leave blank
+  Total Amount Due ← "Total Amount due" (case-insensitive)
+  Minimum Due      ← "Minimum Amount due" (case-insensitive)
+  Due Date         ← "PAYMENT DUE DATE"
+  Transactions: date from "Date" column (DD/MM/YYYY), description from "Transaction Details" or "Particulars" column, amount from "Amount (in Rs.)" or "Amount" column; CR/DR indicator in separate column`;
 
 function safeParseCC(text) {
   text = String(text||'').trim().replace(/^```(?:json)?/m,'').replace(/```$/m,'').trim();
@@ -5242,6 +5251,25 @@ function parseRblCC(j, txns) {
   return { bankName:'RBL Bank', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
+function parseIciciCC(j, txns) {
+  const f          = j.fields || j;
+  const cardNumber = f['Credit Card No.'] || f['Card Number'] || f['Credit Card Number'] || 'Unknown Card';
+  const stmtDate   = parseCCDateDMY(f['Statement Date']) || parseCCDateLong(f['Statement Date']);
+  const dueDate    = parseCCDateDMY(f['Due Date']) || parseCCDateLong(f['Due Date'])
+                  || parseCCDateDMY(f['Payment Due Date']) || parseCCDateLong(f['Payment Due Date']);
+  const payable    = parseCCAmount(f['Total Amount Due'] || f['Total Amount due'] || f['Payable Amount']);
+  const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Amount Due'] || f['Minimum Amount due']);
+  const period     = f['Billing Period'] || f['Statement Period'] || '';
+  const transactions = dedupeTxns((txns || []).map(t => {
+    const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
+    const amount   = parseCCAmount(t.amount);
+    if (!amount) return null;
+    const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]);
+    return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
+  }).filter(Boolean));
+  return { bankName:'ICICI', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
+}
+
 function parseCCJson(extracted, filename) {
   const text  = JSON.stringify(extracted).toLowerCase();
   const fname = (filename||'').toLowerCase();
@@ -5257,6 +5285,9 @@ function parseCCJson(extracted, filename) {
   // AMEX
   if (text.includes('american express') || text.includes('membership number') || fname.includes('amex'))
     return parseAmexCC(extracted, extracted.transactions);
+  // ICICI
+  if (text.includes('icici') || fname.includes('icici'))
+    return parseIciciCC(extracted, extracted.transactions);
   const bank = detectBankName(text) || detectBankName(fname) || 'Unknown';
   return { bankName:bank, cardNumber:'Unknown Card', statementDate:null, paymentDueDate:null, payableAmount:0, minAmountDue:0, statementPeriod:'', transactions:[] };
 }
