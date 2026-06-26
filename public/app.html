@@ -13684,11 +13684,16 @@ function ccOwnershipChange(sel, bank, card, si, oi) {
 }
 
 function ccOwnConfirm(bank, card, si, oi) {
-  const val = document.getElementById(`ccOwnTxt-${si}-${oi}`)?.value || '';
+  const val = (document.getElementById(`ccOwnTxt-${si}-${oi}`)?.value || '').trim();
+  if (!val) return;
   ccUpdateField(bank, card, si, oi, 'expenses', val);
+  ccRenderStatements();
 }
 
-function ccOwnCancel(si, oi) {
+function ccOwnCancel(bank, card, si, oi) {
+  // Clear from data model so re-render doesn't show the input again
+  ccUpdateField(bank, card, si, oi, 'expenses', '');
+  // Reset DOM immediately (before re-render)
   const row = document.getElementById(`ccOwnOther-${si}-${oi}`);
   const sel = document.querySelector(`[data-own-sel="${si}-${oi}"]`);
   const txt = document.getElementById(`ccOwnTxt-${si}-${oi}`);
@@ -14380,10 +14385,10 @@ function ccRenderStatements() {
           <div id="ccOwnOther-${si}-${oi}" style="display:none;align-items:center;gap:4px;margin-top:4px">
             <input type="text" id="ccOwnTxt-${si}-${oi}" placeholder="Type here…"
               style="width:88px;padding:4px 7px;border:1.5px solid #1a56db;border-radius:6px;font-size:12px;outline:none;font-family:inherit"
-              onkeydown="if(event.key==='Enter')ccOwnConfirm('${safeBank}','${safeCard}',${si},${oi});if(event.key==='Escape')ccOwnCancel(${si},${oi})">
+              onkeydown="if(event.key==='Enter')ccOwnConfirm('${safeBank}','${safeCard}',${si},${oi});if(event.key==='Escape')ccOwnCancel('${safeBank}','${safeCard}',${si},${oi})">
             <button onclick="ccOwnConfirm('${safeBank}','${safeCard}',${si},${oi})" title="Save"
               style="width:22px;height:22px;border:none;border-radius:5px;background:#16a34a;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✓</button>
-            <button onclick="ccOwnCancel(${si},${oi})" title="Cancel"
+            <button onclick="ccOwnCancel('${safeBank}','${safeCard}',${si},${oi})" title="Cancel"
               style="width:22px;height:22px;border:none;border-radius:5px;background:#ef4444;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
           </div>
         </td>
