@@ -5436,23 +5436,29 @@ app.delete('/api/credit-cards/departments/:name', requireAuth, async (req, res) 
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/credit-cards/drive-upload — proxy transaction data to Apps Script via GET params
+// POST /api/credit-cards/drive-upload — save row to Sheet (GET) + upload PDF to Drive (POST)
 const CC_DRIVE_SCRIPT = 'https://script.google.com/macros/s/AKfycbxh0cevqSgujIctWiQ17Py5n0OvxPp7Ji6JnI151FdIi-Uyv2rM-a4XUk5D7J3iqgE3/exec';
 app.post('/api/credit-cards/drive-upload', requireAuth, async (req, res) => {
   try {
+    const { pdf, filename, ...rowData } = req.body;
+    // 1. Append row to Sheet via GET
     const params = new URLSearchParams({
-      date:        req.body.date        || '',
-      description: req.body.description || '',
-      amount:      req.body.amount      || '',
-      type:        req.body.type        || '',
-      bank:        req.body.bank        || '',
-      card:        req.body.card        || '',
-      owner:       req.body.owner       || '',
-      department:  req.body.department  || ''
+      date: rowData.date||'', description: rowData.description||'',
+      amount: rowData.amount||'', type: rowData.type||'',
+      bank: rowData.bank||'', card: rowData.card||'',
+      owner: rowData.owner||'', department: rowData.department||''
     });
-    const response = await fetch(`${CC_DRIVE_SCRIPT}?${params.toString()}`, { redirect: 'follow' });
-    const text = await response.text();
-    try { res.json(JSON.parse(text)); } catch { res.json({ success: true }); }
+    await fetch(`${CC_DRIVE_SCRIPT}?${params.toString()}`, { redirect: 'follow' });
+    // 2. Upload PDF to Drive via POST
+    if (pdf) {
+      await fetch(CC_DRIVE_SCRIPT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify({ pdf, filename: filename||'transaction.pdf' }),
+        redirect: 'follow'
+      });
+    }
+    res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
