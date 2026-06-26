@@ -5031,12 +5031,15 @@ Rules for ALL banks:
   Transactions: description from "Description", amount from "Amount /₹"
 
 ════ AMEX (American Express Banking Corp.) field names in the PDF: ════
-  Credit Card No.  ← "Membership Number"
-  Statement Date   ← "Date"
-  Billing Period   ← "Statement Period"
-  Total Amount Due ← "Closing Balance Rs"
-  Minimum Due      ← "Minimum Payment Rs" (numeric amount only — e.g. 2073.00)
-  Due Date         ← "Minimum Payment Due" — IMPORTANT: this field contains a DATE (e.g. "June 29, 2026" or "29/06/2026"), extract it as DD/MM/YYYY
+  Credit Card No.  ← "Membership Number" (e.g. XXXX-XXXXXX-21000)
+  Statement Date   ← "Date" label at top-right of page 1 (format DD/MM/YYYY, e.g. 11/06/2026)
+  Billing Period   ← "Statement Period" label followed by "From <date> to <date>" on the same line
+  Total Amount Due ← "Closing Balance Rs" box in the summary row (numeric, e.g. 41451.54)
+  Minimum Due      ← "Minimum Payment Rs" box in the summary row — extract ONLY the NUMERIC AMOUNT (e.g. 2073.00), NOT a date
+  Due Date         ← CRITICAL: "Minimum Payment Due" label — the DATE that appears on the line BELOW this label (e.g. "June 29, 2026").
+                     This is NOT the same as "Minimum Payment Rs" (which is an amount).
+                     Also check "Payment Advice" section for "Due by June 29, 2026" or "by DD/MM/YYYY".
+                     Output as DD/MM/YYYY.
   Transactions: each row in the "Details" column contains date + description together; split them — date is first (DD Mon or DD/MM/YYYY), rest is description; amount from "Amount Rs" column`;
 
 function safeParseCC(text) {
@@ -5121,9 +5124,16 @@ function parseAmexCC(j, txns) {
                   || 'Unknown Card';
   const stmtDate   = parseCCDateDMY(f['Statement Date']) || parseCCDateLong(f['Statement Date'])
                   || parseCCDateDMY(f['Date']) || parseCCDateLong(f['Date']);
-  const dueDate    = parseCCDateAny(f['Minimum Payment Due'])
-                  || parseCCDateAny(f['Due Date']) || parseCCDateAny(f['Payment Due Date'])
-                  || parseCCDateAny(f['Pay By']) || parseCCDateAny(f['Due by']);
+  // "Minimum Payment Due" field contains the DATE (not the amount "Minimum Payment Rs")
+  const _mpd = f['Minimum Payment Due'] || f['Due Date'] || f['Payment Due Date'] || f['Pay By'] || f['Due by'] || '';
+  // also scan raw string for "Due by June 29, 2026" or "by 29/06/2026" patterns
+  const _mpd2 = String(f['Payment Advice'] || f['due_by'] || '');
+  const _dueFallback = (() => {
+    const m = _mpd2.match(/(?:due\s+by|by)\s+([\w\s,\/]+?\d{4})/i);
+    return m ? parseCCDateAny(m[1].trim()) : null;
+  })();
+  const dueDate = parseCCDateAny(_mpd) || _dueFallback
+                || parseCCDateAny(f['Pay By']) || parseCCDateAny(f['Due by']);
   const payable    = parseCCAmount(f['Closing Balance Rs'] || f['Total Amount Due'] || f['New Balance']);
   const minDue     = parseCCAmount(f['Minimum Payment Rs'] || f['Minimum Due'] || f['Minimum Amount Due'] || f['Minimum Payment']);
   const period     = f['Statement Period'] || f['Billing Period'] || f['For the period'] || '';
@@ -5319,6 +5329,18 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
       }));
     }
     res.json(result);
+  } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// PATCH /api/credit-cards/statement/:id  (update statement fields like period/due date)
+app.patch('/api/credit-cards/statement/:id', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    const { statement_period, payment_due_date } = req.body;
+    await db.query('UPDATE cc_statements SET statement_period=?, payment_due_date=? WHERE id=?',
+      [statement_period||null, payment_due_date||null, req.params.id]);
+    res.json({ success:true });
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 
