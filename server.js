@@ -5437,7 +5437,7 @@ app.delete('/api/credit-cards/departments/:name', requireAuth, async (req, res) 
 });
 
 // POST /api/credit-cards/drive-upload — proxy transaction data to Apps Script via GET params
-const CC_DRIVE_SCRIPT = 'https://script.google.com/macros/s/AKfycbx2kW0zTzulQu7POp7YKmkowYeK-lLzcLQ3-590-YLfTGJqcLYcABSUNACJQHnvZZX5/exec';
+const CC_DRIVE_SCRIPT = 'https://script.google.com/macros/s/AKfycbxh0cevqSgujIctWiQ17Py5n0OvxPp7Ji6JnI151FdIi-Uyv2rM-a4XUk5D7J3iqgE3/exec';
 app.post('/api/credit-cards/drive-upload', requireAuth, async (req, res) => {
   try {
     const params = new URLSearchParams({
