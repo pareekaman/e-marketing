@@ -13783,7 +13783,7 @@ function ccOpenStatementDrive() {
 }
 
 async function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
-  if (!CC_DRIVE_URL) { alert('Apps Script URL not set. Please contact admin.'); return; }
+  if (!CC_DRIVE_URL) { showToast('Apps Script URL not configured.', 'error'); return; }
   const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
   if (!t) return;
   const wrap = document.getElementById('ccStatementsWrap');
@@ -13791,7 +13791,7 @@ async function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
   const deptSel = wrap?.querySelector(`[data-dept-sel="${stmtIdx}-${txIdx}"]`);
   const owner = ownSel?.value || t.expenses || '';
   const dept  = deptSel?.value || t.department || '';
-  if (!owner || !dept) { alert('Owner aur Department select karo pehle.'); return; }
+  if (!owner || !dept) { showToast('Owner aur Department select karo pehle.', 'error'); return; }
 
   // ── Build PDF ─────────────────────────────────────────
   const { jsPDF } = window.jspdf;
@@ -13882,7 +13882,7 @@ async function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
     }
   } catch(e) {
     if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
-    alert('Upload failed: ' + e.message);
+    showToast('Upload failed: ' + e.message, 'error');
   }
 }
 
