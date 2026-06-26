@@ -5033,10 +5033,10 @@ Rules for ALL banks:
 ════ AMEX (American Express) field names in the PDF: ════
   Credit Card No.  ← "Membership Number" or "Account No."
   Statement Date   ← "Date" or "Statement Date"
-  Billing Period   ← "Statement Period" or "For the period" or "Billing Period"
-  Total Amount Due ← "Closing Balance Rs" or "Total Amount Due" or "New Balance"
-  Minimum Due      ← "Minimum Payment Rs" or "Minimum Amount Due" (numeric amount only)
-  Due Date         ← "Payment Due Date" or "Due Date" or "Pay By" (this is a date, DD/MM/YYYY or "Month DD, YYYY")
+  Billing Period   ← "Statement Period" or "For the period" or "Billing Period" or "Billing Cycle" or "Statement Cycle"
+  Total Amount Due ← "Closing Balance Rs" or "Total Amount Due" or "New Balance" or "Total Dues"
+  Minimum Due      ← "Minimum Payment Rs" or "Minimum Amount Due" or "Minimum Due" (numeric amount only — e.g. 2073.00)
+  Due Date         ← "Payment Due Date" or "Due Date" or "Pay By" or "Minimum Payment Due" or "Due by" (this is a DATE value, DD/MM/YYYY or "Month DD, YYYY" — NOT a money amount)
   Transactions: each row in the "Details" column contains date + description together; split them — date is first (DD Mon or DD/MM/YYYY), rest is description; amount from "Amount Rs" column`;
 
 function safeParseCC(text) {
@@ -5126,7 +5126,7 @@ function parseAmexCC(j, txns) {
                   || parseCCDateAny(f['Minimum Payment Due']);
   const payable    = parseCCAmount(f['Total Amount Due'] || f['Closing Balance Rs'] || f['New Balance']);
   const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Amount Due'] || f['Minimum Payment Rs'] || f['Minimum Payment']);
-  const period     = f['Billing Period'] || f['Statement Period'] || f['For the period'] || '';
+  const period     = f['Billing Period'] || f['Statement Period'] || f['For the period'] || f['Billing Cycle'] || f['Statement Cycle'] || '';
   const transactions = dedupeTxns((txns || []).map(t => {
     const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
     const amount   = parseCCAmount(t.amount);
@@ -5310,7 +5310,14 @@ app.delete('/api/credit-cards/statement/:id', requireAuth, async (req, res) => {
   try {
     const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
     if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    // get card_id before deleting
+    const [[stmt]] = await db.query('SELECT card_id FROM cc_statements WHERE id=?', [req.params.id]);
     await db.query('DELETE FROM cc_statements WHERE id=?', [req.params.id]);
+    // if no more statements remain for this card, delete the orphan card too
+    if (stmt) {
+      const [[{ cnt }]] = await db.query('SELECT COUNT(*) AS cnt FROM cc_statements WHERE card_id=?', [stmt.card_id]);
+      if (cnt === 0) await db.query('DELETE FROM cc_cards WHERE id=?', [stmt.card_id]);
+    }
     res.json({ success:true });
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
