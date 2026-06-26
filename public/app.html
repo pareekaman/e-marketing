@@ -13450,6 +13450,7 @@ async function loadCreditCards() {
 function ccSelectBank(bank) {
   _ccActiveBank = bank || null;
   _ccActiveCard = null;
+  _ccFilter = { preset:'all', dateFrom:null, dateTo:null, amtMin:'', amtMax:'' };
   ccSave();
   const dd = document.getElementById('ccBankDropdown');
   if (dd && bank) dd.value = bank;
@@ -13458,11 +13459,30 @@ function ccSelectBank(bank) {
 
 function ccSelectCard(cardNum) {
   _ccActiveCard = cardNum;
+  _ccFilter = { preset:'all', dateFrom:null, dateTo:null, amtMin:'', amtMax:'' };
   ccSave();
-  ccRenderStatements();
+  ccRenderDetail();
 }
 
 let _ccPendingFile = null;
+
+// ── CC Ownership dropdown ─────────────────────────────────
+const _CC_OWN_OPTIONS = ['Jai Marketing', 'E-Marketing', 'Personal'];
+
+function ccOwnershipChange(sel, bank, card, si, oi) {
+  const textEl = document.getElementById(`ccOwnTxt-${si}-${oi}`);
+  if (sel.value === 'Other') {
+    if (textEl) { textEl.style.display = 'block'; textEl.focus(); }
+  } else {
+    if (textEl) { textEl.style.display = 'none'; textEl.value = ''; }
+    ccUpdateField(bank, card, si, oi, 'expenses', sel.value);
+  }
+}
+
+function ccOwnershipTextChange(input, bank, card, si, oi) {
+  ccUpdateField(bank, card, si, oi, 'expenses', input.value);
+}
+// ─────────────────────────────────────────────────────────
 
 // ── CC Filters ────────────────────────────────────────────
 const _CC_PRESETS = [
@@ -13854,11 +13874,11 @@ function ccRenderDetail() {
           onmouseover="this.style.background='#1e40af'" onmouseout="this.style.background='#1a56db'">Apply</button>
       </div>
 
-      <!-- Clear all -->
-      ${(_ccFilter.dateFrom||_ccFilter.amtMin||_ccFilter.amtMax)?`
+      <!-- Reset button — always visible -->
       <button onclick="ccFilterClear()"
-        style="padding:7px 14px;border:1.5px solid #fca5a5;background:#fff;color:#dc2626;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit"
-        onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='#fff'">✕ Clear filters</button>`:''}
+        style="padding:7px 14px;border:1.5px solid #e2e8f0;background:#fff;color:#64748b;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit"
+        onmouseover="this.style.borderColor='#fca5a5';this.style.color='#dc2626';this.style.background='#fef2f2'"
+        onmouseout="this.style.borderColor='#e2e8f0';this.style.color='#64748b';this.style.background='#fff'">↺ Reset</button>
     </div>
 
     <div id="ccStatementsWrap"></div>`;
@@ -13884,6 +13904,20 @@ function ccRenderStatements() {
   }
 
   wrap.innerHTML = stmts.map((s, si) => {
+    // Month/Year divider label above each statement
+    const MO_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    let monthBadge = '';
+    if (s.statement_date) {
+      const dp = s.statement_date.split('-');
+      const mon = MO_NAMES[parseInt(dp[1],10)-1] || '';
+      const yr  = dp[0] || '';
+      monthBadge = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;margin-top:${si>0?'28px':'0'}">
+        <div style="height:1px;flex:1;background:#e2e8f0"></div>
+        <span style="font-size:12px;font-weight:700;color:#64748b;background:#f1f5f9;padding:4px 14px;border-radius:20px;letter-spacing:.04em;white-space:nowrap">📅 ${mon} ${yr}</span>
+        <div style="height:1px;flex:1;background:#e2e8f0"></div>
+      </div>`;
+    }
+
     const allTxns = s.transactions || [];
     const txns = allTxns.map((t, i) => ({...t, _oi: i})).filter(t => {
       if (_ccFilter.dateFrom && t.date && t.date < _ccFilter.dateFrom) return false;
@@ -13903,10 +13937,19 @@ function ccRenderStatements() {
         <td style="padding:8px 12px;font-size:13px;color:#0f172a">${dtEscape(t.description||'—')}</td>
         <td style="padding:8px 12px;font-size:13px;font-weight:600;color:${t.txn_type==='credit'?'#16a34a':'#0f172a'};text-align:right;white-space:nowrap">${t.txn_type==='credit'?'+ ':''}${(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
         <td style="padding:6px 8px">
-          <input type="text" value="${dtEscape(t.expenses||'')}" placeholder="e.g. e-marketing"
-            onchange="ccUpdateField('${safeBank}','${safeCard}',${si},${oi},'expenses',this.value)"
-            style="width:110px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:inherit"
+          <select data-own-sel="${si}-${oi}"
+            onchange="ccOwnershipChange(this,'${safeBank}','${safeCard}',${si},${oi})"
+            style="width:120px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:inherit;cursor:pointer"
             onfocus="this.style.borderColor='#1a56db'" onblur="this.style.borderColor='#e2e8f0'">
+            <option value="">— Owner —</option>
+            <option value="Jai Marketing">Jai Marketing</option>
+            <option value="E-Marketing">E-Marketing</option>
+            <option value="Personal">Personal</option>
+            <option value="Other">Other…</option>
+          </select>
+          <input type="text" id="ccOwnTxt-${si}-${oi}" placeholder="Type here…"
+            onchange="ccOwnershipTextChange(this,'${safeBank}','${safeCard}',${si},${oi})"
+            style="display:none;width:110px;margin-top:4px;padding:5px 8px;border:1.5px solid #1a56db;border-radius:6px;font-size:12px;outline:none;font-family:inherit">
         </td>
         <td style="padding:6px 8px">
           <select data-dept-sel="${si}-${oi}"
@@ -13943,7 +13986,7 @@ function ccRenderStatements() {
     const prevPayable = prev ? (prev.payable_amount || (prev.transactions||[]).reduce((a,t)=>a+(t.txn_type==='credit'?0:parseFloat(t.amount)||0),0)) : null;
     const prevTxCount = prev ? (prev.transactions||[]).length : null;
 
-    return `
+    return monthBadge + `
     <div style="border:1px solid #e2e8f0;border-radius:14px;margin-bottom:20px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06)">
       <!-- Top bar: bank name + delete -->
       <div style="background:${color};padding:12px 20px;display:flex;justify-content:space-between;align-items:center">
@@ -13991,7 +14034,7 @@ function ccRenderStatements() {
               <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Date</th>
               <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Description</th>
               <th style="padding:9px 12px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Amount (₹)</th>
-              <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Expenses</th>
+              <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Ownership</th>
               <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Department</th>
               <th style="padding:9px 12px;width:36px"></th>
             </tr>
@@ -14012,11 +14055,23 @@ function ccRenderStatements() {
     </div>`;
   }).join('');
 
-  // Set department dropdowns after render (use original index oi)
+  // Set department + ownership dropdowns after render (use original index oi)
   stmts.forEach((s, si) => {
     (s.transactions||[]).forEach((t, oi) => {
-      const sel = wrap.querySelector(`[data-dept-sel="${si}-${oi}"]`);
-      if (sel && t.department) sel.value = t.department;
+      // Department
+      const deptSel = wrap.querySelector(`[data-dept-sel="${si}-${oi}"]`);
+      if (deptSel && t.department) deptSel.value = t.department;
+      // Ownership
+      const ownSel = wrap.querySelector(`[data-own-sel="${si}-${oi}"]`);
+      if (ownSel && t.expenses) {
+        if (_CC_OWN_OPTIONS.includes(t.expenses)) {
+          ownSel.value = t.expenses;
+        } else {
+          ownSel.value = 'Other';
+          const txtEl = document.getElementById(`ccOwnTxt-${si}-${oi}`);
+          if (txtEl) { txtEl.style.display = 'block'; txtEl.value = t.expenses; }
+        }
+      }
     });
   });
 }
