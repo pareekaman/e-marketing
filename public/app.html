@@ -13470,17 +13470,27 @@ let _ccPendingFile = null;
 const _CC_OWN_OPTIONS = ['Jai Marketing', 'E-Marketing', 'Personal'];
 
 function ccOwnershipChange(sel, bank, card, si, oi) {
-  const textEl = document.getElementById(`ccOwnTxt-${si}-${oi}`);
+  const row = document.getElementById(`ccOwnOther-${si}-${oi}`);
   if (sel.value === 'Other') {
-    if (textEl) { textEl.style.display = 'block'; textEl.focus(); }
+    if (row) { row.style.display = 'flex'; document.getElementById(`ccOwnTxt-${si}-${oi}`)?.focus(); }
   } else {
-    if (textEl) { textEl.style.display = 'none'; textEl.value = ''; }
+    if (row) row.style.display = 'none';
     ccUpdateField(bank, card, si, oi, 'expenses', sel.value);
   }
 }
 
-function ccOwnershipTextChange(input, bank, card, si, oi) {
-  ccUpdateField(bank, card, si, oi, 'expenses', input.value);
+function ccOwnConfirm(bank, card, si, oi) {
+  const val = document.getElementById(`ccOwnTxt-${si}-${oi}`)?.value || '';
+  ccUpdateField(bank, card, si, oi, 'expenses', val);
+}
+
+function ccOwnCancel(si, oi) {
+  const row = document.getElementById(`ccOwnOther-${si}-${oi}`);
+  const sel = document.querySelector(`[data-own-sel="${si}-${oi}"]`);
+  const txt = document.getElementById(`ccOwnTxt-${si}-${oi}`);
+  if (row) row.style.display = 'none';
+  if (sel) sel.value = '';
+  if (txt) txt.value = '';
 }
 // ─────────────────────────────────────────────────────────
 
@@ -13947,9 +13957,15 @@ function ccRenderStatements() {
             <option value="Personal">Personal</option>
             <option value="Other">Other…</option>
           </select>
-          <input type="text" id="ccOwnTxt-${si}-${oi}" placeholder="Type here…"
-            onchange="ccOwnershipTextChange(this,'${safeBank}','${safeCard}',${si},${oi})"
-            style="display:none;width:110px;margin-top:4px;padding:5px 8px;border:1.5px solid #1a56db;border-radius:6px;font-size:12px;outline:none;font-family:inherit">
+          <div id="ccOwnOther-${si}-${oi}" style="display:none;align-items:center;gap:4px;margin-top:4px">
+            <input type="text" id="ccOwnTxt-${si}-${oi}" placeholder="Type here…"
+              style="width:88px;padding:4px 7px;border:1.5px solid #1a56db;border-radius:6px;font-size:12px;outline:none;font-family:inherit"
+              onkeydown="if(event.key==='Enter')ccOwnConfirm('${safeBank}','${safeCard}',${si},${oi});if(event.key==='Escape')ccOwnCancel(${si},${oi})">
+            <button onclick="ccOwnConfirm('${safeBank}','${safeCard}',${si},${oi})" title="Save"
+              style="width:22px;height:22px;border:none;border-radius:5px;background:#16a34a;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✓</button>
+            <button onclick="ccOwnCancel(${si},${oi})" title="Cancel"
+              style="width:22px;height:22px;border:none;border-radius:5px;background:#ef4444;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
+          </div>
         </td>
         <td style="padding:6px 8px">
           <select data-dept-sel="${si}-${oi}"
@@ -14068,8 +14084,10 @@ function ccRenderStatements() {
           ownSel.value = t.expenses;
         } else {
           ownSel.value = 'Other';
+          const row = document.getElementById(`ccOwnOther-${si}-${oi}`);
           const txtEl = document.getElementById(`ccOwnTxt-${si}-${oi}`);
-          if (txtEl) { txtEl.style.display = 'block'; txtEl.value = t.expenses; }
+          if (row) row.style.display = 'flex';
+          if (txtEl) txtEl.value = t.expenses;
         }
       }
     });
