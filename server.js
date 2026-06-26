@@ -5107,6 +5107,23 @@ function safeParseCC(text) {
   } catch(e) { console.error('CC tables init:', e.message); }
 })();
 
+// Payment requests table
+;(async () => {
+  try {
+    await db.query(`CREATE TABLE IF NOT EXISTS payment_requests (
+      id          INT AUTO_INCREMENT PRIMARY KEY,
+      submitted_by INT NOT NULL,
+      name        VARCHAR(100) NOT NULL,
+      bank_name   VARCHAR(50)  NOT NULL,
+      card_number VARCHAR(50)  NOT NULL,
+      reason      TEXT         NOT NULL,
+      status      ENUM('pending','approved','rejected') DEFAULT 'pending',
+      reviewed_at TIMESTAMP NULL,
+      created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  } catch(e) { console.error('payment_requests init:', e.message); }
+})();
+
 // ── Parsing helpers ─────────────────────────────────────
 function parseCCDateDMY(str) {
   // DD/MM/YYYY or DD-MM-YYYY
@@ -5458,6 +5475,71 @@ app.post('/api/credit-cards/drive-upload', requireAuth, async (req, res) => {
         redirect: 'follow'
       });
     }
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/payment-requests/cards — card list for dropdown (Vishal only)
+app.get('/api/payment-requests/cards', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || !['Vishal Jaga','Naman Gupta'].includes(me.name)) return res.status(403).json({ error:'Access denied' });
+    const [rows] = await db.query('SELECT bank_name, card_number FROM cc_cards ORDER BY bank_name, card_number');
+    res.json(rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/payment-requests — submit new request (Vishal only)
+app.post('/api/payment-requests', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Vishal Jaga') return res.status(403).json({ error:'Access denied' });
+    const { bank_name, card_number, reason } = req.body;
+    if (!bank_name || !card_number || !reason) return res.status(400).json({ error:'All fields required' });
+    await db.query(
+      'INSERT INTO payment_requests (submitted_by, name, bank_name, card_number, reason) VALUES (?,?,?,?,?)',
+      [req.session.userId, me.name, bank_name, card_number, reason]
+    );
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/payment-requests — all requests (Naman only)
+app.get('/api/payment-requests', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    const [rows] = await db.query(
+      'SELECT * FROM payment_requests ORDER BY created_at DESC'
+    );
+    res.json(rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/payment-requests/my — own requests (Vishal only)
+app.get('/api/payment-requests/my', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Vishal Jaga') return res.status(403).json({ error:'Access denied' });
+    const [rows] = await db.query(
+      'SELECT * FROM payment_requests WHERE submitted_by=? ORDER BY created_at DESC',
+      [req.session.userId]
+    );
+    res.json(rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// PATCH /api/payment-requests/:id — approve or reject (Naman only)
+app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    const { status } = req.body;
+    if (!['approved','rejected'].includes(status)) return res.status(400).json({ error:'Invalid status' });
+    await db.query(
+      'UPDATE payment_requests SET status=?, reviewed_at=NOW() WHERE id=?',
+      [status, req.params.id]
+    );
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
