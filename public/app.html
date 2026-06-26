@@ -13823,7 +13823,7 @@ async function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
     doc.text(new Date().toLocaleString('en-IN'), W - pw, 20, { align:'right' });
     let y = 36;
     const sec = (lbl) => { doc.setFillColor(241,245,249); doc.rect(pw,y,W-pw*2,6,'F'); doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(100,116,139); doc.text(lbl.toUpperCase(),pw+2,y+4.2); y+=9; };
-    const rw  = (lbl, val, hi) => { doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(100,116,139); doc.text(lbl,pw+2,y); doc.setFont('helvetica','bold'); doc.setTextColor(hi?[220,38,38]:[15,23,42]); doc.text(String(val),pw+52,y); y+=7; };
+    const rw  = (lbl, val, hi) => { doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(100,116,139); doc.text(lbl,pw+2,y); doc.setFont('helvetica','bold'); if(hi) doc.setTextColor(220,38,38); else doc.setTextColor(15,23,42); doc.text(String(val),pw+52,y); y+=7; };
     const stmt = _ccData[bank]?.[cardNum]?.[stmtIdx];
     sec('Card Details');
     rw('Bank', bank); rw('Card Number', cardNum);
