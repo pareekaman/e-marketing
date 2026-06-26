@@ -5277,13 +5277,17 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
   try {
     const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
     if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    // Remove orphan cards (no statements) from DB
+    await db.query('DELETE FROM cc_cards WHERE id NOT IN (SELECT DISTINCT card_id FROM cc_statements)');
     const [cards] = await db.query('SELECT * FROM cc_cards ORDER BY bank_name,card_number');
     const [stmts] = await db.query('SELECT * FROM cc_statements ORDER BY statement_date DESC');
     const [txns]  = await db.query('SELECT * FROM cc_transactions ORDER BY txn_date');
     const result = {};
     for (const card of cards) {
       if (!result[card.bank_name]) result[card.bank_name] = {};
-      result[card.bank_name][card.card_number] = stmts.filter(s => s.card_id === card.id).map(s => ({
+      const cardStmts = stmts.filter(s => s.card_id === card.id);
+      if (!cardStmts.length) continue; // skip cards with no statements
+      result[card.bank_name][card.card_number] = cardStmts.map(s => ({
         id: s.id,
         statement_date:   s.statement_date   ? s.statement_date.toISOString().substring(0,10)   : '',
         payment_due_date: s.payment_due_date ? s.payment_due_date.toISOString().substring(0,10) : '',
