@@ -1340,7 +1340,7 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
     <div class="nav-item" id="nav-feedback" style="display:none" onclick="navigate('feedback',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
-      <span class="nav-label-text">Feedback</span>
+      <span class="nav-label-text">Escalation</span>
     </div>
     <div class="nav-item" id="nav-creditcards" style="display:none" onclick="navigate('creditcards',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
@@ -2165,7 +2165,7 @@ tbody tr:last-child td{border-bottom:none;}
   ══════════════════════════════════════ -->
   <div id="page-feedback" class="page">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px">
-      <h2 style="margin:0;font-size:20px;font-weight:700;color:#0f172a">⭐ Client Feedback</h2>
+      <h2 style="margin:0;font-size:20px;font-weight:700;color:#0f172a">⚠️ Client Escalations</h2>
       <button class="btn btn-outline" onclick="loadFeedbackAdmin()" style="font-size:12px">🔄 Refresh</button>
     </div>
     <div id="feedbackContent"><div class="empty" style="padding:40px">Loading…</div></div>
@@ -4262,7 +4262,7 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Meetings','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⭐ Client Feedback'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Meetings','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⚠️ Client Escalations'};
 
 // ══════════════════════════════════════════════════════
 // USERS PAGE — TAB SWITCHER + ACCESS CONTROL
@@ -13430,8 +13430,8 @@ async function loadCreditCards() {
     if (_ccActiveBank) dd.value = _ccActiveBank;
   }
   try {
-    const users = await api('/api/users');
-    _ccDepts = [...new Set((users||[]).map(u=>u.department).filter(Boolean))].sort();
+    const depts = await api('/api/credit-cards/departments');
+    _ccDepts = Array.isArray(depts) ? depts : [];
   } catch(e) { _ccDepts = []; }
   // Load from DB
   try {
@@ -13773,6 +13773,33 @@ async function ccDeleteTransaction(bank, cardNum, stmtIdx, txIdx) {
   ccRenderStatements();
 }
 
+// Google Drive / Apps Script URL — set when link is available
+const CC_DRIVE_URL = '';
+
+function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
+  if (!CC_DRIVE_URL) { alert('Drive link not configured yet. Please contact the admin.'); return; }
+  const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
+  if (!t) return;
+  const wrap = document.getElementById('ccStatementsWrap');
+  const oi   = txIdx;
+  const ownSel  = wrap?.querySelector(`[data-own-sel="${stmtIdx}-${oi}"]`);
+  const deptSel = wrap?.querySelector(`[data-dept-sel="${stmtIdx}-${oi}"]`);
+  const owner = ownSel?.value || t.expenses || '';
+  const dept  = deptSel?.value || t.department || '';
+  if (!owner || !dept) { alert('Please select Owner and Department before saving to Drive.'); return; }
+  const params = new URLSearchParams({
+    date: t.date || '',
+    description: t.description || '',
+    amount: t.amount || '',
+    type: t.txn_type || '',
+    owner,
+    department: dept,
+    bank,
+    card: cardNum
+  });
+  window.open(CC_DRIVE_URL + '?' + params.toString(), '_blank');
+}
+
 let _ccUpdateTimer = {};
 function ccUpdateField(bank, cardNum, stmtIdx, txIdx, field, val) {
   const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
@@ -13980,10 +14007,19 @@ function ccRenderStatements() {
           </select>
         </td>
         <td style="padding:6px 8px;text-align:center">
-          <button onclick="ccDeleteTransaction('${safeBank}','${safeCard}',${si},${oi})" title="Delete row"
-            style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:15px;padding:3px 5px;border-radius:6px;line-height:1;transition:color .15s,background .15s"
-            onmouseover="this.style.color='#dc2626';this.style.background='#fee2e2'"
-            onmouseout="this.style.color='#94a3b8';this.style.background='none'">🗑</button>
+          <button onclick="ccSaveToDrive('${safeBank}','${safeCard}',${si},${oi})" title="Save to Drive"
+            style="background:none;border:none;cursor:pointer;padding:3px 5px;border-radius:6px;line-height:1;transition:background .15s;display:inline-flex;align-items:center;justify-content:center"
+            onmouseover="this.style.background='#e8f5e9'"
+            onmouseout="this.style.background='none'">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 87.3 78" style="display:block">
+              <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+              <path d="M43.65 25L29.9 1.2C28.55 2 27.4 3.1 26.6 4.5L1.2 49.5C.4 50.9 0 52.45 0 54h27.5z" fill="#00ac47"/>
+              <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H60l5.85 11.5z" fill="#ea4335"/>
+              <path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+              <path d="M60 54H27.5L13.75 77.8c1.35.8 2.9 1.2 4.5 1.2h50.05c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+              <path d="M73.4 27L60.7 4.5c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25 60 54h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+            </svg>
+          </button>
         </td>
       </tr>`;
     }).join('');
@@ -14056,7 +14092,7 @@ function ccRenderStatements() {
               <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;border-right:1px solid #e2e8f0">Amount (₹)</th>
               <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;border-right:1px solid #e2e8f0">Ownership</th>
               <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;border-right:1px solid #e2e8f0">Department</th>
-              <th style="padding:9px 8px;width:36px"></th>
+              <th style="padding:9px 8px;width:36px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Drive</th>
             </tr>
           </thead>
           <tbody>

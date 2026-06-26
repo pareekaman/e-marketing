@@ -5084,6 +5084,26 @@ function safeParseCC(text) {
       created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (statement_id) REFERENCES cc_statements(id) ON DELETE CASCADE
     )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS cc_departments (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      name       VARCHAR(100) NOT NULL UNIQUE,
+      sort_order INT DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+    // Seed from users + fixed extras if table is empty
+    const [[{cnt}]] = await db.query('SELECT COUNT(*) as cnt FROM cc_departments');
+    if (!cnt) {
+      const [uRows] = await db.query("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND department != '' ORDER BY department");
+      const fromUsers = uRows.map(r => r.department);
+      const extras = ['Common', 'Advance Laminate'];
+      const all = [...new Set([...fromUsers, ...extras])].sort((a,b) => a.localeCompare(b));
+      if (all.length) {
+        await db.query(
+          'INSERT IGNORE INTO cc_departments (name, sort_order) VALUES ' + all.map((_,i) => '(?,?)').join(','),
+          all.flatMap((n,i) => [n, i+1])
+        );
+      }
+    }
   } catch(e) { console.error('CC tables init:', e.message); }
 })();
 
@@ -5380,6 +5400,40 @@ app.patch('/api/credit-cards/transaction/:id', requireAuth, async (req, res) => 
     await db.query('UPDATE cc_transactions SET expenses=?,department=? WHERE id=?', [expenses??null, department??null, req.params.id]);
     res.json({ success:true });
   } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// GET /api/credit-cards/departments — CC-only department master
+app.get('/api/credit-cards/departments', requireAuth, async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT name FROM cc_departments ORDER BY sort_order, name');
+    res.json(rows.map(r => r.name));
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/credit-cards/departments — add a new CC department (Naman only)
+app.post('/api/credit-cards/departments', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    const name = (req.body.name||'').trim();
+    if (!name) return res.status(400).json({ error:'Name required' });
+    const [[{maxOrd}]] = await db.query('SELECT COALESCE(MAX(sort_order),0) AS maxOrd FROM cc_departments');
+    await db.query('INSERT INTO cc_departments (name, sort_order) VALUES (?,?)', [name, maxOrd+1]);
+    res.json({ success:true });
+  } catch(err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error:'Department already exists' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/credit-cards/departments/:name — remove a CC department (Naman only)
+app.delete('/api/credit-cards/departments/:name', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    await db.query('DELETE FROM cc_departments WHERE name=?', [req.params.name]);
+    res.json({ success:true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 // Check if logged-in user can access the feedback page.
