@@ -13470,11 +13470,11 @@ let _ccPendingFile = null;
 const _CC_OWN_OPTIONS = ['Jai Marketing', 'E-Marketing', 'Personal'];
 
 function ccOwnershipChange(sel, bank, card, si, oi) {
-  const row = document.getElementById(`ccOwnOther-${si}-${oi}`);
   if (sel.value === 'Other') {
+    sel.style.display = 'none';
+    const row = document.getElementById(`ccOwnOther-${si}-${oi}`);
     if (row) { row.style.display = 'flex'; document.getElementById(`ccOwnTxt-${si}-${oi}`)?.focus(); }
   } else {
-    if (row) row.style.display = 'none';
     ccUpdateField(bank, card, si, oi, 'expenses', sel.value);
   }
 }
@@ -13489,7 +13489,7 @@ function ccOwnCancel(si, oi) {
   const sel = document.querySelector(`[data-own-sel="${si}-${oi}"]`);
   const txt = document.getElementById(`ccOwnTxt-${si}-${oi}`);
   if (row) row.style.display = 'none';
-  if (sel) sel.value = '';
+  if (sel) { sel.value = ''; sel.style.display = ''; }
   if (txt) txt.value = '';
 }
 // ─────────────────────────────────────────────────────────
@@ -14083,7 +14083,7 @@ function ccRenderStatements() {
         if (_CC_OWN_OPTIONS.includes(t.expenses)) {
           ownSel.value = t.expenses;
         } else {
-          ownSel.value = 'Other';
+          ownSel.style.display = 'none';
           const row = document.getElementById(`ccOwnOther-${si}-${oi}`);
           const txtEl = document.getElementById(`ccOwnTxt-${si}-${oi}`);
           if (row) row.style.display = 'flex';
