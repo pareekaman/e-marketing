@@ -14499,7 +14499,10 @@ async function ccOpenStatementDrive(bank, cardNum, stmtIdx, btn) {
     doc.text('Rs. ' + txSum.toLocaleString('en-IN',{minimumFractionDigits:2}), L+UW-2, y+4, { align:'right' });
 
     const safe = s => String(s||'').replace(/[^a-zA-Z0-9_-]/g,'_').substring(0,20);
-    const filename = 'CC_' + safe(bank) + '_' + safe(stmt.statement_date) + '_Statement.pdf';
+    const suggested = 'CC_' + safe(bank) + '_' + safe(stmt.statement_date) + '_Statement.pdf';
+    const userFilename = window.prompt('File ka naam set karein (Drive mein save hoga):', suggested);
+    if (!userFilename) { if (btn) { btn.style.opacity = ''; btn.style.pointerEvents = ''; } return; }
+    const filename = userFilename.trim().endsWith('.pdf') ? userFilename.trim() : userFilename.trim() + '.pdf';
     const pdfB64 = doc.output('datauristring').split(',')[1];
 
     const resp = await fetch('/api/credit-cards/drive-upload', {
