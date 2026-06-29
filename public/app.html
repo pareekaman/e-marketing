@@ -13751,7 +13751,7 @@ async function loadPaymentApprovalsBadge() {
 
 async function prReview(id, status) {
   try {
-    await api(`/api/payment-requests/${id}`, { method:'PATCH', body:{ status } });
+    await api(`/api/payment-requests/${id}`, 'PATCH', { status });
     showToast(status==='approved' ? '✅ Request approved!' : '❌ Request rejected!');
     loadPaymentApprovals();
     loadPaymentApprovalsBadge();
