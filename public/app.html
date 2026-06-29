@@ -4211,9 +4211,9 @@ async function init() {
       const el = document.getElementById(navId);
       if (el) el.style.display = canSee(page) ? 'flex' : 'none';
     }
-    // Credit Cards nav — only Naman Gupta
+    // Credit Cards nav — all admins
     const ccNav = document.getElementById('nav-creditcards');
-    if (ccNav) ccNav.style.display = (ME.name === 'Naman Gupta') ? 'flex' : 'none';
+    if (ccNav) ccNav.style.display = (ME.role === 'admin') ? 'flex' : 'none';
     // Payment Request nav — all admins
     const prNav = document.getElementById('nav-paymentreq');
     if (prNav) prNav.style.display = (ME.role === 'admin') ? 'flex' : 'none';
