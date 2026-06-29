@@ -13747,7 +13747,9 @@ async function loadMyPaymentRequests() {
         const billFileId = billSentinel ? billSentinel.reason.replace('__bill__:' + String(r.id) + ':', '') : null;
         const billCell = billFileId
           ? `<a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" style="color:#1a56db;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap">View Bill</a>`
-          : `<span style="color:#94a3b8;font-size:12px">—</span>`;
+          : (isDone && r.status === 'approved'
+            ? `<button onclick="prOpenBillModal(${r.id})" style="background:none;border:none;color:#f59e0b;font-size:12px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline">Upload Bill</button>`
+            : `<span style="color:#94a3b8;font-size:12px">—</span>`);
         let payStatusCell = '';
         if (r.status === 'approved') {
           if (isDone) payStatusCell = '<span style="font-size:20px">✅</span>';
@@ -13810,7 +13812,9 @@ async function loadPaymentApprovals() {
         const billFileId = billSentinel ? billSentinel.reason.replace('__bill__:' + String(r.id) + ':', '') : null;
         const paBillCell = billFileId
           ? `<a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" style="color:#1a56db;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap">View Bill</a>`
-          : `<span style="color:#94a3b8;font-size:12px">—</span>`;
+          : (isDone && r.status === 'approved'
+            ? `<button onclick="prOpenBillModal(${r.id})" style="background:none;border:none;color:#f59e0b;font-size:12px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline">Upload Bill</button>`
+            : `<span style="color:#94a3b8;font-size:12px">—</span>`);
         return `<tr id="paRow-${r.id}" style="${i%2?'background:#f8fafc':''}">
         <td style="padding:9px 14px;font-size:12px;color:#64748b">${new Date(r.created_at).toLocaleDateString('en-IN')}</td>
         <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.name)}</td>
