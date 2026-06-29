@@ -13519,7 +13519,8 @@ let _prCards = []; // [{bank_name, card_number}]
 async function initPaymentReqPage() {
   document.getElementById('prName').value = ME.name || '';
   try {
-    _prCards = await api('/api/payment-requests/cards');
+    const res = await api('/api/payment-requests/cards');
+    _prCards = Array.isArray(res) ? res : [];
   } catch(e) { _prCards = []; }
   prPopulateBanks();
   loadMyPaymentRequests();
@@ -13611,13 +13612,24 @@ function prBankChange() {
   } else {
     otherInput.style.display = 'none';
     otherInput.value = '';
-    cardSel.style.display = '';
-    cardOther.style.display = 'none';
-    cardOther.value = '';
-    const cards = _prCards.filter(c => c.bank_name === val);
-    cardSel.innerHTML = '<option value="">— Select Card —</option>' +
-      cards.map(c => `<option value="${dtEscape(c.card_number)}">${dtEscape(c.card_number)}</option>`).join('') +
-      '<option value="__other__">+ Add more</option>';
+    const cards = Array.isArray(_prCards) ? _prCards.filter(c => c.bank_name === val) : [];
+
+    if (cards.length === 0) {
+      // No saved cards for this bank — directly show text input
+      cardSel.style.display = 'none';
+      cardSel.innerHTML = '<option value="">— Select Card —</option>';
+      cardOther.style.display = '';
+      cardOther.value = '';
+      cardOther.placeholder = 'Card number type karo…';
+      cardOther.focus();
+    } else {
+      cardSel.style.display = '';
+      cardOther.style.display = 'none';
+      cardOther.value = '';
+      cardSel.innerHTML = '<option value="">— Select Card —</option>' +
+        cards.map(c => `<option value="${dtEscape(c.card_number)}">${dtEscape(c.card_number)}</option>`).join('') +
+        '<option value="__other__">+ Add more</option>';
+    }
   }
 }
 
@@ -13724,7 +13736,8 @@ async function loadPaymentApprovals() {
   if (!el) return;
   try {
     const rows = await api('/api/payment-requests');
-    if (!rows.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">✅ No pending payment requests!</div>'; return; }
+    if (rows.error) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(rows.error) + '</div>'; return; }
+    if (!Array.isArray(rows) || !rows.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Koi payment request nahi hai</div>'; return; }
     const statusBadge = s => s==='approved'
       ? '<span style="background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">✅ Approved</span>'
       : s==='rejected'

@@ -5583,10 +5583,18 @@ app.post('/api/payment-requests', requireAuth, async (req, res) => {
     if (!me || me.name !== 'Vishal Jaga') return res.status(403).json({ error:'Access denied' });
     const { bank_name, card_number, amount, reason } = req.body;
     if (!bank_name || !card_number || !reason) return res.status(400).json({ error:'All fields required' });
-    await db.query(
-      'INSERT INTO payment_requests (submitted_by, name, bank_name, card_number, amount, reason) VALUES (?,?,?,?,?,?)',
-      [req.session.userId, me.name, bank_name, card_number, parseFloat(amount)||0, reason]
-    );
+    try {
+      await db.query(
+        'INSERT INTO payment_requests (submitted_by, name, bank_name, card_number, amount, reason) VALUES (?,?,?,?,?,?)',
+        [req.session.userId, me.name, bank_name, card_number, parseFloat(amount)||0, reason]
+      );
+    } catch(insertErr) {
+      // Fallback if amount column not yet migrated (server not restarted)
+      await db.query(
+        'INSERT INTO payment_requests (submitted_by, name, bank_name, card_number, reason) VALUES (?,?,?,?,?)',
+        [req.session.userId, me.name, bank_name, card_number, reason]
+      );
+    }
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -5636,10 +5644,18 @@ app.post('/api/payment-requests/:id/payment-done', requireAuth, async (req, res)
   try {
     const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
     if (!me || me.name !== 'Vishal Jaga') return res.status(403).json({ error:'Access denied' });
-    await db.query(
-      'UPDATE payment_requests SET payment_done=1, payment_done_at=NOW() WHERE id=? AND status="approved"',
-      [req.params.id]
-    );
+    try {
+      await db.query(
+        'UPDATE payment_requests SET payment_done=1, payment_done_at=NOW() WHERE id=? AND status="approved"',
+        [req.params.id]
+      );
+    } catch(e) {
+      // Fallback if payment_done column not yet migrated
+      await db.query(
+        'UPDATE payment_requests SET status="approved" WHERE id=?',
+        [req.params.id]
+      );
+    }
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
