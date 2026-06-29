@@ -13612,7 +13612,7 @@ function prBankChange() {
     const cards = _prCards.filter(c => c.bank_name === val);
     cardSel.innerHTML = '<option value="">— Select Card —</option>' +
       cards.map(c => `<option value="${dtEscape(c.card_number)}">${dtEscape(c.card_number)}</option>`).join('') +
-      '<option value="__other__">Other… (nayi card add karo)</option>';
+      '<option value="__other__">+ Add more</option>';
   }
 }
 
