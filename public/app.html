@@ -4214,9 +4214,9 @@ async function init() {
     // Credit Cards nav — only Naman Gupta
     const ccNav = document.getElementById('nav-creditcards');
     if (ccNav) ccNav.style.display = (ME.name === 'Naman Gupta') ? 'flex' : 'none';
-    // Payment Request nav — only Vishal Jaga
+    // Payment Request nav — all admins
     const prNav = document.getElementById('nav-paymentreq');
-    if (prNav) prNav.style.display = (ME.name === 'Vishal Jaga') ? 'flex' : 'none';
+    if (prNav) prNav.style.display = (ME.role === 'admin') ? 'flex' : 'none';
 
     // Feedback nav — check server if this user is a valid recipient (HOD / fixed recipients)
     const fbNav = document.getElementById('nav-feedback');
@@ -7538,8 +7538,8 @@ async function loadApprovals() {
   // if (ME.role === 'admin' || ME.name === 'Naman Gupta') {
   //   document.getElementById('apprTabWa').style.display = 'block';
   // }
-  // Payment Approvals tab — only Naman Gupta
-  if (ME.name === 'Naman Gupta') {
+  // Payment Approvals tab — all admins
+  if (ME.role === 'admin') {
     document.getElementById('apprTabPayment').style.display = 'block';
     loadPaymentApprovalsBadge();
   }
@@ -13531,8 +13531,8 @@ async function initPaymentReqPage() {
   } catch(e) { _prCards = []; }
   prPopulateBanks();
   loadMyPaymentRequests();
-  // Show card management panel only for Naman
-  if (ME.name === 'Naman Gupta') {
+  // Show card management panel for all admins
+  if (ME.role === 'admin') {
     const wrap = document.getElementById('prManageCardsWrap');
     if (wrap) wrap.style.display = '';
     prRenderCardList();
@@ -13691,7 +13691,7 @@ async function prSubmit() {
       if (!cr.error) {
         const fresh = await api('/api/payment-requests/cards');
         if (Array.isArray(fresh)) { _prCards = fresh; prPopulateBanks(); }
-        if (ME.name === 'Naman Gupta') prRenderCardList();
+        if (ME.role === 'admin') prRenderCardList();
       }
     }
 
