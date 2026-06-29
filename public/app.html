@@ -13710,7 +13710,6 @@ async function loadMyPaymentRequests() {
   try {
     const all = await api('/api/payment-requests/my');
     if (!Array.isArray(all)) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">Koi request nahi</div>'; return; }
-    // Sentinels: internal payment-done markers (bank_name='__system__')
     const sentinels = all.filter(r => r.bank_name === '__system__');
     const rows = all.filter(r => r.bank_name !== '__system__');
     if (!rows.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">Koi request nahi</div>'; return; }
@@ -13727,26 +13726,32 @@ async function loadMyPaymentRequests() {
         <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Amount</th>
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Reason</th>
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
+        <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Payment Status</th>
       </tr></thead>
       <tbody>${rows.map((r,i) => {
         const parsed = prParseReason(r.reason);
         const dispAmt = r.amount ? Number(r.amount) : parsed.amount;
         const dispReason = r.amount ? r.reason : parsed.reason;
         const isDone = r.payment_done || sentinels.some(s => s.reason === '__paid__:' + r.id);
+        const cancelSentinel = sentinels.find(s => s.reason.startsWith('__cancelled__:' + r.id + ':'));
+        const isCancelled = cancelSentinel != null;
+        let payStatusCell = '';
+        if (r.status === 'approved') {
+          if (isDone) payStatusCell = '<span style="font-size:20px">✅</span>';
+          else if (isCancelled) payStatusCell = '<span style="font-size:20px" title="' + dtEscape(cancelSentinel.reason.replace('__cancelled__:' + r.id + ':','')) + '">❌</span>';
+          else payStatusCell = `<span style="display:inline-flex;gap:10px">
+            <button onclick="prMarkPaymentDone(${r.id})" title="Payment Done" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;padding:2px">✅</button>
+            <button onclick="prOpenCancelModal(${r.id})" title="Cancel Payment" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;padding:2px">❌</button>
+          </span>`;
+        }
         return `<tr style="${i%2?'background:#f8fafc':''}">
         <td style="padding:9px 14px;font-size:12px;color:#64748b">${new Date(r.created_at).toLocaleDateString('en-IN')}</td>
         <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.bank_name)}</td>
         <td style="padding:9px 14px;font-size:12px">${dtEscape(r.card_number)}</td>
         <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">${dispAmt?'₹'+Number(dispAmt).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
-        <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:220px">${dtEscape(dispReason)}</td>
-        <td style="padding:9px 14px">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            ${statusBadge(r.status)}
-            ${r.status==='approved' && !isDone
-              ? `<button onclick="prMarkPaymentDone(${r.id})" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">✅ Done</button>`
-              : isDone ? `<span style="font-size:13px;color:#16a34a;font-weight:700">✅ Done</span>` : ''}
-          </div>
-        </td>
+        <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:200px">${dtEscape(dispReason)}</td>
+        <td style="padding:9px 14px">${statusBadge(r.status)}</td>
+        <td style="padding:9px 14px;text-align:center">${payStatusCell}</td>
       </tr>`;}).join('')}</tbody>
     </table>`;
   } catch(e) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
@@ -13783,6 +13788,9 @@ async function loadPaymentApprovals() {
         const dispAmt = r.amount ? Number(r.amount) : parsed.amount;
         const dispReason = r.amount ? r.reason : parsed.reason;
         const isDone = r.payment_done || sentinels.some(s => s.reason === '__paid__:' + r.id);
+        const cancelSentinel = sentinels.find(s => s.reason.startsWith('__cancelled__:' + r.id + ':'));
+        const isCancelled = cancelSentinel != null;
+        const cancelReason = isCancelled ? cancelSentinel.reason.replace('__cancelled__:' + r.id + ':', '') : '';
         return `<tr id="paRow-${r.id}" style="${i%2?'background:#f8fafc':''}">
         <td style="padding:9px 14px;font-size:12px;color:#64748b">${new Date(r.created_at).toLocaleDateString('en-IN')}</td>
         <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.name)}</td>
@@ -13796,7 +13804,9 @@ async function loadPaymentApprovals() {
             <button onclick="prReview(${r.id},'approved')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;margin-right:5px">✅ Approve</button>
             <button onclick="prReview(${r.id},'rejected')" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer">❌ Reject</button>
           ` : isDone
-            ? `<span style="font-size:13px;font-weight:700;color:#16a34a">✅ Done</span>`
+            ? `<span style="font-size:13px;font-weight:700;color:#16a34a">Payment Done</span>`
+            : isCancelled
+            ? `<span style="font-size:12px;font-weight:700;color:#dc2626">Cancelled<br><span style="font-weight:400;font-size:11px;color:#64748b">${dtEscape(cancelReason)}</span></span>`
             : '—'}
         </td>
       </tr>`;}).join('')}</tbody>
@@ -13824,16 +13834,43 @@ async function prReview(id, status) {
 }
 
 async function prMarkPaymentDone(id) {
+  // Try new route first; if server doesn't have it yet, silently fall through to sentinel
   try {
-    // Try new route first (works after server restart)
     const r = await api(`/api/payment-requests/${id}/payment-done`, 'POST');
     if (!r.error) { showToast('✅ Payment Done mark ho gaya!'); loadMyPaymentRequests(); return; }
-    // Fallback: store a sentinel request in DB (works without server restart)
+  } catch(e) { /* route not available on old server — fall through */ }
+
+  // Sentinel approach: create a marker request in DB so Naman also sees Done
+  try {
     const s = await api('/api/payment-requests', 'POST', {
       bank_name: '__system__', card_number: '__paid__', reason: '__paid__:' + id
     });
-    if (s.error) { showToast('Error: ' + s.error, 'error'); return; }
+    if (s && s.error) { showToast('Error: ' + s.error, 'error'); return; }
     showToast('✅ Payment Done mark ho gaya!');
+    loadMyPaymentRequests();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+function prOpenCancelModal(id) {
+  const overlay = document.getElementById('prCancelOverlay');
+  document.getElementById('prCancelReason').value = '';
+  document.getElementById('prCancelBtn').onclick = () => prSubmitCancel(id);
+  overlay.style.display = 'flex';
+  setTimeout(() => document.getElementById('prCancelReason').focus(), 80);
+}
+function prCloseCancelModal() {
+  document.getElementById('prCancelOverlay').style.display = 'none';
+}
+async function prSubmitCancel(id) {
+  const reason = document.getElementById('prCancelReason').value.trim();
+  if (!reason) { showToast('Cancel reason daalo', 'error'); return; }
+  prCloseCancelModal();
+  try {
+    const s = await api('/api/payment-requests', 'POST', {
+      bank_name: '__system__', card_number: '__cancelled__', reason: '__cancelled__:' + id + ':' + reason
+    });
+    if (s && s.error) { showToast('Error: ' + s.error, 'error'); return; }
+    showToast('Payment cancel ho gayi');
     loadMyPaymentRequests();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
@@ -15657,5 +15694,18 @@ async function dmsSaveFile() {
   } catch(e){}
 })();
 </script>
+
+<!-- Payment Cancel Modal -->
+<div id="prCancelOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:14px;padding:28px 28px 22px;width:min(420px,92vw);box-shadow:0 8px 32px rgba(0,0,0,.18)">
+    <h3 style="margin:0 0 6px;font-size:17px;color:#0f172a">Payment Cancel</h3>
+    <p style="margin:0 0 18px;font-size:13px;color:#64748b">Cancel karne ka reason batao</p>
+    <textarea id="prCancelReason" rows="3" placeholder="Reason likhiye…" style="width:100%;box-sizing:border-box;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:14px;resize:vertical;outline:none;font-family:inherit"></textarea>
+    <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
+      <button onclick="prCloseCancelModal()" style="background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:600;cursor:pointer">Reh jaane do</button>
+      <button id="prCancelBtn" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:600;cursor:pointer">Cancel karo</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
