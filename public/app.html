@@ -13719,7 +13719,6 @@ async function loadPaymentApprovals() {
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bank</th>
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Card</th>
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Reason</th>
-        <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Action</th>
       </tr></thead>
       <tbody>${rows.map((r,i) => `<tr id="paRow-${r.id}" style="${i%2?'background:#f8fafc':''}">
@@ -13728,7 +13727,6 @@ async function loadPaymentApprovals() {
         <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.bank_name)}</td>
         <td style="padding:9px 14px;font-size:12px">${dtEscape(r.card_number)}</td>
         <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:200px">${dtEscape(r.reason)}</td>
-        <td style="padding:9px 14px" id="paStatus-${r.id}">${statusBadge(r.status)}</td>
         <td style="padding:9px 14px;text-align:center">
           ${r.status==='pending' ? `
             <button onclick="prReview(${r.id},'approved')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;margin-right:5px">✅ Approve</button>
