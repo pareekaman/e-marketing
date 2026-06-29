@@ -27,7 +27,7 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 ══════════════════════════════════════ */
 .sidebar{
   width:60px;background:#0f172a;position:fixed;top:0;left:0;bottom:0;
-  z-index:100;display:flex;flex-direction:column;
+  z-index:200;display:flex;flex-direction:column;
   transition:width .25s ease;overflow:hidden;
 }
 .sidebar:hover{ width:230px; }
@@ -959,7 +959,7 @@ tbody tr:last-child td{border-bottom:none;}
 .mobile-hamburger{display:none;background:transparent;border:none;cursor:pointer;padding:8px;border-radius:8px;color:#1e293b;transition:background .15s;}
 .mobile-hamburger:hover{background:#f1f5f9;}
 .mobile-hamburger svg{width:24px;height:24px;display:block;}
-.sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99;}
+.sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:199;}
 .sidebar-backdrop.open{display:block;}
 
 @media (max-width:768px){
@@ -5196,6 +5196,16 @@ function closeSidebar() {
   document.getElementById('sidebarBackdrop').classList.remove('open');
   document.body.style.overflow = '';
 }
+
+// Close sidebar when user taps anywhere in main content area (mobile)
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelector('.main')?.addEventListener('mousedown', () => {
+    if (document.getElementById('sidebar')?.classList.contains('open')) closeSidebar();
+  }, { capture: true });
+  document.querySelector('.main')?.addEventListener('touchstart', () => {
+    if (document.getElementById('sidebar')?.classList.contains('open')) closeSidebar();
+  }, { capture: true, passive: true });
+});
 
 function navigate(page, el) {
   // MIS page — admin and HOD (App Role) only
