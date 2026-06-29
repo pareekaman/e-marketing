@@ -2271,7 +2271,7 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
 
     <!-- My Requests (below form) -->
-    <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:12px">My Requests</div>
+    <div id="prMyListTitle" style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:12px">My Requests</div>
     <div id="prMyList" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
       <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>
     </div>
@@ -13524,6 +13524,11 @@ async function initPaymentReqPage() {
     _prCards = Array.isArray(res) ? res : [];
   } catch(e) { _prCards = []; }
   prPopulateBanks();
+  // Hide submit form for admin (Naman approves, doesn't submit)
+  const formWrap = document.getElementById('prFormWrap');
+  if (formWrap) formWrap.style.display = ME.role === 'admin' ? 'none' : '';
+  const listTitle = document.getElementById('prMyListTitle');
+  if (listTitle) listTitle.textContent = ME.role === 'admin' ? 'All Requests' : 'My Requests';
   loadMyPaymentRequests();
   // Show card management panel for all admins
   if (ME.role === 'admin') {
@@ -13709,7 +13714,8 @@ async function loadMyPaymentRequests() {
   const el = document.getElementById('prMyList');
   if (!el) return;
   try {
-    const all = await api('/api/payment-requests/my');
+    const endpoint = ME.role === 'admin' ? '/api/payment-requests' : '/api/payment-requests/my';
+    const all = await api(endpoint);
     if (!Array.isArray(all)) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">Koi request nahi</div>'; return; }
     const sentinels = all.filter(r => r.bank_name === '__system__');
     const rows = all.filter(r => r.bank_name !== '__system__');
