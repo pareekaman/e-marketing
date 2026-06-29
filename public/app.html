@@ -13645,12 +13645,19 @@ function prCardChange() {
   }
 }
 
+// Parse amount + reason from reason field (works with or without server restart)
+function prParseReason(raw) {
+  if (!raw) return { amount: null, reason: '' };
+  const m = String(raw).match(/^\[₹([\d,]+\.?\d*)\] ([\s\S]*)$/);
+  if (m) return { amount: parseFloat(m[1].replace(/,/g,'')), reason: m[2] };
+  return { amount: null, reason: raw };
+}
+
 async function prSubmit() {
   const bankSel = document.getElementById('prBank').value;
   const cardSel = document.getElementById('prCard').value;
   const reason  = document.getElementById('prReason').value.trim();
 
-  // Resolve actual bank and card (handle "Other" cases)
   const bank = bankSel === '__other__'
     ? document.getElementById('prBankOther').value.trim()
     : bankSel;
@@ -13665,20 +13672,25 @@ async function prSubmit() {
   if (!amount || amount <= 0) { showToast('Amount daalo', 'error'); document.getElementById('prAmount').focus(); return; }
   if (!reason) { showToast('Reason daalo', 'error'); return; }
 
+  // Encode amount inside reason so old server stores it without DB column change
+  const encodedReason = `[₹${amount.toFixed(2)}] ${reason}`;
+
   try {
-    // Auto-save new bank/card combo to pr_cards
+    // Auto-save new bank/card combo (route might not exist on old server — ignore errors)
     const isNewBank = bankSel === '__other__';
     const isNewCard = bankSel === '__other__' || cardSel === '__other__';
     if (isNewBank || isNewCard) {
-      await api('/api/payment-requests/cards', 'POST', { bank_name:bank, card_number:card });
-      _prCards = await api('/api/payment-requests/cards');
-      prPopulateBanks();
-      if (ME.name === 'Naman Gupta') prRenderCardList();
+      const cr = await api('/api/payment-requests/cards', 'POST', { bank_name:bank, card_number:card });
+      if (!cr.error) {
+        const fresh = await api('/api/payment-requests/cards');
+        if (Array.isArray(fresh)) { _prCards = fresh; prPopulateBanks(); }
+        if (ME.name === 'Naman Gupta') prRenderCardList();
+      }
     }
 
-    await api('/api/payment-requests', 'POST', { bank_name:bank, card_number:card, amount, reason });
+    const r = await api('/api/payment-requests', 'POST', { bank_name:bank, card_number:card, amount, reason: encodedReason });
+    if (r.error) { showToast('Error: ' + r.error, 'error'); return; }
     showToast('✅ Request submit ho gayi!');
-    // Reset form
     document.getElementById('prBank').value = '';
     document.getElementById('prBankOther').style.display = 'none';
     document.getElementById('prBankOther').value = '';
@@ -13696,7 +13708,11 @@ async function loadMyPaymentRequests() {
   const el = document.getElementById('prMyList');
   if (!el) return;
   try {
-    const rows = await api('/api/payment-requests/my');
+    const all = await api('/api/payment-requests/my');
+    if (!Array.isArray(all)) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">Koi request nahi</div>'; return; }
+    // Sentinels: internal payment-done markers (bank_name='__system__')
+    const sentinels = all.filter(r => r.bank_name === '__system__');
+    const rows = all.filter(r => r.bank_name !== '__system__');
     if (!rows.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">Koi request nahi</div>'; return; }
     const statusBadge = s => s==='approved'
       ? '<span style="background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">✅ Approved</span>'
@@ -13712,21 +13728,26 @@ async function loadMyPaymentRequests() {
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Reason</th>
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
       </tr></thead>
-      <tbody>${rows.map((r,i) => `<tr style="${i%2?'background:#f8fafc':''}">
+      <tbody>${rows.map((r,i) => {
+        const parsed = prParseReason(r.reason);
+        const dispAmt = r.amount ? Number(r.amount) : parsed.amount;
+        const dispReason = r.amount ? r.reason : parsed.reason;
+        const isDone = r.payment_done || sentinels.some(s => s.reason === '__paid__:' + r.id);
+        return `<tr style="${i%2?'background:#f8fafc':''}">
         <td style="padding:9px 14px;font-size:12px;color:#64748b">${new Date(r.created_at).toLocaleDateString('en-IN')}</td>
         <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.bank_name)}</td>
         <td style="padding:9px 14px;font-size:12px">${dtEscape(r.card_number)}</td>
-        <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">₹${r.amount?Number(r.amount).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
-        <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:220px">${dtEscape(r.reason)}</td>
+        <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">${dispAmt?'₹'+Number(dispAmt).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
+        <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:220px">${dtEscape(dispReason)}</td>
         <td style="padding:9px 14px">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             ${statusBadge(r.status)}
-            ${r.status==='approved' && !r.payment_done
+            ${r.status==='approved' && !isDone
               ? `<button onclick="prMarkPaymentDone(${r.id})" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">✅ Done</button>`
-              : r.payment_done ? `<span style="font-size:13px;color:#16a34a;font-weight:700">✅ Done</span>` : ''}
+              : isDone ? `<span style="font-size:13px;color:#16a34a;font-weight:700">✅ Done</span>` : ''}
           </div>
         </td>
-      </tr>`).join('')}</tbody>
+      </tr>`;}).join('')}</tbody>
     </table>`;
   } catch(e) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
 }
@@ -13735,9 +13756,12 @@ async function loadPaymentApprovals() {
   const el = document.getElementById('paymentApprovalsList');
   if (!el) return;
   try {
-    const rows = await api('/api/payment-requests');
-    if (rows.error) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(rows.error) + '</div>'; return; }
-    if (!Array.isArray(rows) || !rows.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Koi payment request nahi hai</div>'; return; }
+    const all = await api('/api/payment-requests');
+    if (!Array.isArray(all) || all.error) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error loading requests</div>'; return; }
+    // Sentinels: payment-done markers stored as fake requests with bank_name='__system__'
+    const sentinels = all.filter(r => r.bank_name === '__system__');
+    const rows = all.filter(r => r.bank_name !== '__system__');
+    if (!rows.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Koi payment request nahi hai</div>'; return; }
     const statusBadge = s => s==='approved'
       ? '<span style="background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">✅ Approved</span>'
       : s==='rejected'
@@ -13754,31 +13778,37 @@ async function loadPaymentApprovals() {
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Action</th>
       </tr></thead>
-      <tbody>${rows.map((r,i) => `<tr id="paRow-${r.id}" style="${i%2?'background:#f8fafc':''}">
+      <tbody>${rows.map((r,i) => {
+        const parsed = prParseReason(r.reason);
+        const dispAmt = r.amount ? Number(r.amount) : parsed.amount;
+        const dispReason = r.amount ? r.reason : parsed.reason;
+        const isDone = r.payment_done || sentinels.some(s => s.reason === '__paid__:' + r.id);
+        return `<tr id="paRow-${r.id}" style="${i%2?'background:#f8fafc':''}">
         <td style="padding:9px 14px;font-size:12px;color:#64748b">${new Date(r.created_at).toLocaleDateString('en-IN')}</td>
         <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.name)}</td>
         <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.bank_name)}</td>
         <td style="padding:9px 14px;font-size:12px">${dtEscape(r.card_number)}</td>
-        <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">₹${r.amount?Number(r.amount).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
-        <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:200px">${dtEscape(r.reason)}</td>
+        <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">${dispAmt?'₹'+Number(dispAmt).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
+        <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:200px">${dtEscape(dispReason)}</td>
         <td style="padding:9px 14px" id="paStatus-${r.id}">${statusBadge(r.status)}</td>
         <td style="padding:9px 14px;text-align:center">
           ${r.status==='pending' ? `
             <button onclick="prReview(${r.id},'approved')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;margin-right:5px">✅ Approve</button>
             <button onclick="prReview(${r.id},'rejected')" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer">❌ Reject</button>
-          ` : r.payment_done
+          ` : isDone
             ? `<span style="font-size:13px;font-weight:700;color:#16a34a">✅ Done</span>`
             : '—'}
         </td>
-      </tr>`).join('')}</tbody>
+      </tr>`;}).join('')}</tbody>
     </table>`;
   } catch(e) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
 }
 
 async function loadPaymentApprovalsBadge() {
   try {
-    const rows = await api('/api/payment-requests');
-    const pending = rows.filter(r => r.status === 'pending').length;
+    const all = await api('/api/payment-requests');
+    if (!Array.isArray(all)) return;
+    const pending = all.filter(r => r.bank_name !== '__system__' && r.status === 'pending').length;
     const badge = document.getElementById('apprPaymentBadge');
     if (badge) { badge.textContent = pending; badge.style.display = pending ? 'inline-block' : 'none'; }
   } catch(e) {}
@@ -13795,7 +13825,14 @@ async function prReview(id, status) {
 
 async function prMarkPaymentDone(id) {
   try {
-    await api(`/api/payment-requests/${id}/payment-done`, 'POST');
+    // Try new route first (works after server restart)
+    const r = await api(`/api/payment-requests/${id}/payment-done`, 'POST');
+    if (!r.error) { showToast('✅ Payment Done mark ho gaya!'); loadMyPaymentRequests(); return; }
+    // Fallback: store a sentinel request in DB (works without server restart)
+    const s = await api('/api/payment-requests', 'POST', {
+      bank_name: '__system__', card_number: '__paid__', reason: '__paid__:' + id
+    });
+    if (s.error) { showToast('Error: ' + s.error, 'error'); return; }
     showToast('✅ Payment Done mark ho gaya!');
     loadMyPaymentRequests();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
