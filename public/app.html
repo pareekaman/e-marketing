@@ -2211,59 +2211,71 @@ tbody tr:last-child td{border-bottom:none;}
        PAYMENT REQUEST PAGE
   ══════════════════════════════════════ -->
   <div id="page-paymentreq" class="page">
-    <!-- Two-column: Form left, My Requests right -->
-    <div style="display:grid;grid-template-columns:380px 1fr;gap:24px;align-items:start">
 
-      <!-- LEFT: Submit Form -->
-      <div>
-        <div id="prFormWrap" style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:28px 24px 24px">
-          <div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:20px">New Payment Request</div>
-
-          <div style="margin-bottom:14px">
-            <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Your Name</label>
-            <input id="prName" readonly style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;background:#f8fafc;color:#64748b;box-sizing:border-box">
-          </div>
-
-          <div style="margin-bottom:14px">
-            <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Bank Name</label>
-            <select id="prBank" onchange="prBankChange()" onfocus="closeSidebar()" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
-              <option value="">— Select Bank —</option>
-            </select>
-            <input id="prBankOther" placeholder="Enter bank name…" style="display:none;margin-top:6px;width:100%;padding:9px 12px;border:1.5px solid #f59e0b;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
-          </div>
-
-          <div style="margin-bottom:14px">
-            <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Card Number</label>
-            <select id="prCard" onchange="prCardChange()" onfocus="closeSidebar()" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
-              <option value="">— Select Card —</option>
-            </select>
-            <input id="prCardOther" placeholder="Enter card number…" style="display:none;margin-top:6px;width:100%;padding:9px 12px;border:1.5px solid #f59e0b;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
-          </div>
-
-          <div style="margin-bottom:14px">
-            <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Amount (₹)</label>
-            <input id="prAmount" type="number" min="0" step="0.01" placeholder="0.00" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
-          </div>
-
-          <div style="margin-bottom:20px">
-            <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Reason for Payment</label>
-            <textarea id="prReason" rows="4" placeholder="Describe the reason for this payment..." style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;resize:vertical;font-family:inherit;box-sizing:border-box"></textarea>
-          </div>
-
-          <button onclick="prSubmit()" style="width:100%;background:#1a56db;color:#fff;border:none;border-radius:8px;padding:11px 24px;font-size:14px;font-weight:600;cursor:pointer">Submit Request</button>
+    <!-- Form Card -->
+    <div id="prFormWrap" style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:28px 28px 24px;margin-bottom:24px">
+      <!-- Header -->
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+        <div style="width:38px;height:38px;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a56db" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
         </div>
+        <div style="font-size:18px;font-weight:800;color:#0f172a">New Payment Request</div>
+      </div>
+      <hr style="border:none;border-top:1px solid #f1f5f9;margin:0 0 22px">
 
-      </div><!-- end left col -->
-
-      <!-- RIGHT: My Requests -->
-      <div>
-        <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:12px">My Requests</div>
-        <div id="prMyList" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
-          <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>
+      <!-- 4-column row -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:18px">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">Your Name</label>
+          <div style="display:flex;align-items:center;border:1.5px solid #e2e8f0;border-radius:10px;background:#f8fafc;padding:0 12px;gap:8px">
+            <svg width="16" height="16" fill="none" stroke="#94a3b8" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            <input id="prName" readonly style="flex:1;border:none;background:transparent;padding:10px 0;font-size:13px;color:#64748b;outline:none;font-family:inherit">
+          </div>
         </div>
-      </div><!-- end right col -->
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">Bank Name</label>
+          <select id="prBank" onchange="prBankChange()" onfocus="closeSidebar()" style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box;font-family:inherit;background:#fff">
+            <option value="">— Select Bank —</option>
+          </select>
+          <input id="prBankOther" placeholder="Enter bank name…" style="display:none;margin-top:6px;width:100%;padding:10px 12px;border:1.5px solid #f59e0b;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">Card Number</label>
+          <select id="prCard" onchange="prCardChange()" onfocus="closeSidebar()" style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box;font-family:inherit;background:#fff">
+            <option value="">— Select Card —</option>
+          </select>
+          <input id="prCardOther" placeholder="Enter card number…" style="display:none;margin-top:6px;width:100%;padding:10px 12px;border:1.5px solid #f59e0b;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">Amount (₹)</label>
+          <div style="display:flex;align-items:center;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;padding:0 12px;gap:6px">
+            <input id="prAmount" type="number" min="0" step="0.01" placeholder="0.00" style="flex:1;border:none;background:transparent;padding:10px 0;font-size:13px;outline:none;font-family:inherit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 9h8M8 12h4m-4 3h8"/></svg>
+          </div>
+        </div>
+      </div>
 
-    </div><!-- end grid -->
+      <!-- Reason row -->
+      <div style="margin-bottom:20px">
+        <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">Reason for Payment</label>
+        <textarea id="prReason" rows="3" placeholder="Describe the reason for this payment..." style="width:100%;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;resize:vertical;font-family:inherit;box-sizing:border-box"></textarea>
+      </div>
+
+      <!-- Submit -->
+      <div style="display:flex;justify-content:flex-end">
+        <button onclick="prSubmit()" style="display:inline-flex;align-items:center;gap:8px;background:#1a56db;color:#fff;border:none;border-radius:10px;padding:11px 28px;font-size:14px;font-weight:700;cursor:pointer">
+          <svg width="16" height="16" fill="none" stroke="#fff" stroke-width="2.5" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Submit Request
+        </button>
+      </div>
+    </div>
+
+    <!-- My Requests (below form) -->
+    <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:12px">My Requests</div>
+    <div id="prMyList" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>
+    </div>
+
   </div><!-- end page-paymentreq -->
 
   <!-- ══════════════════════════════════════
