@@ -3860,7 +3860,7 @@ app.get('/api/wa-delegation/deny/:token', async (req, res) => {
 app.get('/api/wa-delegation', requireAuth, async (req, res) => {
   try {
     const me = req.session;
-    if (me.role !== 'admin' && me.name !== 'Naman Gupta') {
+    if (me.role !== 'admin') {
       return res.status(403).json({ error: 'Access denied' });
     }
     const [rows] = await db.query(
@@ -3889,7 +3889,7 @@ app.get('/api/wa-delegation', requireAuth, async (req, res) => {
 app.get('/api/wa-delegation/count', requireAuth, async (req, res) => {
   try {
     const me = req.session;
-    if (me.role !== 'admin' && me.name !== 'Naman Gupta') {
+    if (me.role !== 'admin') {
       return res.json({ count: 0 });
     }
     const [[{ cnt }]] = await db.query(
@@ -3903,7 +3903,7 @@ app.get('/api/wa-delegation/count', requireAuth, async (req, res) => {
 app.put('/api/wa-delegation/:id', requireAuth, async (req, res) => {
   try {
     const me = req.session;
-    if (me.role !== 'admin' && me.name !== 'Naman Gupta') {
+    if (me.role !== 'admin') {
       return res.status(403).json({ error: 'Access denied' });
     }
     const { action } = req.body; // 'approved' | 'denied'
@@ -4885,8 +4885,7 @@ function parseExcelDate(val) {
 
 app.post('/api/credit-cards/upload-excel', requireAuth, ccUpload.single('file'), async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error: 'Access denied' });
+    if (req.session.role !== 'admin') return res.status(403).json({ error: 'Access denied' });
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: false });
@@ -5368,8 +5367,7 @@ async function saveCCToDb(parsed) {
 // POST /api/credit-cards/upload-pdf
 app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'), async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     if (!req.file) return res.status(400).json({ error:'No file uploaded' });
     if (!CC_OPENAI_KEY) return res.status(500).json({ error:'OPENAI_API_KEY not set in .env' });
 
@@ -5406,8 +5404,7 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
 // GET /api/credit-cards/data
 app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     const [cards] = await db.query('SELECT * FROM cc_cards ORDER BY bank_name,card_number');
     const [stmts] = await db.query('SELECT * FROM cc_statements ORDER BY statement_date DESC');
     const [txns]  = await db.query('SELECT * FROM cc_transactions ORDER BY txn_date');
@@ -5454,8 +5451,7 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
 // PATCH /api/credit-cards/statement/:id  (update statement fields like period/due date)
 app.patch('/api/credit-cards/statement/:id', requireAuth, async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     const { statement_period, payment_due_date } = req.body;
     await db.query('UPDATE cc_statements SET statement_period=?, payment_due_date=? WHERE id=?',
       [statement_period||null, payment_due_date||null, req.params.id]);
@@ -5466,8 +5462,7 @@ app.patch('/api/credit-cards/statement/:id', requireAuth, async (req, res) => {
 // DELETE /api/credit-cards/statement/:id
 app.delete('/api/credit-cards/statement/:id', requireAuth, async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     // get card_id before deleting
     const [[stmt]] = await db.query('SELECT card_id FROM cc_statements WHERE id=?', [req.params.id]);
     await db.query('DELETE FROM cc_statements WHERE id=?', [req.params.id]);
@@ -5483,8 +5478,7 @@ app.delete('/api/credit-cards/statement/:id', requireAuth, async (req, res) => {
 // DELETE /api/credit-cards/transaction/:id
 app.delete('/api/credit-cards/transaction/:id', requireAuth, async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     await db.query('DELETE FROM cc_transactions WHERE id=?', [req.params.id]);
     res.json({ success:true });
   } catch(err) { res.status(500).json({ error:err.message }); }
@@ -5493,8 +5487,7 @@ app.delete('/api/credit-cards/transaction/:id', requireAuth, async (req, res) =>
 // PATCH /api/credit-cards/transaction/:id  (update expenses / department)
 app.patch('/api/credit-cards/transaction/:id', requireAuth, async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     const { expenses, department } = req.body;
     await db.query('UPDATE cc_transactions SET expenses=?,department=? WHERE id=?', [expenses??null, department??null, req.params.id]);
     res.json({ success:true });
@@ -5512,8 +5505,7 @@ app.get('/api/credit-cards/departments', requireAuth, async (req, res) => {
 // POST /api/credit-cards/departments — add a new CC department (Naman only)
 app.post('/api/credit-cards/departments', requireAuth, async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     const name = (req.body.name||'').trim();
     if (!name) return res.status(400).json({ error:'Name required' });
     const [[{maxOrd}]] = await db.query('SELECT COALESCE(MAX(sort_order),0) AS maxOrd FROM cc_departments');
@@ -5528,8 +5520,7 @@ app.post('/api/credit-cards/departments', requireAuth, async (req, res) => {
 // DELETE /api/credit-cards/departments/:name — remove a CC department (Naman only)
 app.delete('/api/credit-cards/departments/:name', requireAuth, async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     await db.query('DELETE FROM cc_departments WHERE name=?', [req.params.name]);
     res.json({ success:true });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -5564,8 +5555,7 @@ app.post('/api/credit-cards/drive-upload', requireAuth, async (req, res) => {
 // GET /api/payment-requests/cards — card list for dropdown
 app.get('/api/payment-requests/cards', requireAuth, async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || !['Vishal Jaga','Naman Gupta'].includes(me.name)) return res.status(403).json({ error:'Access denied' });
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     // Merge manually-managed pr_cards + any cc_cards from PDF uploads
     const [rows] = await db.query(`
       SELECT bank_name, card_number, id, 'manual' AS src FROM pr_cards
@@ -5585,8 +5575,7 @@ app.get('/api/payment-requests/cards', requireAuth, async (req, res) => {
 // POST /api/payment-requests/cards — add card (Naman only)
 app.post('/api/payment-requests/cards', requireAuth, async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     const { bank_name, card_number } = req.body;
     if (!bank_name || !card_number) return res.status(400).json({ error:'bank_name and card_number required' });
     await db.query('INSERT IGNORE INTO pr_cards (bank_name, card_number) VALUES (?,?)', [bank_name.trim(), card_number.trim()]);
@@ -5597,8 +5586,7 @@ app.post('/api/payment-requests/cards', requireAuth, async (req, res) => {
 // DELETE /api/payment-requests/cards/:id — remove card (Naman only, pr_cards only)
 app.delete('/api/payment-requests/cards/:id', requireAuth, async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     await db.query('DELETE FROM pr_cards WHERE id=?', [req.params.id]);
     res.json({ success:true });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -5630,8 +5618,7 @@ app.post('/api/payment-requests', requireAuth, async (req, res) => {
 // GET /api/payment-requests — all requests (Naman only)
 app.get('/api/payment-requests', requireAuth, async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     const [rows] = await db.query(
       'SELECT * FROM payment_requests ORDER BY created_at DESC'
     );
@@ -5655,8 +5642,7 @@ app.get('/api/payment-requests/my', requireAuth, async (req, res) => {
 // PATCH /api/payment-requests/:id — approve or reject (Naman only)
 app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     const { status } = req.body;
     if (!['approved','rejected'].includes(status)) return res.status(400).json({ error:'Invalid status' });
     await db.query(
