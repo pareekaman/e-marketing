@@ -13874,6 +13874,7 @@ function prOpenBillModal(id) {
   document.getElementById('prBillFileInput').value = '';
   document.getElementById('prBillPreview').style.display = 'none';
   document.getElementById('prBillPrompt').style.display = '';
+  document.getElementById('prBillFilename').value = 'PaymentBill_ID' + id;
   document.getElementById('prBillOverlay').style.display = 'flex';
 }
 function prCloseBillModal() {
@@ -13912,13 +13913,11 @@ async function prBillCompressToBase64(file) {
     img.src = url;
   });
 }
-async function prBillSubmit(skipUpload) {
+async function prBillSubmit() {
   const id = _prBillPendingId;
   if (!id) return;
   const submitBtn = document.getElementById('prBillSubmitBtn');
-  const skipBtn = document.getElementById('prBillSkipBtn');
   if (submitBtn) submitBtn.disabled = true;
-  if (skipBtn) skipBtn.disabled = true;
 
   try {
     // 1. Mark as done sentinel
@@ -13928,11 +13927,12 @@ async function prBillSubmit(skipUpload) {
     if (s && s.error) { showToast('Error: ' + s.error, 'error'); return; }
 
     // 2. Upload bill if provided and script URL is configured
-    if (!skipUpload && _prBillFile && PR_BILL_SCRIPT_URL && !PR_BILL_SCRIPT_URL.includes('PLACEHOLDER')) {
+    if (_prBillFile && PR_BILL_SCRIPT_URL && !PR_BILL_SCRIPT_URL.includes('PLACEHOLDER')) {
       try {
         showToast('Uploading bill to Drive…');
         const { base64, mimeType } = await prBillCompressToBase64(_prBillFile);
-        const filename = 'PaymentBill_ID' + id + '_' + Date.now() + '.jpg';
+        const rawName = (document.getElementById('prBillFilename').value || ('PaymentBill_ID' + id)).trim();
+        const filename = rawName.endsWith('.jpg') ? rawName : rawName + '.jpg';
         // POST (no-cors — response opaque, but upload succeeds)
         await fetch(PR_BILL_SCRIPT_URL, {
           method: 'POST',
@@ -15851,10 +15851,13 @@ async function dmsSaveFile() {
       <div id="prBillPrompt" style="color:#94a3b8;font-size:14px">📎 &nbsp;Click to choose bill image</div>
     </div>
     <input type="file" id="prBillFileInput" accept="image/*" style="display:none" onchange="prBillFileSelected()">
-    <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end">
+    <div style="margin-top:14px">
+      <label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px">File Name</label>
+      <input type="text" id="prBillFilename" placeholder="File name (without extension)" style="width:100%;box-sizing:border-box;border:1.5px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:13px;outline:none;font-family:inherit" onfocus="this.style.borderColor='#1a56db'" onblur="this.style.borderColor='#e2e8f0'">
+    </div>
+    <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
       <button onclick="prCloseBillModal()" style="background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:9px 18px;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
-      <button id="prBillSkipBtn" onclick="prBillSubmit(true)" style="background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:9px 18px;font-size:14px;font-weight:600;cursor:pointer">Skip &amp; Mark Done</button>
-      <button id="prBillSubmitBtn" onclick="prBillSubmit(false)" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:700;cursor:pointer">Upload &amp; Mark Done</button>
+      <button id="prBillSubmitBtn" onclick="prBillSubmit()" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:700;cursor:pointer">Upload &amp; Mark Done</button>
     </div>
   </div>
 </div>
