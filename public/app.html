@@ -13735,12 +13735,15 @@ async function loadMyPaymentRequests() {
         const isDone = r.payment_done || sentinels.some(s => s.card_number === '__paid__' && s.reason === '__paid__:' + String(r.id));
         const cancelSentinel = sentinels.find(s => s.card_number === '__cancelled__' && s.reason.startsWith('__cancelled__:' + String(r.id) + ':'));
         const isCancelled = cancelSentinel != null;
+        const billSentinel = sentinels.find(s => s.card_number === '__bill__' && s.reason.startsWith('__bill__:' + String(r.id) + ':'));
+        const billFileId = billSentinel ? billSentinel.reason.replace('__bill__:' + String(r.id) + ':', '') : null;
+        const billLink = billFileId ? `<a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" title="View Bill" style="font-size:18px;text-decoration:none;margin-left:4px">📎</a>` : '';
         let payStatusCell = '';
         if (r.status === 'approved') {
-          if (isDone) payStatusCell = '<span style="font-size:20px">✅</span>';
+          if (isDone) payStatusCell = '<span style="font-size:20px">✅</span>' + billLink;
           else if (isCancelled) payStatusCell = '<span style="font-size:20px" title="' + dtEscape(cancelSentinel.reason.replace('__cancelled__:' + r.id + ':','')) + '">❌</span>';
-          else payStatusCell = `<span style="display:inline-flex;gap:10px">
-            <button onclick="prMarkPaymentDone(${r.id})" title="Payment Done" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;padding:2px">✅</button>
+          else payStatusCell = `<span style="display:inline-flex;gap:10px;align-items:center">
+            <button onclick="prOpenBillModal(${r.id})" title="Mark as Paid" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;padding:2px">✅</button>
             <button onclick="prOpenCancelModal(${r.id})" title="Cancel Payment" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;padding:2px">❌</button>
           </span>`;
         }
@@ -13791,6 +13794,8 @@ async function loadPaymentApprovals() {
         const cancelSentinel = sentinels.find(s => s.card_number === '__cancelled__' && s.reason.startsWith('__cancelled__:' + String(r.id) + ':'));
         const isCancelled = cancelSentinel != null;
         const cancelReason = isCancelled ? cancelSentinel.reason.replace('__cancelled__:' + r.id + ':', '') : '';
+        const billSentinel = sentinels.find(s => s.card_number === '__bill__' && s.reason.startsWith('__bill__:' + String(r.id) + ':'));
+        const billFileId = billSentinel ? billSentinel.reason.replace('__bill__:' + String(r.id) + ':', '') : null;
         return `<tr id="paRow-${r.id}" style="${i%2?'background:#f8fafc':''}">
         <td style="padding:9px 14px;font-size:12px;color:#64748b">${new Date(r.created_at).toLocaleDateString('en-IN')}</td>
         <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.name)}</td>
@@ -13804,7 +13809,7 @@ async function loadPaymentApprovals() {
             <button onclick="prReview(${r.id},'approved')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;margin-right:5px">✅ Approve</button>
             <button onclick="prReview(${r.id},'rejected')" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer">❌ Reject</button>
           ` : isDone
-            ? `<span style="font-size:13px;font-weight:700;color:#16a34a">Payment Done</span>`
+            ? `<span style="font-size:13px;font-weight:700;color:#16a34a">Payment Done</span>${billFileId ? ` <a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" title="View Bill" style="font-size:17px;text-decoration:none">📎</a>` : ''}`
             : isCancelled
             ? `<span style="font-size:12px;font-weight:700;color:#dc2626">Cancelled<br><span style="font-weight:400;font-size:11px;color:#64748b">${dtEscape(cancelReason)}</span></span>`
             : '—'}
@@ -13842,6 +13847,109 @@ async function prMarkPaymentDone(id) {
     showToast('✅ Payment marked as done!');
     loadMyPaymentRequests();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+let _prBillPendingId = null;
+let _prBillFile = null;
+
+function prOpenBillModal(id) {
+  _prBillPendingId = id;
+  _prBillFile = null;
+  document.getElementById('prBillFileInput').value = '';
+  document.getElementById('prBillPreview').style.display = 'none';
+  document.getElementById('prBillPrompt').style.display = '';
+  document.getElementById('prBillOverlay').style.display = 'flex';
+}
+function prCloseBillModal() {
+  document.getElementById('prBillOverlay').style.display = 'none';
+  _prBillPendingId = null; _prBillFile = null;
+}
+function prBillFileSelected() {
+  const file = document.getElementById('prBillFileInput').files[0];
+  if (!file) return;
+  _prBillFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('prBillImg').src = e.target.result;
+    document.getElementById('prBillPreview').style.display = '';
+    document.getElementById('prBillPrompt').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+async function prBillCompressToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1200;
+      let w = img.width, h = img.height;
+      if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+      if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+      resolve({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+async function prBillSubmit(skipUpload) {
+  const id = _prBillPendingId;
+  if (!id) return;
+  const submitBtn = document.getElementById('prBillSubmitBtn');
+  const skipBtn = document.getElementById('prBillSkipBtn');
+  if (submitBtn) submitBtn.disabled = true;
+  if (skipBtn) skipBtn.disabled = true;
+
+  try {
+    // 1. Mark as done sentinel
+    const s = await api('/api/payment-requests', 'POST', {
+      bank_name: '__system__', card_number: '__paid__', reason: '__paid__:' + id
+    });
+    if (s && s.error) { showToast('Error: ' + s.error, 'error'); return; }
+
+    // 2. Upload bill if provided and script URL is configured
+    if (!skipUpload && _prBillFile && PR_BILL_SCRIPT_URL && !PR_BILL_SCRIPT_URL.includes('PLACEHOLDER')) {
+      try {
+        showToast('Uploading bill to Drive…');
+        const { base64, mimeType } = await prBillCompressToBase64(_prBillFile);
+        const filename = 'PaymentBill_ID' + id + '_' + Date.now() + '.jpg';
+        // POST (no-cors — response opaque, but upload succeeds)
+        await fetch(PR_BILL_SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+          body: JSON.stringify({ fileBase64: base64, filename, mimeType, requestId: String(id) })
+        });
+        // GET to retrieve fileId (GAS GET has proper CORS)
+        await new Promise(r => setTimeout(r, 2500));
+        const resp = await fetch(PR_BILL_SCRIPT_URL + '?requestId=' + id);
+        const result = await resp.json();
+        if (result && result.fileId) {
+          await api('/api/payment-requests', 'POST', {
+            bank_name: '__system__', card_number: '__bill__', reason: '__bill__:' + id + ':' + result.fileId
+          });
+          showToast('✅ Payment done! Bill uploaded to Drive.');
+        } else {
+          showToast('✅ Payment marked as done! (Bill upload could not be confirmed)');
+        }
+      } catch(uploadErr) {
+        showToast('✅ Payment marked as done! (Bill upload failed: ' + uploadErr.message + ')');
+      }
+    } else {
+      showToast('✅ Payment marked as done!');
+    }
+    prCloseBillModal();
+    loadMyPaymentRequests();
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+    if (skipBtn) skipBtn.disabled = false;
+  }
 }
 
 function prOpenCancelModal(id) {
@@ -14241,6 +14349,9 @@ async function ccDeleteTransaction(bank, cardNum, stmtIdx, txIdx) {
 
 // Google Drive folder URL for CC statements
 const CC_DRIVE_URL = 'https://script.google.com/macros/s/AKfycbx2kW0zTzulQu7POp7YKmkowYeK-lLzcLQ3-590-YLfTGJqcLYcABSUNACJQHnvZZX5/exec';
+// Payment bill upload — Apps Script URL (deploy the script provided by dev, then paste URL here)
+const PR_BILL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw1PLACEHOLDER/exec';
+const PR_BILL_FOLDER = 'https://drive.google.com/drive/folders/1Zpmc-Vcenjzw7uWaNSYGPm3KtxMfDyPB';
 const CC_DRIVE_FOLDER = 'https://drive.google.com/drive/folders/1G_wzP734PykkLoS6k0KKEqIs3V_TiWgH?usp=drive_link';
 
 async function ccOpenStatementDrive(bank, cardNum, stmtIdx, btn) {
@@ -15687,6 +15798,24 @@ async function dmsSaveFile() {
   } catch(e){}
 })();
 </script>
+
+<!-- Payment Bill Upload Modal -->
+<div id="prBillOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1001;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;padding:28px 28px 22px;width:min(440px,94vw);box-shadow:0 12px 40px rgba(0,0,0,.2)">
+    <h3 style="margin:0 0 4px;font-size:18px;color:#0f172a">Mark Payment Done</h3>
+    <p style="margin:0 0 18px;font-size:13px;color:#64748b">Optionally upload the bill/receipt before marking as paid</p>
+    <div id="prBillDropzone" onclick="document.getElementById('prBillFileInput').click()" style="border:2px dashed #cbd5e1;border-radius:10px;padding:22px 16px;text-align:center;cursor:pointer;transition:border-color .2s;background:#f8fafc" onmouseover="this.style.borderColor='#6366f1'" onmouseout="this.style.borderColor='#cbd5e1'">
+      <div id="prBillPreview" style="display:none;margin-bottom:10px"><img id="prBillImg" style="max-height:160px;max-width:100%;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.12)"></div>
+      <div id="prBillPrompt" style="color:#94a3b8;font-size:14px">📎 &nbsp;Click to choose bill image</div>
+    </div>
+    <input type="file" id="prBillFileInput" accept="image/*" style="display:none" onchange="prBillFileSelected()">
+    <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end">
+      <button onclick="prCloseBillModal()" style="background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:9px 18px;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
+      <button id="prBillSkipBtn" onclick="prBillSubmit(true)" style="background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:9px 18px;font-size:14px;font-weight:600;cursor:pointer">Skip &amp; Mark Done</button>
+      <button id="prBillSubmitBtn" onclick="prBillSubmit(false)" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:700;cursor:pointer">Upload &amp; Mark Done</button>
+    </div>
+  </div>
+</div>
 
 <!-- Payment Cancel Modal -->
 <div id="prCancelOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center">
