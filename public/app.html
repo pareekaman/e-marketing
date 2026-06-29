@@ -13761,6 +13761,7 @@ async function loadMyPaymentRequests() {
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Payment Status</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bill</th>
+        ${ME.role==='admin'?'<th style="padding:9px 14px;width:40px"></th>':''}
       </tr></thead>
       <tbody>${rows.map((r,i) => {
         const parsed = prParseReason(r.reason);
@@ -13794,6 +13795,7 @@ async function loadMyPaymentRequests() {
         <td style="padding:9px 14px">${statusBadge(r.status)}</td>
         <td style="padding:9px 14px;text-align:center">${payStatusCell}</td>
         <td style="padding:9px 14px;text-align:center">${billCell}</td>
+        ${ME.role==='admin'?`<td style="padding:9px 14px;text-align:center"><button onclick="prDeleteRequest(${r.id})" title="Delete" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:16px;line-height:1;padding:2px 4px;border-radius:4px" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#cbd5e1'">🗑</button></td>`:''}
       </tr>`;}).join('')}</tbody>
     </table>`;
   } catch(e) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
@@ -13848,6 +13850,7 @@ function paRenderApprovalRows(rows) {
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Action</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bill</th>
+        <th style="padding:9px 14px;width:40px"></th>
       </tr></thead>
       <tbody>${rows.map((r,i) => {
         const parsed = prParseReason(r.reason);
@@ -13883,6 +13886,7 @@ function paRenderApprovalRows(rows) {
             : '—'}
         </td>
         <td style="padding:9px 14px;text-align:center">${paBillCell}</td>
+        <td style="padding:9px 14px;text-align:center"><button onclick="prDeleteRequest(${r.id})" title="Delete" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:16px;line-height:1;padding:2px 4px;border-radius:4px" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#cbd5e1'">🗑</button></td>
       </tr>`;}).join('')}</tbody>
     </table>`;
 }
@@ -13922,6 +13926,17 @@ async function prReview(id, status) {
     showToast(status==='approved' ? '✅ Request approved!' : '❌ Request rejected!');
     loadPaymentApprovals();
     loadPaymentApprovalsBadge();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function prDeleteRequest(id) {
+  if (!confirm('Delete this payment request?')) return;
+  try {
+    const r = await api('/api/payment-requests/' + id, 'DELETE');
+    if (r && r.error) { showToast('Error: ' + r.error, 'error'); return; }
+    showToast('Deleted');
+    loadMyPaymentRequests();
+    loadPaymentApprovals();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 

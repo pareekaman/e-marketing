@@ -5592,6 +5592,16 @@ app.delete('/api/payment-requests/cards/:id', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+// DELETE /api/payment-requests/:id — hard delete row + its sentinels (admin only, temporary cleanup)
+app.delete('/api/payment-requests/:id', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
+    const id = req.params.id;
+    await db.query('DELETE FROM payment_requests WHERE id=? OR (bank_name=\'__system__\' AND reason LIKE ?)', [id, `%:${id}%`]);
+    res.json({ success:true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 // POST /api/payment-requests — submit new request (admin only)
 app.post('/api/payment-requests', requireAuth, async (req, res) => {
   try {
