@@ -14395,28 +14395,56 @@ async function ccOpenStatementDrive(bank, cardNum, stmtIdx, btn) {
 
     // ── Info block ──
     let y = 44;
-    doc.setFillColor(248,250,252); doc.roundedRect(L, y-4, UW, 22, 2, 2, 'F');
-    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.roundedRect(L, y-4, UW, 22, 2, 2, 'S');
+    const purchases  = txns.filter(t=>t.txn_type!=='credit').reduce((s,t)=>s+parseFloat(t.amount||0),0);
+    const payments   = txns.filter(t=>t.txn_type==='credit').reduce((s,t)=>s+parseFloat(t.amount||0),0);
+    const curPayable = parseFloat(stmt.payable_amount||0) || purchases;
+    const prevBal    = curPayable - purchases + payments;
+
+    doc.setFillColor(248,250,252); doc.roundedRect(L, y-4, UW, 26, 2, 2, 'F');
+    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.roundedRect(L, y-4, UW, 26, 2, 2, 'S');
 
     doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(15,23,42);
-    doc.text(bank + ' Bank', L+4, y+2);
+    doc.text(bank + ' Bank', L+4, y+3);
     doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(71,85,105);
-    doc.text('Card: ' + cardNum, L+4, y+8);
+    doc.text('Card: ' + cardNum, L+4, y+10);
 
-    // Right side info — 3 columns with fixed x positions (no overlap)
-    const sd_x = L + 76, dd_x = L + 122, tp_x = L + UW - 2;
-    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(100,116,139);
-    doc.text('Statement Date', sd_x, y+1.5);
-    doc.text('Due Date',       dd_x, y+1.5);
-    doc.text('Total Payable',  tp_x, y+1.5, { align:'right' });
-    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(15,23,42);
-    doc.text(stmt.statement_date||'—', sd_x, y+9);
-    doc.setTextColor(220,38,38);
-    doc.text(stmt.payment_due_date||'—', dd_x, y+9);
-    doc.setTextColor(22,163,74); doc.setFontSize(11);
-    doc.text(rs(stmt.payable_amount||0), tp_x, y+10, { align:'right' });
+    // 5 info columns: Statement Date | Billing Period | Due Date | Min Due | Total Payable
+    const c1x = L+50, c2x = L+82, c3x = L+118, c4x = L+148, c5x = L+UW-2;
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(100,116,139);
+    doc.text('Statement Date', c1x, y+1.5);
+    doc.text('Billing Period',  c2x, y+1.5);
+    doc.text('Due Date',        c3x, y+1.5);
+    doc.text('Minimum Due',     c4x, y+1.5);
+    doc.text('Total Payable',   c5x, y+1.5, {align:'right'});
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(15,23,42);
+    doc.text(stmt.statement_date||'—', c1x, y+9);
+    doc.setFontSize(8); doc.setTextColor(15,23,42);
+    doc.text((stmt.statement_period||'—').substring(0,24), c2x, y+9);
+    doc.setFontSize(9); doc.setTextColor(220,38,38);
+    doc.text(stmt.payment_due_date||'—', c3x, y+9);
+    doc.setTextColor(217,119,6);
+    doc.text(stmt.min_amount_due ? 'Rs.'+parseFloat(stmt.min_amount_due).toLocaleString('en-IN',{minimumFractionDigits:2}) : '—', c4x, y+9);
+    doc.setTextColor(22,163,74); doc.setFontSize(10);
+    doc.text(rs(curPayable), c5x, y+10, {align:'right'});
 
-    y += 28;
+    y += 32;
+
+    // ── Balance Breakdown ──
+    const bW = UW / 4;
+    doc.setFillColor(248,250,252); doc.rect(L, y, UW, 14, 'F');
+    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.rect(L, y, UW, 14, 'S');
+    [['PREV. BALANCE', prevBal, [15,23,42]], ['PURCHASES', purchases, [220,38,38]], ['PAYMENTS', payments, [22,163,74]], ['TOTAL DUE', curPayable, [26,86,219]]].forEach(([lbl, val, clr], i) => {
+      const bx = L + bW*i + 4;
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(100,116,139);
+      doc.text(lbl, bx, y+4.5);
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...clr);
+      doc.text('Rs.'+Math.abs(val).toLocaleString('en-IN',{minimumFractionDigits:2}), bx, y+11);
+      if (i < 3) {
+        doc.setFont('helvetica','normal'); doc.setFontSize(13); doc.setTextColor(203,213,225);
+        doc.text(['+','−','='][i], L + bW*(i+1) - 4, y+10);
+      }
+    });
+    y += 18;
 
     // ── Table header ──
     // cols: Date=22, Description=66, Amount=28, Owner=32, Dept=34  → total=182 ✓
@@ -14464,13 +14492,11 @@ async function ccOpenStatementDrive(bank, cardNum, stmtIdx, btn) {
     // ── Footer total ──
     y += 3;
     doc.setDrawColor(71,85,105); doc.setLineWidth(0.5); doc.line(L, y, L+UW, y); y += 5;
-    const debits  = txns.filter(t=>t.txn_type!=='credit').reduce((s,t)=>s+parseFloat(t.amount||0),0);
-    const credits = txns.filter(t=>t.txn_type==='credit').reduce((s,t)=>s+parseFloat(t.amount||0),0);
-    const txSum   = debits - credits;
+    const txSum = purchases;
     doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(15,23,42);
     doc.text('Transaction Sum', L+2, y+4);
-    doc.setTextColor(txSum >= 0 ? 220 : 22, txSum >= 0 ? 38 : 163, txSum >= 0 ? 38 : 74);
-    doc.text('Rs. ' + Math.abs(txSum).toLocaleString('en-IN',{minimumFractionDigits:2}), L+UW-2, y+4, { align:'right' });
+    doc.setTextColor(220, 38, 38);
+    doc.text('Rs. ' + txSum.toLocaleString('en-IN',{minimumFractionDigits:2}), L+UW-2, y+4, { align:'right' });
 
     const safe = s => String(s||'').replace(/[^a-zA-Z0-9_-]/g,'_').substring(0,20);
     const filename = 'CC_' + safe(bank) + '_' + safe(stmt.statement_date) + '_Statement.pdf';
