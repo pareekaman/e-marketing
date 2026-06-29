@@ -5581,11 +5581,12 @@ app.get('/api/feedback/access', requireAuth, async (req, res) => {
     const [[me]] = await db.query(
       `SELECT user_role, role, name FROM users WHERE id=?`, [req.session.userId]);
     if (!me) return res.json({ canAccess: false });
+    const isAdmin = me.role === 'admin' || me.user_role === 'admin';
     const isHod = me.user_role === 'hod' || me.role === 'hod';
     const [[fixed]] = await db.query(
       `SELECT id FROM users WHERE id=? AND name IN ('Abhishek Jain','Simran Gurnani')`,
       [req.session.userId]);
-    res.json({ canAccess: isHod || !!fixed });
+    res.json({ canAccess: isAdmin || isHod || !!fixed });
   } catch (err) { res.status(500).json({ canAccess: false }); }
 });
 
