@@ -2230,7 +2230,7 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
     <!-- Card Detail Panel -->
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px 28px 24px;min-height:420px">
-      <div id="ccDetailContent" style="color:#94a3b8;text-align:center;padding:60px 20px;font-size:14px">Select a bank from the dropdown to view details</div>
+      <div id="ccDetailContent"><div style="color:#94a3b8;text-align:center;padding:60px 20px;font-size:14px">Select a bank from the dropdown to view details</div></div>
     </div>
   </div>
 
@@ -14028,7 +14028,7 @@ async function prBillSubmit() {
     loadMyPaymentRequests();
 
     if (billFile && PR_BILL_SCRIPT_URL && !PR_BILL_SCRIPT_URL.includes('PLACEHOLDER')) {
-      showToast('✅ Payment done! Uploading bill in background…');
+      showToast('✅ Payment done! Uploading bill');
       // fire-and-forget
       (async () => {
         try {
@@ -14738,7 +14738,7 @@ function ccRenderDetail() {
   if (!panel) return;
   const bank = _ccActiveBank;
   if (!bank) {
-    panel.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:60px 20px;font-size:14px">Select a bank from the dropdown</div>';
+    panel.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:60px 20px;font-size:14px">Select a bank from the dropdown to view details</div>';
     return;
   }
   const color    = CC_BANK_COLORS[bank] || '#64748b';
@@ -14747,8 +14747,7 @@ function ccRenderDetail() {
 
   // If no cards yet, show empty state
   if (!cards.length) {
-    panel.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#94a3b8;font-size:14px">
-      No statements for <strong>${dtEscape(bank)}</strong> yet — upload a PDF statement above.</div>`;
+    panel.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#94a3b8;font-size:14px">No statements for <strong>${dtEscape(bank)}</strong> yet — upload a PDF statement above.</div>`;
     return;
   }
 
