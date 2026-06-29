@@ -14400,34 +14400,34 @@ async function ccOpenStatementDrive(bank, cardNum, stmtIdx, btn) {
     const curPayable = parseFloat(stmt.payable_amount||0) || purchases;
     const prevBal    = curPayable - purchases + payments;
 
-    doc.setFillColor(248,250,252); doc.roundedRect(L, y-4, UW, 26, 2, 2, 'F');
-    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.roundedRect(L, y-4, UW, 26, 2, 2, 'S');
-
+    // Row 1: Bank name + card number
+    doc.setFillColor(248,250,252); doc.roundedRect(L, y-4, UW, 16, 2, 2, 'F');
+    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.roundedRect(L, y-4, UW, 16, 2, 2, 'S');
     doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(15,23,42);
-    doc.text(bank + ' Bank', L+4, y+3);
+    doc.text(bank + ' Bank', L+4, y+4);
     doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(71,85,105);
-    doc.text('Card: ' + cardNum, L+4, y+10);
+    doc.text('Card: ' + cardNum, L+4, y+11);
+    y += 20;
 
-    // 5 info columns: Statement Date | Billing Period | Due Date | Min Due | Total Payable
-    const c1x = L+50, c2x = L+82, c3x = L+118, c4x = L+148, c5x = L+UW-2;
-    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(100,116,139);
-    doc.text('Statement Date', c1x, y+1.5);
-    doc.text('Billing Period',  c2x, y+1.5);
-    doc.text('Due Date',        c3x, y+1.5);
-    doc.text('Minimum Due',     c4x, y+1.5);
-    doc.text('Total Payable',   c5x, y+1.5, {align:'right'});
-    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(15,23,42);
-    doc.text(stmt.statement_date||'—', c1x, y+9);
-    doc.setFontSize(8); doc.setTextColor(15,23,42);
-    doc.text((stmt.statement_period||'—').substring(0,24), c2x, y+9);
-    doc.setFontSize(9); doc.setTextColor(220,38,38);
-    doc.text(stmt.payment_due_date||'—', c3x, y+9);
-    doc.setTextColor(217,119,6);
-    doc.text(stmt.min_amount_due ? 'Rs.'+parseFloat(stmt.min_amount_due).toLocaleString('en-IN',{minimumFractionDigits:2}) : '—', c4x, y+9);
-    doc.setTextColor(22,163,74); doc.setFontSize(10);
-    doc.text(rs(curPayable), c5x, y+10, {align:'right'});
-
-    y += 32;
+    // Row 2: 5-column stats grid (each col = UW/5 = 36.4mm)
+    const colW = UW / 5;
+    doc.setFillColor(255,255,255); doc.roundedRect(L, y, UW, 18, 2, 2, 'F');
+    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.roundedRect(L, y, UW, 18, 2, 2, 'S');
+    [
+      ['STATEMENT DATE', stmt.statement_date||'—',                                                                   [15,23,42]],
+      ['BILLING PERIOD', (stmt.statement_period||'—').substring(0,20),                                              [15,23,42]],
+      ['DUE DATE',       stmt.payment_due_date||'—',                                                                 [220,38,38]],
+      ['MINIMUM DUE',    stmt.min_amount_due ? 'Rs.'+parseFloat(stmt.min_amount_due).toLocaleString('en-IN',{minimumFractionDigits:2}) : '—', [217,119,6]],
+      ['TOTAL PAYABLE',  rs(curPayable),                                                                             [22,163,74]],
+    ].forEach(([lbl, val, clr], i) => {
+      const cx = L + colW*i + 3;
+      if (i > 0) { doc.setDrawColor(241,245,249); doc.setLineWidth(0.3); doc.line(L+colW*i, y, L+colW*i, y+18); }
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(100,116,139);
+      doc.text(lbl, cx, y+5);
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...clr);
+      doc.text(val, cx, y+13);
+    });
+    y += 22;
 
     // ── Balance Breakdown ──
     const bW = UW / 4;
@@ -14877,13 +14877,10 @@ function ccRenderStatements() {
         <div style="padding:14px 16px;border-right:1px solid #f1f5f9">
           <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Minimum Due</div>
           <div style="font-size:14px;font-weight:700;color:#d97706">${s.min_amount_due?'₹'+parseFloat(s.min_amount_due).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</div>
-          ${fmtDelta(s.min_amount_due, prev?.min_amount_due)}
         </div>
         <div style="padding:14px 16px;background:#f0fdf4">
           <div style="font-size:10px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Total Payable</div>
           <div style="font-size:18px;font-weight:800;color:#0f172a">₹${curPayable.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
-          ${fmtDelta(curPayable, prevPayable)}
-          ${fmtTxDelta(allTxns.length, prevTxCount)}
         </div>
       </div>
       <!-- Balance Breakdown -->
