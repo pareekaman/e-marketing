@@ -1674,6 +1674,32 @@ tbody tr:last-child td{border-bottom:none;}
 
     <!-- Payment Approvals panel (Naman only) -->
     <div id="paymentApprovalsPanel" style="display:none">
+      <!-- Filters -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px">
+        <div style="flex:1;min-width:150px">
+          <label style="display:block;font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;text-transform:uppercase">Employee</label>
+          <select id="paFilterEmployee" onchange="paApplyFilters()" style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none">
+            <option value="">All Employees</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:130px">
+          <label style="display:block;font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;text-transform:uppercase">From Date</label>
+          <input type="date" id="paFilterDateFrom" onchange="paApplyFilters()" style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+        </div>
+        <div style="flex:1;min-width:130px">
+          <label style="display:block;font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;text-transform:uppercase">To Date</label>
+          <input type="date" id="paFilterDateTo" onchange="paApplyFilters()" style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+        </div>
+        <div style="flex:1;min-width:110px">
+          <label style="display:block;font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;text-transform:uppercase">Min Amount</label>
+          <input type="number" id="paFilterAmtMin" placeholder="₹ Min" onchange="paApplyFilters()" style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+        </div>
+        <div style="flex:1;min-width:110px">
+          <label style="display:block;font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;text-transform:uppercase">Max Amount</label>
+          <input type="number" id="paFilterAmtMax" placeholder="₹ Max" onchange="paApplyFilters()" style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+        </div>
+        <button onclick="paResetFilters()" style="padding:8px 16px;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;align-self:flex-end">↺ Reset</button>
+      </div>
       <div id="paymentApprovalsList" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
         <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>
       </div>
@@ -13773,22 +13799,45 @@ async function loadMyPaymentRequests() {
   } catch(e) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
 }
 
-async function loadPaymentApprovals() {
+let _paAllRows = [], _paSentinels = [];
+
+function paApplyFilters() {
+  const emp  = (document.getElementById('paFilterEmployee')?.value || '').trim();
+  const from = document.getElementById('paFilterDateFrom')?.value;
+  const to   = document.getElementById('paFilterDateTo')?.value;
+  const minA = parseFloat(document.getElementById('paFilterAmtMin')?.value) || null;
+  const maxA = parseFloat(document.getElementById('paFilterAmtMax')?.value) || null;
+  const filtered = _paAllRows.filter(r => {
+    if (emp && r.name !== emp) return false;
+    const d = new Date(r.created_at);
+    if (from && d < new Date(from)) return false;
+    if (to   && d > new Date(to + 'T23:59:59')) return false;
+    const parsed = prParseReason(r.reason);
+    const amt = r.amount ? Number(r.amount) : parsed.amount;
+    if (minA !== null && (!amt || amt < minA)) return false;
+    if (maxA !== null && (!amt || amt > maxA)) return false;
+    return true;
+  });
+  paRenderApprovalRows(filtered);
+}
+
+function paResetFilters() {
+  const ids = ['paFilterEmployee','paFilterDateFrom','paFilterDateTo','paFilterAmtMin','paFilterAmtMax'];
+  ids.forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  paRenderApprovalRows(_paAllRows);
+}
+
+function paRenderApprovalRows(rows) {
   const el = document.getElementById('paymentApprovalsList');
   if (!el) return;
-  try {
-    const all = await api('/api/payment-requests');
-    if (!Array.isArray(all) || all.error) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error loading requests</div>'; return; }
-    // Sentinels: payment-done markers stored as fake requests with bank_name='__system__'
-    const sentinels = all.filter(r => r.bank_name === '__system__');
-    const rows = all.filter(r => r.bank_name !== '__system__');
-    if (!rows.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Koi payment request nahi hai</div>'; return; }
-    const statusBadge = s => s==='approved'
+  const sentinels = _paSentinels;
+  if (!rows.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">No requests found</div>'; return; }
+  const statusBadge = s => s==='approved'
       ? '<span style="background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">✅ Approved</span>'
       : s==='rejected'
       ? '<span style="background:#fee2e2;color:#dc2626;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">❌ Rejected</span>'
       : '<span style="background:#fef9c3;color:#a16207;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">⏳ Pending</span>';
-    el.innerHTML = `<table style="width:100%;border-collapse:collapse">
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse">
       <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Date</th>
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Employee</th>
@@ -13836,6 +13885,24 @@ async function loadPaymentApprovals() {
         <td style="padding:9px 14px;text-align:center">${paBillCell}</td>
       </tr>`;}).join('')}</tbody>
     </table>`;
+}
+
+async function loadPaymentApprovals() {
+  const el = document.getElementById('paymentApprovalsList');
+  if (!el) return;
+  try {
+    const all = await api('/api/payment-requests');
+    if (!Array.isArray(all) || all.error) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error loading requests</div>'; return; }
+    _paSentinels = all.filter(r => r.bank_name === '__system__');
+    const rows = all.filter(r => r.bank_name !== '__system__');
+    _paAllRows = rows;
+    const empSel = document.getElementById('paFilterEmployee');
+    if (empSel) {
+      const names = [...new Set(rows.map(r => r.name).filter(Boolean))].sort();
+      const curVal = empSel.value;
+      empSel.innerHTML = '<option value="">All Employees</option>' + names.map(n => `<option value="${dtEscape(n)}"${n===curVal?'selected':''}>${dtEscape(n)}</option>`).join('');
+    }
+    paApplyFilters();
   } catch(e) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
 }
 
