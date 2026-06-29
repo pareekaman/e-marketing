@@ -2211,71 +2211,78 @@ tbody tr:last-child td{border-bottom:none;}
        PAYMENT REQUEST PAGE
   ══════════════════════════════════════ -->
   <div id="page-paymentreq" class="page">
-    <!-- Submit Form -->
-    <div id="prFormWrap" style="max-width:520px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:28px 28px 24px">
-      <div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:20px">New Payment Request</div>
+    <!-- Two-column: Form left, My Requests right -->
+    <div style="display:grid;grid-template-columns:380px 1fr;gap:24px;align-items:start">
 
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Your Name</label>
-        <input id="prName" readonly style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;background:#f8fafc;color:#64748b;box-sizing:border-box">
-      </div>
+      <!-- LEFT: Submit Form -->
+      <div>
+        <div id="prFormWrap" style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:28px 24px 24px">
+          <div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:20px">New Payment Request</div>
 
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Bank Name</label>
-        <select id="prBank" onchange="prBankChange()" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
-          <option value="">— Select Bank —</option>
-        </select>
-        <input id="prBankOther" placeholder="Bank name type karo…" style="display:none;margin-top:6px;width:100%;padding:9px 12px;border:1.5px solid #f59e0b;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
-      </div>
+          <div style="margin-bottom:14px">
+            <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Your Name</label>
+            <input id="prName" readonly style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;background:#f8fafc;color:#64748b;box-sizing:border-box">
+          </div>
 
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Card Number</label>
-        <select id="prCard" onchange="prCardChange()" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
-          <option value="">— Select Card —</option>
-        </select>
-        <input id="prCardOther" placeholder="Card number type karo…" style="display:none;margin-top:6px;width:100%;padding:9px 12px;border:1.5px solid #f59e0b;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
-      </div>
+          <div style="margin-bottom:14px">
+            <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Bank Name</label>
+            <select id="prBank" onchange="prBankChange()" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+              <option value="">— Select Bank —</option>
+            </select>
+            <input id="prBankOther" placeholder="Enter bank name…" style="display:none;margin-top:6px;width:100%;padding:9px 12px;border:1.5px solid #f59e0b;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+          </div>
 
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Amount (₹)</label>
-        <input id="prAmount" type="number" min="0" step="0.01" placeholder="0.00" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
-      </div>
+          <div style="margin-bottom:14px">
+            <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Card Number</label>
+            <select id="prCard" onchange="prCardChange()" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+              <option value="">— Select Card —</option>
+            </select>
+            <input id="prCardOther" placeholder="Enter card number…" style="display:none;margin-top:6px;width:100%;padding:9px 12px;border:1.5px solid #f59e0b;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+          </div>
 
-      <div style="margin-bottom:20px">
-        <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Reason for Payment</label>
-        <textarea id="prReason" rows="3" placeholder="Describe the reason for this payment..." style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;resize:vertical;font-family:inherit;box-sizing:border-box"></textarea>
-      </div>
+          <div style="margin-bottom:14px">
+            <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Amount (₹)</label>
+            <input id="prAmount" type="number" min="0" step="0.01" placeholder="0.00" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+          </div>
 
-      <button onclick="prSubmit()" style="background:#1a56db;color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:13px;font-weight:600;cursor:pointer">Submit Request</button>
-    </div>
+          <div style="margin-bottom:20px">
+            <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Reason for Payment</label>
+            <textarea id="prReason" rows="4" placeholder="Describe the reason for this payment..." style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;resize:vertical;font-family:inherit;box-sizing:border-box"></textarea>
+          </div>
 
-    <!-- My Requests History -->
-    <div style="margin-top:28px">
-      <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:12px">My Requests</div>
-      <div id="prMyList" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
-        <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>
-      </div>
-    </div>
-
-    <!-- Manage Cards (Naman only) -->
-    <div id="prManageCardsWrap" style="display:none;margin-top:28px;max-width:520px">
-      <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:12px">Manage Cards</div>
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px">
-        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-          <select id="prMgmtBank" onchange="prMgmtBankChange()" style="flex:1;min-width:120px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none">
-            <option value="">— Bank —</option>
-            <option>AMEX</option><option>AXIS</option><option>HDFC</option>
-            <option>ICICI</option><option>RBL Bank</option><option>SBI</option><option>SCB</option>
-            <option value="__other__">Other…</option>
-          </select>
-          <input id="prMgmtBankOther" placeholder="Bank name…" style="display:none;flex:1;min-width:120px;padding:8px 10px;border:1.5px solid #f59e0b;border-radius:8px;font-size:13px;outline:none">
-          <input id="prMgmtCard" placeholder="Card Number" style="flex:2;min-width:160px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none">
-          <button onclick="prAddCard()" style="padding:8px 16px;background:#1a56db;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">+ Add</button>
+          <button onclick="prSubmit()" style="width:100%;background:#1a56db;color:#fff;border:none;border-radius:8px;padding:11px 24px;font-size:14px;font-weight:600;cursor:pointer">Submit Request</button>
         </div>
-        <div id="prCardList" style="font-size:13px;color:#64748b">Loading...</div>
-      </div>
-    </div>
-  </div>
+
+        <!-- Manage Cards (Naman only) -->
+        <div id="prManageCardsWrap" style="display:none;margin-top:20px">
+          <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:12px">Manage Cards</div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px">
+            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+              <select id="prMgmtBank" onchange="prMgmtBankChange()" style="flex:1;min-width:120px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none">
+                <option value="">— Bank —</option>
+                <option>AMEX</option><option>AXIS</option><option>HDFC</option>
+                <option>ICICI</option><option>RBL Bank</option><option>SBI</option><option>SCB</option>
+                <option value="__other__">Other…</option>
+              </select>
+              <input id="prMgmtBankOther" placeholder="Bank name…" style="display:none;flex:1;min-width:120px;padding:8px 10px;border:1.5px solid #f59e0b;border-radius:8px;font-size:13px;outline:none">
+              <input id="prMgmtCard" placeholder="Card Number" style="flex:2;min-width:160px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none">
+              <button onclick="prAddCard()" style="padding:8px 16px;background:#1a56db;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">+ Add</button>
+            </div>
+            <div id="prCardList" style="font-size:13px;color:#64748b">Loading...</div>
+          </div>
+        </div>
+      </div><!-- end left col -->
+
+      <!-- RIGHT: My Requests -->
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:12px">My Requests</div>
+        <div id="prMyList" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+          <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>
+        </div>
+      </div><!-- end right col -->
+
+    </div><!-- end grid -->
+  </div><!-- end page-paymentreq -->
 
   <!-- ══════════════════════════════════════
        DMS PAGE — Document Management System
@@ -13727,6 +13734,7 @@ async function loadMyPaymentRequests() {
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Reason</th>
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Payment Status</th>
+        <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bill</th>
       </tr></thead>
       <tbody>${rows.map((r,i) => {
         const parsed = prParseReason(r.reason);
@@ -13737,10 +13745,12 @@ async function loadMyPaymentRequests() {
         const isCancelled = cancelSentinel != null;
         const billSentinel = sentinels.find(s => s.card_number === '__bill__' && s.reason.startsWith('__bill__:' + String(r.id) + ':'));
         const billFileId = billSentinel ? billSentinel.reason.replace('__bill__:' + String(r.id) + ':', '') : null;
-        const billLink = billFileId ? `<a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" title="View Bill" style="font-size:18px;text-decoration:none;margin-left:4px">📎</a>` : '';
+        const billCell = billFileId
+          ? `<a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" style="color:#1a56db;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap">View Bill</a>`
+          : `<span style="color:#94a3b8;font-size:12px">—</span>`;
         let payStatusCell = '';
         if (r.status === 'approved') {
-          if (isDone) payStatusCell = '<span style="font-size:20px">✅</span>' + billLink;
+          if (isDone) payStatusCell = '<span style="font-size:20px">✅</span>';
           else if (isCancelled) payStatusCell = '<span style="font-size:20px" title="' + dtEscape(cancelSentinel.reason.replace('__cancelled__:' + r.id + ':','')) + '">❌</span>';
           else payStatusCell = `<span style="display:inline-flex;gap:10px;align-items:center">
             <button onclick="prOpenBillModal(${r.id})" title="Mark as Paid" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;padding:2px">✅</button>
@@ -13755,6 +13765,7 @@ async function loadMyPaymentRequests() {
         <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:200px">${dtEscape(dispReason)}</td>
         <td style="padding:9px 14px">${statusBadge(r.status)}</td>
         <td style="padding:9px 14px;text-align:center">${payStatusCell}</td>
+        <td style="padding:9px 14px;text-align:center">${billCell}</td>
       </tr>`;}).join('')}</tbody>
     </table>`;
   } catch(e) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
@@ -13785,6 +13796,7 @@ async function loadPaymentApprovals() {
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Reason</th>
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Action</th>
+        <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bill</th>
       </tr></thead>
       <tbody>${rows.map((r,i) => {
         const parsed = prParseReason(r.reason);
@@ -13796,6 +13808,9 @@ async function loadPaymentApprovals() {
         const cancelReason = isCancelled ? cancelSentinel.reason.replace('__cancelled__:' + r.id + ':', '') : '';
         const billSentinel = sentinels.find(s => s.card_number === '__bill__' && s.reason.startsWith('__bill__:' + String(r.id) + ':'));
         const billFileId = billSentinel ? billSentinel.reason.replace('__bill__:' + String(r.id) + ':', '') : null;
+        const paBillCell = billFileId
+          ? `<a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" style="color:#1a56db;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap">View Bill</a>`
+          : `<span style="color:#94a3b8;font-size:12px">—</span>`;
         return `<tr id="paRow-${r.id}" style="${i%2?'background:#f8fafc':''}">
         <td style="padding:9px 14px;font-size:12px;color:#64748b">${new Date(r.created_at).toLocaleDateString('en-IN')}</td>
         <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.name)}</td>
@@ -13809,11 +13824,12 @@ async function loadPaymentApprovals() {
             <button onclick="prReview(${r.id},'approved')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;margin-right:5px">✅ Approve</button>
             <button onclick="prReview(${r.id},'rejected')" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer">❌ Reject</button>
           ` : isDone
-            ? `<span style="font-size:13px;font-weight:700;color:#16a34a">Payment Done</span>${billFileId ? ` <a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" title="View Bill" style="font-size:17px;text-decoration:none">📎</a>` : ''}`
+            ? `<span style="font-size:13px;font-weight:700;color:#16a34a">Payment Done</span>`
             : isCancelled
             ? `<span style="font-size:12px;font-weight:700;color:#dc2626">Cancelled<br><span style="font-weight:400;font-size:11px;color:#64748b">${dtEscape(cancelReason)}</span></span>`
             : '—'}
         </td>
+        <td style="padding:9px 14px;text-align:center">${paBillCell}</td>
       </tr>`;}).join('')}</tbody>
     </table>`;
   } catch(e) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
