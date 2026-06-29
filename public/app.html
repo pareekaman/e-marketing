@@ -5164,7 +5164,7 @@ async function generateOfferDoc(id) {
   if (btn) { btn.textContent = 'Generating…'; btn.disabled = true; }
   const r = await api(`/api/hrm/candidates/${id}/generate-offer`, 'POST', {});
   if (r.error) { showToast(r.error, 'error'); if (btn) { btn.textContent = 'Generate'; btn.disabled = false; } return; }
-  showToast('Drive par save ho gaya!');
+  showToast('Saved to Drive!');
   await loadHRM();
   viewOfferLetter(id); // reopen with updated data
 }
@@ -6829,7 +6829,7 @@ async function saveDelegate() {
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
   closeModal('delegateModal');
   if (doerSetsDueDate) {
-    showToast('Task delegated! 🗓 Doer apni due date set karega.');
+    showToast('Task delegated! Doer will set their due date.');
   } else if (r.adjusted) {
     showToast(`Task delegated! 📅 Moved to ${r.effectiveDate} (holiday/week-off)`);
   } else {
@@ -7653,7 +7653,7 @@ async function handleWaDelegation(id, action) {
   if (!confirmed) return;
   const r = await api(`/api/wa-delegation/${id}`, 'PUT', { action });
   if (r.error) { showToast(r.error, 'error'); return; }
-  showToast(action === 'approved' ? '✅ Task approved aur system mein add ho gaya!' : '❌ Task deny kar diya gaya');
+  showToast(action === 'approved' ? '✅ Task approved and added to system!' : '❌ Task denied');
   loadWaDelegations();
   loadApprovalBadge();
 }
@@ -13559,7 +13559,7 @@ async function prAddCard() {
     ? document.getElementById('prMgmtBankOther').value.trim()
     : sel.trim();
   const card = document.getElementById('prMgmtCard').value.trim();
-  if (!bank || !card) { showToast('Bank aur Card Number dono daalo', 'error'); return; }
+  if (!bank || !card) { showToast('Enter bank name and card number', 'error'); return; }
   try {
     await api('/api/payment-requests/cards', 'POST', { bank_name:bank, card_number:card });
     _prCards = await api('/api/payment-requests/cards');
@@ -13569,7 +13569,7 @@ async function prAddCard() {
     document.getElementById('prMgmtBankOther').style.display = 'none';
     document.getElementById('prMgmtBankOther').value = '';
     document.getElementById('prMgmtCard').value = '';
-    showToast('Card add ho gaya');
+    showToast('Card added');
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
@@ -13667,10 +13667,10 @@ async function prSubmit() {
 
   const amount = parseFloat(document.getElementById('prAmount').value) || 0;
 
-  if (!bank) { showToast('Bank name daalo', 'error'); document.getElementById('prBankOther').focus(); return; }
-  if (!card) { showToast('Card number daalo', 'error'); return; }
-  if (!amount || amount <= 0) { showToast('Amount daalo', 'error'); document.getElementById('prAmount').focus(); return; }
-  if (!reason) { showToast('Reason daalo', 'error'); return; }
+  if (!bank) { showToast('Enter bank name', 'error'); document.getElementById('prBankOther').focus(); return; }
+  if (!card) { showToast('Enter card number', 'error'); return; }
+  if (!amount || amount <= 0) { showToast('Enter amount', 'error'); document.getElementById('prAmount').focus(); return; }
+  if (!reason) { showToast('Enter reason', 'error'); return; }
 
   // Encode amount inside reason so old server stores it without DB column change
   const encodedReason = `[₹${amount.toFixed(2)}] ${reason}`;
@@ -13690,7 +13690,7 @@ async function prSubmit() {
 
     const r = await api('/api/payment-requests', 'POST', { bank_name:bank, card_number:card, amount, reason: encodedReason });
     if (r.error) { showToast('Error: ' + r.error, 'error'); return; }
-    showToast('✅ Request submit ho gayi!');
+    showToast('✅ Request submitted!');
     document.getElementById('prBank').value = '';
     document.getElementById('prBankOther').style.display = 'none';
     document.getElementById('prBankOther').value = '';
@@ -13732,8 +13732,8 @@ async function loadMyPaymentRequests() {
         const parsed = prParseReason(r.reason);
         const dispAmt = r.amount ? Number(r.amount) : parsed.amount;
         const dispReason = r.amount ? r.reason : parsed.reason;
-        const isDone = r.payment_done || sentinels.some(s => s.reason === '__paid__:' + r.id);
-        const cancelSentinel = sentinels.find(s => s.reason.startsWith('__cancelled__:' + r.id + ':'));
+        const isDone = r.payment_done || sentinels.some(s => s.card_number === '__paid__' && s.reason === '__paid__:' + String(r.id));
+        const cancelSentinel = sentinels.find(s => s.card_number === '__cancelled__' && s.reason.startsWith('__cancelled__:' + String(r.id) + ':'));
         const isCancelled = cancelSentinel != null;
         let payStatusCell = '';
         if (r.status === 'approved') {
@@ -13787,8 +13787,8 @@ async function loadPaymentApprovals() {
         const parsed = prParseReason(r.reason);
         const dispAmt = r.amount ? Number(r.amount) : parsed.amount;
         const dispReason = r.amount ? r.reason : parsed.reason;
-        const isDone = r.payment_done || sentinels.some(s => s.reason === '__paid__:' + r.id);
-        const cancelSentinel = sentinels.find(s => s.reason.startsWith('__cancelled__:' + r.id + ':'));
+        const isDone = r.payment_done || sentinels.some(s => s.card_number === '__paid__' && s.reason === '__paid__:' + String(r.id));
+        const cancelSentinel = sentinels.find(s => s.card_number === '__cancelled__' && s.reason.startsWith('__cancelled__:' + String(r.id) + ':'));
         const isCancelled = cancelSentinel != null;
         const cancelReason = isCancelled ? cancelSentinel.reason.replace('__cancelled__:' + r.id + ':', '') : '';
         return `<tr id="paRow-${r.id}" style="${i%2?'background:#f8fafc':''}">
@@ -13834,19 +13834,12 @@ async function prReview(id, status) {
 }
 
 async function prMarkPaymentDone(id) {
-  // Try new route first; if server doesn't have it yet, silently fall through to sentinel
-  try {
-    const r = await api(`/api/payment-requests/${id}/payment-done`, 'POST');
-    if (!r.error) { showToast('✅ Payment Done mark ho gaya!'); loadMyPaymentRequests(); return; }
-  } catch(e) { /* route not available on old server — fall through */ }
-
-  // Sentinel approach: create a marker request in DB so Naman also sees Done
   try {
     const s = await api('/api/payment-requests', 'POST', {
       bank_name: '__system__', card_number: '__paid__', reason: '__paid__:' + id
     });
     if (s && s.error) { showToast('Error: ' + s.error, 'error'); return; }
-    showToast('✅ Payment Done mark ho gaya!');
+    showToast('✅ Payment marked as done!');
     loadMyPaymentRequests();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
@@ -13863,14 +13856,14 @@ function prCloseCancelModal() {
 }
 async function prSubmitCancel(id) {
   const reason = document.getElementById('prCancelReason').value.trim();
-  if (!reason) { showToast('Cancel reason daalo', 'error'); return; }
+  if (!reason) { showToast('Enter a reason for cancellation', 'error'); return; }
   prCloseCancelModal();
   try {
     const s = await api('/api/payment-requests', 'POST', {
       bank_name: '__system__', card_number: '__cancelled__', reason: '__cancelled__:' + id + ':' + reason
     });
     if (s && s.error) { showToast('Error: ' + s.error, 'error'); return; }
-    showToast('Payment cancel ho gayi');
+    showToast('Payment cancelled');
     loadMyPaymentRequests();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
@@ -14367,7 +14360,7 @@ async function ccOpenStatementDrive(bank, cardNum, stmtIdx, btn) {
     if (!result.success) throw new Error(result.error || 'Upload failed');
 
     doc.save(filename);
-    showToast('✅ Statement PDF Drive mein save ho gayi!');
+    showToast('✅ Statement PDF saved to Drive!');
     if (btn) {
       btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
       btn.style.opacity = '1';
@@ -14391,7 +14384,7 @@ async function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
   const deptSel = wrap?.querySelector(`[data-dept-sel="${stmtIdx}-${txIdx}"]`);
   const owner = ownSel?.value || t.expenses || '';
   const dept  = deptSel?.value || t.department || '';
-  if (!owner || !dept) { showToast('Owner aur Department select karo pehle.', 'error'); return; }
+  if (!owner || !dept) { showToast('Select Owner and Department first.', 'error'); return; }
 
   const btn = wrap?.querySelector(`button[onclick*="ccSaveToDrive('${bank}','${cardNum}',${stmtIdx},${txIdx})"]`);
   if (btn) { btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; }
@@ -14443,7 +14436,7 @@ async function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
     const result = await resp.json();
     if (!result.success) throw new Error(result.error || 'Drive save failed');
 
-    showToast('✅ Sheet + Drive mein save ho gaya! PDF download bhi ho gayi.');
+    showToast('✅ Saved to Sheet + Drive! PDF downloaded.');
     if (btn) {
       btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
       btn.style.opacity = '1';
@@ -15698,12 +15691,12 @@ async function dmsSaveFile() {
 <!-- Payment Cancel Modal -->
 <div id="prCancelOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:14px;padding:28px 28px 22px;width:min(420px,92vw);box-shadow:0 8px 32px rgba(0,0,0,.18)">
-    <h3 style="margin:0 0 6px;font-size:17px;color:#0f172a">Payment Cancel</h3>
-    <p style="margin:0 0 18px;font-size:13px;color:#64748b">Cancel karne ka reason batao</p>
-    <textarea id="prCancelReason" rows="3" placeholder="Reason likhiye…" style="width:100%;box-sizing:border-box;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:14px;resize:vertical;outline:none;font-family:inherit"></textarea>
+    <h3 style="margin:0 0 6px;font-size:17px;color:#0f172a">Cancel Payment</h3>
+    <p style="margin:0 0 18px;font-size:13px;color:#64748b">Enter a reason for cancellation</p>
+    <textarea id="prCancelReason" rows="3" placeholder="Enter reason…" style="width:100%;box-sizing:border-box;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:14px;resize:vertical;outline:none;font-family:inherit"></textarea>
     <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
-      <button onclick="prCloseCancelModal()" style="background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:600;cursor:pointer">Reh jaane do</button>
-      <button id="prCancelBtn" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:600;cursor:pointer">Cancel karo</button>
+      <button onclick="prCloseCancelModal()" style="background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:600;cursor:pointer">Never mind</button>
+      <button id="prCancelBtn" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:600;cursor:pointer">Confirm Cancel</button>
     </div>
   </div>
 </div>
