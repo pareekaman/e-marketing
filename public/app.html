@@ -14021,19 +14021,19 @@ async function prBillSubmit() {
     });
     if (s && s.error) { showToast('Error: ' + s.error, 'error'); if (submitBtn) submitBtn.disabled = false; return; }
 
-    // 2. Close modal & reload immediately — Drive upload runs in background
+    // 2. Capture file refs BEFORE closing modal (prCloseBillModal nulls them)
+    const billFile = _prBillFile;
+    const rawName = (document.getElementById('prBillFilename')?.value || ('PaymentBill_ID' + id)).trim();
     prCloseBillModal();
     loadMyPaymentRequests();
 
-    if (_prBillFile && PR_BILL_SCRIPT_URL && !PR_BILL_SCRIPT_URL.includes('PLACEHOLDER')) {
+    if (billFile && PR_BILL_SCRIPT_URL && !PR_BILL_SCRIPT_URL.includes('PLACEHOLDER')) {
       showToast('✅ Payment done! Uploading bill in background…');
-      const billFile = _prBillFile;
-      const rawName = (document.getElementById('prBillFilename')?.value || ('PaymentBill_ID' + id)).trim();
       // fire-and-forget
       (async () => {
         try {
           const { base64, mimeType } = await prBillCompressToBase64(billFile);
-          const filename = rawName.endsWith('.jpg') ? rawName : rawName + '.jpg';
+          const filename = rawName.endsWith('.jpg') ? rawName : (rawName + '.jpg');
           await fetch(PR_BILL_SCRIPT_URL, {
             method: 'POST', mode: 'no-cors',
             headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
