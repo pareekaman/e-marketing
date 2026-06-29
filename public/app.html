@@ -13524,6 +13524,9 @@ async function initPaymentReqPage() {
     _prCards = Array.isArray(res) ? res : [];
   } catch(e) { _prCards = []; }
   prPopulateBanks();
+  // Show submit form only to admin users
+  const formWrap = document.getElementById('prFormWrap');
+  if (formWrap) formWrap.style.display = ME.role === 'admin' ? '' : 'none';
   const listTitle = document.getElementById('prMyListTitle');
   if (listTitle) listTitle.textContent = ME.role === 'admin' ? 'All Requests' : 'My Requests';
   loadMyPaymentRequests();
@@ -14497,9 +14500,24 @@ async function ccOpenStatementDrive(bank, cardNum, stmtIdx, btn) {
 
     const safe = s => String(s||'').replace(/[^a-zA-Z0-9_-]/g,'_').substring(0,20);
     const suggested = 'CC_' + safe(bank) + '_' + safe(stmt.statement_date) + '_Statement.pdf';
-    const userFilename = window.prompt('File ka naam set karein (Drive mein save hoga):', suggested);
+    const userFilename = await new Promise(resolve => {
+      const overlay = document.getElementById('ccRenameOverlay');
+      const input = document.getElementById('ccRenameInput');
+      const okBtn = document.getElementById('ccRenameOkBtn');
+      const cancelBtn = document.getElementById('ccRenameCancelBtn');
+      input.value = suggested;
+      overlay.style.display = 'flex';
+      setTimeout(() => { input.focus(); input.select(); }, 50);
+      const finish = (val) => {
+        overlay.style.display = 'none';
+        okBtn.onclick = null; cancelBtn.onclick = null;
+        resolve(val);
+      };
+      okBtn.onclick = () => finish(input.value.trim() || null);
+      cancelBtn.onclick = () => finish(null);
+    });
     if (!userFilename) { if (btn) { btn.style.opacity = ''; btn.style.pointerEvents = ''; } return; }
-    const filename = userFilename.trim().endsWith('.pdf') ? userFilename.trim() : userFilename.trim() + '.pdf';
+    const filename = userFilename.endsWith('.pdf') ? userFilename : userFilename + '.pdf';
     const pdfB64 = doc.output('datauristring').split(',')[1];
 
     const resp = await fetch('/api/credit-cards/drive-upload', {
@@ -15868,6 +15886,29 @@ async function dmsSaveFile() {
     <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
       <button onclick="prCloseCancelModal()" style="background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:600;cursor:pointer">Never mind</button>
       <button id="prCancelBtn" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:600;cursor:pointer">Confirm Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- CC Drive Upload — Rename File Modal -->
+<div id="ccRenameOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1100;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;padding:28px 28px 22px;width:min(460px,94vw);box-shadow:0 16px 48px rgba(0,0,0,.22)">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+      <div style="background:#eff6ff;border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a56db" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      <div>
+        <div style="font-size:16px;font-weight:700;color:#0f172a">Save to Drive</div>
+        <div style="font-size:12px;color:#64748b;margin-top:2px">Enter a name for the file</div>
+      </div>
+    </div>
+    <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:6px">File Name</label>
+    <input id="ccRenameInput" type="text" style="width:100%;box-sizing:border-box;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:14px;outline:none;font-family:inherit;color:#0f172a" onfocus="this.style.borderColor='#1a56db'" onblur="this.style.borderColor='#e2e8f0'"
+      onkeydown="if(event.key==='Enter')document.getElementById('ccRenameOkBtn').click();if(event.key==='Escape')document.getElementById('ccRenameCancelBtn').click()">
+    <div style="margin-top:6px;font-size:11px;color:#94a3b8">.pdf extension will be added automatically if missing</div>
+    <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end">
+      <button id="ccRenameCancelBtn" style="background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
+      <button id="ccRenameOkBtn" style="background:#1a56db;color:#fff;border:none;border-radius:8px;padding:9px 24px;font-size:14px;font-weight:600;cursor:pointer">Save to Drive</button>
     </div>
   </div>
 </div>
