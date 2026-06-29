@@ -5295,6 +5295,31 @@ function parseIciciCC(j, txns) {
   return { bankName:'ICICI', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
+function parseSbiCC(j, txns) {
+  const f          = j.fields || j;
+  // SBI PDF header: "Credit Card Number"
+  const cardNumber = f['Credit Card Number'] || f['Credit Card No.'] || f['Card Number'] || 'Unknown Card';
+  // SBI PDF header: "Statement Date"
+  const stmtDate   = parseCCDateDMY(f['Statement Date']) || parseCCDateLong(f['Statement Date']);
+  // SBI PDF header: "Payment Due Date"
+  const dueDate    = parseCCDateDMY(f['Payment Due Date']) || parseCCDateLong(f['Payment Due Date'])
+                  || parseCCDateDMY(f['Due Date']) || parseCCDateLong(f['Due Date']);
+  // SBI PDF header: "*Total Amount Due"
+  const payable    = parseCCAmount(f['*Total Amount Due'] || f['Total Amount Due'] || f['Total Amount due']);
+  // SBI PDF header: "**Minimum Amount Due"
+  const minDue     = parseCCAmount(f['**Minimum Amount Due'] || f['Minimum Amount Due'] || f['Minimum Due']);
+  // SBI PDF header: "for Statement Period"
+  const period     = f['for Statement Period'] || f['Statement Period'] || f['Billing Period'] || '';
+  const transactions = dedupeTxns((txns || []).map(t => {
+    const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
+    const amount   = parseCCAmount(t.amount);
+    if (!amount) return null;
+    const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]);
+    return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
+  }).filter(Boolean));
+  return { bankName:'SBI', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
+}
+
 function parseCCJson(extracted, filename) {
   const text  = JSON.stringify(extracted).toLowerCase();
   const fname = (filename||'').toLowerCase();
@@ -5313,6 +5338,9 @@ function parseCCJson(extracted, filename) {
   // ICICI
   if (text.includes('icici') || fname.includes('icici'))
     return parseIciciCC(extracted, extracted.transactions);
+  // SBI — "sbi card" is the bank name in the PDF
+  if (text.includes('sbi card') || text.includes('sbi') || fname.includes('sbi'))
+    return parseSbiCC(extracted, extracted.transactions);
   const bank = detectBankName(text) || detectBankName(fname) || 'Unknown';
   return { bankName:bank, cardNumber:'Unknown Card', statementDate:null, paymentDueDate:null, payableAmount:0, minAmountDue:0, statementPeriod:'', transactions:[] };
 }
