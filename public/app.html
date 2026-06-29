@@ -7497,14 +7497,16 @@ async function uploadUsersCSV() {
 
 // ══════════════════════════════════════════════════════
 async function loadApprovalBadge() {
-  const [d, lv] = await Promise.all([
+  const [d, lv, pr] = await Promise.all([
     api('/api/approvals/count'),
-    api('/api/leaves/pending-count')
+    api('/api/leaves/pending-count'),
+    ME.name === 'Naman Gupta' ? api('/api/payment-requests?status=pending') : Promise.resolve([])
   ]);
-  const taskCnt  = d.count  || 0;
-  const leaveCnt = lv?.count || 0;
-  const waCnt    = 0; // WhatsApp Tasks disabled
-  const total = taskCnt + leaveCnt;
+  const taskCnt    = d.count  || 0;
+  const leaveCnt   = lv?.count || 0;
+  const paymentCnt = Array.isArray(pr) ? pr.filter(r => r.status === 'pending').length : 0;
+  const waCnt      = 0;
+  const total = taskCnt + leaveCnt + paymentCnt;
   const badge = document.getElementById('approvalBadge');
   if (total > 0) {
     badge.textContent = total;
