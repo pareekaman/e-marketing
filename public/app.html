@@ -2177,8 +2177,7 @@ tbody tr:last-child td{border-bottom:none;}
        FEEDBACK PAGE — Admin / HOD view
   ══════════════════════════════════════ -->
   <div id="page-feedback" class="page">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px">
-      <h2 style="margin:0;font-size:20px;font-weight:700;color:#0f172a">⚠️ Client Escalations</h2>
+    <div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:18px">
       <button class="btn btn-outline" onclick="loadFeedbackAdmin()" style="font-size:12px">🔄 Refresh</button>
     </div>
     <div id="feedbackContent"><div class="empty" style="padding:40px">Loading…</div></div>
@@ -2212,8 +2211,6 @@ tbody tr:last-child td{border-bottom:none;}
        PAYMENT REQUEST PAGE
   ══════════════════════════════════════ -->
   <div id="page-paymentreq" class="page">
-    <h2 style="margin:0 0 20px;font-size:20px;font-weight:700;color:#0f172a">💳 Payment Request</h2>
-
     <!-- Submit Form -->
     <div id="prFormWrap" style="max-width:520px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:28px 28px 24px">
       <div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:20px">New Payment Request</div>
@@ -2250,6 +2247,23 @@ tbody tr:last-child td{border-bottom:none;}
       <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:12px">My Requests</div>
       <div id="prMyList" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
         <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Manage Cards (Naman only) -->
+    <div id="prManageCardsWrap" style="display:none;margin-top:28px;max-width:520px">
+      <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:12px">Manage Cards</div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px">
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          <select id="prMgmtBank" style="flex:1;min-width:120px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none">
+            <option value="">— Bank —</option>
+            <option>AMEX</option><option>AXIS</option><option>HDFC</option>
+            <option>ICICI</option><option>RBL Bank</option><option>SBI</option><option>SCB</option>
+          </select>
+          <input id="prMgmtCard" placeholder="Card Number" style="flex:2;min-width:160px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none">
+          <button onclick="prAddCard()" style="padding:8px 16px;background:#1a56db;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">+ Add</button>
+        </div>
+        <div id="prCardList" style="font-size:13px;color:#64748b">Loading...</div>
       </div>
     </div>
   </div>
@@ -13485,12 +13499,56 @@ let _prCards = []; // [{bank_name, card_number}]
 
 async function initPaymentReqPage() {
   document.getElementById('prName').value = ME.name || '';
-  // Load cards for dropdowns
   try {
     _prCards = await api('/api/payment-requests/cards');
   } catch(e) { _prCards = []; }
   prPopulateBanks();
   loadMyPaymentRequests();
+  // Show card management panel only for Naman
+  if (ME.name === 'Naman Gupta') {
+    const wrap = document.getElementById('prManageCardsWrap');
+    if (wrap) wrap.style.display = '';
+    prRenderCardList();
+  }
+}
+
+function prRenderCardList() {
+  const el = document.getElementById('prCardList');
+  if (!el) return;
+  const manual = _prCards.filter(c => c.src === 'manual');
+  if (!manual.length) { el.innerHTML = '<div style="color:#94a3b8;padding:8px 0">No manual cards added yet.</div>'; return; }
+  el.innerHTML = manual.map(c => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9">
+      <span><strong style="color:#374151">${dtEscape(c.bank_name)}</strong> — <span style="font-family:monospace;font-size:12px">${dtEscape(c.card_number)}</span></span>
+      <button onclick="prRemoveCard(${c.id})"
+        style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px;line-height:1"
+        onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#94a3b8'">✕</button>
+    </div>`).join('');
+}
+
+async function prAddCard() {
+  const bank = document.getElementById('prMgmtBank').value.trim();
+  const card = document.getElementById('prMgmtCard').value.trim();
+  if (!bank || !card) { showToast('Bank aur Card Number dono daalo', 'error'); return; }
+  try {
+    await api('/api/payment-requests/cards', 'POST', { bank_name:bank, card_number:card });
+    _prCards = await api('/api/payment-requests/cards');
+    prPopulateBanks();
+    prRenderCardList();
+    document.getElementById('prMgmtCard').value = '';
+    showToast('Card add ho gaya');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function prRemoveCard(id) {
+  if (!confirm('Is card ko remove karein?')) return;
+  try {
+    await api(`/api/payment-requests/cards/${id}`, 'DELETE');
+    _prCards = await api('/api/payment-requests/cards');
+    prPopulateBanks();
+    prRenderCardList();
+    showToast('Card removed');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 function prPopulateBanks() {

@@ -5130,6 +5130,24 @@ function safeParseCC(text) {
       reviewed_at TIMESTAMP NULL,
       created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+    // Manual card list for Payment Request dropdown (independent of PDF uploads)
+    await db.query(`CREATE TABLE IF NOT EXISTS pr_cards (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      bank_name  VARCHAR(50) NOT NULL,
+      card_number VARCHAR(50) NOT NULL,
+      UNIQUE KEY uq_pr_card (bank_name, card_number)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+    // Seed known cards (INSERT IGNORE avoids duplicates)
+    const seedCards = [
+      ['AMEX',     'XXXX-XXXXXX-21000'],
+      ['AXIS',     '539494******7928'],
+      ['HDFC',     '545964XXXXXX8650'],
+      ['HDFC',     '558983XXXXXX6349'],
+      ['ICICI',    '5241XXXXXXXX7007'],
+      ['RBL Bank', 'XXXXXXXXXXXXXX73'],
+    ];
+    for (const [b, c] of seedCards)
+      await db.query('INSERT IGNORE INTO pr_cards (bank_name, card_number) VALUES (?,?)', [b, c]);
   } catch(e) { console.error('payment_requests init:', e.message); }
 })();
 
@@ -5510,13 +5528,46 @@ app.post('/api/credit-cards/drive-upload', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// GET /api/payment-requests/cards — card list for dropdown (Vishal only)
+// GET /api/payment-requests/cards — card list for dropdown
 app.get('/api/payment-requests/cards', requireAuth, async (req, res) => {
   try {
     const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
     if (!me || !['Vishal Jaga','Naman Gupta'].includes(me.name)) return res.status(403).json({ error:'Access denied' });
-    const [rows] = await db.query('SELECT bank_name, card_number FROM cc_cards ORDER BY bank_name, card_number');
-    res.json(rows);
+    // Merge manually-managed pr_cards + any cc_cards from PDF uploads
+    const [rows] = await db.query(`
+      SELECT bank_name, card_number, id, 'manual' AS src FROM pr_cards
+      UNION
+      SELECT bank_name, card_number, id, 'cc' AS src FROM cc_cards
+      ORDER BY bank_name, card_number`);
+    // Deduplicate by bank+card (prefer manual entry so id is available for delete)
+    const seen = new Map();
+    for (const r of rows) {
+      const key = `${r.bank_name}|${r.card_number}`;
+      if (!seen.has(key) || r.src === 'manual') seen.set(key, r);
+    }
+    res.json(Array.from(seen.values()));
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/payment-requests/cards — add card (Naman only)
+app.post('/api/payment-requests/cards', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    const { bank_name, card_number } = req.body;
+    if (!bank_name || !card_number) return res.status(400).json({ error:'bank_name and card_number required' });
+    await db.query('INSERT IGNORE INTO pr_cards (bank_name, card_number) VALUES (?,?)', [bank_name.trim(), card_number.trim()]);
+    res.json({ success:true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /api/payment-requests/cards/:id — remove card (Naman only, pr_cards only)
+app.delete('/api/payment-requests/cards/:id', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
+    await db.query('DELETE FROM pr_cards WHERE id=?', [req.params.id]);
+    res.json({ success:true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
