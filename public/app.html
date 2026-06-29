@@ -13722,8 +13722,8 @@ async function loadMyPaymentRequests() {
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             ${statusBadge(r.status)}
             ${r.status==='approved' && !r.payment_done
-              ? `<button onclick="prMarkPaymentDone(${r.id})" style="background:#0f172a;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Payment Done</button>`
-              : r.payment_done ? `<span style="font-size:11px;color:#16a34a;font-weight:600">✔ Paid</span>` : ''}
+              ? `<button onclick="prMarkPaymentDone(${r.id})" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">✅ Done</button>`
+              : r.payment_done ? `<span style="font-size:13px;color:#16a34a;font-weight:700">✅ Done</span>` : ''}
           </div>
         </td>
       </tr>`).join('')}</tbody>
@@ -13767,7 +13767,7 @@ async function loadPaymentApprovals() {
             <button onclick="prReview(${r.id},'approved')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;margin-right:5px">✅ Approve</button>
             <button onclick="prReview(${r.id},'rejected')" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer">❌ Reject</button>
           ` : r.payment_done
-            ? `<span style="font-size:12px;font-weight:700;color:#16a34a">✔ Payment Done</span>`
+            ? `<span style="font-size:13px;font-weight:700;color:#16a34a">✅ Done</span>`
             : '—'}
         </td>
       </tr>`).join('')}</tbody>
