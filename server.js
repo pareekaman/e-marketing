@@ -5125,11 +5125,18 @@ function safeParseCC(text) {
       name        VARCHAR(100) NOT NULL,
       bank_name   VARCHAR(50)  NOT NULL,
       card_number VARCHAR(50)  NOT NULL,
+      amount      DECIMAL(12,2) DEFAULT 0,
       reason      TEXT         NOT NULL,
       status      ENUM('pending','approved','rejected') DEFAULT 'pending',
+      payment_done TINYINT(1)  DEFAULT 0,
+      payment_done_at TIMESTAMP NULL,
       reviewed_at TIMESTAMP NULL,
       created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+    // Add columns if they don't exist yet (for existing DBs)
+    await db.query(`ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS amount DECIMAL(12,2) DEFAULT 0 AFTER card_number`);
+    await db.query(`ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS payment_done TINYINT(1) DEFAULT 0 AFTER status`);
+    await db.query(`ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS payment_done_at TIMESTAMP NULL AFTER payment_done`);
     // Manual card list for Payment Request dropdown (independent of PDF uploads)
     await db.query(`CREATE TABLE IF NOT EXISTS pr_cards (
       id         INT AUTO_INCREMENT PRIMARY KEY,
@@ -5574,11 +5581,11 @@ app.post('/api/payment-requests', requireAuth, async (req, res) => {
   try {
     const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
     if (!me || me.name !== 'Vishal Jaga') return res.status(403).json({ error:'Access denied' });
-    const { bank_name, card_number, reason } = req.body;
+    const { bank_name, card_number, amount, reason } = req.body;
     if (!bank_name || !card_number || !reason) return res.status(400).json({ error:'All fields required' });
     await db.query(
-      'INSERT INTO payment_requests (submitted_by, name, bank_name, card_number, reason) VALUES (?,?,?,?,?)',
-      [req.session.userId, me.name, bank_name, card_number, reason]
+      'INSERT INTO payment_requests (submitted_by, name, bank_name, card_number, amount, reason) VALUES (?,?,?,?,?,?)',
+      [req.session.userId, me.name, bank_name, card_number, parseFloat(amount)||0, reason]
     );
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -5619,6 +5626,19 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
     await db.query(
       'UPDATE payment_requests SET status=?, reviewed_at=NOW() WHERE id=?',
       [status, req.params.id]
+    );
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/payment-requests/:id/payment-done — mark payment as done (Vishal only)
+app.post('/api/payment-requests/:id/payment-done', requireAuth, async (req, res) => {
+  try {
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    if (!me || me.name !== 'Vishal Jaga') return res.status(403).json({ error:'Access denied' });
+    await db.query(
+      'UPDATE payment_requests SET payment_done=1, payment_done_at=NOW() WHERE id=? AND status="approved"',
+      [req.params.id]
     );
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
