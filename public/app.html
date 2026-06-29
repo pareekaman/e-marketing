@@ -2253,24 +2253,6 @@ tbody tr:last-child td{border-bottom:none;}
           <button onclick="prSubmit()" style="width:100%;background:#1a56db;color:#fff;border:none;border-radius:8px;padding:11px 24px;font-size:14px;font-weight:600;cursor:pointer">Submit Request</button>
         </div>
 
-        <!-- Manage Cards (Naman only) -->
-        <div id="prManageCardsWrap" style="display:none;margin-top:20px">
-          <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:12px">Manage Cards</div>
-          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px">
-            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-              <select id="prMgmtBank" onchange="prMgmtBankChange()" style="flex:1;min-width:120px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none">
-                <option value="">— Bank —</option>
-                <option>AMEX</option><option>AXIS</option><option>HDFC</option>
-                <option>ICICI</option><option>RBL Bank</option><option>SBI</option><option>SCB</option>
-                <option value="__other__">Other…</option>
-              </select>
-              <input id="prMgmtBankOther" placeholder="Bank name…" style="display:none;flex:1;min-width:120px;padding:8px 10px;border:1.5px solid #f59e0b;border-radius:8px;font-size:13px;outline:none">
-              <input id="prMgmtCard" placeholder="Card Number" style="flex:2;min-width:160px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none">
-              <button onclick="prAddCard()" style="padding:8px 16px;background:#1a56db;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">+ Add</button>
-            </div>
-            <div id="prCardList" style="font-size:13px;color:#64748b">Loading...</div>
-          </div>
-        </div>
       </div><!-- end left col -->
 
       <!-- RIGHT: My Requests -->
