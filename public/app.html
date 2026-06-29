@@ -2225,13 +2225,15 @@ tbody tr:last-child td{border-bottom:none;}
         <select id="prBank" onchange="prBankChange()" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
           <option value="">— Select Bank —</option>
         </select>
+        <input id="prBankOther" placeholder="Bank name type karo…" style="display:none;margin-top:6px;width:100%;padding:9px 12px;border:1.5px solid #f59e0b;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
       </div>
 
       <div style="margin-bottom:14px">
         <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Card Number</label>
-        <select id="prCard" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+        <select id="prCard" onchange="prCardChange()" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
           <option value="">— Select Card —</option>
         </select>
+        <input id="prCardOther" placeholder="Card number type karo…" style="display:none;margin-top:6px;width:100%;padding:9px 12px;border:1.5px solid #f59e0b;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
       </div>
 
       <div style="margin-bottom:20px">
@@ -2255,11 +2257,13 @@ tbody tr:last-child td{border-bottom:none;}
       <div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:12px">Manage Cards</div>
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px">
         <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-          <select id="prMgmtBank" style="flex:1;min-width:120px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none">
+          <select id="prMgmtBank" onchange="prMgmtBankChange()" style="flex:1;min-width:120px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none">
             <option value="">— Bank —</option>
             <option>AMEX</option><option>AXIS</option><option>HDFC</option>
             <option>ICICI</option><option>RBL Bank</option><option>SBI</option><option>SCB</option>
+            <option value="__other__">Other…</option>
           </select>
+          <input id="prMgmtBankOther" placeholder="Bank name…" style="display:none;flex:1;min-width:120px;padding:8px 10px;border:1.5px solid #f59e0b;border-radius:8px;font-size:13px;outline:none">
           <input id="prMgmtCard" placeholder="Card Number" style="flex:2;min-width:160px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none">
           <button onclick="prAddCard()" style="padding:8px 16px;background:#1a56db;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">+ Add</button>
         </div>
@@ -13526,8 +13530,18 @@ function prRenderCardList() {
     </div>`).join('');
 }
 
+function prMgmtBankChange() {
+  const val = document.getElementById('prMgmtBank').value;
+  const inp = document.getElementById('prMgmtBankOther');
+  if (val === '__other__') { inp.style.display = ''; inp.focus(); }
+  else { inp.style.display = 'none'; inp.value = ''; }
+}
+
 async function prAddCard() {
-  const bank = document.getElementById('prMgmtBank').value.trim();
+  const sel = document.getElementById('prMgmtBank').value;
+  const bank = sel === '__other__'
+    ? document.getElementById('prMgmtBankOther').value.trim()
+    : sel.trim();
   const card = document.getElementById('prMgmtCard').value.trim();
   if (!bank || !card) { showToast('Bank aur Card Number dono daalo', 'error'); return; }
   try {
@@ -13535,6 +13549,9 @@ async function prAddCard() {
     _prCards = await api('/api/payment-requests/cards');
     prPopulateBanks();
     prRenderCardList();
+    document.getElementById('prMgmtBank').value = '';
+    document.getElementById('prMgmtBankOther').style.display = 'none';
+    document.getElementById('prMgmtBankOther').value = '';
     document.getElementById('prMgmtCard').value = '';
     showToast('Card add ho gaya');
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
@@ -13555,28 +13572,90 @@ function prPopulateBanks() {
   const banks = [...new Set(_prCards.map(c => c.bank_name))].sort();
   const sel = document.getElementById('prBank');
   sel.innerHTML = '<option value="">— Select Bank —</option>' +
-    banks.map(b => `<option value="${dtEscape(b)}">${dtEscape(b)}</option>`).join('');
+    banks.map(b => `<option value="${dtEscape(b)}">${dtEscape(b)}</option>`).join('') +
+    '<option value="__other__">Other…</option>';
   document.getElementById('prCard').innerHTML = '<option value="">— Select Card —</option>';
+  document.getElementById('prBankOther').style.display = 'none';
+  document.getElementById('prCardOther').style.display = 'none';
 }
 
 function prBankChange() {
-  const bank = document.getElementById('prBank').value;
-  const cards = _prCards.filter(c => c.bank_name === bank);
-  const sel = document.getElementById('prCard');
-  sel.innerHTML = '<option value="">— Select Card —</option>' +
-    cards.map(c => `<option value="${dtEscape(c.card_number)}">${dtEscape(c.card_number)}</option>`).join('');
+  const val = document.getElementById('prBank').value;
+  const otherInput = document.getElementById('prBankOther');
+  const cardSel = document.getElementById('prCard');
+  const cardOther = document.getElementById('prCardOther');
+
+  if (val === '__other__') {
+    otherInput.style.display = '';
+    otherInput.focus();
+    // For unknown bank, always use text input for card
+    cardSel.style.display = 'none';
+    cardSel.innerHTML = '<option value="">— Select Card —</option>';
+    cardOther.style.display = '';
+    cardOther.placeholder = 'Card number type karo…';
+  } else {
+    otherInput.style.display = 'none';
+    otherInput.value = '';
+    cardSel.style.display = '';
+    cardOther.style.display = 'none';
+    cardOther.value = '';
+    const cards = _prCards.filter(c => c.bank_name === val);
+    cardSel.innerHTML = '<option value="">— Select Card —</option>' +
+      cards.map(c => `<option value="${dtEscape(c.card_number)}">${dtEscape(c.card_number)}</option>`).join('') +
+      '<option value="__other__">Other… (nayi card add karo)</option>';
+  }
+}
+
+function prCardChange() {
+  const val = document.getElementById('prCard').value;
+  const cardOther = document.getElementById('prCardOther');
+  if (val === '__other__') {
+    cardOther.style.display = '';
+    cardOther.focus();
+  } else {
+    cardOther.style.display = 'none';
+    cardOther.value = '';
+  }
 }
 
 async function prSubmit() {
-  const bank = document.getElementById('prBank').value;
-  const card = document.getElementById('prCard').value;
-  const reason = document.getElementById('prReason').value.trim();
-  if (!bank || !card || !reason) { showToast('Sabhi fields bharo', 'error'); return; }
+  const bankSel = document.getElementById('prBank').value;
+  const cardSel = document.getElementById('prCard').value;
+  const reason  = document.getElementById('prReason').value.trim();
+
+  // Resolve actual bank and card (handle "Other" cases)
+  const bank = bankSel === '__other__'
+    ? document.getElementById('prBankOther').value.trim()
+    : bankSel;
+  const card = (bankSel === '__other__' || cardSel === '__other__')
+    ? document.getElementById('prCardOther').value.trim()
+    : cardSel;
+
+  if (!bank) { showToast('Bank name daalo', 'error'); document.getElementById('prBankOther').focus(); return; }
+  if (!card) { showToast('Card number daalo', 'error'); return; }
+  if (!reason) { showToast('Reason daalo', 'error'); return; }
+
   try {
-    await api('/api/payment-requests', { method:'POST', body:{ bank_name:bank, card_number:card, reason } });
+    // Auto-save new bank/card combo to pr_cards
+    const isNewBank = bankSel === '__other__';
+    const isNewCard = bankSel === '__other__' || cardSel === '__other__';
+    if (isNewBank || isNewCard) {
+      await api('/api/payment-requests/cards', 'POST', { bank_name:bank, card_number:card });
+      _prCards = await api('/api/payment-requests/cards');
+      prPopulateBanks();
+      if (ME.name === 'Naman Gupta') prRenderCardList();
+    }
+
+    await api('/api/payment-requests', 'POST', { bank_name:bank, card_number:card, reason });
     showToast('✅ Request submit ho gayi!');
+    // Reset form
     document.getElementById('prBank').value = '';
+    document.getElementById('prBankOther').style.display = 'none';
+    document.getElementById('prBankOther').value = '';
     document.getElementById('prCard').innerHTML = '<option value="">— Select Card —</option>';
+    document.getElementById('prCard').style.display = '';
+    document.getElementById('prCardOther').style.display = 'none';
+    document.getElementById('prCardOther').value = '';
     document.getElementById('prReason').value = '';
     loadMyPaymentRequests();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }

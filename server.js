@@ -5373,8 +5373,6 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
   try {
     const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
     if (!me || me.name !== 'Naman Gupta') return res.status(403).json({ error:'Access denied' });
-    // Remove orphan cards (no statements) from DB
-    await db.query('DELETE FROM cc_cards WHERE id NOT IN (SELECT DISTINCT card_id FROM cc_statements)');
     const [cards] = await db.query('SELECT * FROM cc_cards ORDER BY bank_name,card_number');
     const [stmts] = await db.query('SELECT * FROM cc_statements ORDER BY statement_date DESC');
     const [txns]  = await db.query('SELECT * FROM cc_transactions ORDER BY txn_date');
