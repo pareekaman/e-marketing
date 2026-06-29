@@ -7504,7 +7504,7 @@ async function loadApprovalBadge() {
   ]);
   const taskCnt    = d.count  || 0;
   const leaveCnt   = lv?.count || 0;
-  const paymentCnt = Array.isArray(pr) ? pr.filter(r => r.status === 'pending').length : 0;
+  const paymentCnt = Array.isArray(pr) ? pr.filter(r => r.bank_name !== '__system__' && r.status === 'pending').length : 0;
   const waCnt      = 0;
   const total = taskCnt + leaveCnt + paymentCnt;
   const badge = document.getElementById('approvalBadge');
@@ -14019,47 +14019,44 @@ async function prBillSubmit() {
     const s = await api('/api/payment-requests', 'POST', {
       bank_name: '__system__', card_number: '__paid__', reason: '__paid__:' + id
     });
-    if (s && s.error) { showToast('Error: ' + s.error, 'error'); return; }
+    if (s && s.error) { showToast('Error: ' + s.error, 'error'); if (submitBtn) submitBtn.disabled = false; return; }
 
-    // 2. Upload bill if provided and script URL is configured
+    // 2. Close modal & reload immediately — Drive upload runs in background
+    prCloseBillModal();
+    loadMyPaymentRequests();
+
     if (_prBillFile && PR_BILL_SCRIPT_URL && !PR_BILL_SCRIPT_URL.includes('PLACEHOLDER')) {
-      try {
-        showToast('Uploading bill to Drive…');
-        const { base64, mimeType } = await prBillCompressToBase64(_prBillFile);
-        const rawName = (document.getElementById('prBillFilename').value || ('PaymentBill_ID' + id)).trim();
-        const filename = rawName.endsWith('.jpg') ? rawName : rawName + '.jpg';
-        // POST (no-cors — response opaque, but upload succeeds)
-        await fetch(PR_BILL_SCRIPT_URL, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-          body: JSON.stringify({ fileBase64: base64, filename, mimeType, requestId: String(id) })
-        });
-        // GET to retrieve fileId (GAS GET has proper CORS)
-        await new Promise(r => setTimeout(r, 2500));
-        const resp = await fetch(PR_BILL_SCRIPT_URL + '?requestId=' + id);
-        const result = await resp.json();
-        if (result && result.fileId) {
-          await api('/api/payment-requests', 'POST', {
-            bank_name: '__system__', card_number: '__bill__', reason: '__bill__:' + id + ':' + result.fileId
+      showToast('✅ Payment done! Uploading bill in background…');
+      const billFile = _prBillFile;
+      const rawName = (document.getElementById('prBillFilename')?.value || ('PaymentBill_ID' + id)).trim();
+      // fire-and-forget
+      (async () => {
+        try {
+          const { base64, mimeType } = await prBillCompressToBase64(billFile);
+          const filename = rawName.endsWith('.jpg') ? rawName : rawName + '.jpg';
+          await fetch(PR_BILL_SCRIPT_URL, {
+            method: 'POST', mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+            body: JSON.stringify({ fileBase64: base64, filename, mimeType, requestId: String(id) })
           });
-          showToast('✅ Payment done! Bill uploaded to Drive.');
-        } else {
-          showToast('✅ Payment marked as done! (Bill upload could not be confirmed)');
-        }
-      } catch(uploadErr) {
-        showToast('✅ Payment marked as done! (Bill upload failed: ' + uploadErr.message + ')');
-      }
+          await new Promise(r => setTimeout(r, 2500));
+          const resp = await fetch(PR_BILL_SCRIPT_URL + '?requestId=' + id);
+          const result = await resp.json();
+          if (result && result.fileId) {
+            await api('/api/payment-requests', 'POST', {
+              bank_name: '__system__', card_number: '__bill__', reason: '__bill__:' + id + ':' + result.fileId
+            });
+            showToast('✅ Bill uploaded to Drive!');
+            loadMyPaymentRequests();
+          }
+        } catch(e) { showToast('Bill upload failed: ' + e.message, 'error'); }
+      })();
     } else {
       showToast('✅ Payment marked as done!');
     }
-    prCloseBillModal();
-    loadMyPaymentRequests();
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
-  } finally {
     if (submitBtn) submitBtn.disabled = false;
-    if (skipBtn) skipBtn.disabled = false;
   }
 }
 
