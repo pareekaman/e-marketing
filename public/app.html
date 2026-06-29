@@ -2226,7 +2226,7 @@ tbody tr:last-child td{border-bottom:none;}
 
           <div style="margin-bottom:14px">
             <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Bank Name</label>
-            <select id="prBank" onchange="prBankChange()" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+            <select id="prBank" onchange="prBankChange()" onfocus="closeSidebar()" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
               <option value="">— Select Bank —</option>
             </select>
             <input id="prBankOther" placeholder="Enter bank name…" style="display:none;margin-top:6px;width:100%;padding:9px 12px;border:1.5px solid #f59e0b;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
@@ -2234,7 +2234,7 @@ tbody tr:last-child td{border-bottom:none;}
 
           <div style="margin-bottom:14px">
             <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:5px">Card Number</label>
-            <select id="prCard" onchange="prCardChange()" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
+            <select id="prCard" onchange="prCardChange()" onfocus="closeSidebar()" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
               <option value="">— Select Card —</option>
             </select>
             <input id="prCardOther" placeholder="Enter card number…" style="display:none;margin-top:6px;width:100%;padding:9px 12px;border:1.5px solid #f59e0b;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
