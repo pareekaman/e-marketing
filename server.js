@@ -5592,11 +5592,11 @@ app.delete('/api/payment-requests/cards/:id', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/payment-requests — submit new request (Vishal only)
+// POST /api/payment-requests — submit new request (any logged-in user)
 app.post('/api/payment-requests', requireAuth, async (req, res) => {
   try {
     const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Vishal Jaga') return res.status(403).json({ error:'Access denied' });
+    if (!me) return res.status(403).json({ error:'Access denied' });
     const { bank_name, card_number, amount, reason } = req.body;
     if (!bank_name || !card_number || !reason) return res.status(400).json({ error:'All fields required' });
     try {
@@ -5626,11 +5626,11 @@ app.get('/api/payment-requests', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// GET /api/payment-requests/my — own requests (Vishal only)
+// GET /api/payment-requests/my — own requests (any logged-in user)
 app.get('/api/payment-requests/my', requireAuth, async (req, res) => {
   try {
     const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Vishal Jaga') return res.status(403).json({ error:'Access denied' });
+    if (!me) return res.status(403).json({ error:'Access denied' });
     const [rows] = await db.query(
       'SELECT * FROM payment_requests WHERE submitted_by=? ORDER BY created_at DESC',
       [req.session.userId]

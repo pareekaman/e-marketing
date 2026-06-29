@@ -13524,9 +13524,6 @@ async function initPaymentReqPage() {
     _prCards = Array.isArray(res) ? res : [];
   } catch(e) { _prCards = []; }
   prPopulateBanks();
-  // Hide submit form for admin (Naman approves, doesn't submit)
-  const formWrap = document.getElementById('prFormWrap');
-  if (formWrap) formWrap.style.display = ME.role === 'admin' ? 'none' : '';
   const listTitle = document.getElementById('prMyListTitle');
   if (listTitle) listTitle.textContent = ME.role === 'admin' ? 'All Requests' : 'My Requests';
   loadMyPaymentRequests();
