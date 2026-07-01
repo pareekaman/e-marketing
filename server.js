@@ -8,7 +8,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const mysql = require('mysql2/promise');
 const path = require('path');
-const fs   = require('fs');
 const nodemailer = require('nodemailer');
 const multer = require('multer');
 const XLSX = require('xlsx');
@@ -4929,8 +4928,6 @@ app.post('/api/client-portal/feedback', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════
 const ccUpload    = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const ccPdfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
-const CC_PDF_DIR  = path.join(__dirname, 'uploads', 'cc-pdfs');
-fs.mkdirSync(CC_PDF_DIR, { recursive: true });
 
 const CC_BANK_KEYWORDS = {
   'RBL Bank': ['rbl'],
@@ -5157,8 +5154,8 @@ function safeParseCC(text) {
       FOREIGN KEY (card_id) REFERENCES cc_cards(id) ON DELETE CASCADE,
       UNIQUE KEY uq_stmt (card_id, statement_date)
     )`);
-    // Add pdf_path column if not present (safe migration)
-    await db.query(`ALTER TABLE cc_statements ADD COLUMN IF NOT EXISTS pdf_path VARCHAR(500) DEFAULT NULL`);
+    // Add pdf_data column if not present (safe migration — stores original PDF as BLOB)
+    await db.query(`ALTER TABLE cc_statements ADD COLUMN IF NOT EXISTS pdf_data LONGBLOB DEFAULT NULL`);
     await db.query(`CREATE TABLE IF NOT EXISTS cc_transactions (
       id           INT AUTO_INCREMENT PRIMARY KEY,
       statement_id INT NOT NULL,
@@ -5430,12 +5427,9 @@ async function saveCCToDb(parsed, pdfBuffer) {
   await db.query(`INSERT IGNORE INTO cc_statements (card_id,statement_date,payment_due_date,payable_amount,min_amount_due,statement_period) VALUES (?,?,?,?,?,?)`,
     [card.id, statementDate, paymentDueDate, payableAmount, minAmountDue, statementPeriod]);
   const [[stmt]] = await db.query('SELECT id FROM cc_statements WHERE card_id=? AND statement_date<=>?', [card.id, statementDate]);
-  // Save original PDF to disk and store path
+  // Store original PDF as BLOB in DB
   if (pdfBuffer) {
-    const pdfFilename = `stmt_${stmt.id}.pdf`;
-    const pdfDest = path.join(CC_PDF_DIR, pdfFilename);
-    fs.writeFileSync(pdfDest, pdfBuffer);
-    await db.query('UPDATE cc_statements SET pdf_path=? WHERE id=?', [pdfFilename, stmt.id]);
+    await db.query('UPDATE cc_statements SET pdf_data=? WHERE id=?', [pdfBuffer, stmt.id]);
   }
   let added = 0;
   for (const t of transactions) {
@@ -5506,7 +5500,7 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
         payable_amount:   parseFloat(s.payable_amount)||0,
         min_amount_due:   parseFloat(s.min_amount_due)||0,
         statement_period: s.statement_period||'',
-        pdf_url: s.pdf_path ? `/api/credit-cards/statement-pdf/${s.id}` : null,
+        pdf_url: s.pdf_data ? `/api/credit-cards/statement-pdf/${s.id}` : null,
         transactions: (() => {
           const raw = txns.filter(t => t.statement_id === s.id).map(t => ({
             id:          t.id,
@@ -5535,17 +5529,15 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 
-// GET /api/credit-cards/statement-pdf/:stmtId — serve stored original PDF
+// GET /api/credit-cards/statement-pdf/:stmtId — serve stored original PDF from DB BLOB
 app.get('/api/credit-cards/statement-pdf/:stmtId', requireAuth, async (req, res) => {
   try {
     if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
-    const [[stmt]] = await db.query('SELECT pdf_path FROM cc_statements WHERE id=?', [req.params.stmtId]);
-    if (!stmt?.pdf_path) return res.status(404).json({ error:'PDF not found' });
-    const filePath = path.join(CC_PDF_DIR, stmt.pdf_path);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error:'PDF file missing on server' });
+    const [[stmt]] = await db.query('SELECT pdf_data FROM cc_statements WHERE id=?', [req.params.stmtId]);
+    if (!stmt?.pdf_data) return res.status(404).json({ error:'PDF not found' });
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${stmt.pdf_path}"`);
-    res.sendFile(filePath);
+    res.setHeader('Content-Disposition', `inline; filename="statement_${req.params.stmtId}.pdf"`);
+    res.end(Buffer.isBuffer(stmt.pdf_data) ? stmt.pdf_data : Buffer.from(stmt.pdf_data));
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 
