@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const mysql = require('mysql2/promise');
 const path = require('path');
+const fs   = require('fs');
 const nodemailer = require('nodemailer');
 const multer = require('multer');
 const XLSX = require('xlsx');
@@ -2334,6 +2335,14 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
     // Team welcome announcement
     const welcomeMsg = `Hello Team,\nPlease join me in welcoming ${name} our new team member who has joined us as a ${department || 'team member'}.\nWe are excited to have them on board and look forward to working together.\nWelcome to the team, ${name}! 🌸`;
     sendWhatsApp('919079649289', welcomeMsg).catch(e => console.error('WA team welcome err:', e.message));
+    // Append new user to Google Sheet
+    const SHEET_ID = '1k8GTp731LMNE6E1_FwNO8yvGJu7ogo-4PX6c7JP4emM';
+    getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']).then(sheets => sheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: 'Sheet1!A:D',
+      valueInputOption: 'USER_ENTERED',
+      resource: { values: [[name, birthday||'', joining_date||'', 'Active']] }
+    })).catch(e => console.error('Sheets append err:', e.message));
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -4920,6 +4929,8 @@ app.post('/api/client-portal/feedback', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════
 const ccUpload    = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const ccPdfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+const CC_PDF_DIR  = path.join(__dirname, 'uploads', 'cc-pdfs');
+fs.mkdirSync(CC_PDF_DIR, { recursive: true });
 
 const CC_BANK_KEYWORDS = {
   'RBL Bank': ['rbl'],
@@ -5146,6 +5157,8 @@ function safeParseCC(text) {
       FOREIGN KEY (card_id) REFERENCES cc_cards(id) ON DELETE CASCADE,
       UNIQUE KEY uq_stmt (card_id, statement_date)
     )`);
+    // Add pdf_path column if not present (safe migration)
+    await db.query(`ALTER TABLE cc_statements ADD COLUMN IF NOT EXISTS pdf_path VARCHAR(500) DEFAULT NULL`);
     await db.query(`CREATE TABLE IF NOT EXISTS cc_transactions (
       id           INT AUTO_INCREMENT PRIMARY KEY,
       statement_id INT NOT NULL,
@@ -5410,13 +5423,20 @@ function parseCCJson(extracted, filename) {
   return { bankName:bank, cardNumber:'Unknown Card', statementDate:null, paymentDueDate:null, payableAmount:0, minAmountDue:0, statementPeriod:'', transactions:[] };
 }
 
-async function saveCCToDb(parsed) {
+async function saveCCToDb(parsed, pdfBuffer) {
   const { bankName, cardNumber, statementDate, paymentDueDate, payableAmount, minAmountDue, statementPeriod, transactions } = parsed;
   await db.query('INSERT IGNORE INTO cc_cards (bank_name,card_number) VALUES (?,?)', [bankName, cardNumber]);
   const [[card]] = await db.query('SELECT id FROM cc_cards WHERE bank_name=? AND card_number=?', [bankName, cardNumber]);
   await db.query(`INSERT IGNORE INTO cc_statements (card_id,statement_date,payment_due_date,payable_amount,min_amount_due,statement_period) VALUES (?,?,?,?,?,?)`,
     [card.id, statementDate, paymentDueDate, payableAmount, minAmountDue, statementPeriod]);
   const [[stmt]] = await db.query('SELECT id FROM cc_statements WHERE card_id=? AND statement_date<=>?', [card.id, statementDate]);
+  // Save original PDF to disk and store path
+  if (pdfBuffer) {
+    const pdfFilename = `stmt_${stmt.id}.pdf`;
+    const pdfDest = path.join(CC_PDF_DIR, pdfFilename);
+    fs.writeFileSync(pdfDest, pdfBuffer);
+    await db.query('UPDATE cc_statements SET pdf_path=? WHERE id=?', [pdfFilename, stmt.id]);
+  }
   let added = 0;
   for (const t of transactions) {
     const [[ex]] = await db.query('SELECT id FROM cc_transactions WHERE statement_id=? AND txn_date<=>? AND description=? AND amount=?',
@@ -5456,8 +5476,8 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
     const parsed = parseCCJson(raw, req.file.originalname);
     if (parsed.bankName === 'Unknown') return res.status(422).json({ error:'Bank not detected. Supported: AMEX, HDFC, RBL Bank, ICICI, AXIS, SBI, SCB' });
 
-    const saved = await saveCCToDb(parsed);
-    res.json({ success:true, bankName:parsed.bankName, cardNumber:parsed.cardNumber, statementDate:parsed.statementDate, transactionsAdded:saved.addedTransactions, totalTransactions:parsed.transactions.length });
+    const saved = await saveCCToDb(parsed, req.file.buffer);
+    res.json({ success:true, bankName:parsed.bankName, cardNumber:parsed.cardNumber, statementDate:parsed.statementDate, transactionsAdded:saved.addedTransactions, totalTransactions:parsed.transactions.length, statementId:saved.statementId });
   } catch(err) {
     if (err.name === 'PasswordException') {
       const wrongPwd = err.code === 2;
@@ -5486,6 +5506,7 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
         payable_amount:   parseFloat(s.payable_amount)||0,
         min_amount_due:   parseFloat(s.min_amount_due)||0,
         statement_period: s.statement_period||'',
+        pdf_url: s.pdf_path ? `/api/credit-cards/statement-pdf/${s.id}` : null,
         transactions: (() => {
           const raw = txns.filter(t => t.statement_id === s.id).map(t => ({
             id:          t.id,
@@ -5511,6 +5532,20 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
       }));
     }
     res.json(result);
+  } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// GET /api/credit-cards/statement-pdf/:stmtId — serve stored original PDF
+app.get('/api/credit-cards/statement-pdf/:stmtId', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
+    const [[stmt]] = await db.query('SELECT pdf_path FROM cc_statements WHERE id=?', [req.params.stmtId]);
+    if (!stmt?.pdf_path) return res.status(404).json({ error:'PDF not found' });
+    const filePath = path.join(CC_PDF_DIR, stmt.pdf_path);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error:'PDF file missing on server' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${stmt.pdf_path}"`);
+    res.sendFile(filePath);
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 

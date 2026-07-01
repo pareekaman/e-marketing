@@ -14130,7 +14130,7 @@ async function loadCreditCards() {
   // Load from DB
   try {
     const fresh = await api('/api/credit-cards/data');
-    if (fresh && !fresh.error) _ccData = fresh;
+    if (fresh && !fresh.error) { _ccData = fresh; ccSyncPreviewUrls(); }
   } catch(e) {}
   // Auto-restore active bank
   if (!_ccActiveBank || !_ccData[_ccActiveBank]) {
@@ -14160,7 +14160,21 @@ function ccSelectCard(cardNum) {
 
 let _ccPendingFile = null;
 let _ccPreviewPdfUrl = null;
-let _ccStmtPreviewUrls = {}; // stmtId → blob URL
+let _ccStmtPreviewUrls = {}; // stmtId → URL (blob or server)
+
+function ccSyncPreviewUrls() {
+  // Populate _ccStmtPreviewUrls from server pdf_url for each loaded statement
+  // (server URLs take priority; blob URLs already set for current session are kept)
+  Object.values(_ccData).forEach(cards => {
+    Object.values(cards).forEach(stmts => {
+      stmts.forEach(s => {
+        if (s.pdf_url && !_ccStmtPreviewUrls[s.id]) {
+          _ccStmtPreviewUrls[s.id] = s.pdf_url;
+        }
+      });
+    });
+  });
+}
 
 // ── CC Ownership dropdown ─────────────────────────────────
 const _CC_OWN_DEFAULTS = ['Jai Marketing', 'E-Marketing', 'Personal'];
@@ -14604,14 +14618,12 @@ async function _ccDoUpload(password) {
     _ccPendingFile = null;
     // Reload from DB
     const fresh = await api('/api/credit-cards/data');
-    if (fresh && !fresh.error) _ccData = fresh;
+    if (fresh && !fresh.error) { _ccData = fresh; ccSyncPreviewUrls(); }
     _ccActiveBank = data.bankName;
     _ccActiveCard = data.cardNumber;
-    // Map blob URL to the newly created/updated statement
-    if (_ccPreviewPdfUrl && data.statementDate) {
-      const stmts = _ccData[data.bankName]?.[data.cardNumber] || [];
-      const newStmt = stmts.find(s => s.statement_date === data.statementDate);
-      if (newStmt?.id) _ccStmtPreviewUrls[newStmt.id] = _ccPreviewPdfUrl;
+    // Also map blob URL as fallback for current session (server URL already set by ccSyncPreviewUrls)
+    if (_ccPreviewPdfUrl && data.statementId && !_ccStmtPreviewUrls[data.statementId]) {
+      _ccStmtPreviewUrls[data.statementId] = _ccPreviewPdfUrl;
     }
     ccSave();
     const dd = document.getElementById('ccBankDropdown');
@@ -14710,7 +14722,7 @@ async function ccDeleteStatement(bank, cardNum, stmtIdx) {
   // Reload fresh data from server so card tabs always reflect actual DB state
   try {
     const fresh = await api('/api/credit-cards/data');
-    if (fresh && !fresh.error) _ccData = fresh;
+    if (fresh && !fresh.error) { _ccData = fresh; ccSyncPreviewUrls(); }
   } catch(e) {}
   // If card no longer exists in fresh data, switch to another card
   if (!_ccData[bank]?.[cardNum]) {
