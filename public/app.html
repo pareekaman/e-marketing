@@ -14214,9 +14214,76 @@ function ccOwnBuildPanel() {
   const txt = document.getElementById('ccOwnPanelTxt'); if (txt) txt.value = '';
 }
 
+let _ccSummaryOpenSi = null;
+
 function ccRefreshSummaryIfOpen(si) {
-  const p = document.getElementById('ccSummaryPanel-' + si);
-  if (p && p.style.display !== 'none') { p.style.display = 'none'; ccToggleSummary(si); }
+  if (_ccSummaryOpenSi === si) ccBuildSummaryModal(si);
+}
+
+function ccCloseSummaryModal() {
+  const modal = document.getElementById('ccSummaryModal');
+  if (modal) modal.style.display = 'none';
+  const btn = _ccSummaryOpenSi !== null ? document.getElementById('ccSummaryBtn-' + _ccSummaryOpenSi) : null;
+  if (btn) btn.style.background = 'rgba(255,255,255,.15)';
+  _ccSummaryOpenSi = null;
+}
+
+function ccSumSwitchTab(tab) {
+  document.getElementById('ccSumContent-dept').style.display  = tab === 'dept'  ? '' : 'none';
+  document.getElementById('ccSumContent-owner').style.display = tab === 'owner' ? '' : 'none';
+  document.getElementById('ccSumTab-dept').style.background  = tab === 'dept'  ? '#1a56db' : '#f1f5f9';
+  document.getElementById('ccSumTab-dept').style.color       = tab === 'dept'  ? '#fff'    : '#64748b';
+  document.getElementById('ccSumTab-owner').style.background = tab === 'owner' ? '#1a56db' : '#f1f5f9';
+  document.getElementById('ccSumTab-owner').style.color      = tab === 'owner' ? '#fff'    : '#64748b';
+}
+
+function ccBuildSummaryModal(si) {
+  const tbody = document.getElementById('ccTxBody-' + si);
+  if (!tbody) return;
+  const deptMap = {}, ownMap = {};
+  Array.from(tbody.rows).forEach(row => {
+    if (row.style.display === 'none') return;
+    const amtCell = row.cells[3];
+    const rawAmt  = amtCell ? amtCell.textContent.replace(/[^\d.]/g, '') : '0';
+    const amt     = parseFloat(rawAmt) || 0;
+    if (amtCell && amtCell.style.color === 'rgb(22, 163, 74)') return;
+    const deptLbl = row.querySelector('[id^="ccDeptLabel-"]');
+    const ownLbl  = row.querySelector('[id^="ccOwnLabel-"]');
+    const dept = (deptLbl && deptLbl.style.color !== 'rgb(148, 163, 184)') ? deptLbl.textContent.trim() : '(unset)';
+    const own  = (ownLbl  && ownLbl.style.color  !== 'rgb(148, 163, 184)') ? ownLbl.textContent.trim()  : '(unset)';
+    deptMap[dept] = deptMap[dept] || { count:0, amt:0 };
+    deptMap[dept].count++; deptMap[dept].amt += amt;
+    ownMap[own]   = ownMap[own]   || { count:0, amt:0 };
+    ownMap[own].count++;  ownMap[own].amt  += amt;
+  });
+  const buildTable = (map) => {
+    const rows = Object.entries(map).sort((a,b) => b[1].amt - a[1].amt);
+    if (!rows.length) return '<div style="font-size:13px;color:#94a3b8;padding:12px 0">No data</div>';
+    const total = rows.reduce((s,[,v])=>s+v.amt,0);
+    return `<table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+        <th style="padding:9px 12px;text-align:left;font-weight:700;color:#475569">Name</th>
+        <th style="padding:9px 12px;text-align:center;font-weight:700;color:#475569">Txns</th>
+        <th style="padding:9px 12px;text-align:right;font-weight:700;color:#475569">Amount</th>
+        <th style="padding:9px 12px;text-align:right;font-weight:700;color:#475569">%</th>
+      </tr></thead>
+      <tbody>${rows.map(([name, v], i) =>
+        `<tr style="border-bottom:1px solid #f1f5f9;${i%2?'background:#f8fafc':''}">
+          <td style="padding:9px 12px;color:${name==='(unset)'?'#94a3b8':'#0f172a'};font-style:${name==='(unset)'?'italic':'normal'};font-weight:500">${dtEscape(name)}</td>
+          <td style="padding:9px 12px;text-align:center;color:#64748b;font-weight:600">${v.count}</td>
+          <td style="padding:9px 12px;text-align:right;font-weight:700;color:#dc2626">₹${v.amt.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+          <td style="padding:9px 12px;text-align:right;color:#64748b;font-size:12px">${total?Math.round(v.amt/total*100)+'%':'—'}</td>
+        </tr>`).join('')}
+        <tr style="border-top:2px solid #e2e8f0;background:#fff7ed">
+          <td style="padding:9px 12px;font-weight:700;color:#0f172a">Total</td>
+          <td style="padding:9px 12px;text-align:center;font-weight:700;color:#0f172a">${rows.reduce((s,[,v])=>s+v.count,0)}</td>
+          <td style="padding:9px 12px;text-align:right;font-weight:800;color:#dc2626">₹${total.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+          <td></td>
+        </tr>
+      </tbody></table>`;
+  };
+  document.getElementById('ccSumContent-dept').innerHTML  = buildTable(deptMap);
+  document.getElementById('ccSumContent-owner').innerHTML = buildTable(ownMap);
 }
 
 function ccOwnSelectOption(val) {
@@ -14718,61 +14785,23 @@ async function ccUploadBill(bank, card, si, oi, txnId, input) {
 }
 
 function ccToggleSummary(si) {
-  const panel = document.getElementById('ccSummaryPanel-' + si);
-  const btn   = document.getElementById('ccSummaryBtn-'   + si);
-  if (!panel) return;
-  const opening = panel.style.display === 'none';
-  panel.style.display = opening ? '' : 'none';
-  if (btn) btn.style.background = opening ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.15)';
-  if (!opening) return;
-  setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
-
-  // Build summary from visible rows in the tbody
-  const tbody = document.getElementById('ccTxBody-' + si);
-  if (!tbody) return;
-
-  const deptMap = {}, ownMap = {};
-  Array.from(tbody.rows).forEach(row => {
-    if (row.style.display === 'none') return;
-    // Amount is the 4th cell (index 3, after checkbox/date/desc)
-    const amtCell = row.cells[3];
-    const rawAmt  = amtCell ? amtCell.textContent.replace(/[^\d.]/g, '') : '0';
-    const amt     = parseFloat(rawAmt) || 0;
-    // Skip credit rows (amount cell has green colour)
-    if (amtCell && amtCell.style.color === 'rgb(22, 163, 74)') return;
-
-    const deptLbl = row.querySelector('[id^="ccDeptLabel-"]');
-    const ownLbl  = row.querySelector('[id^="ccOwnLabel-"]');
-    const dept = (deptLbl && deptLbl.style.color !== 'rgb(148, 163, 184)') ? deptLbl.textContent.trim() : '(unset)';
-    const own  = (ownLbl  && ownLbl.style.color  !== 'rgb(148, 163, 184)') ? ownLbl.textContent.trim()  : '(unset)';
-
-    deptMap[dept] = deptMap[dept] || { count:0, amt:0 };
-    deptMap[dept].count++; deptMap[dept].amt += amt;
-    ownMap[own]   = ownMap[own]   || { count:0, amt:0 };
-    ownMap[own].count++;  ownMap[own].amt  += amt;
-  });
-
-  const buildTable = (map) => {
-    const rows = Object.entries(map).sort((a,b) => b[1].amt - a[1].amt);
-    if (!rows.length) return '<div style="font-size:12px;color:#94a3b8">No data</div>';
-    return `<table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr style="background:#e2e8f0">
-        <th style="padding:5px 8px;text-align:left;font-weight:700;color:#475569">Name</th>
-        <th style="padding:5px 8px;text-align:center;font-weight:700;color:#475569">Txns</th>
-        <th style="padding:5px 8px;text-align:right;font-weight:700;color:#475569">Amount</th>
-      </tr></thead>
-      <tbody>${rows.map(([name, v], i) =>
-        `<tr style="${i%2?'background:#f1f5f9':''}">
-          <td style="padding:5px 8px;color:${name==='(unset)'?'#94a3b8':'#0f172a'};font-style:${name==='(unset)'?'italic':'normal'}">${dtEscape(name)}</td>
-          <td style="padding:5px 8px;text-align:center;color:#64748b;font-weight:600">${v.count}</td>
-          <td style="padding:5px 8px;text-align:right;font-weight:700;color:#dc2626">₹${v.amt.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
-        </tr>`).join('')}
-      </tbody>
-    </table>`;
-  };
-
-  document.getElementById('ccSummaryDept-' + si).innerHTML = buildTable(deptMap);
-  document.getElementById('ccSummaryOwn-'  + si).innerHTML = buildTable(ownMap);
+  const btn = document.getElementById('ccSummaryBtn-' + si);
+  const modal = document.getElementById('ccSummaryModal');
+  if (!modal) return;
+  // If already open for this si, close it
+  if (_ccSummaryOpenSi === si && modal.style.display !== 'none') {
+    ccCloseSummaryModal(); return;
+  }
+  // Close previous if open for different si
+  if (_ccSummaryOpenSi !== null) {
+    const prevBtn = document.getElementById('ccSummaryBtn-' + _ccSummaryOpenSi);
+    if (prevBtn) prevBtn.style.background = 'rgba(255,255,255,.15)';
+  }
+  _ccSummaryOpenSi = si;
+  if (btn) btn.style.background = 'rgba(255,255,255,.35)';
+  ccBuildSummaryModal(si);
+  ccSumSwitchTab('dept');
+  modal.style.display = 'flex';
 }
 
 function ccBulkApply(si, bank, card) {
@@ -14781,7 +14810,6 @@ function ccBulkApply(si, bank, card) {
   if (!ownVal && !deptVal) { showToast('Pehle Owner ya Dept select karo', 'error'); return; }
   const tbody = document.getElementById('ccTxBody-' + si);
   if (!tbody) return;
-  // If any checkboxes are checked, apply only to those; otherwise apply to all visible
   const checked = Array.from(document.querySelectorAll('.ccTxChk-' + si + ':checked'));
   const useSelection = checked.length > 0;
   let count = 0;
@@ -14793,12 +14821,20 @@ function ccBulkApply(si, bank, card) {
       const chk = row.querySelector('.ccTxChk-' + si);
       if (!chk || !chk.checked) return;
     }
-    if (ownVal) {
+    if (ownVal === '__CLEAR__') {
+      ccUpdateField(bank, card, si, oi, 'expenses', '');
+      const lbl = document.getElementById('ccOwnLabel-' + si + '-' + oi);
+      if (lbl) { lbl.textContent = '— Owner —'; lbl.style.color = '#94a3b8'; }
+    } else if (ownVal) {
       ccUpdateField(bank, card, si, oi, 'expenses', ownVal);
       const lbl = document.getElementById('ccOwnLabel-' + si + '-' + oi);
       if (lbl) { lbl.textContent = ownVal; lbl.style.color = '#0f172a'; }
     }
-    if (deptVal) {
+    if (deptVal === '__CLEAR__') {
+      ccUpdateField(bank, card, si, oi, 'department', '');
+      const lbl = document.getElementById('ccDeptLabel-' + si + '-' + oi);
+      if (lbl) { lbl.textContent = '— Dept —'; lbl.style.color = '#94a3b8'; }
+    } else if (deptVal) {
       ccUpdateField(bank, card, si, oi, 'department', deptVal);
       const lbl = document.getElementById('ccDeptLabel-' + si + '-' + oi);
       if (lbl) { lbl.textContent = deptVal; lbl.style.color = '#0f172a'; }
@@ -14847,12 +14883,7 @@ function ccSearchTxns(si) {
   });
   // Sync select-all state after search
   ccRowChkChange(si);
-  // Refresh summary if open — close then reopen to recompute
-  const summaryPanel = document.getElementById('ccSummaryPanel-' + si);
-  if (summaryPanel && summaryPanel.style.display !== 'none') {
-    summaryPanel.style.display = 'none';
-    ccToggleSummary(si);
-  }
+  ccRefreshSummaryIfOpen(si);
 }
 
 async function ccDeleteStatement(bank, cardNum, stmtIdx) {
@@ -15469,10 +15500,12 @@ function ccRenderStatements() {
         <span style="font-size:12px;font-weight:700;color:#64748b;white-space:nowrap">Apply to selected / all visible:</span>
         <select id="ccBulkOwn-${si}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;outline:none;font-family:inherit;background:#fff">
           <option value="">— Owner —</option>
+          <option value="__CLEAR__">🗑 Clear Owner</option>
           ${_CC_OWN_OPTIONS.map(o=>`<option value="${o.replace(/"/g,'&quot;')}">${dtEscape(o)}</option>`).join('')}
         </select>
         <select id="ccBulkDept-${si}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;outline:none;font-family:inherit;background:#fff">
           <option value="">— Dept —</option>
+          <option value="__CLEAR__">🗑 Clear Dept</option>
           ${_ccDepts.map(d=>`<option value="${d.replace(/"/g,'&quot;')}">${dtEscape(d)}</option>`).join('')}
         </select>
         <button onclick="ccBulkApply(${si},'${safeBank}','${safeCard}')"
@@ -15508,21 +15541,6 @@ function ccRenderStatements() {
             </tr>
           </tfoot>` : ''}
         </table>
-      </div>
-      <!-- Summary Panel (hidden by default) -->
-      <div id="ccSummaryPanel-${si}" style="display:none;border-top:2px solid #e2e8f0;background:#f8fafc;padding:16px 20px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <!-- Department summary -->
-          <div>
-            <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">📂 Department</div>
-            <div id="ccSummaryDept-${si}"></div>
-          </div>
-          <!-- Owner summary -->
-          <div>
-            <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">👤 Owner</div>
-            <div id="ccSummaryOwn-${si}"></div>
-          </div>
-        </div>
       </div>
     </div>`;
   }).join('');
@@ -16422,6 +16440,33 @@ async function dmsSaveFile() {
   } catch(e){}
 })();
 </script>
+
+<!-- CC Summary Modal -->
+<div id="ccSummaryModal" onclick="if(event.target===this)ccCloseSummaryModal()" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(15,23,42,.45);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;width:600px;max-width:96vw;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.22);overflow:hidden">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px 0">
+      <div style="font-size:16px;font-weight:800;color:#0f172a">📊 Summary</div>
+      <button onclick="ccCloseSummaryModal()" style="background:none;border:none;font-size:20px;color:#94a3b8;cursor:pointer;padding:2px 6px;border-radius:6px;line-height:1" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='none'">✕</button>
+    </div>
+    <!-- Tabs -->
+    <div style="display:flex;gap:6px;padding:14px 22px 0">
+      <button id="ccSumTab-dept" onclick="ccSumSwitchTab('dept')"
+        style="flex:1;padding:8px 0;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;background:#1a56db;color:#fff;transition:background .15s">
+        📂 Department
+      </button>
+      <button id="ccSumTab-owner" onclick="ccSumSwitchTab('owner')"
+        style="flex:1;padding:8px 0;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;background:#f1f5f9;color:#64748b;transition:background .15s">
+        👤 Owner
+      </button>
+    </div>
+    <!-- Content -->
+    <div style="overflow-y:auto;padding:16px 22px 22px">
+      <div id="ccSumContent-dept"></div>
+      <div id="ccSumContent-owner" style="display:none"></div>
+    </div>
+  </div>
+</div>
 
 <!-- CC Ownership Custom Dropdown Panel -->
 <div id="ccOwnDropPanel" style="display:none;position:absolute;z-index:9999;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.15);min-width:160px;overflow:hidden">
