@@ -2322,8 +2322,9 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
       [name, email, notification_email||'', bcrypt.hashSync(password,10), appRole, userRole, phone||null, department||'', week_off||'', extra_off||'', exclude_from_reminder?1:0, accessJson, birthday||null, joining_date||null]);
     const waMsg = `Hi ${name},\nWelcome to e-marketing. We are granting you access to the our task manager.🌸\n\nhttps://taskmanager.e-marketing.io/app\nid : ${email}\npass : ${password}`;
     if (phone) sendWhatsApp(phone, waMsg).catch(e => console.error('WA new user err:', e.message));
-    // Temporary: notify admin on new user creation
-    sendWhatsApp('919079649289', `🆕 *New User Added*\n\nName: ${name}\nEmail: ${email}\nRole: ${appRole}`).catch(e => console.error('WA admin notify err:', e.message));
+    // Team welcome announcement
+    const welcomeMsg = `Hello Team,\nPlease join me in welcoming ${name} our new team member who has joined us as a ${department || 'team member'}.\nWe are excited to have them on board and look forward to working together.\nWelcome to the team, ${name}! 🌸`;
+    sendWhatsApp('919079649289', welcomeMsg).catch(e => console.error('WA team welcome err:', e.message));
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
