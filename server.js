@@ -2288,10 +2288,19 @@ app.get('/api/users', requireAuth, async (req, res) => {
               COALESCE(user_role, role) AS user_role,
               phone,department,week_off,extra_off,
               COALESCE(exclude_from_reminder,0) AS exclude_from_reminder,
-              extra_access,birthday,joining_date
+              extra_access
        FROM users WHERE role <> 'client' AND client_id IS NULL ORDER BY name ASC`
     );
     for (const r of rows) r.extra_access = parseExtraAccess(r.extra_access);
+    // birthday/joining_date fetched separately — safe before migration runs
+    try {
+      const ids = rows.map(r=>r.id);
+      if (ids.length) {
+        const [bd] = await db.query(`SELECT id,birthday,joining_date FROM users WHERE id IN (${ids.map(()=>'?').join(',')})`, ids);
+        const bdMap = Object.fromEntries(bd.map(u=>[u.id, u]));
+        for (const r of rows) { r.birthday = bdMap[r.id]?.birthday || null; r.joining_date = bdMap[r.id]?.joining_date || null; }
+      }
+    } catch(e) { for (const r of rows) { r.birthday = null; r.joining_date = null; } }
     // user_permissions fetched separately — safe before server restart runs migration
     try {
       const ids = rows.map(r=>r.id);

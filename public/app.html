@@ -5335,7 +5335,7 @@ async function loadDashboard() {
       await refreshPCEmployeeDropdown();
     } else if (isAdmin && empFilter.options.length <= 1) {
       const users = await api('/api/users');
-      users.forEach(u => {
+      if (Array.isArray(users)) users.forEach(u => {
         const opt = document.createElement('option');
         opt.value = u.id; opt.textContent = u.name;
         empFilter.appendChild(opt);
