@@ -5558,22 +5558,14 @@ app.get('/api/credit-cards/statement-pdf/:stmtId', requireAuth, async (req, res)
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 
-// POST /api/credit-cards/transaction/:id/bill — upload bill PDF to Drive, store fileId
+// POST /api/credit-cards/transaction/:id/bill — save Drive fileId (upload done client-side)
 app.post('/api/credit-cards/transaction/:id/bill', requireAuth, async (req, res) => {
   try {
     if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
-    const { pdf, filename } = req.body;
-    if (!pdf) return res.status(400).json({ error:'No PDF data' });
-    const driveResp = await fetch(CC_DRIVE_SCRIPT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-      body: JSON.stringify({ pdf, filename: filename||'bill.pdf', folderId: '1zIV3Bem96Bc2WgqivRQ9pf0iBQosF-sk' }),
-      redirect: 'follow'
-    });
-    const driveResult = await driveResp.json();
-    if (!driveResult.fileId) throw new Error(driveResult.error || 'Drive upload failed');
-    await db.query('UPDATE cc_transactions SET bill_drive_id=? WHERE id=?', [driveResult.fileId, req.params.id]);
-    res.json({ success:true, fileId:driveResult.fileId });
+    const { fileId } = req.body;
+    if (!fileId) return res.status(400).json({ error:'No fileId provided' });
+    await db.query('UPDATE cc_transactions SET bill_drive_id=? WHERE id=?', [fileId, req.params.id]);
+    res.json({ success:true, fileId });
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 

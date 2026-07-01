@@ -14658,12 +14658,13 @@ async function ccUploadBill(bank, card, si, oi, txnId, input) {
   const file = input.files[0];
   if (!file) return;
   input.value = '';
+  const safeBank = bank.replace(/'/g,"\\'"), safeCard = card.replace(/'/g,"\\'");
   const cell = document.getElementById(`ccBillCell-${si}-${oi}`);
   if (cell) cell.innerHTML = '<span style="font-size:11px;color:#1a56db">⏳ Uploading…</span>';
   try {
     // Build filename: originalname_date.pdf
-    const stmtTxns = Object.values(_ccData[bank]?.[card] || {}).flat().flatMap(s => s.transactions || []);
-    const txn = stmtTxns.find(t => t.id === txnId);
+    const allTxns = (_ccData[bank]?.[card] || []).flatMap(s => s.transactions || []);
+    const txn = allTxns.find(t => t.id === txnId);
     const date = txn?.date || '';
     const origName = file.name.replace(/\.pdf$/i,'');
     const filename = `${origName}${date ? '_'+date : ''}.pdf`;
@@ -14676,22 +14677,31 @@ async function ccUploadBill(bank, card, si, oi, txnId, input) {
       r.readAsDataURL(file);
     });
 
+    // Upload DIRECTLY to Apps Script (bypass Vercel body size limit)
+    const driveResp = await fetch(PR_BILL_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify({ pdf: base64, filename, folderId: '1zIV3Bem96Bc2WgqivRQ9pf0iBQosF-sk' }),
+      redirect: 'follow'
+    });
+    const driveResult = await driveResp.json();
+    if (!driveResult.fileId) throw new Error(driveResult.error || 'Drive upload failed');
+
+    // Save only the fileId to server (lightweight request)
     const token = localStorage.getItem('authToken') || '';
-    const resp = await fetch(`/api/credit-cards/transaction/${txnId}/bill`, {
+    const saveResp = await fetch(`/api/credit-cards/transaction/${txnId}/bill`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization':'Bearer '+token} : {}) },
-      body: JSON.stringify({ pdf: base64, filename })
+      body: JSON.stringify({ fileId: driveResult.fileId })
     });
-    const result = await resp.json();
-    if (!result.fileId) throw new Error(result.error || 'Upload failed');
+    const saveResult = await saveResp.json();
+    if (!saveResult.success) throw new Error(saveResult.error || 'Save failed');
 
-    // Update local data
-    const safeBank = bank.replace(/'/g,"\\'"), safeCard = card.replace(/'/g,"\\'");
-    if (txn) txn.bill_drive_id = result.fileId;
-    if (cell) cell.innerHTML = ccBillCellHtml(si, oi, safeBank, safeCard, txnId, result.fileId);
+    if (txn) txn.bill_drive_id = driveResult.fileId;
+    if (cell) cell.innerHTML = ccBillCellHtml(si, oi, safeBank, safeCard, txnId, driveResult.fileId);
     showToast('✅ Bill uploaded to Drive!');
   } catch(e) {
-    if (cell) cell.innerHTML = ccBillCellHtml(si, oi, bank.replace(/'/g,"\\'"), card.replace(/'/g,"\\'"), txnId, null);
+    if (cell) cell.innerHTML = ccBillCellHtml(si, oi, safeBank, safeCard, txnId, null);
     showToast('Upload failed: ' + e.message, 'error');
   }
 }
