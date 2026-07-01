@@ -5158,6 +5158,8 @@ function safeParseCC(text) {
     try { await db.query(`ALTER TABLE cc_statements ADD COLUMN pdf_data LONGBLOB DEFAULT NULL`); } catch(e) { /* already exists */ }
     // Add drive_file_id column for Google Drive storage
     try { await db.query(`ALTER TABLE cc_statements ADD COLUMN drive_file_id VARCHAR(200) DEFAULT NULL`); } catch(e) { /* already exists */ }
+    // Add bill_drive_id column on cc_transactions for per-transaction bill PDF
+    try { await db.query(`ALTER TABLE cc_transactions ADD COLUMN bill_drive_id VARCHAR(200) DEFAULT NULL`); } catch(e) { /* already exists */ }
     await db.query(`CREATE TABLE IF NOT EXISTS cc_transactions (
       id           INT AUTO_INCREMENT PRIMARY KEY,
       statement_id INT NOT NULL,
@@ -5524,8 +5526,9 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
             description: t.description||'',
             amount:      parseFloat(t.amount)||0,
             txn_type:    t.txn_type||'debit',
-            expenses:    t.expenses||'',
-            department:  t.department||''
+            expenses:     t.expenses||'',
+            department:   t.department||'',
+            bill_drive_id: t.bill_drive_id||null
           }));
           // Dedup by date+amount+type — keep row with longest description (or any saved expenses/dept)
           const seen = new Map();
@@ -5552,6 +5555,25 @@ app.get('/api/credit-cards/statement-pdf/:stmtId', requireAuth, async (req, res)
     const [[stmt]] = await db.query('SELECT drive_file_id FROM cc_statements WHERE id=?', [req.params.stmtId]);
     if (!stmt?.drive_file_id) return res.status(404).json({ error:'PDF not uploaded to Drive yet' });
     res.redirect(`https://drive.google.com/file/d/${stmt.drive_file_id}/view`);
+  } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// POST /api/credit-cards/transaction/:id/bill — upload bill PDF to Drive, store fileId
+app.post('/api/credit-cards/transaction/:id/bill', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
+    const { pdf, filename } = req.body;
+    if (!pdf) return res.status(400).json({ error:'No PDF data' });
+    const driveResp = await fetch(CC_DRIVE_SCRIPT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify({ pdf, filename: filename||'bill.pdf', folderId: '1zIV3Bem96Bc2WgqivRQ9pf0iBQosF-sk' }),
+      redirect: 'follow'
+    });
+    const driveResult = await driveResp.json();
+    if (!driveResult.fileId) throw new Error(driveResult.error || 'Drive upload failed');
+    await db.query('UPDATE cc_transactions SET bill_drive_id=? WHERE id=?', [driveResult.fileId, req.params.id]);
+    res.json({ success:true, fileId:driveResult.fileId });
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 

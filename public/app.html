@@ -14637,6 +14637,65 @@ async function _ccDoUpload(password) {
   }
 }
 
+function ccBillCellHtml(si, oi, safeBank, safeCard, txnId, driveId) {
+  const fileInput = `<input type="file" accept=".pdf" style="display:none" onchange="ccUploadBill('${safeBank}','${safeCard}',${si},${oi},${txnId},this)">`;
+  if (driveId) {
+    return `<div style="display:flex;align-items:center;justify-content:center;gap:4px">
+      <a href="https://drive.google.com/file/d/${driveId}/view" target="_blank"
+        style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:6px;font-size:11px;font-weight:600;color:#16a34a;text-decoration:none;white-space:nowrap"
+        title="View bill">👁 View</a>
+      <label style="display:inline-flex;align-items:center;padding:4px 6px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:6px;cursor:pointer;font-size:11px;color:#64748b;white-space:nowrap" title="Replace bill">
+        🔄${fileInput}
+      </label>
+    </div>`;
+  }
+  return `<label style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;background:#f8fafc;border:1.5px dashed #cbd5e1;border-radius:6px;cursor:pointer;font-size:11px;color:#94a3b8;white-space:nowrap" title="Upload bill PDF">
+    📎 Upload${fileInput}
+  </label>`;
+}
+
+async function ccUploadBill(bank, card, si, oi, txnId, input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  const cell = document.getElementById(`ccBillCell-${si}-${oi}`);
+  if (cell) cell.innerHTML = '<span style="font-size:11px;color:#1a56db">⏳ Uploading…</span>';
+  try {
+    // Build filename: originalname_date.pdf
+    const stmtTxns = Object.values(_ccData[bank]?.[card] || {}).flat().flatMap(s => s.transactions || []);
+    const txn = stmtTxns.find(t => t.id === txnId);
+    const date = txn?.date || '';
+    const origName = file.name.replace(/\.pdf$/i,'');
+    const filename = `${origName}${date ? '_'+date : ''}.pdf`;
+
+    // Convert to base64
+    const base64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = e => res(e.target.result.split(',')[1]);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+
+    const token = localStorage.getItem('authToken') || '';
+    const resp = await fetch(`/api/credit-cards/transaction/${txnId}/bill`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization':'Bearer '+token} : {}) },
+      body: JSON.stringify({ pdf: base64, filename })
+    });
+    const result = await resp.json();
+    if (!result.fileId) throw new Error(result.error || 'Upload failed');
+
+    // Update local data
+    const safeBank = bank.replace(/'/g,"\\'"), safeCard = card.replace(/'/g,"\\'");
+    if (txn) txn.bill_drive_id = result.fileId;
+    if (cell) cell.innerHTML = ccBillCellHtml(si, oi, safeBank, safeCard, txnId, result.fileId);
+    showToast('✅ Bill uploaded to Drive!');
+  } catch(e) {
+    if (cell) cell.innerHTML = ccBillCellHtml(si, oi, bank.replace(/'/g,"\\'"), card.replace(/'/g,"\\'"), txnId, null);
+    showToast('Upload failed: ' + e.message, 'error');
+  }
+}
+
 function ccToggleSummary(si) {
   const panel = document.getElementById('ccSummaryPanel-' + si);
   const btn   = document.getElementById('ccSummaryBtn-'   + si);
@@ -15262,6 +15321,9 @@ function ccRenderStatements() {
             </div>
           </div>
         </td>
+        <td id="ccBillCell-${si}-${oi}" style="padding:6px 8px;text-align:center;min-width:80px">
+          ${ccBillCellHtml(si, oi, safeBank, safeCard, t.id, t.bill_drive_id)}
+        </td>
       </tr>`;
     }).join('');
 
@@ -15408,17 +15470,18 @@ function ccRenderStatements() {
               <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;border-right:1px solid #e2e8f0">Amount (₹)</th>
               <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;border-right:1px solid #e2e8f0">Ownership</th>
               <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;border-right:1px solid #e2e8f0">Department</th>
+              <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Bill</th>
             </tr>
           </thead>
           <tbody id="ccTxBody-${si}">
-            ${txRows || `<tr><td colspan="6" style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">No transactions in this statement</td></tr>`}
+            ${txRows || `<tr><td colspan="7" style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">No transactions in this statement</td></tr>`}
           </tbody>
           ${txns.length ? `
           <tfoot>
             <tr style="border-top:2px solid #e2e8f0;background:#f8fafc">
               <td colspan="3" style="padding:9px 12px;font-size:13px;font-weight:700;color:#0f172a">Transaction Sum</td>
               <td style="padding:9px 12px;font-size:13px;font-weight:800;color:#dc2626;text-align:right">₹${txSum.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
-              <td colspan="2"></td>
+              <td colspan="3"></td>
             </tr>
           </tfoot>` : ''}
         </table>
