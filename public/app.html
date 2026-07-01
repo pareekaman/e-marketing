@@ -2230,7 +2230,7 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
     <!-- Card Detail Panel -->
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px 28px 24px;min-height:420px">
-      <div id="ccDetailContent"><div style="color:#94a3b8;text-align:center;padding:60px 20px;font-size:14px">Select a bank from the dropdown to view details</div></div>
+      <div id="ccDetailContent"><div style="color:#94a3b8;text-align:center;padding:60px 20px;font-size:14px">Loading…</div></div>
     </div>
   </div>
 
@@ -14151,6 +14151,10 @@ function ccSelectBank(bank) {
   ccRenderDetail();
 }
 
+function ccSelectBankFromOverview(bank) {
+  ccSelectBank(bank);
+}
+
 function ccSelectCard(cardNum) {
   _ccActiveCard = cardNum;
   _ccFilter = { preset:'all', dateFrom:null, dateTo:null, amtMin:'', amtMax:'' };
@@ -15201,7 +15205,83 @@ function ccRenderDetail() {
   if (!panel) return;
   const bank = _ccActiveBank;
   if (!bank) {
-    panel.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:60px 20px;font-size:14px">Select a bank from the dropdown to view details</div>';
+    // Build overview: stats across all banks
+    const allBanks = Object.keys(_ccData);
+    let totalTxns = 0, totalAmt = 0, totalCards = 0, totalStmts = 0;
+    allBanks.forEach(b => {
+      Object.values(_ccData[b] || {}).forEach(stmts => {
+        totalCards++;
+        stmts.forEach(s => {
+          totalStmts++;
+          (s.transactions || []).forEach(t => {
+            if (t.txn_type !== 'credit') { totalTxns++; totalAmt += parseFloat(t.amount)||0; }
+          });
+        });
+      });
+    });
+    const bankCards = allBanks.map(b => {
+      const color = CC_BANK_COLORS[b] || '#64748b';
+      let bTxns = 0, bAmt = 0, bCards = 0;
+      Object.values(_ccData[b] || {}).forEach(stmts => {
+        bCards++;
+        stmts.forEach(s => (s.transactions||[]).forEach(t => { if(t.txn_type!=='credit'){bTxns++;bAmt+=parseFloat(t.amount)||0;} }));
+      });
+      return `<div onclick="ccSelectBankFromOverview('${b.replace(/'/g,"\\'")}')" style="background:#fff;border:2px solid #e2e8f0;border-radius:14px;padding:18px 20px;cursor:pointer;transition:all .18s;min-width:0"
+        onmouseover="this.style.borderColor='${color}';this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)'" onmouseout="this.style.borderColor='#e2e8f0';this.style.boxShadow='none'">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <div style="width:36px;height:36px;border-radius:10px;background:${color};display:grid;place-items:center;font-size:17px;flex-shrink:0">🏦</div>
+          <div style="font-size:14px;font-weight:800;color:#0f172a">${dtEscape(b)}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="background:#f8fafc;border-radius:8px;padding:8px 10px">
+            <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Cards</div>
+            <div style="font-size:16px;font-weight:800;color:#0f172a;margin-top:2px">${bCards}</div>
+          </div>
+          <div style="background:#f8fafc;border-radius:8px;padding:8px 10px">
+            <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Txns</div>
+            <div style="font-size:16px;font-weight:800;color:#0f172a;margin-top:2px">${bTxns}</div>
+          </div>
+        </div>
+        <div style="margin-top:10px;background:#fff7ed;border-radius:8px;padding:8px 10px">
+          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Total Spend</div>
+          <div style="font-size:15px;font-weight:800;color:#dc2626;margin-top:2px">₹${bAmt.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    panel.innerHTML = `
+      <div style="padding:28px 24px">
+        ${allBanks.length ? `
+        <!-- Overview stats -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px">
+          ${[
+            {icon:'🏦', label:'Banks',        val:allBanks.length,  color:'#1a56db'},
+            {icon:'💳', label:'Cards',        val:totalCards,        color:'#7c3aed'},
+            {icon:'📄', label:'Statements',   val:totalStmts,        color:'#0891b2'},
+            {icon:'🧾', label:'Transactions', val:totalTxns,         color:'#16a34a'},
+          ].map(s=>`<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px 18px">
+            <div style="font-size:20px;margin-bottom:6px">${s.icon}</div>
+            <div style="font-size:22px;font-weight:800;color:${s.color}">${s.val}</div>
+            <div style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-top:2px">${s.label}</div>
+          </div>`).join('')}
+        </div>
+        <div style="margin-bottom:28px;background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Total Spend (All Banks)</div>
+            <div style="font-size:26px;font-weight:800;color:#dc2626;margin-top:4px">₹${totalAmt.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
+          </div>
+          <div style="font-size:36px;opacity:.15">💳</div>
+        </div>
+        <!-- Bank cards -->
+        <div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">Banks — click to open</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px">${bankCards}</div>
+        ` : `
+        <div style="text-align:center;padding:60px 20px">
+          <div style="font-size:52px;margin-bottom:16px;opacity:.25">💳</div>
+          <div style="font-size:16px;font-weight:700;color:#0f172a;margin-bottom:8px">Koi data nahi</div>
+          <div style="font-size:13px;color:#94a3b8">Upload a PDF statement using the button above to get started.</div>
+        </div>`}
+      </div>`;
     return;
   }
   const color    = CC_BANK_COLORS[bank] || '#64748b';
