@@ -14613,6 +14613,32 @@ async function _ccDoUpload(password) {
   }
 }
 
+function ccBulkApply(si, bank, card) {
+  const ownVal  = document.getElementById('ccBulkOwn-'  + si)?.value || '';
+  const deptVal = document.getElementById('ccBulkDept-' + si)?.value || '';
+  if (!ownVal && !deptVal) { showToast('Pehle Owner ya Dept select karo', 'error'); return; }
+  const tbody = document.getElementById('ccTxBody-' + si);
+  if (!tbody) return;
+  let count = 0;
+  Array.from(tbody.rows).forEach(row => {
+    if (row.style.display === 'none') return;
+    const oi = parseInt(row.dataset.oi);
+    if (isNaN(oi)) return;
+    if (ownVal) {
+      ccUpdateField(bank, card, si, oi, 'expenses', ownVal);
+      const lbl = document.getElementById('ccOwnLabel-' + si + '-' + oi);
+      if (lbl) { lbl.textContent = ownVal; lbl.style.color = '#0f172a'; }
+    }
+    if (deptVal) {
+      ccUpdateField(bank, card, si, oi, 'department', deptVal);
+      const lbl = document.getElementById('ccDeptLabel-' + si + '-' + oi);
+      if (lbl) { lbl.textContent = deptVal; lbl.style.color = '#0f172a'; }
+    }
+    count++;
+  });
+  showToast('✅ ' + count + ' transactions updated');
+}
+
 function ccSearchTxns(si) {
   const q = (document.getElementById('ccSearch-' + si)?.value || '').toLowerCase().trim();
   const tbody = document.getElementById('ccTxBody-' + si);
@@ -15086,7 +15112,7 @@ function ccRenderStatements() {
       const oi = t._oi; // original index in unfiltered array
       const rowBg = ti%2===1?'background:#fafafa':'';
       return `
-      <tr style="border-top:1px solid #f1f5f9;${rowBg}">
+      <tr data-oi="${oi}" style="border-top:1px solid #f1f5f9;${rowBg}">
         <td style="padding:8px 14px;font-size:13px;color:#475569;white-space:nowrap;text-align:center;border-right:1px solid #f1f5f9">${dtEscape(t.date||'—')}</td>
         <td style="padding:8px 14px;font-size:13px;color:#0f172a;border-right:1px solid #f1f5f9">${dtEscape(t.description||'—')}</td>
         <td style="padding:8px 14px;font-size:13px;font-weight:600;color:${t.txn_type==='credit'?'#16a34a':'#0f172a'};text-align:right;white-space:nowrap;border-right:1px solid #f1f5f9">${t.txn_type==='credit'?'+ ':''}${(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
@@ -15212,6 +15238,22 @@ function ccRenderStatements() {
           ${cell('Total Due', curPayable, '#1a56db')}
         </div>`;
       })()}
+      <!-- Bulk Apply bar -->
+      <div style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:700;color:#64748b;white-space:nowrap">Apply to all visible:</span>
+        <select id="ccBulkOwn-${si}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;outline:none;font-family:inherit;background:#fff">
+          <option value="">— Owner —</option>
+          ${_CC_OWN_OPTIONS.map(o=>`<option value="${o.replace(/"/g,'&quot;')}">${dtEscape(o)}</option>`).join('')}
+        </select>
+        <select id="ccBulkDept-${si}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;outline:none;font-family:inherit;background:#fff">
+          <option value="">— Dept —</option>
+          ${_ccDepts.map(d=>`<option value="${d.replace(/"/g,'&quot;')}">${dtEscape(d)}</option>`).join('')}
+        </select>
+        <button onclick="ccBulkApply(${si},'${safeBank}','${safeCard}')"
+          style="padding:6px 14px;background:#1a56db;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+          ✓ Apply to all visible
+        </button>
+      </div>
       <!-- Transactions -->
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;min-width:640px">
