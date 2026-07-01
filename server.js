@@ -399,6 +399,8 @@ const _startupMigrationsPromise = (async () => {
 
   // Per-user permissions column (replaces role_permissions)
   await sa(`ALTER TABLE users ADD COLUMN IF NOT EXISTS user_permissions TEXT DEFAULT NULL AFTER extra_access`);
+  await sa(`ALTER TABLE users ADD COLUMN IF NOT EXISTS birthday DATE DEFAULT NULL`);
+  await sa(`ALTER TABLE users ADD COLUMN IF NOT EXISTS joining_date DATE DEFAULT NULL`);
 
   // WhatsApp bot delegation — approval queue before tasks reach the main table
   // CREATE TABLE safely; if user already created it with different columns, ALTER statements below will fill the gaps
@@ -2286,7 +2288,7 @@ app.get('/api/users', requireAuth, async (req, res) => {
               COALESCE(user_role, role) AS user_role,
               phone,department,week_off,extra_off,
               COALESCE(exclude_from_reminder,0) AS exclude_from_reminder,
-              extra_access
+              extra_access,birthday,joining_date
        FROM users WHERE role <> 'client' AND client_id IS NULL ORDER BY name ASC`
     );
     for (const r of rows) r.extra_access = parseExtraAccess(r.extra_access);
@@ -2308,7 +2310,7 @@ app.get('/api/users', requireAuth, async (req, res) => {
 
 app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, email, notification_email, password, role, user_role, phone, department, week_off, extra_off, exclude_from_reminder, extra_access } = req.body;
+    const { name, email, notification_email, password, role, user_role, phone, department, week_off, extra_off, exclude_from_reminder, extra_access, birthday, joining_date } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
     const [ex] = await db.query('SELECT id FROM users WHERE email=?', [email]);
     if (ex[0]) return res.status(400).json({ error: 'Email already exists' });
@@ -2316,25 +2318,71 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
     const appRole = validRoles.includes(role) ? role : 'user';
     const userRole = validRoles.includes(user_role) ? user_role : appRole;
     const accessJson = JSON.stringify(sanitizeExtraAccess(extra_access));
-    await db.query('INSERT INTO users (name,email,notification_email,password,role,user_role,phone,department,week_off,extra_off,exclude_from_reminder,extra_access) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-      [name, email, notification_email||'', bcrypt.hashSync(password,10), appRole, userRole, phone||null, department||'', week_off||'', extra_off||'', exclude_from_reminder?1:0, accessJson]);
+    await db.query('INSERT INTO users (name,email,notification_email,password,role,user_role,phone,department,week_off,extra_off,exclude_from_reminder,extra_access,birthday,joining_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      [name, email, notification_email||'', bcrypt.hashSync(password,10), appRole, userRole, phone||null, department||'', week_off||'', extra_off||'', exclude_from_reminder?1:0, accessJson, birthday||null, joining_date||null]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.put('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, email, notification_email, role, user_role, password, phone, department, week_off, extra_off, exclude_from_reminder, extra_access } = req.body;
+    const { name, email, notification_email, role, user_role, password, phone, department, week_off, extra_off, exclude_from_reminder, extra_access, birthday, joining_date } = req.body;
     const exclVal = exclude_from_reminder ? 1 : 0;
     const validRoles = ['admin','hod','pc','user'];
     const appRole = validRoles.includes(role) ? role : 'user';
     const userRole = validRoles.includes(user_role) ? user_role : appRole;
     const accessJson = JSON.stringify(sanitizeExtraAccess(extra_access));
-    if (password) await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,password=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=?,extra_access=? WHERE id=?',
-      [name,email,notification_email||'',appRole,userRole,bcrypt.hashSync(password,10),phone||null,department||'',week_off||'',extra_off||'',exclVal,accessJson,req.params.id]);
-    else await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=?,extra_access=? WHERE id=?',
-      [name,email,notification_email||'',appRole,userRole,phone||null,department||'',week_off||'',extra_off||'',exclVal,accessJson,req.params.id]);
+    if (password) await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,password=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=?,extra_access=?,birthday=?,joining_date=? WHERE id=?',
+      [name,email,notification_email||'',appRole,userRole,bcrypt.hashSync(password,10),phone||null,department||'',week_off||'',extra_off||'',exclVal,accessJson,birthday||null,joining_date||null,req.params.id]);
+    else await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=?,extra_access=?,birthday=?,joining_date=? WHERE id=?',
+      [name,email,notification_email||'',appRole,userRole,phone||null,department||'',week_off||'',extra_off||'',exclVal,accessJson,birthday||null,joining_date||null,req.params.id]);
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// One-time migration: populate birthday & joining_date from sheet data
+app.post('/api/admin/migrate-birthdays', requireAuth, requireAdmin, async (req, res) => {
+  const DATA = [
+    { name: 'Akhilesh Vyas',      birthday: '2001-04-28', joining_date: '2025-06-02' },
+    { name: 'Taaran Jain',        birthday: '2003-04-25', joining_date: '2025-06-16' },
+    { name: 'Priya Saini',        birthday: '1997-10-07', joining_date: '2025-05-12' },
+    { name: 'Garvit Kedia',       birthday: '2002-04-08', joining_date: '2024-04-14' },
+    { name: 'Purvi Saini',        birthday: '2003-11-21', joining_date: '2024-12-04' },
+    { name: 'Nisha Madaan',       birthday: '1989-11-14', joining_date: '2024-11-10' },
+    { name: 'Nupur Kothari',      birthday: '1999-05-17', joining_date: '2024-09-23' },
+    { name: 'Aman Bejal',         birthday: '2001-05-03', joining_date: '2024-07-16' },
+    { name: 'Akshita Jain',       birthday: '2004-12-13', joining_date: '2024-03-01' },
+    { name: 'Divya Srivastava',   birthday: '2001-07-12', joining_date: '2023-12-11' },
+    { name: 'Tushar Chauhan',     birthday: '1998-08-01', joining_date: '2023-07-20' },
+    { name: 'Ritu Tilokani',      birthday: '2002-01-07', joining_date: '2023-06-12' },
+    { name: 'Sakshi Saini',       birthday: '2001-10-12', joining_date: '2023-04-03' },
+    { name: 'Pradhuman Kumar',    birthday: '1987-12-09', joining_date: '2023-04-01' },
+    { name: 'Saurav Pareek',      birthday: '1999-01-14', joining_date: '2023-02-13' },
+    { name: 'Satish Khichi',      birthday: '1989-12-27', joining_date: '2022-04-06' },
+    { name: 'Kritika Saini',      birthday: '1998-11-08', joining_date: '2022-04-04' },
+    { name: 'Rotan Singh',        birthday: '1984-02-29', joining_date: '2021-11-11' },
+    { name: 'Swati Joshi',        birthday: '1992-10-20', joining_date: '2021-06-16' },
+    { name: 'Divyy Jain',         birthday: '2003-03-31', joining_date: '2025-09-29' },
+    { name: 'Kushagra Dubey',     birthday: '2004-06-08', joining_date: '2025-10-10' },
+    { name: 'Nikita khandelwal',  birthday: '2002-07-27', joining_date: '2025-11-03' },
+    { name: 'Bhanu sharma',       birthday: '2005-12-04', joining_date: '2025-12-03' },
+    { name: 'Abhishek Samriya',   birthday: '2004-10-29', joining_date: '2025-12-15' },
+    { name: 'Harsh Daharwal',     birthday: '2003-02-20', joining_date: '2026-01-05' },
+    { name: 'Simran Gurnani',     birthday: '1999-03-05', joining_date: '2022-01-21' },
+    { name: 'Aman Pareek',        birthday: '2006-10-11', joining_date: '2026-02-25' },
+    { name: 'Gaurav Gupta',       birthday: '2002-11-12', joining_date: '2026-03-30' },
+    { name: 'Vishal Jaga',        birthday: '2001-06-12', joining_date: '2026-04-06' },
+    { name: 'Ashish Jha',         birthday: '1999-10-20', joining_date: '2026-04-13' },
+    { name: 'Chirag',             birthday: '2001-09-03', joining_date: '2026-05-01' },
+    { name: 'Naman Gupta',        birthday: '2004-08-24', joining_date: '2026-05-25' },
+  ];
+  try {
+    const results = [];
+    for (const row of DATA) {
+      const [r] = await db.query('UPDATE users SET birthday=?, joining_date=? WHERE name=?', [row.birthday, row.joining_date, row.name]);
+      results.push({ name: row.name, updated: r.affectedRows > 0 });
+    }
+    res.json({ ok: true, results });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
