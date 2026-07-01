@@ -14214,6 +14214,11 @@ function ccOwnBuildPanel() {
   const txt = document.getElementById('ccOwnPanelTxt'); if (txt) txt.value = '';
 }
 
+function ccRefreshSummaryIfOpen(si) {
+  const p = document.getElementById('ccSummaryPanel-' + si);
+  if (p && p.style.display !== 'none') { p.style.display = 'none'; ccToggleSummary(si); }
+}
+
 function ccOwnSelectOption(val) {
   if (!_ccOwnDropCtx) return;
   const { bank, card, si, oi } = _ccOwnDropCtx;
@@ -14222,6 +14227,7 @@ function ccOwnSelectOption(val) {
   if (label) { label.textContent = val; label.style.color = '#0f172a'; }
   document.getElementById('ccOwnDropPanel').style.display = 'none';
   _ccOwnDropCtx = null;
+  ccRefreshSummaryIfOpen(si);
 }
 
 function ccOwnClear() {
@@ -14232,6 +14238,7 @@ function ccOwnClear() {
   if (label) { label.textContent = '— Owner —'; label.style.color = '#94a3b8'; }
   document.getElementById('ccOwnDropPanel').style.display = 'none';
   _ccOwnDropCtx = null;
+  ccRefreshSummaryIfOpen(si);
 }
 
 function ccOwnDeleteOption(val) {
@@ -14256,6 +14263,7 @@ function ccOwnConfirmPanel() {
   if (label) { label.textContent = val; label.style.color = '#0f172a'; }
   document.getElementById('ccOwnDropPanel').style.display = 'none';
   _ccOwnDropCtx = null;
+  ccRefreshSummaryIfOpen(si);
 }
 
 function ccOwnCancelPanel() {
@@ -14314,6 +14322,7 @@ function ccDeptClear() {
   if (label) { label.textContent = '— Dept —'; label.style.color = '#94a3b8'; }
   document.getElementById('ccDeptDropPanel').style.display = 'none';
   _ccDeptDropCtx = null;
+  ccRefreshSummaryIfOpen(si);
 }
 
 function ccDeptSelectOption(val) {
@@ -14324,6 +14333,7 @@ function ccDeptSelectOption(val) {
   if (label) { label.textContent = val; label.style.color = '#0f172a'; }
   document.getElementById('ccDeptDropPanel').style.display = 'none';
   _ccDeptDropCtx = null;
+  ccRefreshSummaryIfOpen(si);
 }
 
 async function ccDeptDeleteOption(val) {
@@ -14355,6 +14365,7 @@ async function ccDeptConfirmPanel() {
   if (label) { label.textContent = val; label.style.color = '#0f172a'; }
   document.getElementById('ccDeptDropPanel').style.display = 'none';
   _ccDeptDropCtx = null;
+  ccRefreshSummaryIfOpen(si);
 }
 
 function ccDeptCancelPanel() {
@@ -14714,6 +14725,7 @@ function ccToggleSummary(si) {
   panel.style.display = opening ? '' : 'none';
   if (btn) btn.style.background = opening ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.15)';
   if (!opening) return;
+  setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
 
   // Build summary from visible rows in the tbody
   const tbody = document.getElementById('ccTxBody-' + si);
@@ -14794,6 +14806,7 @@ function ccBulkApply(si, bank, card) {
     count++;
   });
   showToast('✅ ' + count + ' transaction' + (count !== 1 ? 's' : '') + ' updated' + (useSelection ? ' (selected)' : ' (all visible)'));
+  ccRefreshSummaryIfOpen(si);
 }
 
 function ccToggleSelAll(si) {
