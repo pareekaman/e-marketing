@@ -14538,7 +14538,10 @@ async function ccUploadPdf(input) {
   if (!file) return;
   input.value = '';
   _ccPendingFile = file;
-  if (_ccPreviewPdfUrl) URL.revokeObjectURL(_ccPreviewPdfUrl);
+  // Only revoke old blob URL if it's not already mapped to a saved statement
+  if (_ccPreviewPdfUrl && !Object.values(_ccStmtPreviewUrls).includes(_ccPreviewPdfUrl)) {
+    URL.revokeObjectURL(_ccPreviewPdfUrl);
+  }
   _ccPreviewPdfUrl = URL.createObjectURL(file);
   await _ccDoUpload('');
 }
