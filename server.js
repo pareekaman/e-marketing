@@ -5154,8 +5154,8 @@ function safeParseCC(text) {
       FOREIGN KEY (card_id) REFERENCES cc_cards(id) ON DELETE CASCADE,
       UNIQUE KEY uq_stmt (card_id, statement_date)
     )`);
-    // Add pdf_data column if not present (safe migration — stores original PDF as BLOB)
-    await db.query(`ALTER TABLE cc_statements ADD COLUMN IF NOT EXISTS pdf_data LONGBLOB DEFAULT NULL`);
+    // Add pdf_data column if not present (try-catch for MySQL 5.7 compatibility)
+    try { await db.query(`ALTER TABLE cc_statements ADD COLUMN pdf_data LONGBLOB DEFAULT NULL`); } catch(e) { /* already exists */ }
     await db.query(`CREATE TABLE IF NOT EXISTS cc_transactions (
       id           INT AUTO_INCREMENT PRIMARY KEY,
       statement_id INT NOT NULL,
@@ -5429,7 +5429,7 @@ async function saveCCToDb(parsed, pdfBuffer) {
   const [[stmt]] = await db.query('SELECT id FROM cc_statements WHERE card_id=? AND statement_date<=>?', [card.id, statementDate]);
   // Store original PDF as BLOB in DB
   if (pdfBuffer) {
-    await db.query('UPDATE cc_statements SET pdf_data=? WHERE id=?', [pdfBuffer, stmt.id]);
+    try { await db.query('UPDATE cc_statements SET pdf_data=? WHERE id=?', [pdfBuffer, stmt.id]); } catch(e) { /* column not yet migrated */ }
   }
   let added = 0;
   for (const t of transactions) {
