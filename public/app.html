@@ -2223,9 +2223,13 @@ tbody tr:last-child td{border-bottom:none;}
       </select>
       <label style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:#1a56db;color:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s"
         onmouseover="this.style.background='#1e40af'" onmouseout="this.style.background='#1a56db'">
-        📄 Upload PDF Statement
+        📄 Upload
         <input type="file" accept=".pdf" style="display:none" onchange="ccUploadPdf(this)">
       </label>
+      <button onclick="ccPreviewPdf()" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#0f172a;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s"
+        onmouseover="this.style.background='#1e293b'" onmouseout="this.style.background='#0f172a'">
+        👁 Preview
+      </button>
       <div id="ccUploadStatus" style="font-size:12px;color:#64748b"></div>
     </div>
     <!-- Card Detail Panel -->
@@ -3555,6 +3559,10 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
     <div class="form-row">
       <div class="form-group"><label>Department</label><input type="text" id="uDepartment" placeholder="e.g. Sales, Production"/></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Birthday <span style="color:#e53e3e;font-size:11px">*</span></label><input type="date" id="uBirthday"/></div>
+      <div class="form-group"><label>Joining Date <span style="color:#e53e3e;font-size:11px">*</span></label><input type="date" id="uJoiningDate"/></div>
     </div>
     <div class="form-group">
       <label>Password <span id="pwdOptional" style="color:#94a3b8;font-weight:400;text-transform:none">(leave blank to keep current)</span></label>
@@ -7408,7 +7416,7 @@ function readExtraAccessFromForm() {
 
 function openAddUser() {
   document.getElementById('userModalTitle').textContent='Add User';
-  ['editUserId','uName','uEmail','uNotifEmail','uPhone','uDepartment','uPassword'].forEach(id=>document.getElementById(id).value='');
+  ['editUserId','uName','uEmail','uNotifEmail','uPhone','uDepartment','uPassword','uBirthday','uJoiningDate'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('uRole').value='user';
   document.getElementById('uUserRole').value='user';
   document.getElementById('pwdOptional').style.display='none';
@@ -7429,6 +7437,8 @@ function openEditUser(id) {
   document.getElementById('uNotifEmail').value=u.notification_email||'';
   document.getElementById('uPhone').value=u.phone||'';
   document.getElementById('uDepartment').value=u.department||'';
+  document.getElementById('uBirthday').value=u.birthday||'';
+  document.getElementById('uJoiningDate').value=u.joining_date||'';
   document.getElementById('uPassword').value='';
   document.getElementById('uRole').value=u.role||'user';
   document.getElementById('uUserRole').value=u.user_role||u.role||'user';
@@ -7449,14 +7459,18 @@ async function saveUser() {
   const notification_email=document.getElementById('uNotifEmail').value.trim();
   const phone=document.getElementById('uPhone').value.trim();
   const department=document.getElementById('uDepartment').value.trim();
+  const birthday=document.getElementById('uBirthday').value;
+  const joining_date=document.getElementById('uJoiningDate').value;
   const password=document.getElementById('uPassword').value;
   const role=document.getElementById('uRole').value;
   const user_role=document.getElementById('uUserRole').value;
   const exclude_from_reminder = document.getElementById('uExcludeReminder').checked;
   if (!name||!email) { err.textContent='Name and email required'; err.style.display='block'; return; }
+  if (!birthday) { err.textContent='Birthday is required'; err.style.display='block'; return; }
+  if (!joining_date) { err.textContent='Joining date is required'; err.style.display='block'; return; }
   if (!id&&!password) { err.textContent='Password required for new user'; err.style.display='block'; return; }
   const extra_access = readExtraAccessFromForm();
-  const body={name,email,notification_email,role,user_role,phone,department,exclude_from_reminder,extra_access};
+  const body={name,email,notification_email,role,user_role,phone,department,birthday,joining_date,exclude_from_reminder,extra_access};
   if (password) body.password=password;
   const r = id ? await api(`/api/users/${id}`,'PUT',body) : await api('/api/users','POST',body);
   if (r.error) { err.textContent=r.error; err.style.display='block'; return; }
@@ -14149,38 +14163,181 @@ function ccSelectCard(cardNum) {
 }
 
 let _ccPendingFile = null;
+let _ccPreviewPdfUrl = null;
 
 // ── CC Ownership dropdown ─────────────────────────────────
-const _CC_OWN_OPTIONS = ['Jai Marketing', 'E-Marketing', 'Personal'];
+const _CC_OWN_DEFAULTS = ['Jai Marketing', 'E-Marketing', 'Personal'];
+let _CC_OWN_OPTIONS = (() => {
+  try { const s = localStorage.getItem('cc_own_options'); return s ? JSON.parse(s) : [..._CC_OWN_DEFAULTS]; } catch(e) { return [..._CC_OWN_DEFAULTS]; }
+})();
+function ccOwnSaveOptions() { try { localStorage.setItem('cc_own_options', JSON.stringify(_CC_OWN_OPTIONS)); } catch(e) {} }
 
-function ccOwnershipChange(sel, bank, card, si, oi) {
-  if (sel.value === 'Other') {
-    sel.style.display = 'none';
-    const row = document.getElementById(`ccOwnOther-${si}-${oi}`);
-    if (row) { row.style.display = 'flex'; document.getElementById(`ccOwnTxt-${si}-${oi}`)?.focus(); }
-  } else {
-    ccUpdateField(bank, card, si, oi, 'expenses', sel.value);
+let _ccOwnDropCtx = null; // { bank, card, si, oi }
+
+function ccOwnToggleDrop(bank, card, si, oi) {
+  const panel = document.getElementById('ccOwnDropPanel');
+  if (_ccOwnDropCtx && _ccOwnDropCtx.si === si && _ccOwnDropCtx.oi === oi) {
+    panel.style.display = 'none'; _ccOwnDropCtx = null; return;
   }
+  _ccOwnDropCtx = { bank, card, si, oi };
+  ccOwnBuildPanel();
+  const btn = document.getElementById(`ccOwnBtn-${si}-${oi}`);
+  if (btn) {
+    const rect = btn.getBoundingClientRect();
+    panel.style.left = rect.left + 'px';
+    panel.style.top = (rect.bottom + 4) + window.scrollY + 'px';
+  }
+  panel.style.display = 'block';
 }
 
-function ccOwnConfirm(bank, card, si, oi) {
-  const val = (document.getElementById(`ccOwnTxt-${si}-${oi}`)?.value || '').trim();
-  if (!val) return;
+function ccOwnBuildPanel() {
+  const items = document.getElementById('ccOwnDropItems');
+  if (!items) return;
+  items.innerHTML = _CC_OWN_OPTIONS.map(opt => {
+    const safe = opt.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return `<div style="display:flex;align-items:center;padding:0 10px;cursor:pointer" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+      <span onclick="ccOwnSelectOption('${safe}')" style="flex:1;font-size:12px;padding:7px 4px 7px 0;color:#0f172a">${dtEscape(opt)}</span>
+      <span onclick="ccOwnDeleteOption('${safe}')" title="Remove" style="color:#cbd5e1;font-size:15px;font-weight:700;padding:2px 4px;cursor:pointer;border-radius:4px;line-height:1" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">×</span>
+    </div>`;
+  }).join('');
+  document.getElementById('ccOwnOtherBtn').style.display = '';
+  document.getElementById('ccOwnOtherInputRow').style.display = 'none';
+  const txt = document.getElementById('ccOwnPanelTxt'); if (txt) txt.value = '';
+}
+
+function ccOwnSelectOption(val) {
+  if (!_ccOwnDropCtx) return;
+  const { bank, card, si, oi } = _ccOwnDropCtx;
   ccUpdateField(bank, card, si, oi, 'expenses', val);
-  ccRenderStatements();
+  const label = document.getElementById(`ccOwnLabel-${si}-${oi}`);
+  if (label) { label.textContent = val; label.style.color = '#0f172a'; }
+  document.getElementById('ccOwnDropPanel').style.display = 'none';
+  _ccOwnDropCtx = null;
 }
 
-function ccOwnCancel(bank, card, si, oi) {
-  // Clear from data model so re-render doesn't show the input again
-  ccUpdateField(bank, card, si, oi, 'expenses', '');
-  // Reset DOM immediately (before re-render)
-  const row = document.getElementById(`ccOwnOther-${si}-${oi}`);
-  const sel = document.querySelector(`[data-own-sel="${si}-${oi}"]`);
-  const txt = document.getElementById(`ccOwnTxt-${si}-${oi}`);
-  if (row) row.style.display = 'none';
-  if (sel) { sel.value = ''; sel.style.display = ''; }
-  if (txt) txt.value = '';
+function ccOwnDeleteOption(val) {
+  const idx = _CC_OWN_OPTIONS.indexOf(val);
+  if (idx !== -1) { _CC_OWN_OPTIONS.splice(idx, 1); ccOwnSaveOptions(); }
+  ccOwnBuildPanel();
 }
+
+function ccOwnShowOtherInput() {
+  document.getElementById('ccOwnOtherBtn').style.display = 'none';
+  document.getElementById('ccOwnOtherInputRow').style.display = 'flex';
+  setTimeout(() => document.getElementById('ccOwnPanelTxt')?.focus(), 30);
+}
+
+function ccOwnConfirmPanel() {
+  const val = (document.getElementById('ccOwnPanelTxt')?.value || '').trim();
+  if (!val || !_ccOwnDropCtx) return;
+  const { bank, card, si, oi } = _ccOwnDropCtx;
+  if (!_CC_OWN_OPTIONS.includes(val)) { _CC_OWN_OPTIONS.push(val); ccOwnSaveOptions(); }
+  ccUpdateField(bank, card, si, oi, 'expenses', val);
+  const label = document.getElementById(`ccOwnLabel-${si}-${oi}`);
+  if (label) { label.textContent = val; label.style.color = '#0f172a'; }
+  document.getElementById('ccOwnDropPanel').style.display = 'none';
+  _ccOwnDropCtx = null;
+}
+
+function ccOwnCancelPanel() {
+  document.getElementById('ccOwnDropPanel').style.display = 'none';
+  _ccOwnDropCtx = null;
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#ccOwnDropPanel') && !e.target.closest('[id^="ccOwnBtn-"]')) {
+    const panel = document.getElementById('ccOwnDropPanel');
+    if (panel) { panel.style.display = 'none'; _ccOwnDropCtx = null; }
+  }
+});
+// ─────────────────────────────────────────────────────────
+
+// ── CC Department dropdown ────────────────────────────────
+let _ccDeptDropCtx = null;
+
+function ccDeptToggleDrop(bank, card, si, oi) {
+  const panel = document.getElementById('ccDeptDropPanel');
+  if (_ccDeptDropCtx && _ccDeptDropCtx.si === si && _ccDeptDropCtx.oi === oi) {
+    panel.style.display = 'none'; _ccDeptDropCtx = null; return;
+  }
+  _ccDeptDropCtx = { bank, card, si, oi };
+  ccDeptBuildPanel();
+  const btn = document.getElementById(`ccDeptBtn-${si}-${oi}`);
+  if (btn) {
+    const rect = btn.getBoundingClientRect();
+    panel.style.left = rect.left + 'px';
+    panel.style.top = (rect.bottom + 4) + window.scrollY + 'px';
+  }
+  panel.style.display = 'block';
+}
+
+function ccDeptBuildPanel() {
+  const items = document.getElementById('ccDeptDropItems');
+  if (!items) return;
+  items.innerHTML = _ccDepts.map(opt => {
+    const safe = opt.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return `<div style="display:flex;align-items:center;padding:0 10px;cursor:pointer" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+      <span onclick="ccDeptSelectOption('${safe}')" style="flex:1;font-size:12px;padding:7px 4px 7px 0;color:#0f172a">${dtEscape(opt)}</span>
+      <span onclick="ccDeptDeleteOption('${safe}')" title="Remove" style="color:#cbd5e1;font-size:15px;font-weight:700;padding:2px 4px;cursor:pointer;border-radius:4px;line-height:1" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">×</span>
+    </div>`;
+  }).join('');
+  document.getElementById('ccDeptOtherBtn').style.display = '';
+  document.getElementById('ccDeptOtherInputRow').style.display = 'none';
+  const txt = document.getElementById('ccDeptPanelTxt'); if (txt) txt.value = '';
+}
+
+function ccDeptSelectOption(val) {
+  if (!_ccDeptDropCtx) return;
+  const { bank, card, si, oi } = _ccDeptDropCtx;
+  ccUpdateField(bank, card, si, oi, 'department', val);
+  const label = document.getElementById(`ccDeptLabel-${si}-${oi}`);
+  if (label) { label.textContent = val; label.style.color = '#0f172a'; }
+  document.getElementById('ccDeptDropPanel').style.display = 'none';
+  _ccDeptDropCtx = null;
+}
+
+async function ccDeptDeleteOption(val) {
+  try {
+    const token = localStorage.getItem('authToken') || '';
+    await fetch(`/api/credit-cards/departments/${encodeURIComponent(val)}`, { method:'DELETE', headers: token ? {'Authorization':'Bearer '+token} : {} });
+    _ccDepts = _ccDepts.filter(d => d !== val);
+  } catch(e) {}
+  ccDeptBuildPanel();
+}
+
+function ccDeptShowOtherInput() {
+  document.getElementById('ccDeptOtherBtn').style.display = 'none';
+  document.getElementById('ccDeptOtherInputRow').style.display = 'flex';
+  setTimeout(() => document.getElementById('ccDeptPanelTxt')?.focus(), 30);
+}
+
+async function ccDeptConfirmPanel() {
+  const val = (document.getElementById('ccDeptPanelTxt')?.value || '').trim();
+  if (!val || !_ccDeptDropCtx) return;
+  const { bank, card, si, oi } = _ccDeptDropCtx;
+  try {
+    const res = await api('/api/credit-cards/departments', 'POST', { name: val });
+    if (res && res.error) { showToast(res.error, 'error'); return; }
+    if (!_ccDepts.includes(val)) _ccDepts.push(val);
+  } catch(e) { showToast('Error adding department', 'error'); return; }
+  ccUpdateField(bank, card, si, oi, 'department', val);
+  const label = document.getElementById(`ccDeptLabel-${si}-${oi}`);
+  if (label) { label.textContent = val; label.style.color = '#0f172a'; }
+  document.getElementById('ccDeptDropPanel').style.display = 'none';
+  _ccDeptDropCtx = null;
+}
+
+function ccDeptCancelPanel() {
+  document.getElementById('ccDeptDropPanel').style.display = 'none';
+  _ccDeptDropCtx = null;
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#ccDeptDropPanel') && !e.target.closest('[id^="ccDeptBtn-"]')) {
+    const panel = document.getElementById('ccDeptDropPanel');
+    if (panel) { panel.style.display = 'none'; _ccDeptDropCtx = null; }
+  }
+});
 // ─────────────────────────────────────────────────────────
 
 // ── CC Filters ────────────────────────────────────────────
@@ -14362,7 +14519,14 @@ async function ccUploadPdf(input) {
   if (!file) return;
   input.value = '';
   _ccPendingFile = file;
+  if (_ccPreviewPdfUrl) URL.revokeObjectURL(_ccPreviewPdfUrl);
+  _ccPreviewPdfUrl = URL.createObjectURL(file);
   await _ccDoUpload('');
+}
+
+function ccPreviewPdf() {
+  if (!_ccPreviewPdfUrl) { showToast('Pehle koi PDF upload karein', 'error'); return; }
+  window.open(_ccPreviewPdfUrl, '_blank');
 }
 
 async function ccRetryWithPassword() {
@@ -14649,11 +14813,8 @@ async function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
   if (!CC_DRIVE_URL) { showToast('Apps Script URL not configured.', 'error'); return; }
   const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
   if (!t) return;
-  const wrap = document.getElementById('ccStatementsWrap');
-  const ownSel  = wrap?.querySelector(`[data-own-sel="${stmtIdx}-${txIdx}"]`);
-  const deptSel = wrap?.querySelector(`[data-dept-sel="${stmtIdx}-${txIdx}"]`);
-  const owner = ownSel?.value || t.expenses || '';
-  const dept  = deptSel?.value || t.department || '';
+  const owner = t.expenses || '';
+  const dept  = t.department || '';
   if (!owner || !dept) { showToast('Select Owner and Department first.', 'error'); return; }
 
   const btn = wrap?.querySelector(`button[onclick*="ccSaveToDrive('${bank}','${cardNum}',${stmtIdx},${txIdx})"]`);
@@ -14856,7 +15017,6 @@ function ccRenderStatements() {
   const cardNum = _ccActiveCard;
   const color   = CC_BANK_COLORS[bank] || '#64748b';
   const stmts   = _ccData[bank]?.[cardNum] || [];
-  const deptOpts = _ccDepts.map(d => `<option value="${dtEscape(d)}">${dtEscape(d)}</option>`).join('');
   const safeCard = (cardNum||'').replace(/'/g,"\\'");
   const safeBank = (bank||'').replace(/'/g,"\\'");
 
@@ -14900,33 +15060,22 @@ function ccRenderStatements() {
         <td style="padding:8px 14px;font-size:13px;color:#0f172a;border-right:1px solid #f1f5f9">${dtEscape(t.description||'—')}</td>
         <td style="padding:8px 14px;font-size:13px;font-weight:600;color:${t.txn_type==='credit'?'#16a34a':'#0f172a'};text-align:right;white-space:nowrap;border-right:1px solid #f1f5f9">${t.txn_type==='credit'?'+ ':''}${(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
         <td style="padding:6px 8px;border-right:1px solid #f1f5f9;text-align:center">
-          <select data-own-sel="${si}-${oi}"
-            onchange="ccOwnershipChange(this,'${safeBank}','${safeCard}',${si},${oi})"
-            style="width:120px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:inherit;cursor:pointer"
-            onfocus="this.style.borderColor='#1a56db'" onblur="this.style.borderColor='#e2e8f0'">
-            <option value="">— Owner —</option>
-            <option value="Jai Marketing">Jai Marketing</option>
-            <option value="E-Marketing">E-Marketing</option>
-            <option value="Personal">Personal</option>
-            <option value="Other">Other…</option>
-          </select>
-          <div id="ccOwnOther-${si}-${oi}" style="display:none;align-items:center;gap:4px;margin-top:4px">
-            <input type="text" id="ccOwnTxt-${si}-${oi}" placeholder="Type here…"
-              style="width:88px;padding:4px 7px;border:1.5px solid #1a56db;border-radius:6px;font-size:12px;outline:none;font-family:inherit"
-              onkeydown="if(event.key==='Enter')ccOwnConfirm('${safeBank}','${safeCard}',${si},${oi});if(event.key==='Escape')ccOwnCancel('${safeBank}','${safeCard}',${si},${oi})">
-            <button onclick="ccOwnConfirm('${safeBank}','${safeCard}',${si},${oi})" title="Save"
-              style="width:22px;height:22px;border:none;border-radius:5px;background:#16a34a;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✓</button>
-            <button onclick="ccOwnCancel('${safeBank}','${safeCard}',${si},${oi})" title="Cancel"
-              style="width:22px;height:22px;border:none;border-radius:5px;background:#ef4444;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
+          <div style="position:relative;display:inline-block">
+            <div id="ccOwnBtn-${si}-${oi}" onclick="ccOwnToggleDrop('${safeBank}','${safeCard}',${si},${oi})"
+              style="min-width:120px;padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:6px;user-select:none">
+              <span id="ccOwnLabel-${si}-${oi}" style="color:#94a3b8;flex:1;text-align:left">— Owner —</span>
+              <span style="color:#94a3b8;font-size:10px">▾</span>
+            </div>
           </div>
         </td>
         <td style="padding:6px 8px;border-right:1px solid #f1f5f9;text-align:center">
-          <select data-dept-sel="${si}-${oi}"
-            onchange="ccUpdateField('${safeBank}','${safeCard}',${si},${oi},'department',this.value)"
-            style="width:130px;padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none;font-family:inherit">
-            <option value="">— Dept —</option>
-            ${deptOpts}
-          </select>
+          <div style="position:relative;display:inline-block">
+            <div id="ccDeptBtn-${si}-${oi}" onclick="ccDeptToggleDrop('${safeBank}','${safeCard}',${si},${oi})"
+              style="min-width:130px;padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:6px;user-select:none">
+              <span id="ccDeptLabel-${si}-${oi}" style="color:#94a3b8;flex:1;text-align:left">— Dept —</span>
+              <span style="color:#94a3b8;font-size:10px">▾</span>
+            </div>
+          </div>
         </td>
       </tr>`;
     }).join('');
@@ -15052,24 +15201,16 @@ function ccRenderStatements() {
     </div>`;
   }).join('');
 
-  // Set department + ownership dropdowns after render (use original index oi)
+  // Set department + ownership labels after render
   stmts.forEach((s, si) => {
     (s.transactions||[]).forEach((t, oi) => {
-      // Department
-      const deptSel = wrap.querySelector(`[data-dept-sel="${si}-${oi}"]`);
-      if (deptSel && t.department) deptSel.value = t.department;
-      // Ownership
-      const ownSel = wrap.querySelector(`[data-own-sel="${si}-${oi}"]`);
-      if (ownSel && t.expenses) {
-        if (_CC_OWN_OPTIONS.includes(t.expenses)) {
-          ownSel.value = t.expenses;
-        } else {
-          ownSel.style.display = 'none';
-          const row = document.getElementById(`ccOwnOther-${si}-${oi}`);
-          const txtEl = document.getElementById(`ccOwnTxt-${si}-${oi}`);
-          if (row) row.style.display = 'flex';
-          if (txtEl) txtEl.value = t.expenses;
-        }
+      if (t.expenses) {
+        const label = document.getElementById(`ccOwnLabel-${si}-${oi}`);
+        if (label) { label.textContent = t.expenses; label.style.color = '#0f172a'; }
+      }
+      if (t.department) {
+        const label = document.getElementById(`ccDeptLabel-${si}-${oi}`);
+        if (label) { label.textContent = t.department; label.style.color = '#0f172a'; }
       }
     });
   });
@@ -15956,6 +16097,36 @@ async function dmsSaveFile() {
 })();
 </script>
 
+<!-- CC Ownership Custom Dropdown Panel -->
+<div id="ccOwnDropPanel" style="display:none;position:absolute;z-index:9999;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.15);min-width:160px;overflow:hidden">
+  <div id="ccOwnDropItems"></div>
+  <div style="border-top:1px solid #f1f5f9;padding:6px 10px">
+    <div id="ccOwnOtherBtn" onclick="ccOwnShowOtherInput()" style="cursor:pointer;color:#64748b;font-size:12px;padding:5px 4px;border-radius:4px" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">Other...</div>
+    <div id="ccOwnOtherInputRow" style="display:none;align-items:center;gap:4px;margin-top:6px">
+      <input type="text" id="ccOwnPanelTxt" placeholder="Type owner…"
+        style="width:86px;padding:4px 7px;border:1.5px solid #1a56db;border-radius:6px;font-size:12px;outline:none;font-family:inherit"
+        onkeydown="if(event.key==='Enter')ccOwnConfirmPanel();if(event.key==='Escape')ccOwnCancelPanel()">
+      <button onclick="ccOwnConfirmPanel()" title="Save" style="width:22px;height:22px;border:none;border-radius:5px;background:#16a34a;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✓</button>
+      <button onclick="ccOwnCancelPanel()" title="Cancel" style="width:22px;height:22px;border:none;border-radius:5px;background:#ef4444;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
+    </div>
+  </div>
+</div>
+
+<!-- CC Department Custom Dropdown Panel -->
+<div id="ccDeptDropPanel" style="display:none;position:absolute;z-index:9999;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.15);min-width:170px;max-height:280px;overflow-y:auto;overflow-x:hidden">
+  <div id="ccDeptDropItems"></div>
+  <div style="border-top:1px solid #f1f5f9;padding:6px 10px;position:sticky;bottom:0;background:#fff">
+    <div id="ccDeptOtherBtn" onclick="ccDeptShowOtherInput()" style="cursor:pointer;color:#64748b;font-size:12px;padding:5px 4px;border-radius:4px" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">Other...</div>
+    <div id="ccDeptOtherInputRow" style="display:none;align-items:center;gap:4px;margin-top:6px">
+      <input type="text" id="ccDeptPanelTxt" placeholder="New department…"
+        style="width:96px;padding:4px 7px;border:1.5px solid #1a56db;border-radius:6px;font-size:12px;outline:none;font-family:inherit"
+        onkeydown="if(event.key==='Enter')ccDeptConfirmPanel();if(event.key==='Escape')ccDeptCancelPanel()">
+      <button onclick="ccDeptConfirmPanel()" title="Save" style="width:22px;height:22px;border:none;border-radius:5px;background:#16a34a;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✓</button>
+      <button onclick="ccDeptCancelPanel()" title="Cancel" style="width:22px;height:22px;border:none;border-radius:5px;background:#ef4444;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
+    </div>
+  </div>
+</div>
+
 <!-- Payment Bill Upload Modal -->
 <div id="prBillOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1001;align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:16px;padding:28px 28px 22px;width:min(440px,94vw);box-shadow:0 12px 40px rgba(0,0,0,.2)">
@@ -15963,7 +16134,7 @@ async function dmsSaveFile() {
     <p style="margin:0 0 18px;font-size:13px;color:#64748b">Optionally upload the bill/receipt before marking as paid</p>
     <div id="prBillDropzone" onclick="document.getElementById('prBillFileInput').click()" style="border:2px dashed #cbd5e1;border-radius:10px;padding:22px 16px;text-align:center;cursor:pointer;transition:border-color .2s;background:#f8fafc" onmouseover="this.style.borderColor='#6366f1'" onmouseout="this.style.borderColor='#cbd5e1'">
       <div id="prBillPreview" style="display:none;margin-bottom:10px"><img id="prBillImg" style="max-height:160px;max-width:100%;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.12)"></div>
-      <div id="prBillPrompt" style="color:#94a3b8;font-size:14px">📎 &nbsp;Click to choose bill image</div>
+      <div id="prBillPrompt" style="color:#94a3b8;font-size:14px">📎 &nbsp; Click to choose transaction image</div>
     </div>
     <input type="file" id="prBillFileInput" accept="image/*" style="display:none" onchange="prBillFileSelected()">
     <div style="margin-top:14px">
