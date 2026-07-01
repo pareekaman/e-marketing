@@ -5156,6 +5156,8 @@ function safeParseCC(text) {
     )`);
     // Add pdf_data column if not present (try-catch for MySQL 5.7 compatibility)
     try { await db.query(`ALTER TABLE cc_statements ADD COLUMN pdf_data LONGBLOB DEFAULT NULL`); } catch(e) { /* already exists */ }
+    // Add drive_file_id column for Google Drive storage
+    try { await db.query(`ALTER TABLE cc_statements ADD COLUMN drive_file_id VARCHAR(200) DEFAULT NULL`); } catch(e) { /* already exists */ }
     await db.query(`CREATE TABLE IF NOT EXISTS cc_transactions (
       id           INT AUTO_INCREMENT PRIMARY KEY,
       statement_id INT NOT NULL,
@@ -5420,17 +5422,13 @@ function parseCCJson(extracted, filename) {
   return { bankName:bank, cardNumber:'Unknown Card', statementDate:null, paymentDueDate:null, payableAmount:0, minAmountDue:0, statementPeriod:'', transactions:[] };
 }
 
-async function saveCCToDb(parsed, pdfBuffer) {
+async function saveCCToDb(parsed) {
   const { bankName, cardNumber, statementDate, paymentDueDate, payableAmount, minAmountDue, statementPeriod, transactions } = parsed;
   await db.query('INSERT IGNORE INTO cc_cards (bank_name,card_number) VALUES (?,?)', [bankName, cardNumber]);
   const [[card]] = await db.query('SELECT id FROM cc_cards WHERE bank_name=? AND card_number=?', [bankName, cardNumber]);
   await db.query(`INSERT IGNORE INTO cc_statements (card_id,statement_date,payment_due_date,payable_amount,min_amount_due,statement_period) VALUES (?,?,?,?,?,?)`,
     [card.id, statementDate, paymentDueDate, payableAmount, minAmountDue, statementPeriod]);
   const [[stmt]] = await db.query('SELECT id FROM cc_statements WHERE card_id=? AND statement_date<=>?', [card.id, statementDate]);
-  // Store original PDF as BLOB in DB
-  if (pdfBuffer) {
-    try { await db.query('UPDATE cc_statements SET pdf_data=? WHERE id=?', [pdfBuffer, stmt.id]); } catch(e) { /* column not yet migrated */ }
-  }
   let added = 0;
   for (const t of transactions) {
     const [[ex]] = await db.query('SELECT id FROM cc_transactions WHERE statement_id=? AND txn_date<=>? AND description=? AND amount=?',
@@ -5470,8 +5468,26 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
     const parsed = parseCCJson(raw, req.file.originalname);
     if (parsed.bankName === 'Unknown') return res.status(422).json({ error:'Bank not detected. Supported: AMEX, HDFC, RBL Bank, ICICI, AXIS, SBI, SCB' });
 
-    const saved = await saveCCToDb(parsed, req.file.buffer);
-    res.json({ success:true, bankName:parsed.bankName, cardNumber:parsed.cardNumber, statementDate:parsed.statementDate, transactionsAdded:saved.addedTransactions, totalTransactions:parsed.transactions.length, statementId:saved.statementId });
+    const saved = await saveCCToDb(parsed);
+    // Upload original PDF to Drive (best-effort — statement data already saved)
+    let driveFileId = null;
+    try {
+      const safe = s => String(s||'').replace(/[^a-zA-Z0-9_-]/g,'_').substring(0,20);
+      const filename = 'CC_' + safe(parsed.bankName) + '_' + safe(parsed.statementDate) + '.pdf';
+      const pdfB64 = req.file.buffer.toString('base64');
+      const driveResp = await fetch(CC_DRIVE_SCRIPT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify({ pdf: pdfB64, filename, folderId: '1V7QPg6cMyjq7SlGHuo0pAqTYtIvTBYqc' }),
+        redirect: 'follow'
+      });
+      const driveResult = await driveResp.json();
+      if (driveResult.fileId) {
+        driveFileId = driveResult.fileId;
+        await db.query('UPDATE cc_statements SET drive_file_id=? WHERE id=?', [driveFileId, saved.statementId]);
+      }
+    } catch(e) { console.error('Drive upload failed:', e.message); }
+    res.json({ success:true, bankName:parsed.bankName, cardNumber:parsed.cardNumber, statementDate:parsed.statementDate, transactionsAdded:saved.addedTransactions, totalTransactions:parsed.transactions.length, statementId:saved.statementId, driveFileId });
   } catch(err) {
     if (err.name === 'PasswordException') {
       const wrongPwd = err.code === 2;
@@ -5500,7 +5516,7 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
         payable_amount:   parseFloat(s.payable_amount)||0,
         min_amount_due:   parseFloat(s.min_amount_due)||0,
         statement_period: s.statement_period||'',
-        pdf_url: s.pdf_data ? `/api/credit-cards/statement-pdf/${s.id}` : null,
+        pdf_url: s.drive_file_id ? `https://drive.google.com/file/d/${s.drive_file_id}/view` : null,
         transactions: (() => {
           const raw = txns.filter(t => t.statement_id === s.id).map(t => ({
             id:          t.id,
@@ -5529,15 +5545,13 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 
-// GET /api/credit-cards/statement-pdf/:stmtId — serve stored original PDF from DB BLOB
+// GET /api/credit-cards/statement-pdf/:stmtId — redirect to Drive URL
 app.get('/api/credit-cards/statement-pdf/:stmtId', requireAuth, async (req, res) => {
   try {
     if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
-    const [[stmt]] = await db.query('SELECT pdf_data FROM cc_statements WHERE id=?', [req.params.stmtId]);
-    if (!stmt?.pdf_data) return res.status(404).json({ error:'PDF not found' });
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="statement_${req.params.stmtId}.pdf"`);
-    res.end(Buffer.isBuffer(stmt.pdf_data) ? stmt.pdf_data : Buffer.from(stmt.pdf_data));
+    const [[stmt]] = await db.query('SELECT drive_file_id FROM cc_statements WHERE id=?', [req.params.stmtId]);
+    if (!stmt?.drive_file_id) return res.status(404).json({ error:'PDF not uploaded to Drive yet' });
+    res.redirect(`https://drive.google.com/file/d/${stmt.drive_file_id}/view`);
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 

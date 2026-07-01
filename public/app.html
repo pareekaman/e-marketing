@@ -14163,14 +14163,11 @@ let _ccPreviewPdfUrl = null;
 let _ccStmtPreviewUrls = {}; // stmtId → URL (blob or server)
 
 function ccSyncPreviewUrls() {
-  // Populate _ccStmtPreviewUrls from server pdf_url for each loaded statement
-  // (server URLs take priority; blob URLs already set for current session are kept)
+  // Drive URL always takes priority over blob URL
   Object.values(_ccData).forEach(cards => {
     Object.values(cards).forEach(stmts => {
       stmts.forEach(s => {
-        if (s.pdf_url && !_ccStmtPreviewUrls[s.id]) {
-          _ccStmtPreviewUrls[s.id] = s.pdf_url;
-        }
+        if (s.pdf_url) _ccStmtPreviewUrls[s.id] = s.pdf_url;
       });
     });
   });
@@ -14621,8 +14618,11 @@ async function _ccDoUpload(password) {
     if (fresh && !fresh.error) { _ccData = fresh; ccSyncPreviewUrls(); }
     _ccActiveBank = data.bankName;
     _ccActiveCard = data.cardNumber;
-    // Also map blob URL as fallback for current session (server URL already set by ccSyncPreviewUrls)
-    if (_ccPreviewPdfUrl && data.statementId && !_ccStmtPreviewUrls[data.statementId]) {
+    // If Drive upload succeeded, use Drive URL directly
+    if (data.driveFileId && data.statementId) {
+      _ccStmtPreviewUrls[data.statementId] = `https://drive.google.com/file/d/${data.driveFileId}/view`;
+    } else if (_ccPreviewPdfUrl && data.statementId && !_ccStmtPreviewUrls[data.statementId]) {
+      // Fallback to blob URL for current session if Drive upload failed
       _ccStmtPreviewUrls[data.statementId] = _ccPreviewPdfUrl;
     }
     ccSave();
@@ -14635,6 +14635,63 @@ async function _ccDoUpload(password) {
   } catch(e) {
     if (status) status.innerHTML = `<span style="color:#dc2626">❌ ${e.message}</span>`;
   }
+}
+
+function ccToggleSummary(si) {
+  const panel = document.getElementById('ccSummaryPanel-' + si);
+  const btn   = document.getElementById('ccSummaryBtn-'   + si);
+  if (!panel) return;
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? '' : 'none';
+  if (btn) btn.style.background = opening ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.15)';
+  if (!opening) return;
+
+  // Build summary from visible rows in the tbody
+  const tbody = document.getElementById('ccTxBody-' + si);
+  if (!tbody) return;
+
+  const deptMap = {}, ownMap = {};
+  Array.from(tbody.rows).forEach(row => {
+    if (row.style.display === 'none') return;
+    // Amount is the 4th cell (index 3, after checkbox/date/desc)
+    const amtCell = row.cells[3];
+    const rawAmt  = amtCell ? amtCell.textContent.replace(/[^\d.]/g, '') : '0';
+    const amt     = parseFloat(rawAmt) || 0;
+    // Skip credit rows (amount cell has green colour)
+    if (amtCell && amtCell.style.color === 'rgb(22, 163, 74)') return;
+
+    const deptLbl = row.querySelector('[id^="ccDeptLabel-"]');
+    const ownLbl  = row.querySelector('[id^="ccOwnLabel-"]');
+    const dept = (deptLbl && deptLbl.style.color !== 'rgb(148, 163, 184)') ? deptLbl.textContent.trim() : '(unset)';
+    const own  = (ownLbl  && ownLbl.style.color  !== 'rgb(148, 163, 184)') ? ownLbl.textContent.trim()  : '(unset)';
+
+    deptMap[dept] = deptMap[dept] || { count:0, amt:0 };
+    deptMap[dept].count++; deptMap[dept].amt += amt;
+    ownMap[own]   = ownMap[own]   || { count:0, amt:0 };
+    ownMap[own].count++;  ownMap[own].amt  += amt;
+  });
+
+  const buildTable = (map) => {
+    const rows = Object.entries(map).sort((a,b) => b[1].amt - a[1].amt);
+    if (!rows.length) return '<div style="font-size:12px;color:#94a3b8">No data</div>';
+    return `<table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:#e2e8f0">
+        <th style="padding:5px 8px;text-align:left;font-weight:700;color:#475569">Name</th>
+        <th style="padding:5px 8px;text-align:center;font-weight:700;color:#475569">Txns</th>
+        <th style="padding:5px 8px;text-align:right;font-weight:700;color:#475569">Amount</th>
+      </tr></thead>
+      <tbody>${rows.map(([name, v], i) =>
+        `<tr style="${i%2?'background:#f1f5f9':''}">
+          <td style="padding:5px 8px;color:${name==='(unset)'?'#94a3b8':'#0f172a'};font-style:${name==='(unset)'?'italic':'normal'}">${dtEscape(name)}</td>
+          <td style="padding:5px 8px;text-align:center;color:#64748b;font-weight:600">${v.count}</td>
+          <td style="padding:5px 8px;text-align:right;font-weight:700;color:#dc2626">₹${v.amt.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+  };
+
+  document.getElementById('ccSummaryDept-' + si).innerHTML = buildTable(deptMap);
+  document.getElementById('ccSummaryOwn-'  + si).innerHTML = buildTable(ownMap);
 }
 
 function ccBulkApply(si, bank, card) {
@@ -14708,6 +14765,12 @@ function ccSearchTxns(si) {
   });
   // Sync select-all state after search
   ccRowChkChange(si);
+  // Refresh summary if open — close then reopen to recompute
+  const summaryPanel = document.getElementById('ccSummaryPanel-' + si);
+  if (summaryPanel && summaryPanel.style.display !== 'none') {
+    summaryPanel.style.display = 'none';
+    ccToggleSummary(si);
+  }
 }
 
 async function ccDeleteStatement(bank, cardNum, stmtIdx) {
@@ -15232,6 +15295,11 @@ function ccRenderStatements() {
             ${_ccStmtPreviewUrls[s.id]?`onmouseover="this.style.background='rgba(255,255,255,.4)'" onmouseout="this.style.background='rgba(255,255,255,.25)'"`:''}>
             👁 Preview
           </button>` : ''}
+          <button onclick="ccToggleSummary(${si})" id="ccSummaryBtn-${si}" title="View department & owner summary"
+            style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);border-radius:7px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit"
+            onmouseover="this.style.background='rgba(255,255,255,.35)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">
+            📊 Summary
+          </button>
         </div>
         <!-- Search bar -->
         <div style="flex:1;max-width:320px;position:relative">
@@ -15354,6 +15422,21 @@ function ccRenderStatements() {
             </tr>
           </tfoot>` : ''}
         </table>
+      </div>
+      <!-- Summary Panel (hidden by default) -->
+      <div id="ccSummaryPanel-${si}" style="display:none;border-top:2px solid #e2e8f0;background:#f8fafc;padding:16px 20px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <!-- Department summary -->
+          <div>
+            <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">📂 Department</div>
+            <div id="ccSummaryDept-${si}"></div>
+          </div>
+          <!-- Owner summary -->
+          <div>
+            <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">👤 Owner</div>
+            <div id="ccSummaryOwn-${si}"></div>
+          </div>
+        </div>
       </div>
     </div>`;
   }).join('');
