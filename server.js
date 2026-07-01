@@ -2391,6 +2391,10 @@ app.post('/api/admin/migrate-birthdays', requireAuth, requireAdmin, async (req, 
     { name: 'Naman Gupta',        birthday: '2004-08-24', joining_date: '2026-05-25' },
   ];
   try {
+    // Step 1: ensure columns exist
+    try { await db.query(`ALTER TABLE users ADD COLUMN birthday DATE DEFAULT NULL`); } catch(e) {}
+    try { await db.query(`ALTER TABLE users ADD COLUMN joining_date DATE DEFAULT NULL`); } catch(e) {}
+    // Step 2: populate data
     const results = [];
     for (const row of DATA) {
       const [r] = await db.query('UPDATE users SET birthday=?, joining_date=? WHERE name=?', [row.birthday, row.joining_date, row.name]);
