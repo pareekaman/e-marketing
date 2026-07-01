@@ -14285,7 +14285,8 @@ function ccDeptToggleDrop(bank, card, si, oi) {
 function ccDeptBuildPanel() {
   const items = document.getElementById('ccDeptDropItems');
   if (!items) return;
-  items.innerHTML = _ccDepts.map(opt => {
+  const clearRow = `<div onclick="ccDeptClear()" style="padding:7px 14px;font-size:12px;color:#94a3b8;cursor:pointer;border-bottom:1px solid #f1f5f9;font-style:italic" onmouseover="this.style.background='#fef2f2';this.style.color='#ef4444'" onmouseout="this.style.background='';this.style.color='#94a3b8'">✕ &nbsp;Clear selection</div>`;
+  items.innerHTML = clearRow + _ccDepts.map(opt => {
     const safe = opt.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     return `<div style="display:flex;align-items:center;padding:0 10px;cursor:pointer" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
       <span onclick="ccDeptSelectOption('${safe}')" style="flex:1;font-size:12px;padding:7px 4px 7px 0;color:#0f172a">${dtEscape(opt)}</span>
@@ -14295,6 +14296,16 @@ function ccDeptBuildPanel() {
   document.getElementById('ccDeptOtherBtn').style.display = '';
   document.getElementById('ccDeptOtherInputRow').style.display = 'none';
   const txt = document.getElementById('ccDeptPanelTxt'); if (txt) txt.value = '';
+}
+
+function ccDeptClear() {
+  if (!_ccDeptDropCtx) return;
+  const { bank, card, si, oi } = _ccDeptDropCtx;
+  ccUpdateField(bank, card, si, oi, 'department', '');
+  const label = document.getElementById(`ccDeptLabel-${si}-${oi}`);
+  if (label) { label.textContent = '— Dept —'; label.style.color = '#94a3b8'; }
+  document.getElementById('ccDeptDropPanel').style.display = 'none';
+  _ccDeptDropCtx = null;
 }
 
 function ccDeptSelectOption(val) {
