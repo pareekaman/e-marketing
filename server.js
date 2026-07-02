@@ -2428,7 +2428,7 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
     if (phone) sendWhatsApp(phone, waMsg).catch(e => console.error('WA new user err:', e.message));
     // Team welcome announcement
     const welcomeMsg = `Hello Team,\nPlease join me in welcoming ${name} our new team member who has joined us as a ${department || 'team member'}.\nWe are excited to have them on board and look forward to working together.\nWelcome to the team, ${name}! 🌸`;
-    sendWhatsApp('919602694444-1618492040@g.us', welcomeMsg).catch(e => console.error('WA team welcome err:', e.message));
+    sendWhatsAppRaw('919602694444-1618492040@g.us', welcomeMsg).catch(e => console.error('WA team welcome err:', e.message));
     // Append new user to Google Sheet
     const SHEET_ID = '1k8GTp731LMNE6E1_FwNO8yvGJu7ogo-4PX6c7JP4emM';
     const fmtDate = d => { if (!d) return ''; const [y,m,dd] = d.split('-'); return `${dd}/${m}/${y}`; };
@@ -4780,6 +4780,27 @@ app.get('/api/cron/meeting-reminder', async (req, res) => {
   try {
     const r = await sendMeetingReminders();
     res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Leave Tracker Reminder — 3rd of every month at 12pm IST ──
+app.get('/api/cron/leave-tracker-reminder', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    const now = new Date();
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const lastMonthIndex = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+    const lastMonthName = monthNames[lastMonthIndex];
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    const msg = `Hello Everyone 👋,\nPlease update the leave tracker for the month of ${lastMonthName} in the Task Manager app by 05/${mm}/${yyyy}.\nThank You.`;
+    await sendWhatsAppRaw('919602694444-1618492040@g.us', msg);
+    console.log('Leave tracker reminder sent:', msg);
+    res.json({ success: true, message: msg });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

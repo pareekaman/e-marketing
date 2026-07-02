@@ -1,0 +1,25 @@
+name: Leave Tracker Reminder
+
+# Fires on the 3rd of every month at 12:00 PM IST (06:30 UTC)
+on:
+  schedule:
+    - cron: '30 6 3 * *'
+  workflow_dispatch: {}  # allow manual fire from Actions tab
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Send leave tracker reminder to WhatsApp group
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL:     ${{ secrets.APP_URL }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "APP_URL secret not set — skipping"; exit 0
+          fi
+          CLEAN_URL=$(printf '%s' "${APP_URL}" | tr -d '[:space:]')
+          curl --silent --show-error --fail-with-body \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${CLEAN_URL%/}/api/cron/leave-tracker-reminder"
