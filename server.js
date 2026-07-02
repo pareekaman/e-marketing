@@ -8241,11 +8241,11 @@ async function _hrmDriveClient() {
 function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) {
   const appUrl  = (process.env.APP_URL || '').replace(/\/$/, '');
   const logoTag = appUrl
-    ? `<img src="${appUrl}/emarketing-logo.png" alt="e-Marketing" style="max-height:75px;width:auto">`
+    ? `<img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" style="max-height:75px;width:auto">`
     : `<div style="font-size:16px;font-weight:bold;color:#f90">e-Marketing</div><div style="font-size:10px">Grow Your Business | A Unit of Jai Marketing</div>`;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
     body{margin:0;padding:30px 40px;font-family:'Times New Roman',Times,serif;font-size:13px;color:#000;line-height:1.6}
-    .hdr{display:table;width:100%;border-bottom:1px solid #000;padding-bottom:12px;margin-bottom:20px}
+    .hdr{display:table;width:100%;padding-bottom:12px;margin-bottom:20px}
     .hdr-l{display:table-cell;vertical-align:top;width:45%}
     .hdr-r{display:table-cell;vertical-align:top;text-align:right;font-size:11px;line-height:1.5}
     .hdr-r .co{font-weight:bold;font-size:11.5px}
