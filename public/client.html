@@ -146,6 +146,26 @@ table td{padding:10px 14px;border-bottom:1px solid #f1f5f9;color:#1e293b;}
   </div>
 </div>
 
+<!-- Task detail modal — includes sub-tasks (follow-up asks under this task) -->
+<div class="modal-overlay" id="cpTaskDetailModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('cpTaskDetailModal')">×</button>
+    <h3 id="cpTdTitle">📋 Task Detail</h3>
+    <div id="cpTdBody" style="margin-top:14px;display:flex;flex-direction:column;gap:10px"></div>
+    <div id="cpTdSubtasksSection" style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0">
+      <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px">🧩 Sub-tasks</div>
+      <div id="cpTdSubtasksList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;font-size:13px;color:#94a3b8">Loading…</div>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="cpTdNewSubtask" placeholder="Add a related ask, e.g. change the dashboard color…" style="flex:1;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter'){cpAddSubtask()}"/>
+        <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="cpAddSubtask()">Add</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('cpTaskDetailModal')">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -308,6 +328,8 @@ function cpRenderHtml(s){
   const priorityRank = { urgent: 4, high: 3, medium: 2, low: 1 };
   const recentSorted = [...(s.recent || [])].sort((a, b) =>
     (priorityRank[b.priority] || 0) - (priorityRank[a.priority] || 0));
+  window._cpRecentMap = {};
+  recentSorted.forEach(t => { if (t.id) window._cpRecentMap[`${t.type}-${t.id}`] = t; });
   const recentHtml = recentSorted.length
     ? recentSorted.map(t => {
         const typeBadge = t.type === 'checklist'
@@ -321,7 +343,7 @@ function cpRenderHtml(s){
         const priorityColors = { urgent: ['#fef2f2','#dc2626'], high: ['#fffbeb','#92400e'], medium: ['#eff6ff','#1d4ed8'], low: ['#f0fdf4','#16a34a'] };
         const [prBg, prFg] = priorityColors[t.priority] || priorityColors.low;
         const priorityPill = `<span style="font-size:10px;color:${prFg};font-weight:700;background:${prBg};padding:3px 9px;border-radius:10px;text-transform:capitalize">${dtEscape(t.priority || 'low')}</span>`;
-        return `<tr>
+        return `<tr onclick="cpOpenTaskDetail('${t.type}-${t.id}')" style="cursor:pointer" title="Click to view details">
           <td>${typeBadge}</td>
           <td style="font-weight:500;color:#0f172a">${dtEscape(t.description || '')}</td>
           <td style="white-space:nowrap;color:#475569">${dtEscape(t.doer || '—')}</td>
@@ -609,6 +631,67 @@ async function cpSaveDelegate(){
   showToast('✅ Task sent to your handler');
   closeModal('clientDelegateModal');
   loadClientPortal();
+}
+
+// ── Task detail + sub-tasks (follow-up asks nested under a task, e.g.
+// "make a dashboard" then later "change its color") ──────────────────
+let _cpTdTaskId = null;
+
+function cpOpenTaskDetail(key){
+  const t = window._cpRecentMap?.[key];
+  if (!t) return;
+  const row = (label, value) => value
+    ? `<div style="display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid #f1f5f9;padding-bottom:8px">
+        <span style="min-width:90px;color:#64748b;font-size:12px;font-weight:600">${label}</span>
+        <span style="flex:1;word-break:break-word">${value}</span>
+      </div>`
+    : '';
+  const priorityColors = { urgent: ['#fef2f2','#dc2626'], high: ['#fffbeb','#92400e'], medium: ['#eff6ff','#1d4ed8'], low: ['#f0fdf4','#16a34a'] };
+  const [prBg, prFg] = priorityColors[t.priority] || priorityColors.low;
+  const statusHtml = t.status === 'completed'
+    ? '<span style="color:#15803d;font-weight:700">✓ Done</span>'
+    : t.status === 'revised'
+    ? '<span style="color:#9d174d;font-weight:700">🔄 Revised</span>'
+    : '<span style="color:#b91c1c;font-weight:700">⏳ Pending</span>';
+  document.getElementById('cpTdTitle').textContent = '📋 ' + (t.description || 'Task Detail');
+  document.getElementById('cpTdBody').innerHTML = [
+    row('Doer', dtEscape(t.doer || '—')),
+    row('Priority', `<span style="font-size:11px;color:${prFg};font-weight:700;background:${prBg};padding:3px 9px;border-radius:10px;text-transform:capitalize">${dtEscape(t.priority || 'low')}</span>`),
+    row('Due Date', fmtDate(t.due_date || '') || '<span style="color:#94a3b8">Not set yet</span>'),
+    row('Status', statusHtml),
+  ].filter(Boolean).join('');
+  const subSection = document.getElementById('cpTdSubtasksSection');
+  const isDelegation = t.type === 'delegation';
+  subSection.style.display = isDelegation ? '' : 'none';
+  document.getElementById('cpTaskDetailModal').classList.add('open');
+  if (isDelegation) { _cpTdTaskId = t.id; cpLoadSubtasks(); }
+}
+
+async function cpLoadSubtasks(){
+  const wrap = document.getElementById('cpTdSubtasksList');
+  if (!wrap || !_cpTdTaskId) return;
+  wrap.innerHTML = 'Loading…';
+  const r = await api(`/api/tasks/${_cpTdTaskId}/subtasks`);
+  if (!wrap.isConnected) return; // modal closed before the fetch resolved
+  if (r.error) { wrap.innerHTML = `<span style="color:#dc2626">${dtEscape(r.error)}</span>`; return; }
+  const items = r.subtasks || [];
+  wrap.innerHTML = items.length ? items.map(s => `
+    <div style="display:flex;align-items:center;gap:8px;padding:4px 0;color:#0f172a">
+      <span style="flex:1;word-break:break-word;${s.status==='completed'?'text-decoration:line-through;color:#94a3b8':''}">${dtEscape(s.description)}</span>
+      ${s.status==='completed'
+        ? '<span style="font-size:10px;color:#15803d;font-weight:700;background:#dcfce7;padding:2px 8px;border-radius:8px">✓ Done</span>'
+        : '<span style="font-size:10px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:2px 8px;border-radius:8px">⏳ Pending</span>'}
+    </div>`).join('') : `<span style="color:#94a3b8">No sub-tasks yet</span>`;
+}
+
+async function cpAddSubtask(){
+  const input = document.getElementById('cpTdNewSubtask');
+  const description = input.value.trim();
+  if (!description || !_cpTdTaskId) return;
+  const r = await api(`/api/tasks/${_cpTdTaskId}/subtasks`, 'POST', { description });
+  if (r.error) { showToast(r.error, 'error'); return; }
+  input.value = '';
+  cpLoadSubtasks();
 }
 
 // ── Client Feedback ───────────────────────────────────────────────────

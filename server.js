@@ -320,6 +320,18 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE delegation_tasks ADD COLUMN awaiting_due_date TINYINT(1) DEFAULT 0 AFTER waiting_approval`);
   // Client portal delegation form offers an 'urgent' priority tier above 'high'.
   await sa(`ALTER TABLE delegation_tasks MODIFY COLUMN priority ENUM('low','medium','high','urgent') DEFAULT 'low'`);
+  // Sub-tasks — follow-up asks nested under a delegation task (e.g. client says
+  // "make a dashboard" then later "change its color") instead of a brand-new task.
+  await sa(`CREATE TABLE IF NOT EXISTS task_subtasks (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    task_id INT NOT NULL,
+    description TEXT NOT NULL,
+    status ENUM('pending','completed') DEFAULT 'pending',
+    created_by INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP NULL,
+    INDEX idx_task (task_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   // Revise approval holds the requested new due-date here until the assigner approves.
   await sa(`ALTER TABLE task_approvals ADD COLUMN new_date DATE DEFAULT NULL AFTER action_type`);
   await sa(`ALTER TABLE checklist_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`);
@@ -1356,6 +1368,73 @@ app.put('/api/tasks/:id/due-date', requireAuth, async (req, res) => {
     } catch (e) { console.error('due-date holiday check err:', e.message); }
     await db.query('UPDATE delegation_tasks SET due_date=?, awaiting_due_date=0 WHERE id=?', [effectiveDate, task.id]);
     res.json({ success: true, effectiveDate });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Sub-tasks: follow-up asks nested under a delegation task (e.g. client says
+// "make a dashboard" then later "change its color") instead of a brand-new task.
+async function canTouchSubtasks(req, task) {
+  if (!task) return false;
+  const role = req.session.role;
+  if (role === 'client') {
+    const [[me]] = await db.query('SELECT client_id FROM users WHERE id=? LIMIT 1', [req.session.userId]);
+    return !!me?.client_id && me.client_id === task.client_id;
+  }
+  return role === 'admin' || role === 'hod' || role === 'pc'
+    || task.assigned_to === req.session.userId || task.assigned_by === req.session.userId;
+}
+
+app.get('/api/tasks/:id/subtasks', requireAuth, async (req, res) => {
+  try {
+    const taskId = parseInt(req.params.id, 10);
+    const [[task]] = await db.query('SELECT id, assigned_to, assigned_by, client_id FROM delegation_tasks WHERE id=?', [taskId]);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    if (!(await canTouchSubtasks(req, task))) return res.status(403).json({ error: 'Not allowed' });
+    const [subtasks] = await db.query(
+      `SELECT s.id, s.description, s.status, DATE_FORMAT(s.created_at,'%Y-%m-%d') AS created_at, u.name AS createdByName
+       FROM task_subtasks s JOIN users u ON s.created_by = u.id
+       WHERE s.task_id=? ORDER BY s.created_at ASC`, [taskId]);
+    res.json({ subtasks });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/tasks/:id/subtasks', requireAuth, async (req, res) => {
+  try {
+    const taskId = parseInt(req.params.id, 10);
+    const desc = (req.body.description || '').trim();
+    if (!desc) return res.status(400).json({ error: 'Description required' });
+    const [[task]] = await db.query('SELECT id, assigned_to, assigned_by, client_id FROM delegation_tasks WHERE id=?', [taskId]);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    if (!(await canTouchSubtasks(req, task))) return res.status(403).json({ error: 'Not allowed' });
+    await db.query('INSERT INTO task_subtasks (task_id, description, created_by) VALUES (?,?,?)', [taskId, desc, req.session.userId]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/subtasks/:id', requireAuth, async (req, res) => {
+  try {
+    // Client can add sub-tasks but only the doer/assigner/admin/hod/pc mark them done.
+    if (req.session.role === 'client') return res.status(403).json({ error: 'Not allowed' });
+    const id = parseInt(req.params.id, 10);
+    const status = req.body.status === 'completed' ? 'completed' : 'pending';
+    const [[sub]] = await db.query('SELECT task_id FROM task_subtasks WHERE id=?', [id]);
+    if (!sub) return res.status(404).json({ error: 'Sub-task not found' });
+    const [[task]] = await db.query('SELECT id, assigned_to, assigned_by, client_id FROM delegation_tasks WHERE id=?', [sub.task_id]);
+    if (!(await canTouchSubtasks(req, task))) return res.status(403).json({ error: 'Not allowed' });
+    await db.query(`UPDATE task_subtasks SET status=?, completed_at=IF(?='completed', NOW(), NULL) WHERE id=?`, [status, status, id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/subtasks/:id', requireAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const [[sub]] = await db.query('SELECT task_id, created_by FROM task_subtasks WHERE id=?', [id]);
+    if (!sub) return res.status(404).json({ error: 'Sub-task not found' });
+    const isPrivileged = req.session.role === 'admin' || req.session.role === 'pc';
+    if (sub.created_by !== req.session.userId && !isPrivileged) return res.status(403).json({ error: 'Not allowed' });
+    await db.query('DELETE FROM task_subtasks WHERE id=?', [id]);
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -8011,32 +8090,34 @@ async function _hrmDriveClient() {
   return google.drive({ version: 'v3', auth: client });
 }
 
-async function hrmGenerateOfferDoc(candidate, joining_date, salary) {
+async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName, overridePosition) {
   const drive = await _hrmDriveClient();
+
+  const candidateName     = overrideName     || candidate.name             || '';
+  const candidatePosition = overridePosition || candidate.profile_position || '';
 
   const joiningFmt = joining_date
     ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
     : '';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
 
-  // 1. Export template as HTML (Drive API only — no Docs API needed)
   const exported = await drive.files.export(
     { fileId: HRM_OFFER_TEMPLATE_ID, mimeType: 'text/html' },
     { responseType: 'text' }
   );
 
-  // 2. Replace placeholders in HTML
   let html = exported.data;
-  html = html.replace(/\{\{CANDIDATE_NAME\}\}/g, candidate.name || '');
-  html = html.replace(/\{\{POSITION\}\}/g,       candidate.profile_position || '');
-  html = html.replace(/\{\{JOINING_DATE\}\}/g,   joiningFmt);
-  html = html.replace(/\{\{\s*Today_Date\s*\}\}/g, today);
+  html = html.replace(/\{\{CANDIDATE_NAME\}\}/g,    candidateName);
+  html = html.replace(/\{\{POSITION\}\}/g,           candidatePosition);
+  html = html.replace(/\{\{JOINING_DATE\}\}/g,       joiningFmt);
+  html = html.replace(/\{\{\s*Today_Date\s*\}\}/g,   today);
+  html = html.replace(/\{\{SALARY\}\}/g,             salary || '');
+  html = html.replace(/\{\{CTC\}\}/g,                salary || '');
 
-  // 3. Upload modified HTML as new Google Doc in the offer folder
   const { Readable } = require('stream');
   const created = await drive.files.create({
     requestBody: {
-      name: `Offer Letter - ${candidate.name} - ${candidate.profile_position || ''}`,
+      name: `Offer Letter - ${candidateName} - ${candidatePosition}`,
       mimeType: 'application/vnd.google-apps.document',
       parents: [HRM_OFFER_FOLDER_ID],
     },
@@ -8044,7 +8125,17 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary) {
     supportsAllDrives: true,
   });
 
-  return created.data.id;
+  const fileId = created.data.id;
+
+  // Make publicly readable so PDF export URL works without auth
+  await drive.permissions.create({
+    fileId,
+    requestBody: { role: 'reader', type: 'anyone' },
+    supportsAllDrives: true,
+  }).catch(e => console.error('HRM Drive permission err:', e.message));
+
+  const pdfUrl = `https://docs.google.com/document/d/${fileId}/export?format=pdf`;
+  return { fileId, pdfUrl };
 }
 
 async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateName, action) {
@@ -8175,13 +8266,23 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       }, 'text', c.id, c.name, 'Rejected').catch(e => console.error('HRM WA rejected err:', e.message));
     }
     if (status === 'Offer Sent') {
+      const { offer_name, offer_position } = req.body;
+      const displayName = offer_name || c.name;
+      const displayPos  = offer_position || c.profile_position;
+
       hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`Hello ${c.name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${c.profile_position}.\n\n📅 Joining Date: ${joining_date||''}\n💰 CTC: ${salary||'To be discussed'}\n\nPlease confirm your acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
+`Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${displayPos}.\n\n📅 Joining Date: ${joining_date||''}\n💰 CTC: ${salary||'To be discussed'}\n\nYour offer letter is attached. Please confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
       }, 'text', c.id, c.name, 'Offer Sent').catch(e => console.error('HRM WA offer err:', e.message));
 
-      // Generate offer letter doc from Drive template in background
-      hrmGenerateOfferDoc(c, joining_date, salary)
-        .then(fileId => db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]))
+      hrmGenerateOfferDoc(c, joining_date, salary, offer_name, offer_position)
+        .then(async ({ fileId, pdfUrl }) => {
+          await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
+          hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
+            to: hrmFormatPhone(c.phone),
+            url: pdfUrl,
+            caption: `📄 Offer Letter - ${HRM_COMPANY}\n\nDear ${displayName},\nPlease find your offer letter attached.\n\n— ${HRM_COMPANY} HR Team`
+          }, 'file', c.id, c.name, 'Offer Letter PDF').catch(e => console.error('HRM WA file err:', e.message));
+        })
         .catch(e => console.error('HRM offer doc generation failed:', e.message));
     }
 
@@ -8196,9 +8297,9 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
     const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
     if (!c) return res.status(404).json({ error: 'Not found' });
     if (c.status !== 'Offer Sent') return res.status(400).json({ error: 'Candidate status is not Offer Sent' });
-    const fileId = await hrmGenerateOfferDoc(c, c.joining_date, c.salary);
+    const { fileId, pdfUrl } = await hrmGenerateOfferDoc(c, c.joining_date, c.salary);
     await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
-    res.json({ ok: true, fileId, url: `https://docs.google.com/document/d/${fileId}/edit` });
+    res.json({ ok: true, fileId, url: `https://docs.google.com/document/d/${fileId}/edit`, pdfUrl });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

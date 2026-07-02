@@ -2805,6 +2805,45 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
   </div>
 
+  <!-- HRM: Offer Letter Form Modal (fill fields → preview → send PDF on WhatsApp) -->
+  <div class="modal-overlay" id="hrmOfferFormModal">
+    <div class="modal" style="width:880px;max-width:96vw">
+      <button class="modal-close" onclick="closeModal('hrmOfferFormModal')">×</button>
+      <h3>📄 Send Offer Letter</h3>
+      <div style="display:flex;gap:20px;align-items:flex-start;margin-top:8px">
+        <div style="width:250px;flex-shrink:0">
+          <div class="form-group">
+            <label>Candidate Name *</label>
+            <input type="text" id="offerFName" oninput="updateOfferPreview()" placeholder="Full name">
+          </div>
+          <div class="form-group">
+            <label>Position *</label>
+            <input type="text" id="offerFPosition" oninput="updateOfferPreview()" placeholder="Job title">
+          </div>
+          <div class="form-group">
+            <label>Joining Date *</label>
+            <input type="date" id="offerFJoining" oninput="updateOfferPreview()">
+          </div>
+          <div class="form-group">
+            <label>Salary / CTC</label>
+            <input type="text" id="offerFSalary" oninput="updateOfferPreview()" placeholder="e.g. 6 LPA">
+          </div>
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;font-size:12px;color:#1e40af;margin-top:4px;line-height:1.5">
+            📄 Offer letter will be saved to Drive &amp; sent as PDF on WhatsApp
+          </div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;font-weight:600;color:#64748b;letter-spacing:.5px;margin-bottom:6px">PREVIEW</div>
+          <div id="offerFormPreview" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px 24px;font-family:'Times New Roman',Times,serif;color:#1a1a1a;font-size:12.5px;line-height:1.7;max-height:420px;overflow-y:auto"></div>
+        </div>
+      </div>
+      <div class="modal-footer" style="margin-top:16px">
+        <button class="btn btn-outline" onclick="closeModal('hrmOfferFormModal')">Cancel</button>
+        <button class="btn btn-primary" id="offerFormSubmitBtn" onclick="submitOfferForm()">📄 Generate &amp; Send on WhatsApp</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Client-portal delegate modal: doer is locked to the handler -->
   <div class="modal-overlay" id="clientDelegateModal">
     <div class="modal" style="width:520px">
@@ -5052,8 +5091,13 @@ function openHrmStatusModal(id) {
 
 function onHrmStatusChange() {
   const s = document.getElementById('hrmNewStatus').value;
+  if (s === 'Offer Sent') {
+    closeModal('hrmStatusModal');
+    openOfferFormModal(_hrmCurrentId);
+    return;
+  }
   document.getElementById('hrmReschedFields').style.display = s==='Rescheduled' ? 'block' : 'none';
-  document.getElementById('hrmOfferFields').style.display   = s==='Offer Sent'  ? 'block' : 'none';
+  document.getElementById('hrmOfferFields').style.display   = 'none';
   document.getElementById('hrmStatusWaNote').style.display  = s ? 'block' : 'none';
 }
 
@@ -5211,6 +5255,85 @@ function printOfferLetter() {
   win.document.close();
   win.focus();
   win.print();
+}
+
+function openOfferFormModal(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  if (!c) return;
+  _hrmCurrentId = id;
+  document.getElementById('offerFName').value     = c.name || '';
+  document.getElementById('offerFPosition').value = c.profile_position || '';
+  document.getElementById('offerFJoining').value  = c.joining_date ? String(c.joining_date).slice(0,10) : '';
+  document.getElementById('offerFSalary').value   = c.salary || '';
+  updateOfferPreview();
+  document.getElementById('hrmOfferFormModal').classList.add('open');
+}
+
+function updateOfferPreview() {
+  const name       = esc(document.getElementById('offerFName').value)     || '<em style="color:#94a3b8">Candidate Name</em>';
+  const position   = esc(document.getElementById('offerFPosition').value) || '<em style="color:#94a3b8">Position</em>';
+  const joiningRaw = document.getElementById('offerFJoining').value;
+  const salary     = esc(document.getElementById('offerFSalary').value)   || '<em style="color:#94a3b8">As per discussion</em>';
+  const joining    = joiningRaw
+    ? new Date(joiningRaw).toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'})
+    : '<em style="color:#94a3b8">Joining Date</em>';
+  const today      = new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'});
+  const c          = _hrmCandidates.find(x => String(x.id) === String(_hrmCurrentId)) || {};
+  const refNo      = `EMK/HR/OL/${String(c.id||'0').padStart(4,'0')}`;
+
+  document.getElementById('offerFormPreview').innerHTML = `
+    <div style="text-align:center;border-bottom:3px double #1e3a8a;padding-bottom:12px;margin-bottom:16px">
+      <div style="font-size:20px;font-weight:700;color:#1e3a8a;letter-spacing:1px">E-MARKETING TECH</div>
+      <div style="font-size:11px;color:#64748b;margin-top:3px">Digital Marketing &amp; Technology Solutions</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:14px;font-size:12px">
+      <div><strong>Ref No:</strong> ${refNo}</div>
+      <div><strong>Date:</strong> ${today}</div>
+    </div>
+    <div style="margin-bottom:14px">
+      <div><strong>${name}</strong></div>
+      <div style="color:#475569">${esc(c.phone||'')}</div>
+    </div>
+    <div style="margin-bottom:14px"><strong>Subject: Offer of Employment — ${position}</strong></div>
+    <div style="margin-bottom:10px">Dear ${name},</div>
+    <div style="margin-bottom:10px">We are pleased to offer you the position of <strong>${position}</strong> at <strong>E-Marketing Tech</strong>.</div>
+    <div style="margin-bottom:10px">
+      <div>📅 <strong>Joining Date:</strong> ${joining}</div>
+      <div>💰 <strong>CTC:</strong> ${salary}</div>
+    </div>
+    <div style="margin-bottom:8px">Please bring the following documents on your joining date:</div>
+    <div style="margin-bottom:10px;padding-left:16px;line-height:1.9">
+      • Educational certificates<br>• Experience letters<br>• ID proof<br>• 2 passport-size photos
+    </div>
+    <div style="margin-top:24px;display:flex;justify-content:space-between;font-size:12px">
+      <div>
+        <div style="margin-bottom:32px">Yours sincerely,</div>
+        <div style="border-top:1px solid #374151;padding-top:4px;width:140px"><strong>HR Department</strong><br>E-Marketing Tech</div>
+      </div>
+      <div style="text-align:center">
+        <div style="margin-bottom:32px">Accepted by candidate,</div>
+        <div style="border-top:1px solid #374151;padding-top:4px;width:140px">Signature &amp; Date</div>
+      </div>
+    </div>`;
+}
+
+async function submitOfferForm() {
+  const offer_name     = document.getElementById('offerFName').value.trim();
+  const offer_position = document.getElementById('offerFPosition').value.trim();
+  const joining_date   = document.getElementById('offerFJoining').value;
+  const salary         = document.getElementById('offerFSalary').value.trim();
+  if (!offer_name)   { showToast('Candidate name required', 'error'); return; }
+  if (!joining_date) { showToast('Joining date required', 'error'); return; }
+  const btn = document.getElementById('offerFormSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/status`, 'PUT', {
+    status: 'Offer Sent', joining_date, salary, offer_name, offer_position
+  });
+  btn.disabled = false; btn.textContent = '📄 Generate & Send on WhatsApp';
+  if (r.error) { showToast(r.error, 'error'); return; }
+  closeModal('hrmOfferFormModal');
+  showToast('Offer letter generating — PDF will be sent on WhatsApp!');
+  loadHRM();
 }
 
 function showErrIn(id, msg) {
@@ -6501,6 +6624,16 @@ function openTaskDetail(t) {
       ? `<span class="status-badge ${t.status}" style="font-size:12px">${statusLabels[t.status]||t.status}</span>`
       : null);
 
+  const subtasksSection = (t.type === 'delegation' && t.id) ? `
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0">
+      <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px">🧩 Sub-tasks</div>
+      <div id="tdSubtasksList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;font-size:13px;color:#94a3b8">Loading…</div>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="tdNewSubtask" placeholder="Add a sub-task…" style="flex:1;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter'){addSubtask(${t.id})}"/>
+        <button class="btn btn-outline" style="padding:6px 14px;font-size:12px" onclick="addSubtask(${t.id})">Add</button>
+      </div>
+    </div>` : '';
+
   document.getElementById('tdTitle').textContent = '📋 ' + (t.description || 'Task Detail');
   document.getElementById('tdBody').innerHTML = [
     row('Description', dtEscape(t.description||'')),
@@ -6513,8 +6646,47 @@ function openTaskDetail(t) {
     row('Approval', t.approval === 'yes' ? '<span style="color:#16a34a;font-weight:600">Required</span>' : '<span style="color:#64748b">Not required</span>'),
     row('Remarks', t.remarks ? dtEscape(t.remarks) : null),
     row('URL', urlVal || '<span style="color:#94a3b8">No URL</span>'),
-  ].filter(Boolean).join('');
+  ].filter(Boolean).join('') + subtasksSection;
   document.getElementById('taskDetailModal').classList.add('open');
+  if (t.type === 'delegation' && t.id) loadSubtasks(t.id);
+}
+
+async function loadSubtasks(taskId) {
+  const wrap = document.getElementById('tdSubtasksList');
+  if (!wrap) return;
+  const r = await api(`/api/tasks/${taskId}/subtasks`);
+  if (!wrap.isConnected) return; // modal closed before the fetch resolved
+  if (r.error) { wrap.innerHTML = `<span style="color:#dc2626">${dtEscape(r.error)}</span>`; return; }
+  const items = r.subtasks || [];
+  wrap.innerHTML = items.length ? items.map(s => `
+    <label style="display:flex;align-items:center;gap:8px;padding:4px 0;color:#0f172a">
+      <input type="checkbox" ${s.status==='completed'?'checked':''} onchange="toggleSubtask(${s.id},${taskId},this.checked)"/>
+      <span style="flex:1;word-break:break-word;${s.status==='completed'?'text-decoration:line-through;color:#94a3b8':''}">${dtEscape(s.description)}</span>
+      <button class="action-btn" style="padding:1px 6px;font-size:11px" onclick="deleteSubtask(${s.id},${taskId})" title="Delete">✕</button>
+    </label>`).join('') : `<span style="color:#94a3b8">No sub-tasks yet</span>`;
+}
+
+async function addSubtask(taskId) {
+  const input = document.getElementById('tdNewSubtask');
+  const description = input.value.trim();
+  if (!description) return;
+  const r = await api(`/api/tasks/${taskId}/subtasks`, 'POST', { description });
+  if (r.error) { showToast(r.error, 'error'); return; }
+  input.value = '';
+  loadSubtasks(taskId);
+}
+
+async function toggleSubtask(id, taskId, checked) {
+  const r = await api(`/api/subtasks/${id}`, 'PUT', { status: checked ? 'completed' : 'pending' });
+  if (r.error) { showToast(r.error, 'error'); }
+  loadSubtasks(taskId);
+}
+
+async function deleteSubtask(id, taskId) {
+  if (!await appConfirm('Delete this sub-task?')) return;
+  const r = await api(`/api/subtasks/${id}`, 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  loadSubtasks(taskId);
 }
 
 function toggleBlock(header) { header.nextElementSibling.classList.toggle('open'); }
