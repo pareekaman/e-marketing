@@ -159,6 +159,12 @@
     position:absolute;left:12px;top:50%;transform:translateY(-50%);
     font-size:15px;color:#94a3b8;pointer-events:none;
   }
+  .input-wrap .toggle-pass{
+    position:absolute;right:12px;top:50%;transform:translateY(-50%);
+    font-size:15px;color:#94a3b8;cursor:pointer;background:none;border:none;
+    padding:0;line-height:1;user-select:none;
+  }
+  .input-wrap .toggle-pass:hover{color:#64748b;}
   input{
     width:100%;
     padding:11px 14px 11px 38px;
@@ -262,8 +268,9 @@
     <label>Password</label>
     <div class="input-wrap">
       <span class="icon">🔒</span>
-      <input type="password" id="password" placeholder="Enter your password"
+      <input type="password" id="password" placeholder="Enter your password" style="padding-right:38px"
              onkeydown="if(event.key==='Enter')login()"/>
+      <button type="button" class="toggle-pass" id="togglePass" onclick="togglePassword()">👁</button>
     </div>
   </div>
 
@@ -286,6 +293,14 @@
     }
   } catch(e) {}
 })();
+
+function togglePassword(){
+  const pass=document.getElementById('password');
+  const btn=document.getElementById('togglePass');
+  const show=pass.type==='password';
+  pass.type=show?'text':'password';
+  btn.textContent=show?'🙈':'👁';
+}
 
 async function login(){
   const email=document.getElementById('email').value.trim();
