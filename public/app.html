@@ -20,6 +20,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
+html,body{overflow-x:hidden;}
 body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:100vh;}
 
 /* ══════════════════════════════════════
@@ -1007,10 +1008,13 @@ tbody tr:last-child td{border-bottom:none;}
   /* ── Tables: allow horizontal scroll for wide tables ── */
   .task-table-card > div,
   .flat-tasks-scroll,
+  .flat-tasks-table,
   .mis-table-wrap,
   .users-grid,
   .dr-table-wrap,
-  .cp-grid-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .cp-grid-wrap,
+  #invContent,
+  #hrm-msg-table{overflow-x:auto;-webkit-overflow-scrolling:touch;}
   .flat-tasks-scroll{max-height:calc(100vh - 200px);}
   thead th{padding:8px 10px;font-size:10px;}
   tbody td{padding:9px 10px;font-size:12px;}
@@ -1047,7 +1051,7 @@ tbody tr:last-child td{border-bottom:none;}
   .lv-tabs{overflow-x:auto;}
   .lv-tab{white-space:nowrap;font-size:12px;padding:9px 14px;}
   .lv-filter-row{flex-direction:column;align-items:stretch;}
-  .lv-filter-row input{max-width:100%;width:100%;}
+  .lv-filter-row input{min-width:0;max-width:100%;width:100%;}
   .lv-calendar{padding:10px 8px;}
   .lv-cal-day{padding:9px 0;font-size:12px;}
 
@@ -1120,6 +1124,25 @@ tbody tr:last-child td{border-bottom:none;}
   .hrm-toolbar{flex-direction:column;align-items:stretch;}
   .hrm-filters{width:100%;}
   .hrm-filter-select{flex:1;}
+  .hrm-offer-form-row{flex-direction:column;}
+  .hrm-offer-form-fields{width:100% !important;}
+
+  /* ── Fixed-px side-by-side grids → stack on mobile ── */
+  .acc-matrix-grid{grid-template-columns:1fr !important;min-height:0 !important;}
+  .acc-matrix-grid > div:first-child{border-right:none !important;border-bottom:1px solid #e2e8f0;}
+  #accUserList{max-height:260px !important;}
+  .cm-detail-grid,
+  .cp-recent-grid{grid-template-columns:1fr !important;}
+  .cp-status-grid{grid-template-columns:1fr !important;}
+
+  /* ── Meetings: stack month calendar above day timeline ── */
+  #mtgGrid{grid-template-columns:1fr !important;}
+  .mtg-cal-cell{min-height:64px;}
+  .mtg-cal-month-grid{grid-auto-rows:minmax(64px,1fr);}
+
+  /* ── Topbar dashboard-switcher: don't let it push past the viewport ── */
+  #topbarActions{min-width:0;max-width:60vw;}
+  #dashUserSwitcher{max-width:150px !important;}
 }
 
 /* ── Extra small (phones <380px) ── */
@@ -1129,6 +1152,8 @@ tbody tr:last-child td{border-bottom:none;}
   .dr-stats{grid-template-columns:1fr;}
   .hrm-stat-grid{grid-template-columns:1fr;}
   .hrm-msg-grid{grid-template-columns:1fr;}
+  #topbarActions span{display:none;}
+  #dashUserSwitcher{max-width:110px !important;}
 }
 
 /* ══════════════════════════════════════════════
@@ -2810,8 +2835,8 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="modal" style="width:880px;max-width:96vw">
       <button class="modal-close" onclick="closeModal('hrmOfferFormModal')">×</button>
       <h3>📄 Send Offer Letter</h3>
-      <div style="display:flex;gap:20px;align-items:flex-start;margin-top:8px">
-        <div style="width:250px;flex-shrink:0">
+      <div class="hrm-offer-form-row" style="display:flex;gap:20px;align-items:flex-start;margin-top:8px">
+        <div class="hrm-offer-form-fields" style="width:250px;flex-shrink:0">
           <div class="form-group">
             <label>Candidate Name *</label>
             <input type="text" id="offerFName" oninput="updateOfferPreview()" placeholder="Full name">
@@ -2834,7 +2859,7 @@ tbody tr:last-child td{border-bottom:none;}
         </div>
         <div style="flex:1;min-width:0">
           <div style="font-size:11px;font-weight:600;color:#64748b;letter-spacing:.5px;margin-bottom:6px">PREVIEW</div>
-          <div id="offerFormPreview" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px 24px;font-family:'Times New Roman',Times,serif;color:#1a1a1a;font-size:12.5px;line-height:1.7;max-height:420px;overflow-y:auto"></div>
+          <div id="offerFormPreview" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;min-height:420px"></div>
         </div>
       </div>
       <div class="modal-footer" style="margin-top:16px">
@@ -4517,7 +4542,7 @@ async function renderAccessMatrix() {
     </div>`).join('');
 
   box.innerHTML = `
-    <div style="display:grid;grid-template-columns:250px 1fr;gap:0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;min-height:480px">
+    <div class="acc-matrix-grid" style="display:grid;grid-template-columns:250px 1fr;gap:0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;min-height:480px">
       <div style="border-right:1px solid #e2e8f0;display:flex;flex-direction:column">
         <div style="padding:12px 14px;border-bottom:1px solid #e2e8f0;background:#f8fafc">
           <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:8px">👥 Users (${_accUsers.length})</div>
@@ -5257,7 +5282,9 @@ function printOfferLetter() {
   win.print();
 }
 
-function openOfferFormModal(id) {
+let _hrmTemplateHtml = null;
+
+async function openOfferFormModal(id) {
   const c = _hrmCandidates.find(x => String(x.id) === String(id));
   if (!c) return;
   _hrmCurrentId = id;
@@ -5265,56 +5292,38 @@ function openOfferFormModal(id) {
   document.getElementById('offerFPosition').value = c.profile_position || '';
   document.getElementById('offerFJoining').value  = c.joining_date ? String(c.joining_date).slice(0,10) : '';
   document.getElementById('offerFSalary').value   = c.salary || '';
-  updateOfferPreview();
   document.getElementById('hrmOfferFormModal').classList.add('open');
+  document.getElementById('offerFormPreview').innerHTML =
+    '<div style="text-align:center;padding:48px 20px;color:#64748b;font-family:sans-serif;font-size:13px">Loading template preview…</div>';
+  if (!_hrmTemplateHtml) {
+    const r = await api('/api/hrm/offer-template-html');
+    if (r && r.html) _hrmTemplateHtml = r.html;
+  }
+  updateOfferPreview();
 }
 
 function updateOfferPreview() {
-  const name       = esc(document.getElementById('offerFName').value)     || '<em style="color:#94a3b8">Candidate Name</em>';
-  const position   = esc(document.getElementById('offerFPosition').value) || '<em style="color:#94a3b8">Position</em>';
+  if (!_hrmTemplateHtml) return;
+  const name       = document.getElementById('offerFName').value     || '';
+  const position   = document.getElementById('offerFPosition').value || '';
   const joiningRaw = document.getElementById('offerFJoining').value;
-  const salary     = esc(document.getElementById('offerFSalary').value)   || '<em style="color:#94a3b8">As per discussion</em>';
+  const salary     = document.getElementById('offerFSalary').value   || '';
   const joining    = joiningRaw
     ? new Date(joiningRaw).toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'})
-    : '<em style="color:#94a3b8">Joining Date</em>';
-  const today      = new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'});
-  const c          = _hrmCandidates.find(x => String(x.id) === String(_hrmCurrentId)) || {};
-  const refNo      = `EMK/HR/OL/${String(c.id||'0').padStart(4,'0')}`;
+    : '';
+  const today = new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'});
 
-  document.getElementById('offerFormPreview').innerHTML = `
-    <div style="text-align:center;border-bottom:3px double #1e3a8a;padding-bottom:12px;margin-bottom:16px">
-      <div style="font-size:20px;font-weight:700;color:#1e3a8a;letter-spacing:1px">E-MARKETING TECH</div>
-      <div style="font-size:11px;color:#64748b;margin-top:3px">Digital Marketing &amp; Technology Solutions</div>
-    </div>
-    <div style="display:flex;justify-content:space-between;margin-bottom:14px;font-size:12px">
-      <div><strong>Ref No:</strong> ${refNo}</div>
-      <div><strong>Date:</strong> ${today}</div>
-    </div>
-    <div style="margin-bottom:14px">
-      <div><strong>${name}</strong></div>
-      <div style="color:#475569">${esc(c.phone||'')}</div>
-    </div>
-    <div style="margin-bottom:14px"><strong>Subject: Offer of Employment — ${position}</strong></div>
-    <div style="margin-bottom:10px">Dear ${name},</div>
-    <div style="margin-bottom:10px">We are pleased to offer you the position of <strong>${position}</strong> at <strong>E-Marketing Tech</strong>.</div>
-    <div style="margin-bottom:10px">
-      <div>📅 <strong>Joining Date:</strong> ${joining}</div>
-      <div>💰 <strong>CTC:</strong> ${salary}</div>
-    </div>
-    <div style="margin-bottom:8px">Please bring the following documents on your joining date:</div>
-    <div style="margin-bottom:10px;padding-left:16px;line-height:1.9">
-      • Educational certificates<br>• Experience letters<br>• ID proof<br>• 2 passport-size photos
-    </div>
-    <div style="margin-top:24px;display:flex;justify-content:space-between;font-size:12px">
-      <div>
-        <div style="margin-bottom:32px">Yours sincerely,</div>
-        <div style="border-top:1px solid #374151;padding-top:4px;width:140px"><strong>HR Department</strong><br>E-Marketing Tech</div>
-      </div>
-      <div style="text-align:center">
-        <div style="margin-bottom:32px">Accepted by candidate,</div>
-        <div style="border-top:1px solid #374151;padding-top:4px;width:140px">Signature &amp; Date</div>
-      </div>
-    </div>`;
+  let html = _hrmTemplateHtml;
+  html = html.replace(/\{\{CANDIDATE_NAME\}\}/g,    name);
+  html = html.replace(/\{\{POSITION\}\}/g,           position);
+  html = html.replace(/\{\{JOINING_DATE\}\}/g,       joining);
+  html = html.replace(/\{\{\s*Today_Date\s*\}\}/g,   today);
+  html = html.replace(/\{\{SALARY\}\}/g,             salary);
+  html = html.replace(/\{\{CTC\}\}/g,                salary);
+
+  const container = document.getElementById('offerFormPreview');
+  container.innerHTML = '<iframe id="offerPreviewFrame" style="width:100%;height:420px;border:none;display:block" sandbox="allow-same-origin"></iframe>';
+  document.getElementById('offerPreviewFrame').srcdoc = html;
 }
 
 async function submitOfferForm() {
@@ -11472,7 +11481,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       ${statCard('Meetings', meetingsTotal, '#7c3aed', `${meetingsScheduled} scheduled · ${meetingsCancelled} cancelled`)}
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 360px;gap:16px">
+    <div class="cm-detail-grid" style="display:grid;grid-template-columns:1fr 360px;gap:16px">
       <div class="task-table-card" style="padding:0">
         <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
           <div class="card-head-title">Recent Activity</div>
@@ -13414,7 +13423,7 @@ function cpRenderHtml(s) {
       ${statCard('📅', 'Meetings', meetingsTotal, '#7c3aed', `${meetingsScheduled} scheduled · ${meetingsCancelled} cancelled`)}
     </div>
 
-    <div style="display:grid;grid-template-columns:300px 1fr;gap:16px;margin-bottom:18px">
+    <div class="cp-status-grid" style="display:grid;grid-template-columns:300px 1fr;gap:16px;margin-bottom:18px">
       <div class="task-table-card" style="padding:16px 18px;border-radius:14px">
         <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px">🥧 Task Status</div>
         <div style="position:relative;height:220px">
@@ -13425,7 +13434,7 @@ function cpRenderHtml(s) {
       ${cpRenderUpcomingHtml(s.upcoming || [])}
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 360px;gap:16px">
+    <div class="cp-recent-grid" style="display:grid;grid-template-columns:1fr 360px;gap:16px">
       <div class="task-table-card" style="padding:0;border-radius:14px">
         <div class="card-head" style="padding:16px 18px;border-bottom:1px solid #e2e8f0">
           <div class="card-head-title" style="font-size:15px">📋 Recent Activity</div>

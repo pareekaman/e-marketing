@@ -8303,6 +8303,19 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Export offer letter template as HTML for live preview in portal
+app.get('/api/hrm/offer-template-html', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const drive = await _hrmDriveClient();
+    const exported = await drive.files.export(
+      { fileId: HRM_OFFER_TEMPLATE_ID, mimeType: 'text/html' },
+      { responseType: 'text' }
+    );
+    res.json({ html: exported.data });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Read offer letter template text + show service account email
 app.get('/api/hrm/offer-template-preview', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
