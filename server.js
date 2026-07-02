@@ -1400,6 +1400,9 @@ app.get('/api/tasks/:id/subtasks', requireAuth, async (req, res) => {
 
 app.post('/api/tasks/:id/subtasks', requireAuth, async (req, res) => {
   try {
+    // Only the client can add sub-tasks — staff (handler/admin/hod/pc) can view,
+    // complete, and delete them, but adding is the client's follow-up channel only.
+    if (req.session.role !== 'client') return res.status(403).json({ error: 'Not allowed' });
     const taskId = parseInt(req.params.id, 10);
     const desc = (req.body.description || '').trim();
     if (!desc) return res.status(400).json({ error: 'Description required' });

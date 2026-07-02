@@ -6707,12 +6707,8 @@ function openTaskDetail(t) {
 
   const subtasksSection = (t.type === 'delegation' && t.id) ? `
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0">
-      <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px">🧩 Sub-tasks</div>
-      <div id="tdSubtasksList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;font-size:13px;color:#94a3b8">Loading…</div>
-      <div style="display:flex;gap:6px">
-        <input type="text" id="tdNewSubtask" placeholder="Add a sub-task…" style="flex:1;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter'){addSubtask(${t.id})}"/>
-        <button class="btn btn-outline" style="padding:6px 14px;font-size:12px" onclick="addSubtask(${t.id})">Add</button>
-      </div>
+      <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px">🧩 Sub-tasks <span style="font-weight:500;color:#94a3b8">(added by client)</span></div>
+      <div id="tdSubtasksList" style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#94a3b8">Loading…</div>
     </div>` : '';
 
   document.getElementById('tdTitle').textContent = '📋 ' + (t.description || 'Task Detail');
@@ -6745,16 +6741,6 @@ async function loadSubtasks(taskId) {
       <span style="flex:1;word-break:break-word;${s.status==='completed'?'text-decoration:line-through;color:#94a3b8':''}">${dtEscape(s.description)}</span>
       <button class="action-btn" style="padding:1px 6px;font-size:11px" onclick="deleteSubtask(${s.id},${taskId})" title="Delete">✕</button>
     </label>`).join('') : `<span style="color:#94a3b8">No sub-tasks yet</span>`;
-}
-
-async function addSubtask(taskId) {
-  const input = document.getElementById('tdNewSubtask');
-  const description = input.value.trim();
-  if (!description) return;
-  const r = await api(`/api/tasks/${taskId}/subtasks`, 'POST', { description });
-  if (r.error) { showToast(r.error, 'error'); return; }
-  input.value = '';
-  loadSubtasks(taskId);
 }
 
 async function toggleSubtask(id, taskId, checked) {
