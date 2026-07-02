@@ -5704,7 +5704,7 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
       const driveResp = await fetch(CC_DRIVE_SCRIPT, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-        body: JSON.stringify({ pdf: pdfB64, filename, folderId: '1V7QPg6cMyjq7SlGHuo0pAqTYtIvTBYqc' }),
+        body: JSON.stringify({ pdf: pdfB64, filename, folderId: '13Bn8WPbD1bEoQdM_GfirEE-9W7Gxot4k' }),
         redirect: 'follow'
       });
       const driveResult = await driveResp.json();
