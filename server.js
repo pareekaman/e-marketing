@@ -2336,11 +2336,12 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
     sendWhatsApp('919079649289', welcomeMsg).catch(e => console.error('WA team welcome err:', e.message));
     // Append new user to Google Sheet
     const SHEET_ID = '1k8GTp731LMNE6E1_FwNO8yvGJu7ogo-4PX6c7JP4emM';
+    const fmtDate = d => { if (!d) return ''; const [y,m,dd] = d.split('-'); return `${dd}/${m}/${y}`; };
     getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']).then(sheets => sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
       range: 'Sheet1!A:D',
       valueInputOption: 'USER_ENTERED',
-      resource: { values: [[name, birthday||'', joining_date||'', 'Active']] }
+      resource: { values: [[name, fmtDate(birthday), fmtDate(joining_date), 'Active']] }
     })).catch(e => console.error('Sheets append err:', e.message));
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
