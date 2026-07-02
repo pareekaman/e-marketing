@@ -8314,14 +8314,28 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
 
   const fileId = created.data.id;
 
-  // Make publicly readable so PDF export URL works without auth
-  await drive.permissions.create({
-    fileId,
-    requestBody: { role: 'reader', type: 'anyone' },
-    supportsAllDrives: true,
-  }).catch(e => console.error('HRM Drive permission err:', e.message));
+  // Download PDF from Drive using authenticated client and host on our server
+  const pdfResp = await drive.files.export(
+    { fileId, mimeType: 'application/pdf' },
+    { responseType: 'stream' }
+  );
 
-  const pdfUrl = `https://docs.google.com/document/d/${fileId}/export?format=pdf`;
+  const fs = require('fs');
+  const path = require('path');
+  const offersDir = path.join(__dirname, 'public', 'offers');
+  if (!fs.existsSync(offersDir)) fs.mkdirSync(offersDir, { recursive: true });
+
+  const filename = `offer_${candidate.id}_${Date.now()}.pdf`;
+  const filepath = path.join(offersDir, filename);
+  await new Promise((resolve, reject) => {
+    const dest = fs.createWriteStream(filepath);
+    pdfResp.data.pipe(dest);
+    dest.on('finish', resolve);
+    dest.on('error', reject);
+  });
+
+  const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
+  const pdfUrl = `${appUrl}/offers/${filename}`;
   return { fileId, pdfUrl };
 }
 
