@@ -327,11 +327,13 @@ const _startupMigrationsPromise = (async () => {
     task_id INT NOT NULL,
     description TEXT NOT NULL,
     status ENUM('pending','completed') DEFAULT 'pending',
+    priority ENUM('low','medium','high','urgent') DEFAULT 'low',
     created_by INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP NULL,
     INDEX idx_task (task_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  await sa(`ALTER TABLE task_subtasks ADD COLUMN priority ENUM('low','medium','high','urgent') DEFAULT 'low' AFTER description`);
   // Revise approval holds the requested new due-date here until the assigner approves.
   await sa(`ALTER TABLE task_approvals ADD COLUMN new_date DATE DEFAULT NULL AFTER action_type`);
   await sa(`ALTER TABLE checklist_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`);
@@ -1391,7 +1393,9 @@ app.get('/api/tasks/:id/subtasks', requireAuth, async (req, res) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
     if (!(await canTouchSubtasks(req, task))) return res.status(403).json({ error: 'Not allowed' });
     const [subtasks] = await db.query(
-      `SELECT s.id, s.description, s.status, DATE_FORMAT(s.created_at,'%Y-%m-%d') AS created_at, u.name AS createdByName
+      `SELECT s.id, s.description, s.status, COALESCE(s.priority,'low') AS priority,
+              DATE_FORMAT(s.created_at,'%Y-%m-%d') AS created_at,
+              DATE_FORMAT(s.completed_at,'%Y-%m-%d') AS completed_at, u.name AS createdByName
        FROM task_subtasks s JOIN users u ON s.created_by = u.id
        WHERE s.task_id=? ORDER BY s.created_at ASC`, [taskId]);
     res.json({ subtasks });
@@ -1406,10 +1410,11 @@ app.post('/api/tasks/:id/subtasks', requireAuth, async (req, res) => {
     const taskId = parseInt(req.params.id, 10);
     const desc = (req.body.description || '').trim();
     if (!desc) return res.status(400).json({ error: 'Description required' });
+    const priority = ['low','medium','high','urgent'].includes(req.body.priority) ? req.body.priority : 'low';
     const [[task]] = await db.query('SELECT id, assigned_to, assigned_by, client_id, description FROM delegation_tasks WHERE id=?', [taskId]);
     if (!task) return res.status(404).json({ error: 'Task not found' });
     if (!(await canTouchSubtasks(req, task))) return res.status(403).json({ error: 'Not allowed' });
-    await db.query('INSERT INTO task_subtasks (task_id, description, created_by) VALUES (?,?,?)', [taskId, desc, req.session.userId]);
+    await db.query('INSERT INTO task_subtasks (task_id, description, priority, created_by) VALUES (?,?,?,?)', [taskId, desc, priority, req.session.userId]);
 
     // 📱 WhatsApp to the handler — non-blocking (fire and forget).
     (async () => {

@@ -157,6 +157,12 @@ table td{padding:10px 14px;border-bottom:1px solid #f1f5f9;color:#1e293b;}
       <div id="cpTdSubtasksList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;font-size:13px;color:#94a3b8">Loading…</div>
       <div style="display:flex;gap:6px">
         <input type="text" id="cpTdNewSubtask" placeholder="Add a related task" style="flex:1;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter'){cpAddSubtask()}"/>
+        <select id="cpTdNewSubtaskPriority" style="padding:7px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px">
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="urgent">Urgent</option>
+        </select>
         <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="cpAddSubtask()">Add</button>
       </div>
     </div>
@@ -675,20 +681,31 @@ async function cpLoadSubtasks(){
   if (!wrap.isConnected) return; // modal closed before the fetch resolved
   if (r.error) { wrap.innerHTML = `<span style="color:#dc2626">${dtEscape(r.error)}</span>`; return; }
   const items = r.subtasks || [];
-  wrap.innerHTML = items.length ? items.map(s => `
-    <div style="display:flex;align-items:center;gap:8px;padding:4px 0;color:#0f172a">
-      <span style="flex:1;word-break:break-word;${s.status==='completed'?'text-decoration:line-through;color:#94a3b8':''}">${dtEscape(s.description)}</span>
-      ${s.status==='completed'
-        ? '<span style="font-size:10px;color:#15803d;font-weight:700;background:#dcfce7;padding:2px 8px;border-radius:8px">✓ Done</span>'
-        : '<span style="font-size:10px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:2px 8px;border-radius:8px">⏳ Pending</span>'}
-    </div>`).join('') : `<span style="color:#94a3b8">No sub-tasks yet</span>`;
+  const priorityColors = { urgent: ['#fef2f2','#dc2626'], high: ['#fffbeb','#92400e'], medium: ['#eff6ff','#1d4ed8'], low: ['#f0fdf4','#16a34a'] };
+  wrap.innerHTML = items.length ? items.map(s => {
+    const [prBg, prFg] = priorityColors[s.priority] || priorityColors.low;
+    return `
+    <div style="padding:6px 0;border-bottom:1px solid #f8fafc">
+      <div style="display:flex;align-items:center;gap:8px;color:#0f172a">
+        <span style="flex:1;word-break:break-word;${s.status==='completed'?'text-decoration:line-through;color:#94a3b8':''}">${dtEscape(s.description)}</span>
+        <span style="font-size:10px;color:${prFg};font-weight:700;background:${prBg};padding:2px 8px;border-radius:8px;text-transform:capitalize">${dtEscape(s.priority||'low')}</span>
+        ${s.status==='completed'
+          ? '<span style="font-size:10px;color:#15803d;font-weight:700;background:#dcfce7;padding:2px 8px;border-radius:8px">✓ Done</span>'
+          : '<span style="font-size:10px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:2px 8px;border-radius:8px">⏳ Pending</span>'}
+      </div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:2px">
+        Delegated: ${fmtDate(s.created_at)}${s.status==='completed' && s.completed_at ? ` · Done: ${fmtDate(s.completed_at)}` : ''}
+      </div>
+    </div>`;
+  }).join('') : `<span style="color:#94a3b8">No sub-tasks yet</span>`;
 }
 
 async function cpAddSubtask(){
   const input = document.getElementById('cpTdNewSubtask');
   const description = input.value.trim();
+  const priority = document.getElementById('cpTdNewSubtaskPriority').value;
   if (!description || !_cpTdTaskId) return;
-  const r = await api(`/api/tasks/${_cpTdTaskId}/subtasks`, 'POST', { description });
+  const r = await api(`/api/tasks/${_cpTdTaskId}/subtasks`, 'POST', { description, priority });
   if (r.error) { showToast(r.error, 'error'); return; }
   input.value = '';
   cpLoadSubtasks();
