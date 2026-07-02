@@ -26,6 +26,7 @@ jobs:
           if [ -z "$APP_URL" ]; then
             echo "APP_URL secret not set — skipping"; exit 0
           fi
+          CLEAN_URL=$(printf '%s' "${APP_URL}" | tr -d '[:space:]')
           curl --silent --show-error --fail-with-body \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${APP_URL%/}/api/cron/meeting-reminder"
+            "${CLEAN_URL%/}/api/cron/meeting-reminder"
