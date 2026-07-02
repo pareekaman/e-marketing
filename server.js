@@ -8233,6 +8233,56 @@ async function _hrmDriveClient() {
   return google.drive({ version: 'v3', auth: client });
 }
 
+function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) {
+  const appUrl  = (process.env.APP_URL || '').replace(/\/$/, '');
+  const logoTag = appUrl
+    ? `<img src="${appUrl}/emarketing-logo.png" alt="e-Marketing" style="max-height:75px;width:auto">`
+    : `<div style="font-size:16px;font-weight:bold;color:#f90">e-Marketing</div><div style="font-size:10px">Grow Your Business | A Unit of Jai Marketing</div>`;
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    body{margin:0;padding:30px 40px;font-family:'Times New Roman',Times,serif;font-size:13px;color:#000;line-height:1.6}
+    .hdr{display:table;width:100%;border-bottom:1px solid #000;padding-bottom:12px;margin-bottom:20px}
+    .hdr-l{display:table-cell;vertical-align:top;width:45%}
+    .hdr-r{display:table-cell;vertical-align:top;text-align:right;font-size:11px;line-height:1.5}
+    .hdr-r .co{font-weight:bold;font-size:11.5px}
+    h2{text-align:center;text-decoration:underline;font-size:14px;letter-spacing:.5px;margin:16px 0}
+    .pc{text-align:right;margin-bottom:18px;font-size:12px}
+    p{margin:0 0 10px;text-align:justify}ol{margin:4px 0 12px 18px}ol li{margin-bottom:3px}
+    .footer{margin-top:28px}a{color:#00f}
+  </style></head><body>
+  <div class="hdr">
+    <div class="hdr-l">${logoTag}</div>
+    <div class="hdr-r">
+      <div class="co">e-Marketing.io (A Unit of Jai Marketing)</div>
+      <div>Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,</div>
+      <div>Malviya Nagar, Jaipur, Rajasthan – 307017 (India)</div>
+      <div>&nbsp;</div>
+      <div>Phone: +91-9602694444</div>
+      <div>Email: <a href="mailto:abhishek@e-marketing.io">abhishek@e-marketing.io</a></div>
+      <div>Website: www.e-marketing.io</div>
+    </div>
+  </div>
+  <h2>PRELIMINARY OFFER LETTER</h2>
+  <div class="pc">Private &amp; Confidential<br>Date :-${today}</div>
+  <p><strong>Dear ${candidateName},</strong></p>
+  <p>With reference to your application and the subsequent interview you had with us, we are pleased to offer you an appointment as <strong>${candidatePosition}</strong> with <strong>e-Marketing (a unit of Jai Marketing)</strong>, Jaipur.</p>
+  <p>You are required to join us on <strong>${joiningFmt}</strong>. Your place of work will be <strong>Jaipur</strong> (8/10 shaheed amit bhardwaj marg, malviya nagar Jaipur 302017)</p>
+  <p>The detailed terms and conditions of your appointment and the salary details, as discussed, shall be issued to you at the time of joining. We expect you to maintain the confidentiality of the salary offer to you.</p>
+  <p>Please submit the following documents on your Joining Day:</p>
+  <ol>
+    <li>Educational/Professional/Technical Qualification certificates</li>
+    <li>Copy of Resignation Acceptance letter or relieving letter from last employer, if applicable.</li>
+    <li>Salary Certificate from last employer, if applicable.</li>
+    <li>One (1) passport size color photograph</li>
+    <li>Copy of Present and Permanent Address Proof.</li>
+    <li>ID Proof (Aadhar Card, PAN Card).</li>
+  </ol>
+  <p>If you fail to join on the aforesaid date and in the absence of any written communication to this effect from you, the said Preliminary Offer Letter shall automatically be treated as withdrawn.</p>
+  <p>Please send a <strong>token of your acceptance</strong> of this Preliminary Offer Letter.</p>
+  <p>Again, we are excited about the growth trajectory that e-Marketing Consulting is on, and we look forward to having you on board as a team member.</p>
+  <div class="footer"><p>For</p><p>e-Marketing (a unit of Jai Marketing)</p></div>
+  </body></html>`;
+}
+
 async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName, overridePosition) {
   const drive = await _hrmDriveClient();
 
@@ -8244,18 +8294,7 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
     : '';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
 
-  const exported = await drive.files.export(
-    { fileId: HRM_OFFER_TEMPLATE_ID, mimeType: 'text/html' },
-    { responseType: 'text' }
-  );
-
-  let html = exported.data;
-  html = html.replace(/\{\{CANDIDATE_NAME\}\}/g,    candidateName);
-  html = html.replace(/\{\{POSITION\}\}/g,           candidatePosition);
-  html = html.replace(/\{\{JOINING_DATE\}\}/g,       joiningFmt);
-  html = html.replace(/\{\{\s*Today_Date\s*\}\}/g,   today);
-  html = html.replace(/\{\{SALARY\}\}/g,             salary || '');
-  html = html.replace(/\{\{CTC\}\}/g,                salary || '');
+  const html = hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today);
 
   const { Readable } = require('stream');
   const created = await drive.files.create({
@@ -8447,16 +8486,9 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
 });
 
 // Export offer letter template as HTML for live preview in portal
-app.get('/api/hrm/offer-template-html', requireAuth, async (req, res) => {
+app.get('/api/hrm/offer-template-html', requireAuth, (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
-  try {
-    const drive = await _hrmDriveClient();
-    const exported = await drive.files.export(
-      { fileId: HRM_OFFER_TEMPLATE_ID, mimeType: 'text/html' },
-      { responseType: 'text' }
-    );
-    res.json({ html: exported.data });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  res.json({ html: hrmBuildOfferHtml('{{CANDIDATE_NAME}}', '{{POSITION}}', '{{JOINING_DATE}}', '{{Today_Date}}') });
 });
 
 // Read offer letter template text + show service account email

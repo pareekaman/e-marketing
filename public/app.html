@@ -5319,9 +5319,58 @@ function printOfferLetter() {
   win.print();
 }
 
-let _hrmTemplateHtml = null;
+function _hrmOfferHtml(name, position, joining, today) {
+  const logoUrl = window.location.origin + '/emarketing-logo.png';
+  const n = name     || '______';
+  const p = position || '______';
+  const j = joining  || '______';
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    body{margin:0;padding:30px 40px;font-family:'Times New Roman',Times,serif;font-size:13px;color:#000;line-height:1.6}
+    .hdr{display:table;width:100%;border-bottom:1px solid #000;padding-bottom:12px;margin-bottom:20px}
+    .hdr-l{display:table-cell;vertical-align:top;width:45%}
+    .hdr-l img{max-height:75px;width:auto}
+    .hdr-r{display:table-cell;vertical-align:top;text-align:right;font-size:11px;line-height:1.5}
+    .hdr-r .co{font-weight:bold;font-size:11.5px}
+    h2{text-align:center;text-decoration:underline;font-size:14px;letter-spacing:.5px;margin:16px 0}
+    .pc{text-align:right;margin-bottom:18px;font-size:12px}
+    p{margin:0 0 10px;text-align:justify}ol{margin:4px 0 12px 18px}ol li{margin-bottom:3px}
+    .footer{margin-top:28px}a{color:#00f}
+  </style></head><body>
+  <div class="hdr">
+    <div class="hdr-l"><img src="${logoUrl}" alt="e-Marketing"></div>
+    <div class="hdr-r">
+      <div class="co">e-Marketing.io (A Unit of Jai Marketing)</div>
+      <div>Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,</div>
+      <div>Malviya Nagar, Jaipur, Rajasthan – 307017 (India)</div>
+      <div>&nbsp;</div>
+      <div>Phone: +91-9602694444</div>
+      <div>Email: <a href="mailto:abhishek@e-marketing.io">abhishek@e-marketing.io</a></div>
+      <div>Website: www.e-marketing.io</div>
+    </div>
+  </div>
+  <h2>PRELIMINARY OFFER LETTER</h2>
+  <div class="pc">Private &amp; Confidential<br>Date :-${today}</div>
+  <p><strong>Dear ${n},</strong></p>
+  <p>With reference to your application and the subsequent interview you had with us, we are pleased to offer you an appointment as <strong>${p}</strong> with <strong>e-Marketing (a unit of Jai Marketing)</strong>, Jaipur.</p>
+  <p>You are required to join us on <strong>${j}</strong>. Your place of work will be <strong>Jaipur</strong> (8/10 shaheed amit bhardwaj marg, malviya nagar Jaipur 302017)</p>
+  <p>The detailed terms and conditions of your appointment and the salary details, as discussed, shall be issued to you at the time of joining. We expect you to maintain the confidentiality of the salary offer to you.</p>
+  <p>Please submit the following documents on your Joining Day:</p>
+  <ol>
+    <li>Educational/Professional/Technical Qualification certificates</li>
+    <li>Copy of Resignation Acceptance letter or relieving letter from last employer, if applicable.</li>
+    <li>Salary Certificate from last employer, if applicable.</li>
+    <li>One (1) passport size color photograph</li>
+    <li>Copy of Present and Permanent Address Proof.</li>
+    <li>ID Proof (Aadhar Card, PAN Card).</li>
+  </ol>
+  <p>If you fail to join on the aforesaid date and in the absence of any written communication to this effect from you, the said Preliminary Offer Letter shall automatically be treated as withdrawn.</p>
+  <p>Please send a <strong>token of your acceptance</strong> of this Preliminary Offer Letter.</p>
+  <p>Again, we are excited about the growth trajectory that e-Marketing Consulting is on, and we look forward to having you on board as a team member.</p>
+  <div class="footer"><p>For</p><p>e-Marketing (a unit of Jai Marketing)</p></div>
+  </body></html>`;
+}
 
-async function openOfferFormModal(id) {
+function openOfferFormModal(id) {
   const c = _hrmCandidates.find(x => String(x.id) === String(id));
   if (!c) return;
   _hrmCurrentId = id;
@@ -5330,48 +5379,20 @@ async function openOfferFormModal(id) {
   document.getElementById('offerFJoining').value  = c.joining_date ? String(c.joining_date).slice(0,10) : '';
   document.getElementById('offerFSalary').value   = c.salary || '';
   document.getElementById('hrmOfferFormModal').classList.add('open');
-  document.getElementById('offerFormPreview').innerHTML =
-    '<div style="text-align:center;padding:48px 20px;color:#64748b;font-family:sans-serif;font-size:13px">Loading template preview…</div>';
-  if (!_hrmTemplateHtml) {
-    try {
-      const r = await api('/api/hrm/offer-template-html');
-      if (r && r.html) {
-        _hrmTemplateHtml = r.html;
-      } else {
-        document.getElementById('offerFormPreview').innerHTML =
-          `<div style="text-align:center;padding:40px 20px;color:#dc2626;font-family:sans-serif;font-size:13px">Template load failed: ${(r && r.error) || 'Unknown error'}</div>`;
-        return;
-      }
-    } catch(e) {
-      document.getElementById('offerFormPreview').innerHTML =
-        `<div style="text-align:center;padding:40px 20px;color:#dc2626;font-family:sans-serif;font-size:13px">Template load failed: ${e.message}</div>`;
-      return;
-    }
-  }
   updateOfferPreview();
 }
 
 function updateOfferPreview() {
-  if (!_hrmTemplateHtml) return;
   const name       = document.getElementById('offerFName').value     || '';
   const position   = document.getElementById('offerFPosition').value || '';
   const joiningRaw = document.getElementById('offerFJoining').value;
-  const salary     = document.getElementById('offerFSalary').value   || '';
   const joining    = joiningRaw
     ? new Date(joiningRaw).toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'})
     : '';
-  const today = new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'});
-
-  let html = _hrmTemplateHtml;
-  html = html.replace(/\{\{CANDIDATE_NAME\}\}/g,    name);
-  html = html.replace(/\{\{POSITION\}\}/g,           position);
-  html = html.replace(/\{\{JOINING_DATE\}\}/g,       joining);
-  html = html.replace(/\{\{\s*Today_Date\s*\}\}/g,   today);
-  html = html.replace(/\{\{SALARY\}\}/g,             salary);
-  html = html.replace(/\{\{CTC\}\}/g,                salary);
-
-  const container = document.getElementById('offerFormPreview');
-  container.innerHTML = '<iframe id="offerPreviewFrame" style="width:100%;height:420px;border:none;display:block" sandbox="allow-same-origin"></iframe>';
+  const today  = new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'});
+  const html   = _hrmOfferHtml(name, position, joining, today);
+  const cont   = document.getElementById('offerFormPreview');
+  cont.innerHTML = '<iframe id="offerPreviewFrame" style="width:100%;height:420px;border:none;display:block" sandbox="allow-same-origin"></iframe>';
   document.getElementById('offerPreviewFrame').srcdoc = html;
 }
 
