@@ -154,7 +154,7 @@ table td{padding:10px 14px;border-bottom:1px solid #f1f5f9;color:#1e293b;}
     <div id="cpTdBody" style="margin-top:14px;display:flex;flex-direction:column;gap:10px"></div>
     <div id="cpTdSubtasksSection" style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0">
       <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px">🧩 Sub-tasks</div>
-      <div id="cpTdSubtasksList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;font-size:13px;color:#94a3b8">Loading…</div>
+      <div id="cpTdSubtasksList" style="overflow-x:auto;margin-bottom:10px;font-size:13px;color:#94a3b8">Loading…</div>
       <div style="display:flex;gap:6px">
         <input type="text" id="cpTdNewSubtask" placeholder="Add a related task" style="flex:1;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter'){cpAddSubtask()}"/>
         <select id="cpTdNewSubtaskPriority" style="padding:7px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px">
@@ -681,23 +681,28 @@ async function cpLoadSubtasks(){
   if (!wrap.isConnected) return; // modal closed before the fetch resolved
   if (r.error) { wrap.innerHTML = `<span style="color:#dc2626">${dtEscape(r.error)}</span>`; return; }
   const items = r.subtasks || [];
+  if (!items.length) { wrap.innerHTML = `<span style="color:#94a3b8">No sub-tasks yet</span>`; return; }
   const priorityColors = { urgent: ['#fef2f2','#dc2626'], high: ['#fffbeb','#92400e'], medium: ['#eff6ff','#1d4ed8'], low: ['#f0fdf4','#16a34a'] };
-  wrap.innerHTML = items.length ? items.map(s => {
+  const rows = items.map((s, i) => {
     const [prBg, prFg] = priorityColors[s.priority] || priorityColors.low;
-    return `
-    <div style="padding:6px 0;border-bottom:1px solid #f8fafc">
-      <div style="display:flex;align-items:center;gap:8px;color:#0f172a">
-        <span style="flex:1;word-break:break-word;${s.status==='completed'?'text-decoration:line-through;color:#94a3b8':''}">${dtEscape(s.description)}</span>
-        <span style="font-size:10px;color:${prFg};font-weight:700;background:${prBg};padding:2px 8px;border-radius:8px;text-transform:capitalize">${dtEscape(s.priority||'low')}</span>
-        ${s.status==='completed'
-          ? '<span style="font-size:10px;color:#15803d;font-weight:700;background:#dcfce7;padding:2px 8px;border-radius:8px">✓ Done</span>'
-          : '<span style="font-size:10px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:2px 8px;border-radius:8px">⏳ Pending</span>'}
-      </div>
-      <div style="font-size:11px;color:#94a3b8;margin-top:2px">
-        Delegated: ${fmtDate(s.created_at)}${s.status==='completed' && s.completed_at ? ` · Done: ${fmtDate(s.completed_at)}` : ''}
-      </div>
-    </div>`;
-  }).join('') : `<span style="color:#94a3b8">No sub-tasks yet</span>`;
+    return `<tr style="border-bottom:1px solid #f1f5f9">
+      <td style="padding:6px 8px;color:#94a3b8">${i + 1}</td>
+      <td style="padding:6px 8px;color:#0f172a;word-break:break-word;${s.status==='completed'?'text-decoration:line-through;color:#94a3b8':''}">${dtEscape(s.description)}</td>
+      <td style="padding:6px 8px;white-space:nowrap;color:#64748b">${fmtDate(s.created_at)}</td>
+      <td style="padding:6px 8px;white-space:nowrap;color:#64748b">${s.completed_at ? fmtDate(s.completed_at) : '—'}</td>
+      <td style="padding:6px 8px"><span style="font-size:10px;color:${prFg};font-weight:700;background:${prBg};padding:2px 8px;border-radius:8px;text-transform:capitalize">${dtEscape(s.priority||'low')}</span></td>
+      <td style="padding:6px 8px">${s.status==='completed'
+        ? '<span style="font-size:10px;color:#15803d;font-weight:700;background:#dcfce7;padding:2px 8px;border-radius:8px">✓ Done</span>'
+        : '<span style="font-size:10px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:2px 8px;border-radius:8px">⏳ Pending</span>'}</td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="text-align:left;color:#94a3b8;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px">
+      <th style="padding:4px 8px">S.No</th><th style="padding:4px 8px">Task</th><th style="padding:4px 8px">Date</th>
+      <th style="padding:4px 8px">Done</th><th style="padding:4px 8px">Priority</th><th style="padding:4px 8px">Status</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
 }
 
 async function cpAddSubtask(){

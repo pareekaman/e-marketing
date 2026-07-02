@@ -6735,7 +6735,7 @@ function openTaskDetail(t) {
   const subtasksSection = (t.type === 'delegation' && t.id) ? `
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0">
       <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px">🧩 Sub-tasks <span style="font-weight:500;color:#94a3b8">(added by client)</span></div>
-      <div id="tdSubtasksList" style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#94a3b8">Loading…</div>
+      <div id="tdSubtasksList" style="overflow-x:auto;font-size:13px;color:#94a3b8">Loading…</div>
     </div>` : '';
 
   document.getElementById('tdTitle').textContent = '📋 ' + (t.description || 'Task Detail');
@@ -6762,22 +6762,32 @@ async function loadSubtasks(taskId) {
   if (!wrap.isConnected) return; // modal closed before the fetch resolved
   if (r.error) { wrap.innerHTML = `<span style="color:#dc2626">${dtEscape(r.error)}</span>`; return; }
   const items = r.subtasks || [];
+  if (!items.length) { wrap.innerHTML = `<span style="color:#94a3b8">No sub-tasks yet</span>`; return; }
   const priorityColors = { urgent: '#dc2626', high: '#ea580c', medium: '#d97706', low: '#16a34a' };
-  wrap.innerHTML = items.length ? items.map(s => {
+  const rows = items.map((s, i) => {
     const prColor = priorityColors[s.priority] || priorityColors.low;
-    return `
-    <div style="padding:4px 0;border-bottom:1px solid #f8fafc">
-      <label style="display:flex;align-items:center;gap:8px;color:#0f172a">
-        <input type="checkbox" ${s.status==='completed'?'checked':''} onchange="toggleSubtask(${s.id},${taskId},this.checked)"/>
-        <span style="flex:1;word-break:break-word;${s.status==='completed'?'text-decoration:line-through;color:#94a3b8':''}">${dtEscape(s.description)}</span>
-        <span style="font-size:11px;color:${prColor};font-weight:600;text-transform:capitalize">${dtEscape(s.priority||'low')}</span>
-        <button class="action-btn" style="padding:1px 6px;font-size:11px" onclick="deleteSubtask(${s.id},${taskId})" title="Delete">✕</button>
-      </label>
-      <div style="font-size:11px;color:#94a3b8;margin-left:24px">
-        Delegated: ${fmtDate(s.created_at)}${s.status==='completed' && s.completed_at ? ` · Done: ${fmtDate(s.completed_at)}` : ''}
-      </div>
-    </div>`;
-  }).join('') : `<span style="color:#94a3b8">No sub-tasks yet</span>`;
+    return `<tr style="border-bottom:1px solid #f1f5f9">
+      <td style="padding:6px 8px;color:#94a3b8">${i + 1}</td>
+      <td style="padding:6px 8px;color:#0f172a;word-break:break-word;${s.status==='completed'?'text-decoration:line-through;color:#94a3b8':''}">${dtEscape(s.description)}</td>
+      <td style="padding:6px 8px;white-space:nowrap;color:#64748b">${fmtDate(s.created_at)}</td>
+      <td style="padding:6px 8px;white-space:nowrap;color:#64748b">${s.completed_at ? fmtDate(s.completed_at) : '—'}</td>
+      <td style="padding:6px 8px;color:${prColor};font-weight:600;text-transform:capitalize">${dtEscape(s.priority||'low')}</td>
+      <td style="padding:6px 8px">${s.status==='completed'
+        ? '<span style="font-size:10px;color:#15803d;font-weight:700;background:#dcfce7;padding:2px 8px;border-radius:8px">✓ Done</span>'
+        : '<span style="font-size:10px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:2px 8px;border-radius:8px">⏳ Pending</span>'}</td>
+      <td style="padding:6px 8px;white-space:nowrap">
+        <input type="checkbox" ${s.status==='completed'?'checked':''} onchange="toggleSubtask(${s.id},${taskId},this.checked)" title="Mark done"/>
+        <button class="action-btn" style="padding:1px 6px;font-size:11px;margin-left:4px" onclick="deleteSubtask(${s.id},${taskId})" title="Delete">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="text-align:left;color:#94a3b8;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px">
+      <th style="padding:4px 8px">S.No</th><th style="padding:4px 8px">Task</th><th style="padding:4px 8px">Date</th>
+      <th style="padding:4px 8px">Done</th><th style="padding:4px 8px">Priority</th><th style="padding:4px 8px">Status</th><th style="padding:4px 8px">Action</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
 }
 
 async function toggleSubtask(id, taskId, checked) {
