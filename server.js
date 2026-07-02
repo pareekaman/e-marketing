@@ -37,6 +37,18 @@ app.use('/api', async (req, res, next) => {
   next();
 });
 
+// Lazy meeting-reminder check — fires at most once every 5 min on any API hit.
+// Works as long as someone is using the app during business hours.
+let _lastReminderCheck = 0;
+app.use('/api', (req, res, next) => {
+  const now = Date.now();
+  if (now - _lastReminderCheck > 5 * 60 * 1000) {
+    _lastReminderCheck = now;
+    sendMeetingReminders().catch(e => console.error('lazy reminder err:', e.message));
+  }
+  next();
+});
+
 // ══════════════════════════════════════════════════════
 // MYSQL CONNECTION
 // ══════════════════════════════════════════════════════
@@ -306,6 +318,8 @@ const _startupMigrationsPromise = (async () => {
   // Delegation where the doer sets their own due date (assigner doesn't know occupancy).
   // due_date stays NULL until the doer (or assigner) picks one; then this flips to 0.
   await sa(`ALTER TABLE delegation_tasks ADD COLUMN awaiting_due_date TINYINT(1) DEFAULT 0 AFTER waiting_approval`);
+  // Client portal delegation form offers an 'urgent' priority tier above 'high'.
+  await sa(`ALTER TABLE delegation_tasks MODIFY COLUMN priority ENUM('low','medium','high','urgent') DEFAULT 'low'`);
   // Revise approval holds the requested new due-date here until the assigner approves.
   await sa(`ALTER TABLE task_approvals ADD COLUMN new_date DATE DEFAULT NULL AFTER action_type`);
   await sa(`ALTER TABLE checklist_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`);
