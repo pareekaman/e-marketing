@@ -14249,40 +14249,52 @@ function ccBuildSummaryModal(si) {
     if (row.style.display === 'none') return;
     const amtCell = row.cells[3];
     const rawAmt  = amtCell ? amtCell.textContent.replace(/[^\d.]/g, '') : '0';
-    const amt     = parseFloat(rawAmt) || 0;
-    if (amtCell && amtCell.style.color === 'rgb(22, 163, 74)') return;
+    const isCredit = amtCell && amtCell.style.color === 'rgb(22, 163, 74)';
+    const amt = (parseFloat(rawAmt) || 0) * (isCredit ? -1 : 1);
     const deptLbl = row.querySelector('[id^="ccDeptLabel-"]');
     const ownLbl  = row.querySelector('[id^="ccOwnLabel-"]');
     const dept = (deptLbl && deptLbl.style.color !== 'rgb(148, 163, 184)') ? deptLbl.textContent.trim() : '(unset)';
     const own  = (ownLbl  && ownLbl.style.color  !== 'rgb(148, 163, 184)') ? ownLbl.textContent.trim()  : '(unset)';
-    deptMap[dept] = deptMap[dept] || { count:0, amt:0 };
+    deptMap[dept] = deptMap[dept] || { count:0, amt:0, debit:0, credit:0 };
     deptMap[dept].count++; deptMap[dept].amt += amt;
-    ownMap[own]   = ownMap[own]   || { count:0, amt:0 };
+    if (isCredit) deptMap[dept].credit += Math.abs(amt); else deptMap[dept].debit += amt;
+    ownMap[own]   = ownMap[own]   || { count:0, amt:0, debit:0, credit:0 };
     ownMap[own].count++;  ownMap[own].amt  += amt;
+    if (isCredit) ownMap[own].credit += Math.abs(amt); else ownMap[own].debit += amt;
   });
+  const fmtAmt = (v) => {
+    const color = v >= 0 ? '#dc2626' : '#16a34a';
+    const prefix = v < 0 ? '+ ' : '';
+    return `<span style="color:${color};font-weight:700">${prefix}₹${Math.abs(v).toLocaleString('en-IN',{minimumFractionDigits:2})}</span>`;
+  };
   const buildTable = (map) => {
-    const rows = Object.entries(map).sort((a,b) => b[1].amt - a[1].amt);
+    const rows = Object.entries(map).sort((a,b) => b[1].debit - a[1].debit);
     if (!rows.length) return '<div style="font-size:13px;color:#94a3b8;padding:12px 0">No data</div>';
-    const total = rows.reduce((s,[,v])=>s+v.amt,0);
+    const totalDebit  = rows.reduce((s,[,v])=>s+v.debit,0);
+    const totalCredit = rows.reduce((s,[,v])=>s+v.credit,0);
+    const totalNet    = totalDebit - totalCredit;
     return `<table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
         <th style="padding:9px 12px;text-align:left;font-weight:700;color:#475569">Name</th>
         <th style="padding:9px 12px;text-align:center;font-weight:700;color:#475569">Txns</th>
-        <th style="padding:9px 12px;text-align:right;font-weight:700;color:#475569">Amount</th>
-        <th style="padding:9px 12px;text-align:right;font-weight:700;color:#475569">%</th>
+        <th style="padding:9px 12px;text-align:right;font-weight:700;color:#dc2626">Debit</th>
+        <th style="padding:9px 12px;text-align:right;font-weight:700;color:#16a34a">Credit</th>
+        <th style="padding:9px 12px;text-align:right;font-weight:700;color:#475569">Net</th>
       </tr></thead>
       <tbody>${rows.map(([name, v], i) =>
         `<tr style="border-bottom:1px solid #f1f5f9;${i%2?'background:#f8fafc':''}">
           <td style="padding:9px 12px;color:${name==='(unset)'?'#94a3b8':'#0f172a'};font-style:${name==='(unset)'?'italic':'normal'};font-weight:500">${dtEscape(name)}</td>
           <td style="padding:9px 12px;text-align:center;color:#64748b;font-weight:600">${v.count}</td>
-          <td style="padding:9px 12px;text-align:right;font-weight:700;color:#dc2626">₹${v.amt.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
-          <td style="padding:9px 12px;text-align:right;color:#64748b;font-size:12px">${total?Math.round(v.amt/total*100)+'%':'—'}</td>
+          <td style="padding:9px 12px;text-align:right;color:#dc2626;font-weight:700">${v.debit?'₹'+v.debit.toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
+          <td style="padding:9px 12px;text-align:right;color:#16a34a;font-weight:700">${v.credit?'+ ₹'+v.credit.toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
+          <td style="padding:9px 12px;text-align:right">${fmtAmt(v.amt)}</td>
         </tr>`).join('')}
         <tr style="border-top:2px solid #e2e8f0;background:#fff7ed">
           <td style="padding:9px 12px;font-weight:700;color:#0f172a">Total</td>
           <td style="padding:9px 12px;text-align:center;font-weight:700;color:#0f172a">${rows.reduce((s,[,v])=>s+v.count,0)}</td>
-          <td style="padding:9px 12px;text-align:right;font-weight:800;color:#dc2626">₹${total.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
-          <td></td>
+          <td style="padding:9px 12px;text-align:right;font-weight:800;color:#dc2626">₹${totalDebit.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+          <td style="padding:9px 12px;text-align:right;font-weight:800;color:#16a34a">${totalCredit?'+ ₹'+totalCredit.toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
+          <td style="padding:9px 12px;text-align:right">${fmtAmt(totalNet)}</td>
         </tr>
       </tbody></table>`;
   };
