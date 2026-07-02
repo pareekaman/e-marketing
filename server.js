@@ -2428,7 +2428,7 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
     if (phone) sendWhatsApp(phone, waMsg).catch(e => console.error('WA new user err:', e.message));
     // Team welcome announcement
     const welcomeMsg = `Hello Team,\nPlease join me in welcoming ${name} our new team member who has joined us as a ${department || 'team member'}.\nWe are excited to have them on board and look forward to working together.\nWelcome to the team, ${name}! 🌸`;
-    sendWhatsApp('919079649289', welcomeMsg).catch(e => console.error('WA team welcome err:', e.message));
+    sendWhatsApp('919602694444-1618492040@g.us', welcomeMsg).catch(e => console.error('WA team welcome err:', e.message));
     // Append new user to Google Sheet
     const SHEET_ID = '1k8GTp731LMNE6E1_FwNO8yvGJu7ogo-4PX6c7JP4emM';
     const fmtDate = d => { if (!d) return ''; const [y,m,dd] = d.split('-'); return `${dd}/${m}/${y}`; };
@@ -2454,6 +2454,22 @@ app.put('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
       [name,email,notification_email||'',appRole,userRole,bcrypt.hashSync(password,10),phone||null,department||'',week_off||'',extra_off||'',exclVal,accessJson,birthday||null,joining_date||null,req.params.id]);
     else await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=?,extra_access=?,birthday=?,joining_date=? WHERE id=?',
       [name,email,notification_email||'',appRole,userRole,phone||null,department||'',week_off||'',extra_off||'',exclVal,accessJson,birthday||null,joining_date||null,req.params.id]);
+    // Update Google Sheet row matching this user's name
+    const SHEET_ID = '1k8GTp731LMNE6E1_FwNO8yvGJu7ogo-4PX6c7JP4emM';
+    const fmtDate = d => { if (!d) return ''; const [y,m,dd] = d.split('-'); return `${dd}/${m}/${y}`; };
+    getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']).then(async sheets => {
+      const get = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'Sheet1!A:A' });
+      const rows = get.data.values || [];
+      const rowIdx = rows.findIndex(r => r[0] === name);
+      if (rowIdx >= 1) {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SHEET_ID,
+          range: `Sheet1!B${rowIdx+1}:C${rowIdx+1}`,
+          valueInputOption: 'USER_ENTERED',
+          resource: { values: [[fmtDate(birthday), fmtDate(joining_date)]] }
+        });
+      }
+    }).catch(e => console.error('Sheets update err:', e.message));
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
