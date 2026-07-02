@@ -5296,8 +5296,20 @@ async function openOfferFormModal(id) {
   document.getElementById('offerFormPreview').innerHTML =
     '<div style="text-align:center;padding:48px 20px;color:#64748b;font-family:sans-serif;font-size:13px">Loading template preview…</div>';
   if (!_hrmTemplateHtml) {
-    const r = await api('/api/hrm/offer-template-html');
-    if (r && r.html) _hrmTemplateHtml = r.html;
+    try {
+      const r = await api('/api/hrm/offer-template-html');
+      if (r && r.html) {
+        _hrmTemplateHtml = r.html;
+      } else {
+        document.getElementById('offerFormPreview').innerHTML =
+          `<div style="text-align:center;padding:40px 20px;color:#dc2626;font-family:sans-serif;font-size:13px">Template load failed: ${(r && r.error) || 'Unknown error'}</div>`;
+        return;
+      }
+    } catch(e) {
+      document.getElementById('offerFormPreview').innerHTML =
+        `<div style="text-align:center;padding:40px 20px;color:#dc2626;font-family:sans-serif;font-size:13px">Template load failed: ${e.message}</div>`;
+      return;
+    }
   }
   updateOfferPreview();
 }
