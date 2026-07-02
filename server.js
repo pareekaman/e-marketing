@@ -8464,13 +8464,19 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       hrmGenerateOfferDoc(c, joining_date, salary, offer_name, offer_position)
         .then(async ({ fileId, pdfUrl }) => {
           await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
-          hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
+          await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
             to: hrmFormatPhone(c.phone),
             url: pdfUrl,
             caption: `📄 Offer Letter - ${HRM_COMPANY}\n\nDear ${displayName},\nPlease find your offer letter attached.\n\n— ${HRM_COMPANY} HR Team`
-          }, 'file', c.id, c.name, 'Offer Letter PDF').catch(e => console.error('HRM WA file err:', e.message));
+          }, 'file', c.id, c.name, 'Offer Letter PDF');
         })
-        .catch(e => console.error('HRM offer doc generation failed:', e.message));
+        .catch(e => {
+          console.error('HRM offer doc generation failed:', e.message);
+          db.query(
+            `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
+            [c.id, c.name, hrmFormatPhone(c.phone), 'Offer Letter PDF', 'file', 'Failed', `Drive error: ${e.message}`, '{}']
+          ).catch(() => {});
+        });
     }
 
     res.json({ ok: true });
