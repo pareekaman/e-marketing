@@ -5290,7 +5290,16 @@ Rules for ALL banks:
   Total Amount Due ← "Total Amount due" (case-insensitive)
   Minimum Due      ← "Minimum Amount due" (case-insensitive)
   Due Date         ← "PAYMENT DUE DATE"
-  Transactions: date from "Date" column (DD/MM/YYYY), description from "Transaction Details" or "Particulars" column, amount from "Amount (in Rs.)" or "Amount" column; CR/DR indicator in separate column`;
+  Transactions: date from "Date" column (DD/MM/YYYY), description from "Transaction Details" or "Particulars" column, amount from "Amount (in Rs.)" or "Amount" column; CR/DR indicator in separate column
+
+════ SCB (Standard Chartered Bank) field names in the PDF: ════
+  Credit Card No.  ← "Card No." or the card number printed on the statement (16 digits); card type "DigiSmart" is NOT the card number
+  Statement Date   ← "Statement Date"
+  Billing Period   ← "Statement Period"
+  Total Amount Due ← "Total Payment Due (INR)"
+  Minimum Due      ← "Minimum Payment Due (INR)"
+  Due Date         ← "Payment Due Date"
+  Transactions: date from "Date" column (DD/MM/YYYY), description from "Description" or "Transaction Details" column, amount from "Amount" column; CR/DR indicator in type column`;
 
 function safeParseCC(text) {
   text = String(text||'').trim().replace(/^```(?:json)?/m,'').replace(/```$/m,'').trim();
@@ -5567,6 +5576,31 @@ function parseSbiCC(j, txns) {
   return { bankName:'SBI', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
+function parseScbCC(j, txns) {
+  const f          = j.fields || j;
+  // SCB PDF: Card No. shown as card type (DigiSmart etc.) — card number may be separate
+  const cardNumber = f['Credit Card No.'] || f['Card Number'] || f['Card No.'] || f['DigiSmart'] || 'Unknown Card';
+  // SCB PDF: "Statement Date"
+  const stmtDate   = parseCCDateDMY(f['Statement Date']) || parseCCDateLong(f['Statement Date']);
+  // SCB PDF: "Payment Due Date"
+  const dueDate    = parseCCDateDMY(f['Payment Due Date']) || parseCCDateLong(f['Payment Due Date'])
+                  || parseCCDateDMY(f['Due Date']) || parseCCDateLong(f['Due Date']);
+  // SCB PDF: "Total Payment Due (INR)"
+  const payable    = parseCCAmount(f['Total Payment Due (INR)'] || f['Total Payment Due'] || f['Total Amount Due'] || f['Payable Amount']);
+  // SCB PDF: "Minimum Payment Due (INR)"
+  const minDue     = parseCCAmount(f['Minimum Payment Due (INR)'] || f['Minimum Payment Due'] || f['Minimum Due'] || f['Minimum Amount Due']);
+  // SCB PDF: "Statement Period"
+  const period     = f['Statement Period'] || f['Billing Period'] || '';
+  const transactions = dedupeTxns((txns || []).map(t => {
+    const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
+    const amount   = parseCCAmount(t.amount);
+    if (!amount) return null;
+    const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]) || parseCCDateLong(t.date);
+    return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
+  }).filter(Boolean));
+  return { bankName:'SCB', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
+}
+
 function parseCCJson(extracted, filename) {
   const text  = JSON.stringify(extracted).toLowerCase();
   const fname = (filename||'').toLowerCase();
@@ -5588,6 +5622,9 @@ function parseCCJson(extracted, filename) {
   // SBI — "sbi card" is the bank name in the PDF
   if (text.includes('sbi card') || text.includes('sbi') || fname.includes('sbi'))
     return parseSbiCC(extracted, extracted.transactions);
+  // SCB — Standard Chartered Bank
+  if (text.includes('standard chartered') || text.includes('scb') || fname.includes('scb'))
+    return parseScbCC(extracted, extracted.transactions);
   const bank = detectBankName(text) || detectBankName(fname) || 'Unknown';
   return { bankName:bank, cardNumber:'Unknown Card', statementDate:null, paymentDueDate:null, payableAmount:0, minAmountDue:0, statementPeriod:'', transactions:[] };
 }
