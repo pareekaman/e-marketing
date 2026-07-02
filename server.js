@@ -1406,10 +1406,25 @@ app.post('/api/tasks/:id/subtasks', requireAuth, async (req, res) => {
     const taskId = parseInt(req.params.id, 10);
     const desc = (req.body.description || '').trim();
     if (!desc) return res.status(400).json({ error: 'Description required' });
-    const [[task]] = await db.query('SELECT id, assigned_to, assigned_by, client_id FROM delegation_tasks WHERE id=?', [taskId]);
+    const [[task]] = await db.query('SELECT id, assigned_to, assigned_by, client_id, description FROM delegation_tasks WHERE id=?', [taskId]);
     if (!task) return res.status(404).json({ error: 'Task not found' });
     if (!(await canTouchSubtasks(req, task))) return res.status(403).json({ error: 'Not allowed' });
     await db.query('INSERT INTO task_subtasks (task_id, description, created_by) VALUES (?,?,?)', [taskId, desc, req.session.userId]);
+
+    // 📱 WhatsApp to the handler — non-blocking (fire and forget).
+    (async () => {
+      const [[client]] = await db.query('SELECT name FROM users WHERE id=? LIMIT 1', [req.session.userId]);
+      const [[handler]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [task.assigned_to]);
+      if (handler?.phone) {
+        const msg = `Hello ${handler.name || ''},\n\n🧩 *New Sub-task Added*\n\n` +
+          `*By:* ${client?.name || 'Client'} (Client)\n` +
+          `*Under Task:* ${task.description}\n\n` +
+          `*Sub-task:* ${desc}\n\n` +
+          `— E-Marketing Task Manager`;
+        sendWhatsApp(handler.phone, msg).catch(e => console.error('WA subtask err:', e.message));
+      }
+    })().catch(e => console.error('WA subtask lookup err:', e.message));
+
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
