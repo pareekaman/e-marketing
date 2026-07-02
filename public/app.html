@@ -96,6 +96,11 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;min-height:
 .sidebar:hover .logout-label{opacity:1;}
 
 /* ══════════════════════════════════════
+   MOBILE BOTTOM TAB BAR
+══════════════════════════════════════ */
+.mobile-bottom-nav{display:none;}
+
+/* ══════════════════════════════════════
    MAIN
 ══════════════════════════════════════ */
 .main{margin-left:60px;min-height:100vh;transition:margin-left .25s ease;}
@@ -780,7 +785,7 @@ tbody tr:last-child td{border-bottom:none;}
 .e3-sc-bad{background:#fee2e2;color:#991b1b;}
 .e3-sc-na{background:#f1f5f9;color:#94a3b8;}
 @media print{
-  .sidebar,.topbar,.tab-group,.cp-filter-row,.nav-item,.e3-toggle{display:none !important;}
+  .sidebar,.topbar,.tab-group,.cp-filter-row,.nav-item,.e3-toggle,.mobile-bottom-nav{display:none !important;}
   .cp-card{box-shadow:none;border:none;padding:0;}
   .e3-card,.e3-table{break-inside:avoid;}
 }
@@ -965,21 +970,37 @@ tbody tr:last-child td{border-bottom:none;}
 .sidebar-backdrop.open{display:block;}
 
 @media (max-width:768px){
-  /* ── Sidebar → slide-in drawer ── */
-  .sidebar{width:240px;transform:translateX(-100%);transition:transform .25s ease;box-shadow:4px 0 24px rgba(0,0,0,.18);}
-  .sidebar:hover{width:240px;}
-  .sidebar.open{transform:translateX(0);}
-  .sidebar .logo-text,.sidebar .nav-label-text,.sidebar .su-info,.sidebar .logout-label{opacity:1;}
+  /* ── Sidebar replaced by the bottom tab bar on mobile ── */
+  .sidebar,.sidebar-backdrop,.mobile-hamburger{display:none !important;}
+
+  /* ── Bottom tab bar ── */
+  .mobile-bottom-nav{
+    display:flex;position:fixed;left:0;right:0;bottom:0;z-index:250;
+    background:#0f172a;border-top:1px solid rgba(255,255,255,.08);
+    overflow-x:auto;-webkit-overflow-scrolling:touch;
+    padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));
+    gap:2px;scrollbar-width:none;
+  }
+  .mobile-bottom-nav::-webkit-scrollbar{display:none;}
+  .mobile-bottom-nav .nav-item{
+    flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:3px;padding:7px 13px;border-radius:10px;cursor:pointer;
+    font-size:10px;font-weight:600;white-space:nowrap;min-width:60px;
+    color:#94a3b8;margin-bottom:0;border-left:none;
+  }
+  .mobile-bottom-nav .nav-item svg{width:19px;height:19px;}
+  .mobile-bottom-nav .nav-item .nav-label-text{opacity:1;font-size:10px;}
+  .mobile-bottom-nav .nav-item.active{background:rgba(96,165,250,.15);color:#60a5fa;}
+  .mobile-bottom-nav .nav-divider{display:none;}
 
   /* ── Main content ── */
   .main{margin-left:0;}
   .topbar{padding:0 14px;height:54px;gap:10px;}
   .topbar-title{font-size:15px;font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .mobile-hamburger{display:flex;align-items:center;justify-content:center;}
   .topbar-right{gap:6px;flex-shrink:0;}
 
-  /* ── Pages ── */
-  .page{padding:14px 12px;}
+  /* ── Pages (padding-bottom leaves room for the fixed bottom tab bar) ── */
+  .page{padding:14px 12px calc(72px + env(safe-area-inset-bottom,0px));}
   .page-header{flex-wrap:wrap;gap:10px;margin-bottom:14px;}
   .page-header h2{font-size:17px;}
 
@@ -1308,9 +1329,9 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="nav-item" id="nav-approvals" onclick="navigate('approvals',this)" style="position:relative">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
       <span class="nav-label-text">Approvals</span>
-      <span id="approvalBadge" style="display:none;position:absolute;top:6px;right:8px;background:#ef4444;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;align-items:center;justify-content:center">0</span>
-      <span id="transferBadge" style="display:none;position:absolute;top:6px;right:26px;background:#7c3aed;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;align-items:center;justify-content:center">0</span>
-      <span id="waDelegBadge" style="display:none;position:absolute;top:6px;right:44px;background:#25d366;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;align-items:center;justify-content:center">0</span>
+      <span class="nav-approval-badge" style="display:none;position:absolute;top:6px;right:8px;background:#ef4444;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;align-items:center;justify-content:center">0</span>
+      <span class="nav-transfer-badge" style="display:none;position:absolute;top:6px;right:26px;background:#7c3aed;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;align-items:center;justify-content:center">0</span>
+      <span class="nav-wa-badge" style="display:none;position:absolute;top:6px;right:44px;background:#25d366;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;align-items:center;justify-content:center">0</span>
     </div>
     <div class="nav-item" id="nav-users" style="display:none" onclick="navigate('users',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
@@ -1406,6 +1427,11 @@ tbody tr:last-child td{border-bottom:none;}
     </button>
   </div>
 </aside>
+
+<!-- ══════════════════════════════════════
+     MOBILE BOTTOM TAB BAR (mirrors sidebar nav, horizontally scrollable)
+══════════════════════════════════════ -->
+<nav class="mobile-bottom-nav" id="mobileBottomNav"></nav>
 
 <!-- ══════════════════════════════════════
      MAIN
@@ -1725,6 +1751,7 @@ tbody tr:last-child td{border-bottom:none;}
           <input type="number" id="paFilterAmtMax" placeholder="₹ Max" onchange="paApplyFilters()" style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
         </div>
         <button onclick="paResetFilters()" style="padding:8px 16px;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;align-self:flex-end">↺ Reset</button>
+        <button onclick="paSendLeaveReminder()" id="paLeaveReminderBtn" style="padding:8px 16px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;align-self:flex-end">📤 Send Leave Reminder</button>
       </div>
       <div id="paymentApprovalsList" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
         <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>
@@ -4307,6 +4334,10 @@ async function init() {
     const prNav = document.getElementById('nav-paymentreq');
     if (prNav) prNav.style.display = (ME.role === 'admin') ? 'flex' : 'none';
 
+    // Mirror the sidebar into the mobile bottom tab bar, and keep it in sync
+    // as later async permission checks (feedback, fms-tasks) toggle nav items.
+    initMobileBottomNavSync();
+
     // Feedback nav — check server if this user is a valid recipient (HOD / fixed recipients)
     const fbNav = document.getElementById('nav-feedback');
     if (fbNav) {
@@ -5397,6 +5428,8 @@ function navigate(page, el) {
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   if (el) el.classList.add('active');
+  // Keep the sidebar item AND its mobile-bottom-nav clone in sync, whichever one was tapped
+  document.querySelectorAll(`.nav-item[onclick*="navigate('${page}',"]`).forEach(n=>n.classList.add('active'));
   document.getElementById('topbarTitle').textContent = pageTitles[page] || page;
   // Dashboard user-switcher lives on the dashboard header only.
   const ta = document.getElementById('topbarActions');
@@ -5417,6 +5450,33 @@ function navigate(page, el) {
   const loaderFn = pageLoaders[page];
   if (typeof loaderFn === 'function') withPageLoader(loaderFn);
   window.scrollTo(0,0);
+}
+
+// ══════════════════════════════════════════════════════
+// MOBILE BOTTOM TAB BAR — mirrors the sidebar's visible nav-items
+// (clones, not the same nodes, since a fixed bottom bar can't reuse a
+// hidden-off-canvas sidebar element). Re-rendered whenever the sidebar's
+// nav items change (role-based show/hide happens async in a few places).
+// ══════════════════════════════════════════════════════
+function renderMobileBottomNav() {
+  const bar = document.getElementById('mobileBottomNav');
+  const navRoot = document.querySelector('.sidebar .nav');
+  if (!bar || !navRoot) return;
+  bar.innerHTML = '';
+  navRoot.querySelectorAll(':scope > .nav-item').forEach(n => {
+    if (getComputedStyle(n).display === 'none') return;
+    bar.appendChild(n.cloneNode(true));
+  });
+}
+
+let _mbnObserver = null;
+function initMobileBottomNavSync() {
+  renderMobileBottomNav();
+  if (_mbnObserver) return;
+  const navRoot = document.querySelector('.sidebar .nav');
+  if (!navRoot) return;
+  _mbnObserver = new MutationObserver(() => renderMobileBottomNav());
+  _mbnObserver.observe(navRoot, { attributes:true, attributeFilter:['style'], subtree:true, childList:true });
 }
 
 // ══════════════════════════════════════════════════════
@@ -7710,13 +7770,14 @@ async function loadApprovalBadge() {
   const paymentCnt = Array.isArray(pr) ? pr.filter(r => r.bank_name !== '__system__' && r.status === 'pending').length : 0;
   const waCnt      = 0;
   const total = taskCnt + leaveCnt + paymentCnt;
-  const badge = document.getElementById('approvalBadge');
-  if (total > 0) {
-    badge.textContent = total;
-    badge.style.display = 'flex';
-  } else {
-    badge.style.display = 'none';
-  }
+  document.querySelectorAll('.nav-approval-badge').forEach(badge => {
+    if (total > 0) {
+      badge.textContent = total;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  });
   // Approvals page tab badge (leaves only)
   const tabBadge = document.getElementById('apprLeaveBadge');
   if (tabBadge) {
@@ -7729,11 +7790,10 @@ async function loadApprovalBadge() {
     if (waCnt > 0) { waTabBadge.textContent = waCnt; waTabBadge.style.display = 'inline-block'; }
     else waTabBadge.style.display = 'none';
   }
-  const waDelegBadge = document.getElementById('waDelegBadge');
-  if (waDelegBadge) {
+  document.querySelectorAll('.nav-wa-badge').forEach(waDelegBadge => {
     if (waCnt > 0) { waDelegBadge.textContent = waCnt; waDelegBadge.style.display = 'flex'; }
     else waDelegBadge.style.display = 'none';
-  }
+  });
   // Also refresh transfer badge
   loadTransferBadge();
 }
@@ -10818,8 +10878,9 @@ async function loadTransferBadge() {
   if (ME.role !== 'admin' && ME.role !== 'hod') return;
   try {
     const d = await api('/api/transfers/count');
-    const badge = document.getElementById('transferBadge');
-    if (badge) { badge.textContent = d.count||0; badge.style.display = d.count>0 ? 'flex' : 'none'; }
+    document.querySelectorAll('.nav-transfer-badge').forEach(badge => {
+      badge.textContent = d.count||0; badge.style.display = d.count>0 ? 'flex' : 'none';
+    });
   } catch(e) {}
 }
 
@@ -14035,6 +14096,17 @@ function paApplyFilters() {
     return true;
   });
   paRenderApprovalRows(filtered);
+}
+
+async function paSendLeaveReminder() {
+  const btn = document.getElementById('paLeaveReminderBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    const r = await api('/api/admin/send-leave-reminder', 'POST');
+    if (r && r.success) showToast('✅ Leave reminder sent to WhatsApp group!');
+    else showToast('Error: ' + (r && r.error || 'Failed'), 'error');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '📤 Send Leave Reminder'; } }
 }
 
 function paResetFilters() {

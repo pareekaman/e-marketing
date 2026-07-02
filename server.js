@@ -4783,7 +4783,21 @@ app.get('/api/cron/meeting-reminder', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Leave Tracker Reminder — 3rd of every month at 12pm IST ──
+// ── Leave Tracker Reminder helper ──
+async function sendLeaveTrackerReminder() {
+  const now = new Date();
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const lastMonthIndex = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+  const lastMonthName = monthNames[lastMonthIndex];
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy = now.getFullYear();
+  const msg = `Hello Everyone 👋,\nPlease update the leave tracker for the month of ${lastMonthName} in the Task Manager app by 05/${mm}/${yyyy}.\nThank You.`;
+  await sendWhatsAppRaw('919602694444-1618492040@g.us', msg);
+  console.log('Leave tracker reminder sent:', msg);
+  return msg;
+}
+
+// Cron trigger (GitHub Actions)
 app.get('/api/cron/leave-tracker-reminder', async (req, res) => {
   const authHeader = req.headers['authorization'] || '';
   const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
@@ -4791,15 +4805,16 @@ app.get('/api/cron/leave-tracker-reminder', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized cron request' });
   }
   try {
-    const now = new Date();
-    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const lastMonthIndex = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-    const lastMonthName = monthNames[lastMonthIndex];
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const yyyy = now.getFullYear();
-    const msg = `Hello Everyone 👋,\nPlease update the leave tracker for the month of ${lastMonthName} in the Task Manager app by 05/${mm}/${yyyy}.\nThank You.`;
-    await sendWhatsAppRaw('919602694444-1618492040@g.us', msg);
-    console.log('Leave tracker reminder sent:', msg);
+    const msg = await sendLeaveTrackerReminder();
+    res.json({ success: true, message: msg });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Admin manual trigger (for testing)
+app.post('/api/admin/send-leave-reminder', requireAuth, async (req, res) => {
+  if (req.session.role !== 'admin') return res.status(403).json({ error: 'Access denied' });
+  try {
+    const msg = await sendLeaveTrackerReminder();
     res.json({ success: true, message: msg });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
