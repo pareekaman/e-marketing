@@ -8287,19 +8287,19 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
   const appUrl = (process.env.APP_URL || 'https://e-marketing-phi.vercel.app').replace(/\/$/, '');
   const logoTag = `<img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" style="max-height:75px;width:auto">`;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-    body{margin:0;padding:20px 65px;font-family:'Times New Roman',Times,serif;font-size:16px;color:#000;line-height:1.5}
+    body{margin:0;padding:20px 65px;font-family:'Times New Roman',Times,serif;font-size:13px;color:#000;line-height:1.5}
     table.hdr{width:100%;border:none;border-collapse:collapse;margin-bottom:14px}
     table.hdr td{border:none;vertical-align:top;padding:0}
-    .hdr-r{text-align:right;font-size:14px;line-height:1.6}
-    .hdr-r .co{font-weight:bold;font-size:15px}
-    h2{text-align:center;font-size:17px;letter-spacing:.5px;margin:12px 0}
-    .pc{text-align:right;margin-bottom:14px;font-size:16px}
+    .hdr-r{text-align:right;font-size:11px;line-height:1.6}
+    .hdr-r .co{font-weight:bold;font-size:11.5px}
+    h2{text-align:center;font-size:14px;letter-spacing:.5px;margin:12px 0}
+    .pc{text-align:right;margin-bottom:14px;font-size:13px}
     p{margin:0 0 8px;text-align:justify}ol{margin:3px 0 10px 16px}ol li{margin-bottom:2px}
     .footer{margin-top:20px}a{color:#00f}
   </style></head><body>
   <table class="hdr"><tr>
-    <td width="45%"><img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" width="185" height="74" style="display:block"></td>
-    <td align="right" valign="top" style="font-size:10.5px;line-height:1.6;text-align:right">
+    <td valign="top" style="white-space:nowrap;padding-right:10px"><img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" width="185" height="74" style="display:block"></td>
+    <td align="right" valign="top" width="100%" style="font-size:11px;line-height:1.6;text-align:right">
       <div><strong>e-Marketing.io (A Unit of Jai Marketing)</strong></div>
       <div>Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,</div>
       <div>Malviya Nagar, Jaipur, Rajasthan – 307017 (India)</div>
