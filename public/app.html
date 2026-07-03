@@ -4248,11 +4248,11 @@ function renderDbmTable() {
 // ══════════════════════════════════════════════════════
 let ME = null;
 const ROLE_DEFAULTS = {
-  hod:  { pages: ['dashboard','alltasks','approvals','mis','hrm','leaves','meetings','daily','fms-tasks','inventory'],
+  hod:  { pages: ['dashboard','alltasks','approvals','mis','hrm','leaves','meetings','daily','fms-tasks','inventory','compliance'],
            actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','hrm_schedule','hrm_update_status','delete_leave'] },
-  pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms'],
+  pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance'],
            actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task'] },
-  user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory'],
+  user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance'],
            actions: ['create_task','edit_task','delete_task'] }
 };
 
@@ -5234,8 +5234,10 @@ async function generateOfferDoc(id) {
 function printOfferLetter() {
   const frame = document.getElementById('offerViewFrame');
   if (!frame) return;
-  const html = frame.srcdoc;
+  let html = frame.srcdoc;
   if (!html) return;
+  const noHeaderCss = `<style>@page{margin:0;size:A4 portrait}body{margin:18mm 15mm!important}</style>`;
+  html = html.replace('</head>', noHeaderCss + '</head>');
   const win = window.open('', '_blank', 'width=900,height=700');
   win.document.write(html);
   win.document.close();
@@ -12085,8 +12087,12 @@ function openEmployee360(){
 
 async function emp360InitPicker(){
   try {
-    const users = await api('/api/users');
-    EMP360_USERS = (Array.isArray(users) ? users : []).filter(u => u.role !== 'client');
+    // Sourced from CP_DATA (already scoped by the backend: admin sees everyone,
+    // hod/pc see their own department, plain user sees only self) so the picker
+    // never lists someone the current user isn't allowed to open.
+    if (!CP_DATA) await loadCompliance();
+    const users = CP_DATA?.users || [];
+    EMP360_USERS = users.filter(u => u.role !== 'client');
     const sel = document.getElementById('empSelect');
     sel.innerHTML = '<option value="">— Select employee —</option>' +
       EMP360_USERS.map(u => `<option value="${u.id}">${dtEscape(u.name)}${u.department ? ' · ' + dtEscape(u.department) : ''}</option>`).join('');
