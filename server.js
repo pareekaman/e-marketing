@@ -8506,7 +8506,12 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
     if (c.status !== 'Offer Sent') return res.status(400).json({ error: 'Candidate status is not Offer Sent' });
     const { fileId, pdfUrl } = await hrmGenerateOfferDoc(c, c.joining_date, c.salary);
     await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
-    res.json({ ok: true, fileId, url: `https://docs.google.com/document/d/${fileId}/edit`, pdfUrl });
+    const waSent = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
+      to: hrmFormatPhone(c.phone),
+      url: pdfUrl,
+      caption: `📄 Offer Letter - ${HRM_COMPANY}\n\nDear ${c.name},\nPlease find your offer letter attached.\n\n— ${HRM_COMPANY} HR Team`
+    }, 'file', c.id, c.name, 'Offer Letter PDF');
+    res.json({ ok: true, fileId, url: `https://docs.google.com/document/d/${fileId}/edit`, pdfUrl, waSent });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

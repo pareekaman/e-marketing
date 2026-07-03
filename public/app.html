@@ -5219,7 +5219,7 @@ async function generateOfferDoc(id) {
   if (btn) { btn.textContent = 'Generating…'; btn.disabled = true; }
   const r = await api(`/api/hrm/candidates/${id}/generate-offer`, 'POST', {});
   if (r.error) { showToast(r.error, 'error'); if (btn) { btn.textContent = 'Generate'; btn.disabled = false; } return; }
-  showToast('Saved to Drive!');
+  showToast(r.waSent ? 'Drive pe save hua + WhatsApp PDF bhej di!' : 'Drive pe save hua (WhatsApp failed — Messages tab dekho)');
   await loadHRM();
   viewOfferLetter(id); // reopen with updated data
 }
