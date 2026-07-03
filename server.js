@@ -1117,7 +1117,7 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
     const validDates = dateFrom && dateTo && dateRe.test(dateFrom) && dateRe.test(dateTo);
     const usingPCRange = isPC && validDates;
     const delDateClause = usingPCRange ? 'AND t.due_date BETWEEN ? AND ?' : '';
-    const chlDateClause = usingPCRange ? 'AND t.due_date BETWEEN ? AND ?' : 'AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 10 DAY)';
+    const chlDateClause = usingPCRange ? 'AND t.due_date BETWEEN ? AND ?' : 'AND t.due_date <= LAST_DAY(CURDATE())';
     const delParams = usingPCRange ? [...params, dateFrom, dateTo] : params;
     const chlParams = usingPCRange ? [...params, dateFrom, dateTo] : params;
 
