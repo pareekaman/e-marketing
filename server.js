@@ -8287,7 +8287,7 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
   const appUrl = (process.env.APP_URL || 'https://e-marketing-phi.vercel.app').replace(/\/$/, '');
   const logoTag = `<img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" style="max-height:75px;width:auto">`;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-    body{margin:0;padding:20px 35px;font-family:'Times New Roman',Times,serif;font-size:12px;color:#000;line-height:1.5}
+    body{margin:0;padding:20px 65px;font-family:'Times New Roman',Times,serif;font-size:12px;color:#000;line-height:1.5}
     table.hdr{width:100%;border:none;border-collapse:collapse;margin-bottom:14px}
     table.hdr td{border:none;vertical-align:top;padding:0}
     .hdr-r{text-align:right;font-size:10.5px;line-height:1.6}
@@ -8298,7 +8298,7 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
     .footer{margin-top:20px}a{color:#00f}
   </style></head><body>
   <table class="hdr"><tr>
-    <td width="45%"><img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" width="158" height="63" style="display:block"></td>
+    <td width="45%"><img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" width="185" height="74" style="display:block"></td>
     <td align="right" valign="top" style="font-size:10.5px;line-height:1.6;text-align:right">
       <div><strong>e-Marketing.io (A Unit of Jai Marketing)</strong></div>
       <div>Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,</div>
