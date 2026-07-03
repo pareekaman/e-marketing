@@ -7542,10 +7542,14 @@ function _toDateStr(v) {
 }
 
 // dateStr = 'YYYY-MM-DD'; holidaysSet = Set of YYYY-MM-DD strings
-// Single source of truth for off-days: the Holiday tab (holidays table).
-// Per-user week_off / extra_off are NOT considered — same holiday list applies to everyone.
+// Single source of truth for off-days: Sunday, the last Saturday of the month,
+// and the Holiday tab (holidays table) — same rule applies to everyone.
+// Per-user week_off / extra_off are NOT considered.
 function isUserOffOn(_user, dateStr, holidaysSet) {
   const ds = _toDateStr(dateStr);
+  const d = new Date(ds + 'T00:00:00Z');
+  if (d.getUTCDay() === 0) return true; // Sunday
+  if (isLastSaturdayOfMonth(ds)) return true;
   if (holidaysSet && holidaysSet.has(ds)) return true;
   return false;
 }
