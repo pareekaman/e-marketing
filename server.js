@@ -1140,11 +1140,11 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
       pending += parseInt(d[0].pending)||0; revised += parseInt(d[0].revised)||0; completed += parseInt(d[0].completed)||0;
     }
     if (!skipStats && (taskType === 'delegation' || taskType === 'both')) {
-      const [[u1]] = await db.query(`SELECT COUNT(*) AS cnt FROM delegation_tasks t WHERE status IN ('pending','revised') AND due_date > CURDATE() ${userFilter}`, params);
+      const [[u1]] = await db.query(`SELECT COUNT(*) AS cnt FROM delegation_tasks t WHERE status IN ('pending','revised') AND due_date > CURDATE() AND YEAR(due_date)=YEAR(CURDATE()) AND MONTH(due_date)=MONTH(CURDATE()) ${userFilter}`, params);
       upcoming += parseInt(u1.cnt)||0;
     }
     if (!skipStats && (taskType === 'checklist' || taskType === 'both')) {
-      const [[u2]] = await db.query(`SELECT COUNT(*) AS cnt FROM checklist_tasks t WHERE status IN ('pending','revised') AND due_date > CURDATE() ${userFilter}`, params);
+      const [[u2]] = await db.query(`SELECT COUNT(*) AS cnt FROM checklist_tasks t WHERE status IN ('pending','revised') AND due_date > CURDATE() AND YEAR(due_date)=YEAR(CURDATE()) AND MONTH(due_date)=MONTH(CURDATE()) ${userFilter}`, params);
       upcoming += parseInt(u2.cnt)||0;
     }
 

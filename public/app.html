@@ -6062,7 +6062,7 @@ function renderDashTable(tasks, type) {
     const matchStatus = dashStatusFilter === 'all' ? true
                       : dashStatusFilter === 'completed' ? t.status === 'completed'
                       : dashStatusFilter === 'upcoming'  ? t.status === 'revised'
-                                                         || ((t.status === 'pending' || !t.status) && t.due_date && t.due_date > _todayStr)
+                                                         || ((t.status === 'pending' || !t.status) && t.due_date && t.due_date > _todayStr && t.due_date.substring(0,7) === _todayStr.substring(0,7))
                       : (t.status === 'pending' || t.status === 'revised' || !t.status) && (!t.due_date || t.due_date <= _todayStr);
     return matchType && matchStatus;
   });
