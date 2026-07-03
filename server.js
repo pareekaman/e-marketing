@@ -4842,41 +4842,6 @@ app.post('/api/admin/send-leave-reminder', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Admin test endpoint — sends leave reminder to personal number (DELETE AFTER TEST)
-app.post('/api/admin/test-leave-reminder', requireAuth, async (req, res) => {
-  if (req.session.role !== 'admin') return res.status(403).json({ error: 'Access denied' });
-  try {
-    const now = new Date();
-    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const lastMonthIndex = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-    const lastMonthName = monthNames[lastMonthIndex];
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const yyyy = now.getFullYear();
-    const msg = `Hello Everyone 👋,\nPlease update the leave tracker for the month of ${lastMonthName} in the Task Manager app by 05/${mm}/${yyyy}.\nThank You.`;
-    await sendWhatsApp('6367577176', msg);
-    res.json({ success: true, message: msg });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// Temporary cron test endpoint — sends to personal number 6367577176 (DELETE AFTER TEST)
-app.get('/api/cron/leave-tracker-reminder-test', async (req, res) => {
-  const authHeader = req.headers['authorization'] || '';
-  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
-  if (!process.env.CRON_SECRET || authHeader !== expected) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  try {
-    const now = new Date();
-    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const lastMonthIndex = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-    const lastMonthName = monthNames[lastMonthIndex];
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const yyyy = now.getFullYear();
-    const msg = `Hello Everyone 👋,\nPlease update the leave tracker for the month of ${lastMonthName} in the Task Manager app by 05/${mm}/${yyyy}.\nThank You.`;
-    await sendWhatsApp('6367577176', msg);
-    res.json({ success: true, message: msg });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
 
 // ══════════════════════════════════════════════════════
 // CLIENTS — admin manages, everyone reads

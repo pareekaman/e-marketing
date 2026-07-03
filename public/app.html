@@ -1751,7 +1751,6 @@ tbody tr:last-child td{border-bottom:none;}
           <input type="number" id="paFilterAmtMax" placeholder="₹ Max" onchange="paApplyFilters()" style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box">
         </div>
         <button onclick="paResetFilters()" style="padding:8px 16px;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;align-self:flex-end">↺ Reset</button>
-        <button onclick="paTestLeaveReminder()" id="paTestReminderBtn" style="padding:8px 16px;background:#f59e0b;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;align-self:flex-end">📱 Test on My Number</button>
       </div>
       <div id="paymentApprovalsList" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
         <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>
@@ -14043,17 +14042,6 @@ function paApplyFilters() {
     return true;
   });
   paRenderApprovalRows(filtered);
-}
-
-async function paTestLeaveReminder() {
-  const btn = document.getElementById('paTestReminderBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
-  try {
-    const r = await api('/api/admin/test-leave-reminder', 'POST');
-    if (r && r.success) showToast('✅ Test message sent to your number!');
-    else showToast('Error: ' + (r && r.error || 'Failed'), 'error');
-  } catch(e) { showToast('Error: ' + e.message, 'error'); }
-  finally { if (btn) { btn.disabled = false; btn.textContent = '📱 Test on My Number'; } }
 }
 
 function paResetFilters() {
