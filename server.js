@@ -8299,8 +8299,8 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
   </style></head><body>
   <table class="hdr"><tr>
     <td width="45%"><img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" width="150" height="60" style="display:block"></td>
-    <td class="hdr-r">
-      <div class="co">e-Marketing.io (A Unit of Jai Marketing)</div>
+    <td align="right" valign="top" style="font-size:10.5px;line-height:1.6;text-align:right">
+      <div><strong>e-Marketing.io (A Unit of Jai Marketing)</strong></div>
       <div>Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,</div>
       <div>Malviya Nagar, Jaipur, Rajasthan – 307017 (India)</div>
       <div>&nbsp;</div>
