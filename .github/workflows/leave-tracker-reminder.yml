@@ -3,7 +3,7 @@ name: Leave Tracker Reminder
 # Fires on the 3rd of every month at 12:00 PM IST (06:30 UTC)
 on:
   schedule:
-    - cron: '30 6 3 * *'
+    - cron: '30 4 3 * *'
   workflow_dispatch: {}  # allow manual fire from Actions tab
 
 jobs:
