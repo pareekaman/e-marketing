@@ -8267,6 +8267,8 @@ async function _hrmDriveClient() {
   let creds;
   if (process.env.GOOGLE_CREDENTIALS) {
     creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+    // Vercel sometimes double-escapes \n in private key — fix it
+    if (creds.private_key) creds.private_key = creds.private_key.replace(/\\n/g, '\n');
   } else {
     creds = require('./credentials.json');
   }
