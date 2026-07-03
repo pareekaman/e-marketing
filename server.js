@@ -1132,11 +1132,11 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
 
     let upcoming = 0;
     if (!skipStats && (taskType === 'delegation' || taskType === 'both')) {
-      const [d] = await db.query(`SELECT SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed FROM delegation_tasks t WHERE 1=1 ${userFilter} ${delDateClause}`, delParams);
+      const [d] = await db.query(`SELECT SUM(CASE WHEN status='pending' AND due_date <= CURDATE() THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN status='revised' AND due_date <= CURDATE() THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed FROM delegation_tasks t WHERE 1=1 ${userFilter} ${delDateClause}`, delParams);
       pending += parseInt(d[0].pending)||0; revised += parseInt(d[0].revised)||0; completed += parseInt(d[0].completed)||0;
     }
     if (!skipStats && (taskType === 'checklist' || taskType === 'both')) {
-      const [d] = await db.query(`SELECT SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed FROM checklist_tasks t WHERE 1=1 ${userFilter} ${chlDateClause}`, chlParams);
+      const [d] = await db.query(`SELECT SUM(CASE WHEN status='pending' AND due_date <= CURDATE() THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN status='revised' AND due_date <= CURDATE() THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed FROM checklist_tasks t WHERE 1=1 ${userFilter} ${chlDateClause}`, chlParams);
       pending += parseInt(d[0].pending)||0; revised += parseInt(d[0].revised)||0; completed += parseInt(d[0].completed)||0;
     }
     if (!skipStats && (taskType === 'delegation' || taskType === 'both')) {
