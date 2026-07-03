@@ -14024,10 +14024,11 @@ async function loadMyPaymentRequests() {
         const isDone = r.payment_done || sentinels.some(s => s.card_number === '__paid__' && s.reason === '__paid__:' + String(r.id));
         const cancelSentinel = sentinels.find(s => s.card_number === '__cancelled__' && s.reason.startsWith('__cancelled__:' + String(r.id) + ':'));
         const isCancelled = cancelSentinel != null;
-        const billSentinel = sentinels.find(s => s.card_number === '__bill__' && s.reason.startsWith('__bill__:' + String(r.id) + ':'));
+        const billSentinels = sentinels.filter(s => s.card_number === '__bill__' && s.reason.startsWith('__bill__:' + String(r.id) + ':'));
+        const billSentinel = billSentinels[billSentinels.length - 1];
         const billFileId = billSentinel ? billSentinel.reason.replace('__bill__:' + String(r.id) + ':', '') : null;
         const billCell = billFileId
-          ? `<a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" style="color:#1a56db;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap">View Bill</a>`
+          ? `<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap"><a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" style="color:#1a56db;font-size:12px;font-weight:600;text-decoration:none">View Bill</a><button onclick="prOpenBillModal(${r.id})" title="Change Bill" style="background:none;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;color:#64748b;font-size:12px;padding:1px 5px;line-height:1.4">📎</button></span>`
           : (_prBillUploading.has(r.id)
             ? `<span style="color:#64748b;font-size:12px;font-weight:600">Processing…</span>`
             : (isDone && r.status === 'approved'
@@ -14106,10 +14107,11 @@ function paRenderApprovalRows(rows) {
     const cancelSentinel = sentinels.find(s => s.card_number === '__cancelled__' && s.reason.startsWith('__cancelled__:' + String(r.id) + ':'));
     const isCancelled = cancelSentinel != null;
     const cancelReason = isCancelled ? cancelSentinel.reason.replace('__cancelled__:' + r.id + ':', '') : '';
-    const billSentinel = sentinels.find(s => s.card_number === '__bill__' && s.reason.startsWith('__bill__:' + String(r.id) + ':'));
+    const billSentinels = sentinels.filter(s => s.card_number === '__bill__' && s.reason.startsWith('__bill__:' + String(r.id) + ':'));
+    const billSentinel = billSentinels[billSentinels.length - 1];
     const billFileId = billSentinel ? billSentinel.reason.replace('__bill__:' + String(r.id) + ':', '') : null;
     const paBillCell = billFileId
-      ? `<a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" style="color:#1a56db;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap">View Bill</a>`
+      ? `<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap"><a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" style="color:#1a56db;font-size:12px;font-weight:600;text-decoration:none">View Bill</a><button onclick="prOpenBillModal(${r.id})" title="Change Bill" style="background:none;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;color:#64748b;font-size:12px;padding:1px 5px;line-height:1.4">📎</button></span>`
       : (_prBillUploading.has(r.id)
         ? `<span style="color:#64748b;font-size:12px;font-weight:600">Processing…</span>`
         : (isDone && r.status === 'approved'
