@@ -1677,6 +1677,10 @@ tbody tr:last-child td{border-bottom:none;}
         <input type="email" id="pNotifEmail" placeholder="yourrealemail@gmail.com"/>
       </div>
       <div class="form-group"><label>Phone Number</label><input type="tel" id="pPhone" placeholder="Enter phone number"/></div>
+      <div class="form-row">
+        <div class="form-group"><label>Birthday</label><input type="date" id="pBirthday"/></div>
+        <div class="form-group"><label>Joining Date</label><input type="date" id="pJoiningDate"/></div>
+      </div>
       <div class="section-title">Change Password</div>
       <div class="form-group"><label>Current Password</label><input type="password" id="pCurrent" placeholder="Enter current password"/></div>
       <div class="form-group"><label>New Password</label><input type="password" id="pNew" placeholder="Enter new password"/></div>
@@ -4305,6 +4309,8 @@ async function init() {
     document.getElementById('pEmail').value = ME.email;
     document.getElementById('pNotifEmail').value = ME.notification_email || '';
     document.getElementById('pPhone').value = ME.phone || '';
+    document.getElementById('pBirthday').value = ME.birthday ? ME.birthday.split('T')[0] : '';
+    document.getElementById('pJoiningDate').value = ME.joining_date ? ME.joining_date.split('T')[0] : '';
     document.getElementById('profileNameDisplay').textContent = ME.name;
     document.getElementById('profileRoleDisplay').textContent = roleLabel;
 
@@ -7914,16 +7920,18 @@ async function saveProfile() {
   const email=document.getElementById('pEmail').value.trim();
   const notification_email=document.getElementById('pNotifEmail').value.trim();
   const phone=document.getElementById('pPhone').value.trim();
+  const birthday=document.getElementById('pBirthday').value||null;
+  const joining_date=document.getElementById('pJoiningDate').value||null;
   const currentPassword=document.getElementById('pCurrent').value;
   const newPassword=document.getElementById('pNew').value;
   const confirmPassword=document.getElementById('pConfirm').value;
   if (newPassword&&newPassword!==confirmPassword) { e.textContent='Passwords do not match'; e.style.display='block'; return; }
-  const body={name,email,notification_email,phone};
+  const body={name,email,notification_email,phone,birthday,joining_date};
   if (currentPassword) { body.currentPassword=currentPassword; body.newPassword=newPassword; }
   const r=await api('/api/profile','PUT',body);
   if (r.error) { e.textContent=r.error; e.style.display='block'; return; }
   s.textContent='Profile updated!'; s.style.display='block';
-  ME.name=name; ME.phone=phone; ME.notification_email=notification_email;
+  ME.name=name; ME.phone=phone; ME.notification_email=notification_email; ME.birthday=birthday; ME.joining_date=joining_date;
   const initials=name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
   document.getElementById('sidebarName').textContent=name;
   document.getElementById('profileNameDisplay').textContent=name;

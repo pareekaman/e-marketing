@@ -981,6 +981,11 @@ app.get('/api/me', requireAuth, async (req, res) => {
       const raw = up[0]?.user_permissions;
       rows[0].user_permissions = raw ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : null;
     } catch(e) { rows[0].user_permissions = null; }
+    try {
+      const [bd] = await db.query('SELECT birthday, joining_date FROM users WHERE id=?', [req.session.userId]);
+      rows[0].birthday = bd[0]?.birthday || null;
+      rows[0].joining_date = bd[0]?.joining_date || null;
+    } catch(e) { rows[0].birthday = null; rows[0].joining_date = null; }
     rows[0].extra_access = parseExtraAccess(rows[0].extra_access);
     rows[0].canViewAllLeaves = isLeaveReportViewer(rows[0]);
     // When an admin is "viewing as" this user, expose who's really behind the wheel
@@ -2600,14 +2605,14 @@ app.put('/api/user-permissions/:id', requireAuth, requireAdmin, async (req, res)
 app.put('/api/profile', requireAuth, async (req, res) => {
   try {
     const uid = req.session.userId;
-    const { name, email, notification_email, phone, currentPassword, newPassword, profileImage } = req.body;
+    const { name, email, notification_email, phone, birthday, joining_date, currentPassword, newPassword, profileImage } = req.body;
     if (currentPassword) {
       const [rows] = await db.query('SELECT password FROM users WHERE id=?', [uid]);
       if (!bcrypt.compareSync(currentPassword, rows[0].password)) return res.status(400).json({ error: 'Current password is incorrect' });
-      if (newPassword) await db.query('UPDATE users SET name=?,email=?,notification_email=?,phone=?,password=? WHERE id=?', [name,email,notification_email||'',phone||null,bcrypt.hashSync(newPassword,10),uid]);
-      else await db.query('UPDATE users SET name=?,email=?,notification_email=?,phone=? WHERE id=?', [name,email,notification_email||'',phone||null,uid]);
+      if (newPassword) await db.query('UPDATE users SET name=?,email=?,notification_email=?,phone=?,birthday=?,joining_date=?,password=? WHERE id=?', [name,email,notification_email||'',phone||null,birthday||null,joining_date||null,bcrypt.hashSync(newPassword,10),uid]);
+      else await db.query('UPDATE users SET name=?,email=?,notification_email=?,phone=?,birthday=?,joining_date=? WHERE id=?', [name,email,notification_email||'',phone||null,birthday||null,joining_date||null,uid]);
     } else {
-      await db.query('UPDATE users SET name=?,email=?,notification_email=?,phone=? WHERE id=?', [name,email,notification_email||'',phone||null,uid]);
+      await db.query('UPDATE users SET name=?,email=?,notification_email=?,phone=?,birthday=?,joining_date=? WHERE id=?', [name,email,notification_email||'',phone||null,birthday||null,joining_date||null,uid]);
     }
     if (profileImage !== undefined) await db.query('UPDATE users SET profile_image=? WHERE id=?', [profileImage||null, uid]);
     req.session.name = name;
@@ -8279,28 +8284,14 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
 
   const fileId = created.data.id;
 
-  // Download PDF from Drive using authenticated client and host on our server
-  const pdfResp = await drive.files.export(
-    { fileId, mimeType: 'application/pdf' },
-    { responseType: 'stream' }
-  );
+  // Make publicly readable so the download link works without auth
+  await drive.permissions.create({
+    fileId,
+    requestBody: { role: 'reader', type: 'anyone' },
+    supportsAllDrives: true,
+  }).catch(e => console.error('HRM Drive permission err:', e.message));
 
-  const fs = require('fs');
-  const path = require('path');
-  const offersDir = path.join(__dirname, 'public', 'offers');
-  if (!fs.existsSync(offersDir)) fs.mkdirSync(offersDir, { recursive: true });
-
-  const filename = `offer_${candidate.id}_${Date.now()}.pdf`;
-  const filepath = path.join(offersDir, filename);
-  await new Promise((resolve, reject) => {
-    const dest = fs.createWriteStream(filepath);
-    pdfResp.data.pipe(dest);
-    dest.on('finish', resolve);
-    dest.on('error', reject);
-  });
-
-  const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
-  const pdfUrl = `${appUrl}/offers/${filename}`;
+  const pdfUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
   return { fileId, pdfUrl };
 }
 
