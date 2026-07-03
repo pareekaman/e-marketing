@@ -8354,7 +8354,7 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       html,
-      filename: `Offer Letter - ${candidateName} - ${candidatePosition}`,
+      filename: `PRELIMINARY OFFER LETTER - ${candidateName}`,
       folderId: HRM_OFFER_FOLDER_ID,
     }),
   });
