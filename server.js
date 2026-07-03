@@ -8265,6 +8265,24 @@ const HRM_OFFER_FOLDER_ID   = process.env.HRM_OFFER_FOLDER_ID   || '1DWfwjSdkVP_
 const HRM_OFFER_TEMPLATE_ID = process.env.HRM_OFFER_TEMPLATE_ID || '11f3STYRR4Lyk2HaoBfo7Kiiw5DsEoyr0P3lZnpZR_G4';
 const HRM_OFFER_SCRIPT      = process.env.HRM_OFFER_SCRIPT      || 'https://script.google.com/macros/s/AKfycbyDG7Wqih7LW3p7ttqONoqzwy5t5Gq7B3RgTxEJcD3QL6qzALTMaC3cUvnxW2CGT3VQ/exec';
 
+// Cache offer-logo.png as base64 at startup so Apps Script doesn't need to fetch it
+let _HRM_LOGO_B64 = null;
+try {
+  const _fs   = require('fs');
+  const _path = require('path');
+  const _candidates = [
+    _path.join(__dirname,    'public', 'offer-logo.png'),
+    _path.join(process.cwd(), 'public', 'offer-logo.png'),
+    '/var/task/public/offer-logo.png',
+  ];
+  for (const _p of _candidates) {
+    if (_fs.existsSync(_p)) {
+      _HRM_LOGO_B64 = 'data:image/png;base64,' + _fs.readFileSync(_p).toString('base64');
+      break;
+    }
+  }
+} catch(_e) {}
+
 async function _hrmDriveClient() {
   const { google } = require('googleapis');
   let creds;
@@ -8284,8 +8302,8 @@ async function _hrmDriveClient() {
 }
 
 function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) {
-  const appUrl = (process.env.APP_URL || 'https://e-marketing-phi.vercel.app').replace(/\/$/, '');
-  const logoTag = `<img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" style="max-height:75px;width:auto">`;
+  const appUrl   = (process.env.APP_URL || 'https://e-marketing-phi.vercel.app').replace(/\/$/, '');
+  const logoSrc  = _HRM_LOGO_B64 || `${appUrl}/offer-logo.png`;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
     body{margin:0;padding:20px 65px;font-family:'Times New Roman',Times,serif;font-size:13px;color:#000;line-height:1.5}
     table.hdr{width:100%;border:none;border-collapse:collapse;margin-bottom:14px}
@@ -8298,7 +8316,7 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
     .footer{margin-top:20px}a{color:#00f}
   </style></head><body>
   <table class="hdr"><tr>
-    <td valign="top" style="white-space:nowrap;padding-right:10px"><img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" width="185" height="74" style="display:block"></td>
+    <td valign="top" style="white-space:nowrap;padding-right:10px"><img src="${logoSrc}" alt="e-Marketing" width="185" height="74" style="display:block"></td>
     <td align="right" valign="top" width="100%" style="font-size:11px;line-height:1.6;text-align:right">
       <div><strong>e-Marketing.io (A Unit of Jai Marketing)</strong></div>
       <div>Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,</div>
