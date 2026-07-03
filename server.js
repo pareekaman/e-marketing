@@ -8263,6 +8263,7 @@ const HRM_FILE_ENDPOINT   = 'https://api.aumpfy.com/api/apis/trigger/hrm-file-6b
 const HRM_COMPANY         = process.env.HRM_COMPANY || 'E-Marketing';
 const HRM_OFFER_FOLDER_ID   = process.env.HRM_OFFER_FOLDER_ID   || '1DWfwjSdkVP_sDEe62mM50Mc1mV52f6rA';
 const HRM_OFFER_TEMPLATE_ID = process.env.HRM_OFFER_TEMPLATE_ID || '11f3STYRR4Lyk2HaoBfo7Kiiw5DsEoyr0P3lZnpZR_G4';
+const HRM_OFFER_SCRIPT      = process.env.HRM_OFFER_SCRIPT      || 'https://script.google.com/macros/s/AKfycbyDG7Wqih7LW3p7ttqONoqzwy5t5Gq7B3RgTxEJcD3QL6qzALTMaC3cUvnxW2CGT3VQ/exec';
 
 async function _hrmDriveClient() {
   const { google } = require('googleapis');
@@ -8346,36 +8347,26 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
 
   const html = hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today);
 
-  // Store token+html for self-hosted fallback (columns may not exist on older installs)
-  const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
-  await db.query(
-    'UPDATE hrm_candidates SET offer_token=?, offer_html=? WHERE id=?',
-    [token, html, candidate.id]
-  ).catch(() => {});
-
-  // Upload to Drive using the same OAuth client as DMS/bills
-  const drive = await getDriveClient();
-  const { Readable } = require('stream');
-  const created = await drive.files.create({
-    requestBody: {
-      name: `Offer Letter - ${candidateName} - ${candidatePosition}`,
-      mimeType: 'application/vnd.google-apps.document',
-      parents: [HRM_OFFER_FOLDER_ID],
-    },
-    media: { mimeType: 'text/html', body: Readable.from([html]) },
-    supportsAllDrives: true,
+  // Upload to Drive via Apps Script (no API key / OAuth needed)
+  const fetchFn = global.fetch || (await import('node-fetch')).default;
+  const scriptRes = await fetchFn(HRM_OFFER_SCRIPT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      html,
+      filename: `Offer Letter - ${candidateName} - ${candidatePosition}`,
+      folderId: HRM_OFFER_FOLDER_ID,
+    }),
   });
-  const fileId = created.data.id;
+  const scriptData = await scriptRes.json();
+  if (!scriptData.ok) throw new Error(scriptData.error || 'Apps Script upload failed');
 
-  await drive.permissions.create({
-    fileId,
-    requestBody: { role: 'reader', type: 'anyone' },
-    supportsAllDrives: true,
-  }).catch(e => console.error('HRM Drive permission err:', e.message));
+  const fileId = scriptData.fileId;
+  const pdfUrl = scriptData.pdfUrl;
 
-  await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, candidate.id]);
+  await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, candidate.id])
+    .catch(() => {});
 
-  const pdfUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
   return { fileId, pdfUrl };
 }
 
