@@ -8435,18 +8435,19 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       const { offer_name, offer_position } = req.body;
       const displayName = offer_name || c.name;
       const displayPos  = offer_position || c.profile_position;
+      const joiningFmt  = joining_date ? new Date(joining_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
 
       hrmGenerateOfferDoc(c, joining_date, salary, offer_name, offer_position)
         .then(async ({ fileId, pdfUrl }) => {
           await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
           await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${displayPos}.\n\n📅 Joining Date: ${joining_date||''}\n💰 CTC: ${salary||'To be discussed'}\n\n📄 Offer Letter download karein:\n${pdfUrl}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
+`Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${displayPos}.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\nYour offer letter is attached. Please confirm acceptance within 3 working days.\n\n📄 Download: ${pdfUrl}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
           }, 'text', c.id, c.name, 'Offer Sent');
         })
         .catch(e => {
           console.error('HRM offer doc generation failed:', e.message);
           hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${displayPos}.\n\n📅 Joining Date: ${joining_date||''}\n💰 CTC: ${salary||'To be discussed'}\n\nHR team will share your offer letter shortly.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
+`Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${displayPos}.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\nYour offer letter is attached. Please confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
           }, 'text', c.id, c.name, 'Offer Sent').catch(() => {});
           db.query(
             `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
@@ -8468,8 +8469,9 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
     if (c.status !== 'Offer Sent') return res.status(400).json({ error: 'Candidate status is not Offer Sent' });
     const { fileId, pdfUrl } = await hrmGenerateOfferDoc(c, c.joining_date, c.salary);
     await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
+    const joiningFmt = c.joining_date ? new Date(c.joining_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
     const waSent = await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`📄 *Offer Letter - ${HRM_COMPANY}*\n\nDear ${c.name},\n\nAapka offer letter ready hai. Neeche link se download karein:\n${pdfUrl}\n\n— ${HRM_COMPANY} HR Team`
+`Hello ${c.name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${c.profile_position||''}.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${c.salary||'To be discussed'}\n\nYour offer letter is attached. Please confirm acceptance within 3 working days.\n\n📄 Download: ${pdfUrl}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
     }, 'text', c.id, c.name, 'Offer Letter PDF');
     res.json({ ok: true, fileId, url: `https://docs.google.com/document/d/${fileId}/edit`, pdfUrl, waSent });
   } catch (err) { res.status(500).json({ error: err.message }); }
