@@ -8346,12 +8346,12 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
 
   const html = hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today);
 
-  // Always store in DB for self-hosted fallback link
+  // Store token+html for self-hosted fallback (columns may not exist on older installs)
   const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
   await db.query(
     'UPDATE hrm_candidates SET offer_token=?, offer_html=? WHERE id=?',
     [token, html, candidate.id]
-  );
+  ).catch(() => {});
 
   // Upload to Drive using the same OAuth client as DMS/bills
   const drive = await getDriveClient();
