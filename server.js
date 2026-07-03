@@ -8284,24 +8284,22 @@ async function _hrmDriveClient() {
 }
 
 function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) {
-  const appUrl  = (process.env.APP_URL || '').replace(/\/$/, '');
-  const logoTag = appUrl
-    ? `<img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" style="max-height:75px;width:auto">`
-    : `<div style="font-size:16px;font-weight:bold;color:#f90">e-Marketing</div><div style="font-size:10px">Grow Your Business | A Unit of Jai Marketing</div>`;
+  const appUrl = (process.env.APP_URL || 'https://e-marketing-phi.vercel.app').replace(/\/$/, '');
+  const logoTag = `<img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" style="max-height:75px;width:auto">`;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
     body{margin:0;padding:20px 35px;font-family:'Times New Roman',Times,serif;font-size:12px;color:#000;line-height:1.5}
-    .hdr{display:table;width:100%;padding-bottom:10px;margin-bottom:14px}
-    .hdr-l{display:table-cell;vertical-align:top;width:45%}
-    .hdr-r{display:table-cell;vertical-align:top;text-align:right;font-size:10.5px;line-height:1.4}
+    table.hdr{width:100%;border:none;border-collapse:collapse;margin-bottom:14px}
+    table.hdr td{border:none;vertical-align:top;padding:0}
+    .hdr-r{text-align:right;font-size:10.5px;line-height:1.6}
     .hdr-r .co{font-weight:bold;font-size:11px}
     h2{text-align:center;text-decoration:underline;font-size:13px;letter-spacing:.5px;margin:12px 0}
     .pc{text-align:right;margin-bottom:14px;font-size:11px}
     p{margin:0 0 8px;text-align:justify}ol{margin:3px 0 10px 16px}ol li{margin-bottom:2px}
     .footer{margin-top:20px}a{color:#00f}
   </style></head><body>
-  <div class="hdr">
-    <div class="hdr-l">${logoTag}</div>
-    <div class="hdr-r">
+  <table class="hdr"><tr>
+    <td width="45%"><img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" width="150" height="60" style="display:block"></td>
+    <td class="hdr-r">
       <div class="co">e-Marketing.io (A Unit of Jai Marketing)</div>
       <div>Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,</div>
       <div>Malviya Nagar, Jaipur, Rajasthan – 307017 (India)</div>
@@ -8309,8 +8307,8 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
       <div>Phone: +91-9602694444</div>
       <div>Email: <a href="mailto:abhishek@e-marketing.io">abhishek@e-marketing.io</a></div>
       <div>Website: www.e-marketing.io</div>
-    </div>
-  </div>
+    </td>
+  </tr></table>
   <h2>PRELIMINARY OFFER LETTER</h2>
   <div class="pc">Private &amp; Confidential<br>Date :-${today}</div>
   <p><strong>Dear ${candidateName},</strong></p>
