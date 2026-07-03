@@ -2555,7 +2555,7 @@ app.post('/api/admin/migrate-birthdays', requireAuth, requireAdmin, async (req, 
 app.post('/api/admin/send-birthday-reminder', requireAuth, requireAdmin, async (req, res) => {
   const msg = `Hello Everyone! 🌸\n\nKindly request the following team members to update their Birthday and Joining Date on the task manager profile page:\n\n• Chetna Agrawal\n• Chirag Thakral\n• Divvy Jain\n• Diya Khandelwal\n• Nikhil Jain\n• Rahul Meharchandani\n\nThank you!`;
   try {
-    await sendWhatsApp('919602694444-1618492040@g.us', msg);
+    await sendWhatsAppRaw('919602694444-1618492040@g.us', msg);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
