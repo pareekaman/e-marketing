@@ -424,6 +424,8 @@ const _startupMigrationsPromise = (async () => {
   // Add reschedule_reason column to existing installs
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN IF NOT EXISTS reschedule_reason TEXT DEFAULT ''`);
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN IF NOT EXISTS offer_drive_id VARCHAR(500) DEFAULT NULL`);
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN IF NOT EXISTS offer_token VARCHAR(64) DEFAULT NULL`);
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN IF NOT EXISTS offer_html MEDIUMTEXT DEFAULT NULL`);
 
   // Per-user permissions column (replaces role_permissions)
   await sa(`ALTER TABLE users ADD COLUMN IF NOT EXISTS user_permissions TEXT DEFAULT NULL AFTER extra_access`);
@@ -8331,7 +8333,8 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
 }
 
 async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName, overridePosition) {
-  const drive = await _hrmDriveClient();
+  const crypto = require('crypto');
+  const token = crypto.randomBytes(24).toString('hex');
 
   const candidateName     = overrideName     || candidate.name             || '';
   const candidatePosition = overridePosition || candidate.profile_position || '';
@@ -8343,28 +8346,14 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
 
   const html = hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today);
 
-  const { Readable } = require('stream');
-  const created = await drive.files.create({
-    requestBody: {
-      name: `Offer Letter - ${candidateName} - ${candidatePosition}`,
-      mimeType: 'application/vnd.google-apps.document',
-      parents: [HRM_OFFER_FOLDER_ID],
-    },
-    media: { mimeType: 'text/html', body: Readable.from([html]) },
-    supportsAllDrives: true,
-  });
+  await db.query(
+    'UPDATE hrm_candidates SET offer_token=?, offer_html=?, offer_drive_id=? WHERE id=?',
+    [token, html, token, candidate.id]
+  );
 
-  const fileId = created.data.id;
-
-  // Make publicly readable so the download link works without auth
-  await drive.permissions.create({
-    fileId,
-    requestBody: { role: 'reader', type: 'anyone' },
-    supportsAllDrives: true,
-  }).catch(e => console.error('HRM Drive permission err:', e.message));
-
-  const pdfUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-  return { fileId, pdfUrl };
+  const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
+  const pdfUrl = `${appUrl}/offer/${token}`;
+  return { fileId: token, pdfUrl };
 }
 
 async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateName, action) {
@@ -8397,6 +8386,21 @@ function hrmFormatPhone(phone) {
   if (clean.startsWith('0')) return '91' + clean.slice(1);
   return '91' + clean;
 }
+
+// Public offer letter view — no login needed, token is the secret
+app.get('/offer/:token', async (req, res) => {
+  try {
+    const [[c]] = await db.query(
+      'SELECT offer_html FROM hrm_candidates WHERE offer_token=?',
+      [req.params.token]
+    );
+    if (!c || !c.offer_html) return res.status(404).send('<h3 style="font-family:sans-serif;padding:40px">Offer letter not found or link has expired.</h3>');
+    const printCss = `<style>@media print{@page{margin:0;size:A4 portrait}body{margin:18mm 15mm!important}}</style>`;
+    res.send(c.offer_html.replace('</head>', printCss + '</head>'));
+  } catch (err) {
+    res.status(500).send('<h3>Error: ' + err.message + '</h3>');
+  }
+});
 
 // Dashboard stats
 app.get('/api/hrm/stats', requireAuth, async (req, res) => {
