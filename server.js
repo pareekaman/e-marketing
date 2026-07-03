@@ -8346,14 +8346,37 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
 
   const html = hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today);
 
+  // Always store in DB for self-hosted fallback link
+  const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
   await db.query(
-    'UPDATE hrm_candidates SET offer_token=?, offer_html=?, offer_drive_id=? WHERE id=?',
-    [token, html, token, candidate.id]
+    'UPDATE hrm_candidates SET offer_token=?, offer_html=? WHERE id=?',
+    [token, html, candidate.id]
   );
 
-  const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
-  const pdfUrl = `${appUrl}/offer/${token}`;
-  return { fileId: token, pdfUrl };
+  // Upload to Drive using the same OAuth client as DMS/bills
+  const drive = await getDriveClient();
+  const { Readable } = require('stream');
+  const created = await drive.files.create({
+    requestBody: {
+      name: `Offer Letter - ${candidateName} - ${candidatePosition}`,
+      mimeType: 'application/vnd.google-apps.document',
+      parents: [HRM_OFFER_FOLDER_ID],
+    },
+    media: { mimeType: 'text/html', body: Readable.from([html]) },
+    supportsAllDrives: true,
+  });
+  const fileId = created.data.id;
+
+  await drive.permissions.create({
+    fileId,
+    requestBody: { role: 'reader', type: 'anyone' },
+    supportsAllDrives: true,
+  }).catch(e => console.error('HRM Drive permission err:', e.message));
+
+  await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, candidate.id]);
+
+  const pdfUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+  return { fileId, pdfUrl };
 }
 
 async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateName, action) {
