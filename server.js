@@ -6712,9 +6712,21 @@ app.post('/api/daily-tasks', requireAuth, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════
-// COMPLIANCE — Last 7 days grid (admin only)
+// COMPLIANCE — Last 7 days grid
+// Scope: admin sees everyone; hod/pc see their own department; plain user sees only self.
 // ══════════════════════════════════════════════════════
-app.get('/api/compliance/last7', requireAuth, requireAdmin, async (req, res) => {
+async function getComplianceScope(req) {
+  const role = req.session.role;
+  const uid = req.session.userId;
+  if (role === 'admin') return { clause: '', params: [] };
+  if (role === 'hod' || role === 'pc') {
+    const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
+    return { clause: 'AND department=?', params: [me?.department || '\0'] };
+  }
+  return { clause: 'AND id=?', params: [uid] };
+}
+
+app.get('/api/compliance/last7', requireAuth, async (req, res) => {
   try {
     // Last 7 days inclusive of today
     const dates = [];
@@ -6724,14 +6736,16 @@ app.get('/api/compliance/last7', requireAuth, requireAdmin, async (req, res) => 
       dates.push(d.toISOString().split('T')[0]);
     }
 
+    const scope = await getComplianceScope(req);
     // All users with week_off / extra_off so we can mark off-days
     const [users] = await db.query(
       `SELECT id, name, email, role, department,
               COALESCE(week_off,'') AS week_off,
               COALESCE(extra_off,'') AS extra_off
        FROM users
-       WHERE role IN ('admin','hod','pc','user')
-       ORDER BY name ASC`
+       WHERE role IN ('admin','hod','pc','user') ${scope.clause}
+       ORDER BY name ASC`,
+      scope.params
     );
 
     // All filled (user_id, date) pairs in this range
@@ -6771,14 +6785,30 @@ app.get('/api/compliance/last7', requireAuth, requireAdmin, async (req, res) => 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Returns true if req's user is allowed to view targetId's compliance/Employee-360 data:
+// admin → anyone; hod/pc → same department; plain user → only self.
+async function canViewComplianceEmployee(req, targetId) {
+  const role = req.session.role;
+  const uid = req.session.userId;
+  if (role === 'admin') return true;
+  if (Number(targetId) === Number(uid)) return true;
+  if (role === 'hod' || role === 'pc') {
+    const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
+    const [[target]] = await db.query('SELECT department FROM users WHERE id=?', [targetId]);
+    return !!me?.department && me.department === target?.department;
+  }
+  return false;
+}
+
 // Employee 360 — everything about one employee in one place for increment review:
 // delegation + checklist task stats, daily-report compliance, handled clients
 // (active/inactive + activity in window), and meetings. Window defaults to the
 // current month (IST); ?from=YYYY-MM-DD&to=YYYY-MM-DD widens it.
-app.get('/api/compliance/employee/:id', requireAuth, requireAdmin, async (req, res) => {
+app.get('/api/compliance/employee/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid employee id' });
+    if (!await canViewComplianceEmployee(req, id)) return res.status(403).json({ error: 'Not allowed' });
 
     // Default window — current month (IST)
     const ist = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
@@ -7005,10 +7035,11 @@ app.get('/api/compliance/employee/:id', requireAuth, requireAdmin, async (req, r
 });
 
 // Week-level task detail for Employee 360 weekly table drill-down
-app.get('/api/compliance/employee/:id/week-tasks', requireAuth, requireAdmin, async (req, res) => {
+app.get('/api/compliance/employee/:id/week-tasks', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid employee id' });
+    if (!await canViewComplianceEmployee(req, id)) return res.status(403).json({ error: 'Not allowed' });
     const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
     const from = isDate(req.query.from) ? req.query.from : null;
     const to   = isDate(req.query.to)   ? req.query.to   : null;
