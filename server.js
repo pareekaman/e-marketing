@@ -8283,21 +8283,13 @@ async function _hrmDriveClient() {
   return google.drive({ version: 'v3', auth: client });
 }
 
-function _hrmLogoBase64() {
-  try {
-    const fs = require('fs'), path = require('path');
-    const buf = fs.readFileSync(path.join(__dirname, 'public', 'emarketing offer letter logo.png'));
-    return 'data:image/png;base64,' + buf.toString('base64');
-  } catch { return null; }
-}
-
 function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) {
-  const logoSrc = _hrmLogoBase64();
-  const logoTag = logoSrc
-    ? `<img src="${logoSrc}" alt="e-Marketing" style="max-height:75px;width:auto">`
+  const appUrl  = (process.env.APP_URL || '').replace(/\/$/, '');
+  const logoTag = appUrl
+    ? `<img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" style="max-height:75px;width:auto">`
     : `<div style="font-size:16px;font-weight:bold;color:#f90">e-Marketing</div><div style="font-size:10px">Grow Your Business | A Unit of Jai Marketing</div>`;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-    body{margin:0;padding:22px 35px;font-family:'Times New Roman',Times,serif;font-size:12px;color:#000;line-height:1.5}
+    body{margin:0;padding:20px 35px;font-family:'Times New Roman',Times,serif;font-size:12px;color:#000;line-height:1.5}
     .hdr{display:table;width:100%;padding-bottom:10px;margin-bottom:14px}
     .hdr-l{display:table-cell;vertical-align:top;width:45%}
     .hdr-r{display:table-cell;vertical-align:top;text-align:right;font-size:10.5px;line-height:1.4}
