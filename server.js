@@ -6763,7 +6763,8 @@ app.get('/api/compliance/last7', requireAuth, async (req, res) => {
     const [users] = await db.query(
       `SELECT id, name, email, role, department,
               COALESCE(week_off,'') AS week_off,
-              COALESCE(extra_off,'') AS extra_off
+              COALESCE(extra_off,'') AS extra_off,
+              DATE_FORMAT(joining_date,'%Y-%m-%d') AS joining_date
        FROM users
        WHERE role IN ('admin','hod','pc','user') ${scope.clause}
        ORDER BY name ASC`,
@@ -6799,6 +6800,7 @@ app.get('/api/compliance/last7', requireAuth, async (req, res) => {
         date: d,
         filled: filledMap[u.id]?.has(d) || false,
         off: isUserOffOn(u, d, holidaysSet),
+        preJoin: !!(u.joining_date && d < u.joining_date),
         isHoliday: holidaysSet.has(d)
       }))
     }));

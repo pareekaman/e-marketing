@@ -12032,8 +12032,8 @@ function renderCompliance(){
   html += `<th>Score</th></tr></thead><tbody>`;
 
   for (const u of users) {
-    // Working days = days that aren't user's off/holiday
-    const workingDays = u.status.filter(s => !s.off).length;
+    // Working days = days that aren't user's off/holiday/before-joining
+    const workingDays = u.status.filter(s => !s.off && !s.preJoin).length;
     const filledCnt = u.status.filter(s => s.filled).length;
     const denom = workingDays || 1;
     const pct = Math.round((filledCnt/denom)*100);
@@ -12045,7 +12045,9 @@ function renderCompliance(){
       <td>${dtEscape(u.department)}</td>`;
     for (const s of u.status) {
       let cell;
-      if (s.off) {
+      if (s.preJoin) {
+        cell = '<span class="cp-cell-off" title="Before joining date">–</span>';
+      } else if (s.off) {
         cell = s.isHoliday
           ? '<span class="cp-cell-holiday" title="Holiday">🎉 Off</span>'
           : '<span class="cp-cell-off" title="Week off">Off</span>';
