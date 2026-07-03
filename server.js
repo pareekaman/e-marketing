@@ -8292,7 +8292,7 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
     table.hdr td{border:none;vertical-align:top;padding:0}
     .hdr-r{text-align:right;font-size:10.5px;line-height:1.6}
     .hdr-r .co{font-weight:bold;font-size:11px}
-    h2{text-align:center;text-decoration:underline;font-size:13px;letter-spacing:.5px;margin:12px 0}
+    h2{text-align:center;font-size:13px;letter-spacing:.5px;margin:12px 0}
     .pc{text-align:right;margin-bottom:14px;font-size:11px}
     p{margin:0 0 8px;text-align:justify}ol{margin:3px 0 10px 16px}ol li{margin-bottom:2px}
     .footer{margin-top:20px}a{color:#00f}
