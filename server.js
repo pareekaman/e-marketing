@@ -8298,7 +8298,7 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
     .footer{margin-top:20px}a{color:#00f}
   </style></head><body>
   <table class="hdr"><tr>
-    <td width="45%"><img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" width="150" height="60" style="display:block"></td>
+    <td width="45%"><img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" width="158" height="63" style="display:block"></td>
     <td align="right" valign="top" style="font-size:10.5px;line-height:1.6;text-align:right">
       <div><strong>e-Marketing.io (A Unit of Jai Marketing)</strong></div>
       <div>Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,</div>
