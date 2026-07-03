@@ -8287,13 +8287,13 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
   const appUrl = (process.env.APP_URL || 'https://e-marketing-phi.vercel.app').replace(/\/$/, '');
   const logoTag = `<img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" style="max-height:75px;width:auto">`;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-    body{margin:0;padding:20px 65px;font-family:'Times New Roman',Times,serif;font-size:12px;color:#000;line-height:1.5}
+    body{margin:0;padding:20px 65px;font-family:'Times New Roman',Times,serif;font-size:16px;color:#000;line-height:1.5}
     table.hdr{width:100%;border:none;border-collapse:collapse;margin-bottom:14px}
     table.hdr td{border:none;vertical-align:top;padding:0}
-    .hdr-r{text-align:right;font-size:10.5px;line-height:1.6}
-    .hdr-r .co{font-weight:bold;font-size:11px}
-    h2{text-align:center;font-size:13px;letter-spacing:.5px;margin:12px 0}
-    .pc{text-align:right;margin-bottom:14px;font-size:11px}
+    .hdr-r{text-align:right;font-size:14px;line-height:1.6}
+    .hdr-r .co{font-weight:bold;font-size:15px}
+    h2{text-align:center;font-size:17px;letter-spacing:.5px;margin:12px 0}
+    .pc{text-align:left;margin-bottom:14px;font-size:16px}
     p{margin:0 0 8px;text-align:justify}ol{margin:3px 0 10px 16px}ol li{margin-bottom:2px}
     .footer{margin-top:20px}a{color:#00f}
   </style></head><body>
