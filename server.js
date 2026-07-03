@@ -8283,21 +8283,29 @@ async function _hrmDriveClient() {
   return google.drive({ version: 'v3', auth: client });
 }
 
+function _hrmLogoBase64() {
+  try {
+    const fs = require('fs'), path = require('path');
+    const buf = fs.readFileSync(path.join(__dirname, 'public', 'emarketing offer letter logo.png'));
+    return 'data:image/png;base64,' + buf.toString('base64');
+  } catch { return null; }
+}
+
 function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) {
-  const appUrl  = (process.env.APP_URL || '').replace(/\/$/, '');
-  const logoTag = appUrl
-    ? `<img src="${appUrl}/emarketing%20offer%20letter%20logo.png" alt="e-Marketing" style="max-height:75px;width:auto">`
+  const logoSrc = _hrmLogoBase64();
+  const logoTag = logoSrc
+    ? `<img src="${logoSrc}" alt="e-Marketing" style="max-height:75px;width:auto">`
     : `<div style="font-size:16px;font-weight:bold;color:#f90">e-Marketing</div><div style="font-size:10px">Grow Your Business | A Unit of Jai Marketing</div>`;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-    body{margin:0;padding:30px 40px;font-family:'Times New Roman',Times,serif;font-size:13px;color:#000;line-height:1.6}
-    .hdr{display:table;width:100%;padding-bottom:12px;margin-bottom:20px}
+    body{margin:0;padding:22px 35px;font-family:'Times New Roman',Times,serif;font-size:12px;color:#000;line-height:1.5}
+    .hdr{display:table;width:100%;padding-bottom:10px;margin-bottom:14px}
     .hdr-l{display:table-cell;vertical-align:top;width:45%}
-    .hdr-r{display:table-cell;vertical-align:top;text-align:right;font-size:11px;line-height:1.5}
-    .hdr-r .co{font-weight:bold;font-size:11.5px}
-    h2{text-align:center;text-decoration:underline;font-size:14px;letter-spacing:.5px;margin:16px 0}
-    .pc{text-align:right;margin-bottom:18px;font-size:12px}
-    p{margin:0 0 10px;text-align:justify}ol{margin:4px 0 12px 18px}ol li{margin-bottom:3px}
-    .footer{margin-top:28px}a{color:#00f}
+    .hdr-r{display:table-cell;vertical-align:top;text-align:right;font-size:10.5px;line-height:1.4}
+    .hdr-r .co{font-weight:bold;font-size:11px}
+    h2{text-align:center;text-decoration:underline;font-size:13px;letter-spacing:.5px;margin:12px 0}
+    .pc{text-align:right;margin-bottom:14px;font-size:11px}
+    p{margin:0 0 8px;text-align:justify}ol{margin:3px 0 10px 16px}ol li{margin-bottom:2px}
+    .footer{margin-top:20px}a{color:#00f}
   </style></head><body>
   <div class="hdr">
     <div class="hdr-l">${logoTag}</div>
