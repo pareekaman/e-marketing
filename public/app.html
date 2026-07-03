@@ -2329,10 +2329,12 @@ tbody tr:last-child td{border-bottom:none;}
           <input id="prCardOther" placeholder="Enter card number…" style="display:none;margin-top:6px;width:100%;padding:10px 12px;border:1.5px solid #f59e0b;border-radius:10px;font-size:13px;outline:none;box-sizing:border-box">
         </div>
         <div>
-          <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">Amount (₹)</label>
-          <div style="display:flex;align-items:center;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;padding:0 12px;gap:6px">
-            <input id="prAmount" type="number" min="0" step="0.01" placeholder="0.00" style="flex:1;border:none;background:transparent;padding:10px 0;font-size:13px;outline:none;font-family:inherit">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 9h8M8 12h4m-4 3h8"/></svg>
+          <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">Amount</label>
+          <div style="display:flex;align-items:center;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;overflow:hidden">
+            <input id="prAmount" type="number" min="0" step="0.01" placeholder="0.00" style="flex:1;border:none;background:transparent;padding:10px 12px;font-size:13px;outline:none;font-family:inherit">
+            <button id="prCurrencyBtn" type="button" onclick="prToggleCurrency()" title="Click to switch currency"
+              style="border:none;border-left:1.5px solid #e2e8f0;background:#f8fafc;padding:0 14px;height:42px;font-size:15px;font-weight:700;color:#1a56db;cursor:pointer;flex-shrink:0;transition:background .15s"
+              onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#f8fafc'">₹</button>
           </div>
         </div>
       </div>
@@ -4341,9 +4343,9 @@ async function init() {
     // Credit Cards nav — all admins
     const ccNav = document.getElementById('nav-creditcards');
     if (ccNav) ccNav.style.display = (ME.role === 'admin') ? 'flex' : 'none';
-    // Payment Request nav — all admins
+    // Payment Request nav — all users
     const prNav = document.getElementById('nav-paymentreq');
-    if (prNav) prNav.style.display = (ME.role === 'admin') ? 'flex' : 'none';
+    if (prNav) prNav.style.display = 'flex';
 
     // Mirror the sidebar into the mobile bottom tab bar, and keep it in sync
     // as later async permission checks (feedback, fms-tasks) toggle nav items.
@@ -7776,8 +7778,9 @@ async function loadApprovals() {
   // if (ME.role === 'admin' || ME.name === 'Naman Gupta') {
   //   document.getElementById('apprTabWa').style.display = 'block';
   // }
-  // Payment Approvals tab — all admins
-  if (ME.role === 'admin') {
+  // Payment Approvals tab — Naman Gupta, Abhishek Jain, Simran Gurnani only
+  const _PR_APPROVERS = ['Naman Gupta', 'Abhishek Jain', 'Simran Gurnani'];
+  if (_PR_APPROVERS.includes(ME.name)) {
     document.getElementById('apprTabPayment').style.display = 'block';
     loadPaymentApprovalsBadge();
   }
@@ -13770,6 +13773,13 @@ const CC_BANK_COLORS = {
 // PAYMENT REQUEST
 // ══════════════════════════════════════════════════════
 let _prCards = []; // [{bank_name, card_number}]
+let _prCurrency = '₹'; // currently selected currency for new requests
+
+function prToggleCurrency() {
+  _prCurrency = _prCurrency === '₹' ? '$' : '₹';
+  const btn = document.getElementById('prCurrencyBtn');
+  if (btn) { btn.textContent = _prCurrency; btn.style.color = _prCurrency === '$' ? '#16a34a' : '#1a56db'; }
+}
 
 async function initPaymentReqPage() {
   document.getElementById('prName').value = ME.name || '';
@@ -13778,9 +13788,8 @@ async function initPaymentReqPage() {
     _prCards = Array.isArray(res) ? res : [];
   } catch(e) { _prCards = []; }
   prPopulateBanks();
-  // Show submit form only to admin users
   const formWrap = document.getElementById('prFormWrap');
-  if (formWrap) formWrap.style.display = ME.role === 'admin' ? '' : 'none';
+  if (formWrap) formWrap.style.display = '';
   const listTitle = document.getElementById('prMyListTitle');
   if (listTitle) listTitle.textContent = ME.role === 'admin' ? 'All Requests' : 'My Requests';
   loadMyPaymentRequests();
@@ -13905,12 +13914,12 @@ function prCardChange() {
   }
 }
 
-// Parse amount + reason from reason field (works with or without server restart)
+// Parse amount + currency + reason from reason field
 function prParseReason(raw) {
-  if (!raw) return { amount: null, reason: '' };
-  const m = String(raw).match(/^\[₹([\d,]+\.?\d*)\] ([\s\S]*)$/);
-  if (m) return { amount: parseFloat(m[1].replace(/,/g,'')), reason: m[2] };
-  return { amount: null, reason: raw };
+  if (!raw) return { amount: null, currency: '₹', reason: '' };
+  const m = String(raw).match(/^\[([₹$])([\d,]+\.?\d*)\] ([\s\S]*)$/);
+  if (m) return { amount: parseFloat(m[2].replace(/,/g,'')), currency: m[1], reason: m[3] };
+  return { amount: null, currency: '₹', reason: raw };
 }
 
 async function prSubmit() {
@@ -13932,8 +13941,8 @@ async function prSubmit() {
   if (!amount || amount <= 0) { showToast('Enter amount', 'error'); document.getElementById('prAmount').focus(); return; }
   if (!reason) { showToast('Enter reason', 'error'); return; }
 
-  // Encode amount inside reason so old server stores it without DB column change
-  const encodedReason = `[₹${amount.toFixed(2)}] ${reason}`;
+  // Encode amount + currency inside reason
+  const encodedReason = `[${_prCurrency}${amount.toFixed(2)}] ${reason}`;
 
   const btn = document.getElementById('prSubmitBtn');
   if (btn) { btn.disabled = true; btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Submitting...'; }
@@ -13995,11 +14004,11 @@ async function loadMyPaymentRequests() {
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Payment Status</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bill</th>
-        ${ME.role==='admin'?'<th style="padding:9px 14px;width:40px"></th>':''}
       </tr></thead>
       <tbody>${rows.map((r,i) => {
         const parsed = prParseReason(r.reason);
         const dispAmt = r.amount ? Number(r.amount) : parsed.amount;
+        const dispCur = parsed.currency || '₹';
         const dispReason = r.amount ? r.reason : parsed.reason;
         const isDone = r.payment_done || sentinels.some(s => s.card_number === '__paid__' && s.reason === '__paid__:' + String(r.id));
         const cancelSentinel = sentinels.find(s => s.card_number === '__cancelled__' && s.reason.startsWith('__cancelled__:' + String(r.id) + ':'));
@@ -14017,21 +14026,21 @@ async function loadMyPaymentRequests() {
         if (r.status === 'approved') {
           if (isDone) payStatusCell = '<span style="font-size:20px">✅</span>';
           else if (isCancelled) payStatusCell = '<span style="font-size:20px" title="' + dtEscape(cancelSentinel.reason.replace('__cancelled__:' + r.id + ':','')) + '">❌</span>';
-          else payStatusCell = `<span style="display:inline-flex;gap:10px;align-items:center">
+          else if (ME.role === 'admin') payStatusCell = `<span style="display:inline-flex;gap:10px;align-items:center">
             <button onclick="prOpenBillModal(${r.id})" title="Mark as Paid" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;padding:2px">✅</button>
             <button onclick="prOpenCancelModal(${r.id})" title="Cancel Payment" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;padding:2px">❌</button>
           </span>`;
+          else payStatusCell = '<span style="font-size:12px;color:#f59e0b;font-weight:600">⏳ Pending</span>';
         }
         return `<tr style="${i%2?'background:#f8fafc':''}">
         <td style="padding:9px 14px;font-size:12px;color:#64748b">${new Date(r.created_at).toLocaleDateString('en-IN')}</td>
         <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.bank_name)}</td>
         <td style="padding:9px 14px;font-size:12px">${dtEscape(r.card_number)}</td>
-        <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">${dispAmt?'₹'+Number(dispAmt).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
+        <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">${dispAmt?dispCur+Number(dispAmt).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
         <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:200px">${dtEscape(dispReason)}</td>
         <td style="padding:9px 14px">${statusBadge(r.status)}</td>
         <td style="padding:9px 14px;text-align:center">${payStatusCell}</td>
         <td style="padding:9px 14px;text-align:center">${billCell}</td>
-        ${ME.role==='admin'?`<td style="padding:9px 14px;text-align:center"><button onclick="prDeleteRequest(${r.id})" title="Delete" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:16px;line-height:1;padding:2px 4px;border-radius:4px" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#cbd5e1'">🗑</button></td>`:''}
       </tr>`;}).join('')}</tbody>
     </table>`;
   } catch(e) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
@@ -14086,11 +14095,11 @@ function paRenderApprovalRows(rows) {
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Action</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bill</th>
-        <th style="padding:9px 14px;width:40px"></th>
       </tr></thead>
       <tbody>${rows.map((r,i) => {
         const parsed = prParseReason(r.reason);
         const dispAmt = r.amount ? Number(r.amount) : parsed.amount;
+        const dispCur = parsed.currency || '₹';
         const dispReason = r.amount ? r.reason : parsed.reason;
         const isDone = r.payment_done || sentinels.some(s => s.card_number === '__paid__' && s.reason === '__paid__:' + String(r.id));
         const cancelSentinel = sentinels.find(s => s.card_number === '__cancelled__' && s.reason.startsWith('__cancelled__:' + String(r.id) + ':'));
@@ -14110,7 +14119,7 @@ function paRenderApprovalRows(rows) {
         <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.name)}</td>
         <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.bank_name)}</td>
         <td style="padding:9px 14px;font-size:12px">${dtEscape(r.card_number)}</td>
-        <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">${dispAmt?'₹'+Number(dispAmt).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
+        <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">${dispAmt?dispCur+Number(dispAmt).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
         <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:200px">${dtEscape(dispReason)}</td>
         <td style="padding:9px 14px" id="paStatus-${r.id}">${statusBadge(r.status)}</td>
         <td style="padding:9px 14px;text-align:center">
@@ -14124,7 +14133,6 @@ function paRenderApprovalRows(rows) {
             : '—'}
         </td>
         <td style="padding:9px 14px;text-align:center">${paBillCell}</td>
-        <td style="padding:9px 14px;text-align:center"><button onclick="prDeleteRequest(${r.id})" title="Delete" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:16px;line-height:1;padding:2px 4px;border-radius:4px" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#cbd5e1'">🗑</button></td>
       </tr>`;}).join('')}</tbody>
     </table>`;
 }
@@ -14210,15 +14218,34 @@ function prBillFileSelected() {
   const file = document.getElementById('prBillFileInput').files[0];
   if (!file) return;
   _prBillFile = file;
-  const reader = new FileReader();
-  reader.onload = e => {
-    document.getElementById('prBillImg').src = e.target.result;
-    document.getElementById('prBillPreview').style.display = '';
-    document.getElementById('prBillPrompt').style.display = 'none';
-  };
-  reader.readAsDataURL(file);
+  const preview = document.getElementById('prBillPreview');
+  const prompt  = document.getElementById('prBillPrompt');
+  if (file.type === 'application/pdf') {
+    document.getElementById('prBillImg').style.display = 'none';
+    preview.innerHTML = `<div style="padding:18px 12px;text-align:center"><div style="font-size:38px">📄</div><div style="font-size:12px;font-weight:600;color:#475569;margin-top:6px">${file.name}</div><div style="font-size:11px;color:#94a3b8;margin-top:2px">${(file.size/1024).toFixed(0)} KB</div></div>`;
+    preview.style.display = '';
+    prompt.style.display = 'none';
+  } else {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = document.getElementById('prBillImg');
+      img.src = e.target.result;
+      img.style.display = '';
+      preview.style.display = '';
+      prompt.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  }
 }
 async function prBillCompressToBase64(file) {
+  if (file.type === 'application/pdf') {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve({ base64: e.target.result.split(',')[1], mimeType: 'application/pdf' });
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -14265,7 +14292,10 @@ async function prBillSubmit() {
       (async () => {
         try {
           const { base64, mimeType } = await prBillCompressToBase64(billFile);
-          const filename = rawName.endsWith('.jpg') ? rawName : (rawName + '.jpg');
+          const isPdf = mimeType === 'application/pdf';
+          const filename = isPdf
+            ? (rawName.endsWith('.pdf') ? rawName : rawName + '.pdf')
+            : (rawName.endsWith('.jpg') ? rawName : rawName + '.jpg');
           await fetch(PR_BILL_SCRIPT_URL, {
             method: 'POST', mode: 'no-cors',
             headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
@@ -16812,9 +16842,9 @@ async function dmsSaveFile() {
     <p style="margin:0 0 18px;font-size:13px;color:#64748b">Optionally upload the bill/receipt before marking as paid</p>
     <div id="prBillDropzone" onclick="document.getElementById('prBillFileInput').click()" style="border:2px dashed #cbd5e1;border-radius:10px;padding:22px 16px;text-align:center;cursor:pointer;transition:border-color .2s;background:#f8fafc" onmouseover="this.style.borderColor='#6366f1'" onmouseout="this.style.borderColor='#cbd5e1'">
       <div id="prBillPreview" style="display:none;margin-bottom:10px"><img id="prBillImg" style="max-height:160px;max-width:100%;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.12)"></div>
-      <div id="prBillPrompt" style="color:#94a3b8;font-size:14px">📎 &nbsp; Click to choose transaction image</div>
+      <div id="prBillPrompt" style="color:#94a3b8;font-size:14px">📎 &nbsp; Click to choose transaction image or PDF</div>
     </div>
-    <input type="file" id="prBillFileInput" accept="image/*" style="display:none" onchange="prBillFileSelected()">
+    <input type="file" id="prBillFileInput" accept="image/*,.pdf" style="display:none" onchange="prBillFileSelected()">
     <div style="margin-top:14px">
       <label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px">File Name</label>
       <input type="text" id="prBillFilename" placeholder="File name (without extension)" style="width:100%;box-sizing:border-box;border:1.5px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:13px;outline:none;font-family:inherit" onfocus="this.style.borderColor='#1a56db'" onblur="this.style.borderColor='#e2e8f0'">
