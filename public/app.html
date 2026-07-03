@@ -5088,7 +5088,7 @@ function renderHrmMsgTable() {
     const statusCls = m.status==='Sent' ? 'hrm-msg-status-sent' : 'hrm-msg-status-failed';
     const retryBtn = m.status==='Failed'
       ? `<button class="action-btn edit" onclick="retryHrmMsg(${m.id})">Retry</button>` : '';
-    const ts = m.created_at ? new Date(m.created_at).toLocaleString('en-IN') : '';
+    const ts = m.created_at ? new Date(String(m.created_at).replace(' ','T')+'Z').toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}) : '';
     return `<tr>
       <td style="font-size:12px;color:#64748b;white-space:nowrap">${ts}</td>
       <td><div class="hrm-candidate-name">${esc(m.candidate_name)}</div><div class="hrm-candidate-sub">${esc(m.phone)}</div></td>
