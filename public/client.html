@@ -336,30 +336,9 @@ function cpRenderHtml(s){
     (priorityRank[b.priority] || 0) - (priorityRank[a.priority] || 0));
   window._cpRecentMap = {};
   recentSorted.forEach(t => { if (t.id) window._cpRecentMap[`${t.type}-${t.id}`] = t; });
-  const recentHtml = recentSorted.length
-    ? recentSorted.map(t => {
-        const typeBadge = t.type === 'checklist'
-          ? `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:3px 9px;border-radius:10px;font-weight:700;letter-spacing:.3px">✅ CHECKLIST</span>`
-          : `<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:3px 9px;border-radius:10px;font-weight:700;letter-spacing:.3px">📋 DELEGATION</span>`;
-        const statusPill = t.status === 'completed'
-          ? `<span style="font-size:11px;color:#15803d;font-weight:700;background:#dcfce7;padding:4px 10px;border-radius:999px;border:1px solid #bbf7d0">✓ Done</span>`
-          : t.status === 'revised'
-          ? `<span style="font-size:11px;color:#9d174d;font-weight:700;background:#fce7f3;padding:4px 10px;border-radius:999px;border:1px solid #fbcfe8">🔄 Revised</span>`
-          : `<span style="font-size:11px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:4px 10px;border-radius:999px;border:1px solid #fca5a5">⏳ Pending</span>`;
-        const priorityColors = { urgent: ['#fef2f2','#dc2626'], high: ['#fffbeb','#92400e'], medium: ['#eff6ff','#1d4ed8'], low: ['#f0fdf4','#16a34a'] };
-        const [prBg, prFg] = priorityColors[t.priority] || priorityColors.low;
-        const priorityPill = `<span style="font-size:10px;color:${prFg};font-weight:700;background:${prBg};padding:3px 9px;border-radius:10px;text-transform:capitalize">${dtEscape(t.priority || 'low')}</span>`;
-        return `<tr onclick="cpOpenTaskDetail('${t.type}-${t.id}')" style="cursor:pointer" title="Click to view details">
-          <td>${typeBadge}</td>
-          <td style="font-weight:500;color:#0f172a">${dtEscape(t.description || '')}</td>
-          <td style="white-space:nowrap;color:#475569">${dtEscape(t.doer || '—')}</td>
-          <td style="white-space:nowrap">${priorityPill}</td>
-          <td style="white-space:nowrap;color:#64748b;font-size:12px">${fmtDate(t.due_date || '')}</td>
-          <td style="white-space:nowrap">${statusPill}</td>
-        </tr>`;
-      }).join('')
-    : `<tr><td colspan="6" style="padding:32px;text-align:center;color:#94a3b8">
-         <div style="font-size:32px;margin-bottom:6px">📭</div>No tasks in this window yet</td></tr>`;
+  window._cpRecentAll = recentSorted;
+  window._cpRecentFilter = 'all';
+  const recentHtml = cpRenderRecentRows(recentSorted);
 
   const meetingsHtml = (meet.recent || []).length
     ? meet.recent.map(m => {
@@ -388,7 +367,7 @@ function cpRenderHtml(s){
       }).join('')
     : `<div style="padding:32px;text-align:center;color:#94a3b8"><div style="font-size:32px;margin-bottom:6px">📅</div>No meetings in this window</div>`;
 
-  const statCard = (icon, label, value, color, sub, extra) => `<div style="background:#fff;border:1px solid #e8eaf0;border-radius:12px;padding:12px 15px;position:relative;overflow:hidden;box-shadow:0 1px 3px rgba(16,24,40,.04)">
+  const statCard = (icon, label, value, color, sub, extra, onclick) => `<div ${onclick ? `onclick="${onclick}" role="button" tabindex="0"` : ''} style="background:#fff;border:1px solid #e8eaf0;border-radius:12px;padding:12px 15px;position:relative;overflow:hidden;box-shadow:0 1px 3px rgba(16,24,40,.04);${onclick ? 'cursor:pointer;transition:transform .12s,box-shadow .12s' : ''}" ${onclick ? `onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(16,24,40,.10)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 1px 3px rgba(16,24,40,.04)'"` : ''}>
     <div style="position:absolute;top:0;left:0;width:4px;height:100%;background:${color}"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
       <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${label}</div>
@@ -428,11 +407,11 @@ function cpRenderHtml(s){
     </div>
 
     <div class="cp-stats">
-      ${statCard('📊', 'Total Tasks', tasksTotal, '#1a56db', `${del.total||0} del · ${chl.total||0} chk`)}
-      ${statCard('⏳', 'Pending', pendingTotal, '#ef4444', overdueTotal > 0 ? `${overdueTotal} overdue` : 'On track')}
-      ${statCard('✅', 'Completed', completedTotal, '#10b981', `${completionPct}% done`, completedExtra)}
-      ${statCard('🔄', 'Revised', revisedTotal, '#f59e0b', revisedTotal > 0 ? 'Needs rework' : 'None')}
-      ${statCard('📅', 'Meetings', meetingsTotal, '#7c3aed', `${meetingsScheduled} sched · ${meetingsCancelled} canc`)}
+      ${statCard('📊', 'Total Tasks', tasksTotal, '#1a56db', `${del.total||0} del · ${chl.total||0} chk`, null, `cpFilterRecent('all')`)}
+      ${statCard('⏳', 'Pending', pendingTotal, '#ef4444', overdueTotal > 0 ? `${overdueTotal} overdue` : 'On track', null, `cpFilterRecent('pending')`)}
+      ${statCard('✅', 'Completed', completedTotal, '#10b981', `${completionPct}% done`, completedExtra, `cpFilterRecent('completed')`)}
+      ${statCard('🔄', 'Revised', revisedTotal, '#f59e0b', revisedTotal > 0 ? 'Needs rework' : 'None', null, `cpFilterRecent('revised')`)}
+      ${statCard('📅', 'Meetings', meetingsTotal, '#7c3aed', `${meetingsScheduled} sched · ${meetingsCancelled} canc`, null, `cpScrollTo('cpMeetingsCard')`)}
     </div>
 
     <div class="cp-content-top">
@@ -444,24 +423,70 @@ function cpRenderHtml(s){
         </div>
       </div>
       ${cpRenderSystemLinksHtml((s.client && s.client.system_links) || [])}
-      <div class="cp-card" style="height:230px">
+      <div class="cp-card" id="cpMeetingsCard" style="height:230px">
         <div class="cp-card-head"><h4>📅 Meetings</h4><span style="font-size:11px;color:#94a3b8">${meetingsTotal} total</span></div>
         <div class="cp-scroll" style="flex:1">${meetingsHtml}</div>
       </div>
     </div>
 
-    <div class="cp-card">
-      <div class="cp-card-head"><h4>📋 Recent Activity</h4><span style="font-size:11px;color:#94a3b8">${(s.recent||[]).length} item${(s.recent||[]).length===1?'':'s'}</span></div>
+    <div class="cp-card" id="cpRecentCard">
+      <div class="cp-card-head"><h4>📋 Recent Activity</h4><span id="cpRecentCount" style="font-size:11px;color:#94a3b8">${(s.recent||[]).length} item${(s.recent||[]).length===1?'':'s'}</span></div>
       <div class="cp-scroll" style="max-height:188px">
         <table>
           <thead><tr style="background:#f8fafc;position:sticky;top:0;z-index:1">
             <th>Type</th><th>Description</th><th>Doer</th><th>Priority</th><th>Date</th><th>Status</th>
           </tr></thead>
-          <tbody>${recentHtml}</tbody>
+          <tbody id="cpRecentBody">${recentHtml}</tbody>
         </table>
       </div>
     </div>
   `;
+}
+
+// Renders <tr> rows for the Recent Activity table — shared by the initial
+// render and cpFilterRecent() so clicking a stat card can re-render in place.
+function cpRenderRecentRows(list){
+  return list.length
+    ? list.map(t => {
+        const typeBadge = t.type === 'checklist'
+          ? `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:3px 9px;border-radius:10px;font-weight:700;letter-spacing:.3px">✅ CHECKLIST</span>`
+          : `<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:3px 9px;border-radius:10px;font-weight:700;letter-spacing:.3px">📋 DELEGATION</span>`;
+        const statusPill = t.status === 'completed'
+          ? `<span style="font-size:11px;color:#15803d;font-weight:700;background:#dcfce7;padding:4px 10px;border-radius:999px;border:1px solid #bbf7d0">✓ Done</span>`
+          : t.status === 'revised'
+          ? `<span style="font-size:11px;color:#9d174d;font-weight:700;background:#fce7f3;padding:4px 10px;border-radius:999px;border:1px solid #fbcfe8">🔄 Revised</span>`
+          : `<span style="font-size:11px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:4px 10px;border-radius:999px;border:1px solid #fca5a5">⏳ Pending</span>`;
+        const priorityColors = { urgent: ['#fef2f2','#dc2626'], high: ['#fffbeb','#92400e'], medium: ['#eff6ff','#1d4ed8'], low: ['#f0fdf4','#16a34a'] };
+        const [prBg, prFg] = priorityColors[t.priority] || priorityColors.low;
+        const priorityPill = `<span style="font-size:10px;color:${prFg};font-weight:700;background:${prBg};padding:3px 9px;border-radius:10px;text-transform:capitalize">${dtEscape(t.priority || 'low')}</span>`;
+        return `<tr onclick="cpOpenTaskDetail('${t.type}-${t.id}')" style="cursor:pointer" title="Click to view details">
+          <td>${typeBadge}</td>
+          <td style="font-weight:500;color:#0f172a">${dtEscape(t.description || '')}</td>
+          <td style="white-space:nowrap;color:#475569">${dtEscape(t.doer || '—')}</td>
+          <td style="white-space:nowrap">${priorityPill}</td>
+          <td style="white-space:nowrap;color:#64748b;font-size:12px">${fmtDate(t.due_date || '')}</td>
+          <td style="white-space:nowrap">${statusPill}</td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="6" style="padding:32px;text-align:center;color:#94a3b8">
+         <div style="font-size:32px;margin-bottom:6px">📭</div>No tasks match this filter</td></tr>`;
+}
+
+// Stat-card click handler — filters the Recent Activity table in place and
+// scrolls it into view (list is capped server-side, so this filters what's loaded).
+function cpFilterRecent(status){
+  const all = window._cpRecentAll || [];
+  window._cpRecentFilter = status;
+  const filtered = status === 'all' ? all : all.filter(t => t.status === status);
+  const body = document.getElementById('cpRecentBody');
+  const count = document.getElementById('cpRecentCount');
+  if (body) body.innerHTML = cpRenderRecentRows(filtered);
+  if (count) count.textContent = `${filtered.length} item${filtered.length===1?'':'s'}${status!=='all' ? ' · ' + status : ''}`;
+  cpScrollTo('cpRecentCard');
+}
+
+function cpScrollTo(id){
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // System Links — per-client quick links configured by admin. Replaces the old

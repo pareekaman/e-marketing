@@ -3013,6 +3013,38 @@ tbody tr:last-child td{border-bottom:none;}
           <input type="time" id="mtgEnd" step="900" readonly style="background:#f8fafc"/>
         </div>
       </div>
+      <div id="mtgRecurrenceSection">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Frequency</label>
+            <select id="mtgFrequency" onchange="mtgOnFrequencyChange()">
+              <option value="">Does not repeat</option>
+              <option value="daily">Daily</option>
+              <option value="weekday">Every Weekday (Mon–Sat)</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="custom">Custom…</option>
+            </select>
+          </div>
+          <div class="form-group" id="mtgRepeatUntilGroup" style="display:none">
+            <label>Repeat until</label>
+            <input type="date" id="mtgRepeatUntil"/>
+          </div>
+        </div>
+        <div class="form-group" id="mtgRepeatOnGroup" style="display:none">
+          <label>Repeat on</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 9px;cursor:pointer"><input type="checkbox" data-repeat-day="0" style="margin:0"/>SUN</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 9px;cursor:pointer"><input type="checkbox" data-repeat-day="1" style="margin:0"/>MON</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 9px;cursor:pointer"><input type="checkbox" data-repeat-day="2" style="margin:0"/>TUE</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 9px;cursor:pointer"><input type="checkbox" data-repeat-day="3" style="margin:0"/>WED</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 9px;cursor:pointer"><input type="checkbox" data-repeat-day="4" style="margin:0"/>THU</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 9px;cursor:pointer"><input type="checkbox" data-repeat-day="5" style="margin:0"/>FRI</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 9px;cursor:pointer"><input type="checkbox" data-repeat-day="6" style="margin:0"/>SAT</label>
+          </div>
+        </div>
+        <div id="mtgRecurrenceNote" style="font-size:11px;color:#64748b;margin:-6px 0 12px"></div>
+      </div>
       <div class="form-group">
         <label>Attendees (team)</label>
         <div style="position:relative">
@@ -16327,6 +16359,14 @@ async function openMeetingModal(id, prefillStart) {
   document.getElementById('mtgDuration').value = '30';
   mtgRecalcEnd();
 
+  // Recurrence only applies when creating a brand-new meeting — editing one
+  // occurrence shouldn't spawn a whole new series.
+  document.getElementById('mtgRecurrenceSection').style.display = id ? 'none' : 'block';
+  document.getElementById('mtgFrequency').value = '';
+  document.getElementById('mtgRepeatUntil').value = '';
+  document.querySelectorAll('[data-repeat-day]').forEach(cb => cb.checked = false);
+  mtgOnFrequencyChange();
+
   if (id) {
     const m = await api(`/api/meetings/${id}`);
     if (m && !m.error) {
@@ -16396,6 +16436,24 @@ document.addEventListener('click', (e) => {
   dd.style.display = 'none';
 });
 
+function mtgOnFrequencyChange() {
+  const freq = document.getElementById('mtgFrequency').value;
+  const untilGroup = document.getElementById('mtgRepeatUntilGroup');
+  const onGroup = document.getElementById('mtgRepeatOnGroup');
+  const note = document.getElementById('mtgRecurrenceNote');
+  untilGroup.style.display = freq ? 'block' : 'none';
+  onGroup.style.display = freq === 'custom' ? 'block' : 'none';
+  if (freq && !document.getElementById('mtgRepeatUntil').value) {
+    const start = document.getElementById('mtgFormDate').value ? new Date(document.getElementById('mtgFormDate').value) : new Date();
+    const d = new Date(start);
+    d.setMonth(d.getMonth() + 3);
+    document.getElementById('mtgRepeatUntil').value = d.toISOString().split('T')[0];
+  }
+  note.textContent = freq
+    ? 'This will create one meeting per occurrence, up to the "repeat until" date — fill this form once instead of every time.'
+    : '';
+}
+
 function mtgRecalcEnd() {
   const start = document.getElementById('mtgStart').value || '10:00';
   const dur = parseInt(document.getElementById('mtgDuration').value, 10) || 30;
@@ -16447,12 +16505,26 @@ async function saveMeeting() {
     showToast('Title, date, start and end time required');
     return;
   }
+  if (!id) {
+    const freq = document.getElementById('mtgFrequency').value;
+    if (freq) {
+      const repeatUntil = document.getElementById('mtgRepeatUntil').value;
+      if (!repeatUntil) { showToast('Pick a "repeat until" date'); return; }
+      const repeatDays = Array.from(document.querySelectorAll('[data-repeat-day]:checked')).map(cb => parseInt(cb.dataset.repeatDay, 10));
+      if (freq === 'custom' && !repeatDays.length) { showToast('Select at least one day to repeat on'); return; }
+      payload.frequency = freq;
+      payload.repeat_until = repeatUntil;
+      payload.repeat_days = repeatDays;
+    }
+  }
   try {
     const r = id
       ? await api(`/api/meetings/${id}`, 'PUT', payload)
       : await api('/api/meetings', 'POST', payload);
     if (r?.error) { showToast(r.error); return; }
-    showToast(id ? 'Meeting updated · WhatsApp sent' : 'Meeting scheduled · WhatsApp sent');
+    showToast(id
+      ? 'Meeting updated · WhatsApp sent'
+      : (r?.count > 1 ? `${r.count} meetings scheduled · WhatsApp sent` : 'Meeting scheduled · WhatsApp sent'));
     closeModal('meetingModal');
     _mtgDayAnchor = _mtgParseIso(payload.meeting_date);
     _mtgMonthAnchor = new Date(_mtgDayAnchor.getFullYear(), _mtgDayAnchor.getMonth(), 1);
