@@ -8361,16 +8361,23 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
 
   const html = hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today);
+  await db.query('UPDATE hrm_candidates SET offer_token=?, offer_html=? WHERE id=?', [token, html, candidate.id]).catch(() => {});
 
-  // Upload to Drive via Apps Script (no API key / OAuth needed)
+  // Use Google Doc template: copy → replace placeholders → export PDF
   const fetchFn = global.fetch || (await import('node-fetch')).default;
   const scriptRes = await fetchFn(HRM_OFFER_SCRIPT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      html,
+      templateId: HRM_OFFER_TEMPLATE_ID,
       filename: `PRELIMINARY OFFER LETTER - ${candidateName}`,
       folderId: HRM_OFFER_FOLDER_ID,
+      replacements: {
+        '\\{\\{CANDIDATE_NAME\\}\\}': candidateName,
+        '\\{\\{POSITION\\}\\}':       candidatePosition,
+        '\\{\\{JOINING_DATE\\}\\}':   joiningFmt,
+        '\\{\\{Today_Date\\}\\}':     today,
+      },
     }),
   });
   const scriptData = await scriptRes.json();
