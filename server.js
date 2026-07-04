@@ -6007,31 +6007,27 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
       'UPDATE payment_requests SET status=?, reviewed_at=NOW() WHERE id=?',
       [status, req.params.id]
     );
-    res.json({ success: true });
-    // Send WhatsApp notification to requester
-    (async () => {
-      try {
-        const [[pr]] = await db.query('SELECT submitted_by, reason, amount FROM payment_requests WHERE id=?', [req.params.id]);
-        console.log('[PR WA] pr row:', pr);
-        if (pr) {
-          const [[submitter]] = await db.query('SELECT name, phone FROM users WHERE id=?', [pr.submitted_by]);
-          console.log('[PR WA] submitter:', submitter);
-          if (submitter && submitter.phone) {
-            const emoji = status === 'approved' ? '✅' : '❌';
-            const statusText = status === 'approved' ? 'Approved' : 'Rejected';
-            let amtStr = '';
-            if (pr.reason) {
-              const m = String(pr.reason).match(/^\[([₹$])([\d,]+\.?\d*)\]/);
-              if (m) amtStr = `\n*Amount:* ${m[1]}${m[2]}`;
-            } else if (pr.amount) {
-              amtStr = `\n*Amount:* ₹${Number(pr.amount).toFixed(2)}`;
-            }
-            const msg = `${emoji} *Payment Request ${statusText}*\n\nHi ${submitter.name},\n\nYour payment request has been *${statusText.toLowerCase()}*.${amtStr}\n\n— E-Marketing`;
-            sendWhatsApp(submitter.phone, msg).catch(e => console.error('WA payment notify err:', e.message));
+    // Send WhatsApp notification before responding (serverless-safe)
+    try {
+      const [[pr]] = await db.query('SELECT submitted_by, reason, amount FROM payment_requests WHERE id=?', [req.params.id]);
+      if (pr && pr.submitted_by) {
+        const [[submitter]] = await db.query('SELECT name, phone FROM users WHERE id=?', [pr.submitted_by]);
+        if (submitter && submitter.phone) {
+          const emoji = status === 'approved' ? '✅' : '❌';
+          const statusText = status === 'approved' ? 'Approved' : 'Rejected';
+          let amtStr = '';
+          if (pr.reason) {
+            const m = String(pr.reason).match(/^\[([₹$])([\d,]+\.?\d*)\]/);
+            if (m) amtStr = `\n*Amount:* ${m[1]}${m[2]}`;
+          } else if (pr.amount) {
+            amtStr = `\n*Amount:* ₹${Number(pr.amount).toFixed(2)}`;
           }
+          const msg = `${emoji} *Payment Request ${statusText}*\n\nHi ${submitter.name},\n\nYour payment request has been *${statusText.toLowerCase()}*.${amtStr}\n\n— E-Marketing`;
+          await sendWhatsApp(submitter.phone, msg);
         }
-      } catch(e) { console.error('WA payment notify err:', e.message); }
-    })();
+      }
+    } catch(waErr) { console.error('WA payment notify err:', waErr.message); }
+    res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
