@@ -5979,6 +5979,22 @@ app.post('/api/payment-requests', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+// Helper: parse encoded reason and fix amount in row before sending to client
+function parsePrRow(row) {
+  if (row.bank_name === '__system__') return row;
+  if (row.reason && row.reason.charAt(0) === '[') {
+    const close = row.reason.indexOf('] ');
+    if (close > 1) {
+      const inner = row.reason.slice(1, close);
+      const num = parseFloat(inner.slice(1).replace(/,/g, ''));
+      if (!isNaN(num)) {
+        return { ...row, amount: row.amount > 0 ? row.amount : num, reason: row.reason.slice(close + 2) };
+      }
+    }
+  }
+  return row;
+}
+
 // GET /api/payment-requests — all requests (admin + payment approvers)
 app.get('/api/payment-requests', requireAuth, async (req, res) => {
   try {
@@ -5987,7 +6003,7 @@ app.get('/api/payment-requests', requireAuth, async (req, res) => {
     const [rows] = await db.query(
       'SELECT * FROM payment_requests ORDER BY created_at DESC'
     );
-    res.json(rows);
+    res.json(rows.map(parsePrRow));
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -6000,7 +6016,7 @@ app.get('/api/payment-requests/my', requireAuth, async (req, res) => {
       'SELECT * FROM payment_requests WHERE submitted_by=? ORDER BY created_at DESC',
       [req.session.userId]
     );
-    res.json(rows);
+    res.json(rows.map(parsePrRow));
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -6023,12 +6039,22 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
         if (submitter && submitter.phone) {
           const emoji = status === 'approved' ? '✅' : '❌';
           const statusText = status === 'approved' ? 'Approved' : 'Rejected';
-          let amtStr = '';
+          let amtStr = '', cleanReason = pr.reason || '';
           if (pr.reason) {
-            const m = String(pr.reason).match(/^\[([₹$])([\d,]+\.?\d*)\]/);
-            if (m) amtStr = `\n*Amount:* ${m[1]}${m[2]}`;
+            const s = String(pr.reason);
+            if (s.charAt(0) === '[') {
+              const close = s.indexOf('] ');
+              if (close > 1) {
+                const inner = s.slice(1, close);
+                const num = parseFloat(inner.slice(1).replace(/,/g, ''));
+                if (!isNaN(num)) {
+                  amtStr = `\n*Amount:* ${inner.charAt(0)}${num.toFixed(2)}`;
+                  cleanReason = s.slice(close + 2);
+                }
+              }
+            }
           }
-          const msg = `${emoji} *Payment Request ${statusText}*\n\nHi ${submitter.name},\n\nYour payment request has been *${statusText.toLowerCase()}*.${amtStr}\n\n— E-Marketing`;
+          const msg = `${emoji} *Payment Request ${statusText}*\n\nHi ${submitter.name},\n\nYour payment request has been *${statusText.toLowerCase()}*.${amtStr}\n*Reason:* ${cleanReason}\n\n— E-Marketing`;
           await sendWhatsApp(submitter.phone, msg);
         }
       }
