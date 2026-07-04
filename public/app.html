@@ -14061,9 +14061,9 @@ async function loadMyPaymentRequests() {
       </tr></thead>
       <tbody>${rows.map((r,i) => {
         const parsed = prParseReason(r.reason);
-        const dispAmt = r.amount ? Number(r.amount) : parsed.amount;
+        const dispAmt = (r.amount > 0) ? Number(r.amount) : parsed.amount;
         const dispCur = parsed.currency || '₹';
-        const dispReason = r.amount ? r.reason : parsed.reason;
+        const dispReason = parsed.reason || r.reason;
         const isDone = r.payment_done || sentinels.some(s => s.card_number === '__paid__' && s.reason === '__paid__:' + String(r.id));
         const cancelSentinel = sentinels.find(s => s.card_number === '__cancelled__' && s.reason.startsWith('__cancelled__:' + String(r.id) + ':'));
         const isCancelled = cancelSentinel != null;
