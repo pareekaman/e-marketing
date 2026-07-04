@@ -6023,12 +6023,22 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
         if (submitter && submitter.phone) {
           const emoji = status === 'approved' ? '✅' : '❌';
           const statusText = status === 'approved' ? 'Approved' : 'Rejected';
-          let amtStr = '';
+          let amtStr = '', cleanReason = pr.reason || '';
           if (pr.reason) {
-            const m = String(pr.reason).match(/^\[([₹$])([\d,]+\.?\d*)\]/);
-            if (m) amtStr = `\n*Amount:* ${m[1]}${m[2]}`;
+            const s = String(pr.reason);
+            if (s.charAt(0) === '[') {
+              const close = s.indexOf('] ');
+              if (close > 1) {
+                const inner = s.slice(1, close);
+                const num = parseFloat(inner.slice(1).replace(/,/g, ''));
+                if (!isNaN(num)) {
+                  amtStr = `\n*Amount:* ${inner.charAt(0)}${num.toFixed(2)}`;
+                  cleanReason = s.slice(close + 2);
+                }
+              }
+            }
           }
-          const msg = `${emoji} *Payment Request ${statusText}*\n\nHi ${submitter.name},\n\nYour payment request has been *${statusText.toLowerCase()}*.${amtStr}\n\n— E-Marketing`;
+          const msg = `${emoji} *Payment Request ${statusText}*\n\nHi ${submitter.name},\n\nYour payment request has been *${statusText.toLowerCase()}*.${amtStr}\n*Reason:* ${cleanReason}\n\n— E-Marketing`;
           await sendWhatsApp(submitter.phone, msg);
         }
       }

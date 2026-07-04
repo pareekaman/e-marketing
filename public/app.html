@@ -13974,12 +13974,11 @@ function prParseReason(raw) {
   const s = String(raw);
   if (s.charAt(0) === '[') {
     const close = s.indexOf('] ');
-    if (close > 0) {
+    if (close > 1) {
       const inner = s.slice(1, close);
-      const cur = inner.charAt(0);
-      if (cur === '₹' || cur === '$') {
-        const num = parseFloat(inner.slice(1).replace(/,/g, ''));
-        if (!isNaN(num)) return { amount: num, currency: cur, reason: s.slice(close + 2) };
+      const num = parseFloat(inner.slice(1).replace(/,/g, ''));
+      if (!isNaN(num) && num >= 0) {
+        return { amount: num, currency: inner.charAt(0), reason: s.slice(close + 2) };
       }
     }
   }
