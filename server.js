@@ -1215,7 +1215,10 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
       where += ' AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)';
     }
 
-    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,"}t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
+    const subtaskCols = isDeleg
+      ? "COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='completed'),0) AS subtasks_done,COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='pending'),0) AS subtasks_pending,"
+      : "0 AS subtasks_done,0 AS subtasks_pending,";
+    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,"}${subtaskCols}t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
 
     // mine=1 mode me hamesha flat tasks return karte hain (grouped nahi)
     if (isMine) {
@@ -8263,9 +8266,22 @@ const HRM_OFFER_FOLDER_ID   = process.env.HRM_OFFER_FOLDER_ID   || '1DWfwjSdkVP_
 const HRM_OFFER_TEMPLATE_ID = process.env.HRM_OFFER_TEMPLATE_ID || '11f3STYRR4Lyk2HaoBfo7Kiiw5DsEoyr0P3lZnpZR_G4';
 const HRM_OFFER_SCRIPT      = process.env.HRM_OFFER_SCRIPT      || 'https://script.google.com/macros/s/AKfycbyDG7Wqih7LW3p7ttqONoqzwy5t5Gq7B3RgTxEJcD3QL6qzALTMaC3cUvnxW2CGT3VQ/exec';
 
-// Stable CDN URL for offer letter logo — Google Docs fetches this and
-// applies the HTML width/height (unlike base64 which ignores those attributes).
-const _HRM_LOGO_URL = 'https://i.postimg.cc/sXHdhzDx/emarketing-offer-letter-logo-removebg-preview.png';
+// Logo: embed as base64 from the pre-sized 185x110 PNG in public/.
+// Google Docs renders base64 images at natural pixel size (ignores HTML w/h),
+// so using the correctly-sized file ensures exact 185x110 rendering.
+let _hrmLogoBase64 = null;
+function _getHrmLogoSrc() {
+  if (!_hrmLogoBase64) {
+    try {
+      const fs = require('fs');
+      const buf = fs.readFileSync(path.join(__dirname, 'public', 'offer-logo.png'));
+      _hrmLogoBase64 = 'data:image/png;base64,' + buf.toString('base64');
+    } catch(e) {
+      _hrmLogoBase64 = 'https://i.postimg.cc/sXHdhzDx/emarketing-offer-letter-logo-removebg-preview.png';
+    }
+  }
+  return _hrmLogoBase64;
+}
 
 async function _hrmDriveClient() {
   const { google } = require('googleapis');
@@ -8286,7 +8302,7 @@ async function _hrmDriveClient() {
 }
 
 function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) {
-  const logoSrc  = _HRM_LOGO_URL;
+  const logoSrc  = _getHrmLogoSrc();
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
     body{margin:0;padding:20px 65px;font-family:'Times New Roman',Times,serif;font-size:16px;color:#000;line-height:1.15}
     table.hdr{width:100%;border:none;border-collapse:collapse;margin-bottom:16px}
@@ -8298,14 +8314,14 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
   </style></head><body>
   <table class="hdr"><tr>
     <td width="197" valign="top" style="padding-right:12px"><img src="${logoSrc}" alt="e-Marketing" width="185" height="110" style="display:block"></td>
-    <td align="right" valign="top" style="font-size:13px;line-height:1.4;text-align:right">
-      <div><strong>e-Marketing.io (A Unit of Jai Marketing)</strong></div>
-      <div>Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,</div>
-      <div>Malviya Nagar, Jaipur, Rajasthan – 307017 (India)</div>
-      <div>&nbsp;</div>
-      <div>Phone: +91-9602694444</div>
-      <div>Email: <a href="mailto:abhishek@e-marketing.io">abhishek@e-marketing.io</a></div>
-      <div>Website: www.e-marketing.io</div>
+    <td align="right" valign="top" style="font-size:13px;line-height:1.4">
+      <div style="text-align:right"><strong>e-Marketing.io (A Unit of Jai Marketing)</strong></div>
+      <div style="text-align:right">Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,</div>
+      <div style="text-align:right">Malviya Nagar, Jaipur, Rajasthan – 307017 (India)</div>
+      <div style="text-align:right">&nbsp;</div>
+      <div style="text-align:right">Phone: +91-9602694444</div>
+      <div style="text-align:right">Email: <a href="mailto:abhishek@e-marketing.io">abhishek@e-marketing.io</a></div>
+      <div style="text-align:right">Website: www.e-marketing.io</div>
     </td>
   </tr></table>
   <h2>PRELIMINARY OFFER LETTER</h2>
