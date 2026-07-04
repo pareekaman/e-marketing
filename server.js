@@ -59,13 +59,13 @@ const dbConfig = {
   database: process.env.DB_NAME || 'emarketing_task_manager',
   port: Number(process.env.DB_PORT) || 3306,
   waitForConnections: true,
-  // ⚠️ Shared hosting ka max_user_connections usually 5-10 hota hai.
-  // Vercel serverless me multiple function instances ek saath connect karte hain,
-  // isliye limit chhoti rakhi hai (2) per-instance.
+  // ⚠️ Shared hosting's max_user_connections is usually 5-10.
+  // Vercel serverless spins up multiple function instances that all connect
+  // at once, so the per-instance limit is kept low (2).
   connectionLimit: Number(process.env.DB_POOL_SIZE) || 2,
   queueLimit: 0,
   connectTimeout: 30000,
-  // Idle connections ko jaldi release karo (default 8hrs hai mysql me, 30s ideal)
+  // Release idle connections quickly (mysql default is 8hrs, 30s is ideal here)
   idleTimeout: 30000,
   enableKeepAlive: false,
   // SSL support for cloud MySQL providers (Aiven, PlanetScale, Railway, etc.)
@@ -75,7 +75,7 @@ const dbConfig = {
 const _rawPool = mysql.createPool(dbConfig);
 
 // Wrap pool with retry logic for "max_user_connections" errors
-// Shared hosting pe ye error aata rehta hai jab Vercel concurrent requests bhejta hai.
+// Shared hosting keeps throwing this error when Vercel fires concurrent requests.
 // Auto-retry helps recover gracefully without showing errors to users.
 const db = {
   async query(sql, params) {
@@ -533,7 +533,7 @@ function delegationEmailHtml({ assigneeName, assignerName, desc, dueDate, priori
     <div style="background:#fff;border-radius:8px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
       <h2 style="color:#F39C12;margin-top:0;">📋 New Task Assigned to You</h2>
       <p>Hi <b>${assigneeName || 'there'}</b>,</p>
-      <p><b>${assignerName || 'Someone'}</b> ne aapko ek naya delegation task assign kiya hai:</p>
+      <p><b>${assignerName || 'Someone'}</b> has assigned you a new delegation task:</p>
       <table style="width:100%;border-collapse:collapse;margin:20px 0;">
         <tr><td style="padding:8px;background:#f0f4f8;width:140px;"><b>Task</b></td><td style="padding:8px;">${desc}</td></tr>
         <tr><td style="padding:8px;background:#f0f4f8;"><b>Due Date</b></td><td style="padding:8px;">${dueDate}</td></tr>
@@ -542,7 +542,7 @@ function delegationEmailHtml({ assigneeName, assignerName, desc, dueDate, priori
         ${remarks ? `<tr><td style="padding:8px;background:#f0f4f8;"><b>Remarks</b></td><td style="padding:8px;">${remarks}</td></tr>` : ''}
       </table>
       <a href="${appUrl}" style="display:inline-block;background:#F39C12;color:#fff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;">Open E-Marketing Task Manager</a>
-      <p style="color:#777;font-size:12px;margin-top:30px;">Ye automated email hai — E-Marketing Task Manager se.</p>
+      <p style="color:#777;font-size:12px;margin-top:30px;">This is an automated email from E-Marketing Task Manager.</p>
     </div>
   </div>`;
 }
@@ -1085,23 +1085,23 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
       // HOD cannot drill into a single employee — they always see their whole
       // department's aggregate. Only admin (and PC) may switch the view, so the
       // `employee` query param is intentionally ignored here.
-      // HOD ka department DB se fetch karo — query param pe depend mat karo
+      // Fetch the HOD's department from the DB — don't rely on the query param
       let resolvedDept = hodDept;
       if (!resolvedDept) {
         const [meRow] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
         resolvedDept = meRow[0]?.department || '';
       }
       if (!resolvedDept) {
-        // Department set nahi hai — sirf apni tasks dikhao
+        // No department set — fall back to just their own tasks
         userFilter = 'AND t.assigned_to = ?'; params = [uid];
       } else {
         const [deptUsers] = await db.query('SELECT id FROM users WHERE department=? AND role NOT IN (?,?)', [resolvedDept, 'admin','hod']);
         if (!deptUsers.length) {
-          // Dept mein koi user nahi — apni tasks dikhao
+          // No users in this department — fall back to just their own tasks
           userFilter = 'AND t.assigned_to = ?'; params = [uid];
         } else {
           const ids = deptUsers.map(u=>u.id);
-          // HOD khud bhi include karo
+          // Include the HOD themselves too
           if (!ids.includes(uid)) ids.push(uid);
           userFilter = `AND t.assigned_to IN (${ids.map(()=>'?').join(',')})`;
           params = ids;
@@ -1112,9 +1112,9 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
     }
 
     // Stats + Table:
-    //   Delegation: ALL dates (matches FMS — no date cap, sab pending dikhane hain)
+    //   Delegation: ALL dates (matches FMS — no date cap, show all pending)
     //   Checklist : today + next 10 days (upcoming visibility for recurring tasks)
-    // PC: agar date range diya hai toh woh use karo (overrides both)
+    // PC: if a date range was provided, use it (overrides both)
     const dateRe = /^\d{4}-\d{2}-\d{2}$/;
     const validDates = dateFrom && dateTo && dateRe.test(dateFrom) && dateRe.test(dateTo);
     const usingPCRange = isPC && validDates;
@@ -1182,14 +1182,14 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     const params = [];
 
     if (isMine) {
-      // "Delegate by Me" mode — sirf woh tasks jinhe MAINE kisi DOOSRE ko assign kiya hai.
-      // Self-delegated tasks (assigned_to === me) regular Delegation tab me dikhte hain — yahan duplicate na ho.
+      // "Delegate by Me" mode — only tasks I've assigned to someone ELSE.
+      // Self-delegated tasks (assigned_to === me) already show in the regular Delegation tab — don't duplicate here.
       where += ' AND t.assigned_by = ? AND t.assigned_to <> t.assigned_by';
       params.push(uid);
     } else if (isAdmin || role === 'pc') {
-      // Admin/PC — sab dikhta hai
+      // Admin/PC — see everything
     } else if (isHod) {
-      // HOD — apne department ke users ki tasks
+      // HOD — tasks belonging to users in their department
       const [me] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
       const dept = me[0]?.department || '';
       const [deptUsers] = await db.query('SELECT id FROM users WHERE department=?', [dept]);
@@ -1200,13 +1200,13 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
       where += ` AND t.assigned_to IN (${ids.map(()=>'?').join(',')})`;
       params.push(...ids);
     } else {
-      // Regular user — sirf apni tasks
+      // Regular user — only their own tasks
       where += ' AND t.assigned_to = ?';
       params.push(uid);
     }
 
     // Explicit from/to range (sent by admin filter) overrides defaults for BOTH types.
-    // Otherwise: delegation shows all future (transfer ke liye), checklist caps at
+    // Otherwise: delegation shows all future (for transfers), checklist caps at
     // today + 30 days so recurring checklists don't flood the table.
     const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v);
     if (req.query.from && isDate(req.query.from)) { where += ' AND t.due_date >= ?'; params.push(req.query.from); }
@@ -1220,7 +1220,7 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
       : "0 AS subtasks_done,0 AS subtasks_pending,";
     const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,"}${subtaskCols}t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
 
-    // mine=1 mode me hamesha flat tasks return karte hain (grouped nahi)
+    // mine=1 mode always returns flat tasks (never grouped)
     if (isMine) {
       return res.json({ tasks });
     }
@@ -1267,7 +1267,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         const ist = new Date(Date.now() + (5.5*60*60*1000));
         const minDate = new Date(ist.getTime() + 2*24*60*60*1000).toISOString().split('T')[0];
         if (!date || date < minDate) {
-          return res.status(400).json({ error: `Due date kam se kam 2 din baad (${minDate}) ki honi chahiye` });
+          return res.status(400).json({ error: `Due date must be at least 2 days from now (${minDate})` });
         }
       }
     } else {
@@ -1366,7 +1366,7 @@ app.put('/api/tasks/:id/due-date', requireAuth, async (req, res) => {
     const [rows] = await db.query('SELECT * FROM delegation_tasks WHERE id=?', [parseInt(req.params.id, 10)]);
     const task = rows[0];
     if (!task) return res.status(404).json({ error: 'Task not found' });
-    if (!task.awaiting_due_date) return res.status(409).json({ error: 'Is task pe due date pehle se set hai' });
+    if (!task.awaiting_due_date) return res.status(409).json({ error: 'Due date is already set on this task' });
     // Doer, assigner, or admin/PC only.
     if (!isPrivileged && task.assigned_to !== uid && task.assigned_by !== uid) {
       return res.status(403).json({ error: 'Not allowed' });
@@ -1527,7 +1527,7 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     // While a revise/approval is pending, the doer can neither revise again nor mark done.
     // Privileged users (admin/PC) act directly; the assigner decides via the Approvals screen.
     if (supportsApproval && task.waiting_approval && !isPrivileged) {
-      return res.status(409).json({ error: 'Approval pending hai — approve hone tak na revise kar sakte ho na done.' });
+      return res.status(409).json({ error: 'Approval is pending — you cannot revise or mark done until it is approved.' });
     }
 
     // REVISE (date push) ALWAYS needs the assigner's approval — for every role,
@@ -1571,7 +1571,7 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
       if (tt === 'checklist') await db.query(`UPDATE ${table} SET status=?,due_date=? WHERE id=?`, [status, newDate, req.params.id]);
       else await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,due_date=? WHERE id=?`, [status, newDate, req.params.id]);
     } else {
-      // checklist_tasks mein waiting_approval column nahi hota
+      // checklist_tasks has no waiting_approval column
       if (tt === 'checklist') await db.query(`UPDATE ${table} SET status=? WHERE id=?`, [status, req.params.id]);
       else await db.query(`UPDATE ${table} SET status=?,waiting_approval=0 WHERE id=?`, [status, req.params.id]);
     }
@@ -1787,7 +1787,7 @@ app.get('/api/mis', requireAuth, requireAdminOrHodOnly, async (req, res) => {
     const { start, end } = req.query;
     if (!start || !end) return res.status(400).json({ error: 'Dates required' });
     const isHod = req.session.role === 'hod';
-    // HOD ke liye apne department ka filter
+    // Department filter for HOD
     let deptFilter = '';
     let deptParams = [start, end];
     if (isHod) {
@@ -2061,7 +2061,7 @@ app.get('/api/mis/all', requireAuth, requireAdminOrHodOnly, async (req, res) => 
       userMap[r.userId].checklistCompleted = parseInt(r.completed)||0;
     }
 
-    // Fetch week plan for each user — DATE_FORMAT taaki frontend ko clean YYYY-MM-DD mile (ISO timestamp nahi)
+    // Fetch week plan for each user — DATE_FORMAT so the frontend gets a clean YYYY-MM-DD (not an ISO timestamp)
     let planMap = {};
     try {
       const [plans] = await db.query(
@@ -2072,8 +2072,8 @@ app.get('/api/mis/all', requireAuth, requireAdminOrHodOnly, async (req, res) => 
     } catch(e) { /* week_plans table may not exist yet */ }
 
     // ── FMS contribution per user ─────────────────────────────────────
-    // Har user ke liye unke steps (jahan vo doer hain) ke pending/done count nikaalo.
-    // FMS sirf admin ko applicable hai (HOD ke liye apne dept ke users bhi count honge).
+    // For each user, work out the pending/done count on the steps where they're a doer.
+    // FMS is applicable to admin only (HOD will also get counts for their dept's users).
     const fmsUserMap = {};   // userId -> { total, pending, done }
     try {
       const [allSheets] = await db.query('SELECT * FROM fms_sheets');
@@ -2118,7 +2118,7 @@ app.get('/api/mis/all', requireAuth, requireAdminOrHodOnly, async (req, res) => 
                   if (!actualVal) stepPending++;
                   else stepDone++;
                 });
-                // Distribute counts to each doer (har doer ko poora count attribute karte hain — shared work)
+                // Distribute counts to each doer (each doer gets the full count attributed — shared work)
                 step.doerIds.forEach(uid => {
                   if (!fmsUserMap[uid]) fmsUserMap[uid] = { total: 0, pending: 0, done: 0 };
                   fmsUserMap[uid].pending += stepPending;
@@ -2132,8 +2132,8 @@ app.get('/api/mis/all', requireAuth, requireAdminOrHodOnly, async (req, res) => 
       }
     } catch(e) { /* ignore — FMS optional */ }
 
-    // Agar koi user sirf FMS me kaam karta hai (del/chl me 0 tasks) to use bhi userMap me daalo,
-    // taaki All MIS me uska FMS contribution dikhe.
+    // If a user only works in FMS (0 tasks in del/chl), add them to userMap too,
+    // so their FMS contribution shows up in the All MIS view.
     if (Object.keys(fmsUserMap).length) {
       const fmsUserIds = Object.keys(fmsUserMap).map(x => parseInt(x)).filter(x => !userMap[x]);
       if (fmsUserIds.length) {
@@ -2254,7 +2254,7 @@ app.get('/api/mis/fms', requireAuth, requireAdminOrHodOnly, async (req, res) => 
     const [sheets] = await db.query('SELECT * FROM fms_sheets ORDER BY fms_name ASC');
     if (!sheets.length) return res.json([]);
 
-    // HOD ka department pehle fetch karo (ek baar)
+    // Fetch the HOD's department first (once)
     let hodDept = '';
     if (isHod) {
       const [meRow] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
@@ -2273,7 +2273,7 @@ app.get('/api/mis/fms', requireAuth, requireAdminOrHodOnly, async (req, res) => 
         step.doers = doers;
       }
 
-      // HOD: sirf woh steps jahan uske dept ke doers hain
+      // HOD: only the steps that have doers from their department
       const filteredSteps = isHod
         ? steps.filter(s => s.doers.some(d => d.department === hodDept))
         : steps;
@@ -2967,7 +2967,7 @@ app.get('/api/fms-tasks/:fmsId/steps/:stepId/rows', requireAuth, async (req, res
 
       const rowData = {};
       let colsToShow = showCols.length ? showCols : headers.map((_,hi) => hi);
-      // Plan column always show karo — mandatory
+      // Plan column is always shown — mandatory
       if (planIdx >= 0 && !colsToShow.includes(planIdx)) colsToShow = [planIdx, ...colsToShow];
       colsToShow.forEach(ci => {
         const h = headers[ci] || `COL ${idxToCol(ci)}`;
@@ -3056,7 +3056,7 @@ app.post('/api/fms-tasks/:fmsId/steps/:stepId/done', requireAuth, async (req, re
       }
     }
 
-    // Doer ka naam sheet mein likhna (agar doer_name_col configured hai)
+    // Write the doer's name into the sheet (if doer_name_col is configured)
     if (step.doer_name_col) {
       const [userRows] = await db.query('SELECT name FROM users WHERE id=? LIMIT 1', [req.session.userId]);
       const doerName = userRows[0]?.name || '';
@@ -4045,7 +4045,7 @@ app.get('/api/wa-delegation/approve/:token', async (req, res) => {
 
     // Notify the sender via WhatsApp
     if (row.sender_phone) {
-      const msg = `✅ *Task Approved!*\n\nAapka task approve ho gaya hai aur system mein add kar diya gaya hai.\n\n📋 *Task:* ${row.description}` +
+      const msg = `✅ *Task Approved!*\n\nYour task has been approved and added to the system.\n\n📋 *Task:* ${row.description}` +
         (row.due_date ? `\n📅 *Due Date:* ${row.due_date}` : '');
       sendWhatsApp(row.sender_phone, msg).catch(() => {});
     }
@@ -4074,7 +4074,7 @@ app.get('/api/wa-delegation/deny/:token', async (req, res) => {
 
     // Notify the sender via WhatsApp
     if (row.sender_phone) {
-      const msg = `❌ *Task Not Approved*\n\nAapka task review ke baad approve nahi kiya gaya.\n\n📋 *Task:* ${row.description}`;
+      const msg = `❌ *Task Not Approved*\n\nYour task was reviewed and was not approved.\n\n📋 *Task:* ${row.description}`;
       sendWhatsApp(row.sender_phone, msg).catch(() => {});
     }
 
@@ -4164,14 +4164,14 @@ app.put('/api/wa-delegation/:id', requireAuth, async (req, res) => {
       );
       // Notify the sender
       if (row.sender_phone) {
-        const msg = `✅ *Task Approved!*\n\nAapka task approve ho gaya hai aur system mein add kar diya gaya hai.\n\n📋 *Task:* ${row.description}` +
+        const msg = `✅ *Task Approved!*\n\nYour task has been approved and added to the system.\n\n📋 *Task:* ${row.description}` +
           (row.due_date ? `\n📅 *Due Date:* ${row.due_date}` : '');
         sendWhatsApp(row.sender_phone, msg).catch(() => {});
       }
     } else {
       await db.query(`UPDATE tasks SET status='denied' WHERE id=?`, [row.id]);
       if (row.sender_phone) {
-        const msg = `❌ *Task Not Approved*\n\nAapka task review ke baad approve nahi kiya gaya.\n\n📋 *Task:* ${row.description}`;
+        const msg = `❌ *Task Not Approved*\n\nYour task was reviewed and was not approved.\n\n📋 *Task:* ${row.description}`;
         sendWhatsApp(row.sender_phone, msg).catch(() => {});
       }
     }
@@ -4390,7 +4390,7 @@ async function buildPendingSummaryMessages() {
       for (const t of grouped[name]) {
         out += `\nTask ID - ${t.id}`;
         out += `\nTask - ${t.description || '—'}`;
-        out += `\nTarget Date - ${t.due_date ? fmtIN(t.due_date) : 'Doer ko set karni hai'}`;
+        out += `\nTarget Date - ${t.due_date ? fmtIN(t.due_date) : 'To be set by doer'}`;
         out += `\nPriority - ${(t.priority || 'low').replace(/^./, c => c.toUpperCase())}`;
         out += `\nClient Name - ${t.client_name || '-'}\n`;
       }
@@ -6039,6 +6039,23 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+// GET /api/payment-requests/:id/wa-debug
+app.get('/api/payment-requests/:id/wa-debug', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [[pr]] = await db.query('SELECT id, submitted_by, reason, amount, status FROM payment_requests WHERE id=?', [req.params.id]);
+    if (!pr) return res.json({ error: 'request not found' });
+    let submitter = null;
+    if (pr.submitted_by) {
+      [[submitter]] = await db.query('SELECT id, name, phone FROM users WHERE id=?', [pr.submitted_by]);
+    }
+    let waResult = null;
+    if (submitter && submitter.phone) {
+      waResult = await sendWhatsApp(submitter.phone, `✅ Test — Payment Request #${pr.id} WA debug`);
+    }
+    res.json({ pr, submitter, waResult });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // POST /api/payment-requests/:id/payment-done — mark payment as done (Vishal only)
 app.post('/api/payment-requests/:id/payment-done', requireAuth, async (req, res) => {
   try {
@@ -7437,7 +7454,7 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
             <div style="background:#fff;border-radius:8px;padding:30px;">
               <h2 style="color:#F39C12;margin-top:0;">🗓 New Leave Request</h2>
               <p>Hi <b>${target.name||'there'}</b>,</p>
-              <p><b>${me?.name || 'An employee'}</b> ne ek leave request submit ki hai aapke approval ke liye.</p>
+              <p><b>${me?.name || 'An employee'}</b> has submitted a leave request for your approval.</p>
               <table style="width:100%;border-collapse:collapse;margin:14px 0;">
                 <tr><td style="padding:8px;background:#f0f4f8;width:140px"><b>Type</b></td><td style="padding:8px;">${typeLabel}</td></tr>
                 <tr><td style="padding:8px;background:#f0f4f8;"><b>Dates</b></td><td style="padding:8px;">${datesLine}</td></tr>
@@ -7540,7 +7557,7 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
           <div style="background:#fff;border-radius:8px;padding:30px;">
             <h2 style="color:${color};margin-top:0;">Leave ${newStatus === 'approved' ? 'Approved ✅' : 'Rejected ❌'}</h2>
             <p>Hi <b>${target.name || 'there'}</b>,</p>
-            <p>Aapki leave request <b>${typeLabel}</b> (${datesLine}) ko <b style="color:${color}">${newStatus}</b> kar diya gaya hai.</p>
+            <p>Your leave request <b>${typeLabel}</b> (${datesLine}) has been <b style="color:${color}">${newStatus}</b>.</p>
             ${note ? `<p><b>Note:</b> ${(note||'').replace(/</g,'&lt;')}</p>` : ''}
             <p style="color:#777;font-size:12px;margin-top:20px;">E-Marketing Task Manager · Leave Tracker</p>
           </div>
