@@ -1364,7 +1364,7 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
     <div class="nav-item" id="nav-meetings" onclick="navigate('meetings',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-      <span class="nav-label-text">Meetings</span>
+      <span class="nav-label-text">Scheduler</span>
     </div>
     <div class="nav-item" id="nav-client-portal" style="display:none" onclick="navigate('client-portal',this)">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
@@ -4487,7 +4487,7 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Meetings','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⚠️ Client Escalations',paymentreq:'💳 Payment Request',creditcards:'💳 Credit Card Statement'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Scheduler','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⚠️ Client Escalations',paymentreq:'💳 Payment Request',creditcards:'💳 Credit Card Statement'};
 
 // ══════════════════════════════════════════════════════
 // USERS PAGE — TAB SWITCHER + ACCESS CONTROL
@@ -4532,7 +4532,7 @@ const PERM_TREE = [
   { page: 'leaves',       label: 'Leave Tracker',  icon: '🏖️', actions: [
     { key: 'delete_leave', label: 'Delete' },
   ]},
-  { page: 'meetings',     label: 'Meetings',       icon: '📆', actions: [] },
+  { page: 'meetings',     label: 'Scheduler',      icon: '📆', actions: [] },
   { page: 'inventory',    label: 'Inventory',      icon: '📦', actions: [] },
   { page: 'hrm',          label: 'HR Portal',      icon: '👥', actions: [
     { key: 'hrm_schedule',      label: 'Schedule' },
@@ -6465,9 +6465,15 @@ function _buildTaskRowHtml(t, ctx) {
   const trClick = isClickable
     ? `onclick="openTaskDetail(window._taskDetailMap[${t.id}])" style="cursor:pointer" title="Click to view details"`
     : '';
+  const subtaskBadge = (Number(t.subtasks_done||0) + Number(t.subtasks_pending||0)) > 0
+    ? `<div style="margin-top:3px">
+        ${Number(t.subtasks_done||0)   ? `<span style="font-size:10px;color:#15803d;font-weight:700;background:#dcfce7;padding:1px 6px;border-radius:8px">✅ ${t.subtasks_done} done</span>` : ''}
+        ${Number(t.subtasks_pending||0)? `<span style="font-size:10px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:1px 6px;border-radius:8px;margin-left:4px">⏳ ${t.subtasks_pending} pending</span>` : ''}
+      </div>`
+    : '';
   return `<tr ${trClick}>
     <td style="white-space:nowrap;padding-right:12px" onclick="event.stopPropagation()">${actionBtns}</td>
-    <td>${esc(t.description||'')}</td>
+    <td>${esc(t.description||'')}${subtaskBadge}</td>
     <td style="white-space:nowrap">${esc(t.assignedToName||'')}</td>
     <td style="white-space:nowrap">${esc((t.assignedByName && t.assignedByName.trim() && t.assignedByName !== '—') ? t.assignedByName : 'Simran Gurnani')}</td>
     <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}</td>
@@ -6703,8 +6709,8 @@ async function loadSubtasks(taskId) {
         ? '<span style="font-size:10px;color:#15803d;font-weight:700;background:#dcfce7;padding:2px 8px;border-radius:8px">✓ Done</span>'
         : '<span style="font-size:10px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:2px 8px;border-radius:8px">⏳ Pending</span>'}</td>
       <td style="padding:6px 8px;white-space:nowrap">
-        <input type="checkbox" ${s.status==='completed'?'checked':''} onchange="toggleSubtask(${s.id},${taskId},this.checked)" title="Mark done"/>
-        <button class="action-btn" style="padding:1px 6px;font-size:11px;margin-left:4px" onclick="deleteSubtask(${s.id},${taskId})" title="Delete">✕</button>
+        <button class="action-btn" style="padding:1px 6px;font-size:11px;${s.status==='completed'?'':'opacity:.35'}" onclick="toggleSubtask(${s.id},${taskId},${s.status!=='completed'})" title="Mark done">✅</button>
+        <button class="action-btn" style="padding:1px 6px;font-size:11px;margin-left:4px" onclick="deleteSubtask(${s.id},${taskId})" title="Delete">🗑️</button>
       </td>
     </tr>`;
   }).join('');
@@ -12033,8 +12039,8 @@ function renderCompliance(){
   html += `<th>Score</th></tr></thead><tbody>`;
 
   for (const u of users) {
-    // Working days = days that aren't user's off/holiday/before-joining
-    const workingDays = u.status.filter(s => !s.off && !s.preJoin).length;
+    // Working days = days that aren't user's off/holiday/before-joining/on-leave
+    const workingDays = u.status.filter(s => !s.off && !s.preJoin && !s.onLeave).length;
     const filledCnt = u.status.filter(s => s.filled).length;
     const denom = workingDays || 1;
     const pct = Math.round((filledCnt/denom)*100);
@@ -12052,6 +12058,8 @@ function renderCompliance(){
         cell = s.isHoliday
           ? '<span class="cp-cell-holiday" title="Holiday">🎉 Off</span>'
           : '<span class="cp-cell-off" title="Week off">Off</span>';
+      } else if (s.onLeave) {
+        cell = '<span style="color:#000;font-weight:700" title="On leave">A</span>';
       } else if (s.filled) {
         cell = '<span class="cp-cell-yes">✓</span>';
       } else {

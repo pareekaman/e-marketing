@@ -6790,6 +6790,26 @@ app.get('/api/compliance/last7', requireAuth, async (req, res) => {
       filledMap[f.user_id].add(f.d);
     }
 
+    // Full-day approved/pending leave requests overlapping this range — shown as
+    // "A" (Absent) instead of a missed ✗, since the user wasn't expected to fill in.
+    const [leaveRows] = await db.query(
+      `SELECT user_id, dates_json, DATE_FORMAT(from_date,'%Y-%m-%d') AS from_date, DATE_FORMAT(to_date,'%Y-%m-%d') AS to_date
+       FROM leave_requests
+       WHERE status <> 'rejected' AND leave_type='full_day' AND from_date <= ? AND to_date >= ?`,
+      [dates[dates.length - 1], dates[0]]
+    );
+    const leaveMap = {};
+    for (const lr of leaveRows) {
+      if (!leaveMap[lr.user_id]) leaveMap[lr.user_id] = new Set();
+      let leaveDates = null;
+      if (lr.dates_json) { try { leaveDates = JSON.parse(lr.dates_json).map(x => x.date); } catch { leaveDates = null; } }
+      if (leaveDates) {
+        leaveDates.forEach(d => leaveMap[lr.user_id].add(d));
+      } else {
+        for (const d of dates) { if (d >= lr.from_date && d <= lr.to_date) leaveMap[lr.user_id].add(d); }
+      }
+    }
+
     const holidaysSet = await loadHolidaysSet();
 
     // Build grid — mark off-days so UI doesn't count them as missed
@@ -6804,7 +6824,8 @@ app.get('/api/compliance/last7', requireAuth, async (req, res) => {
         filled: filledMap[u.id]?.has(d) || false,
         off: isUserOffOn(u, d, holidaysSet),
         preJoin: !!(u.joining_date && d < u.joining_date),
-        isHoliday: holidaysSet.has(d)
+        isHoliday: holidaysSet.has(d),
+        onLeave: leaveMap[u.id]?.has(d) || false
       }))
     }));
 
