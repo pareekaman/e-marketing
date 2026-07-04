@@ -46,6 +46,9 @@ body{font-family:'Inter',sans-serif;background:#f5f6fa;color:#0f172a;min-height:
 .cp-scroll{overflow-y:auto;}
 .cp-scroll::-webkit-scrollbar{width:6px;}
 .cp-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px;}
+.cp-recent-tabs{display:flex;gap:2px;background:#f1f5f9;padding:2px;border-radius:8px;flex-shrink:0;}
+.cp-recent-tab{border:none;background:transparent;padding:5px 12px;font-size:12px;font-weight:600;color:#64748b;border-radius:6px;cursor:pointer;white-space:nowrap;}
+.cp-recent-tab.active{background:#fff;color:#1a56db;box-shadow:0 1px 2px rgba(16,24,40,.08);}
 @media(max-width:1080px){.cp-stats{grid-template-columns:repeat(2,1fr);}.cp-content-top{grid-template-columns:1fr;}}
 .btn{padding:8px 16px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;border:none;font-family:inherit;transition:transform .1s,box-shadow .15s;}
 .btn:hover{transform:translateY(-1px);}
@@ -430,7 +433,17 @@ function cpRenderHtml(s){
     </div>
 
     <div class="cp-card" id="cpRecentCard">
-      <div class="cp-card-head"><h4>📋 Recent Activity</h4><span id="cpRecentCount" style="font-size:11px;color:#94a3b8">${(s.recent||[]).length} item${(s.recent||[]).length===1?'':'s'}</span></div>
+      <div class="cp-card-head">
+        <h4>📋 Recent Activity</h4>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="cp-recent-tabs" id="cpRecentTabs">
+            <button type="button" class="cp-recent-tab active" data-status="all" onclick="cpFilterRecent('all')">All</button>
+            <button type="button" class="cp-recent-tab" data-status="pending" onclick="cpFilterRecent('pending')">Pending</button>
+            <button type="button" class="cp-recent-tab" data-status="completed" onclick="cpFilterRecent('completed')">Completed</button>
+          </div>
+          <span id="cpRecentCount" style="font-size:11px;color:#94a3b8;white-space:nowrap">${(s.recent||[]).length} item${(s.recent||[]).length===1?'':'s'}</span>
+        </div>
+      </div>
       <div class="cp-scroll" style="max-height:65vh">
         <table>
           <thead><tr style="background:#f8fafc;position:sticky;top:0;z-index:1">
@@ -482,6 +495,8 @@ function cpFilterRecent(status){
   const count = document.getElementById('cpRecentCount');
   if (body) body.innerHTML = cpRenderRecentRows(filtered);
   if (count) count.textContent = `${filtered.length} item${filtered.length===1?'':'s'}${status!=='all' ? ' · ' + status : ''}`;
+  document.querySelectorAll('#cpRecentTabs .cp-recent-tab').forEach(btn =>
+    btn.classList.toggle('active', btn.dataset.status === status));
   cpScrollTo('cpRecentCard');
 }
 
