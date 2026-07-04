@@ -8372,18 +8372,17 @@ async function _hrmDriveClient() {
 function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) {
   const logoSrc  = _getHrmLogoSrc();
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-    body{margin:0;padding:0;font-family:'Times New Roman',Times,serif;font-size:16px;color:#000;line-height:1.15}
-    .wrap{padding:20px 65px}
-    table.hdr{width:100%;border:none;border-collapse:collapse;margin-bottom:16px}
+    body{margin:0;padding:0;font-family:'Times New Roman',Times,serif;font-size:16px;color:#000;line-height:1.1}
+    table.hdr{width:100%;border:none;border-collapse:collapse;margin-bottom:8px}
     table.hdr td{border:none;vertical-align:top;padding:0}
-    h2{text-align:center;font-size:16px;font-weight:bold;letter-spacing:.3px;margin:14px 0 10px}
-    .pc{text-align:right;margin-bottom:16px;font-size:16px}
-    p{margin:0 0 10px;text-align:justify}ol{margin:4px 0 12px 18px}ol li{margin-bottom:4px}
-    .footer{margin-top:24px}a{color:#00f}
-  </style></head><body><div class="wrap" style="padding:20px 65px">
+    h2{text-align:center;font-size:16px;font-weight:bold;letter-spacing:.3px;margin:8px 0 6px}
+    .pc{text-align:right;margin-bottom:8px;font-size:16px}
+    p{margin:0 0 7px;text-align:justify}ol{margin:2px 0 8px 18px}ol li{margin-bottom:2px}
+    .footer{margin-top:14px}a{color:#00f}
+  </style></head><body><div>
   <table class="hdr"><tr>
     <td width="197" valign="top" style="padding-right:12px"><img src="${logoSrc}" alt="e-Marketing" width="185" height="110" style="display:block"></td>
-    <td valign="top" style="font-size:13px;line-height:1.6;text-align:right">
+    <td valign="top" style="font-size:13px;line-height:1.4;text-align:right">
       <p style="margin:0;text-align:right"><strong>e-Marketing.io (A Unit of Jai Marketing)</strong><br>
       Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,<br>
       Malviya Nagar, Jaipur, Rajasthan – 307017 (India)<br>
