@@ -8611,14 +8611,18 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       hrmGenerateOfferDoc(c, joining_date, salary, offer_name, offer_position)
         .then(async ({ fileId, pdfUrl }) => {
           await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
-          await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${displayPos}.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\nYour offer letter is attached. Please confirm acceptance within 3 working days.\n\n📄 Download: ${pdfUrl}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
-          }, 'text', c.id, c.name, 'Offer Sent');
+          const caption = `Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${displayPos}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
+          await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
+            to: hrmFormatPhone(c.phone),
+            document: pdfUrl,
+            filename: `PRELIMINARY OFFER LETTER - ${displayName}.pdf`,
+            caption
+          }, 'file', c.id, c.name, 'Offer Sent');
         })
         .catch(e => {
           console.error('HRM offer doc generation failed:', e.message);
           hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${displayPos}.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\nYour offer letter is attached. Please confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
+`Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${displayPos}.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
           }, 'text', c.id, c.name, 'Offer Sent').catch(() => {});
           db.query(
             `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
@@ -8641,9 +8645,13 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
     const { fileId, pdfUrl } = await hrmGenerateOfferDoc(c, c.joining_date, c.salary);
     await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
     const joiningFmt = c.joining_date ? new Date(c.joining_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
-    const waSent = await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`Hello ${c.name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${c.profile_position||''}.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${c.salary||'To be discussed'}\n\nYour offer letter is attached. Please confirm acceptance within 3 working days.\n\n📄 Download: ${pdfUrl}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
-    }, 'text', c.id, c.name, 'Offer Letter PDF');
+    const caption = `Hello ${c.name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${c.profile_position||''}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${c.salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
+    const waSent = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
+      to: hrmFormatPhone(c.phone),
+      document: pdfUrl,
+      filename: `PRELIMINARY OFFER LETTER - ${c.name}.pdf`,
+      caption
+    }, 'file', c.id, c.name, 'Offer Letter PDF');
     res.json({ ok: true, fileId, url: `https://docs.google.com/document/d/${fileId}/edit`, pdfUrl, waSent });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
