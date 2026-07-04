@@ -13971,9 +13971,19 @@ function prCardChange() {
 // Parse amount + currency + reason from reason field
 function prParseReason(raw) {
   if (!raw) return { amount: null, currency: '₹', reason: '' };
-  const m = String(raw).match(/^\[([₹$])([\d,]+\.?\d*)\] ([\s\S]*)$/);
-  if (m) return { amount: parseFloat(m[2].replace(/,/g,'')), currency: m[1], reason: m[3] };
-  return { amount: null, currency: '₹', reason: raw };
+  const s = String(raw);
+  if (s.charAt(0) === '[') {
+    const close = s.indexOf('] ');
+    if (close > 0) {
+      const inner = s.slice(1, close);
+      const cur = inner.charAt(0);
+      if (cur === '₹' || cur === '$') {
+        const num = parseFloat(inner.slice(1).replace(/,/g, ''));
+        if (!isNaN(num)) return { amount: num, currency: cur, reason: s.slice(close + 2) };
+      }
+    }
+  }
+  return { amount: null, currency: '₹', reason: s };
 }
 
 async function prSubmit() {
