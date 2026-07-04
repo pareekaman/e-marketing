@@ -312,7 +312,7 @@ async function login(){
     const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({email,password})});
     const d=await r.json();
     if(!r.ok){err.textContent=d.error||'Login failed';err.style.display='block';return;}
-    // Token ko localStorage mein bhi save karo as backup (cookie block hone ki condition mein)
+    // Also save the token to localStorage as a backup, in case cookies get blocked
     if(d.token) localStorage.setItem('authToken', d.token);
     // Client logins land on the dedicated /client page; team members on /app.
     window.location.replace(d.role === 'client' ? '/client' : '/app');
