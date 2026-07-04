@@ -6012,8 +6012,10 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
     (async () => {
       try {
         const [[pr]] = await db.query('SELECT submitted_by, reason, amount FROM payment_requests WHERE id=?', [req.params.id]);
+        console.log('[PR WA] pr row:', pr);
         if (pr) {
           const [[submitter]] = await db.query('SELECT name, phone FROM users WHERE id=?', [pr.submitted_by]);
+          console.log('[PR WA] submitter:', submitter);
           if (submitter && submitter.phone) {
             const emoji = status === 'approved' ? '✅' : '❌';
             const statusText = status === 'approved' ? 'Approved' : 'Rejected';
