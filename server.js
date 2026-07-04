@@ -5416,10 +5416,10 @@ function safeParseCC(text) {
       reviewed_at TIMESTAMP NULL,
       created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
-    // Add columns if they don't exist yet (for existing DBs)
-    await db.query(`ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS amount DECIMAL(12,2) DEFAULT 0 AFTER card_number`);
-    await db.query(`ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS payment_done TINYINT(1) DEFAULT 0 AFTER status`);
-    await db.query(`ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS payment_done_at TIMESTAMP NULL AFTER payment_done`);
+    // Add columns if they don't exist yet (individual try/catch for MySQL 5.7 compatibility)
+    try { await db.query(`ALTER TABLE payment_requests ADD COLUMN amount DECIMAL(12,2) DEFAULT 0 AFTER card_number`); } catch(e) {}
+    try { await db.query(`ALTER TABLE payment_requests ADD COLUMN payment_done TINYINT(1) DEFAULT 0 AFTER status`); } catch(e) {}
+    try { await db.query(`ALTER TABLE payment_requests ADD COLUMN payment_done_at TIMESTAMP NULL AFTER payment_done`); } catch(e) {}
     // Manual card list for Payment Request dropdown (independent of PDF uploads)
     await db.query(`CREATE TABLE IF NOT EXISTS pr_cards (
       id         INT AUTO_INCREMENT PRIMARY KEY,
@@ -6017,7 +6017,7 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
     );
     // Send WhatsApp notification before responding (serverless-safe)
     try {
-      const [[pr]] = await db.query('SELECT submitted_by, reason, amount FROM payment_requests WHERE id=?', [req.params.id]);
+      const [[pr]] = await db.query('SELECT submitted_by, reason FROM payment_requests WHERE id=?', [req.params.id]);
       if (pr && pr.submitted_by) {
         const [[submitter]] = await db.query('SELECT name, phone FROM users WHERE id=?', [pr.submitted_by]);
         if (submitter && submitter.phone) {
@@ -6027,8 +6027,6 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
           if (pr.reason) {
             const m = String(pr.reason).match(/^\[([₹$])([\d,]+\.?\d*)\]/);
             if (m) amtStr = `\n*Amount:* ${m[1]}${m[2]}`;
-          } else if (pr.amount) {
-            amtStr = `\n*Amount:* ₹${Number(pr.amount).toFixed(2)}`;
           }
           const msg = `${emoji} *Payment Request ${statusText}*\n\nHi ${submitter.name},\n\nYour payment request has been *${statusText.toLowerCase()}*.${amtStr}\n\n— E-Marketing`;
           await sendWhatsApp(submitter.phone, msg);
@@ -6042,7 +6040,7 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
 // GET /api/payment-requests/:id/wa-debug
 app.get('/api/payment-requests/:id/wa-debug', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const [[pr]] = await db.query('SELECT id, submitted_by, reason, amount, status FROM payment_requests WHERE id=?', [req.params.id]);
+    const [[pr]] = await db.query('SELECT id, submitted_by, reason, status FROM payment_requests WHERE id=?', [req.params.id]);
     if (!pr) return res.json({ error: 'request not found' });
     let submitter = null;
     if (pr.submitted_by) {
