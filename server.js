@@ -8649,24 +8649,26 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       const displayPos  = offer_position || c.profile_position;
       const joiningFmt  = joining_date ? new Date(joining_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
 
-      hrmGenerateOfferDoc(c, joining_date, salary, offer_name, offer_position)
-        .then(async ({ fileId, pdfUrl }) => {
-          await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
-          const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
-          await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+      // Awaited (not fire-and-forget) — on Vercel serverless, work started after
+      // the response is sent can get frozen mid-flight, which was silently
+      // dropping the PDF generation / WhatsApp send for some candidates.
+      try {
+        const { fileId } = await hrmGenerateOfferDoc(c, joining_date, salary, offer_name, offer_position);
+        await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
+        const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
+        await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
 `Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${displayPos}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\n📄 *Offer Letter PDF:*\n${driveLink}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
-          }, 'text', c.id, c.name, 'Offer Sent');
-        })
-        .catch(e => {
-          console.error('HRM offer doc generation failed:', e.message);
-          hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+        }, 'text', c.id, c.name, 'Offer Sent');
+      } catch (e) {
+        console.error('HRM offer doc generation failed:', e.message);
+        await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
 `Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${displayPos}.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
-          }, 'text', c.id, c.name, 'Offer Sent').catch(() => {});
-          db.query(
-            `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
-            [c.id, c.name, hrmFormatPhone(c.phone), 'Offer Letter PDF', 'file', 'Failed', `Drive error: ${e.message}`, '{}']
-          ).catch(() => {});
-        });
+        }, 'text', c.id, c.name, 'Offer Sent').catch(() => {});
+        await db.query(
+          `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
+          [c.id, c.name, hrmFormatPhone(c.phone), 'Offer Letter PDF', 'file', 'Failed', `Drive error: ${e.message}`, '{}']
+        ).catch(() => {});
+      }
     }
 
     res.json({ ok: true });
