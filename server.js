@@ -8287,22 +8287,11 @@ const HRM_OFFER_FOLDER_ID   = process.env.HRM_OFFER_FOLDER_ID   || '1DWfwjSdkVP_
 const HRM_OFFER_TEMPLATE_ID = process.env.HRM_OFFER_TEMPLATE_ID || '11f3STYRR4Lyk2HaoBfo7Kiiw5DsEoyr0P3lZnpZR_G4';
 const HRM_OFFER_SCRIPT      = process.env.HRM_OFFER_SCRIPT      || 'https://script.google.com/macros/s/AKfycbyDG7Wqih7LW3p7ttqONoqzwy5t5Gq7B3RgTxEJcD3QL6qzALTMaC3cUvnxW2CGT3VQ/exec';
 
-// Logo: embed as base64 from the pre-sized 185x110 PNG in public/.
-// Google Docs renders base64 images at natural pixel size (ignores HTML w/h),
-// so using the correctly-sized file ensures exact 185x110 rendering.
-let _hrmLogoBase64 = null;
-function _getHrmLogoSrc() {
-  if (!_hrmLogoBase64) {
-    try {
-      const fs = require('fs');
-      const buf = fs.readFileSync(path.join(__dirname, 'public', 'offer-logo.png'));
-      _hrmLogoBase64 = 'data:image/png;base64,' + buf.toString('base64');
-    } catch(e) {
-      _hrmLogoBase64 = 'https://i.postimg.cc/sXHdhzDx/emarketing-offer-letter-logo-removebg-preview.png';
-    }
-  }
-  return _hrmLogoBase64;
-}
+// Logo: pre-sized 185x110 PNG hardcoded as base64.
+// Google Docs renders base64 at natural pixel size (ignores HTML w/h attrs),
+// so the image must already be 185x110 before encoding — which this file is.
+const _HRM_LOGO_SRC = 'data:image/png;base64,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';
+function _getHrmLogoSrc() { return _HRM_LOGO_SRC; }
 
 async function _hrmDriveClient() {
   const { google } = require('googleapis');
@@ -8346,7 +8335,7 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
     </td>
   </tr></table>
   <h2>PRELIMINARY OFFER LETTER</h2>
-  <div class="pc">Private &amp; Confidential<br>Date :-${today}</div>
+  <div class="pc" style="text-align:right">Private &amp; Confidential<br>Date :-${today}</div>
   <p><strong>Dear ${candidateName},</strong></p>
   <p>With reference to your application and the subsequent interview you had with us, we are pleased to offer you an appointment as <strong>${candidatePosition}</strong> with <strong>e-Marketing (a unit of Jai Marketing)</strong>, Jaipur.</p>
   <p>You are required to join us on <strong>${joiningFmt}</strong>. Your place of work will be <strong>Jaipur</strong> (8/10 shaheed amit bhardwaj marg, malviya nagar Jaipur 302017)</p>
