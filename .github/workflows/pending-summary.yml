@@ -1,0 +1,30 @@
+name: Pending Task Summary
+
+# Fires twice daily — 10:00 AM IST (04:30 UTC) and 4:00 PM IST (10:30 UTC).
+# Moved here from vercel.json — the Vercel Hobby plan only allows 2 cron
+# jobs total, and this endpoint alone needed 2 of those, which combined with
+# daily-reminder/pending-reminder overflowed the quota and stopped firing
+# reliably.
+on:
+  schedule:
+    - cron: '30 4 * * *'
+    - cron: '30 10 * * *'
+  workflow_dispatch: {}  # allow manual fire from the Actions tab
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Hit pending-summary endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL:     ${{ secrets.APP_URL }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "APP_URL secret not set — skipping"; exit 0
+          fi
+          CLEAN_URL=$(printf '%s' "${APP_URL}" | tr -d '[:space:]')
+          curl --silent --show-error --fail-with-body \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${CLEAN_URL%/}/api/cron/pending-summary"
