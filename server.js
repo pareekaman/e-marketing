@@ -8382,14 +8382,14 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
   </style></head><body>
   <table class="hdr"><tr>
     <td width="197" valign="top" style="padding-right:12px"><img src="${logoSrc}" alt="e-Marketing" width="185" height="110" style="display:block"></td>
-    <td align="right" valign="top" style="font-size:13px;line-height:1.4">
-      <div style="text-align:right"><strong>e-Marketing.io (A Unit of Jai Marketing)</strong></div>
-      <div style="text-align:right">Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,</div>
-      <div style="text-align:right">Malviya Nagar, Jaipur, Rajasthan – 307017 (India)</div>
-      <div style="text-align:right">&nbsp;</div>
-      <div style="text-align:right">Phone: +91-9602694444</div>
-      <div style="text-align:right">Email: <a href="mailto:abhishek@e-marketing.io">abhishek@e-marketing.io</a></div>
-      <div style="text-align:right">Website: www.e-marketing.io</div>
+    <td valign="top" style="font-size:13px;line-height:1.6;text-align:right">
+      <p style="margin:0;text-align:right"><strong>e-Marketing.io (A Unit of Jai Marketing)</strong><br>
+      Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,<br>
+      Malviya Nagar, Jaipur, Rajasthan – 307017 (India)<br>
+      <br>
+      Phone: +91-9602694444<br>
+      Email: <a href="mailto:abhishek@e-marketing.io">abhishek@e-marketing.io</a><br>
+      Website: www.e-marketing.io</p>
     </td>
   </tr></table>
   <h2>PRELIMINARY OFFER LETTER</h2>
