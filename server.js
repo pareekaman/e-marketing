@@ -8269,7 +8269,7 @@ const HRM_OFFER_SCRIPT      = process.env.HRM_OFFER_SCRIPT      || 'https://scri
 
 // Stable CDN URL for offer letter logo — Google Docs fetches this and
 // applies the HTML width/height (unlike base64 which ignores those attributes).
-const _HRM_LOGO_URL = 'https://i.postimg.cc/wB5Ghp2S/emarketing-offer-letter-logo.png';
+const _HRM_LOGO_URL = 'https://i.postimg.cc/sXHdhzDx/emarketing-offer-letter-logo-removebg-preview.png';
 
 async function _hrmDriveClient() {
   const { google } = require('googleapis');
