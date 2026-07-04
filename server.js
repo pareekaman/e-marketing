@@ -8267,25 +8267,9 @@ const HRM_OFFER_FOLDER_ID   = process.env.HRM_OFFER_FOLDER_ID   || '1DWfwjSdkVP_
 const HRM_OFFER_TEMPLATE_ID = process.env.HRM_OFFER_TEMPLATE_ID || '11f3STYRR4Lyk2HaoBfo7Kiiw5DsEoyr0P3lZnpZR_G4';
 const HRM_OFFER_SCRIPT      = process.env.HRM_OFFER_SCRIPT      || 'https://script.google.com/macros/s/AKfycbyDG7Wqih7LW3p7ttqONoqzwy5t5Gq7B3RgTxEJcD3QL6qzALTMaC3cUvnxW2CGT3VQ/exec';
 
-// Cache offer-logo.png (185x110, natural aspect ratio resize) as base64.
-// Google Docs renders base64 images at their NATURAL pixel size, so we must
-// provide the image already at display dimensions — not the 1625x968 original.
-let _HRM_LOGO_B64 = null;
-try {
-  const _fs   = require('fs');
-  const _path = require('path');
-  const _candidates = [
-    _path.join(__dirname,     'public', 'offer-logo.png'),
-    _path.join(process.cwd(), 'public', 'offer-logo.png'),
-    '/var/task/public/offer-logo.png',
-  ];
-  for (const _p of _candidates) {
-    if (_fs.existsSync(_p)) {
-      _HRM_LOGO_B64 = 'data:image/png;base64,' + _fs.readFileSync(_p).toString('base64');
-      break;
-    }
-  }
-} catch(_e) {}
+// Stable CDN URL for offer letter logo — Google Docs fetches this and
+// applies the HTML width/height (unlike base64 which ignores those attributes).
+const _HRM_LOGO_URL = 'https://i.postimg.cc/wB5Ghp2S/emarketing-offer-letter-logo.png';
 
 async function _hrmDriveClient() {
   const { google } = require('googleapis');
@@ -8306,8 +8290,7 @@ async function _hrmDriveClient() {
 }
 
 function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) {
-  const appUrl   = (process.env.APP_URL || 'https://e-marketing-phi.vercel.app').replace(/\/$/, '');
-  const logoSrc  = _HRM_LOGO_B64 || `${appUrl}/offer-logo.png`;
+  const logoSrc  = _HRM_LOGO_URL;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
     body{margin:0;padding:20px 65px;font-family:'Times New Roman',Times,serif;font-size:16px;color:#000;line-height:1.15}
     table.hdr{width:100%;border:none;border-collapse:collapse;margin-bottom:16px}
