@@ -8661,7 +8661,7 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
     const waSent = await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
 `Hello ${c.name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${c.profile_position||''}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${c.salary||'To be discussed'}\n\n📄 *Offer Letter PDF:*\n${driveLink}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
     }, 'text', c.id, c.name, 'Offer Letter PDF');
-    res.json({ ok: true, fileId, url: `https://docs.google.com/document/d/${fileId}/edit`, pdfUrl, waSent });
+    res.json({ ok: true, fileId, url: `https://drive.google.com/file/d/${fileId}/view`, pdfUrl, waSent });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

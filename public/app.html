@@ -5107,7 +5107,7 @@ function renderHrmRows(list) {
       <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${canUpdate ? `<button class="action-btn edit" onclick="openHrmStatusModal(${c.id})">Update</button>` : '<span style="font-size:11px;color:#94a3b8">Closed</span>'}
         ${c.status === 'Offer Sent' ? (c.offer_drive_id
-          ? `<a href="https://docs.google.com/document/d/${c.offer_drive_id}/edit" target="_blank" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📄 View Offer</a>`
+          ? `<a href="https://drive.google.com/file/d/${c.offer_drive_id}/view" target="_blank" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📄 View Offer</a>`
           : `<button class="action-btn" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="viewOfferLetter(${c.id})">📄 View Offer</button>`)
           : ''}
       </td>
@@ -5228,29 +5228,37 @@ async function submitHrmStatus() {
 function viewOfferLetter(id) {
   const c = _hrmCandidates.find(x => String(x.id) === String(id));
   if (!c) return;
-  const joining = c.joining_date ? new Date(c.joining_date).toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'}) : 'To be communicated';
-  const issuedDate = c.updated_at ? new Date(c.updated_at).toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'}) : new Date().toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'});
-  const driveUrl = c.offer_drive_id ? `https://docs.google.com/document/d/${c.offer_drive_id}/edit` : null;
-  const html = _hrmOfferHtml(c.name, c.profile_position, joining, issuedDate);
+  const driveUrl = c.offer_drive_id ? `https://drive.google.com/file/d/${c.offer_drive_id}/view` : null;
+  const isPdf = !!c.offer_drive_id;
+
+  const iframeAttrs = isPdf
+    ? `src="https://drive.google.com/file/d/${c.offer_drive_id}/preview" allow="autoplay"`
+    : `sandbox="allow-same-origin allow-scripts allow-modals"`;
+  const banner = isPdf
+    ? `<div style="margin-top:12px;padding:12px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;display:flex;align-items:center;gap:10px">
+         <span style="font-size:20px">📂</span>
+         <div style="flex:1">
+           <div style="font-size:12px;font-weight:600;color:#15803d">Saved in Google Drive</div>
+           <div style="font-size:11px;color:#64748b">HR Offer Letters folder</div>
+         </div>
+         <a href="${driveUrl}" target="_blank" style="background:#16a34a;color:#fff;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none">Open in Drive →</a>
+       </div>`
+    : `<div style="margin-top:12px;padding:12px 14px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;display:flex;align-items:center;gap:10px">
+         <span style="font-size:18px">⚠️</span>
+         <div style="flex:1;font-size:12px;color:#92400e">Drive PDF hasn't been generated yet — this is a draft preview. Generate it?</div>
+         <button onclick="generateOfferDoc(${c.id})" style="background:#d97706;color:#fff;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;border:none;cursor:pointer" id="genOfferBtn-${c.id}">Generate</button>
+       </div>`;
 
   document.getElementById('hrmOfferViewBody').innerHTML = `
-    <iframe id="offerViewFrame" style="width:100%;height:480px;border:1px solid #e2e8f0;border-radius:8px;display:block" sandbox="allow-same-origin allow-scripts allow-modals"></iframe>
-    ${driveUrl
-      ? `<div style="margin-top:12px;padding:12px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;display:flex;align-items:center;gap:10px">
-           <span style="font-size:20px">📂</span>
-           <div style="flex:1">
-             <div style="font-size:12px;font-weight:600;color:#15803d">Saved in Google Drive</div>
-             <div style="font-size:11px;color:#64748b">HR Offer Letters folder</div>
-           </div>
-           <a href="${driveUrl}" target="_blank" style="background:#16a34a;color:#fff;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none">Open in Drive →</a>
-         </div>`
-      : `<div style="margin-top:12px;padding:12px 14px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;display:flex;align-items:center;gap:10px">
-           <span style="font-size:18px">⚠️</span>
-           <div style="flex:1;font-size:12px;color:#92400e">Drive doc hasn't been generated yet. Generate it?</div>
-           <button onclick="generateOfferDoc(${c.id})" style="background:#d97706;color:#fff;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;border:none;cursor:pointer" id="genOfferBtn-${c.id}">Generate</button>
-         </div>`
-    }`;
-  document.getElementById('offerViewFrame').srcdoc = html;
+    <iframe id="offerViewFrame" data-pdf="${isPdf ? '1' : '0'}" data-drive-url="${driveUrl||''}" ${iframeAttrs} style="width:100%;height:480px;border:1px solid #e2e8f0;border-radius:8px;display:block"></iframe>
+    ${banner}`;
+
+  if (!isPdf) {
+    // Not generated yet — fill in a draft approximation so HR can sanity-check before generating.
+    const joining = c.joining_date ? new Date(c.joining_date).toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'}) : 'To be communicated';
+    const issuedDate = c.updated_at ? new Date(c.updated_at).toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'}) : new Date().toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'});
+    document.getElementById('offerViewFrame').srcdoc = _hrmOfferHtml(c.name, c.profile_position, joining, issuedDate);
+  }
   document.getElementById('hrmOfferViewModal').classList.add('open');
 }
 
@@ -5267,6 +5275,11 @@ async function generateOfferDoc(id) {
 function printOfferLetter() {
   const frame = document.getElementById('offerViewFrame');
   if (!frame) return;
+  if (frame.dataset.pdf === '1') {
+    // Real PDF embed — Drive's own viewer has print/download built in.
+    window.open(frame.dataset.driveUrl, '_blank');
+    return;
+  }
   let html = frame.srcdoc;
   if (!html) return;
   const noHeaderCss = `<style>@page{margin:0;size:A4 portrait}body{margin:18mm 15mm!important}</style>`;
