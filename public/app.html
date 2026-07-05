@@ -5383,7 +5383,11 @@ async function submitOfferForm() {
   btn.disabled = false; btn.textContent = '📄 Generate & Send on WhatsApp';
   if (r.error) { showToast(r.error, 'error'); return; }
   closeModal('hrmOfferFormModal');
-  showToast('Offer letter generating — PDF will be sent on WhatsApp!');
+  if (r.pdfGenerated === false) {
+    showToast('⚠️ WhatsApp sent, but PDF generation failed: ' + (r.pdfError || 'unknown error') + ' — open "View Offer" and click Generate to retry.', 'error');
+  } else {
+    showToast('Offer letter PDF generated — sent on WhatsApp!');
+  }
   loadHRM();
 }
 

@@ -8643,6 +8643,7 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
 `Hello ${c.name},\n\nThank you for applying for ${c.profile_position}.\n\nAfter careful review, we are unable to move forward at this time. We may consider you for future openings.\n\nBest wishes.\n\n— ${HRM_COMPANY} HR Team`
       }, 'text', c.id, c.name, 'Rejected').catch(e => console.error('HRM WA rejected err:', e.message));
     }
+    let pdfGenerated = true, pdfError = null;
     if (status === 'Offer Sent') {
       const { offer_name, offer_position } = req.body;
       const displayName = offer_name || c.name;
@@ -8660,6 +8661,8 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
 `Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${displayPos}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\n📄 *Offer Letter PDF:*\n${driveLink}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
         }, 'text', c.id, c.name, 'Offer Sent');
       } catch (e) {
+        pdfGenerated = false;
+        pdfError = e.message;
         console.error('HRM offer doc generation failed:', e.message);
         await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
 `Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${displayPos}.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
@@ -8671,7 +8674,7 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       }
     }
 
-    res.json({ ok: true });
+    res.json({ ok: true, pdfGenerated, pdfError });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
