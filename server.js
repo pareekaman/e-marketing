@@ -8656,12 +8656,28 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       // the response is sent can get frozen mid-flight, which was silently
       // dropping the PDF generation / WhatsApp send for some candidates.
       try {
-        const { fileId } = await hrmGenerateOfferDoc(c, joining_date, salary, offer_name, offer_position);
+        const { fileId, pdfUrl } = await hrmGenerateOfferDoc(c, joining_date, salary, offer_name, offer_position);
         await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
-        const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
-        await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${displayPos}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\n📄 *Offer Letter PDF:*\n${driveLink}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
-        }, 'text', c.id, c.name, 'Offer Sent');
+        const caption = `Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${displayPos}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
+        // Field names (mediaUrl/mediaType/fileName) match the old Apps Script's
+        // working sendWhatsAppFile() call — a previous attempt here used
+        // document/filename instead and was blamed for "not delivering the PDF",
+        // but that failure was actually the missing offer_drive_id column
+        // throwing before this call was ever reached (now fixed).
+        const fileSent = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
+          to: hrmFormatPhone(c.phone),
+          mediaUrl: pdfUrl,
+          mediaType: 'document',
+          fileName: `PRELIMINARY OFFER LETTER - ${displayName}.pdf`,
+          caption
+        }, 'file', c.id, c.name, 'Offer Sent');
+        if (!fileSent) {
+          // Fallback so the candidate isn't left with nothing if the file API rejects this call.
+          const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
+          await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+`${caption}\n\n📄 *Offer Letter PDF:*\n${driveLink}`
+          }, 'text', c.id, c.name, 'Offer Sent - Link Fallback');
+        }
       } catch (e) {
         pdfGenerated = false;
         pdfError = e.message;
@@ -8690,10 +8706,20 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
     const { fileId, pdfUrl } = await hrmGenerateOfferDoc(c, c.joining_date, c.salary);
     await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
     const joiningFmt = c.joining_date ? new Date(c.joining_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
-    const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
-    const waSent = await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`Hello ${c.name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${c.profile_position||''}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${c.salary||'To be discussed'}\n\n📄 *Offer Letter PDF:*\n${driveLink}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
-    }, 'text', c.id, c.name, 'Offer Letter PDF');
+    const caption = `Hello ${c.name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${c.profile_position||''}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${c.salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
+    let waSent = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
+      to: hrmFormatPhone(c.phone),
+      mediaUrl: pdfUrl,
+      mediaType: 'document',
+      fileName: `PRELIMINARY OFFER LETTER - ${c.name}.pdf`,
+      caption
+    }, 'file', c.id, c.name, 'Offer Letter PDF');
+    if (!waSent) {
+      const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
+      waSent = await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+`${caption}\n\n📄 *Offer Letter PDF:*\n${driveLink}`
+      }, 'text', c.id, c.name, 'Offer Letter PDF - Link Fallback');
+    }
     res.json({ ok: true, fileId, url: `https://drive.google.com/file/d/${fileId}/view`, pdfUrl, waSent });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
