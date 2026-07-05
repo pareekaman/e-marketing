@@ -21,9 +21,24 @@
 
   body{
     font-family:'Inter',sans-serif;
-    background: linear-gradient(135deg,#fff8e1 0%,#ffe0b2 50%,#ffecb3 100%);
+    -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+    background:
+      radial-gradient(1200px circle at 12% -10%, rgba(79,70,229,.10), transparent 45%),
+      radial-gradient(900px circle at 100% 10%, rgba(243,156,18,.16), transparent 42%),
+      linear-gradient(160deg,#fdf6ec 0%,#fbeed9 55%,#fbe4c4 100%);
     min-height:100vh;
     display:flex;align-items:center;justify-content:center;
+    position:relative;overflow:hidden;
+  }
+
+  /* Subtle dot-grid texture for depth */
+  body{background-attachment:fixed;}
+  .bg-grid{
+    position:fixed;inset:0;pointer-events:none;z-index:0;
+    background-image:radial-gradient(rgba(15,23,42,.05) 1px, transparent 1px);
+    background-size:26px 26px;
+    -webkit-mask-image:radial-gradient(circle at 50% 40%, #000 0%, transparent 70%);
+    mask-image:radial-gradient(circle at 50% 40%, #000 0%, transparent 70%);
   }
 
   /* ── Animated background circles ── */
@@ -35,15 +50,15 @@
     z-index:0;
   }
   body::before {
-    width:400px;height:400px;
-    top:-100px;left:-100px;
+    width:420px;height:420px;
+    top:-110px;left:-110px;
     background:radial-gradient(circle, #F39C1233, transparent 70%);
     animation: bgFloat1 8s ease-in-out infinite;
   }
   body::after {
-    width:300px;height:300px;
-    bottom:-80px;right:-80px;
-    background:radial-gradient(circle, #FF980033, transparent 70%);
+    width:340px;height:340px;
+    bottom:-90px;right:-90px;
+    background:radial-gradient(circle, #4f46e52e, transparent 70%);
     animation: bgFloat2 10s ease-in-out infinite;
   }
 
@@ -52,11 +67,13 @@
 
   /* ── Card ── */
   .login-wrap{
-    background:#fff;
-    border-radius:20px;
+    background:rgba(255,255,255,.88);
+    backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%);
+    border:1px solid rgba(255,255,255,.6);
+    border-radius:22px;
     padding:44px 40px;
     width:420px;
-    box-shadow:0 20px 60px rgba(243,156,18,.15), 0 4px 20px rgba(0,0,0,.08);
+    box-shadow:0 30px 80px -20px rgba(243,156,18,.22), 0 8px 30px -8px rgba(15,23,42,.14), inset 0 1px 0 rgba(255,255,255,.8);
     position:relative;
     z-index:1;
     animation: cardIn .6s cubic-bezier(.34,1.56,.64,1) both;
@@ -169,17 +186,17 @@
     width:100%;
     padding:11px 14px 11px 38px;
     border:1.5px solid #e2e8f0;
-    border-radius:10px;
+    border-radius:11px;
     font-size:14px;
     font-family:'Inter',sans-serif;
     outline:none;
-    transition:border .2s, box-shadow .2s;
+    transition:border-color .2s cubic-bezier(.4,0,.2,1), box-shadow .2s cubic-bezier(.4,0,.2,1), background .2s;
     color:#1e293b;
     background:#fafafa;
   }
   input:focus{
     border-color:#F39C12;
-    box-shadow:0 0 0 3px rgba(243,156,18,.15);
+    box-shadow:0 0 0 4px rgba(243,156,18,.14);
     background:#fff;
   }
 
@@ -189,19 +206,19 @@
     background:linear-gradient(135deg,#FF9800,#F39C12);
     color:#fff;
     border:none;
-    border-radius:10px;
+    border-radius:11px;
     font-size:15px;
     font-weight:600;
     font-family:'Inter',sans-serif;
     cursor:pointer;
-    transition:all .2s;
+    transition:all .25s cubic-bezier(.4,0,.2,1);
     margin-top:6px;
     letter-spacing:.3px;
     box-shadow:0 4px 16px rgba(243,156,18,.35);
   }
   .btn-login:hover{
     transform:translateY(-2px);
-    box-shadow:0 8px 24px rgba(243,156,18,.45);
+    box-shadow:0 10px 28px rgba(243,156,18,.48);
   }
   .btn-login:active{ transform:translateY(0); }
 
@@ -233,7 +250,7 @@
 </style>
 </head>
 <body>
-
+<div class="bg-grid"></div>
 <div class="login-wrap">
 
   <!-- Logo -->
