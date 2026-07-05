@@ -421,16 +421,18 @@ const _startupMigrationsPromise = (async () => {
     INDEX idx_status (status)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
-  // Add reschedule_reason column to existing installs
-  await sa(`ALTER TABLE hrm_candidates ADD COLUMN IF NOT EXISTS reschedule_reason TEXT DEFAULT ''`);
-  await sa(`ALTER TABLE hrm_candidates ADD COLUMN IF NOT EXISTS offer_drive_id VARCHAR(500) DEFAULT NULL`);
-  await sa(`ALTER TABLE hrm_candidates ADD COLUMN IF NOT EXISTS offer_token VARCHAR(64) DEFAULT NULL`);
-  await sa(`ALTER TABLE hrm_candidates ADD COLUMN IF NOT EXISTS offer_html MEDIUMTEXT DEFAULT NULL`);
+  // Add columns to existing installs (no "IF NOT EXISTS" — invalid syntax on
+  // MySQL 5.7, which silently no-ops the whole ALTER via sa()'s catch-all;
+  // sa() already makes these idempotent, so plain ADD COLUMN is correct here)
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN reschedule_reason TEXT DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN offer_drive_id VARCHAR(500) DEFAULT NULL`);
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN offer_token VARCHAR(64) DEFAULT NULL`);
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN offer_html MEDIUMTEXT DEFAULT NULL`);
 
   // Per-user permissions column (replaces role_permissions)
-  await sa(`ALTER TABLE users ADD COLUMN IF NOT EXISTS user_permissions TEXT DEFAULT NULL AFTER extra_access`);
-  await sa(`ALTER TABLE users ADD COLUMN IF NOT EXISTS birthday DATE DEFAULT NULL`);
-  await sa(`ALTER TABLE users ADD COLUMN IF NOT EXISTS joining_date DATE DEFAULT NULL`);
+  await sa(`ALTER TABLE users ADD COLUMN user_permissions TEXT DEFAULT NULL AFTER extra_access`);
+  await sa(`ALTER TABLE users ADD COLUMN birthday DATE DEFAULT NULL`);
+  await sa(`ALTER TABLE users ADD COLUMN joining_date DATE DEFAULT NULL`);
 
   // WhatsApp bot delegation — approval queue before tasks reach the main table
   // CREATE TABLE safely; if user already created it with different columns, ALTER statements below will fill the gaps
