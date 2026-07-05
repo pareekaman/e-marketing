@@ -14406,7 +14406,7 @@ function paRenderApprovalRows(rows) {
         </div>
         ${dispReason ? `<div style="font-size:12px;color:#475569;margin-bottom:10px;padding:6px 10px;background:#f8fafc;border-radius:8px">${dtEscape(dispReason)}</div>` : ''}
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-          <div>${actionCell}</div>
+          <div id="paAction-${r.id}">${actionCell}</div>
           <div>${paBillCell}</div>
         </div>
       </div>`).join('') + `</div>`;
@@ -14433,7 +14433,7 @@ function paRenderApprovalRows(rows) {
         <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">${dispAmt?dispCur+Number(dispAmt).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
         <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:200px">${dtEscape(dispReason)}</td>
         <td style="padding:9px 14px" id="paStatus-${r.id}">${statusBadge(r.status)}</td>
-        <td style="padding:9px 14px;text-align:center">${actionCell}</td>
+        <td style="padding:9px 14px;text-align:center" id="paAction-${r.id}">${actionCell}</td>
         <td style="padding:9px 14px;text-align:center">${paBillCell}</td>
         <td style="padding:9px 14px;text-align:center">${deleteBtn}</td>
       </tr>`).join('')}</tbody>
@@ -14473,12 +14473,25 @@ async function loadPaymentApprovalsBadge() {
 }
 
 async function prReview(id, status) {
+  // Give instant feedback — the server call can take a few seconds (it waits on the
+  // WhatsApp notification before responding), so swap the buttons for a spinner right away
+  // instead of leaving both Approve/Reject clickable while the request is in flight.
+  const actionCell = document.getElementById('paAction-' + id);
+  if (actionCell) {
+    actionCell.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#64748b;font-weight:600">
+      <span style="width:13px;height:13px;border:2px solid #e2e8f0;border-top-color:#4f46e5;border-radius:50%;display:inline-block;animation:spin .7s linear infinite"></span>
+      ${status==='approved' ? 'Approving…' : 'Rejecting…'}
+    </span>`;
+  }
   try {
     await api(`/api/payment-requests/${id}`, 'PATCH', { status });
     showToast(status==='approved' ? '✅ Request approved!' : '❌ Request rejected!');
     loadPaymentApprovals();
     loadPaymentApprovalsBadge();
-  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+    loadPaymentApprovals();
+  }
 }
 
 async function prDeleteRequest(id) {
