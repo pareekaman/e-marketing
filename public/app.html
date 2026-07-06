@@ -6526,14 +6526,14 @@ async function loadAllTasks() {
     }
   }
 
-  // Admin / PC: float own tasks to the top — keep server's due-date ordering within each bucket.
+  // Admin / PC: float own tasks to the top — latest due-date first within each bucket.
   if (isAdmin || isPC) {
     const myId = String(ME.id);
     allTasks.sort((a, b) => {
       const aMine = String(a.assigned_to) === myId ? 0 : 1;
       const bMine = String(b.assigned_to) === myId ? 0 : 1;
       if (aMine !== bMine) return aMine - bMine;
-      return (a.due_date || '').localeCompare(b.due_date || '');
+      return (b.due_date || '').localeCompare(a.due_date || '');
     });
     allTasksData = allTasks;
   }
