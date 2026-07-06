@@ -16584,7 +16584,7 @@ async function openMeetingModal(id, prefillStart) {
   document.getElementById('mtgAgenda').value = '';
   document.getElementById('mtgLink').value = '';
   document.getElementById('mtgFormDate').value = (_mtgDayAnchor ? _mtgIso(_mtgDayAnchor) : _mtgTodayIso());
-  mtgSetStartTime(prefillStart || '10:00', { silent: true });
+  mtgSetStartTime(prefillStart || '', { silent: true });
   document.getElementById('mtgDuration').value = '30';
   mtgRecalcEnd();
 
@@ -16684,7 +16684,8 @@ function mtgOnFrequencyChange() {
 }
 
 function mtgRecalcEnd() {
-  const start = document.getElementById('mtgStart').value || '10:00';
+  const start = document.getElementById('mtgStart').value;
+  if (!start) { document.getElementById('mtgEnd').value = ''; return; }
   const dur = parseInt(document.getElementById('mtgDuration').value, 10) || 30;
   const [h,m] = start.split(':').map(Number);
   const total = h*60 + m + dur;
