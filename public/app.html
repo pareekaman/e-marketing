@@ -3160,7 +3160,12 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div class="form-row">
         <div class="form-group">
           <label>Start time *</label>
-          <input type="time" id="mtgStart" step="900" onchange="mtgRecalcEnd()"/>
+          <div style="position:relative">
+            <input type="text" id="mtgStartDisplay" placeholder="e.g. 10:00 AM" autocomplete="off"
+              oninput="mtgFilterStartDropdown()" onfocus="mtgOpenStartDropdown()" onkeydown="mtgStartKeydown(event)"/>
+            <div id="mtgStartDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;max-height:220px;overflow:auto;z-index:20;box-shadow:0 8px 24px rgba(15,23,42,.12)"></div>
+            <input type="hidden" id="mtgStart" onchange="mtgRecalcEnd()"/>
+          </div>
         </div>
         <div class="form-group">
           <label>End time</label>
@@ -16579,7 +16584,7 @@ async function openMeetingModal(id, prefillStart) {
   document.getElementById('mtgAgenda').value = '';
   document.getElementById('mtgLink').value = '';
   document.getElementById('mtgFormDate').value = (_mtgDayAnchor ? _mtgIso(_mtgDayAnchor) : _mtgTodayIso());
-  document.getElementById('mtgStart').value = prefillStart || '10:00';
+  mtgSetStartTime(prefillStart || '10:00', { silent: true });
   document.getElementById('mtgDuration').value = '30';
   mtgRecalcEnd();
 
@@ -16599,7 +16604,7 @@ async function openMeetingModal(id, prefillStart) {
       document.getElementById('mtgLink').value = m.meet_link || '';
       document.getElementById('mtgDoneBtn').style.display = (m.status === 'scheduled') ? 'inline-block' : 'none';
       document.getElementById('mtgFormDate').value = m.meeting_date || '';
-      document.getElementById('mtgStart').value = m.start_time || '10:00';
+      mtgSetStartTime(m.start_time || '10:00', { silent: true });
       clientSel.value = m.client_id || '';
       const dur = (() => {
         const [sh,sm] = (m.start_time||'10:00').split(':').map(Number);
@@ -16687,6 +16692,77 @@ function mtgRecalcEnd() {
   const em = String(total % 60).padStart(2,'0');
   document.getElementById('mtgEnd').value = `${eh}:${em}`;
 }
+
+// Zoom-style start-time picker: text input + clickable 15-min dropdown, backed by a hidden 24h value.
+const MTG_TIME_OPTIONS = (() => {
+  const opts = [];
+  for (let mins = 0; mins < 24 * 60; mins += 15) {
+    const h24 = Math.floor(mins / 60), min = mins % 60;
+    const value = `${String(h24).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+    const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+    const label = `${h12}:${String(min).padStart(2,'0')} ${h24 < 12 ? 'AM' : 'PM'}`;
+    opts.push({ value, label });
+  }
+  return opts;
+})();
+
+function mtgFormatStartLabel(value24) {
+  return MTG_TIME_OPTIONS.find(o => o.value === value24)?.label || '';
+}
+
+function mtgSetStartTime(value24, { silent } = {}) {
+  const hidden = document.getElementById('mtgStart');
+  hidden.value = value24 || '';
+  document.getElementById('mtgStartDisplay').value = value24 ? mtgFormatStartLabel(value24) : '';
+  if (!silent) hidden.dispatchEvent(new Event('change'));
+}
+
+function mtgRenderStartDropdown(filterText) {
+  const dd = document.getElementById('mtgStartDropdown');
+  const q = (filterText || '').trim().toLowerCase().replace(/\s+/g, '');
+  const matches = q ? MTG_TIME_OPTIONS.filter(o => o.label.toLowerCase().replace(/\s+/g, '').includes(q)) : MTG_TIME_OPTIONS;
+  dd.innerHTML = matches.length
+    ? matches.map(o => `<div data-time-opt="${o.value}" onclick="mtgPickStartTime('${o.value}')"
+        style="padding:8px 12px;font-size:13px;cursor:pointer;color:#1e293b" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">${o.label}</div>`).join('')
+    : `<div style="padding:10px 12px;font-size:12px;color:#94a3b8">No matching time</div>`;
+  dd.style.display = 'block';
+}
+
+function mtgOpenStartDropdown() {
+  mtgRenderStartDropdown(document.getElementById('mtgStartDisplay').value);
+  const current = document.getElementById('mtgStart').value;
+  const activeEl = current && document.getElementById('mtgStartDropdown').querySelector(`[data-time-opt="${current}"]`);
+  if (activeEl) activeEl.scrollIntoView({ block: 'center' });
+}
+
+function mtgFilterStartDropdown() {
+  mtgRenderStartDropdown(document.getElementById('mtgStartDisplay').value);
+}
+
+function mtgPickStartTime(value24) {
+  mtgSetStartTime(value24);
+  document.getElementById('mtgStartDropdown').style.display = 'none';
+}
+
+function mtgStartKeydown(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const first = document.getElementById('mtgStartDropdown').querySelector('[data-time-opt]');
+    if (first) mtgPickStartTime(first.getAttribute('data-time-opt'));
+  } else if (e.key === 'Escape') {
+    document.getElementById('mtgStartDropdown').style.display = 'none';
+  }
+}
+
+// Close start-time dropdown on outside click
+document.addEventListener('click', (e) => {
+  const dd = document.getElementById('mtgStartDropdown');
+  const input = document.getElementById('mtgStartDisplay');
+  if (!dd || !input) return;
+  if (dd.style.display === 'none') return;
+  if (dd.contains(e.target) || input.contains(e.target)) return;
+  dd.style.display = 'none';
+});
 
 async function mtgRefreshAvailNote() {
   const date = document.getElementById('mtgFormDate').value;
