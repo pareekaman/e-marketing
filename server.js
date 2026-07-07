@@ -3873,6 +3873,10 @@ const _clientsTableMigrationsPromise = (async () => {
 
 // ── WhatsApp helper (Aumpfy API) ──────────────────────
 async function sendWhatsApp(phone, text) {
+  if (process.env.WA_DISABLED === 'true') {
+    console.log(`  🔇 WhatsApp send SKIPPED (WA_DISABLED) → ${phone}: ${text.slice(0, 60)}...`);
+    return { ok: true, skipped: true };
+  }
   const AUMPFY_URL = process.env.AUMPFY_URL || 'https://api.aumpfy.com/api/apis/trigger/emk-dbde65';
   const AUMPFY_API_KEY = process.env.AUMPFY_API_KEY || 'sl_f7f604b7eeb89f938399b888621a341f2183bceea4bcb9650f3b8a529d396bfe';
 
@@ -3908,6 +3912,10 @@ async function sendWhatsApp(phone, text) {
 // Raw send — used for WhatsApp group IDs (e.g. "120363400573269993@g.us")
 // No phone formatting, no 91-prefix logic — sends "to" as-is.
 async function sendWhatsAppRaw(to, text) {
+  if (process.env.WA_DISABLED === 'true') {
+    console.log(`  🔇 WhatsApp (raw) send SKIPPED (WA_DISABLED) → ${to}: ${text.slice(0, 60)}...`);
+    return { ok: true, skipped: true };
+  }
   const AUMPFY_URL = process.env.AUMPFY_URL || 'https://api.aumpfy.com/api/apis/trigger/emk-dbde65';
   const AUMPFY_API_KEY = process.env.AUMPFY_API_KEY || 'sl_f7f604b7eeb89f938399b888621a341f2183bceea4bcb9650f3b8a529d396bfe';
 
@@ -4494,6 +4502,65 @@ app.post('/api/pending-summary/send', requireAuth, requireAdmin, async (_req, re
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+// Checks the WhatsApp-bot task intake queue (`tasks`) for rows not yet
+// flagged purvi_notified, messages Purvi Saini for each, then marks them
+// notified. Marks BEFORE sending so a crash mid-loop can't double-send
+// on the next run.
+async function notifyPurviOfNewMdoTasks() {
+  const [[purvi]] = await db.query(`SELECT phone FROM users WHERE name='Purvi Saini' LIMIT 1`);
+  if (!purvi?.phone) return { ok: false, reason: 'Purvi Saini has no phone on file' };
+
+  const [rows] = await db.query(`SELECT * FROM tasks WHERE purvi_notified = 0 OR purvi_notified IS NULL`);
+  let sent = 0;
+  for (const task of rows) {
+    await db.query('UPDATE tasks SET purvi_notified = 1 WHERE id = ?', [task.id]);
+    const dueDate = task.target_date || task.due_date;
+    const waMsg =
+      `🔔 *New Task Delegated via WhatsApp — Needs Your Approval*\n\n` +
+      `📋 *Task:* ${task.task_description || task.description || '—'}\n` +
+      `🆔 *Task ID:* ${task.task_id || '—'}\n` +
+      `🙋 *Assigned By:* ${task.assigned_by || task.assigned_name || '—'}\n` +
+      `👤 *Assigned To:* ${task.assigned_to || '—'}\n` +
+      `⚡ *Priority:* ${task.priority || '—'}\n` +
+      `📅 *Due Date:* ${dueDate ? new Date(dueDate).toLocaleDateString('en-IN') : '—'}\n` +
+      `🏢 *Client:* ${task.client_name || '—'}\n\n` +
+      `Please review and approve/reject this task in the MDO Approvals dashboard.`;
+    await sendWhatsApp(purvi.phone, waMsg).catch(e => console.error('WA new-mdo-task notify err:', e.message));
+    sent++;
+  }
+  return { ok: true, sent };
+}
+
+// Cron endpoint — checks for newly delegated WhatsApp-bot tasks and notifies
+// Purvi Saini. Wire this up to an external pinger (Vercel Cron is daily-only
+// on the Hobby plan; use a frequent external pinger like GitHub Actions for
+// near-real-time checks, same as /api/cron/meeting-reminder).
+// Protected by CRON_SECRET (Authorization: Bearer ...).
+app.get('/api/cron/mdo-new-task-notify', async (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: mdo-new-task-notify');
+    const out = await notifyPurviOfNewMdoTasks();
+    res.json(out);
+  } catch (err) {
+    console.error('Cron mdo-new-task-notify error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Local dev only — Vercel serverless functions don't stay warm between
+// requests, so setInterval has no effect there; production relies on the
+// cron endpoint above being pinged externally instead.
+if (!process.env.VERCEL && !process.env.NOW_REGION) {
+  setInterval(() => {
+    notifyPurviOfNewMdoTasks().catch(e => console.error('mdo-new-task-notify poll err:', e.message));
+  }, 30000);
+}
 
 // Cron endpoint — called by Vercel Cron at 10 AM IST (04:30 UTC) and 4 PM IST (10:30 UTC).
 // Protected by CRON_SECRET (Authorization: Bearer ...).
@@ -6083,11 +6150,12 @@ app.patch('/api/mdo-tasks/:id', requireAuth, async (req, res) => {
     const [[task]] = await db.query('SELECT * FROM tasks WHERE id=?', [req.params.id]);
     if (!task) return res.status(404).json({ error:'Task not found' });
 
+    const assignedByName = task.assigned_by || task.assigned_name;
+    const [[assignedToUser]] = await db.query('SELECT id, phone FROM users WHERE name=?', [task.assigned_to]);
+    const [[assignedByUser]] = await db.query('SELECT id, phone FROM users WHERE name=?', [assignedByName]);
+
     let delegationTaskId = null;
     if (status === 'Approved') {
-      const assignedByName = task.assigned_by || task.assigned_name;
-      const [[assignedToUser]] = await db.query('SELECT id FROM users WHERE name=?', [task.assigned_to]);
-      const [[assignedByUser]] = await db.query('SELECT id FROM users WHERE name=?', [assignedByName]);
       if (!assignedToUser || !assignedByUser) {
         const missing = !assignedToUser ? `Assigned To ("${task.assigned_to}")` : `Assigned By ("${assignedByName}")`;
         return res.status(400).json({ error: `Cannot approve — no matching user found for ${missing}` });
@@ -6109,23 +6177,43 @@ app.patch('/api/mdo-tasks/:id', requireAuth, async (req, res) => {
       `UPDATE tasks SET status=?, updated_timestamp=NOW()${delegationTaskId ? ', approved_task_id=?' : ''} WHERE id=?`,
       delegationTaskId ? [status, delegationTaskId, req.params.id] : [status, req.params.id]
     );
-    if (task) {
-      const [[naman]] = await db.query(`SELECT phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
-      if (naman?.phone) {
-        const emoji = status === 'Approved' ? '✅' : '❌';
-        const dueDate = task.target_date || task.due_date;
-        const waMsg =
-          `${emoji} *Task ${status} by ${String(req.session.name || '').toUpperCase()}*\n\n` +
-          `📋 *Task:* ${task.task_description || task.description || '—'}\n` +
-          `🆔 *Task ID:* ${task.task_id || '—'}\n` +
-          `👤 *Assigned To:* ${task.assigned_to || '—'}\n` +
-          `🙋 *Assigned By:* ${task.assigned_by || task.assigned_name || '—'}\n` +
-          `📅 *Due Date:* ${dueDate ? new Date(dueDate).toLocaleDateString('en-IN') : '—'}\n` +
-          `🏢 *Client:* ${task.client_name || '—'}\n\n` +
-          `Status updated to *${status}*.`;
-        sendWhatsApp(naman.phone, waMsg).catch(e => console.error('WA mdo-task notify err:', e.message));
-      }
+    const approverName = String(req.session.name || '').toUpperCase();
+    const dueDate = task.target_date || task.due_date;
+    const dueDateStr = dueDate ? new Date(dueDate).toLocaleDateString('en-IN') : '—';
+    const taskDesc = task.task_description || task.description || '—';
+
+    // Admin oversight — always notify Naman Gupta
+    const [[naman]] = await db.query(`SELECT phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
+    if (naman?.phone) {
+      const emoji = status === 'Approved' ? '✅' : '❌';
+      const waMsg =
+        `${emoji} *Task ${status} by ${approverName}*\n\n` +
+        `📋 *Task:* ${taskDesc}\n` +
+        `🆔 *Task ID:* ${task.task_id || '—'}\n` +
+        `👤 *Assigned To:* ${task.assigned_to || '—'}\n` +
+        `🙋 *Assigned By:* ${assignedByName || '—'}\n` +
+        `📅 *Due Date:* ${dueDateStr}\n` +
+        `🏢 *Client:* ${task.client_name || '—'}\n\n` +
+        `Status updated to *${status}*.`;
+      sendWhatsApp(naman.phone, waMsg).catch(e => console.error('WA mdo-task notify err:', e.message));
     }
+
+    // Notify Assigned To
+    if (assignedToUser?.phone) {
+      const waMsg = status === 'Approved'
+        ? `✅ *Task Approved & Assigned to ${task.assigned_to || '—'}*\n\n📋 *Task:* ${taskDesc}\n🆔 *Task ID:* ${task.task_id || '—'}\n🙋 *Assigned By:* ${assignedByName || '—'}\n📅 *Due Date:* ${dueDateStr}\n🏢 *Client:* ${task.client_name || '—'}\n\nThis task has been approved by *${approverName}* and assigned to you.`
+        : `❌ *Task Rejected*\n\n📋 *Task:* ${taskDesc}\n🆔 *Task ID:* ${task.task_id || '—'}\n🙋 *Assigned By:* ${assignedByName || '—'}\n\nThis task was reviewed and rejected by *${approverName}*. No action needed from you.`;
+      sendWhatsApp(assignedToUser.phone, waMsg).catch(e => console.error('WA mdo-task assignedTo notify err:', e.message));
+    }
+
+    // Notify Assigned By
+    if (assignedByUser?.phone) {
+      const waMsg = status === 'Approved'
+        ? `✅ *Task Delegated Successfully*\n\n📋 *Task:* ${taskDesc}\n🆔 *Task ID:* ${task.task_id || '—'}\n👤 *Assigned To:* ${task.assigned_to || '—'}\n📅 *Due Date:* ${dueDateStr}\n\nYour task has been approved by *${approverName}* and delegated to *${task.assigned_to}*.`
+        : `❌ *Task Request Rejected*\n\n📋 *Task:* ${taskDesc}\n🆔 *Task ID:* ${task.task_id || '—'}\n👤 *Assigned To:* ${task.assigned_to || '—'}\n\nYour task request was reviewed and rejected by *${approverName}*.`;
+      sendWhatsApp(assignedByUser.phone, waMsg).catch(e => console.error('WA mdo-task assignedBy notify err:', e.message));
+    }
+
     res.json({ success: true, delegationTaskId });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });

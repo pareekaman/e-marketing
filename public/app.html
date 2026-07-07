@@ -8048,8 +8048,9 @@ async function loadApprovals() {
     document.getElementById('apprTabPayment').style.display = 'block';
     loadPaymentApprovalsBadge();
   }
-  // MDO Approvals tab — admin only
-  if (ME.role === 'admin') {
+  // MDO Approvals tab — Purvi Saini only
+  const _MDO_APPROVERS = ['Purvi Saini'];
+  if (_MDO_APPROVERS.includes(ME.name)) {
     document.getElementById('apprTabMdo').style.display = 'block';
   }
   // Also pre-load leave approvals (so badge stays in sync)
