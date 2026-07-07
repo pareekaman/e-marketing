@@ -6065,6 +6065,71 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+// GET /api/mdo-tasks — WhatsApp-bot task intake queue (admin/MDO only)
+app.get('/api/mdo-tasks', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
+    const [rows] = await db.query('SELECT * FROM tasks ORDER BY timestamp DESC');
+    res.json(rows);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// PATCH /api/mdo-tasks/:id — approve or reject (admin/MDO only)
+app.patch('/api/mdo-tasks/:id', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
+    const { status } = req.body;
+    if (!['Approved','Rejected'].includes(status)) return res.status(400).json({ error:'Invalid status' });
+    const [[task]] = await db.query('SELECT * FROM tasks WHERE id=?', [req.params.id]);
+    if (!task) return res.status(404).json({ error:'Task not found' });
+
+    let delegationTaskId = null;
+    if (status === 'Approved') {
+      const assignedByName = task.assigned_by || task.assigned_name;
+      const [[assignedToUser]] = await db.query('SELECT id FROM users WHERE name=?', [task.assigned_to]);
+      const [[assignedByUser]] = await db.query('SELECT id FROM users WHERE name=?', [assignedByName]);
+      if (!assignedToUser || !assignedByUser) {
+        const missing = !assignedToUser ? `Assigned To ("${task.assigned_to}")` : `Assigned By ("${assignedByName}")`;
+        return res.status(400).json({ error: `Cannot approve — no matching user found for ${missing}` });
+      }
+      const dueDate = task.target_date || task.due_date;
+      const validPriorities = ['low','medium','high','urgent'];
+      const priority = validPriorities.includes(String(task.priority || '').toLowerCase()) ? String(task.priority).toLowerCase() : 'low';
+      const [ins] = await db.query(
+        `INSERT INTO delegation_tasks
+           (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        [task.task_description || task.description || '', assignedToUser.id, assignedByUser.id, dueDate || null,
+         'pending', priority, 'no', task.remarks || null, task.client_id || null, task.url || null, dueDate ? 0 : 1]
+      );
+      delegationTaskId = ins.insertId;
+    }
+
+    await db.query(
+      `UPDATE tasks SET status=?, updated_timestamp=NOW()${delegationTaskId ? ', approved_task_id=?' : ''} WHERE id=?`,
+      delegationTaskId ? [status, delegationTaskId, req.params.id] : [status, req.params.id]
+    );
+    if (task) {
+      const [[naman]] = await db.query(`SELECT phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
+      if (naman?.phone) {
+        const emoji = status === 'Approved' ? '✅' : '❌';
+        const dueDate = task.target_date || task.due_date;
+        const waMsg =
+          `${emoji} *Task ${status} by ${String(req.session.name || '').toUpperCase()}*\n\n` +
+          `📋 *Task:* ${task.task_description || task.description || '—'}\n` +
+          `🆔 *Task ID:* ${task.task_id || '—'}\n` +
+          `👤 *Assigned To:* ${task.assigned_to || '—'}\n` +
+          `🙋 *Assigned By:* ${task.assigned_by || task.assigned_name || '—'}\n` +
+          `📅 *Due Date:* ${dueDate ? new Date(dueDate).toLocaleDateString('en-IN') : '—'}\n` +
+          `🏢 *Client:* ${task.client_name || '—'}\n\n` +
+          `Status updated to *${status}*.`;
+        sendWhatsApp(naman.phone, waMsg).catch(e => console.error('WA mdo-task notify err:', e.message));
+      }
+    }
+    res.json({ success: true, delegationTaskId });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 // GET /api/payment-requests/:id/wa-debug
 app.get('/api/payment-requests/:id/wa-debug', requireAuth, requireAdmin, async (req, res) => {
   try {

@@ -1852,6 +1852,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div class="tab" id="apprTabLeave" onclick="switchApprovalTab('leave',this)">🗓 Leave Approvals <span id="apprLeaveBadge" style="display:none;background:#F39C12;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
       <div class="tab" id="apprTabWa" onclick="switchApprovalTab('wa',this)" style="display:none">📱 WhatsApp Tasks <span id="apprWaBadge" style="display:none;background:#25d366;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
       <div class="tab" id="apprTabPayment" onclick="switchApprovalTab('payment',this)" style="display:none">💳 Payment Approvals <span id="apprPaymentBadge" style="display:none;background:#4f46e5;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
+      <div class="tab" id="apprTabMdo" onclick="switchApprovalTab('mdo',this)" style="display:none">🧾 MDO Approvals</div>
     </div>
 
     <!-- Task approvals panel -->
@@ -1911,6 +1912,13 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <button onclick="paResetFilters()" style="padding:8px 16px;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;align-self:flex-end">↺ Reset</button>
       </div>
       <div id="paymentApprovalsList" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+        <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>
+      </div>
+    </div>
+
+    <!-- MDO Approvals panel (admin/MDO only) -->
+    <div id="mdoApprovalsPanel" style="display:none">
+      <div id="mdoTasksList" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
         <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>
       </div>
     </div>
@@ -8016,10 +8024,13 @@ function switchApprovalTab(tab, el) {
   if (waPanel) waPanel.style.display = tab==='wa' ? 'block' : 'none';
   const payPanel = document.getElementById('paymentApprovalsPanel');
   if (payPanel) payPanel.style.display = tab==='payment' ? 'block' : 'none';
+  const mdoPanel = document.getElementById('mdoApprovalsPanel');
+  if (mdoPanel) mdoPanel.style.display = tab==='mdo' ? 'block' : 'none';
   if (tab==='transfer') loadTransferApprovals();
   if (tab==='leave') loadLeaveApprovals();
   if (tab==='wa') loadWaDelegations();
   if (tab==='payment') loadPaymentApprovals();
+  if (tab==='mdo') loadMdoApprovals();
 }
 
 async function loadApprovals() {
@@ -8036,6 +8047,10 @@ async function loadApprovals() {
   if (_PR_APPROVERS.includes(ME.name)) {
     document.getElementById('apprTabPayment').style.display = 'block';
     loadPaymentApprovalsBadge();
+  }
+  // MDO Approvals tab — admin only
+  if (ME.role === 'admin') {
+    document.getElementById('apprTabMdo').style.display = 'block';
   }
   // Also pre-load leave approvals (so badge stays in sync)
   loadLeaveApprovals();
@@ -14508,6 +14523,79 @@ async function prDeleteRequest(id) {
     loadMyPaymentRequests();
     loadPaymentApprovals();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════
+// MDO APPROVALS — WhatsApp-bot task intake queue + message log
+// ══════════════════════════════════════════════════════
+async function loadMdoApprovals() {
+  const tasksEl = document.getElementById('mdoTasksList');
+  try {
+    const tasks = await api('/api/mdo-tasks');
+    if (!Array.isArray(tasks)) { tasksEl.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error loading tasks</div>'; }
+    else mdoRenderTasks(tasks);
+  } catch(e) { tasksEl.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
+}
+
+function mdoRenderTasks(rows) {
+  const el = document.getElementById('mdoTasksList');
+  if (!rows.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">No tasks found</div>'; return; }
+  const statusBadge = s => s==='Approved'
+      ? '<span style="background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">✅ Approved</span>'
+      : s==='Rejected'
+      ? '<span style="background:#fee2e2;color:#dc2626;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">❌ Rejected</span>'
+      : '<span style="background:#fef9c3;color:#a16207;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">⏳ ' + dtEscape(s || 'Pending') + '</span>';
+  const actionCell = r => r.status === 'Pending'
+      ? `<button onclick="mdoReviewTask(${r.id},'Approved')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;margin-right:6px">✅ Approve</button><button onclick="mdoReviewTask(${r.id},'Rejected')" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">❌ Reject</button>`
+      : '—';
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse">
+    <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Timestamp</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Task ID</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Description</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Assigned By</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Assigned To</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Priority</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Due Date</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Approval Needed</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
+      <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Action</th>
+    </tr></thead>
+    <tbody>${rows.map((r,i) => {
+      const desc = r.task_description || r.description || '—';
+      const dueDate = r.target_date || r.due_date;
+      return `<tr id="mdoTaskRow-${r.id}" style="${i%2?'background:#f8fafc':''}">
+        <td style="padding:9px 14px;font-size:12px;color:#64748b">${r.timestamp ? new Date(r.timestamp).toLocaleString('en-IN') : '—'}</td>
+        <td style="padding:9px 14px;font-size:12px;font-weight:600">${dtEscape(r.task_id || '—')}</td>
+        <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:260px">${dtEscape(desc)}</td>
+        <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.assigned_by || r.assigned_name || '—')}</td>
+        <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.assigned_to || '—')}</td>
+        <td style="padding:9px 14px;font-size:12px">${dtEscape(r.priority || '—')}</td>
+        <td style="padding:9px 14px;font-size:12px;color:#64748b">${dueDate ? new Date(dueDate).toLocaleDateString('en-IN') : '—'}</td>
+        <td style="padding:9px 14px;font-size:12px">${dtEscape(r.approval_needed || '—')}</td>
+        <td style="padding:9px 14px" id="mdoTaskStatus-${r.id}">${statusBadge(r.status)}</td>
+        <td style="padding:9px 14px;text-align:center" id="mdoTaskAction-${r.id}">${actionCell(r)}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+async function mdoReviewTask(id, status) {
+  const actionCell = document.getElementById('mdoTaskAction-' + id);
+  if (actionCell) {
+    actionCell.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#64748b;font-weight:600">
+      <span style="width:13px;height:13px;border:2px solid #e2e8f0;border-top-color:#4f46e5;border-radius:50%;display:inline-block;animation:spin .7s linear infinite"></span>
+      ${status==='Approved' ? 'Approving…' : 'Rejecting…'}
+    </span>`;
+  }
+  try {
+    await api(`/api/mdo-tasks/${id}`, 'PATCH', { status });
+    showToast(status==='Approved' ? '✅ Task approved!' : '❌ Task rejected!');
+    loadMdoApprovals();
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+    loadMdoApprovals();
+  }
 }
 
 async function prMarkPaymentDone(id) {
