@@ -4707,20 +4707,25 @@ async function sendPendingSummaryMessages() {
     await new Promise(r => setTimeout(r, 1500)); // small spacing so messages stay readable
   }
   // Also DM each user who has the "pending_summary_recipient" access ticked.
+  // Recipients are messaged in parallel — each recipient's own 3 messages stay
+  // sequential/spaced (for readability), but different recipients no longer
+  // wait on each other. With sends done one recipient at a time, total time
+  // grew with recipient count and started exceeding Vercel's 60s function
+  // limit / GitHub Actions' 2-min job timeout once a few recipients were
+  // configured, causing the whole cron run to get cancelled mid-request.
   const [recipients] = await db.query(
     `SELECT id, name, phone, extra_access FROM users WHERE phone IS NOT NULL AND phone <> '' AND extra_access IS NOT NULL`
   );
-  const dmResults = [];
-  for (const u of recipients) {
-    if (!parseExtraAccess(u.extra_access).includes('pending_summary_recipient')) continue;
+  const targets = recipients.filter(u => parseExtraAccess(u.extra_access).includes('pending_summary_recipient'));
+  const dmResults = await Promise.all(targets.map(async u => {
     const perType = {};
     for (const type of ['delegation','checklist','fms']) {
       if (!msgs[type]) { perType[type] = { skipped: 'no pending tasks' }; continue; }
       perType[type] = await sendWhatsApp(u.phone, msgs[type]);
       await new Promise(r => setTimeout(r, 1200));
     }
-    dmResults.push({ userId: u.id, name: u.name, phone: u.phone, perType });
-  }
+    return { userId: u.id, name: u.name, phone: u.phone, perType };
+  }));
   return { ok: true, counts: msgs.counts, group: groupResults, dms: dmResults };
 }
 
