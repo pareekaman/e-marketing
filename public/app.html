@@ -3495,7 +3495,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <button class="btn btn-green btn-sm" onclick="uploadCSVC()">⬆ Upload CSV</button>
         <button class="btn btn-outline btn-sm" onclick="downloadSampleC()">⬇ Sample</button>
       </div>
-      <div style="font-size:11px;color:#94a3b8;margin-top:6px">Format: user_email, frequency (daily/weekly/monthly/yearly/quarterly/alternative_week), start_date, description, remarks — tasks auto-generate!</div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:6px">Format: user_email, frequency (daily/weekly/monthly/yearly/quarterly/alternative_week), start_date, description, remarks, client_name (optional) — tasks auto-generate!</div>
     </div>
   </div>
 </div>
@@ -3741,6 +3741,10 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <option value="no">No</option>
         <option value="yes">Yes</option>
       </select>
+    </div>
+    <div class="form-group">
+      <label>Client <span style="color:#94a3b8;font-weight:400;font-size:11px">(optional)</span></label>
+      <select id="editTClient"><option value="">— No Client —</option></select>
     </div>
     <div class="form-group">
       <label>Remarks</label>
@@ -7097,8 +7101,11 @@ async function submitRevise() {
 // EDIT TASK MODAL (Admin only)
 // ══════════════════════════════════════════════════════
 async function openEditTask(id, type) {
-  // Fetch task details
-  const data = await api(`/api/tasks/${id}/detail?type=${type}`);
+  // Fetch task details + client list
+  const [data, clients] = await Promise.all([
+    api(`/api/tasks/${id}/detail?type=${type}`),
+    api('/api/clients')
+  ]);
   if (data.error) { showToast(data.error,'error'); return; }
   const t = data.task;
 
@@ -7107,6 +7114,9 @@ async function openEditTask(id, type) {
   document.getElementById('editTDesc').value = t.description || '';
   document.getElementById('editTDate').value = t.due_date || '';
   document.getElementById('editTRemarks').value = t.remarks || '';
+  document.getElementById('editTClient').innerHTML = '<option value="">— No Client —</option>' +
+    (clients || []).map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+  document.getElementById('editTClient').value = t.client_id ? String(t.client_id) : '';
   document.getElementById('editTaskErr').style.display = 'none';
 
   // Show/hide priority, approval, and URL for delegation only
@@ -7137,7 +7147,8 @@ async function saveEditTask() {
   if (!desc) { err.textContent='Description required'; err.style.display='block'; return; }
   if (!date)  { err.textContent='Date required'; err.style.display='block'; return; }
 
-  const body = { desc, date, remarks, type };
+  const client_id = document.getElementById('editTClient').value || null;
+  const body = { desc, date, remarks, type, client_id };
   if (type === 'delegation') {
     body.priority = document.getElementById('editTPriority').value;
     body.approval = document.getElementById('editTApproval').value;
@@ -7611,13 +7622,13 @@ function downloadSample() {
 
 function downloadSampleC() {
   const csv = [
-    'user_email,frequency,start_date,description,remarks',
-    'priyanka@test.com,daily,2026-04-01,Review attendance sheet,',
-    'pooja@test.com,weekly,2026-04-01,Send weekly report,',
-    'rahul@test.com,monthly,2026-04-01,Submit monthly expense report,April month',
-    'neha@test.com,yearly,2026-04-01,Annual performance self-review,',
-    'amit@test.com,alternative_week,2026-04-01,Bi-weekly team sync notes,',
-    'sneha@test.com,quarterly,2026-04-01,Quarterly audit checklist,Q2 2026',
+    'user_email,frequency,start_date,description,remarks,client_name',
+    'priyanka@test.com,daily,2026-04-01,Review attendance sheet,,',
+    'pooja@test.com,weekly,2026-04-01,Send weekly report,,',
+    'rahul@test.com,monthly,2026-04-01,Submit monthly expense report,April month,Ambraee',
+    'neha@test.com,yearly,2026-04-01,Annual performance self-review,,',
+    'amit@test.com,alternative_week,2026-04-01,Bi-weekly team sync notes,,',
+    'sneha@test.com,quarterly,2026-04-01,Quarterly audit checklist,Q2 2026,Sohan Health Care',
   ].join('\n');
   downloadFile(csv,'checklist_bulk_sample.csv');
 }
@@ -7667,7 +7678,9 @@ async function uploadCSVC() {
   const isNewFormat = header.includes('frequency') || header.includes('start_date');
 
   const dataLines = lines.slice(1);
-  const allUsers = await api('/api/users');
+  const [allUsers, allClients] = await Promise.all([api('/api/users'), api('/api/clients')]);
+  const clientByName = {};
+  (allClients || []).forEach(c => { clientByName[c.name.toLowerCase().trim()] = c.id; });
 
   let totalTasks = 0, skipped = 0;
   const validFreqs = ['daily','weekly','alternative_week','monthly','quarterly','yearly'];
@@ -7677,11 +7690,11 @@ async function uploadCSVC() {
   for (const line of dataLines) {
     if (!line.trim()) continue;
 
-    let user_email, frequency, start_date, description, remarks;
+    let user_email, frequency, start_date, description, remarks, client_name;
 
     if (isNewFormat) {
-      // New format: user_email, frequency, start_date, description, remarks
-      [user_email, frequency, start_date, description, remarks] = line.split(',').map(s => s.trim());
+      // New format: user_email, frequency, start_date, description, remarks, client_name
+      [user_email, frequency, start_date, description, remarks, client_name] = line.split(',').map(s => s.trim());
       if (!user_email || !description || !frequency || !start_date) { skipped++; continue; }
       frequency = frequency.toLowerCase();
       if (!validFreqs.includes(frequency)) { skipped++; continue; }
@@ -7706,12 +7719,15 @@ async function uploadCSVC() {
 
     if (!dates.length) { skipped++; continue; }
 
+    const client_id = client_name ? (clientByName[client_name.toLowerCase()] || null) : null;
+
     const result = await api('/api/tasks/bulk-checklist','POST',{
       desc: description,
       assignedTo: user.id,
       priority: 'low',
       remarks: remarks || '',
-      dates
+      dates,
+      client_id
     });
 
     if (!result.error) totalTasks += dates.length;

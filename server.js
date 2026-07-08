@@ -1610,11 +1610,13 @@ async function canModifyTask(req, taskId, type) {
 
 app.put('/api/tasks/:id/edit', requireAuth, async (req, res) => {
   try {
-    const { type, desc, date, priority, approval, remarks, url } = req.body;
+    const { type, desc, date, priority, approval, remarks, url, client_id, clientId } = req.body;
     if (!await canModifyTask(req, req.params.id, type)) return res.status(403).json({ error: 'Not allowed to edit this task' });
     const table = getTable(type||'delegation');
-    if (type === 'delegation') await db.query(`UPDATE ${table} SET description=?,due_date=?,priority=?,approval=?,remarks=?,url=? WHERE id=?`, [desc, date, priority||'low', approval||'no', remarks||'', url||null, req.params.id]);
-    else await db.query(`UPDATE ${table} SET description=?,due_date=?,remarks=? WHERE id=?`, [desc, date, remarks||'', req.params.id]);
+    const cidRaw = client_id != null ? client_id : clientId;
+    const cid = (() => { const n = parseInt(cidRaw, 10); return Number.isFinite(n) && n > 0 ? n : null; })();
+    if (type === 'delegation') await db.query(`UPDATE ${table} SET description=?,due_date=?,priority=?,approval=?,remarks=?,url=?,client_id=? WHERE id=?`, [desc, date, priority||'low', approval||'no', remarks||'', url||null, cid, req.params.id]);
+    else await db.query(`UPDATE ${table} SET description=?,due_date=?,remarks=?,client_id=? WHERE id=?`, [desc, date, remarks||'', cid, req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
