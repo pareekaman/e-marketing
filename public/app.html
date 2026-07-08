@@ -5750,7 +5750,6 @@ async function loadDashboard() {
     {
       const btns = [];
       if (ME.role === 'admin') btns.push(`<button class="btn btn-yellow" onclick="openHoliday()">🗓 Holidays</button>`);
-      if (ME.role === 'admin') btns.push(`<button class="btn btn-outline" style="border-color:#fca5a5;color:#dc2626" onclick="runChecklistClientBackfill()">🔧 Backfill Clients</button>`);
       if (canDo('create_checklist')) btns.push(`<button class="btn btn-green" onclick="openChecklist()">+ Checklist</button>`);
       if (canDo('create_task'))      btns.push(`<button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>`);
       if (canDo('transfer_task'))    btns.push(`<button class="btn" style="background:#7c3aed;color:#fff" onclick="openNewTransferModal()">🔀 Transfer</button>`);
@@ -7498,36 +7497,6 @@ async function saveChecklist() {
   suc.textContent = `✅ ${result.count || dates.length} tasks generated!${skippedNote}`;
   suc.style.display='block';
   closeModal('checklistModal');
-  loadDashboard();
-}
-
-// One-time — backfills client_id onto existing checklist tasks from the original
-// planning sheet. Safe to click more than once (only touches rows with client_id NULL).
-async function runChecklistClientBackfill() {
-  if (!await appConfirm('This will tag client names onto existing checklist tasks using the original planning sheet. No tasks are created or deleted. Continue?')) return;
-  showToast('⏳ Running backfill…');
-  const r = await api('/api/admin/backfill-checklist-clients', 'POST');
-  if (r.error) { showToast(r.error, 'error'); return; }
-  console.log('Checklist client backfill result:', r);
-  const listOrNone = arr => arr.length ? arr.map(x => '  • ' + x).join('\n') : '  (none)';
-  const withSuggestions = obj => {
-    const keys = Object.keys(obj);
-    if (!keys.length) return '  (none)';
-    return keys.map(k => {
-      const sugg = obj[k];
-      return `  • ${k}${sugg.length ? `  (did you mean: ${sugg.join(', ')}?)` : ''}`;
-    }).join('\n');
-  };
-  alert(
-    `✅ Backfill done!\n\n` +
-    `Task series matched (exact): ${r.exactSeriesUpdated}\n` +
-    `Task series matched (fuzzy — corrupted description): ${r.fuzzySeriesUpdated}\n` +
-    `Already tagged from an earlier run: ${r.alreadySet}\n` +
-    `Total rows updated this run: ${r.rowsAffected}\n\n` +
-    `Unmatched employees:\n${withSuggestions(r.unmatchedUser)}\n\n` +
-    `Unmatched client names:\n${withSuggestions(r.unmatchedClient)}\n\n` +
-    `No matching task found at all:\n${listOrNone(r.noTaskMatch)}`
-  );
   loadDashboard();
 }
 
