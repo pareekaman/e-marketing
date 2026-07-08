@@ -458,6 +458,9 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE tasks ADD COLUMN approved_task_id INT DEFAULT NULL`);
   await sa(`ALTER TABLE tasks ADD INDEX idx_status (status)`);
   await sa(`ALTER TABLE tasks ADD UNIQUE INDEX idx_token (approval_token)`);
+  // MDO Approvals — tracks whether Purvi Saini has already been WhatsApp-notified
+  // about this row, so the new-task-notify poll/cron doesn't message her twice.
+  await sa(`ALTER TABLE tasks ADD COLUMN purvi_notified TINYINT(1) DEFAULT 0`);
 
   console.log('  ✅ DB migrations checked');
 
@@ -3981,6 +3984,8 @@ function waDelegationPage(title, message, isSuccess) {
 
 // POST /api/wa-bot/task
 // Called by the WhatsApp bot when a user delegates a task via voice/text.
+// assigned_to / assigned_by arrive as NAMES (not IDs) — resolved against the
+// users table here, since delegation_tasks.assigned_to/assigned_by are NOT NULL ints.
 // Auth: X-Bot-Key header (set BOT_API_KEY in .env; default: emk_bot_2026)
 app.post('/api/wa-bot/task', async (req, res) => {
   try {
@@ -3991,6 +3996,13 @@ app.post('/api/wa-bot/task', async (req, res) => {
 
     const { description, assigned_to, assigned_by, sender_phone, sender_name, due_date, priority, remarks, client_id, url } = req.body;
     if (!description) return res.status(400).json({ error: 'description is required' });
+    if (!assigned_to) return res.status(400).json({ error: 'assigned_to (name) is required' });
+    if (!assigned_by) return res.status(400).json({ error: 'assigned_by (name) is required' });
+
+    const [[toUser]] = await db.query(`SELECT id FROM users WHERE LOWER(TRIM(name))=LOWER(TRIM(?)) LIMIT 1`, [assigned_to]);
+    if (!toUser) return res.status(400).json({ error: `No user found named "${assigned_to}" (assigned_to)` });
+    const [[byUser]] = await db.query(`SELECT id FROM users WHERE LOWER(TRIM(name))=LOWER(TRIM(?)) LIMIT 1`, [assigned_by]);
+    if (!byUser) return res.status(400).json({ error: `No user found named "${assigned_by}" (assigned_by)` });
 
     const { randomBytes } = require('crypto');
     const token = randomBytes(32).toString('hex');
@@ -3999,27 +4011,29 @@ app.post('/api/wa-bot/task', async (req, res) => {
       `INSERT INTO tasks
          (description,assigned_to,assigned_by,sender_phone,sender_name,due_date,priority,remarks,client_id,url,approval_token)
        VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [description, assigned_to||null, assigned_by||null, sender_phone||null, sender_name||null,
+      [description, toUser.id, byUser.id, sender_phone||null, sender_name||null,
        due_date||null, priority||'low', remarks||'', client_id||null, url||null, token]
     );
 
-    // Look up Naman Gupta's phone from the users table
-    const [[naman]] = await db.query(`SELECT phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
+    // Primary approver for WhatsApp-bot delegated tasks — Purvi Saini.
+    // TEST NUMBER while validating this flow; set WA_APPROVER_PHONE env var
+    // to her real number before going live.
+    const approverPhone = process.env.WA_APPROVER_PHONE || '6367577176';
 
     const baseUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
 
     const waMsg =
       `📋 *New WhatsApp Task — Approval Required*\n\n` +
       `*Task:* ${description}\n` +
+      `*Assigned To:* ${assigned_to}\n` +
+      `*Assigned By:* ${assigned_by}\n` +
       (due_date    ? `*Due Date:* ${due_date}\n`  : '') +
       (priority    ? `*Priority:* ${priority}\n`  : '') +
       (sender_name ? `*From:* ${sender_name}\n`   : '') +
       (remarks     ? `*Remarks:* ${remarks}\n`    : '') +
       `\n📲 *E-Marketing App* → Approvals → WhatsApp Tasks\n${baseUrl}/app`;
 
-    if (naman?.phone) {
-      sendWhatsApp(naman.phone, waMsg).catch(e => console.error('WA approval notify err:', e.message));
-    }
+    sendWhatsApp(approverPhone, waMsg).catch(e => console.error('WA approval notify err:', e.message));
 
     res.json({ ok: true, id: result.insertId, pending: true });
   } catch (err) {
