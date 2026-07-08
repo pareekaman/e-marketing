@@ -18,6 +18,10 @@
   ],
   "crons": [
     {
+      "path": "/api/cron/daily-reminder",
+      "schedule": "0 14 * * *"
+    },
+    {
       "path": "/api/cron/pending-reminder",
       "schedule": "30 6 * * *"
     },

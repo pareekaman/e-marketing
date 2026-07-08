@@ -1,12 +1,12 @@
 name: Daily Reminder
 
-# Fires daily at 7:30 PM IST (14:00 UTC). Moved here from vercel.json —
-# the Vercel Hobby plan only allows 2 cron jobs total, and with
-# pending-summary needing two fires a day the daily-reminder + pending-summary
-# entries overflowed that quota and stopped firing reliably.
+# Moved back to vercel.json as a Vercel Cron (2026-07-08) — Vercel's current
+# Hobby plan allows up to 100 cron jobs/project, so the earlier "quota
+# overflow" reasoning no longer applies. GitHub Actions' schedule trigger
+# queues on shared runners and was firing 1.5-3 hours late every day.
+# Manual dispatch stays available here for on-demand testing; the schedule
+# trigger is removed so this doesn't also fire and double-send the reminder.
 on:
-  schedule:
-    - cron: '0 14 * * *'
   workflow_dispatch: {}  # allow manual fire from the Actions tab
 
 jobs:

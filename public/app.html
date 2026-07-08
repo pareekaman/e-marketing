@@ -3460,8 +3460,8 @@ input:focus,select:focus,textarea:focus{outline:none;}
     </div>
 
     <div class="form-group">
-      <label>Client <span style="color:#94a3b8;font-weight:400;font-size:11px">(optional)</span></label>
-      <select id="cClient"><option value="">— No Client —</option></select>
+      <label>Client</label>
+      <select id="cClient"><option value="">Select Client</option></select>
     </div>
 
     <div class="form-group">
@@ -3495,7 +3495,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <button class="btn btn-green btn-sm" onclick="uploadCSVC()">⬆ Upload CSV</button>
         <button class="btn btn-outline btn-sm" onclick="downloadSampleC()">⬇ Sample</button>
       </div>
-      <div style="font-size:11px;color:#94a3b8;margin-top:6px">Format: user_email, frequency (daily/weekly/monthly/yearly/quarterly/alternative_week), start_date, description, remarks — tasks auto-generate!</div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:6px">Format: user_email, frequency (daily/weekly/monthly/yearly/quarterly/alternative_week), start_date, description, remarks, client_name (required, must match an existing client) — tasks auto-generate!</div>
     </div>
   </div>
 </div>
@@ -3741,6 +3741,10 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <option value="no">No</option>
         <option value="yes">Yes</option>
       </select>
+    </div>
+    <div class="form-group">
+      <label>Client <span style="color:#94a3b8;font-weight:400;font-size:11px">(optional)</span></label>
+      <select id="editTClient"><option value="">— No Client —</option></select>
     </div>
     <div class="form-group">
       <label>Remarks</label>
@@ -5746,6 +5750,7 @@ async function loadDashboard() {
     {
       const btns = [];
       if (ME.role === 'admin') btns.push(`<button class="btn btn-yellow" onclick="openHoliday()">🗓 Holidays</button>`);
+      if (ME.role === 'admin') btns.push(`<button class="btn btn-outline" style="border-color:#fca5a5;color:#dc2626" onclick="runChecklistClientBackfill()">🔧 Backfill Clients</button>`);
       if (canDo('create_checklist')) btns.push(`<button class="btn btn-green" onclick="openChecklist()">+ Checklist</button>`);
       if (canDo('create_task'))      btns.push(`<button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>`);
       if (canDo('transfer_task'))    btns.push(`<button class="btn" style="background:#7c3aed;color:#fff" onclick="openNewTransferModal()">🔀 Transfer</button>`);
@@ -7097,8 +7102,11 @@ async function submitRevise() {
 // EDIT TASK MODAL (Admin only)
 // ══════════════════════════════════════════════════════
 async function openEditTask(id, type) {
-  // Fetch task details
-  const data = await api(`/api/tasks/${id}/detail?type=${type}`);
+  // Fetch task details + client list
+  const [data, clients] = await Promise.all([
+    api(`/api/tasks/${id}/detail?type=${type}`),
+    api('/api/clients')
+  ]);
   if (data.error) { showToast(data.error,'error'); return; }
   const t = data.task;
 
@@ -7107,6 +7115,9 @@ async function openEditTask(id, type) {
   document.getElementById('editTDesc').value = t.description || '';
   document.getElementById('editTDate').value = t.due_date || '';
   document.getElementById('editTRemarks').value = t.remarks || '';
+  document.getElementById('editTClient').innerHTML = '<option value="">— No Client —</option>' +
+    (clients || []).map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+  document.getElementById('editTClient').value = t.client_id ? String(t.client_id) : '';
   document.getElementById('editTaskErr').style.display = 'none';
 
   // Show/hide priority, approval, and URL for delegation only
@@ -7137,7 +7148,8 @@ async function saveEditTask() {
   if (!desc) { err.textContent='Description required'; err.style.display='block'; return; }
   if (!date)  { err.textContent='Date required'; err.style.display='block'; return; }
 
-  const body = { desc, date, remarks, type };
+  const client_id = document.getElementById('editTClient').value || null;
+  const body = { desc, date, remarks, type, client_id };
   if (type === 'delegation') {
     body.priority = document.getElementById('editTPriority').value;
     body.approval = document.getElementById('editTApproval').value;
@@ -7356,7 +7368,7 @@ async function openChecklist() {
   const [users, clients] = await Promise.all([api('/api/users'), api('/api/clients')]);
   document.getElementById('cDoer').innerHTML='<option value="">Select Employee</option>'+
     users.map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
-  document.getElementById('cClient').innerHTML='<option value="">— No Client —</option>'+
+  document.getElementById('cClient').innerHTML='<option value="">Select Client</option>'+
     (clients || []).map(c=>`<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
 
   ['cFrequency','cDate','cEndDate','cDesc'].forEach(id=>{
@@ -7453,8 +7465,10 @@ async function saveChecklist() {
   const desc    = document.getElementById('cDesc').value.trim();
   const remarks = document.getElementById('cRemarks').value.trim();
   const freq    = document.getElementById('cFrequency').value;
+  const clientVal = document.getElementById('cClient').value;
 
   if (!doer) { err.textContent='Please select an employee'; err.style.display='block'; return; }
+  if (!clientVal) { err.textContent='Please select a client'; err.style.display='block'; return; }
   if (!date) { err.textContent='Please select a start date'; err.style.display='block'; return; }
   if (!desc) { err.textContent='Task name is required'; err.style.display='block'; return; }
   if (endDate && endDate < date) { err.textContent='End date must be on or after start date'; err.style.display='block'; return; }
@@ -7470,7 +7484,7 @@ async function saveChecklist() {
     err.style.display='block';
     return;
   }
-  const client_id = document.getElementById('cClient').value || null;
+  const client_id = clientVal;
 
   const result = await api('/api/tasks/bulk-checklist','POST',{
     desc, assignedTo: doer, priority: 'low', remarks, dates, client_id
@@ -7484,6 +7498,27 @@ async function saveChecklist() {
   suc.textContent = `✅ ${result.count || dates.length} tasks generated!${skippedNote}`;
   suc.style.display='block';
   closeModal('checklistModal');
+  loadDashboard();
+}
+
+// One-time — backfills client_id onto existing checklist tasks from the original
+// planning sheet. Safe to click more than once (only touches rows with client_id NULL).
+async function runChecklistClientBackfill() {
+  if (!await appConfirm('This will tag client names onto existing checklist tasks using the original planning sheet. No tasks are created or deleted. Continue?')) return;
+  showToast('⏳ Running backfill…');
+  const r = await api('/api/admin/backfill-checklist-clients', 'POST');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  console.log('Checklist client backfill result:', r);
+  alert(
+    `✅ Backfill done!\n\n` +
+    `Task series matched (exact): ${r.exactSeriesUpdated}\n` +
+    `Task series matched (fuzzy — corrupted description): ${r.fuzzySeriesUpdated}\n` +
+    `Total rows updated: ${r.rowsAffected}\n\n` +
+    `Unmatched employees: ${r.unmatchedUser.length}\n` +
+    `Unmatched client names: ${r.unmatchedClient.length}\n` +
+    `No matching task found: ${r.noTaskMatch.length}\n\n` +
+    `Full details logged to the browser console (F12).`
+  );
   loadDashboard();
 }
 
@@ -7611,13 +7646,13 @@ function downloadSample() {
 
 function downloadSampleC() {
   const csv = [
-    'user_email,frequency,start_date,description,remarks',
-    'priyanka@test.com,daily,2026-04-01,Review attendance sheet,',
-    'pooja@test.com,weekly,2026-04-01,Send weekly report,',
-    'rahul@test.com,monthly,2026-04-01,Submit monthly expense report,April month',
-    'neha@test.com,yearly,2026-04-01,Annual performance self-review,',
-    'amit@test.com,alternative_week,2026-04-01,Bi-weekly team sync notes,',
-    'sneha@test.com,quarterly,2026-04-01,Quarterly audit checklist,Q2 2026',
+    'user_email,frequency,start_date,description,remarks,client_name',
+    'priyanka@test.com,daily,2026-04-01,Review attendance sheet,,Ambraee',
+    'pooja@test.com,weekly,2026-04-01,Send weekly report,,Ambraee',
+    'rahul@test.com,monthly,2026-04-01,Submit monthly expense report,April month,Sohan Health Care',
+    'neha@test.com,yearly,2026-04-01,Annual performance self-review,,Sohan Health Care',
+    'amit@test.com,alternative_week,2026-04-01,Bi-weekly team sync notes,,Ambraee',
+    'sneha@test.com,quarterly,2026-04-01,Quarterly audit checklist,Q2 2026,Sohan Health Care',
   ].join('\n');
   downloadFile(csv,'checklist_bulk_sample.csv');
 }
@@ -7667,7 +7702,9 @@ async function uploadCSVC() {
   const isNewFormat = header.includes('frequency') || header.includes('start_date');
 
   const dataLines = lines.slice(1);
-  const allUsers = await api('/api/users');
+  const [allUsers, allClients] = await Promise.all([api('/api/users'), api('/api/clients')]);
+  const clientByName = {};
+  (allClients || []).forEach(c => { clientByName[c.name.toLowerCase().trim()] = c.id; });
 
   let totalTasks = 0, skipped = 0;
   const validFreqs = ['daily','weekly','alternative_week','monthly','quarterly','yearly'];
@@ -7677,14 +7714,16 @@ async function uploadCSVC() {
   for (const line of dataLines) {
     if (!line.trim()) continue;
 
-    let user_email, frequency, start_date, description, remarks;
+    let user_email, frequency, start_date, description, remarks, client_name, client_id;
 
     if (isNewFormat) {
-      // New format: user_email, frequency, start_date, description, remarks
-      [user_email, frequency, start_date, description, remarks] = line.split(',').map(s => s.trim());
-      if (!user_email || !description || !frequency || !start_date) { skipped++; continue; }
+      // New format: user_email, frequency, start_date, description, remarks, client_name
+      [user_email, frequency, start_date, description, remarks, client_name] = line.split(',').map(s => s.trim());
+      if (!user_email || !description || !frequency || !start_date || !client_name) { skipped++; continue; }
       frequency = frequency.toLowerCase();
       if (!validFreqs.includes(frequency)) { skipped++; continue; }
+      client_id = clientByName[client_name.toLowerCase()];
+      if (!client_id) { skipped++; continue; }
     } else {
       // Old format fallback: user_email, due_date, priority, description, remarks
       let due_date, priority;
@@ -7711,7 +7750,8 @@ async function uploadCSVC() {
       assignedTo: user.id,
       priority: 'low',
       remarks: remarks || '',
-      dates
+      dates,
+      client_id
     });
 
     if (!result.error) totalTasks += dates.length;

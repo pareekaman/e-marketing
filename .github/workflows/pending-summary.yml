@@ -1,14 +1,11 @@
 name: Pending Task Summary
 
-# Fires twice daily — 10:00 AM IST (04:30 UTC) and 4:00 PM IST (10:30 UTC).
-# Moved here from vercel.json — the Vercel Hobby plan only allows 2 cron
-# jobs total, and this endpoint alone needed 2 of those, which combined with
-# daily-reminder/pending-reminder overflowed the quota and stopped firing
-# reliably.
+# Moved back to vercel.json as a Vercel Cron (2026-07-08) — Vercel's current
+# Hobby plan allows up to 100 cron jobs/project, so the earlier "quota
+# overflow" reasoning no longer applies. Manual dispatch stays available here
+# for on-demand testing; the schedule trigger is removed so this doesn't also
+# fire and double-send the summary alongside the Vercel cron.
 on:
-  schedule:
-    - cron: '30 4 * * *'
-    - cron: '30 10 * * *'
   workflow_dispatch: {}  # allow manual fire from the Actions tab
 
 jobs:
