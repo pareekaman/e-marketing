@@ -7510,14 +7510,23 @@ async function runChecklistClientBackfill() {
   if (r.error) { showToast(r.error, 'error'); return; }
   console.log('Checklist client backfill result:', r);
   const listOrNone = arr => arr.length ? arr.map(x => '  • ' + x).join('\n') : '  (none)';
+  const withSuggestions = obj => {
+    const keys = Object.keys(obj);
+    if (!keys.length) return '  (none)';
+    return keys.map(k => {
+      const sugg = obj[k];
+      return `  • ${k}${sugg.length ? `  (did you mean: ${sugg.join(', ')}?)` : ''}`;
+    }).join('\n');
+  };
   alert(
     `✅ Backfill done!\n\n` +
     `Task series matched (exact): ${r.exactSeriesUpdated}\n` +
     `Task series matched (fuzzy — corrupted description): ${r.fuzzySeriesUpdated}\n` +
-    `Total rows updated: ${r.rowsAffected}\n\n` +
-    `Unmatched employees:\n${listOrNone(r.unmatchedUser)}\n\n` +
-    `Unmatched client names:\n${listOrNone(r.unmatchedClient)}\n\n` +
-    `No matching task found:\n${listOrNone(r.noTaskMatch)}`
+    `Already tagged from an earlier run: ${r.alreadySet}\n` +
+    `Total rows updated this run: ${r.rowsAffected}\n\n` +
+    `Unmatched employees:\n${withSuggestions(r.unmatchedUser)}\n\n` +
+    `Unmatched client names:\n${withSuggestions(r.unmatchedClient)}\n\n` +
+    `No matching task found at all:\n${listOrNone(r.noTaskMatch)}`
   );
   loadDashboard();
 }

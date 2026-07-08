@@ -1686,28 +1686,60 @@ app.post('/api/admin/backfill-checklist-clients', requireAuth, requireAdmin, asy
     const clientByNorm = {};
     clients.forEach(c => { clientByNorm[norm(c.name)] = c.id; });
 
-    let exactSeriesUpdated = 0, fuzzySeriesUpdated = 0, rowsAffected = 0;
-    const unmatchedUser = [], unmatchedClient = [], noTaskMatch = [];
+    // Best-effort "did you mean" hints — the raw sheet data has known typos/renames
+    // (e.g. a client renamed since the sheet was written), so surface close matches
+    // instead of a bare "not found" that gives the admin nothing to act on.
+    const suggestClients = (name) => {
+      const n = norm(name);
+      return clients
+        .filter(c => { const cn = norm(c.name); return cn.length >= 3 && (cn.includes(n) || n.includes(cn)); })
+        .map(c => c.name)
+        .slice(0, 5);
+    };
+    const suggestUsers = (email) => {
+      const tokens = email.split('@')[0].toLowerCase().split(/[._-]/).filter(t => t.length >= 3);
+      return users
+        .filter(u => tokens.some(t => u.email.toLowerCase().includes(t)))
+        .map(u => u.email)
+        .slice(0, 5);
+    };
+
+    let exactSeriesUpdated = 0, fuzzySeriesUpdated = 0, alreadySet = 0, rowsAffected = 0;
+    const unmatchedUser = {}, unmatchedClient = {}, noTaskMatch = [];
 
     for (const line of lines) {
       const [email, description, clientName] = line.split('\t').map(s => (s||'').trim());
       if (!email || !description || !clientName) continue;
       const uid = userByEmail[email.toLowerCase()];
-      if (!uid) { unmatchedUser.push(email); continue; }
+      if (!uid) { unmatchedUser[email] = suggestUsers(email); continue; }
       const cid = clientByNorm[norm(clientName)];
-      if (!cid) { unmatchedClient.push(`${clientName} (for ${email})`); continue; }
+      if (!cid) { unmatchedClient[`${clientName} (for ${email})`] = suggestClients(clientName); continue; }
 
-      const [exact] = await db.query(
-        `UPDATE checklist_tasks SET client_id=? WHERE assigned_to=? AND LOWER(TRIM(description))=LOWER(TRIM(?)) AND client_id IS NULL`,
-        [cid, uid, description]
+      // Does a matching row exist at all, regardless of its current client_id? Rows
+      // already tagged (e.g. from a prior run of this same backfill) are not gaps —
+      // only rows with no match anywhere are genuinely missing from the DB.
+      const [existing] = await db.query(
+        'SELECT id, client_id FROM checklist_tasks WHERE assigned_to=? AND LOWER(TRIM(description))=LOWER(TRIM(?))',
+        [uid, description]
       );
-      if (exact.affectedRows > 0) { exactSeriesUpdated++; rowsAffected += exact.affectedRows; continue; }
+      if (existing.length) {
+        if (existing.some(r => r.client_id == null)) {
+          const [exact] = await db.query(
+            `UPDATE checklist_tasks SET client_id=? WHERE assigned_to=? AND LOWER(TRIM(description))=LOWER(TRIM(?)) AND client_id IS NULL`,
+            [cid, uid, description]
+          );
+          exactSeriesUpdated++; rowsAffected += exact.affectedRows;
+        } else {
+          alreadySet++;
+        }
+        continue;
+      }
 
       // Fallback for the old CSV-parsing bug where a comma inside the description
       // (e.g. "Transfer sip amount t Aj, Jai & Viyaan") truncated/corrupted the stored
-      // text. Match by normalized prefix against this doer's still-unassigned rows.
+      // text. Match by normalized prefix against this doer's rows (any client_id state).
       const [candidates] = await db.query(
-        'SELECT DISTINCT description FROM checklist_tasks WHERE assigned_to=? AND client_id IS NULL',
+        'SELECT DISTINCT description, client_id FROM checklist_tasks WHERE assigned_to=?',
         [uid]
       );
       const sheetNorm = norm(description);
@@ -1716,11 +1748,15 @@ app.post('/api/admin/backfill-checklist-clients', requireAuth, requireAdmin, asy
         return stored.length >= 8 && (sheetNorm.startsWith(stored) || stored.startsWith(sheetNorm));
       });
       if (match) {
-        const [fuzzy] = await db.query(
-          'UPDATE checklist_tasks SET client_id=? WHERE assigned_to=? AND description=? AND client_id IS NULL',
-          [cid, uid, match.description]
-        );
-        fuzzySeriesUpdated++; rowsAffected += fuzzy.affectedRows;
+        if (match.client_id == null) {
+          const [fuzzy] = await db.query(
+            'UPDATE checklist_tasks SET client_id=? WHERE assigned_to=? AND description=? AND client_id IS NULL',
+            [cid, uid, match.description]
+          );
+          fuzzySeriesUpdated++; rowsAffected += fuzzy.affectedRows;
+        } else {
+          alreadySet++;
+        }
       } else {
         noTaskMatch.push(`${email} — ${description}`);
       }
@@ -1728,10 +1764,8 @@ app.post('/api/admin/backfill-checklist-clients', requireAuth, requireAdmin, asy
 
     res.json({
       success: true,
-      exactSeriesUpdated, fuzzySeriesUpdated, rowsAffected,
-      unmatchedUser: [...new Set(unmatchedUser)],
-      unmatchedClient: [...new Set(unmatchedClient)],
-      noTaskMatch
+      exactSeriesUpdated, fuzzySeriesUpdated, alreadySet, rowsAffected,
+      unmatchedUser, unmatchedClient, noTaskMatch
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
