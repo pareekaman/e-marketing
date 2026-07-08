@@ -1500,6 +1500,242 @@ app.post('/api/tasks/bulk-checklist', requireAuth, requireAdmin, async (req, res
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// One-time backfill — the original planning sheet used to bulk-create these checklist
+// tasks had a Client Name column, but the old CSV upload never read past the 5th column,
+// so client_id was silently dropped. This tags client_id onto existing rows (assigned_to +
+// description match) using that same sheet — never inserts or deletes, and only ever
+// touches rows where client_id is still NULL, so it's safe to run more than once.
+const CHECKLIST_CLIENT_BACKFILL_DATA = `
+accounts@e-marketing.io\tAMEX cc statement download\te-Marketing
+gurnani.simran@e-marketing.io\tAMEX cc statement download\te-Marketing
+jain.divyy@e-marketing.io\tAdvance Laminates Daily report\tAdvance Laminates
+jain.divyy@e-marketing.io\tAdvance Report\tAdvance Laminates
+dubey.kushagra@e-marketing.io\tAll fund account check\tMedineeds
+gurnani.simran@e-marketing.io\tAripta Karwa weekly meet @11 am\tArpita Karwa
+jain.divyy@e-marketing.io\tBaani Khurana\tBani Khurana
+sharma.bhanu@e-marketing.io\tBacklinks Work for Le Chick\tLe Chi Echic Boutique
+sharma.bhanu@e-marketing.io\tBacklinks for Le chic Boutique\tLe Chi Echic Boutique
+tilokani.ritu@e-marketing.io\tNainileaf ad content weekly\tNainileaf
+madaan.nisha@e-marketing.io\tNeed to Update the Advance Report\tAdvance Laminates
+dubey.kushagra@e-marketing.io\tNeed to update client's Daily Report Sheet\te-Marketing
+jain.divyy@e-marketing.io\tNeed to update client's Daily Report Sheet\te-Marketing
+kedia.garvit@e-marketing.io\tNeed to update client's Daily Report Sheet\te-Marketing
+jain.divyy@e-marketing.io\tReports\tAdvance Laminates
+jain.divyy@e-marketing.io\tStole and Yarn Report\tStole & Yarn
+jain.divyy@e-marketing.io\tStole and Yarn Sheet Update\tStole & Yarn
+dubey.kushagra@e-marketing.io\tTrove ads analysis with quality\tRonnie -Trove international properties
+pradhuman@e-marketing.io\tUpdate the fund sheet for IAV\tIAV
+jain.divyy@e-marketing.io\tVibes Report\tVibes
+jain.divyy@e-marketing.io\tVibes report daily send on whatsapp\tVibes
+kedia.garvit@e-marketing.io\tnainileaf reports\tNainiLeaf
+kedia.garvit@e-marketing.io\tstole yarn report\tStole & Yarn
+gurnani.simran@e-marketing.io\tMake payment for Ionos on 12th\te-Marketing (Operations)
+tilokani.ritu@e-marketing.io\tEIEIO Play creative content weekly\tEieio Play
+kumawat.mohit@e-marketing.io\tHeer creative content\tHeer Jewellers
+srivastava.divya@e-marketing.io\tNainileaf ad creative weekly\tNainileaf
+gurnani.simran@e-marketing.io\tCheck whatsApp wallet balance\tAdvance Laminates
+srivastava.divya@e-marketing.io\tEIEIO Play creative weekly\tEieio Play
+bejal.aman@e-marketing.io\tGEPL ad creative weekly\tGepl Capital Pvt Ltd
+kothari.nupur@e-marketing.io\tHeer jewels ad creative weekly\tHeer Jewellers
+srivastava.divya@e-marketing.io\tHeer jewels ad creative weekly\tSLB
+kumawat.mohit@e-marketing.io\tSLB creative content\tSLB
+kumawat.mohit@e-marketing.io\tSLB jewels ad content weekly\tSLB
+chauhan.tushar@e-marketing.io\tWeekly Meet at 4pm\tSinghadaur
+jain.taaran@e-marketing.io\tWeekly insights\tVibes
+jain.divyy@e-marketing.io\tadvance camp-wise weekly\tAdvance Laminates
+srivastava.divya@e-marketing.io\tnaini leaf video weekly  1\tNainiLeaf
+gurnani.simran@e-marketing.io\tAMEX cc statement tally\te-Marketing
+accounts@e-marketing.io\tESI\te-Marketing
+abhishek@e-marketing.io\tExecutive meeting\teMarketing
+gurnani.simran@e-marketing.io\tExecutive meeting\teMarketing
+accounts@e-marketing.io\tPF\te-Marketing
+saini.kritika@e-marketing.io\tVibes newsletter emailer\tVibes
+saini.purvi@e-marketing.io\tWeekly meeting 11:00 AM\tKW Delhi 6
+pareek.saurav@e-marketing.io\tNeed to optimize all Meta Campaigns with Divyy\te-Marketing
+jain.divyy@e-marketing.io\tNeed to optimize all Meta Campaigns with Saurav\te-Marketing
+kedia.garvit@e-marketing.io\tWeekly Report\tNP Tech
+kedia.garvit@e-marketing.io\tWeekly report\tNP Tech
+accounts@e-marketing.io\tHDFC 6349 CA statement download\te-Marketing
+gurnani.simran@e-marketing.io\tHDFC 6349 CA statement download\te-Marketing
+accounts@e-marketing.io\tHDFC 8650 AJ statement download\te-Marketing
+gurnani.simran@e-marketing.io\tHDFC 8650 AJ statement download\te-Marketing
+accounts@e-marketing.io\tHDFC swiggy 1443 AJ statement download\te-Marketing
+gurnani.simran@e-marketing.io\tHDFC swiggy 1443 AJ statement download\te-Marketing
+accounts@e-marketing.io\tHDFC swiggy 1443 AJ statement tally\te-Marketing
+gurnani.simran@e-marketing.io\tHDFC swiggy 1443 AJ statement tally\te-Marketing
+accounts@e-marketing.io\tICICI 7007 CA statement download\te-Marketing
+gurnani.simran@e-marketing.io\tICICI 7007 CA statement download\te-Marketing
+jain.divyy@e-marketing.io\tCCIS SHEET\tCCIS
+accounts@e-marketing.io\tElectricity bill clear\te-Marketing
+kumawat.mohit@e-marketing.io\tGEPL ad content weekly\tGepl Capital Pvt Ltd
+gurnani.simran@e-marketing.io\tGoogle partner batch requirements check\te-Marketing
+madaan.nisha@e-marketing.io\tGoogle partner batch requirements check\te-Marketing
+pradhuman@e-marketing.io\tGoogle partner batch requirements check\te-Marketing
+tilokani.ritu@e-marketing.io\tHeer jewels ad content weekly\tHeer Jewellers
+madaan.nisha@e-marketing.io\tPerformance report\tAnantam Farms
+accounts@e-marketing.io\tSend mails for pending invoices follow-ups\te-Marketing(Sales)
+accounts@e-marketing.io\tGST R 3B\te-Marketing
+accounts@e-marketing.io\tAxis 7928 AJ statement tally\te-Marketing
+gurnani.simran@e-marketing.io\tAxis 7928 AJ statement tally\te-Marketing
+accounts@e-marketing.io\tDaily expenses & account reconciliation\te-Marketing
+gurnani.simran@e-marketing.io\tDaily expenses & account reconciliation\te-Marketing
+accounts@e-marketing.io\tSBI 9154 AJ statement download\te-Marketing
+gurnani.simran@e-marketing.io\tSBI 9154 AJ statement download\te-Marketing
+accounts@e-marketing.io\tHDFC 8650 AJ statement tally\te-Marketing
+gurnani.simran@e-marketing.io\tHDFC 8650 AJ statement tally\te-Marketing
+accounts@e-marketing.io\tSCB 0068 AJ Statement download\te-Marketing
+gurnani.simran@e-marketing.io\tSCB 0068 AJ Statement download\te-Marketing
+accounts@e-marketing.io\tSCB 1131 AJ statement download\te-Marketing
+gurnani.simran@e-marketing.io\tSCB 1131 AJ statement download\te-Marketing
+accounts@e-marketing.io\tICICI 7007 CA statement tally\te-Marketing
+gurnani.simran@e-marketing.io\tICICI 7007 CA statement tally\te-Marketing
+gurnani.simran@e-marketing.io\tmonthly meeting- KK Royal\tKK Royals
+pareek.saurav@e-marketing.io\tSend the spends sheet via email\tVibes
+pradhuman@e-marketing.io\tSend the spends sheet via email\tVibes
+abhishek@e-marketing.io\tAMEX cc payment clear\te-Marketing
+gurnani.simran@e-marketing.io\tAMEX cc payment clear\te-Marketing
+saini.purvi@e-marketing.io\tAMEX cc payment clear\te-Marketing
+abhishek@e-marketing.io\tAxis 7928 AJ payment clear\te-Marketing
+gurnani.simran@e-marketing.io\tAxis 7928 AJ payment clear\te-Marketing
+saini.purvi@e-marketing.io\tAxis 7928 AJ payment clear\te-Marketing
+accounts@e-marketing.io\tGenerate PI\te-Marketing
+accounts@e-marketing.io\tSBI 9154 AJ statement tally\te-Marketing
+gurnani.simran@e-marketing.io\tSBI 9154 AJ statement tally\te-Marketing
+kumawat.mohit@e-marketing.io\tContent for Linkedln post\tWestway Electronics
+kumawat.mohit@e-marketing.io\tContent for linkedln post\tWestway Electronics
+accounts@e-marketing.io\tHDFC 6349 CA statement tally\te-Marketing
+gurnani.simran@e-marketing.io\tHDFC 6349 CA statement tally\te-Marketing
+abhishek@e-marketing.io\tICICI 7007 CA payment clear\te-Marketing
+gurnani.simran@e-marketing.io\tICICI 7007 CA payment clear\te-Marketing
+saini.purvi@e-marketing.io\tICICI 7007 CA payment clear\te-Marketing
+saini.kritika@e-marketing.io\tLatest at vibes - emailer\tVibes
+pradhuman@e-marketing.io\tProvide Ad spends account wise for last month\te-Marketing (Operations)
+abhishek@e-marketing.io\tRBL 6773 AJ payment clear\te-Marketing
+gurnani.simran@e-marketing.io\tRBL 6773 AJ payment clear\te-Marketing
+saini.purvi@e-marketing.io\tRBL 6773 AJ payment clear\te-Marketing
+accounts@e-marketing.io\tRBL 6773 AJ statement download\te-Marketing
+gurnani.simran@e-marketing.io\tRBL 6773 AJ statement download\te-Marketing
+accounts@e-marketing.io\tSCB 0068 AJ statement tally\te-Marketing
+gurnani.simran@e-marketing.io\tSCB 0068 AJ statement tally\te-Marketing
+accounts@e-marketing.io\tSCB 1131 AJ statement tally\te-Marketing
+gurnani.simran@e-marketing.io\tSCB 1131 AJ statement tally\te-Marketing
+gurnani.simran@e-marketing.io\tAdd Taboola media spends to expense sheet\te-Marketing
+gurnani.simran@e-marketing.io\tJewel Tower Emi\te-Marketing
+abhishek@e-marketing.io\tJewel tower emi\te-Marketing
+accounts@e-marketing.io\tMail PI\te-Marketing
+gurnani.simran@e-marketing.io\tMonthly bills download\tVibes
+pareek.saurav@e-marketing.io\tMonthly bills download\tVibes
+accounts@e-marketing.io\tMonthly profits sheet (as per tally) for last month\te-Marketing
+gurnani.simran@e-marketing.io\tMonthly profits sheet (as per tally) for last month\te-Marketing
+accounts@e-marketing.io\tSalary sheet\te-Marketing
+chauhan.tushar@e-marketing.io\tShare all account spends for last month- Google & Facebook\te-Marketing
+pradhuman@e-marketing.io\tShare all account spends for last month- Google & Facebook\te-Marketing
+gurnani.simran@e-marketing.io\tTransfer money to AJ, Viyan & Jai account\te-Marketing
+abhishek@e-marketing.io\tTransfer sip amount t Aj, Jai & Viyaan\te-Marketing
+gurnani.simran@e-marketing.io\tUpdate Advance lam expense sheet\te-Marketing
+madaan.nisha@e-marketing.io\tMonthly Report\tDevnow
+pradhuman@e-marketing.io\tMonthly Report\tAdvance Laminates
+madaan.nisha@e-marketing.io\tMonthly report\tDevnow
+gurnani.simran@e-marketing.io\tPay subscription charges for InterAkt\tAdvance Laminates
+accounts@e-marketing.io\tService wise GP sheet for last month\te-Marketing
+gurnani.simran@e-marketing.io\tService wise GP sheet for last month\te-Marketing
+abhishek@e-marketing.io\tHDFC 8650 AJ payment clear\te-Marketing
+gurnani.simran@e-marketing.io\tHDFC 8650 AJ payment clear\te-Marketing
+saini.purvi@e-marketing.io\tHDFC 8650 AJ payment clear\te-Marketing
+abhishek@e-marketing.io\tHDFC swiggy 1443 AJ payment clear\te-Marketing
+gurnani.simran@e-marketing.io\tHDFC swiggy 1443 AJ payment clear\te-Marketing
+saini.purvi@e-marketing.io\tHDFC swiggy 1443 AJ payment clear\te-Marketing
+dubey.kushagra@e-marketing.io\tLinkedln Post for westway\tWestway Electronics
+abhishek@e-marketing.io\tHDFC 6349 CA payment clear\te-Marketing
+gurnani.simran@e-marketing.io\tHDFC 6349 CA payment clear\te-Marketing
+saini.purvi@e-marketing.io\tHDFC 6349 CA payment clear\te-Marketing
+accounts@e-marketing.io\tRBL 6773 AJ statement tally\te-Marketing
+gurnani.simran@e-marketing.io\tRBL 6773 AJ statement tally\te-Marketing
+accounts@e-marketing.io\tTDS sheet & payment\te-Marketing
+khichi.satish@e-marketing.io\taryv.in domain renew Date Check Abhishek Sir Account\te-Marketing
+accounts@e-marketing.io\tGST R1\te-Marketing
+gurnani.simran@e-marketing.io\tCheck downloads on all the pages of Reva\tReva Industries
+accounts@e-marketing.io\tNeed to Pay EMI of 1 Lac for Car - Abu Road\te-Marketing (Operations)
+accounts@e-marketing.io\tNeed to prepare a sheet to maintain EMI's\te-Marketing (Operations)
+accounts@e-marketing.io\tNeed to share Screenshot of EMI'S sheet with Sir every month\te-Marketing (Operations)
+abhishek@e-marketing.io\tSBI 9154 AJ payment clear\te-Marketing
+gurnani.simran@e-marketing.io\tSBI 9154 AJ payment clear\te-Marketing
+saini.purvi@e-marketing.io\tSBI 9154 AJ payment clear\te-Marketing
+madaan.nisha@e-marketing.io\tWeekly Report\tAdvance Laminates
+madaan.nisha@e-marketing.io\tWeekly report\tAdvance Laminates
+accounts@e-marketing.io\tAxis 7928 AJ statement download\teMarketing
+gurnani.simran@e-marketing.io\tAxis 7928 AJ statement download\teMarketing
+abhishek@e-marketing.io\tSCB 0068 AJ payment clear\te-Marketing
+gurnani.simran@e-marketing.io\tSCB 0068 AJ payment clear\te-Marketing
+saini.purvi@e-marketing.io\tSCB 0068 AJ payment clear\te-Marketing
+abhishek@e-marketing.io\tSCB 1131 AJ payment clear\te-Marketing
+gurnani.simran@e-marketing.io\tSCB 1131 AJ payment clear\te-Marketing
+saini.purvi@e-marketing.io\tSCB 1131 AJ payment clear\te-Marketing
+khichi.satish@e-marketing.io\tsaanjhjewells.com domain renew Date Check Abhishek Sir Account\te-Marketing
+pareek.saurav@e-marketing.io\tAttend Meeting at 12:30\tBhagirathi Hotel
+`.trim();
+
+app.post('/api/admin/backfill-checklist-clients', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const lines = CHECKLIST_CLIENT_BACKFILL_DATA.split('\n').map(l => l.trim()).filter(Boolean);
+    const [users] = await db.query('SELECT id, email FROM users');
+    const [clients] = await db.query('SELECT id, name FROM clients');
+    const userByEmail = {};
+    users.forEach(u => { userByEmail[u.email.toLowerCase()] = u.id; });
+    const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    const clientByNorm = {};
+    clients.forEach(c => { clientByNorm[norm(c.name)] = c.id; });
+
+    let exactSeriesUpdated = 0, fuzzySeriesUpdated = 0, rowsAffected = 0;
+    const unmatchedUser = [], unmatchedClient = [], noTaskMatch = [];
+
+    for (const line of lines) {
+      const [email, description, clientName] = line.split('\t').map(s => (s||'').trim());
+      if (!email || !description || !clientName) continue;
+      const uid = userByEmail[email.toLowerCase()];
+      if (!uid) { unmatchedUser.push(email); continue; }
+      const cid = clientByNorm[norm(clientName)];
+      if (!cid) { unmatchedClient.push(`${clientName} (for ${email})`); continue; }
+
+      const [exact] = await db.query(
+        `UPDATE checklist_tasks SET client_id=? WHERE assigned_to=? AND LOWER(TRIM(description))=LOWER(TRIM(?)) AND client_id IS NULL`,
+        [cid, uid, description]
+      );
+      if (exact.affectedRows > 0) { exactSeriesUpdated++; rowsAffected += exact.affectedRows; continue; }
+
+      // Fallback for the old CSV-parsing bug where a comma inside the description
+      // (e.g. "Transfer sip amount t Aj, Jai & Viyaan") truncated/corrupted the stored
+      // text. Match by normalized prefix against this doer's still-unassigned rows.
+      const [candidates] = await db.query(
+        'SELECT DISTINCT description FROM checklist_tasks WHERE assigned_to=? AND client_id IS NULL',
+        [uid]
+      );
+      const sheetNorm = norm(description);
+      const match = candidates.find(c => {
+        const stored = norm(c.description);
+        return stored.length >= 8 && (sheetNorm.startsWith(stored) || stored.startsWith(sheetNorm));
+      });
+      if (match) {
+        const [fuzzy] = await db.query(
+          'UPDATE checklist_tasks SET client_id=? WHERE assigned_to=? AND description=? AND client_id IS NULL',
+          [cid, uid, match.description]
+        );
+        fuzzySeriesUpdated++; rowsAffected += fuzzy.affectedRows;
+      } else {
+        noTaskMatch.push(`${email} — ${description}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      exactSeriesUpdated, fuzzySeriesUpdated, rowsAffected,
+      unmatchedUser: [...new Set(unmatchedUser)],
+      unmatchedClient: [...new Set(unmatchedClient)],
+      noTaskMatch
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
   try {
     const { status, type, newDate, reason } = req.body;
@@ -1610,11 +1846,13 @@ async function canModifyTask(req, taskId, type) {
 
 app.put('/api/tasks/:id/edit', requireAuth, async (req, res) => {
   try {
-    const { type, desc, date, priority, approval, remarks, url } = req.body;
+    const { type, desc, date, priority, approval, remarks, url, client_id, clientId } = req.body;
     if (!await canModifyTask(req, req.params.id, type)) return res.status(403).json({ error: 'Not allowed to edit this task' });
     const table = getTable(type||'delegation');
-    if (type === 'delegation') await db.query(`UPDATE ${table} SET description=?,due_date=?,priority=?,approval=?,remarks=?,url=? WHERE id=?`, [desc, date, priority||'low', approval||'no', remarks||'', url||null, req.params.id]);
-    else await db.query(`UPDATE ${table} SET description=?,due_date=?,remarks=? WHERE id=?`, [desc, date, remarks||'', req.params.id]);
+    const cidRaw = client_id != null ? client_id : clientId;
+    const cid = (() => { const n = parseInt(cidRaw, 10); return Number.isFinite(n) && n > 0 ? n : null; })();
+    if (type === 'delegation') await db.query(`UPDATE ${table} SET description=?,due_date=?,priority=?,approval=?,remarks=?,url=?,client_id=? WHERE id=?`, [desc, date, priority||'low', approval||'no', remarks||'', url||null, cid, req.params.id]);
+    else await db.query(`UPDATE ${table} SET description=?,due_date=?,remarks=?,client_id=? WHERE id=?`, [desc, date, remarks||'', cid, req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
