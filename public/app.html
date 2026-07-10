@@ -5687,7 +5687,7 @@ function initMobileBottomNavSync() {
 // ══════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════
-async function loadDashboard() {
+async function loadDashboard(light = false) {
   const empFilter = document.getElementById('dashEmployeeFilter');
   const empVal = empFilter ? empFilter.value : 'all';
   const isAdmin = ME.role === 'admin';
@@ -5771,14 +5771,21 @@ async function loadDashboard() {
   // they appear without an extra click. Re-render once they arrive.
   loadDashRevised().then(() => renderDashTable(window._lastDashTasks || [], dashType));
 
-  // Load FMS section — respects same employee filter
-  loadDashFMS();
+  // Heavy widgets — the FMS section and the Performance/Activity charts (the
+  // latter hits the slow /api/mis/all Google-Sheets aggregate). A single task
+  // action does not change these, so a "light" refresh (passed after
+  // Done/Reopen/Revise/etc.) skips them, saving ~4 API calls — including the
+  // slowest one — on every button press.
+  if (!light) {
+    // Load FMS section — respects same employee filter
+    loadDashFMS();
 
-  // Performance + Activity charts (admin / HOD only — depends on /api/mis/all)
-  if (isAdmin || isHod) {
-    const perfSec = document.getElementById('dashPerfSection');
-    if (perfSec) perfSec.style.display = 'block';
-    loadDashboardPerfCharts();
+    // Performance + Activity charts (admin / HOD only — depends on /api/mis/all)
+    if (isAdmin || isHod) {
+      const perfSec = document.getElementById('dashPerfSection');
+      if (perfSec) perfSec.style.display = 'block';
+      loadDashboardPerfCharts();
+    }
   }
 }
 
@@ -6998,7 +7005,7 @@ async function updateStatus(id, status, from, type) {
   if (r.needsApproval) {
     showToast('✅ Approval request sent to the assigner!');
   }
-  if (from==='dashboard') loadDashboard(); else loadAllTasks();
+  if (from==='dashboard') loadDashboard(true); else loadAllTasks();
   loadApprovalBadge();
 }
 
@@ -7010,7 +7017,7 @@ async function reopenTask(id, from, type) {
   const r = await api(`/api/tasks/${id}/status`,'PUT',{status:'pending', type: type || dashType});
   if (r.error) { appAlert(r.error, 'Not allowed'); return; }
   showToast('↩ Task reopened — moved to Pending');
-  if (from==='dashboard') loadDashboard(); else loadAllTasks();
+  if (from==='dashboard') loadDashboard(true); else loadAllTasks();
   loadApprovalBadge();
 }
 
@@ -7092,7 +7099,7 @@ async function submitRevise() {
   } else {
     showToast('Task revised with new date!');
   }
-  loadDashboard();
+  loadDashboard(true);
   loadAllTasks();
   loadApprovalBadge();
 }
@@ -7280,7 +7287,7 @@ async function submitSetDueDate() {
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
   closeModal('setDueDateModal');
   showToast(r.effectiveDate ? `Due date set: ${fmtDate(r.effectiveDate)}` : 'Due date set');
-  loadDashboard();
+  loadDashboard(true);
 }
 
 // When ticked, the doer will pick their own due date — disable the date field here.
@@ -7346,7 +7353,7 @@ async function saveDelegate() {
   } else {
     showToast('Task delegated successfully!');
   }
-  loadDashboard();
+  loadDashboard(true);
 }
 
 // ══════════════════════════════════════════════════════
@@ -7497,7 +7504,7 @@ async function saveChecklist() {
   suc.textContent = `✅ ${result.count || dates.length} tasks generated!${skippedNote}`;
   suc.style.display='block';
   closeModal('checklistModal');
-  loadDashboard();
+  loadDashboard(true);
 }
 
 // ══════════════════════════════════════════════════════
@@ -7665,7 +7672,7 @@ async function uploadCSV() {
   }
   showToast(`✅ ${count} tasks uploaded! ${skipped?`(${skipped} skipped)`:''}`);
   closeModal('delegateModal');
-  loadDashboard();
+  loadDashboard(true);
 }
 
 async function uploadCSVC() {
@@ -7738,7 +7745,7 @@ async function uploadCSVC() {
 
   showToast(`✅ ${totalTasks} tasks generated!${skipped ? ` (${skipped} rows skipped)` : ''}`);
   closeModal('checklistModal');
-  loadDashboard();
+  loadDashboard(true);
 }
 
 // ══════════════════════════════════════════════════════

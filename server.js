@@ -60,9 +60,11 @@ const dbConfig = {
   port: Number(process.env.DB_PORT) || 3306,
   waitForConnections: true,
   // ⚠️ Shared hosting's max_user_connections is usually 5-10.
-  // Vercel serverless spins up multiple function instances that all connect
-  // at once, so the per-instance limit is kept low (2).
-  connectionLimit: Number(process.env.DB_POOL_SIZE) || 2,
+  // Vercel serverless spins up multiple function instances that all connect at
+  // once, and every deployment (production + each preview) adds its own set. To
+  // stay under the shared-host cap, each instance is capped at a single
+  // connection; concurrent queries within one request just queue briefly.
+  connectionLimit: Number(process.env.DB_POOL_SIZE) || 1,
   queueLimit: 0,
   connectTimeout: 30000,
   // Release idle connections quickly (mysql default is 8hrs, 30s is ideal here)
