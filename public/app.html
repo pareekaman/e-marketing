@@ -17012,6 +17012,14 @@ document.addEventListener('click', (e) => {
   dd.style.display = 'none';
 });
 
+function _mtgFmtTime12(hhmm) {
+  const [h, m] = (hhmm || '').split(':').map(Number);
+  if (!Number.isFinite(h)) return hhmm || '';
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+
 async function mtgRefreshAvailNote() {
   const date = document.getElementById('mtgFormDate').value;
   const start = document.getElementById('mtgStart').value;
@@ -17027,8 +17035,13 @@ async function mtgRefreshAvailNote() {
     const slot = (r.slots || []).find(s => s.start === start);
     if (!slot) { noteEl.textContent = 'Start time outside business hours.'; noteEl.style.color = '#f59e0b'; return; }
     if (slot.conflictForSelection) {
-      const busyNames = _mtgUsersCache.filter(u => slot.busyUserIds.includes(u.id) && ids.includes(String(u.id))).map(u => u.name);
-      noteEl.textContent = `⚠️ Busy: ${busyNames.join(', ')}`;
+      const busyUsers = _mtgUsersCache.filter(u => slot.busyUserIds.includes(u.id) && ids.includes(String(u.id)));
+      const parts = busyUsers.map(u => {
+        const ranges = (r.busyRanges?.[u.id] || []).filter(rg => rg.start < end && rg.end > start);
+        const rangeTxt = ranges.map(rg => `${_mtgFmtTime12(rg.start)}–${_mtgFmtTime12(rg.end)}`).join(', ');
+        return rangeTxt ? `${u.name} busy ${rangeTxt}` : `${u.name} busy`;
+      });
+      noteEl.textContent = `⚠️ ${parts.join(' · ')}`;
       noteEl.style.color = '#dc2626';
     } else {
       noteEl.textContent = '✓ All selected attendees are free.';

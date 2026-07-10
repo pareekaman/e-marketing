@@ -8017,12 +8017,16 @@ async function buildMeetingSlots(dateStr, userIds = [], viewerId = null) {
     }
   }
   const [meetings] = await db.query(
-    `SELECT m.id, TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
+    `SELECT m.id, m.title, TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
             TIME_FORMAT(m.end_time,'%H:%i') AS end_time, m.organizer_id
      FROM meetings m
      WHERE m.meeting_date = ? AND m.status = 'scheduled'`,
     [dateStr]
   );
+  // For each requested user, the exact meeting time ranges that make them busy
+  // that day — lets the caller say e.g. "Naman busy 9:00–10:00 AM" instead of
+  // just flagging a conflict.
+  const busyRanges = {};
   if (meetings.length) {
     const mIds = meetings.map(m => m.id);
     const [attendees] = await db.query(
@@ -8044,6 +8048,10 @@ async function buildMeetingSlots(dateStr, userIds = [], viewerId = null) {
           for (const uid of involved) if (!slot.busyUserIds.includes(uid)) slot.busyUserIds.push(uid);
         }
       }
+      for (const uid of involved) {
+        if (userIds.length && !userIds.includes(uid)) continue;
+        (busyRanges[uid] = busyRanges[uid] || []).push({ start: m.start_time, end: m.end_time, title: m.title });
+      }
     }
   }
   if (userIds.length) {
@@ -8052,7 +8060,7 @@ async function buildMeetingSlots(dateStr, userIds = [], viewerId = null) {
       slot.conflictForSelection = conflict;
     }
   }
-  return slots;
+  return { slots, busyRanges };
 }
 
 // Try to auto-create a Google Meet link via Calendar API + service-account DWD.
@@ -8227,9 +8235,9 @@ app.get('/api/meetings/slots', requireAuth, async (req, res) => {
         return { off: false };
       } catch { return { off: false }; }
     })();
-    if (off.off) return res.json({ date, off: true, reason: off.reason, slots: [] });
-    const slots = await buildMeetingSlots(date, userIds, req.session.userId);
-    res.json({ date, off: false, slots });
+    if (off.off) return res.json({ date, off: true, reason: off.reason, slots: [], busyRanges: {} });
+    const { slots, busyRanges } = await buildMeetingSlots(date, userIds, req.session.userId);
+    res.json({ date, off: false, slots, busyRanges });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
