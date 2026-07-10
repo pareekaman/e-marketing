@@ -17031,16 +17031,26 @@ async function mtgRefreshAvailNote() {
   try {
     const r = await api(`/api/meetings/slots?date=${date}&userIds=${ids.join(',')}`);
     if (r?.off) { noteEl.textContent = `${r.reason} — date unavailable.`; noteEl.style.color = '#dc2626'; return; }
-    // Find slot containing chosen start
-    const slot = (r.slots || []).find(s => s.start === start);
-    if (!slot) { noteEl.textContent = 'Start time outside business hours.'; noteEl.style.color = '#f59e0b'; return; }
-    if (slot.conflictForSelection) {
-      const busyUsers = _mtgUsersCache.filter(u => slot.busyUserIds.includes(u.id) && ids.includes(String(u.id)));
-      const parts = busyUsers.map(u => {
-        const ranges = (r.busyRanges?.[u.id] || []).filter(rg => rg.start < end && rg.end > start);
-        const rangeTxt = ranges.map(rg => `${_mtgFmtTime12(rg.start)}–${_mtgFmtTime12(rg.end)}`).join(', ');
-        return rangeTxt ? `${u.name} busy ${rangeTxt}` : `${u.name} busy`;
-      });
+    // Business-hours bounds come from the actual slot range, not an exact grid
+    // match — the start-time picker offers 15-min steps while slots are 30-min,
+    // so e.g. 10:15 would never equal any slot.start even though it's in-hours.
+    const allSlots = r.slots || [];
+    if (allSlots.length) {
+      const first = allSlots[0].start, last = allSlots[allSlots.length - 1].end;
+      if (start < first || end > last) {
+        noteEl.textContent = `Start time outside business hours (${_mtgFmtTime12(first)}–${_mtgFmtTime12(last)}).`;
+        noteEl.style.color = '#f59e0b';
+        return;
+      }
+    }
+    const parts = [];
+    for (const u of _mtgUsersCache.filter(u => ids.includes(String(u.id)))) {
+      const ranges = (r.busyRanges?.[u.id] || []).filter(rg => rg.start < end && rg.end > start);
+      if (!ranges.length) continue;
+      const rangeTxt = ranges.map(rg => `${_mtgFmtTime12(rg.start)}–${_mtgFmtTime12(rg.end)}`).join(', ');
+      parts.push(`${u.name} busy ${rangeTxt}`);
+    }
+    if (parts.length) {
       noteEl.textContent = `⚠️ ${parts.join(' · ')}`;
       noteEl.style.color = '#dc2626';
     } else {
