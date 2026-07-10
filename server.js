@@ -3853,6 +3853,19 @@ const _clientsTableMigrationsPromise = (async () => {
   await sa(`ALTER TABLE meetings ADD COLUMN recurrence_group_id VARCHAR(40) DEFAULT NULL AFTER status`);
   await sa(`ALTER TABLE meetings ADD INDEX idx_recurrence (recurrence_group_id)`);
 
+  // Day-view quick-add — lightweight personal plan entries ("9am to 10am meeting"),
+  // separate from formal client meetings.
+  await sa(`CREATE TABLE IF NOT EXISTS day_plan_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    item_date DATE NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_date (user_id, item_date)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
   // Generic key-value store for runtime settings (e.g. OAuth refresh tokens)
   await sa(`CREATE TABLE IF NOT EXISTS app_settings (
     key_name  VARCHAR(100) PRIMARY KEY,
@@ -8400,6 +8413,48 @@ app.delete('/api/meetings/:id', requireAuth, async (req, res) => {
     }
     await db.query("UPDATE meetings SET status='cancelled' WHERE id=?", [id]);
     sendMeetingNotification(id, 'cancelled').catch(e => console.error('notify err:', e.message));
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// DAY PLAN ITEMS — Day-view quick-add ("9am to 10am meeting")
+// ══════════════════════════════════════════════════════
+
+app.get('/api/day-plan-items', requireAuth, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const fromDate = from || to;
+    const toDate = to || from;
+    if (!fromDate || !toDate) return res.status(400).json({ error: 'from/to required' });
+    const [rows] = await db.query(
+      `SELECT * FROM day_plan_items WHERE user_id=? AND item_date BETWEEN ? AND ? ORDER BY start_time`,
+      [req.session.userId, fromDate, toDate]);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/day-plan-items', requireAuth, async (req, res) => {
+  try {
+    const { title, item_date, start_time, end_time } = req.body;
+    if (!title || !item_date || !start_time || !end_time) {
+      return res.status(400).json({ error: 'title, item_date, start_time, end_time required' });
+    }
+    const [result] = await db.query(
+      `INSERT INTO day_plan_items (user_id, item_date, start_time, end_time, title) VALUES (?,?,?,?,?)`,
+      [req.session.userId, item_date, start_time, end_time, title]);
+    res.json({ ok: true, id: result.insertId });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/day-plan-items/:id', requireAuth, async (req, res) => {
+  try {
+    const [[existing]] = await db.query('SELECT user_id FROM day_plan_items WHERE id=?', [req.params.id]);
+    if (!existing) return res.status(404).json({ error: 'not found' });
+    if (existing.user_id !== req.session.userId && req.session.role !== 'admin') {
+      return res.status(403).json({ error: 'only owner or admin can delete' });
+    }
+    await db.query('DELETE FROM day_plan_items WHERE id=?', [req.params.id]);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

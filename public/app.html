@@ -361,8 +361,13 @@ tbody tr:last-child td{border-bottom:none;}
 .mtg-day-block{position:absolute;left:6px;right:6px;background:#dbeafe;border-left:3px solid #4f46e5;border-radius:6px;padding:4px 9px;font-size:12px;line-height:1.25;color:#1e40af;overflow:hidden;cursor:pointer;z-index:2;box-shadow:0 1px 4px rgba(0,0,0,.06);}
 .mtg-day-block.cancelled{background:#fee2e2;border-left-color:#dc2626;color:#991b1b;text-decoration:line-through;}
 .mtg-day-block.done{background:#dcfce7;border-left-color:#16a34a;color:#15803d;}
+.mtg-day-block.planitem{background:#fef3c7;border-left-color:#d97706;color:#92400e;}
 .mtg-day-block strong{display:block;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .mtg-day-block .mtg-day-block-meta{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mtg-day-quickadd-btn{position:absolute;top:50%;right:8px;transform:translateY(-50%);width:20px;height:20px;border-radius:50%;background:#4f46e5;color:#fff;font-size:14px;line-height:19px;text-align:center;cursor:pointer;opacity:0;transition:opacity .15s;z-index:3;}
+.mtg-day-hour-body:hover .mtg-day-quickadd-btn{opacity:1;}
+.mtg-day-quickadd-btn:hover{background:#4338ca;}
+.mtg-day-quickadd-input{position:absolute;top:4px;left:4px;right:4px;z-index:4;font-size:12px;padding:5px 8px;border:1px solid #4f46e5;border-radius:5px;outline:none;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);}
 .form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:#6366f1;}
 .form-group textarea{resize:vertical;min-height:70px;}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
@@ -16502,10 +16507,11 @@ async function renderMtgDay() {
   listEl.innerHTML = '<div class="empty" style="padding:24px">Loading…</div>';
   if (taskEl) taskEl.innerHTML = '';
 
-  const [meetings, slotResp, taskResp] = await Promise.all([
+  const [meetings, slotResp, taskResp, planItems] = await Promise.all([
     api(`/api/meetings?from=${iso}&to=${iso}`),
     api(`/api/meetings/slots?date=${iso}`),
-    api(`/api/calendar/tasks?from=${iso}&to=${iso}`).catch(() => ({ items: [] }))
+    api(`/api/calendar/tasks?from=${iso}&to=${iso}`).catch(() => ({ items: [] })),
+    api(`/api/day-plan-items?from=${iso}&to=${iso}`).catch(() => [])
   ]);
 
   // Tasks due this day (delegation + checklist + FMS)
@@ -16576,7 +16582,9 @@ async function renderMtgDay() {
     const ampm = h < 12 ? 'AM' : 'PM';
     rowsHtml.push(`<div class="mtg-day-hour" data-hour="${h}">
       <div class="mtg-day-hour-label">${labelHr} ${ampm}</div>
-      <div class="mtg-day-hour-body half-hour-mark" onclick="mtgClickHour(${h}, 0)"></div>
+      <div class="mtg-day-hour-body half-hour-mark" onclick="mtgClickHour(${h}, 0)">
+        <span class="mtg-day-quickadd-btn" title="Quick add" onclick="mtgQuickAddOpen(event, ${h})">+</span>
+      </div>
     </div>`);
   }
   tlEl.innerHTML = rowsHtml.join('');
@@ -16590,15 +16598,25 @@ async function renderMtgDay() {
   // Build the visible meeting set with their minute-offsets, then lay overlapping
   // meetings into side-by-side columns so names don't sit on top of each other.
   const winMax = (endHour - startHour) * 60;
-  const blocks = (meetings || [])
+  const meetingBlocks = (meetings || [])
     .filter(m => m.status !== 'cancelled')
     .map(m => {
       const [sh,sm] = (m.start_time||'').split(':').map(Number);
       const [eh,em] = (m.end_time||'').split(':').map(Number);
       if (!Number.isFinite(sh) || !Number.isFinite(eh)) return null;
-      return { m, s: (sh - startHour) * 60 + sm, e: (eh - startHour) * 60 + em };
+      return { m, kind: 'meeting', s: (sh - startHour) * 60 + sm, e: (eh - startHour) * 60 + em };
     })
-    .filter(b => b && b.e > 0 && b.s < winMax)
+    .filter(Boolean);
+  const planBlocks = (Array.isArray(planItems) ? planItems : [])
+    .map(p => {
+      const [sh,sm] = (p.start_time||'').split(':').map(Number);
+      const [eh,em] = (p.end_time||'').split(':').map(Number);
+      if (!Number.isFinite(sh) || !Number.isFinite(eh)) return null;
+      return { m: p, kind: 'plan', s: (sh - startHour) * 60 + sm, e: (eh - startHour) * 60 + em };
+    })
+    .filter(Boolean);
+  const blocks = [...meetingBlocks, ...planBlocks]
+    .filter(b => b.e > 0 && b.s < winMax)
     .sort((a,b) => a.s - b.s || a.e - b.e);
 
   // Cluster consecutive overlapping meetings; within each cluster assign columns.
@@ -16623,19 +16641,22 @@ async function renderMtgDay() {
 
   for (const b of blocks) {
     const m = b.m;
+    const isPlan = b.kind === 'plan';
     const top = Math.max(0, b.s) * (ROW_PX / 60);
     const height = Math.max(20, (b.e - Math.max(0, b.s)) * (ROW_PX / 60));
     const nCols = b.nCols || 1, col = b.col || 0, gap = 2;
     const block = document.createElement('div');
-    block.className = 'mtg-day-block' + (m.status === 'done' ? ' done' : '');
+    block.className = 'mtg-day-block' + (isPlan ? ' planitem' : '') + (m.status === 'done' ? ' done' : '');
     block.style.top = top + 'px';
     block.style.height = (height - 2) + 'px';
     block.style.left = `calc(${(col / nCols) * 100}% + ${gap}px)`;
     block.style.width = `calc(${(1 / nCols) * 100}% - ${gap * 2}px)`;
     block.style.right = 'auto';
     block.style.pointerEvents = 'auto';
-    const meta = `${m.start_time}–${m.end_time}${m.client_name ? ` · ${dtEscape(m.client_name)}` : ''}`;
-    block.title = `${m.title} · ${m.start_time}–${m.end_time}${m.client_name ? ` · ${m.client_name}` : ''}`;
+    const meta = isPlan ? `${m.start_time}–${m.end_time}` : `${m.start_time}–${m.end_time}${m.client_name ? ` · ${dtEscape(m.client_name)}` : ''}`;
+    block.title = isPlan
+      ? `${m.title} · ${m.start_time}–${m.end_time} (click to remove)`
+      : `${m.title} · ${m.start_time}–${m.end_time}${m.client_name ? ` · ${m.client_name}` : ''}`;
     // Short blocks (≈30 min) can't fit two lines — show time + title on a single
     // ellipsised line. Taller blocks get the title plus a time/client meta line.
     if (height < 44) {
@@ -16643,7 +16664,7 @@ async function renderMtgDay() {
     } else {
       block.innerHTML = `<strong>${dtEscape(m.title)}</strong><span class="mtg-day-block-meta">${meta}</span>`;
     }
-    block.onclick = () => openMeetingModal(m.id);
+    block.onclick = isPlan ? () => deletePlanItem(m.id) : () => openMeetingModal(m.id);
     overlay.appendChild(block);
   }
   tlEl.style.position = 'relative';
@@ -16654,6 +16675,116 @@ function mtgClickHour(hour, minute) {
   const hh = String(hour).padStart(2,'0');
   const mm = String(minute).padStart(2,'0');
   openMeetingModal(null, `${hh}:${mm}`);
+}
+
+// Quick add — click the "+" on an hour row to type something like
+// "9am to 10am meeting" and save it straight to the schedule, no modal.
+function mtgQuickAddOpen(ev, hour) {
+  ev.stopPropagation();
+  const body = ev.currentTarget.closest('.mtg-day-hour-body');
+  if (!body || body.querySelector('.mtg-day-quickadd-input')) return;
+  const btn = body.querySelector('.mtg-day-quickadd-btn');
+  if (btn) btn.style.display = 'none';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'mtg-day-quickadd-input';
+  input.placeholder = 'e.g. 9am to 10am meeting';
+  body.appendChild(input);
+  input.focus();
+  input.onclick = e => e.stopPropagation();
+  input.onkeydown = e => {
+    if (e.key === 'Enter') { e.preventDefault(); mtgQuickAddSave(input, hour); }
+    else if (e.key === 'Escape') { e.preventDefault(); mtgQuickAddClose(input); }
+  };
+  input.onblur = () => setTimeout(() => { if (document.body.contains(input)) mtgQuickAddClose(input); }, 150);
+}
+
+function mtgQuickAddClose(input) {
+  const body = input.closest('.mtg-day-hour-body');
+  input.remove();
+  const btn = body && body.querySelector('.mtg-day-quickadd-btn');
+  if (btn) btn.style.display = '';
+}
+
+// Parses free text like "9am to 10am meeting", "10-11 client call" or just
+// "team sync" (falls back to the clicked hour, one hour long) into a title + times.
+function _mtgParseQuickAdd(text, hourHint) {
+  text = (text || '').trim();
+  if (!text) return null;
+  const to24 = (h, mer) => { h = h % 12; return mer === 'pm' ? h + 12 : h; };
+
+  const rangeRe = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:to|-|–)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(.*)$/i;
+  let m = text.match(rangeRe);
+  if (m) {
+    let [, h1, m1, mer1, h2, m2, mer2, rest] = m;
+    h1 = parseInt(h1, 10); h2 = parseInt(h2, 10);
+    mer1 = (mer1 || '').toLowerCase(); mer2 = (mer2 || '').toLowerCase();
+    if (!mer1 && mer2) mer1 = mer2;
+    if (!mer2 && mer1) mer2 = mer1;
+    if (!mer1 && !mer2) {
+      const hintMer = hourHint >= 12 ? 'pm' : 'am';
+      mer1 = h1 === 12 ? 'pm' : hintMer;
+      mer2 = h2 === 12 ? 'pm' : hintMer;
+    }
+    const startH = to24(h1, mer1), endH = to24(h2, mer2);
+    return {
+      title: (rest || '').trim() || 'Busy',
+      start_time: `${String(startH).padStart(2,'0')}:${(m1 || '00').padStart(2,'0')}`,
+      end_time: `${String(endH).padStart(2,'0')}:${(m2 || '00').padStart(2,'0')}`
+    };
+  }
+
+  const singleRe = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+(.+)$/i;
+  m = text.match(singleRe);
+  if (m) {
+    let [, h1, mm1, mer1, rest] = m;
+    h1 = parseInt(h1, 10);
+    mer1 = (mer1 || '').toLowerCase() || (h1 === 12 ? 'pm' : (hourHint >= 12 ? 'pm' : 'am'));
+    const startH = to24(h1, mer1);
+    return {
+      title: (rest || '').trim() || 'Busy',
+      start_time: `${String(startH).padStart(2,'0')}:${(mm1 || '00').padStart(2,'0')}`,
+      end_time: `${String(Math.min(startH + 1, 23)).padStart(2,'0')}:${(mm1 || '00').padStart(2,'0')}`
+    };
+  }
+
+  return {
+    title: text,
+    start_time: `${String(hourHint).padStart(2,'0')}:00`,
+    end_time: `${String(Math.min(hourHint + 1, 23)).padStart(2,'0')}:00`
+  };
+}
+
+async function mtgQuickAddSave(input, hour) {
+  const text = input.value.trim();
+  if (!text) { mtgQuickAddClose(input); return; }
+  const parsed = _mtgParseQuickAdd(text, hour);
+  input.disabled = true;
+  try {
+    const payload = {
+      title: parsed.title,
+      item_date: _mtgIso(_mtgDayAnchor),
+      start_time: parsed.start_time,
+      end_time: parsed.end_time
+    };
+    const r = await api('/api/day-plan-items', 'POST', payload);
+    if (r?.error) { showToast(r.error); mtgQuickAddClose(input); return; }
+    showToast('Added to schedule');
+    renderMtgDay();
+  } catch (e) {
+    showToast('Add failed: ' + e.message);
+    mtgQuickAddClose(input);
+  }
+}
+
+async function deletePlanItem(id) {
+  if (!await appConfirm('Remove this item from your schedule?', 'Remove item?')) return;
+  try {
+    const r = await api(`/api/day-plan-items/${id}`, 'DELETE');
+    if (r?.error) { showToast(r.error); return; }
+    showToast('Removed');
+    renderMtgDay();
+  } catch (e) { showToast('Remove failed: ' + e.message); }
 }
 
 async function _mtgEnsureClients() {
