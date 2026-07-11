@@ -7510,6 +7510,10 @@ async function resolveLeaveApprover(userId) {
   return adm[0]?.id || null;
 }
 
+// Simran Gurnani — oversees leave approvals org-wide, so she sees every
+// pending request in her Task Manager in addition to the assigned HOD.
+const LEAVE_OVERSEER_ID = 6;
+
 // List leaves — scope based on role + ?scope= filter
 //   scope=mine       → only my requests (default for users)
 //   scope=approvals  → requests awaiting my approval (hod/admin/pc)
@@ -7525,18 +7529,22 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
     if (scope === 'mine') {
       where += ' AND lr.user_id=?'; params.push(uid);
     } else if (scope === 'approvals') {
-      // If this user is an HOD, show leaves for ALL HODs in same department
-      const [[meInfo]] = await db.query(
-        'SELECT department, COALESCE(user_role, role) AS user_role FROM users WHERE id=?', [uid]);
-      if (meInfo?.user_role === 'hod' && meInfo?.department) {
-        const [deptHods] = await db.query(
-          `SELECT id FROM users WHERE COALESCE(user_role, role)='hod' AND department=?`,
-          [meInfo.department]);
-        const hodIds = deptHods.map(h => h.id);
-        where += ` AND lr.approver_id IN (${hodIds.map(()=>'?').join(',')}) AND lr.user_id<>?`;
-        params.push(...hodIds, uid);
+      if (uid === LEAVE_OVERSEER_ID) {
+        where += ' AND lr.user_id<>?'; params.push(uid);
       } else {
-        where += ' AND lr.approver_id=? AND lr.user_id<>?'; params.push(uid, uid);
+        // If this user is an HOD, show leaves for ALL HODs in same department
+        const [[meInfo]] = await db.query(
+          'SELECT department, COALESCE(user_role, role) AS user_role FROM users WHERE id=?', [uid]);
+        if (meInfo?.user_role === 'hod' && meInfo?.department) {
+          const [deptHods] = await db.query(
+            `SELECT id FROM users WHERE COALESCE(user_role, role)='hod' AND department=?`,
+            [meInfo.department]);
+          const hodIds = deptHods.map(h => h.id);
+          where += ` AND lr.approver_id IN (${hodIds.map(()=>'?').join(',')}) AND lr.user_id<>?`;
+          params.push(...hodIds, uid);
+        } else {
+          where += ' AND lr.approver_id=? AND lr.user_id<>?'; params.push(uid, uid);
+        }
       }
     } else if (scope === 'team') {
       // Pull current user once so we can apply leave-viewer override and HOD dept-scoping.
@@ -7619,10 +7627,16 @@ app.get('/api/leaves/my-approvers', requireAuth, async (req, res) => {
 app.get('/api/leaves/pending-count', requireAuth, async (req, res) => {
   try {
     const uid = req.session.userId;
+    let cnt = 0;
+    if (uid === LEAVE_OVERSEER_ID) {
+      const [[r]] = await db.query(
+        "SELECT COUNT(*) AS cnt FROM leave_requests WHERE status='pending' AND user_id<>?",
+        [uid]);
+      return res.json({ count: r.cnt || 0 });
+    }
     // Count pending leaves for all HODs in same department
     const [[meInfo]] = await db.query(
       'SELECT department, COALESCE(user_role, role) AS user_role FROM users WHERE id=?', [uid]);
-    let cnt = 0;
     if (meInfo?.user_role === 'hod' && meInfo?.department) {
       const [deptHods] = await db.query(
         `SELECT id FROM users WHERE COALESCE(user_role, role)='hod' AND department=?`,
