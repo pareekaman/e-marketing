@@ -7475,7 +7475,16 @@ async function resolveLeaveApprover(userId) {
   const me = rows[0];
   if (!me) return null;
   if (me.user_role === 'admin') {
-    // Admin's leave → another admin (by user_role) if available, else self
+    // Admin's leave → department HOD if one exists (covers employees whose
+    // user_role got set to 'admin' for app-permission reasons but who still
+    // report to a real HOD), else another admin, else self.
+    if (me.department) {
+      const [hods] = await db.query(
+        `SELECT id FROM users
+         WHERE COALESCE(user_role, role)='hod' AND department=? AND id<>? ORDER BY id ASC LIMIT 1`,
+        [me.department, me.id]);
+      if (hods[0]) return hods[0].id;
+    }
     const [adm] = await db.query(
       `SELECT id FROM users
        WHERE COALESCE(user_role, role)='admin' AND id<>? ORDER BY id ASC LIMIT 1`,
