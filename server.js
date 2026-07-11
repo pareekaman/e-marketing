@@ -717,6 +717,18 @@ async function dmsCreateFile(name, kind, parentId) {
   return res.data.webViewLink;
 }
 
+async function dmsUploadFile(name, mimeType, buffer, parentId) {
+  const { Readable } = require('stream');
+  const drive = await getDriveClient();
+  const res = await drive.files.create({
+    requestBody: { name, parents: [parentId] },
+    media: { mimeType: mimeType || 'application/octet-stream', body: Readable.from(buffer) },
+    fields: 'id,webViewLink',
+    supportsAllDrives: true,
+  });
+  return res.data;
+}
+
 function extractSpreadsheetId(raw) {
   const s = (raw || '').trim();
   const m = s.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
@@ -5214,6 +5226,7 @@ app.post('/api/client-portal/feedback', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════
 const ccUpload    = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const ccPdfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+const dmsUpload   = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 const CC_BANK_KEYWORDS = {
   'RBL Bank': ['rbl'],
@@ -6847,6 +6860,24 @@ app.post('/api/clients/:id/dms/folders/:folderId/files', requireAuth, requireAdm
     if (!DMS_MIME_TYPES[kind]) return res.status(400).json({ error: 'kind must be doc, sheet, or slide' });
     const webViewLink = await dmsCreateFile(name, kind, folderId);
     res.json({ success: true, web_view_link: webViewLink });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Upload an actual file (PDF, image, doc, etc.) into a Drive folder
+app.post('/api/clients/:id/dms/folders/:folderId/upload', requireAuth, requireAdminOrPC, dmsUpload.single('file'), async (req, res) => {
+  try {
+    const { id, folderId } = req.params;
+    if (!req.file) return res.status(400).json({ error: 'file required' });
+    const [[clientRow]] = await db.query('SELECT drive_folder_id FROM clients WHERE id=?', [id]);
+    const [deptRows] = await db.query(
+      'SELECT drive_folder_id FROM client_department_folders WHERE client_id=?', [id]);
+    const validIds = new Set([
+      clientRow?.drive_folder_id,
+      ...deptRows.map(r => r.drive_folder_id),
+    ].filter(Boolean));
+    if (!validIds.has(folderId)) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    const file = await dmsUploadFile(req.file.originalname, req.file.mimetype, req.file.buffer, folderId);
+    res.json({ success: true, id: file.id, web_view_link: file.webViewLink });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

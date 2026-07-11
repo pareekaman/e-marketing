@@ -2582,8 +2582,13 @@ input:focus,select:focus,textarea:focus{outline:none;}
           <div id="dmsFileBrowser" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
               <div style="font-weight:700;font-size:14px;color:#0f172a">Files — <span id="dmsBrowserFolderName" style="color:#4f46e5"></span></div>
-              <button id="dmsCreateFileBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px;display:none" onclick="dmsOpenCreateFile()">+ New File</button>
+              <div style="display:flex;gap:8px">
+                <input type="file" id="dmsUploadInput" style="display:none" onchange="dmsUploadPicked(this)"/>
+                <button id="dmsUploadBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px;display:none" onclick="document.getElementById('dmsUploadInput').click()">⬆ Upload</button>
+                <button id="dmsCreateFileBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px;display:none" onclick="dmsOpenCreateFile()">+ New File</button>
+              </div>
             </div>
+            <div id="dmsUploadStatus" style="font-size:12px;color:#4f46e5;margin-bottom:10px;display:none"></div>
             <div id="dmsFileList"><div style="color:#94a3b8;font-size:13px">Select a folder above to browse files.</div></div>
           </div>
         </div>
@@ -12011,6 +12016,7 @@ function cmDmsFilesHtml() {
       '<div style="display:flex;gap:6px">' +
         '<button onclick="cmDmsCreateFile(\'doc\',\'' + fid + '\',' + cid + ')" style="padding:5px 12px;border:none;border-radius:6px;font-size:12px;background:#eff6ff;color:#1d4ed8;font-weight:600;cursor:pointer">＋ Doc</button>' +
         '<button onclick="cmDmsCreateFile(\'sheet\',\'' + fid + '\',' + cid + ')" style="padding:5px 12px;border:none;border-radius:6px;font-size:12px;background:#f0fdf4;color:#16a34a;font-weight:600;cursor:pointer">＋ Sheet</button>' +
+        '<button onclick="cmDmsUploadFile(\'' + fid + '\',' + cid + ')" style="padding:5px 12px;border:none;border-radius:6px;font-size:12px;background:#fff7ed;color:#c2410c;font-weight:600;cursor:pointer">⬆ Upload</button>' +
         '<button onclick="cmDmsLoadFiles(\'' + fid + '\')" title="Refresh" style="padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;color:#64748b;background:#fff;cursor:pointer">↺</button>' +
       '</div>' +
     '</div>' + filesHtml;
@@ -12070,6 +12076,31 @@ async function cmDmsCreateFile(kind, folderId, clientId) {
   if (r.error) { showToast(r.error, 'error'); return; }
   if (r.web_view_link) window.open(r.web_view_link, '_blank');
   cmDmsLoadFiles(folderId);
+}
+
+function cmDmsUploadFile(folderId, clientId) {
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.onchange = async function() {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    var fd = new FormData();
+    fd.append('file', file);
+    var token = localStorage.getItem('authToken') || '';
+    showToast('Uploading "' + file.name + '"…');
+    try {
+      var res = await fetch('/api/clients/' + clientId + '/dms/folders/' + folderId + '/upload', {
+        method: 'POST',
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+        body: fd
+      });
+      var data = await res.json();
+      if (data.error) { showToast(data.error, 'error'); return; }
+      showToast('File uploaded!');
+      cmDmsLoadFiles(folderId);
+    } catch (e) { showToast('Upload failed: ' + e.message, 'error'); }
+  };
+  input.click();
 }
 
 async function cmAdd(){
@@ -17285,6 +17316,7 @@ async function dmsBrowseFolder(folderId, folderName) {
   document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Loading files…</div>';
   const canCreate = ME.role==='admin' || ME.role==='pc';
   document.getElementById('dmsCreateFileBtn').style.display = canCreate ? 'inline-flex' : 'none';
+  document.getElementById('dmsUploadBtn').style.display = canCreate ? 'inline-flex' : 'none';
   try {
     const files = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${folderId}/files`);
     if (!files.length) {
@@ -17384,6 +17416,36 @@ async function dmsSaveFile() {
     if (r.web_view_link) window.open(r.web_view_link, '_blank');
     dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName);
   } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+}
+
+async function dmsUploadPicked(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  if (!_dmsSelectedClient || !_dmsBrowseFolderId) { input.value = ''; return; }
+  const statusEl = document.getElementById('dmsUploadStatus');
+  statusEl.style.display = 'block';
+  statusEl.style.color = '#4f46e5';
+  statusEl.textContent = `Uploading "${file.name}"…`;
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const token = localStorage.getItem('authToken') || '';
+    const res = await fetch(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/upload`, {
+      method: 'POST',
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+      body: fd
+    });
+    const data = await res.json();
+    if (data.error) { statusEl.style.color = '#dc2626'; statusEl.textContent = data.error; return; }
+    statusEl.style.display = 'none';
+    showToast('File uploaded!');
+    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName);
+  } catch (e) {
+    statusEl.style.color = '#dc2626';
+    statusEl.textContent = 'Upload failed: ' + e.message;
+  } finally {
+    input.value = '';
+  }
 }
 
 </script>
