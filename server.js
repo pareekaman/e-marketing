@@ -691,7 +691,7 @@ async function dmsListFiles(folderId) {
   const drive = await getDriveClient();
   const res = await drive.files.list({
     q: `'${folderId}' in parents and trashed = false`,
-    fields: 'files(id,name,mimeType,webViewLink,modifiedTime)',
+    fields: 'files(id,name,mimeType,webViewLink,modifiedTime,thumbnailLink,iconLink)',
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
     orderBy: 'modifiedTime desc',

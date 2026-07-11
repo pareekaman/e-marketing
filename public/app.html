@@ -16526,6 +16526,16 @@ function mtgJumpToDay(iso) {
   renderMtgDay();
 }
 
+// "09:30:00" / "09:30" -> "9:30 AM"
+function _mtgFmtTime(t) {
+  if (!t) return '';
+  const [h, m] = String(t).split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return t;
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+
 async function renderMtgDay() {
   const anchor = _mtgDayAnchor;
   const iso = _mtgIso(anchor);
@@ -16684,14 +16694,15 @@ async function renderMtgDay() {
     block.style.width = `calc(${(1 / nCols) * 100}% - ${gap * 2}px)`;
     block.style.right = 'auto';
     block.style.pointerEvents = 'auto';
-    const meta = isPlan ? `${m.start_time}–${m.end_time}` : `${m.start_time}–${m.end_time}${m.client_name ? ` · ${dtEscape(m.client_name)}` : ''}`;
+    const startFmt = _mtgFmtTime(m.start_time), endFmt = _mtgFmtTime(m.end_time);
+    const meta = isPlan ? `${startFmt}–${endFmt}` : `${startFmt}–${endFmt}${m.client_name ? ` · ${dtEscape(m.client_name)}` : ''}`;
     block.title = isPlan
-      ? `${m.title} · ${m.start_time}–${m.end_time} (click to remove)`
-      : `${m.title} · ${m.start_time}–${m.end_time}${m.client_name ? ` · ${m.client_name}` : ''}`;
+      ? `${m.title} · ${startFmt}–${endFmt} (click to remove)`
+      : `${m.title} · ${startFmt}–${endFmt}${m.client_name ? ` · ${m.client_name}` : ''}`;
     // Short blocks (≈30 min) can't fit two lines — show time + title on a single
     // ellipsised line. Taller blocks get the title plus a time/client meta line.
     if (height < 44) {
-      block.innerHTML = `<strong>${m.start_time} ${dtEscape(m.title)}</strong>`;
+      block.innerHTML = `<strong>${startFmt} ${dtEscape(m.title)}</strong>`;
     } else {
       block.innerHTML = `<strong>${dtEscape(m.title)}</strong><span class="mtg-day-block-meta">${meta}</span>`;
     }
@@ -17324,19 +17335,27 @@ async function dmsBrowseFolder(folderId, folderName) {
       return;
     }
     const icons = { 'application/vnd.google-apps.document':'📄', 'application/vnd.google-apps.spreadsheet':'📊', 'application/vnd.google-apps.presentation':'📑', 'application/vnd.google-apps.folder':'📁' };
+    const iconBg = { 'application/vnd.google-apps.document':'#eff6ff', 'application/vnd.google-apps.spreadsheet':'#f0fdf4', 'application/vnd.google-apps.presentation':'#fff7ed', 'application/vnd.google-apps.folder':'#fefce8' };
     document.getElementById('dmsFileList').innerHTML = `
-      <div style="display:grid;gap:8px">
-        ${files.map(f => `
-          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f8fafc;border-radius:8px">
-            <span style="font-size:18px">${icons[f.mimeType]||'📄'}</span>
-            <div style="flex:1;min-width:0">
-              <a href="${f.webViewLink}" target="_blank" style="font-size:13px;font-weight:600;color:#4f46e5;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">
-                ${dtEscape(f.name)}
-              </a>
-              <div style="font-size:11px;color:#94a3b8">${f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : ''}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px">
+        ${files.map(f => {
+          const modDate = f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString(undefined,{month:'short',day:'numeric'}) : '';
+          const bg = iconBg[f.mimeType] || '#f8fafc';
+          const emoji = icons[f.mimeType] || '📄';
+          return `
+          <a href="${f.webViewLink}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;display:block;background:#fff;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 2px 10px rgba(0,0,0,.08)'" onmouseout="this.style.boxShadow='none'">
+            <div style="padding:10px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #f1f5f9">
+              <span style="font-size:15px">${emoji}</span>
+              <span style="font-size:12.5px;font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dtEscape(f.name)}</span>
             </div>
-          </div>
-        `).join('')}
+            <div style="height:110px;background:${bg};display:flex;align-items:center;justify-content:center;position:relative">
+              ${f.thumbnailLink
+                ? `<img src="${f.thumbnailLink}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span style="display:none;font-size:34px;position:absolute;inset:0;align-items:center;justify-content:center">${emoji}</span>`
+                : `<span style="font-size:34px">${emoji}</span>`}
+            </div>
+            <div style="padding:8px 12px;font-size:11px;color:#94a3b8">${modDate ? `Modified · ${modDate}` : ''}</div>
+          </a>
+        `;}).join('')}
       </div>
     `;
   } catch (e) {
