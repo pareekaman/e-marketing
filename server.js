@@ -738,7 +738,9 @@ async function dmsListFiles(folderId) {
       f.modified_by = log.user_name;
       f.modified_via = 'app';
     } else if (f.lastModifyingUser) {
-      f.modified_by = f.lastModifyingUser.displayName || f.lastModifyingUser.emailAddress;
+      // Full email (not the short Drive display name) so it's clear exactly
+      // which Google account made a direct-Drive edit.
+      f.modified_by = f.lastModifyingUser.emailAddress || f.lastModifyingUser.displayName;
       f.modified_via = f.lastModifyingUser.emailAddress === svcEmail ? 'app' : 'drive';
     }
     delete f.lastModifyingUser;
@@ -6828,8 +6830,15 @@ app.get('/api/admin/dms/root-files', requireAuth, requireAdmin, async (req, res)
     // folder's timestamp when a file inside it is added/changed.
     const clientIds = Object.values(byFolderId);
     if (clientIds.length) {
+      // created_at is stored in the DB server's own local time (IST here, per
+      // @@session.time_zone), not UTC. Convert to an explicit UTC ISO string
+      // in SQL so mysql2/the browser can't double-apply the offset — sending
+      // the raw DATETIME let the frontend re-interpret an already-local value
+      // as UTC and shift it by the server's offset again (3:12 PM -> 8:42 PM).
       const [rows] = await db.query(
-        `SELECT client_id, user_name, created_at FROM dms_file_activity
+        `SELECT client_id, user_name,
+                DATE_FORMAT(CONVERT_TZ(created_at, @@session.time_zone, '+00:00'), '%Y-%m-%dT%H:%i:%SZ') AS created_at
+         FROM dms_file_activity
          WHERE client_id IN (${clientIds.map(()=>'?').join(',')})
          ORDER BY created_at DESC`,
         clientIds

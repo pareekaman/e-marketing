@@ -4619,7 +4619,22 @@ async function init() {
       navigate('client-portal', cpNav);
       return;
     }
-    loadDashboard();
+    // Restore whichever tab was open before the last refresh, if it's still
+    // valid and visible for this user's permissions — else the dashboard
+    // (already the default "active" page in the markup) stays put.
+    let restored = false;
+    try {
+      const lastPage = localStorage.getItem('lastPage');
+      // Mirror navigate()'s own role guards so a disallowed saved page doesn't
+      // silently no-op and leave the (still-default) dashboard without its data loaded.
+      const blocked = (lastPage === 'mis' && ME.role !== 'admin' && ME.role !== 'hod') ||
+                      (lastPage === 'race' && ME.role !== 'admin');
+      if (lastPage && lastPage !== 'dashboard' && !blocked && document.getElementById('page-' + lastPage)) {
+        navigate(lastPage);
+        restored = true;
+      }
+    } catch {}
+    if (!restored) loadDashboard();
     loadApprovalBadge();
     loadTransferBadge();
     // Refresh badges every 30 seconds — guard against duplicate intervals on re-init
@@ -5657,6 +5672,7 @@ function navigate(page, el) {
   if (el) el.classList.add('active');
   // Keep the sidebar item AND its mobile-bottom-nav clone in sync, whichever one was tapped
   document.querySelectorAll(`.nav-item[onclick*="navigate('${page}',"]`).forEach(n=>n.classList.add('active'));
+  try { localStorage.setItem('lastPage', page); } catch {}
   document.getElementById('topbarTitle').textContent = pageTitles[page] || page;
   // Dashboard user-switcher lives on the dashboard header only.
   const ta = document.getElementById('topbarActions');
@@ -17260,27 +17276,33 @@ function dmsRenderClientList() {
     <table style="width:100%;border-collapse:collapse;font-size:12.5px">
       <thead>
         <tr style="border-bottom:1.5px solid #e2e8f0;color:#64748b;text-align:left">
+          <th style="width:44px;padding:8px 14px;font-weight:600">S.No.</th>
           <th style="padding:8px 14px;font-weight:600">Name</th>
+          <th style="padding:8px 14px;font-weight:600">Handler</th>
           <th style="padding:8px 14px;font-weight:600">Modified by</th>
           <th style="padding:8px 14px;font-weight:600">Date modified</th>
           <th style="width:36px"></th>
         </tr>
       </thead>
       <tbody>
-        ${sorted.map(c => {
+        ${sorted.map((c, i) => {
           const d = c._drive;
           const modWhen = d?.modifiedTime ? new Date(d.modifiedTime).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
           const modBy = d?.modified_by ? dtEscape(d.modified_by) : '—';
+          const handlerNames = c.all_handler_names ? c.all_handler_names.split('||') : (c.handler_name ? [c.handler_name] : []);
+          const handler = handlerNames.length ? dtEscape(handlerNames.join(', ')) : '—';
           return `
         <tr class="dms-client-row" data-id="${c.id}" data-name="${dtEscape(c.name.toLowerCase())}"
              onclick="dmsSelectClient(${c.id})"
              style="cursor:pointer;border-bottom:1px solid #f1f5f9;transition:background .1s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
+          <td style="padding:8px 14px;color:#94a3b8">${i + 1}</td>
           <td style="padding:8px 14px">
             <div style="display:flex;align-items:center;gap:8px;min-width:0">
               <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0;color:#64748b"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
               <span style="font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dtEscape(c.name)}</span>
             </div>
           </td>
+          <td style="padding:8px 14px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0">${handler}</td>
           <td style="padding:8px 14px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0">${modBy}</td>
           <td style="padding:8px 14px;color:#64748b;white-space:nowrap">${modWhen}</td>
           <td></td>
@@ -17403,16 +17425,16 @@ async function dmsBrowseFolder(folderId, folderName) {
         <thead>
           <tr style="border-bottom:1.5px solid #e2e8f0;color:#64748b;text-align:left">
             <th style="padding:8px 12px;font-weight:600">Name</th>
-            <th style="padding:8px 12px;font-weight:600">Modified</th>
+            <th style="padding:8px 12px;font-weight:600">Modified by</th>
+            <th style="padding:8px 12px;font-weight:600">Date modified</th>
             <th style="padding:8px 12px;font-weight:600;text-align:right">Size</th>
             <th style="width:36px"></th>
           </tr>
         </thead>
         <tbody>
           ${files.map(f => {
-            const modWhen = f.modifiedTime ? new Date(f.modifiedTime).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
-            const modBy = f.modified_by ? dtEscape(f.modified_by) : '';
-            const metaLine = modBy && modWhen ? `${modBy} · ${modWhen}` : (modWhen || '—');
+            const modWhen = f.modifiedTime ? new Date(f.modifiedTime).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
+            const modBy = f.modified_by ? dtEscape(f.modified_by) : '—';
             const emoji = icons[f.mimeType] || '📄';
             const isFolder = f.mimeType === 'application/vnd.google-apps.folder';
             return `
@@ -17425,7 +17447,8 @@ async function dmsBrowseFolder(folderId, folderName) {
                 <span style="font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dtEscape(f.name)}</span>
               </div>
             </td>
-            <td style="padding:8px 12px;color:#64748b;white-space:nowrap">${metaLine}</td>
+            <td style="padding:8px 12px;color:#64748b;white-space:nowrap">${modBy}</td>
+            <td style="padding:8px 12px;color:#64748b;white-space:nowrap">${modWhen}</td>
             <td style="padding:8px 12px;color:#64748b;text-align:right">${isFolder ? '—' : _dmsFmtSize(f.size)}</td>
             <td style="padding:8px 12px;text-align:right;position:relative">
               ${canCreate ? `<button class="dms-file-menu-btn" onclick="event.stopPropagation();dmsFileMenuToggle(event)" style="border:none;background:none;color:#94a3b8;font-size:16px;line-height:1;cursor:pointer;padding:2px 4px">⋮</button>` : ''}
