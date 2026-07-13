@@ -6942,14 +6942,7 @@ app.delete('/api/clients/:id/dms/departments/:dept', requireAuth, requireAdminOr
 app.get('/api/clients/:id/dms/folders/:folderId/files', requireAuth, async (req, res) => {
   try {
     const { id, folderId } = req.params;
-    const [[clientRow]] = await db.query('SELECT drive_folder_id FROM clients WHERE id=?', [id]);
-    const [deptRows] = await db.query(
-      'SELECT drive_folder_id FROM client_department_folders WHERE client_id=?', [id]);
-    const validIds = new Set([
-      clientRow?.drive_folder_id,
-      ...deptRows.map(r => r.drive_folder_id),
-    ].filter(Boolean));
-    if (!validIds.has(folderId)) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
     const files = await dmsListFiles(folderId);
     res.json(files);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -6959,14 +6952,7 @@ app.get('/api/clients/:id/dms/folders/:folderId/files', requireAuth, async (req,
 app.post('/api/clients/:id/dms/folders/:folderId/files', requireAuth, requireAdminOrPC, async (req, res) => {
   try {
     const { id, folderId } = req.params;
-    const [[clientRow]] = await db.query('SELECT drive_folder_id FROM clients WHERE id=?', [id]);
-    const [deptRows] = await db.query(
-      'SELECT drive_folder_id FROM client_department_folders WHERE client_id=?', [id]);
-    const validIds = new Set([
-      clientRow?.drive_folder_id,
-      ...deptRows.map(r => r.drive_folder_id),
-    ].filter(Boolean));
-    if (!validIds.has(folderId)) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
     const name = (req.body.name || '').trim();
     const kind = (req.body.kind || '').toLowerCase();
     if (!name) return res.status(400).json({ error: 'name required' });
@@ -6982,14 +6968,7 @@ app.post('/api/clients/:id/dms/folders/:folderId/upload', requireAuth, requireAd
   try {
     const { id, folderId } = req.params;
     if (!req.file) return res.status(400).json({ error: 'file required' });
-    const [[clientRow]] = await db.query('SELECT drive_folder_id FROM clients WHERE id=?', [id]);
-    const [deptRows] = await db.query(
-      'SELECT drive_folder_id FROM client_department_folders WHERE client_id=?', [id]);
-    const validIds = new Set([
-      clientRow?.drive_folder_id,
-      ...deptRows.map(r => r.drive_folder_id),
-    ].filter(Boolean));
-    if (!validIds.has(folderId)) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
     const file = await dmsUploadFile(req.file.originalname, req.file.mimetype, req.file.buffer, folderId);
     await _dmsLogActivity(file.id, 'uploaded', req.file.originalname, req, id);
     res.json({ success: true, id: file.id, web_view_link: file.webViewLink });
@@ -7003,14 +6982,35 @@ async function _dmsValidFolderIds(clientId) {
   return new Set([clientRow?.drive_folder_id, ...deptRows.map(r => r.drive_folder_id)].filter(Boolean));
 }
 
+// A folder qualifies if it's the client's own root, a registered department
+// folder, OR any nested subfolder under either (e.g. one made via the
+// "New folder" right-click action, which isn't tracked in our DB at all) —
+// walk up Drive's own parent chain to confirm ancestry, bounded so a bad
+// folderId can't trigger an unbounded walk.
+async function _dmsCanAccessFolder(clientId, folderId) {
+  const validIds = await _dmsValidFolderIds(clientId);
+  if (validIds.has(folderId)) return true;
+  try {
+    const drive = await getDriveClient();
+    let current = folderId;
+    for (let i = 0; i < 10; i++) {
+      const res = await drive.files.get({ fileId: current, fields: 'parents', supportsAllDrives: true });
+      const parents = res.data.parents || [];
+      if (parents.some(p => validIds.has(p))) return true;
+      if (!parents.length) return false;
+      current = parents[0];
+    }
+  } catch (e) { console.error('DMS ancestor check failed:', e.message); }
+  return false;
+}
+
 // Rename a file/folder in a client's Drive folder
 app.patch('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, requireAdminOrPC, async (req, res) => {
   try {
     const { id, folderId, fileId } = req.params;
     const name = (req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'name required' });
-    const validIds = await _dmsValidFolderIds(id);
-    if (!validIds.has(folderId)) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
     const drive = await getDriveClient();
     await drive.files.update({ fileId, requestBody: { name }, supportsAllDrives: true });
     await _dmsLogActivity(fileId, 'renamed', name, req, id);
@@ -7023,8 +7023,7 @@ app.patch('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, r
 app.delete('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, requireAdminOrPC, async (req, res) => {
   try {
     const { id, folderId, fileId } = req.params;
-    const validIds = await _dmsValidFolderIds(id);
-    if (!validIds.has(folderId)) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
     const drive = await getDriveClient();
     let name = null;
     try { const meta = await drive.files.get({ fileId, fields: 'name', supportsAllDrives: true }); name = meta.data.name; } catch {}

@@ -17235,6 +17235,7 @@ let _dmsClients = [];
 let _dmsSelectedClient = null;
 let _dmsBrowseFolderId = null;
 let _dmsBrowseFolderName = null;
+let _dmsFolderStack = []; // [{id, name}] — nav path within the currently browsed client folder
 let _dmsDepts = [];
 
 async function loadDMS() {
@@ -17421,7 +17422,7 @@ function dmsRenderDepts(depts, clientId, hasDriveFolder) {
 
 function dmsRefreshFolder() {
   if (!_dmsBrowseFolderId) return;
-  dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName);
+  dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName, 'jump');
 }
 
 function _dmsFmtSize(bytes) {
@@ -17485,11 +17486,30 @@ function dmsFileListContextMenu(event) {
   }, 0);
 }
 
-async function dmsBrowseFolder(folderId, folderName) {
+function dmsRenderFolderCrumb() {
+  const el = document.getElementById('dmsBrowserFolderName');
+  el.innerHTML = _dmsFolderStack.map((f, i) => {
+    if (i === _dmsFolderStack.length - 1) return `<span>${dtEscape(f.name)}</span>`;
+    return `<a href="javascript:void(0)" onclick="dmsJumpToFolderLevel(${i})" style="color:#4f46e5;text-decoration:underline">${dtEscape(f.name)}</a><span style="color:#94a3b8"> / </span>`;
+  }).join('');
+}
+
+function dmsJumpToFolderLevel(i) {
+  _dmsFolderStack = _dmsFolderStack.slice(0, i + 1);
+  const target = _dmsFolderStack[_dmsFolderStack.length - 1];
+  dmsBrowseFolder(target.id, target.name, 'jump');
+}
+
+// mode: 'reset' (new top-level browse — client root or a department, default),
+// 'push' (drill into a subfolder row — appends to the breadcrumb),
+// 'jump' (breadcrumb click / refresh — stack already set by the caller).
+async function dmsBrowseFolder(folderId, folderName, mode) {
   if (!_dmsSelectedClient) return;
+  if (mode === 'push') _dmsFolderStack.push({ id: folderId, name: folderName });
+  else if (mode !== 'jump') _dmsFolderStack = [{ id: folderId, name: folderName }];
   _dmsBrowseFolderId = folderId;
   _dmsBrowseFolderName = folderName;
-  document.getElementById('dmsBrowserFolderName').textContent = folderName;
+  dmsRenderFolderCrumb();
   const searchInput = document.getElementById('dmsFileSearch');
   if (searchInput) searchInput.value = '';
   document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Loading files…</div>';
@@ -17521,7 +17541,7 @@ async function dmsBrowseFolder(folderId, folderName) {
             const emoji = icons[f.mimeType] || '📄';
             const isFolder = f.mimeType === 'application/vnd.google-apps.folder';
             return `
-          <tr class="dms-file-card" data-id="${f.id}" data-name="${dtEscape(f.name)}" data-link="${dtEscape(f.webViewLink)}" onclick="dmsFileCardClick(event)" style="cursor:pointer;border-bottom:1px solid #f1f5f9;transition:background .1s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
+          <tr class="dms-file-card" data-id="${f.id}" data-name="${dtEscape(f.name)}" data-link="${dtEscape(f.webViewLink)}" data-is-folder="${isFolder ? '1' : '0'}" onclick="dmsFileCardClick(event)" style="cursor:pointer;border-bottom:1px solid #f1f5f9;transition:background .1s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
             <td style="padding:8px 12px">
               <div style="display:flex;align-items:center;gap:8px;min-width:0">
                 ${f.thumbnailLink
@@ -17548,7 +17568,12 @@ async function dmsBrowseFolder(folderId, folderName) {
 
 function dmsFileCardClick(event) {
   if (event.target.closest('.dms-file-menu-btn') || event.target.closest('.dms-file-menu')) return;
-  window.open(event.currentTarget.dataset.link, '_blank', 'noopener');
+  const row = event.currentTarget;
+  if (row.dataset.isFolder === '1') {
+    dmsBrowseFolder(row.dataset.id, row.dataset.name, 'push');
+    return;
+  }
+  window.open(row.dataset.link, '_blank', 'noopener');
 }
 
 function dmsFileMenuToggle(event) {
