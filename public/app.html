@@ -17346,28 +17346,87 @@ async function dmsBrowseFolder(folderId, folderName) {
     document.getElementById('dmsFileList').innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px">
         ${files.map(f => {
-          const modDate = f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString(undefined,{month:'short',day:'numeric'}) : '';
+          const modWhen = f.modifiedTime ? new Date(f.modifiedTime).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+          const modBy = f.modified_by ? dtEscape(f.modified_by) : '';
+          const metaLine = modBy && modWhen ? `${modBy} · ${modWhen}` : (modWhen || '');
           const bg = iconBg[f.mimeType] || '#f8fafc';
           const emoji = icons[f.mimeType] || '📄';
           return `
-          <a href="${f.webViewLink}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;display:block;background:#fff;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 2px 10px rgba(0,0,0,.08)'" onmouseout="this.style.boxShadow='none'">
+          <div class="dms-file-card" data-id="${f.id}" data-name="${dtEscape(f.name)}" data-link="${dtEscape(f.webViewLink)}" onclick="dmsFileCardClick(event)" style="cursor:pointer;position:relative;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;display:block;background:#fff;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 2px 10px rgba(0,0,0,.08)'" onmouseout="this.style.boxShadow='none'">
             <div style="padding:10px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #f1f5f9">
               <span style="font-size:15px">${emoji}</span>
-              <span style="font-size:12.5px;font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dtEscape(f.name)}</span>
+              <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dtEscape(f.name)}</span>
+              ${canCreate ? `<button class="dms-file-menu-btn" onclick="event.stopPropagation();dmsFileMenuToggle(event)" style="border:none;background:none;color:#94a3b8;font-size:16px;line-height:1;cursor:pointer;padding:2px 4px;flex-shrink:0">⋮</button>` : ''}
             </div>
             <div style="height:110px;background:${bg};display:flex;align-items:center;justify-content:center;position:relative">
               ${f.thumbnailLink
                 ? `<img src="${f.thumbnailLink}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span style="display:none;font-size:34px;position:absolute;inset:0;align-items:center;justify-content:center">${emoji}</span>`
                 : `<span style="font-size:34px">${emoji}</span>`}
             </div>
-            <div style="padding:8px 12px;font-size:11px;color:#94a3b8">${modDate ? `Modified · ${modDate}` : ''}</div>
-          </a>
+            <div style="padding:8px 12px;font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${metaLine}</div>
+          </div>
         `;}).join('')}
       </div>
     `;
   } catch (e) {
     document.getElementById('dmsFileList').innerHTML = `<div style="color:#dc2626;font-size:13px">Error: ${dtEscape(e.message)}</div>`;
   }
+}
+
+function dmsFileCardClick(event) {
+  if (event.target.closest('.dms-file-menu-btn') || event.target.closest('.dms-file-menu')) return;
+  window.open(event.currentTarget.dataset.link, '_blank', 'noopener');
+}
+
+function dmsFileMenuToggle(event) {
+  document.querySelectorAll('.dms-file-menu').forEach(m => m.remove());
+  const btn = event.currentTarget;
+  const card = btn.closest('.dms-file-card');
+  card.style.position = 'relative';
+  const menu = document.createElement('div');
+  menu.className = 'dms-file-menu';
+  menu.style.cssText = 'position:absolute;top:34px;right:8px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:10;min-width:110px;overflow:hidden';
+  const renameBtn = document.createElement('button');
+  renameBtn.textContent = '✏️ Rename';
+  renameBtn.style.cssText = 'display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;font-size:12.5px;color:#334155;cursor:pointer';
+  renameBtn.onclick = e => { e.stopPropagation(); menu.remove(); dmsRenameFile(card.dataset.id); };
+  const delBtn = document.createElement('button');
+  delBtn.textContent = '🗑 Delete';
+  delBtn.style.cssText = 'display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;font-size:12.5px;color:#dc2626;cursor:pointer';
+  delBtn.onclick = e => { e.stopPropagation(); menu.remove(); dmsDeleteFile(card.dataset.id); };
+  menu.appendChild(renameBtn);
+  menu.appendChild(delBtn);
+  card.appendChild(menu);
+  setTimeout(() => {
+    const closeOnOutside = e => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeOnOutside); } };
+    document.addEventListener('click', closeOnOutside);
+  }, 0);
+}
+
+async function dmsRenameFile(fileId) {
+  const card = document.querySelector(`.dms-file-card[data-id="${fileId}"]`);
+  if (!card || !_dmsSelectedClient || !_dmsBrowseFolderId) return;
+  const oldName = card.dataset.name;
+  const newName = prompt('Rename to:', oldName);
+  if (!newName || !newName.trim() || newName === oldName) return;
+  try {
+    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/files/${fileId}`, 'PATCH', { name: newName.trim() });
+    if (r?.error) { showToast(r.error); return; }
+    showToast('Renamed');
+    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName);
+  } catch (e) { showToast('Rename failed: ' + e.message); }
+}
+
+async function dmsDeleteFile(fileId) {
+  const card = document.querySelector(`.dms-file-card[data-id="${fileId}"]`);
+  if (!card || !_dmsSelectedClient || !_dmsBrowseFolderId) return;
+  if (!await appConfirm(`Delete "${card.dataset.name}"? It will be moved to Drive's Trash and can be recovered from there for 30 days.`, 'Delete file?')) return;
+  try {
+    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/files/${fileId}`, 'DELETE');
+    if (r?.error) { showToast(r.error); return; }
+    showToast('Deleted');
+    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName);
+  } catch (e) { showToast('Delete failed: ' + e.message); }
 }
 
 async function dmsBulkSetup() {

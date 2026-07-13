@@ -653,6 +653,22 @@ async function getDriveClient() {
   return _driveClient;
 }
 
+function _dmsServiceAccountEmail() {
+  return _dmsCreds().client_email;
+}
+
+// Records who did what through the app (Drive itself only ever sees our
+// single shared service account, so this is the only per-user attribution
+// available for app-driven creates/renames/deletes).
+async function _dmsLogActivity(fileId, action, fileName, req) {
+  try {
+    await db.query(
+      'INSERT INTO dms_file_activity (file_id, action, file_name, user_id, user_name) VALUES (?,?,?,?,?)',
+      [fileId, action, fileName || null, req.session.userId, req.session.name || '']
+    );
+  } catch (e) { console.error('DMS activity log failed:', e.message); }
+}
+
 async function dmsCreateFolder(name, parentId) {
   const drive = await getDriveClient();
   const res = await drive.files.create({
@@ -681,12 +697,43 @@ async function dmsListFiles(folderId) {
   const drive = await getDriveClient();
   const res = await drive.files.list({
     q: `'${folderId}' in parents and trashed = false`,
-    fields: 'files(id,name,mimeType,webViewLink,modifiedTime,thumbnailLink,iconLink)',
+    fields: 'files(id,name,mimeType,webViewLink,modifiedTime,thumbnailLink,iconLink,lastModifyingUser(displayName,emailAddress))',
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
     orderBy: 'modifiedTime desc',
   });
-  return res.data.files || [];
+  const files = res.data.files || [];
+  if (!files.length) return files;
+
+  // For files whose last change came through the app (Drive reports our
+  // shared service account as the editor), resolve the real app user from
+  // our own activity log instead of showing the generic service-account name.
+  const svcEmail = _dmsServiceAccountEmail();
+  const appEditedIds = files
+    .filter(f => f.lastModifyingUser?.emailAddress === svcEmail)
+    .map(f => f.id);
+  let latestByFile = {};
+  if (appEditedIds.length) {
+    const [rows] = await db.query(
+      `SELECT file_id, action, user_name, created_at FROM dms_file_activity
+       WHERE file_id IN (${appEditedIds.map(()=>'?').join(',')})
+       ORDER BY created_at DESC`,
+      appEditedIds
+    ).catch(() => [[]]);
+    for (const r of rows) { if (!latestByFile[r.file_id]) latestByFile[r.file_id] = r; }
+  }
+  for (const f of files) {
+    const log = latestByFile[f.id];
+    if (log) {
+      f.modified_by = log.user_name;
+      f.modified_via = 'app';
+    } else if (f.lastModifyingUser) {
+      f.modified_by = f.lastModifyingUser.displayName || f.lastModifyingUser.emailAddress;
+      f.modified_via = f.lastModifyingUser.emailAddress === svcEmail ? 'app' : 'drive';
+    }
+    delete f.lastModifyingUser;
+  }
+  return files;
 }
 
 const DMS_MIME_TYPES = {
@@ -704,7 +751,7 @@ async function dmsCreateFile(name, kind, parentId) {
     fields: 'id,webViewLink',
     supportsAllDrives: true,
   });
-  return res.data.webViewLink;
+  return res.data; // { id, webViewLink }
 }
 
 async function dmsUploadFile(name, mimeType, buffer, parentId) {
@@ -3886,6 +3933,19 @@ const _clientsTableMigrationsPromise = (async () => {
     UNIQUE KEY uq_client_dept (client_id, department_name),
     INDEX idx_cdf_client (client_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  // Who-did-what log for DMS files created/renamed/deleted through the app
+  // (Drive itself only ever sees our single shared service account, so this
+  // is the only way to attribute an app-driven change to a real staff member).
+  await sa(`CREATE TABLE IF NOT EXISTS dms_file_activity (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    file_id VARCHAR(255) NOT NULL,
+    action VARCHAR(20) NOT NULL,
+    file_name VARCHAR(500) DEFAULT NULL,
+    user_id INT NOT NULL,
+    user_name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_dfa_file (file_id, created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
   console.log('  ✅ Daily Task + Meetings tables ready');
 })();
@@ -6827,8 +6887,9 @@ app.post('/api/clients/:id/dms/folders/:folderId/files', requireAuth, requireAdm
     const kind = (req.body.kind || '').toLowerCase();
     if (!name) return res.status(400).json({ error: 'name required' });
     if (!DMS_MIME_TYPES[kind]) return res.status(400).json({ error: 'kind must be doc, sheet, or slide' });
-    const webViewLink = await dmsCreateFile(name, kind, folderId);
-    res.json({ success: true, web_view_link: webViewLink });
+    const file = await dmsCreateFile(name, kind, folderId);
+    await _dmsLogActivity(file.id, 'created', name, req);
+    res.json({ success: true, id: file.id, web_view_link: file.webViewLink });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -6846,7 +6907,46 @@ app.post('/api/clients/:id/dms/folders/:folderId/upload', requireAuth, requireAd
     ].filter(Boolean));
     if (!validIds.has(folderId)) return res.status(403).json({ error: 'Folder does not belong to this client' });
     const file = await dmsUploadFile(req.file.originalname, req.file.mimetype, req.file.buffer, folderId);
+    await _dmsLogActivity(file.id, 'uploaded', req.file.originalname, req);
     res.json({ success: true, id: file.id, web_view_link: file.webViewLink });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+async function _dmsValidFolderIds(clientId) {
+  const [[clientRow]] = await db.query('SELECT drive_folder_id FROM clients WHERE id=?', [clientId]);
+  const [deptRows] = await db.query(
+    'SELECT drive_folder_id FROM client_department_folders WHERE client_id=?', [clientId]);
+  return new Set([clientRow?.drive_folder_id, ...deptRows.map(r => r.drive_folder_id)].filter(Boolean));
+}
+
+// Rename a file/folder in a client's Drive folder
+app.patch('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const { id, folderId, fileId } = req.params;
+    const name = (req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const validIds = await _dmsValidFolderIds(id);
+    if (!validIds.has(folderId)) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    const drive = await getDriveClient();
+    await drive.files.update({ fileId, requestBody: { name }, supportsAllDrives: true });
+    await _dmsLogActivity(fileId, 'renamed', name, req);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Delete (trash) a file/folder in a client's Drive folder — moves to Drive's
+// Trash rather than a permanent delete, so it stays recoverable.
+app.delete('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const { id, folderId, fileId } = req.params;
+    const validIds = await _dmsValidFolderIds(id);
+    if (!validIds.has(folderId)) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    const drive = await getDriveClient();
+    let name = null;
+    try { const meta = await drive.files.get({ fileId, fields: 'name', supportsAllDrives: true }); name = meta.data.name; } catch {}
+    await drive.files.update({ fileId, requestBody: { trashed: true }, supportsAllDrives: true });
+    await _dmsLogActivity(fileId, 'deleted', name, req);
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
