@@ -660,11 +660,11 @@ function _dmsServiceAccountEmail() {
 // Records who did what through the app (Drive itself only ever sees our
 // single shared service account, so this is the only per-user attribution
 // available for app-driven creates/renames/deletes).
-async function _dmsLogActivity(fileId, action, fileName, req) {
+async function _dmsLogActivity(fileId, action, fileName, req, clientId) {
   try {
     await db.query(
-      'INSERT INTO dms_file_activity (file_id, action, file_name, user_id, user_name) VALUES (?,?,?,?,?)',
-      [fileId, action, fileName || null, req.session.userId, req.session.name || '']
+      'INSERT INTO dms_file_activity (file_id, client_id, action, file_name, user_id, user_name) VALUES (?,?,?,?,?,?)',
+      [fileId, clientId || null, action, fileName || null, req.session.userId, req.session.name || '']
     );
   } catch (e) { console.error('DMS activity log failed:', e.message); }
 }
@@ -3956,6 +3956,11 @@ const _clientsTableMigrationsPromise = (async () => {
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_dfa_file (file_id, created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  // client_id lets the DMS "Clients" root table show "last activity anywhere
+  // in this client's folder" — Drive's own folder modifiedTime does NOT bump
+  // when a child file is added/changed, so that alone can't drive this.
+  await sa(`ALTER TABLE dms_file_activity ADD COLUMN client_id INT DEFAULT NULL AFTER file_id`);
+  await sa(`ALTER TABLE dms_file_activity ADD INDEX idx_dfa_client (client_id, created_at)`);
 
   console.log('  ✅ Daily Task + Meetings tables ready');
 })();
@@ -6798,7 +6803,7 @@ app.post('/api/admin/dms/bulk-setup', requireAuth, requireAdmin, async (req, res
       try {
         const folder = await dmsCreateFolder(c.name, rootFolderId);
         await db.query('UPDATE clients SET drive_folder_id=? WHERE id=?', [folder.id, c.id]);
-        await _dmsLogActivity(folder.id, 'created', c.name, req);
+        await _dmsLogActivity(folder.id, 'created', c.name, req, c.id);
         created++;
       } catch (e) { errors.push(`${c.name}: ${e.message}`); }
     }
@@ -6817,6 +6822,25 @@ app.get('/api/admin/dms/root-files', requireAuth, requireAdmin, async (req, res)
     const [clients] = await db.query("SELECT id, drive_folder_id FROM clients WHERE drive_folder_id IS NOT NULL AND drive_folder_id != ''");
     const byFolderId = Object.fromEntries(clients.map(c => [c.drive_folder_id, c.id]));
     for (const f of files) { const cid = byFolderId[f.id]; if (cid) f.client_id = cid; }
+
+    // Prefer "last activity anywhere in this client's folder" from our own
+    // log over the Drive folder's own modifiedTime — Drive never bumps a
+    // folder's timestamp when a file inside it is added/changed.
+    const clientIds = Object.values(byFolderId);
+    if (clientIds.length) {
+      const [rows] = await db.query(
+        `SELECT client_id, user_name, created_at FROM dms_file_activity
+         WHERE client_id IN (${clientIds.map(()=>'?').join(',')})
+         ORDER BY created_at DESC`,
+        clientIds
+      ).catch(() => [[]]);
+      const latestByClient = {};
+      for (const r of rows) { if (!latestByClient[r.client_id]) latestByClient[r.client_id] = r; }
+      for (const f of files) {
+        const log = f.client_id && latestByClient[f.client_id];
+        if (log) { f.modified_by = log.user_name; f.modifiedTime = log.created_at; }
+      }
+    }
     res.json(files);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -6834,7 +6858,7 @@ app.post('/api/clients/:id/dms/setup', requireAuth, requireAdminOrPC, async (req
     }
     const folder = await dmsCreateFolder(client.name, rootFolderId);
     await db.query('UPDATE clients SET drive_folder_id=? WHERE id=?', [folder.id, id]);
-    await _dmsLogActivity(folder.id, 'created', client.name, req);
+    await _dmsLogActivity(folder.id, 'created', client.name, req, id);
     res.json({ success: true, drive_folder_id: folder.id, web_view_link: folder.webViewLink });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -6915,7 +6939,7 @@ app.post('/api/clients/:id/dms/folders/:folderId/files', requireAuth, requireAdm
     if (!name) return res.status(400).json({ error: 'name required' });
     if (!DMS_MIME_TYPES[kind]) return res.status(400).json({ error: 'kind must be doc, sheet, or slide' });
     const file = await dmsCreateFile(name, kind, folderId);
-    await _dmsLogActivity(file.id, 'created', name, req);
+    await _dmsLogActivity(file.id, 'created', name, req, id);
     res.json({ success: true, id: file.id, web_view_link: file.webViewLink });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -6934,7 +6958,7 @@ app.post('/api/clients/:id/dms/folders/:folderId/upload', requireAuth, requireAd
     ].filter(Boolean));
     if (!validIds.has(folderId)) return res.status(403).json({ error: 'Folder does not belong to this client' });
     const file = await dmsUploadFile(req.file.originalname, req.file.mimetype, req.file.buffer, folderId);
-    await _dmsLogActivity(file.id, 'uploaded', req.file.originalname, req);
+    await _dmsLogActivity(file.id, 'uploaded', req.file.originalname, req, id);
     res.json({ success: true, id: file.id, web_view_link: file.webViewLink });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -6956,7 +6980,7 @@ app.patch('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, r
     if (!validIds.has(folderId)) return res.status(403).json({ error: 'Folder does not belong to this client' });
     const drive = await getDriveClient();
     await drive.files.update({ fileId, requestBody: { name }, supportsAllDrives: true });
-    await _dmsLogActivity(fileId, 'renamed', name, req);
+    await _dmsLogActivity(fileId, 'renamed', name, req, id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -6972,7 +6996,7 @@ app.delete('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, 
     let name = null;
     try { const meta = await drive.files.get({ fileId, fields: 'name', supportsAllDrives: true }); name = meta.data.name; } catch {}
     await drive.files.update({ fileId, requestBody: { trashed: true }, supportsAllDrives: true });
-    await _dmsLogActivity(fileId, 'deleted', name, req);
+    await _dmsLogActivity(fileId, 'deleted', name, req, id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

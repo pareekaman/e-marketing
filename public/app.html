@@ -2632,6 +2632,23 @@ input:focus,select:focus,textarea:focus{outline:none;}
     </div>
   </div>
 
+  <!-- DMS: Rename file/folder modal -->
+  <div class="modal-overlay" id="dmsRenameModal">
+    <div class="modal" style="width:420px">
+      <button class="modal-close" onclick="closeModal('dmsRenameModal')">×</button>
+      <h3>Rename</h3>
+      <div class="alert error" id="dmsRenameErr" style="display:none"></div>
+      <div class="form-group">
+        <label>New name *</label>
+        <input type="text" id="dmsRenameInput" style="width:100%;box-sizing:border-box" onkeydown="if(event.key==='Enter'){event.preventDefault();dmsRenameConfirm();}"/>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('dmsRenameModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="dmsRenameConfirm()">Rename</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════════════════════════════════
        INVENTORY PAGE
   ══════════════════════════════════════ -->
@@ -17453,18 +17470,32 @@ function dmsFileMenuToggle(event) {
   }, 0);
 }
 
-async function dmsRenameFile(fileId) {
+let _dmsRenameFileId = null;
+
+function dmsRenameFile(fileId) {
   const card = document.querySelector(`.dms-file-card[data-id="${fileId}"]`);
   if (!card || !_dmsSelectedClient || !_dmsBrowseFolderId) return;
-  const oldName = card.dataset.name;
-  const newName = prompt('Rename to:', oldName);
-  if (!newName || !newName.trim() || newName === oldName) return;
+  _dmsRenameFileId = fileId;
+  document.getElementById('dmsRenameErr').style.display = 'none';
+  const input = document.getElementById('dmsRenameInput');
+  input.value = card.dataset.name;
+  document.getElementById('dmsRenameModal').classList.add('open');
+  setTimeout(() => { input.focus(); input.select(); }, 0);
+}
+
+async function dmsRenameConfirm() {
+  const errEl = document.getElementById('dmsRenameErr');
+  errEl.style.display = 'none';
+  const newName = document.getElementById('dmsRenameInput').value.trim();
+  if (!newName) { errEl.textContent = 'Name is required'; errEl.style.display = 'block'; return; }
+  if (!_dmsRenameFileId || !_dmsSelectedClient || !_dmsBrowseFolderId) { closeModal('dmsRenameModal'); return; }
   try {
-    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/files/${fileId}`, 'PATCH', { name: newName.trim() });
-    if (r?.error) { showToast(r.error); return; }
+    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/files/${_dmsRenameFileId}`, 'PATCH', { name: newName });
+    if (r?.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+    closeModal('dmsRenameModal');
     showToast('Renamed');
     dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName);
-  } catch (e) { showToast('Rename failed: ' + e.message); }
+  } catch (e) { errEl.textContent = 'Rename failed: ' + e.message; errEl.style.display = 'block'; }
 }
 
 async function dmsDeleteFile(fileId) {
