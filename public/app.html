@@ -17244,17 +17244,16 @@ function dmsRenderClientList() {
       <thead>
         <tr style="border-bottom:1.5px solid #e2e8f0;color:#64748b;text-align:left">
           <th style="padding:8px 14px;font-weight:600">Name</th>
-          <th style="padding:8px 14px;font-weight:600">Modified</th>
-          <th style="padding:8px 14px;font-weight:600;text-align:right">Size</th>
+          <th style="padding:8px 14px;font-weight:600">Modified by</th>
+          <th style="padding:8px 14px;font-weight:600">Date modified</th>
           <th style="width:36px"></th>
         </tr>
       </thead>
       <tbody>
         ${sorted.map(c => {
           const d = c._drive;
-          const modWhen = d?.modifiedTime ? new Date(d.modifiedTime).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
-          const modBy = d?.modified_by ? dtEscape(d.modified_by) : '';
-          const metaLine = modBy && modWhen ? `${modBy} · ${modWhen}` : (modWhen || '—');
+          const modWhen = d?.modifiedTime ? new Date(d.modifiedTime).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
+          const modBy = d?.modified_by ? dtEscape(d.modified_by) : '—';
           return `
         <tr class="dms-client-row" data-id="${c.id}" data-name="${dtEscape(c.name.toLowerCase())}"
              onclick="dmsSelectClient(${c.id})"
@@ -17265,8 +17264,8 @@ function dmsRenderClientList() {
               <span style="font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dtEscape(c.name)}</span>
             </div>
           </td>
-          <td style="padding:8px 14px;color:#64748b;white-space:nowrap">${metaLine}</td>
-          <td style="padding:8px 14px;color:#64748b;text-align:right">—</td>
+          <td style="padding:8px 14px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0">${modBy}</td>
+          <td style="padding:8px 14px;color:#64748b;white-space:nowrap">${modWhen}</td>
           <td></td>
         </tr>
       `;}).join('')}

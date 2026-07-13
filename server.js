@@ -695,14 +695,24 @@ async function dmsShareFolder(folderId, email, role = 'writer') {
 
 async function dmsListFiles(folderId) {
   const drive = await getDriveClient();
-  const res = await drive.files.list({
-    q: `'${folderId}' in parents and trashed = false`,
-    fields: 'files(id,name,mimeType,webViewLink,modifiedTime,thumbnailLink,iconLink,size,lastModifyingUser(displayName,emailAddress))',
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
-    orderBy: 'folder,name',
-  });
-  const files = res.data.files || [];
+  // Drive caps a single list() response at 1000 items and won't paginate on
+  // its own — loop through nextPageToken so folders with 100+ children (like
+  // the DMS root, one per client) don't silently drop the tail alphabetically.
+  const files = [];
+  let pageToken;
+  do {
+    const res = await drive.files.list({
+      q: `'${folderId}' in parents and trashed = false`,
+      fields: 'nextPageToken,files(id,name,mimeType,webViewLink,modifiedTime,thumbnailLink,iconLink,size,lastModifyingUser(displayName,emailAddress))',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+      orderBy: 'folder,name',
+      pageSize: 1000,
+      pageToken,
+    });
+    files.push(...(res.data.files || []));
+    pageToken = res.data.nextPageToken;
+  } while (pageToken);
   if (!files.length) return files;
 
   // For files whose last change came through the app (Drive reports our
@@ -6788,6 +6798,7 @@ app.post('/api/admin/dms/bulk-setup', requireAuth, requireAdmin, async (req, res
       try {
         const folder = await dmsCreateFolder(c.name, rootFolderId);
         await db.query('UPDATE clients SET drive_folder_id=? WHERE id=?', [folder.id, c.id]);
+        await _dmsLogActivity(folder.id, 'created', c.name, req);
         created++;
       } catch (e) { errors.push(`${c.name}: ${e.message}`); }
     }
@@ -6823,6 +6834,7 @@ app.post('/api/clients/:id/dms/setup', requireAuth, requireAdminOrPC, async (req
     }
     const folder = await dmsCreateFolder(client.name, rootFolderId);
     await db.query('UPDATE clients SET drive_folder_id=? WHERE id=?', [folder.id, id]);
+    await _dmsLogActivity(folder.id, 'created', client.name, req);
     res.json({ success: true, drive_folder_id: folder.id, web_view_link: folder.webViewLink });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
