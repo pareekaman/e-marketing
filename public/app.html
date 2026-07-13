@@ -17276,6 +17276,9 @@ async function dmsSelectClient(id) {
       const driveUrl = `https://drive.google.com/drive/folders/${data.drive_folder_id}`;
       document.getElementById('dmsFolderLink').innerHTML =
         `<a href="${driveUrl}" target="_blank" style="color:#4f46e5;font-size:12px;text-decoration:none">Open in Google Drive ↗</a>`;
+      // Browse the client's own root folder immediately — department folders
+      // are an optional extra layer, not a requirement to see any files.
+      dmsBrowseFolder(data.drive_folder_id, _dmsSelectedClient.name);
     }
 
     if (!data.drive_folder_id) {
@@ -17326,6 +17329,15 @@ function dmsRenderDepts(depts, clientId, hasDriveFolder) {
   `).join('');
 }
 
+function _dmsFmtSize(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  const units = ['B','KB','MB','GB'];
+  let i = 0, v = n;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v < 10 && i > 0 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+}
+
 async function dmsBrowseFolder(folderId, folderName) {
   if (!_dmsSelectedClient) return;
   _dmsBrowseFolderId = folderId;
@@ -17342,31 +17354,42 @@ async function dmsBrowseFolder(folderId, folderName) {
       return;
     }
     const icons = { 'application/vnd.google-apps.document':'📄', 'application/vnd.google-apps.spreadsheet':'📊', 'application/vnd.google-apps.presentation':'📑', 'application/vnd.google-apps.folder':'📁' };
-    const iconBg = { 'application/vnd.google-apps.document':'#eff6ff', 'application/vnd.google-apps.spreadsheet':'#f0fdf4', 'application/vnd.google-apps.presentation':'#fff7ed', 'application/vnd.google-apps.folder':'#fefce8' };
     document.getElementById('dmsFileList').innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px">
-        ${files.map(f => {
-          const modWhen = f.modifiedTime ? new Date(f.modifiedTime).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
-          const modBy = f.modified_by ? dtEscape(f.modified_by) : '';
-          const metaLine = modBy && modWhen ? `${modBy} · ${modWhen}` : (modWhen || '');
-          const bg = iconBg[f.mimeType] || '#f8fafc';
-          const emoji = icons[f.mimeType] || '📄';
-          return `
-          <div class="dms-file-card" data-id="${f.id}" data-name="${dtEscape(f.name)}" data-link="${dtEscape(f.webViewLink)}" onclick="dmsFileCardClick(event)" style="cursor:pointer;position:relative;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;display:block;background:#fff;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 2px 10px rgba(0,0,0,.08)'" onmouseout="this.style.boxShadow='none'">
-            <div style="padding:10px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #f1f5f9">
-              <span style="font-size:15px">${emoji}</span>
-              <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dtEscape(f.name)}</span>
-              ${canCreate ? `<button class="dms-file-menu-btn" onclick="event.stopPropagation();dmsFileMenuToggle(event)" style="border:none;background:none;color:#94a3b8;font-size:16px;line-height:1;cursor:pointer;padding:2px 4px;flex-shrink:0">⋮</button>` : ''}
-            </div>
-            <div style="height:110px;background:${bg};display:flex;align-items:center;justify-content:center;position:relative">
-              ${f.thumbnailLink
-                ? `<img src="${f.thumbnailLink}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span style="display:none;font-size:34px;position:absolute;inset:0;align-items:center;justify-content:center">${emoji}</span>`
-                : `<span style="font-size:34px">${emoji}</span>`}
-            </div>
-            <div style="padding:8px 12px;font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${metaLine}</div>
-          </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <thead>
+          <tr style="border-bottom:1.5px solid #e2e8f0;color:#64748b;text-align:left">
+            <th style="padding:8px 12px;font-weight:600">Name</th>
+            <th style="padding:8px 12px;font-weight:600">Modified</th>
+            <th style="padding:8px 12px;font-weight:600;text-align:right">Size</th>
+            <th style="width:36px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${files.map(f => {
+            const modWhen = f.modifiedTime ? new Date(f.modifiedTime).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+            const modBy = f.modified_by ? dtEscape(f.modified_by) : '';
+            const metaLine = modBy && modWhen ? `${modBy} · ${modWhen}` : (modWhen || '—');
+            const emoji = icons[f.mimeType] || '📄';
+            const isFolder = f.mimeType === 'application/vnd.google-apps.folder';
+            return `
+          <tr class="dms-file-card" data-id="${f.id}" data-name="${dtEscape(f.name)}" data-link="${dtEscape(f.webViewLink)}" onclick="dmsFileCardClick(event)" style="cursor:pointer;border-bottom:1px solid #f1f5f9;transition:background .1s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
+            <td style="padding:8px 12px">
+              <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                ${f.thumbnailLink
+                  ? `<img src="${f.thumbnailLink}" alt="" style="width:20px;height:20px;object-fit:cover;border-radius:3px;flex-shrink:0" onerror="this.outerHTML='<span style=\\'font-size:15px\\'>${emoji}</span>'">`
+                  : `<span style="font-size:15px;flex-shrink:0">${emoji}</span>`}
+                <span style="font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dtEscape(f.name)}</span>
+              </div>
+            </td>
+            <td style="padding:8px 12px;color:#64748b;white-space:nowrap">${metaLine}</td>
+            <td style="padding:8px 12px;color:#64748b;text-align:right">${isFolder ? '—' : _dmsFmtSize(f.size)}</td>
+            <td style="padding:8px 12px;text-align:right;position:relative">
+              ${canCreate ? `<button class="dms-file-menu-btn" onclick="event.stopPropagation();dmsFileMenuToggle(event)" style="border:none;background:none;color:#94a3b8;font-size:16px;line-height:1;cursor:pointer;padding:2px 4px">⋮</button>` : ''}
+            </td>
+          </tr>
         `;}).join('')}
-      </div>
+        </tbody>
+      </table>
     `;
   } catch (e) {
     document.getElementById('dmsFileList').innerHTML = `<div style="color:#dc2626;font-size:13px">Error: ${dtEscape(e.message)}</div>`;
@@ -17382,10 +17405,10 @@ function dmsFileMenuToggle(event) {
   document.querySelectorAll('.dms-file-menu').forEach(m => m.remove());
   const btn = event.currentTarget;
   const card = btn.closest('.dms-file-card');
-  card.style.position = 'relative';
+  const anchor = btn.parentElement; // action <td> — already position:relative
   const menu = document.createElement('div');
   menu.className = 'dms-file-menu';
-  menu.style.cssText = 'position:absolute;top:34px;right:8px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:10;min-width:110px;overflow:hidden';
+  menu.style.cssText = 'position:absolute;top:30px;right:8px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:10;min-width:110px;overflow:hidden;text-align:left';
   const renameBtn = document.createElement('button');
   renameBtn.textContent = '✏️ Rename';
   renameBtn.style.cssText = 'display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;font-size:12.5px;color:#334155;cursor:pointer';
@@ -17396,7 +17419,7 @@ function dmsFileMenuToggle(event) {
   delBtn.onclick = e => { e.stopPropagation(); menu.remove(); dmsDeleteFile(card.dataset.id); };
   menu.appendChild(renameBtn);
   menu.appendChild(delBtn);
-  card.appendChild(menu);
+  anchor.appendChild(menu);
   setTimeout(() => {
     const closeOnOutside = e => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeOnOutside); } };
     document.addEventListener('click', closeOnOutside);
