@@ -430,6 +430,7 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN offer_drive_id VARCHAR(500) DEFAULT NULL`);
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN offer_token VARCHAR(64) DEFAULT NULL`);
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN offer_html MEDIUMTEXT DEFAULT NULL`);
+  await sa(`ALTER TABLE hrm_message_log ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL`);
 
   // Per-user permissions column (replaces role_permissions)
   await sa(`ALTER TABLE users ADD COLUMN user_permissions TEXT DEFAULT NULL AFTER extra_access`);
@@ -630,36 +631,25 @@ async function getSheetsClient(scopes) {
 })();
 
 // ══════════════════════════════════════════════════════
-// GOOGLE DRIVE HELPERS (DMS) — OAuth 2.0 dedicated account
+// GOOGLE DRIVE HELPERS (DMS) — same service account as Sheets/Calendar
+// (GOOGLE_CREDENTIALS). The root DMS folder must be shared with that
+// service account's client_email (Editor) so it can create/read files
+// inside it — no separate OAuth consent flow needed.
 // ══════════════════════════════════════════════════════
 let _driveClient = null;
 
-function _dmsOAuthClient() {
-  const { google } = require('googleapis');
-  const clientId     = process.env.GOOGLE_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-  const redirectUri  = (process.env.APP_URL || 'http://localhost:3000') + '/api/google/callback';
-  if (!clientId || !clientSecret) throw new Error('GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET not set');
-  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-}
-
-async function _dmsRefreshToken() {
-  // Env var takes priority; DB fallback so Vercel deployments work without redeploy
-  if (process.env.GOOGLE_OAUTH_REFRESH_TOKEN) return process.env.GOOGLE_OAUTH_REFRESH_TOKEN;
-  const [[row]] = await db.query(
-    "SELECT value FROM app_settings WHERE key_name='google_oauth_refresh_token' LIMIT 1"
-  ).catch(() => [[null]]);
-  return row?.value || null;
+function _dmsCreds() {
+  if (process.env.GOOGLE_CREDENTIALS) return JSON.parse(process.env.GOOGLE_CREDENTIALS);
+  // Local-dev fallback — credentials.json file (gitignored, never committed)
+  try { return require('./credentials.json'); }
+  catch (e) { throw new Error('Google credentials missing — set GOOGLE_CREDENTIALS env var (or place credentials.json locally for dev)'); }
 }
 
 async function getDriveClient() {
   if (_driveClient) return _driveClient;
   const { google } = require('googleapis');
-  const refreshToken = await _dmsRefreshToken();
-  if (!refreshToken) throw new Error('Google Drive not authorized — visit /api/google/auth to connect');
-  const oauth2 = _dmsOAuthClient();
-  oauth2.setCredentials({ refresh_token: refreshToken });
-  _driveClient = google.drive({ version: 'v3', auth: oauth2 });
+  const auth = new google.auth.GoogleAuth({ credentials: _dmsCreds(), scopes: ['https://www.googleapis.com/auth/drive'] });
+  _driveClient = google.drive({ version: 'v3', auth: await auth.getClient() });
   return _driveClient;
 }
 
@@ -6685,53 +6675,18 @@ app.post('/api/clients/:id/login', requireAuth, requireAdminOrPC, async (req, re
 });
 
 // ══════════════════════════════════════════════════════
-// GOOGLE OAUTH — one-time flow to authorize Drive access
+// GOOGLE DRIVE STATUS — service account (GOOGLE_CREDENTIALS) must have
+// Editor access on GOOGLE_DRIVE_ROOT_FOLDER_ID (share the folder with its
+// client_email in the Drive UI). No OAuth consent flow needed.
 // ══════════════════════════════════════════════════════
-
-// Step 1 — admin visits this URL, gets redirected to Google consent screen
-app.get('/api/google/auth', requireAuth, requireAdmin, (req, res) => {
-  try {
-    const oauth2 = _dmsOAuthClient();
-    const url = oauth2.generateAuthUrl({
-      access_type: 'offline',
-      scope: ['https://www.googleapis.com/auth/drive'],
-      prompt: 'consent', // always return refresh_token
-    });
-    res.redirect(url);
-  } catch (e) { res.status(400).send('<p>' + e.message + '</p>'); }
-});
-
-// Step 2 — Google redirects here with ?code=... after admin approves
-app.get('/api/google/callback', async (req, res) => {
-  const { code, error } = req.query;
-  if (error) return res.send(`<p style="font-family:sans-serif;color:#dc2626">Authorization denied: ${error}</p>`);
-  if (!code) return res.status(400).send('<p>Missing code</p>');
-  try {
-    const oauth2 = _dmsOAuthClient();
-    const { tokens } = await oauth2.getToken(code);
-    if (!tokens.refresh_token) {
-      return res.send(`<p style="font-family:sans-serif;color:#b45309">No refresh token returned.<br>
-        Revoke app access at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a> then try again.</p>`);
-    }
-    await db.query(
-      `INSERT INTO app_settings (key_name, value) VALUES ('google_oauth_refresh_token', ?)
-       ON DUPLICATE KEY UPDATE value=?, updated_at=NOW()`,
-      [tokens.refresh_token, tokens.refresh_token]
-    );
-    _driveClient = null; // reset so next call picks up the new token
-    res.send(`<p style="font-family:sans-serif;color:#16a34a;font-size:18px">
-      ✅ Google Drive connected successfully!<br><br>
-      <a href="/app" style="font-size:14px">← Back to app</a></p>`);
-  } catch (e) { res.status(500).send('<p style="color:#dc2626">' + e.message + '</p>'); }
-});
-
-// OAuth status — is Drive connected?
 app.get('/api/google/drive-status', requireAuth, requireAdmin, async (req, res) => {
+  const rootFolderId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
+  if (!rootFolderId) return res.json({ connected: false, reason: 'GOOGLE_DRIVE_ROOT_FOLDER_ID not set' });
   try {
-    const token = await _dmsRefreshToken();
-    const hasClientCreds = !!(process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET);
-    res.json({ connected: !!token, has_client_credentials: hasClientCreds });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const drive = await getDriveClient();
+    await drive.files.get({ fileId: rootFolderId, fields: 'id', supportsAllDrives: true });
+    res.json({ connected: true });
+  } catch (e) { res.json({ connected: false, reason: e.message }); }
 });
 
 // ══════════════════════════════════════════════════════
@@ -6748,21 +6703,35 @@ app.get('/api/clients/:id/dms', requireAuth, requireAdminOrPC, async (req, res) 
     const [depts] = await db.query(
       'SELECT department_name, drive_folder_id FROM client_department_folders WHERE client_id=? ORDER BY department_name',
       [id]);
-    const refreshToken = await _dmsRefreshToken();
-    const drive_configured = !!(
-      process.env.GOOGLE_OAUTH_CLIENT_ID &&
-      process.env.GOOGLE_OAUTH_CLIENT_SECRET &&
-      refreshToken &&
-      process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID
-    );
+    const drive_configured = !!process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
     res.json({
       client_id: client.id,
       client_name: client.name,
       drive_folder_id: client.drive_folder_id || null,
       drive_configured,
-      drive_auth_url: drive_configured ? null : '/api/google/auth',
       departments: depts,
     });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Create Drive folders for every existing client that doesn't have one yet
+// (one-time catch-up after GOOGLE_DRIVE_ROOT_FOLDER_ID is first configured).
+app.post('/api/admin/dms/bulk-setup', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const rootFolderId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
+    if (!rootFolderId) return res.status(400).json({ error: 'GOOGLE_DRIVE_ROOT_FOLDER_ID env var not set' });
+    const [clients] = await db.query(
+      "SELECT id, name FROM clients WHERE COALESCE(is_active,1) != 0 AND (drive_folder_id IS NULL OR drive_folder_id = '')");
+    let created = 0;
+    const errors = [];
+    for (const c of clients) {
+      try {
+        const folder = await dmsCreateFolder(c.name, rootFolderId);
+        await db.query('UPDATE clients SET drive_folder_id=? WHERE id=?', [folder.id, c.id]);
+        created++;
+      } catch (e) { errors.push(`${c.name}: ${e.message}`); }
+    }
+    res.json({ success: true, total: clients.length, created, failed: errors.length, errors });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -9035,8 +9004,18 @@ app.get('/api/hrm/offer-template-preview', requireAuth, async (req, res) => {
 app.get('/api/hrm/messages', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const [rows] = await db.query('SELECT * FROM hrm_message_log ORDER BY created_at DESC LIMIT 500');
+    const [rows] = await db.query('SELECT * FROM hrm_message_log WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500');
     res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Soft-delete a message log entry (hides it from the log; row stays in DB)
+app.delete('/api/hrm/messages/:id', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const [result] = await db.query('UPDATE hrm_message_log SET deleted_at=NOW() WHERE id=? AND deleted_at IS NULL', [req.params.id]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

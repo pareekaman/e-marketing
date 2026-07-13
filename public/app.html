@@ -2538,15 +2538,17 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <span style="font-size:20px">⚠️</span>
       <div style="flex:1">
         <div style="font-weight:600;color:#92400e">Google Drive not connected</div>
-        <div style="font-size:12px;color:#b45309;margin-top:2px">Connect your Google account to enable document management.</div>
+        <div style="font-size:12px;color:#b45309;margin-top:2px">Share the DMS root Drive folder with the service account's email (Editor access), then set GOOGLE_DRIVE_ROOT_FOLDER_ID.</div>
       </div>
-      <a id="dmsAuthLink" href="/api/google/auth" class="btn btn-primary" style="font-size:13px;padding:7px 16px;text-decoration:none">Connect Drive</a>
     </div>
 
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
       <!-- Left panel: client list -->
       <div style="width:240px;flex-shrink:0;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
-        <div style="padding:14px 16px;border-bottom:1px solid #f1f5f9;font-weight:700;font-size:14px;color:#0f172a">Clients</div>
+        <div style="padding:14px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div style="font-weight:700;font-size:14px;color:#0f172a">Clients</div>
+          <button id="dmsBulkSetupBtn" onclick="dmsBulkSetup()" title="Create Drive folders for every existing client that doesn't have one yet" style="display:none;font-size:11px;padding:4px 8px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap">📁 Create missing folders</button>
+        </div>
         <div style="padding:10px">
           <input type="text" id="dmsClientSearch" placeholder="Search..." oninput="dmsFilterClients()" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit"/>
         </div>
@@ -5312,7 +5314,7 @@ function renderHrmMsgTable() {
     const statusCls = m.status==='Sent' ? 'hrm-msg-status-sent' : 'hrm-msg-status-failed';
     const retryBtn = m.status==='Failed'
       ? `<button class="action-btn edit" onclick="retryHrmMsg(${m.id})">Retry</button>` : '';
-    const _d = m.created_at instanceof Date ? m.created_at : new Date(String(m.created_at).replace(' ','T')+'Z');
+    const _d = m.created_at instanceof Date ? m.created_at : new Date(m.created_at);
     const ts = m.created_at && !isNaN(_d) ? _d.toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}) : '';
     return `<tr>
       <td style="font-size:12px;color:#64748b;white-space:nowrap">${ts}</td>
@@ -5321,15 +5323,22 @@ function renderHrmMsgTable() {
       <td><span class="${statusCls}">${m.status}</span></td>
       <td style="font-size:11px;color:#64748b">${m.retry_count>0?`${m.retry_count}×`:''}</td>
       <td>${retryBtn}${m.error_detail?`<div style="font-size:10px;color:#dc2626;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.error_detail)}">${esc(m.error_detail.slice(0,80))}</div>`:''}</td>
+      <td><button class="action-btn" style="color:#dc2626;border-color:#fecaca" title="Delete entry" onclick="deleteHrmMsg(${m.id})">🗑</button></td>
     </tr>`;
   }).join('');
-  el.innerHTML = `<table><thead><tr><th>Time</th><th>Candidate</th><th>Action</th><th>Status</th><th>Retries</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>`;
+  el.innerHTML = `<table><thead><tr><th>Time</th><th>Candidate</th><th>Action</th><th>Status</th><th>Retries</th><th>Detail</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 async function retryHrmMsg(id) {
   const r = await api(`/api/hrm/messages/${id}/retry`,'POST',{});
   if (r.ok) { showToast('Message resent!'); } else { showToast(r.message||'Retry failed','error'); }
   loadHRM();
+}
+
+async function deleteHrmMsg(id) {
+  if (!confirm('Delete this message log entry?')) return;
+  const r = await api(`/api/hrm/messages/${id}`,'DELETE',{});
+  if (r.ok) { showToast('Entry deleted'); loadHRM(); } else { showToast(r.message||r.error||'Delete failed','error'); }
 }
 
 function openHrmAddModal() {
@@ -11936,7 +11945,6 @@ async function cmDmsLoad(clientId) {
   var prevDept = DMS_STATE.activeDept;
   DMS_STATE = { clientId: clientId, files: [], loading: false, activeDept: null,
     drive_configured: data.drive_configured, drive_folder_id: data.drive_folder_id,
-    drive_auth_url: data.drive_auth_url || null,
     departments: data.departments || [] };
   // Keep the previously selected dept active if it still exists, else default to first
   var keepDept = DMS_STATE.departments.find(function(d){ return d.department_name === prevDept; });
@@ -11954,9 +11962,7 @@ function cmDmsRender() {
   if (!box) return;
   var s = DMS_STATE;
   if (!s.drive_configured) {
-    var missingMsg = s.drive_auth_url
-      ? '<a href="' + s.drive_auth_url + '" style="color:#1d4ed8;font-weight:600">Connect Google Drive</a> to enable the document manager.'
-      : 'Set <code>GOOGLE_OAUTH_CLIENT_ID</code>, <code>GOOGLE_OAUTH_CLIENT_SECRET</code>, and <code>GOOGLE_DRIVE_ROOT_FOLDER_ID</code> in environment variables, then visit <code>/api/google/auth</code> to authorize.';
+    var missingMsg = 'Share the DMS root Drive folder with the service account\'s email (Editor access), then set <code>GOOGLE_DRIVE_ROOT_FOLDER_ID</code> in environment variables.';
     box.innerHTML = '<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e">' + missingMsg + '</div>';
     return;
   }
@@ -17195,13 +17201,14 @@ async function loadDMS() {
 
   // Check Drive connection (admin only)
   const banner = document.getElementById('dmsAuthBanner');
+  const bulkBtn = document.getElementById('dmsBulkSetupBtn');
   if (ME.role === 'admin') {
     try {
       const st = await api('/api/google/drive-status');
-      if (!st.connected) { banner.style.display = 'flex'; }
-      else { banner.style.display = 'none'; }
-    } catch { banner.style.display = 'none'; }
-  } else { banner.style.display = 'none'; }
+      banner.style.display = st.connected ? 'none' : 'flex';
+      bulkBtn.style.display = st.connected ? 'inline-block' : 'none';
+    } catch { banner.style.display = 'none'; bulkBtn.style.display = 'none'; }
+  } else { banner.style.display = 'none'; bulkBtn.style.display = 'none'; }
 
   // Load clients
   const [clients] = await Promise.all([
@@ -17361,6 +17368,20 @@ async function dmsBrowseFolder(folderId, folderName) {
   } catch (e) {
     document.getElementById('dmsFileList').innerHTML = `<div style="color:#dc2626;font-size:13px">Error: ${dtEscape(e.message)}</div>`;
   }
+}
+
+async function dmsBulkSetup() {
+  const btn = document.getElementById('dmsBulkSetupBtn');
+  if (!await appConfirm('Create a Drive folder for every existing client that doesn\'t have one yet? This may take a while for a large client list.', 'Create missing folders?')) return;
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const r = await api('/api/admin/dms/bulk-setup', 'POST');
+    if (r.error) { showToast(r.error); return; }
+    showToast(`${r.created}/${r.total} folder(s) created` + (r.failed ? `, ${r.failed} failed` : ''));
+    if (r.failed) console.error('DMS bulk-setup failures:', r.errors);
+    loadDMS();
+  } catch (e) { showToast('Bulk setup failed: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = '📁 Create missing folders'; }
 }
 
 async function dmsSetupFolder() {
