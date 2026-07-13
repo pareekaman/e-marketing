@@ -6969,8 +6969,8 @@ app.post('/api/clients/:id/dms/folders/:folderId/files', requireAuth, requireAdm
     const name = (req.body.name || '').trim();
     const kind = (req.body.kind || '').toLowerCase();
     if (!name) return res.status(400).json({ error: 'name required' });
-    if (!DMS_MIME_TYPES[kind]) return res.status(400).json({ error: 'kind must be doc, sheet, or slide' });
-    const file = await dmsCreateFile(name, kind, folderId);
+    if (kind !== 'folder' && !DMS_MIME_TYPES[kind]) return res.status(400).json({ error: 'kind must be doc, sheet, slide, or folder' });
+    const file = kind === 'folder' ? await dmsCreateFolder(name, folderId) : await dmsCreateFile(name, kind, folderId);
     await _dmsLogActivity(file.id, 'created', name, req, id);
     res.json({ success: true, id: file.id, web_view_link: file.webViewLink });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -9120,6 +9120,14 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
           `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
           [c.id, c.name, hrmFormatPhone(c.phone), 'Offer Letter PDF', 'file', 'Failed', `Drive error: ${e.message}`, '{}']
         ).catch(() => {});
+      }
+
+      // Notify Naman so he can create the official email ID before joining date
+      const [[naman]] = await db.query(`SELECT phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
+      if (naman?.phone) {
+        hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(naman.phone), text:
+`🆕 *New Employee Onboarding*\n\n👤 Name: ${displayName}\n🏢 Position: ${displayPos}\n📅 Joining Date: ${joiningFmt}\n\n⚠️ Please create the official email ID before the joining date.\n\n— HR Portal`
+        }, 'text', c.id, c.name, 'Offer Sent - Naman Notify').catch(e => console.error('HRM WA naman notify err:', e.message));
       }
     }
 
