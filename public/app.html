@@ -3064,6 +3064,10 @@ input:focus,select:focus,textarea:focus{outline:none;}
             <input type="text" id="offerFPosition" oninput="updateOfferPreview()" placeholder="Job title">
           </div>
           <div class="form-group">
+            <label>Department</label>
+            <select id="offerFDepartment"><option value="">--select--</option></select>
+          </div>
+          <div class="form-group">
             <label>Joining Date *</label>
             <input type="date" id="offerFJoining" oninput="updateOfferPreview()">
           </div>
@@ -5229,7 +5233,7 @@ function showInvErr(id, msg) {
 // ══════════════════════════════════════════════════════
 // HRM JS
 // ══════════════════════════════════════════════════════
-let _hrmCandidates = [], _hrmMessages = [], _hrmCurrentId = null;
+let _hrmCandidates = [], _hrmMessages = [], _hrmCurrentId = null, _hrmDepartments = [];
 
 const HRM_STATUS_COLORS = {'Scheduled':'#4f46e5','Rescheduled':'#f59e0b','Selected':'#10b981','Rejected':'#ef4444','Offer Sent':'#7c3aed'};
 const HRM_STATUS_BG = {'Scheduled':'#eff6ff','Rescheduled':'#fffbeb','Selected':'#f0fdf4','Rejected':'#fef2f2','Offer Sent':'#f5f3ff'};
@@ -5562,7 +5566,7 @@ function _hrmOfferHtml(name, position, joining, today) {
   </body></html>`;
 }
 
-function openOfferFormModal(id) {
+async function openOfferFormModal(id) {
   const c = _hrmCandidates.find(x => String(x.id) === String(id));
   if (!c) return;
   _hrmCurrentId = id;
@@ -5570,8 +5574,19 @@ function openOfferFormModal(id) {
   document.getElementById('offerFPosition').value = c.profile_position || '';
   document.getElementById('offerFJoining').value  = c.joining_date ? String(c.joining_date).slice(0,10) : '';
   document.getElementById('offerFSalary').value   = c.salary || '';
+  await loadHrmDepartmentOptions(c.department || '');
   document.getElementById('hrmOfferFormModal').classList.add('open');
   updateOfferPreview();
+}
+
+async function loadHrmDepartmentOptions(selected) {
+  if (!_hrmDepartments.length) {
+    const departments = await api('/api/departments');
+    _hrmDepartments = Array.isArray(departments) ? departments : [];
+  }
+  const sel = document.getElementById('offerFDepartment');
+  sel.innerHTML = '<option value="">--select--</option>' +
+    _hrmDepartments.map(d => `<option value="${esc(d)}" ${d===selected?'selected':''}>${esc(d)}</option>`).join('');
 }
 
 function updateOfferPreview() {
@@ -5591,6 +5606,7 @@ function updateOfferPreview() {
 async function submitOfferForm() {
   const offer_name     = document.getElementById('offerFName').value.trim();
   const offer_position = document.getElementById('offerFPosition').value.trim();
+  const department     = document.getElementById('offerFDepartment').value;
   const joining_date   = document.getElementById('offerFJoining').value;
   const salary         = document.getElementById('offerFSalary').value.trim();
   if (!offer_name)   { showToast('Candidate name required', 'error'); return; }
@@ -5598,7 +5614,7 @@ async function submitOfferForm() {
   const btn = document.getElementById('offerFormSubmitBtn');
   btn.disabled = true; btn.textContent = 'Generating…';
   const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/status`, 'PUT', {
-    status: 'Offer Sent', joining_date, salary, offer_name, offer_position
+    status: 'Offer Sent', joining_date, salary, offer_name, offer_position, department
   });
   btn.disabled = false; btn.textContent = '📄 Generate & Send on WhatsApp';
   if (r.error) { showToast(r.error, 'error'); return; }

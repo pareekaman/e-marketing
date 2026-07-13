@@ -431,6 +431,7 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN offer_token VARCHAR(64) DEFAULT NULL`);
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN offer_html MEDIUMTEXT DEFAULT NULL`);
   await sa(`ALTER TABLE hrm_message_log ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL`);
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN department VARCHAR(255) DEFAULT ''`);
 
   // Per-user permissions column (replaces role_permissions)
   await sa(`ALTER TABLE users ADD COLUMN user_permissions TEXT DEFAULT NULL AFTER extra_access`);
@@ -9038,16 +9039,16 @@ app.post('/api/hrm/candidates', requireAuth, async (req, res) => {
 app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const { status, reschedule_date, reschedule_time, reschedule_reason, joining_date, salary } = req.body;
+    const { status, reschedule_date, reschedule_time, reschedule_reason, joining_date, salary, department } = req.body;
     const validStatuses = ['Scheduled','Rescheduled','Selected','Rejected','Offer Sent'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Invalid status' });
     const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
     if (!c) return res.status(404).json({ error: 'Not found' });
 
-    const HRM_ALLOWED_COLS = new Set(['status','reschedule_date','reschedule_time','reschedule_reason','joining_date','salary','offer_sent']);
+    const HRM_ALLOWED_COLS = new Set(['status','reschedule_date','reschedule_time','reschedule_reason','joining_date','salary','offer_sent','department']);
     const updates = { status };
     if (status === 'Rescheduled') { updates.reschedule_date = reschedule_date||null; updates.reschedule_time = reschedule_time||''; updates.reschedule_reason = reschedule_reason||''; }
-    if (status === 'Offer Sent')  { updates.joining_date = joining_date||null; updates.salary = salary||''; updates.offer_sent = 1; }
+    if (status === 'Offer Sent')  { updates.joining_date = joining_date||null; updates.salary = salary||''; updates.offer_sent = 1; updates.department = department||''; }
 
     const invalidCol = Object.keys(updates).find(k => !HRM_ALLOWED_COLS.has(k));
     if (invalidCol) return res.status(400).json({ error: `Invalid field: ${invalidCol}` });
@@ -9081,6 +9082,7 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       const { offer_name, offer_position } = req.body;
       const displayName = offer_name || c.name;
       const displayPos  = offer_position || c.profile_position;
+      const displayDept = department || displayPos;
       const joiningFmt  = joining_date ? new Date(joining_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
 
       // Awaited (not fire-and-forget) — on Vercel serverless, work started after
@@ -9126,7 +9128,7 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       const [[naman]] = await db.query(`SELECT phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
       if (naman?.phone) {
         hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(naman.phone), text:
-`🆕 *New Employee Onboarding*\n\n👤 Name: ${displayName}\n🏢 Position: ${displayPos}\n📅 Joining Date: ${joiningFmt}\n\n⚠️ Please create the official email ID before the joining date.\n\n— HR Portal`
+`🆕 *New Employee Onboarding*\n\n👤 Name: ${displayName}\n🏢 Department: ${displayDept}\n💼 Position: ${displayPos}\n📅 Joining Date: ${joiningFmt}\n\n⚠️ Please create the official email ID before the joining date.\n\n— HR Portal`
         }, 'text', c.id, c.name, 'Offer Sent - Naman Notify').catch(e => console.error('HRM WA naman notify err:', e.message));
       }
     }
