@@ -2556,6 +2556,9 @@ input:focus,select:focus,textarea:focus{outline:none;}
     <!-- CLIENT DETAIL: shown after clicking a client row -->
     <div id="dmsDetail" style="display:none">
       <div style="margin-bottom:14px;font-size:13px;display:flex;align-items:center;flex-wrap:wrap;gap:10px">
+        <button onclick="dmsBackToRoot()" title="Back to Clients" style="border:none;background:none;cursor:pointer;color:#4f46e5;padding:2px;display:flex;align-items:center">
+          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+        </button>
         <a href="javascript:void(0)" onclick="dmsBackToRoot()" style="color:#4f46e5;text-decoration:none;font-weight:600">Clients</a>
         <span style="color:#94a3b8">›</span>
         <span id="dmsClientName" style="color:#0f172a;font-weight:700;font-size:14px"></span>
@@ -2576,12 +2579,16 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div id="dmsFileBrowser" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div style="font-weight:700;font-size:14px;color:#0f172a">Files — <span id="dmsBrowserFolderName" style="color:#4f46e5"></span></div>
-          <div style="display:flex;gap:8px">
+          <div style="display:flex;gap:8px;align-items:center">
+            <button onclick="dmsRefreshFolder()" title="Refresh" style="border:1px solid #e2e8f0;background:none;border-radius:8px;width:30px;height:30px;cursor:pointer;color:#64748b;display:flex;align-items:center;justify-content:center">
+              <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0114-4.5M20 15a8 8 0 01-14 4.5"/></svg>
+            </button>
             <input type="file" id="dmsUploadInput" style="display:none" onchange="dmsUploadPicked(this)"/>
             <button id="dmsUploadBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px;display:none" onclick="document.getElementById('dmsUploadInput').click()">⬆ Upload</button>
             <button id="dmsCreateFileBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px;display:none" onclick="dmsOpenCreateFile()">+ New File</button>
           </div>
         </div>
+        <input type="text" id="dmsFileSearch" placeholder="Search files..." oninput="dmsFilterFiles()" style="width:100%;max-width:280px;box-sizing:border-box;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit;margin-bottom:12px"/>
         <div id="dmsUploadStatus" style="font-size:12px;color:#4f46e5;margin-bottom:10px;display:none"></div>
         <div id="dmsFileList"><div style="color:#94a3b8;font-size:13px">Select a folder above to browse files.</div></div>
       </div>
@@ -17302,8 +17309,8 @@ function dmsRenderClientList() {
               <span style="font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dtEscape(c.name)}</span>
             </div>
           </td>
-          <td style="padding:8px 14px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0">${handler}</td>
-          <td style="padding:8px 14px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0">${modBy}</td>
+          <td style="padding:8px 14px;color:#64748b;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${handler}">${handler}</td>
+          <td style="padding:8px 14px;color:#64748b;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${modBy}">${modBy}</td>
           <td style="padding:8px 14px;color:#64748b;white-space:nowrap">${modWhen}</td>
           <td></td>
         </tr>
@@ -17395,6 +17402,11 @@ function dmsRenderDepts(depts, clientId, hasDriveFolder) {
   `).join('');
 }
 
+function dmsRefreshFolder() {
+  if (!_dmsBrowseFolderId) return;
+  dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName);
+}
+
 function _dmsFmtSize(bytes) {
   const n = Number(bytes);
   if (!Number.isFinite(n) || n <= 0) return '—';
@@ -17404,11 +17416,20 @@ function _dmsFmtSize(bytes) {
   return `${v < 10 && i > 0 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
 }
 
+function dmsFilterFiles() {
+  const q = (document.getElementById('dmsFileSearch')?.value || '').toLowerCase();
+  document.querySelectorAll('#dmsFileList .dms-file-card').forEach(row => {
+    row.style.display = row.dataset.name.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
 async function dmsBrowseFolder(folderId, folderName) {
   if (!_dmsSelectedClient) return;
   _dmsBrowseFolderId = folderId;
   _dmsBrowseFolderName = folderName;
   document.getElementById('dmsBrowserFolderName').textContent = folderName;
+  const searchInput = document.getElementById('dmsFileSearch');
+  if (searchInput) searchInput.value = '';
   document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Loading files…</div>';
   const canCreate = ME.role==='admin' || ME.role==='pc';
   document.getElementById('dmsCreateFileBtn').style.display = canCreate ? 'inline-flex' : 'none';

@@ -703,7 +703,7 @@ async function dmsListFiles(folderId) {
   do {
     const res = await drive.files.list({
       q: `'${folderId}' in parents and trashed = false`,
-      fields: 'nextPageToken,files(id,name,mimeType,webViewLink,modifiedTime,thumbnailLink,iconLink,size,lastModifyingUser(displayName,emailAddress))',
+      fields: 'nextPageToken,files(id,name,mimeType,webViewLink,modifiedTime,thumbnailLink,iconLink,size,lastModifyingUser(displayName,emailAddress,permissionId))',
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
       orderBy: 'folder,name',
@@ -714,6 +714,29 @@ async function dmsListFiles(folderId) {
     pageToken = res.data.nextPageToken;
   } while (pageToken);
   if (!files.length) return files;
+
+  // Drive withholds emailAddress on lastModifyingUser for accounts outside
+  // our service account's own domain (privacy visibility rules) — only
+  // displayName ("mis2") comes through. The folder's own permissions list
+  // isn't subject to that restriction, so look up the full email there by
+  // matching permissionId, for any modifier missing one.
+  const needsEmailLookup = files.some(f => f.lastModifyingUser && !f.lastModifyingUser.emailAddress && f.lastModifyingUser.permissionId);
+  if (needsEmailLookup) {
+    try {
+      const perms = await drive.permissions.list({
+        fileId: folderId, supportsAllDrives: true, fields: 'permissions(id,emailAddress)',
+      });
+      const emailByPermId = Object.fromEntries(
+        (perms.data.permissions || []).filter(p => p.emailAddress).map(p => [p.id, p.emailAddress])
+      );
+      for (const f of files) {
+        if (f.lastModifyingUser && !f.lastModifyingUser.emailAddress) {
+          const email = emailByPermId[f.lastModifyingUser.permissionId];
+          if (email) f.lastModifyingUser.emailAddress = email;
+        }
+      }
+    } catch (e) { console.error('DMS permissions lookup failed:', e.message); }
+  }
 
   // For files whose last change came through the app (Drive reports our
   // shared service account as the editor), resolve the real app user from
