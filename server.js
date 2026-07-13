@@ -9178,7 +9178,7 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       }
 
       // Notify Naman so he can create the official email ID before joining date
-      const [[naman]] = await db.query(`SELECT id, phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
+      const [[naman]] = await db.query(`SELECT id, name, phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
       if (naman?.phone) {
         hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(naman.phone), text:
 `🆕 *New Employee Onboarding*\n\n👤 Name: ${displayName}\n🏢 Department: ${displayDept}\n💼 Position: ${displayPos}\n📅 Joining Date: ${joiningFmt}\n\n⚠️ Please create the official email ID before the joining date.\n\n— HR Portal`
@@ -9193,6 +9193,13 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
           `INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
           [taskDesc, naman.id, req.session.userId, joining_date||null, 'pending', 'low', 'no', '', null, null, 0]
         ).catch(e => console.error('HRM auto-delegate task err:', e.message));
+
+        if (naman.phone) {
+          const dueFmt = (joining_date||'').split('-').reverse().join('-');
+          const assignerName = req.session.name || 'HR';
+          const taskMsg = `Hello ${naman.name || ''},\n\n📋 *New Task Delegated*\n\n*By:* ${assignerName}\n*Due:* ${dueFmt}\n*Priority:* LOW\n\n*Task:* ${taskDesc}\n\n— E-Marketing Task Manager`;
+          sendWhatsApp(naman.phone, taskMsg).catch(e => console.error('HRM task delegation WA err:', e.message));
+        }
       }
     }
 
