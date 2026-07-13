@@ -6795,6 +6795,21 @@ app.post('/api/admin/dms/bulk-setup', requireAuth, requireAdmin, async (req, res
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Live listing of the DMS root Drive folder — every client folder with its
+// real modifiedTime/size/last-editor, matched back to our client_id so the
+// DMS "Clients" table can look and behave exactly like Drive's own list view.
+app.get('/api/admin/dms/root-files', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const rootFolderId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
+    if (!rootFolderId) return res.status(400).json({ error: 'GOOGLE_DRIVE_ROOT_FOLDER_ID env var not set' });
+    const files = await dmsListFiles(rootFolderId);
+    const [clients] = await db.query("SELECT id, drive_folder_id FROM clients WHERE drive_folder_id IS NOT NULL AND drive_folder_id != ''");
+    const byFolderId = Object.fromEntries(clients.map(c => [c.drive_folder_id, c.id]));
+    for (const f of files) { const cid = byFolderId[f.id]; if (cid) f.client_id = cid; }
+    res.json(files);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Create the client's root Drive folder (one-time setup)
 app.post('/api/clients/:id/dms/setup', requireAuth, requireAdminOrPC, async (req, res) => {
   try {

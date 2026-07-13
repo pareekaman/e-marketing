@@ -2542,61 +2542,48 @@ input:focus,select:focus,textarea:focus{outline:none;}
       </div>
     </div>
 
-    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
-      <!-- Left panel: client list -->
-      <div style="width:240px;flex-shrink:0;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
-        <div style="padding:14px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;gap:8px">
-          <div style="font-weight:700;font-size:14px;color:#0f172a">Clients</div>
-          <button id="dmsBulkSetupBtn" onclick="dmsBulkSetup()" title="Create Drive folders for every existing client that doesn't have one yet" style="display:none;font-size:11px;padding:4px 8px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap">📁 Create missing folders</button>
-        </div>
-        <div style="padding:10px">
-          <input type="text" id="dmsClientSearch" placeholder="Search..." oninput="dmsFilterClients()" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit"/>
-        </div>
-        <div id="dmsClientList" style="overflow-y:auto;max-height:calc(100vh - 260px)">
-          <div style="padding:16px;color:#94a3b8;font-size:13px;text-align:center">Loading…</div>
-        </div>
+    <!-- ROOT: Drive-style full-width client table -->
+    <div id="dmsRootView">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <input type="text" id="dmsClientSearch" placeholder="Search clients..." oninput="dmsFilterClients()" style="flex:1;min-width:200px;max-width:320px;box-sizing:border-box;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit"/>
+        <button id="dmsBulkSetupBtn" onclick="dmsBulkSetup()" title="Create Drive folders for every existing client that doesn't have one yet" style="display:none;font-size:12px;padding:6px 12px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;border-radius:8px;cursor:pointer;font-weight:600;white-space:nowrap">📁 Create missing folders</button>
+      </div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+        <div id="dmsClientList"><div style="padding:16px;color:#94a3b8;font-size:13px;text-align:center">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- CLIENT DETAIL: shown after clicking a client row -->
+    <div id="dmsDetail" style="display:none">
+      <div style="margin-bottom:14px;font-size:13px;display:flex;align-items:center;flex-wrap:wrap;gap:10px">
+        <a href="javascript:void(0)" onclick="dmsBackToRoot()" style="color:#4f46e5;text-decoration:none;font-weight:600">Clients</a>
+        <span style="color:#94a3b8">›</span>
+        <span id="dmsClientName" style="color:#0f172a;font-weight:700;font-size:14px"></span>
+        <span id="dmsFolderLink" style="font-size:12px"></span>
+        <button id="dmsSetupBtn" class="btn btn-primary" style="font-size:12px;padding:5px 12px;margin-left:auto" onclick="dmsSetupFolder()">Create Drive Folder</button>
       </div>
 
-      <!-- Right panel: DMS detail for selected client -->
-      <div style="flex:1;min-width:280px">
-        <div id="dmsDetail" style="display:none">
-          <!-- Client header -->
-          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-bottom:16px">
-            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-              <div>
-                <div style="font-size:18px;font-weight:700;color:#0f172a" id="dmsClientName"></div>
-                <div id="dmsFolderLink" style="font-size:12px;margin-top:4px"></div>
-              </div>
-              <button id="dmsSetupBtn" class="btn btn-primary" style="font-size:13px" onclick="dmsSetupFolder()">Create Drive Folder</button>
-            </div>
-          </div>
+      <!-- Department folders -->
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div style="font-weight:700;font-size:14px;color:#0f172a">Department Folders</div>
+          <button id="dmsAddDeptBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="dmsOpenAddDept()">+ Add Department</button>
+        </div>
+        <div id="dmsDeptList"></div>
+      </div>
 
-          <!-- Department folders -->
-          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-bottom:16px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-              <div style="font-weight:700;font-size:14px;color:#0f172a">Department Folders</div>
-              <button id="dmsAddDeptBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="dmsOpenAddDept()">+ Add Department</button>
-            </div>
-            <div id="dmsDeptList"></div>
-          </div>
-
-          <!-- File browser -->
-          <div id="dmsFileBrowser" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-              <div style="font-weight:700;font-size:14px;color:#0f172a">Files — <span id="dmsBrowserFolderName" style="color:#4f46e5"></span></div>
-              <div style="display:flex;gap:8px">
-                <input type="file" id="dmsUploadInput" style="display:none" onchange="dmsUploadPicked(this)"/>
-                <button id="dmsUploadBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px;display:none" onclick="document.getElementById('dmsUploadInput').click()">⬆ Upload</button>
-                <button id="dmsCreateFileBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px;display:none" onclick="dmsOpenCreateFile()">+ New File</button>
-              </div>
-            </div>
-            <div id="dmsUploadStatus" style="font-size:12px;color:#4f46e5;margin-bottom:10px;display:none"></div>
-            <div id="dmsFileList"><div style="color:#94a3b8;font-size:13px">Select a folder above to browse files.</div></div>
+      <!-- File browser -->
+      <div id="dmsFileBrowser" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div style="font-weight:700;font-size:14px;color:#0f172a">Files — <span id="dmsBrowserFolderName" style="color:#4f46e5"></span></div>
+          <div style="display:flex;gap:8px">
+            <input type="file" id="dmsUploadInput" style="display:none" onchange="dmsUploadPicked(this)"/>
+            <button id="dmsUploadBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px;display:none" onclick="document.getElementById('dmsUploadInput').click()">⬆ Upload</button>
+            <button id="dmsCreateFileBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px;display:none" onclick="dmsOpenCreateFile()">+ New File</button>
           </div>
         </div>
-        <div id="dmsNoClient" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:48px 20px;text-align:center;color:#94a3b8;font-size:14px">
-          ← Select a client to manage their documents
-        </div>
+        <div id="dmsUploadStatus" style="font-size:12px;color:#4f46e5;margin-bottom:10px;display:none"></div>
+        <div id="dmsFileList"><div style="color:#94a3b8;font-size:13px">Select a folder above to browse files.</div></div>
       </div>
     </div>
   </div>
@@ -17197,7 +17184,6 @@ async function loadDMS() {
   _dmsSelectedClient = null;
   _dmsBrowseFolderId = null;
   document.getElementById('dmsDetail').style.display = 'none';
-  document.getElementById('dmsNoClient').style.display = 'block';
 
   // Check Drive connection (admin only)
   const banner = document.getElementById('dmsAuthBanner');
@@ -17216,7 +17202,20 @@ async function loadDMS() {
     dmsLoadDepts(),
   ]);
   _dmsClients = Array.isArray(clients) ? clients.filter(c => c.is_active !== 0) : [];
+
+  // Enrich with real Drive modified-time/size where available (admin only;
+  // silently degrades to name-only rows for non-admins or if Drive isn't set up).
+  try {
+    const rootFiles = await api('/api/admin/dms/root-files');
+    if (Array.isArray(rootFiles)) {
+      const byClientId = Object.fromEntries(rootFiles.filter(f => f.client_id).map(f => [f.client_id, f]));
+      for (const c of _dmsClients) { const f = byClientId[c.id]; if (f) { c._drive = f; } }
+    }
+  } catch {}
+
   dmsRenderClientList();
+  document.getElementById('dmsRootView').style.display = 'block';
+  document.getElementById('dmsDetail').style.display = 'none';
 }
 
 async function dmsLoadDepts() {
@@ -17239,27 +17238,49 @@ function dmsRenderClientList() {
     el.innerHTML = '<div style="padding:16px;color:#94a3b8;font-size:13px;text-align:center">No clients found</div>';
     return;
   }
-  el.innerHTML = _dmsClients.map(c => `
-    <div class="dms-client-row" data-id="${c.id}" data-name="${dtEscape(c.name.toLowerCase())}"
-         onclick="dmsSelectClient(${c.id})"
-         style="padding:10px 14px;cursor:pointer;font-size:13px;border-bottom:1px solid #f8fafc;transition:background .1s;${_dmsSelectedClient?.id===c.id?'background:#eff6ff;color:#1d4ed8;font-weight:600;':'color:#334155;'}">
-      <div style="display:flex;align-items:center;gap:8px">
-        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
-        ${dtEscape(c.name)}
-      </div>
-    </div>
-  `).join('');
+  const sorted = [..._dmsClients].sort((a,b) => a.name.localeCompare(b.name));
+  el.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <thead>
+        <tr style="border-bottom:1.5px solid #e2e8f0;color:#64748b;text-align:left">
+          <th style="padding:8px 14px;font-weight:600">Name</th>
+          <th style="padding:8px 14px;font-weight:600">Modified</th>
+          <th style="padding:8px 14px;font-weight:600;text-align:right">Size</th>
+          <th style="width:36px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sorted.map(c => {
+          const d = c._drive;
+          const modWhen = d?.modifiedTime ? new Date(d.modifiedTime).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+          const modBy = d?.modified_by ? dtEscape(d.modified_by) : '';
+          const metaLine = modBy && modWhen ? `${modBy} · ${modWhen}` : (modWhen || '—');
+          return `
+        <tr class="dms-client-row" data-id="${c.id}" data-name="${dtEscape(c.name.toLowerCase())}"
+             onclick="dmsSelectClient(${c.id})"
+             style="cursor:pointer;border-bottom:1px solid #f1f5f9;transition:background .1s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
+          <td style="padding:8px 14px">
+            <div style="display:flex;align-items:center;gap:8px;min-width:0">
+              <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0;color:#64748b"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+              <span style="font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dtEscape(c.name)}</span>
+            </div>
+          </td>
+          <td style="padding:8px 14px;color:#64748b;white-space:nowrap">${metaLine}</td>
+          <td style="padding:8px 14px;color:#64748b;text-align:right">—</td>
+          <td></td>
+        </tr>
+      `;}).join('')}
+      </tbody>
+    </table>
+  `;
 }
 
 async function dmsSelectClient(id) {
   _dmsSelectedClient = _dmsClients.find(c => c.id === id);
   if (!_dmsSelectedClient) return;
 
-  // Highlight selected in list
-  dmsRenderClientList();
-
+  document.getElementById('dmsRootView').style.display = 'none';
   document.getElementById('dmsDetail').style.display = 'block';
-  document.getElementById('dmsNoClient').style.display = 'none';
   document.getElementById('dmsClientName').textContent = _dmsSelectedClient.name;
   document.getElementById('dmsFolderLink').innerHTML = '';
   document.getElementById('dmsSetupBtn').style.display = 'none';
@@ -17301,6 +17322,13 @@ async function dmsSelectClient(id) {
     document.getElementById('dmsDeptList').innerHTML =
       `<div style="color:#dc2626;font-size:13px">Error: ${dtEscape(e.message)}</div>`;
   }
+}
+
+function dmsBackToRoot() {
+  _dmsSelectedClient = null;
+  _dmsBrowseFolderId = null;
+  document.getElementById('dmsDetail').style.display = 'none';
+  document.getElementById('dmsRootView').style.display = 'block';
 }
 
 function dmsRenderDepts(depts, clientId, hasDriveFolder) {
