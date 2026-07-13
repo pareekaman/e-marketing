@@ -17748,19 +17748,22 @@ async function dmsUploadPicked(input) {
   statusEl.style.color = '#4f46e5';
   statusEl.textContent = `Uploading "${file.name}"…`;
   try {
-    const fd = new FormData();
-    fd.append('file', file);
-    const token = localStorage.getItem('authToken') || '';
-    const res = await fetch(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/upload`, {
-      method: 'POST',
-      headers: token ? { 'Authorization': 'Bearer ' + token } : {},
-      body: fd
-    });
-    const data = await res.json();
-    if (data.error) { statusEl.style.color = '#dc2626'; statusEl.textContent = data.error; return; }
+    // Get a Drive resumable-upload URL, then PUT the bytes straight to Google
+    // from the browser — going through our own server would hit Vercel's
+    // ~4.5MB request-body cap for anything bigger than a small file.
+    const session = await api(
+      `/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/upload-session`,
+      'POST', { name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size }
+    );
+    if (session?.error) { statusEl.style.color = '#dc2626'; statusEl.textContent = session.error; return; }
+    const putRes = await fetch(session.uploadUrl, { method: 'PUT', body: file });
+    if (!putRes.ok) throw new Error(`Drive upload failed (HTTP ${putRes.status})`);
+    const created = await putRes.json();
+    api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/upload-complete`,
+      'POST', { fileId: created.id, fileName: created.name }).catch(() => {});
     statusEl.style.display = 'none';
     showToast('File uploaded!');
-    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName);
+    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName, 'jump');
   } catch (e) {
     statusEl.style.color = '#dc2626';
     statusEl.textContent = 'Upload failed: ' + e.message;

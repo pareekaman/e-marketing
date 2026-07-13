@@ -654,6 +654,33 @@ async function getDriveClient() {
   return _driveClient;
 }
 
+// Vercel serverless functions cap request bodies at ~4.5MB, well under what
+// people actually want to upload here. A resumable-upload session lets the
+// BROWSER send the file bytes straight to Google — our server only ever
+// handles the small JSON init/complete calls, never the file itself.
+async function dmsInitiateResumableUpload(name, mimeType, size, parentId) {
+  const { google } = require('googleapis');
+  const auth = new google.auth.GoogleAuth({ credentials: _dmsCreds(), scopes: ['https://www.googleapis.com/auth/drive'] });
+  const client = await auth.getClient();
+  const { token } = await client.getAccessToken();
+  const fetchFn = global.fetch || (await import('node-fetch')).default;
+  const initUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name,webViewLink,mimeType,modifiedTime,size';
+  const r = await fetchFn(initUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json; charset=UTF-8',
+      'X-Upload-Content-Type': mimeType || 'application/octet-stream',
+      'X-Upload-Content-Length': String(size),
+    },
+    body: JSON.stringify({ name, parents: [parentId] }),
+  });
+  if (!r.ok) throw new Error(`Drive resumable-init failed: ${r.status} ${await r.text()}`);
+  const uploadUrl = r.headers.get('location');
+  if (!uploadUrl) throw new Error('Drive did not return an upload URL');
+  return uploadUrl;
+}
+
 function _dmsServiceAccountEmail() {
   return _dmsCreds().client_email;
 }
@@ -6972,6 +6999,33 @@ app.post('/api/clients/:id/dms/folders/:folderId/upload', requireAuth, requireAd
     const file = await dmsUploadFile(req.file.originalname, req.file.mimetype, req.file.buffer, folderId);
     await _dmsLogActivity(file.id, 'uploaded', req.file.originalname, req, id);
     res.json({ success: true, id: file.id, web_view_link: file.webViewLink });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Step 1 of a large-file upload: get a Drive resumable-session URL the
+// browser can PUT bytes to directly (bypasses Vercel's ~4.5MB request cap,
+// which the plain /upload route above is still limited by for small files).
+app.post('/api/clients/:id/dms/folders/:folderId/upload-session', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const { id, folderId } = req.params;
+    if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    const { name, mimeType, size } = req.body;
+    if (!name || !size) return res.status(400).json({ error: 'name and size required' });
+    const uploadUrl = await dmsInitiateResumableUpload(name, mimeType, Number(size), folderId);
+    res.json({ success: true, uploadUrl });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Step 2: after the browser's direct PUT to uploadUrl finishes, record who
+// did it (Drive itself only ever sees our service account for these).
+app.post('/api/clients/:id/dms/folders/:folderId/upload-complete', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const { id, folderId } = req.params;
+    if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    const { fileId, fileName } = req.body;
+    if (!fileId) return res.status(400).json({ error: 'fileId required' });
+    await _dmsLogActivity(fileId, 'uploaded', fileName || null, req, id);
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
