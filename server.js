@@ -7002,9 +7002,12 @@ app.post('/api/clients/:id/dms/folders/:folderId/upload', requireAuth, requireAd
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Step 1 of a large-file upload: get a Drive resumable-session URL the
-// browser can PUT bytes to directly (bypasses Vercel's ~4.5MB request cap,
-// which the plain /upload route above is still limited by for small files).
+// Step 1 of a large-file upload: get a Drive resumable-session URL.
+// A direct browser PUT to this URL bypasses Vercel's ~4.5MB request cap, but
+// Drive's resumable-upload response is missing CORS headers on completion,
+// so the browser can't read the result even though the file was created.
+// The browser instead sends chunks through /upload-chunk below, which
+// proxies each one to this URL server-side (no CORS involved there).
 app.post('/api/clients/:id/dms/folders/:folderId/upload-session', requireAuth, requireAdminOrPC, async (req, res) => {
   try {
     const { id, folderId } = req.params;
@@ -7016,16 +7019,34 @@ app.post('/api/clients/:id/dms/folders/:folderId/upload-session', requireAuth, r
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Step 2: after the browser's direct PUT to uploadUrl finishes, record who
-// did it (Drive itself only ever sees our service account for these).
-app.post('/api/clients/:id/dms/folders/:folderId/upload-complete', requireAuth, requireAdminOrPC, async (req, res) => {
+// Step 2: proxy one chunk of the file to the resumable session URL from
+// step 1. Each chunk stays comfortably under Vercel's request-body cap even
+// though the overall file can be far larger. Responds 308 (with the byte
+// range Drive has received so far) while more chunks are expected, or the
+// created file's metadata once Drive reports the upload complete.
+app.post('/api/clients/:id/dms/folders/:folderId/upload-chunk', requireAuth, requireAdminOrPC, express.raw({ type: () => true, limit: '6mb' }), async (req, res) => {
   try {
     const { id, folderId } = req.params;
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
-    const { fileId, fileName } = req.body;
-    if (!fileId) return res.status(400).json({ error: 'fileId required' });
-    await _dmsLogActivity(fileId, 'uploaded', fileName || null, req, id);
-    res.json({ success: true });
+    const uploadUrl = req.query.uploadUrl;
+    const contentRange = req.headers['content-range'];
+    if (!uploadUrl || !contentRange) return res.status(400).json({ error: 'uploadUrl and Content-Range required' });
+    const chunk = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
+    const fetchFn = global.fetch || (await import('node-fetch')).default;
+    const driveRes = await fetchFn(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Range': contentRange, 'Content-Length': String(chunk.length) },
+      body: chunk,
+      redirect: 'manual',
+    });
+    if (driveRes.status === 308) {
+      return res.status(308).json({ incomplete: true, range: driveRes.headers.get('range') || null });
+    }
+    const text = await driveRes.text();
+    if (!driveRes.ok) return res.status(driveRes.status).json({ error: text || `Drive chunk upload failed (${driveRes.status})` });
+    let file; try { file = JSON.parse(text); } catch { file = {}; }
+    if (file.id) await _dmsLogActivity(file.id, 'uploaded', file.name, req, id);
+    res.json({ success: true, ...file });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

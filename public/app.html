@@ -17748,19 +17748,37 @@ async function dmsUploadPicked(input) {
   statusEl.style.color = '#4f46e5';
   statusEl.textContent = `Uploading "${file.name}"…`;
   try {
-    // Get a Drive resumable-upload URL, then PUT the bytes straight to Google
-    // from the browser — going through our own server would hit Vercel's
-    // ~4.5MB request-body cap for anything bigger than a small file.
+    // Get a Drive resumable-upload session, then send it in chunks through
+    // our own server (each well under Vercel's ~4.5MB request-body cap).
+    // A direct browser PUT to Drive would dodge that cap too, but Drive's
+    // completion response is missing CORS headers, so the browser can never
+    // read it back even though the file gets created — proxying avoids that.
     const session = await api(
       `/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/upload-session`,
       'POST', { name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size }
     );
     if (session?.error) { statusEl.style.color = '#dc2626'; statusEl.textContent = session.error; return; }
-    const putRes = await fetch(session.uploadUrl, { method: 'PUT', body: file });
-    if (!putRes.ok) throw new Error(`Drive upload failed (HTTP ${putRes.status})`);
-    const created = await putRes.json();
-    api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/upload-complete`,
-      'POST', { fileId: created.id, fileName: created.name }).catch(() => {});
+
+    const CHUNK = 4 * 1024 * 1024; // 4 MiB — must be a multiple of 256 KiB per Drive's resumable-upload spec (except the final chunk)
+    const token = localStorage.getItem('authToken') || '';
+    const chunkUrl = `/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/upload-chunk?uploadUrl=${encodeURIComponent(session.uploadUrl)}`;
+    let offset = 0;
+    while (offset < file.size) {
+      const end = Math.min(offset + CHUNK, file.size);
+      const r = await fetch(chunkUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Range': `bytes ${offset}-${end - 1}/${file.size}`,
+          'Content-Type': 'application/octet-stream',
+          ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
+        },
+        body: file.slice(offset, end),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (r.status !== 308 && !r.ok) throw new Error(data.error || `Upload failed (HTTP ${r.status})`);
+      offset = end;
+      statusEl.textContent = `Uploading "${file.name}"… ${Math.round((offset / file.size) * 100)}%`;
+    }
     statusEl.style.display = 'none';
     showToast('File uploaded!');
     dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName, 'jump');
