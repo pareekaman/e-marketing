@@ -9178,11 +9178,21 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       }
 
       // Notify Naman so he can create the official email ID before joining date
-      const [[naman]] = await db.query(`SELECT phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
+      const [[naman]] = await db.query(`SELECT id, phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
       if (naman?.phone) {
         hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(naman.phone), text:
 `🆕 *New Employee Onboarding*\n\n👤 Name: ${displayName}\n🏢 Department: ${displayDept}\n💼 Position: ${displayPos}\n📅 Joining Date: ${joiningFmt}\n\n⚠️ Please create the official email ID before the joining date.\n\n— HR Portal`
         }, 'text', c.id, c.name, 'Offer Sent - Naman Notify').catch(e => console.error('HRM WA naman notify err:', e.message));
+      }
+
+      // Auto-delegate a task to Naman — due exactly on the joining date (no
+      // holiday/week-off shifting — the employee joins that day regardless).
+      if (naman?.id) {
+        const taskDesc = `Create official email ID for ${displayName} — Department: ${displayDept}, Position: ${displayPos}, Joining Date: ${joiningFmt}`;
+        db.query(
+          `INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+          [taskDesc, naman.id, req.session.userId, joining_date||null, 'pending', 'low', 'no', '', null, null, 0]
+        ).catch(e => console.error('HRM auto-delegate task err:', e.message));
       }
     }
 
