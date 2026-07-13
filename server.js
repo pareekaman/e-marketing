@@ -9011,12 +9011,12 @@ app.get('/api/hrm/candidates', requireAuth, async (req, res) => {
 app.post('/api/hrm/candidates', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const { name, phone, profile_position, interview_date, interview_time, notes, meeting_link, interviewer_phone } = req.body;
+    const { name, phone, profile_position, department, interview_date, interview_time, notes, meeting_link, interviewer_phone } = req.body;
     if (!name || !phone) return res.status(400).json({ error: 'name and phone required' });
     const [r] = await db.query(
-      `INSERT INTO hrm_candidates (name,phone,profile_position,interview_date,interview_time,notes,meeting_link,interviewer_phone,created_by)
-       VALUES (?,?,?,?,?,?,?,?,?)`,
-      [name, phone, profile_position||'', interview_date||null, interview_time||'', notes||'', meeting_link||'', interviewer_phone||'', req.session.userId]);
+      `INSERT INTO hrm_candidates (name,phone,profile_position,department,interview_date,interview_time,notes,meeting_link,interviewer_phone,created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [name, phone, profile_position||'', department||'', interview_date||null, interview_time||'', notes||'', meeting_link||'', interviewer_phone||'', req.session.userId]);
     const cid = r.insertId;
 
     const meetLine = meeting_link ? `\n🔗 Meeting Link: ${meeting_link}` : '';

@@ -2950,6 +2950,12 @@ input:focus,select:focus,textarea:focus{outline:none;}
       </div>
       <div class="form-row">
         <div class="form-group">
+          <label>Department</label>
+          <select id="hrmCDepartment"><option value="">--select--</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
           <label>Interview Date *</label>
           <input type="date" id="hrmCDate">
         </div>
@@ -5316,6 +5322,7 @@ function renderHrmRows(list) {
         </div>
       </td>
       <td class="hrm-date-cell">${esc(c.profile_position||'—')}</td>
+      <td class="hrm-date-cell">${esc(c.department||'—')}</td>
       <td>
         <div class="hrm-date-cell">${dateStr}${c.interview_time ? ' ' + esc(c.interview_time) : ''}</div>
         ${reDateStr ? `<div class="hrm-redate">→ Rescheduled: ${reDateStr}${c.reschedule_time?' '+esc(c.reschedule_time):''}</div>` : ''}
@@ -5330,7 +5337,7 @@ function renderHrmRows(list) {
       </td>
     </tr>`;
   }).join('');
-  return `<table><thead><tr><th>Candidate</th><th>Position</th><th>Interview</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table><thead><tr><th>Candidate</th><th>Position</th><th>Department</th><th>Interview</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function renderHrmMsgTable() {
@@ -5372,11 +5379,12 @@ async function deleteHrmMsg(id) {
   if (r.ok) { showToast('Entry deleted'); loadHRM(); } else { showToast(r.message||r.error||'Delete failed','error'); }
 }
 
-function openHrmAddModal() {
+async function openHrmAddModal() {
   ['hrmCName','hrmCProfile','hrmCPhone','hrmCInterviewer','hrmCLink','hrmCNotes'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('hrmCDate').value = '';
   document.getElementById('hrmCTime').value = '';
   document.getElementById('hrmAddErr').style.display = 'none';
+  await loadHrmDepartmentOptions('hrmCDepartment', '');
   document.getElementById('hrmAddModal').classList.add('open');
 }
 
@@ -5390,6 +5398,7 @@ async function saveHrmCandidate() {
   const r = await api('/api/hrm/candidates','POST',{
     name, phone,
     profile_position: document.getElementById('hrmCProfile').value.trim(),
+    department: document.getElementById('hrmCDepartment').value,
     interview_date: date, interview_time: time,
     notes: document.getElementById('hrmCNotes').value.trim(),
     meeting_link: document.getElementById('hrmCLink').value.trim(),
@@ -5574,17 +5583,17 @@ async function openOfferFormModal(id) {
   document.getElementById('offerFPosition').value = c.profile_position || '';
   document.getElementById('offerFJoining').value  = c.joining_date ? String(c.joining_date).slice(0,10) : '';
   document.getElementById('offerFSalary').value   = c.salary || '';
-  await loadHrmDepartmentOptions(c.department || '');
+  await loadHrmDepartmentOptions('offerFDepartment', c.department || '');
   document.getElementById('hrmOfferFormModal').classList.add('open');
   updateOfferPreview();
 }
 
-async function loadHrmDepartmentOptions(selected) {
+async function loadHrmDepartmentOptions(selectId, selected) {
   if (!_hrmDepartments.length) {
     const departments = await api('/api/departments');
     _hrmDepartments = Array.isArray(departments) ? departments : [];
   }
-  const sel = document.getElementById('offerFDepartment');
+  const sel = document.getElementById(selectId);
   sel.innerHTML = '<option value="">--select--</option>' +
     _hrmDepartments.map(d => `<option value="${esc(d)}" ${d===selected?'selected':''}>${esc(d)}</option>`).join('');
 }
