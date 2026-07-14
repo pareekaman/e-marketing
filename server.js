@@ -789,9 +789,12 @@ async function dmsListFiles(folderId) {
       f.modified_by = log.user_name;
       f.modified_via = 'app';
     } else if (f.lastModifyingUser) {
-      // Full email (not the short Drive display name) so it's clear exactly
-      // which Google account made a direct-Drive edit.
-      f.modified_by = f.lastModifyingUser.emailAddress || f.lastModifyingUser.displayName;
+      const email = f.lastModifyingUser.emailAddress || f.lastModifyingUser.displayName;
+      // Our own service account with no matching activity-log entry (e.g. a
+      // folder created before per-user attribution existed) — we genuinely
+      // don't know which staff member did this, so leave it blank instead
+      // of showing the internal bot's technical email.
+      f.modified_by = email === svcEmail ? null : email; // Full email (not the short Drive display name) for direct-Drive edits
       f.modified_via = f.lastModifyingUser.emailAddress === svcEmail ? 'app' : 'drive';
     }
     delete f.lastModifyingUser;
