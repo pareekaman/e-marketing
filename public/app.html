@@ -65,6 +65,7 @@ body{
   box-shadow:1px 0 0 rgba(255,255,255,.04), 6px 0 24px -6px rgba(0,0,0,.35);
 }
 .sidebar:hover{ width:232px; }
+.sidebar.no-hover-expand:hover{ width:60px; }
 
 .sidebar-logo{
   padding:16px 13px;border-bottom:1px solid rgba(255,255,255,.07);
@@ -1613,7 +1614,9 @@ input:focus,select:focus,textarea:focus{outline:none;}
   <div id="page-dashboard" class="page active">
     <div class="dash-topbar">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <select id="dashEmployeeFilter" onchange="onPCFilterChange()" onfocus="closeSidebar()"
+        <select id="dashEmployeeFilter" onchange="onPCFilterChange()"
+          onfocus="closeSidebar();document.getElementById('sidebar').classList.add('no-hover-expand')"
+          onblur="document.getElementById('sidebar').classList.remove('no-hover-expand')"
           style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff;display:none">
           <option value="all">All Employees</option>
         </select>
