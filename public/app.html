@@ -1613,7 +1613,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
   <div id="page-dashboard" class="page active">
     <div class="dash-topbar">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <select id="dashEmployeeFilter" onchange="onPCFilterChange()"
+        <select id="dashEmployeeFilter" onchange="onPCFilterChange()" onfocus="closeSidebar()"
           style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff;display:none">
           <option value="all">All Employees</option>
         </select>
@@ -5164,7 +5164,7 @@ function viewInvPhoto(src) {
 }
 
 function openInvAddModal() {
-  document.getElementById('invName').value = '';
+  document.getElementById('invName').value = ME?.name || '';
   document.getElementById('invType').value = 'laptop';
   document.getElementById('invBrand').value = '';
   document.getElementById('invModel').value = '';

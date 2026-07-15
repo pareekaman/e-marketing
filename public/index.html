@@ -178,10 +178,11 @@
   }
   .input-wrap .toggle-pass{
     position:absolute;right:12px;top:50%;transform:translateY(-50%);
-    font-size:15px;color:#94a3b8;cursor:pointer;background:none;border:none;
-    padding:0;line-height:1;user-select:none;
+    color:#94a3b8;cursor:pointer;background:none;border:none;
+    padding:0;line-height:1;user-select:none;display:flex;align-items:center;
   }
   .input-wrap .toggle-pass:hover{color:#64748b;}
+  .input-wrap .toggle-pass svg{width:18px;height:18px;display:block}
   input{
     width:100%;
     padding:11px 14px 11px 38px;
@@ -287,7 +288,9 @@
       <span class="icon">🔒</span>
       <input type="password" id="password" placeholder="Enter your password" style="padding-right:38px"
              onkeydown="if(event.key==='Enter')login()"/>
-      <button type="button" class="toggle-pass" id="togglePass" onclick="togglePassword()">👁</button>
+      <button type="button" class="toggle-pass" id="togglePass" onclick="togglePassword()" aria-label="Show password">
+        <svg id="togglePassIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
     </div>
   </div>
 
@@ -314,9 +317,13 @@
 function togglePassword(){
   const pass=document.getElementById('password');
   const btn=document.getElementById('togglePass');
+  const icon=document.getElementById('togglePassIcon');
   const show=pass.type==='password';
   pass.type=show?'text':'password';
-  btn.textContent=show?'🙈':'👁';
+  btn.setAttribute('aria-label', show?'Hide password':'Show password');
+  icon.innerHTML=show
+    ? '<path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a21.3 21.3 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 7 11 7a21.3 21.3 0 0 1-2.68 3.88M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
+    : '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/>';
 }
 
 async function login(){
