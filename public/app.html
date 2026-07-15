@@ -1416,7 +1416,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
      SIDEBAR
 ══════════════════════════════════════ -->
 <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
-<aside class="sidebar" id="sidebar">
+<aside class="sidebar" id="sidebar" onmouseenter="const ae=document.activeElement; if(ae && ae.tagName==='SELECT') ae.blur();">
   <div class="sidebar-logo">
     <img src="emarketing-logo.png" alt="E-Marketing"
       style="width:34px;height:34px;object-fit:cover;border-radius:6px;flex-shrink:0"
