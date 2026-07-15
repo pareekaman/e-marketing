@@ -7,5 +7,19 @@
       "Bash(grep -v \"^\\\\s*//\")",
       "Bash(grep -v \"^[0-9]*:[ ]*//\")"
     ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/brain-md-check.js",
+            "timeout": 10,
+            "statusMessage": "Checking if brain.md is in sync..."
+          }
+        ]
+      }
+    ]
   }
 }

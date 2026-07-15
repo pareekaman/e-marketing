@@ -22,6 +22,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# brain.md auto-sync hook state (local bookkeeping, not shared)
+.claude/.brain-md-sync-state.json
+
 # Logs
 logs/
 *.log
@@ -30,3 +33,4 @@ logs/
 dist/
 build/
 E-Marketing-Architecture.pdf
+brain.md
