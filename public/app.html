@@ -2585,6 +2585,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
             </button>
             <input type="file" id="dmsUploadInput" style="display:none" onchange="dmsUploadPicked(this)"/>
             <button id="dmsUploadBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px;display:none" onclick="document.getElementById('dmsUploadInput').click()">⬆ Upload</button>
+            <button id="dmsAddShortcutBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px;display:none" onclick="dmsOpenAddShortcut()">🔗 Add Existing</button>
             <button id="dmsCreateFileBtn" class="btn btn-outline" style="font-size:12px;padding:5px 12px;display:none" onclick="dmsOpenCreateFile()">+ New File</button>
           </div>
         </div>
@@ -2636,6 +2637,24 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal('dmsCreateFileModal')">Cancel</button>
         <button class="btn btn-primary" onclick="dmsSaveFile()">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DMS: Add existing Drive file (shortcut) modal -->
+  <div class="modal-overlay" id="dmsAddShortcutModal">
+    <div class="modal" style="width:460px">
+      <button class="modal-close" onclick="closeModal('dmsAddShortcutModal')">×</button>
+      <h3>Add Existing File</h3>
+      <div class="alert error" id="dmsAddShortcutErr" style="display:none"></div>
+      <div class="form-group">
+        <label>Google Drive link *</label>
+        <input type="text" id="dmsShortcutUrl" placeholder="Paste a Sheet/Doc/file link" style="width:100%;box-sizing:border-box" onkeydown="if(event.key==='Enter'){event.preventDefault();dmsAddShortcutConfirm();}"/>
+        <div style="font-size:11px;color:#94a3b8;margin-top:6px">Places a link here — the file stays in its original location and stays live/editable. Make sure it's shared with the DMS service account first if it isn't already.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('dmsAddShortcutModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="dmsAddShortcutConfirm()">Add</button>
       </div>
     </div>
   </div>
@@ -5612,7 +5631,7 @@ function updateOfferPreview() {
   document.getElementById('offerPreviewFrame').srcdoc = html;
 }
 
-async function submitOfferForm() {
+function submitOfferForm() {
   const offer_name     = document.getElementById('offerFName').value.trim();
   const offer_position = document.getElementById('offerFPosition').value.trim();
   const department     = document.getElementById('offerFDepartment').value;
@@ -5620,20 +5639,25 @@ async function submitOfferForm() {
   const salary         = document.getElementById('offerFSalary').value.trim();
   if (!offer_name)   { showToast('Candidate name required', 'error'); return; }
   if (!joining_date) { showToast('Joining date required', 'error'); return; }
-  const btn = document.getElementById('offerFormSubmitBtn');
-  btn.disabled = true; btn.textContent = 'Generating…';
-  const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/status`, 'PUT', {
-    status: 'Offer Sent', joining_date, salary, offer_name, offer_position, department
-  });
-  btn.disabled = false; btn.textContent = '📄 Generate & Send on WhatsApp';
-  if (r.error) { showToast(r.error, 'error'); return; }
+  const candidateId = _hrmCurrentId;
+
+  // PDF generation can take a few minutes (Google Apps Script + WhatsApp
+  // send) — don't block the modal on it. Close now, show the result
+  // whenever the request actually finishes in the background.
   closeModal('hrmOfferFormModal');
-  if (r.pdfGenerated === false) {
-    showToast('⚠️ WhatsApp sent, but PDF generation failed: ' + (r.pdfError || 'unknown error') + ' — open "View Offer" and click Generate to retry.', 'error');
-  } else {
-    showToast('Offer letter PDF generated — sent on WhatsApp!');
-  }
-  loadHRM();
+  showToast('Generating offer letter in background — you\'ll get a notification when it\'s sent.');
+
+  api(`/api/hrm/candidates/${candidateId}/status`, 'PUT', {
+    status: 'Offer Sent', joining_date, salary, offer_name, offer_position, department
+  }).then(r => {
+    if (r.error) { showToast(r.error, 'error'); return; }
+    if (r.pdfGenerated === false) {
+      showToast('⚠️ WhatsApp sent, but PDF generation failed: ' + (r.pdfError || 'unknown error') + ' — open "View Offer" and click Generate to retry.', 'error');
+    } else {
+      showToast('Offer letter PDF generated — sent on WhatsApp!');
+    }
+    loadHRM();
+  });
 }
 
 function showErrIn(id, msg) {
@@ -17360,6 +17384,7 @@ async function dmsSelectClient(id) {
   document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Select a folder above to browse files.</div>';
   document.getElementById('dmsBrowserFolderName').textContent = '';
   document.getElementById('dmsCreateFileBtn').style.display = 'none';
+  document.getElementById('dmsAddShortcutBtn').style.display = 'none';
   _dmsBrowseFolderId = null;
 
   try {
@@ -17467,6 +17492,7 @@ function dmsFileListContextMenu(event) {
   const items = [
     { label: '📁 New folder', action: () => dmsOpenCreateFile('folder') },
     { label: '⬆ File upload', action: () => document.getElementById('dmsUploadInput').click() },
+    { label: '🔗 Add existing file', action: () => dmsOpenAddShortcut() },
     null, // divider
     { label: '📄 Google Doc', action: () => dmsOpenCreateFile('doc') },
     { label: '📊 Google Sheet', action: () => dmsOpenCreateFile('sheet') },
@@ -17525,6 +17551,7 @@ async function dmsBrowseFolder(folderId, folderName, mode) {
   const canCreate = ME.role==='admin' || ME.role==='pc';
   document.getElementById('dmsCreateFileBtn').style.display = canCreate ? 'inline-flex' : 'none';
   document.getElementById('dmsUploadBtn').style.display = canCreate ? 'inline-flex' : 'none';
+  document.getElementById('dmsAddShortcutBtn').style.display = canCreate ? 'inline-flex' : 'none';
   try {
     const files = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${folderId}/files`);
     if (!files.length) {
@@ -17611,6 +17638,29 @@ function dmsFileMenuToggle(event) {
 }
 
 let _dmsRenameFileId = null;
+
+function dmsOpenAddShortcut() {
+  if (!_dmsSelectedClient || !_dmsBrowseFolderId) return;
+  document.getElementById('dmsShortcutUrl').value = '';
+  document.getElementById('dmsAddShortcutErr').style.display = 'none';
+  document.getElementById('dmsAddShortcutModal').classList.add('open');
+  setTimeout(() => document.getElementById('dmsShortcutUrl').focus(), 0);
+}
+
+async function dmsAddShortcutConfirm() {
+  const errEl = document.getElementById('dmsAddShortcutErr');
+  errEl.style.display = 'none';
+  const url = document.getElementById('dmsShortcutUrl').value.trim();
+  if (!url) { errEl.textContent = 'Paste a Drive link first'; errEl.style.display = 'block'; return; }
+  if (!_dmsSelectedClient || !_dmsBrowseFolderId) return;
+  try {
+    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/shortcut`, 'POST', { url });
+    if (r?.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+    closeModal('dmsAddShortcutModal');
+    showToast('File added!');
+    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName, 'jump');
+  } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+}
 
 function dmsRenameFile(fileId) {
   const card = document.querySelector(`.dms-file-card[data-id="${fileId}"]`);

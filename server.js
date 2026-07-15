@@ -7005,6 +7005,40 @@ app.post('/api/clients/:id/dms/folders/:folderId/upload', requireAuth, requireAd
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Add an existing Drive file (a link pasted in, not created through us) to
+// a client's folder as a shortcut — the original stays where it is and
+// keeps live-editing, we just place a reference to it here. Only needs the
+// target to be shared with our service account (view access is enough).
+app.post('/api/clients/:id/dms/folders/:folderId/shortcut', requireAuth, requireAdminOrPC, async (req, res) => {
+  try {
+    const { id, folderId } = req.params;
+    if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    const raw = (req.body.url || '').trim();
+    if (!raw) return res.status(400).json({ error: 'A Google Drive link (or file ID) is required' });
+    const m = raw.match(/\/d\/([a-zA-Z0-9-_]+)/) || raw.match(/[?&]id=([a-zA-Z0-9-_]+)/);
+    const targetId = m ? m[1] : raw;
+    const drive = await getDriveClient();
+    let target;
+    try {
+      target = await drive.files.get({ fileId: targetId, fields: 'id,name,mimeType', supportsAllDrives: true });
+    } catch (e) {
+      return res.status(400).json({ error: `Can't access that file — share it with ${_dmsServiceAccountEmail()} first, then try again.` });
+    }
+    const shortcut = await drive.files.create({
+      requestBody: {
+        name: target.data.name,
+        mimeType: 'application/vnd.google-apps.shortcut',
+        shortcutDetails: { targetId },
+        parents: [folderId],
+      },
+      fields: 'id,name,webViewLink',
+      supportsAllDrives: true,
+    });
+    await _dmsLogActivity(shortcut.data.id, 'created', shortcut.data.name, req, id);
+    res.json({ success: true, id: shortcut.data.id, web_view_link: shortcut.data.webViewLink });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Step 1 of a large-file upload: get a Drive resumable-session URL.
 // A direct browser PUT to this URL bypasses Vercel's ~4.5MB request cap, but
 // Drive's resumable-upload response is missing CORS headers on completion,
