@@ -685,6 +685,12 @@ function _dmsServiceAccountEmail() {
   return _dmsCreds().client_email;
 }
 
+// External-link pseudo-files get opened via window.open() and rendered as a
+// clickable row, so only allow http/https to block javascript:/data: URI XSS.
+function _dmsIsSafeUrl(u) {
+  try { const p = new URL(u); return p.protocol === 'http:' || p.protocol === 'https:'; } catch { return false; }
+}
+
 // Records who did what through the app (Drive itself only ever sees our
 // single shared service account, so this is the only per-user attribution
 // available for app-driven creates/renames/deletes).
@@ -4017,6 +4023,21 @@ const _clientsTableMigrationsPromise = (async () => {
   // when a child file is added/changed, so that alone can't drive this.
   await sa(`ALTER TABLE dms_file_activity ADD COLUMN client_id INT DEFAULT NULL AFTER file_id`);
   await sa(`ALTER TABLE dms_file_activity ADD INDEX idx_dfa_client (client_id, created_at)`);
+  // Name+link entries pasted into a client's DMS folder — NOT real Drive
+  // objects, just our own DB rows merged into the file listing. Replaces the
+  // old Drive-shortcut approach, which required the target to be shared with
+  // our service account first (impractical when we don't own the sharing).
+  await sa(`CREATE TABLE IF NOT EXISTS dms_external_links (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    client_id INT NOT NULL,
+    folder_id VARCHAR(255) NOT NULL,
+    name VARCHAR(500) NOT NULL,
+    url TEXT NOT NULL,
+    created_by INT NOT NULL,
+    created_by_name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_del_folder (folder_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
   console.log('  ✅ Daily Task + Meetings tables ready');
 })();
@@ -6968,13 +6989,36 @@ app.delete('/api/clients/:id/dms/departments/:dept', requireAuth, requireAdminOr
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// List files in a Drive folder (must belong to this client)
+// List files in a Drive folder (must belong to this client) — merged with any
+// name+link entries pasted into this folder via the external-link feature,
+// since those aren't real Drive objects and dmsListFiles() can't see them.
 app.get('/api/clients/:id/dms/folders/:folderId/files', requireAuth, async (req, res) => {
   try {
     const { id, folderId } = req.params;
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
     const files = await dmsListFiles(folderId);
-    res.json(files);
+    const [linkRows] = await db.query(
+      `SELECT id, name, url, created_by_name,
+              DATE_FORMAT(CONVERT_TZ(created_at, @@session.time_zone, '+00:00'), '%Y-%m-%dT%H:%i:%SZ') AS created_at
+       FROM dms_external_links WHERE folder_id=? ORDER BY created_at DESC`,
+      [folderId]
+    );
+    const linkFiles = linkRows.map(r => ({
+      id: 'ext-' + r.id,
+      name: r.name,
+      mimeType: 'application/x-emk-external-link',
+      webViewLink: r.url,
+      modifiedTime: r.created_at,
+      modified_by: r.created_by_name,
+      size: null,
+    }));
+    const merged = [...files, ...linkFiles].sort((a, b) => {
+      const aFolder = a.mimeType === 'application/vnd.google-apps.folder' ? 0 : 1;
+      const bFolder = b.mimeType === 'application/vnd.google-apps.folder' ? 0 : 1;
+      if (aFolder !== bFolder) return aFolder - bFolder;
+      return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+    });
+    res.json(merged);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -7005,37 +7049,25 @@ app.post('/api/clients/:id/dms/folders/:folderId/upload', requireAuth, requireAd
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Add an existing Drive file (a link pasted in, not created through us) to
-// a client's folder as a shortcut — the original stays where it is and
-// keeps live-editing, we just place a reference to it here. Only needs the
-// target to be shared with our service account (view access is enough).
-app.post('/api/clients/:id/dms/folders/:folderId/shortcut', requireAuth, requireAdminOrPC, async (req, res) => {
+// Add a simple name+link entry to a client's folder — NOT a real Drive object,
+// just a DB row we merge into the file listing. No Drive API / sharing needed,
+// unlike the (removed) Drive-shortcut approach — the user often doesn't control
+// sharing permissions on files owned by other people.
+app.post('/api/clients/:id/dms/folders/:folderId/external-link', requireAuth, requireAdminOrPC, async (req, res) => {
   try {
     const { id, folderId } = req.params;
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
-    const raw = (req.body.url || '').trim();
-    if (!raw) return res.status(400).json({ error: 'A Google Drive link (or file ID) is required' });
-    const m = raw.match(/\/d\/([a-zA-Z0-9-_]+)/) || raw.match(/[?&]id=([a-zA-Z0-9-_]+)/);
-    const targetId = m ? m[1] : raw;
-    const drive = await getDriveClient();
-    let target;
-    try {
-      target = await drive.files.get({ fileId: targetId, fields: 'id,name,mimeType', supportsAllDrives: true });
-    } catch (e) {
-      return res.status(400).json({ error: `Can't access that file — share it with ${_dmsServiceAccountEmail()} first, then try again.` });
-    }
-    const shortcut = await drive.files.create({
-      requestBody: {
-        name: target.data.name,
-        mimeType: 'application/vnd.google-apps.shortcut',
-        shortcutDetails: { targetId },
-        parents: [folderId],
-      },
-      fields: 'id,name,webViewLink',
-      supportsAllDrives: true,
-    });
-    await _dmsLogActivity(shortcut.data.id, 'created', shortcut.data.name, req, id);
-    res.json({ success: true, id: shortcut.data.id, web_view_link: shortcut.data.webViewLink });
+    const name = (req.body.name || '').trim();
+    const url = (req.body.url || '').trim();
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+    if (!url || !_dmsIsSafeUrl(url)) return res.status(400).json({ error: 'A valid http(s) link is required' });
+    const [result] = await db.query(
+      'INSERT INTO dms_external_links (client_id, folder_id, name, url, created_by, created_by_name) VALUES (?,?,?,?,?,?)',
+      [id, folderId, name, url, req.session.userId, req.session.name || '']
+    );
+    const linkFileId = 'ext-' + result.insertId;
+    await _dmsLogActivity(linkFileId, 'created', name, req, id);
+    res.json({ success: true, id: linkFileId });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -7122,6 +7154,14 @@ app.patch('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, r
     const { id, folderId, fileId } = req.params;
     const name = (req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'name required' });
+    if (fileId.startsWith('ext-')) {
+      const linkId = fileId.slice(4);
+      if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
+      const [r] = await db.query('UPDATE dms_external_links SET name=? WHERE id=? AND folder_id=?', [name, linkId, folderId]);
+      if (!r.affectedRows) return res.status(404).json({ error: 'Link not found' });
+      await _dmsLogActivity(fileId, 'renamed', name, req, id);
+      return res.json({ success: true });
+    }
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
     const drive = await getDriveClient();
     await drive.files.update({ fileId, requestBody: { name }, supportsAllDrives: true });
@@ -7135,6 +7175,15 @@ app.patch('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, r
 app.delete('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, requireAdminOrPC, async (req, res) => {
   try {
     const { id, folderId, fileId } = req.params;
+    if (fileId.startsWith('ext-')) {
+      const linkId = fileId.slice(4);
+      if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
+      const [[linkRow]] = await db.query('SELECT name FROM dms_external_links WHERE id=? AND folder_id=?', [linkId, folderId]);
+      const [r] = await db.query('DELETE FROM dms_external_links WHERE id=? AND folder_id=?', [linkId, folderId]);
+      if (!r.affectedRows) return res.status(404).json({ error: 'Link not found' });
+      await _dmsLogActivity(fileId, 'deleted', linkRow?.name || null, req, id);
+      return res.json({ success: true });
+    }
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
     const drive = await getDriveClient();
     let name = null;

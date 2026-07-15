@@ -2641,16 +2641,19 @@ input:focus,select:focus,textarea:focus{outline:none;}
     </div>
   </div>
 
-  <!-- DMS: Add existing Drive file (shortcut) modal -->
+  <!-- DMS: Add existing file (name + link) modal -->
   <div class="modal-overlay" id="dmsAddShortcutModal">
     <div class="modal" style="width:460px">
       <button class="modal-close" onclick="closeModal('dmsAddShortcutModal')">×</button>
       <h3>Add Existing File</h3>
       <div class="alert error" id="dmsAddShortcutErr" style="display:none"></div>
       <div class="form-group">
-        <label>Google Drive link *</label>
-        <input type="text" id="dmsShortcutUrl" placeholder="Paste a Sheet/Doc/file link" style="width:100%;box-sizing:border-box" onkeydown="if(event.key==='Enter'){event.preventDefault();dmsAddShortcutConfirm();}"/>
-        <div style="font-size:11px;color:#94a3b8;margin-top:6px">Places a link here — the file stays in its original location and stays live/editable. Make sure it's shared with the DMS service account first if it isn't already.</div>
+        <label>Name *</label>
+        <input type="text" id="dmsShortcutName" placeholder="e.g. Client Onboarding Sheet" style="width:100%;box-sizing:border-box"/>
+      </div>
+      <div class="form-group">
+        <label>Link *</label>
+        <input type="text" id="dmsShortcutUrl" placeholder="Paste the Sheet/Doc/file link" style="width:100%;box-sizing:border-box" onkeydown="if(event.key==='Enter'){event.preventDefault();dmsAddShortcutConfirm();}"/>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal('dmsAddShortcutModal')">Cancel</button>
@@ -17558,7 +17561,7 @@ async function dmsBrowseFolder(folderId, folderName, mode) {
       document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">No files in this folder yet.</div>';
       return;
     }
-    const icons = { 'application/vnd.google-apps.document':'📄', 'application/vnd.google-apps.spreadsheet':'📊', 'application/vnd.google-apps.presentation':'📑', 'application/vnd.google-apps.folder':'📁' };
+    const icons = { 'application/vnd.google-apps.document':'📄', 'application/vnd.google-apps.spreadsheet':'📊', 'application/vnd.google-apps.presentation':'📑', 'application/vnd.google-apps.folder':'📁', 'application/x-emk-external-link':'🔗' };
     document.getElementById('dmsFileList').innerHTML = `
       <table style="width:100%;border-collapse:collapse;font-size:12.5px">
         <thead>
@@ -17641,23 +17644,26 @@ let _dmsRenameFileId = null;
 
 function dmsOpenAddShortcut() {
   if (!_dmsSelectedClient || !_dmsBrowseFolderId) return;
+  document.getElementById('dmsShortcutName').value = '';
   document.getElementById('dmsShortcutUrl').value = '';
   document.getElementById('dmsAddShortcutErr').style.display = 'none';
   document.getElementById('dmsAddShortcutModal').classList.add('open');
-  setTimeout(() => document.getElementById('dmsShortcutUrl').focus(), 0);
+  setTimeout(() => document.getElementById('dmsShortcutName').focus(), 0);
 }
 
 async function dmsAddShortcutConfirm() {
   const errEl = document.getElementById('dmsAddShortcutErr');
   errEl.style.display = 'none';
+  const name = document.getElementById('dmsShortcutName').value.trim();
   const url = document.getElementById('dmsShortcutUrl').value.trim();
-  if (!url) { errEl.textContent = 'Paste a Drive link first'; errEl.style.display = 'block'; return; }
+  if (!name) { errEl.textContent = 'Name is required'; errEl.style.display = 'block'; return; }
+  if (!/^https?:\/\//i.test(url)) { errEl.textContent = 'Enter a valid http(s) link'; errEl.style.display = 'block'; return; }
   if (!_dmsSelectedClient || !_dmsBrowseFolderId) return;
   try {
-    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/shortcut`, 'POST', { url });
+    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/external-link`, 'POST', { name, url });
     if (r?.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
     closeModal('dmsAddShortcutModal');
-    showToast('File added!');
+    showToast('Link added!');
     dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName, 'jump');
   } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
 }
@@ -17691,12 +17697,16 @@ async function dmsRenameConfirm() {
 async function dmsDeleteFile(fileId) {
   const card = document.querySelector(`.dms-file-card[data-id="${fileId}"]`);
   if (!card || !_dmsSelectedClient || !_dmsBrowseFolderId) return;
-  if (!await appConfirm(`Delete "${card.dataset.name}"? It will be moved to Drive's Trash and can be recovered from there for 30 days.`, 'Delete file?')) return;
+  const isLink = fileId.startsWith('ext-');
+  const confirmMsg = isLink
+    ? `Remove the link "${card.dataset.name}"? This just removes it from this folder — permanently, no undo (the original file it links to is untouched).`
+    : `Delete "${card.dataset.name}"? It will be moved to Drive's Trash and can be recovered from there for 30 days.`;
+  if (!await appConfirm(confirmMsg, isLink ? 'Remove link?' : 'Delete file?')) return;
   try {
     const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/files/${fileId}`, 'DELETE');
     if (r?.error) { showToast(r.error); return; }
-    showToast('Deleted');
-    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName);
+    showToast(isLink ? 'Link removed' : 'Deleted');
+    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName, 'jump');
   } catch (e) { showToast('Delete failed: ' + e.message); }
 }
 
