@@ -2718,8 +2718,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
           <option value="damaged">Damaged</option>
           <option value="retired">Retired</option>
         </select>
-        <button id="invSelfAddBtn" class="btn btn-outline" onclick="openInvAddModal(true)">📦 I Already Have This</button>
-        <button id="invAddBtn" class="btn btn-primary" style="display:none" onclick="openInvAddModal()">＋ Add Item</button>
+        <button id="invAddBtn" class="btn btn-primary" onclick="openInvAddModal()">＋ Add Item</button>
       </div>
     </div>
 
@@ -2859,12 +2858,8 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div class="alert error" id="invAddErr" style="display:none"></div>
       <div class="form-row">
         <div class="form-group">
-          <label>Name *</label>
-          <input type="text" id="invName" placeholder="e.g. Dell Laptop XPS 15">
-        </div>
-        <div class="form-group">
           <label>Type *</label>
-          <select id="invType">
+          <select id="invType" onchange="invTypeChanged()">
             <option value="laptop">💻 Laptop</option>
             <option value="keyboard">⌨️ Keyboard</option>
             <option value="mouse">🖱️ Mouse</option>
@@ -2873,6 +2868,10 @@ input:focus,select:focus,textarea:focus{outline:none;}
             <option value="charger">🔌 Charger</option>
             <option value="other">📦 Other</option>
           </select>
+        </div>
+        <div class="form-group" id="invTypeOtherWrap" style="display:none">
+          <label>Specify Type *</label>
+          <input type="text" id="invTypeOther" placeholder="e.g. Monitor, Headphones">
         </div>
       </div>
       <div class="form-row">
@@ -5033,12 +5032,15 @@ let _invPhotoBase64 = null;
 let _invSelfAddMode = false;
 
 const INV_TYPE_LABELS = {laptop:'💻 Laptop',keyboard:'⌨️ Keyboard',mouse:'🖱️ Mouse',mobile:'📱 Mobile',sim:'📶 SIM',charger:'🔌 Charger',other:'📦 Other'};
+// Same labels without the emoji — used as the item's stored name, since the
+// form has no free-text name field (an 'other' item is named by its typed-in
+// custom type instead).
+const INV_TYPE_PLAIN = {laptop:'Laptop',keyboard:'Keyboard',mouse:'Mouse',mobile:'Mobile',sim:'SIM',charger:'Charger',other:'Other'};
 const INV_STATUS_COLORS = {available:'#10b981',assigned:'#f59e0b',damaged:'#ef4444',retired:'#94a3b8'};
 
 async function loadInventory() {
   const isAdmin = ME.role === 'admin' || ME.role === 'hod';
   if (isAdmin) {
-    document.getElementById('invAddBtn').style.display = 'inline-flex';
     document.getElementById('invTabAll').style.display = 'inline-flex';
     document.getElementById('invTabAssign').style.display = 'inline-flex';
     document.getElementById('invStats').style.display = 'grid';
@@ -5071,6 +5073,10 @@ function renderInventory() {
   const statusFilter = document.getElementById('invFilterStatus').value;
   const el = document.getElementById('invContent');
   const isAdmin = ME.role === 'admin' || ME.role === 'hod';
+
+  // Add Item is contextual to the open tab — it adds to whatever the tab
+  // shows. Assignments is a read-only history view, so nothing to add there.
+  document.getElementById('invAddBtn').style.display = _invTab === 'assignments' ? 'none' : 'inline-flex';
 
   if (_invTab === 'assignments' && isAdmin) {
     renderAssignmentsTable(el);
@@ -5180,12 +5186,16 @@ function viewInvPhoto(src) {
   document.getElementById('invPhotoViewer').classList.add('open');
 }
 
-function openInvAddModal(selfMode) {
-  _invSelfAddMode = !!selfMode;
-  document.getElementById('invAddModalTitle').textContent = _invSelfAddMode ? '📦 Report Equipment You Have' : '＋ Add Equipment';
+// Adding is contextual to the open tab: from My Equipment the item lands in
+// the adder's own equipment (self-assigned); from All Equipment an admin/HOD
+// adds it to the shared pool as unassigned stock.
+function openInvAddModal() {
+  _invSelfAddMode = _invTab === 'mine';
+  document.getElementById('invAddModalTitle').textContent = _invSelfAddMode ? '＋ Add to My Equipment' : '＋ Add Equipment';
   document.getElementById('invAddModalSaveBtn').textContent = _invSelfAddMode ? 'Add to My Equipment' : 'Save Item';
-  document.getElementById('invName').value = ME?.name || '';
   document.getElementById('invType').value = 'laptop';
+  document.getElementById('invTypeOther').value = '';
+  invTypeChanged();
   document.getElementById('invBrand').value = '';
   document.getElementById('invModel').value = '';
   document.getElementById('invSerial').value = '';
@@ -5198,10 +5208,18 @@ function openInvAddModal(selfMode) {
   document.getElementById('invAddModal').classList.add('open');
 }
 
+function invTypeChanged() {
+  const isOther = document.getElementById('invType').value === 'other';
+  document.getElementById('invTypeOtherWrap').style.display = isOther ? 'block' : 'none';
+}
+
 async function saveInventoryItem() {
-  const name = document.getElementById('invName').value.trim();
   const type = document.getElementById('invType').value;
-  if (!name) { showInvErr('invAddErr','Name is required'); return; }
+  const otherType = document.getElementById('invTypeOther').value.trim();
+  if (type === 'other' && !otherType) { showInvErr('invAddErr','Please specify the type'); return; }
+  // No name field on the form — the type names the item, except for 'other',
+  // which is named by whatever type the user typed in.
+  const name = type === 'other' ? otherType : INV_TYPE_PLAIN[type];
   const body = {
     name, type,
     brand: document.getElementById('invBrand').value.trim(),
