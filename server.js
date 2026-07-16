@@ -381,6 +381,30 @@ const _startupMigrationsPromise = (async () => {
     INDEX idx_handover (handover_status)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+  // ── Deleted-records archive ───────────────────────────
+  // Every user-facing delete snapshots the row here before the hard DELETE,
+  // so nothing ever leaves the database unrecoverably. Generic by design:
+  // record_data holds the whole row as JSON, since each source table has its
+  // own columns.
+  await sa(`CREATE TABLE IF NOT EXISTS deleted_records (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    source_table VARCHAR(64) NOT NULL,
+    record_id INT DEFAULT NULL,
+    record_data LONGTEXT NOT NULL,
+    summary VARCHAR(255) DEFAULT '',
+    deleted_by INT DEFAULT NULL,
+    deleted_by_name VARCHAR(255) DEFAULT '',
+    deleted_by_role VARCHAR(20) DEFAULT '',
+    deleted_via VARCHAR(120) DEFAULT '',
+    delete_reason TEXT,
+    restored_at TIMESTAMP NULL DEFAULT NULL,
+    restored_by INT DEFAULT NULL,
+    deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_source (source_table, record_id),
+    INDEX idx_deleted_by (deleted_by),
+    INDEX idx_deleted_at (deleted_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
   // ── HRM tables ────────────────────────────────────────
   await sa(`CREATE TABLE IF NOT EXISTS hrm_candidates (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -588,6 +612,50 @@ function requireAdminOrPC(req, res, next) {
 }
 function getTable(type) {
   return type === 'delegation' ? 'delegation_tasks' : 'checklist_tasks';
+}
+
+// ══════════════════════════════════════════════════════
+// DELETE ARCHIVE
+// ══════════════════════════════════════════════════════
+// Snapshot rows into deleted_records before a hard DELETE removes them.
+//
+// Call this BEFORE the DELETE and let it throw: if the archive write fails we
+// must NOT go on to delete the rows, or the data is gone with no copy. A
+// silently-failing safety net is worse than none, so callers should leave this
+// un-caught and let their route's own catch turn it into a 500.
+//
+// `rows` = the full row object(s) about to be deleted (SELECT them first).
+// `opts.summary` = string, or fn(row) -> string, for a readable one-liner.
+async function archiveDeleted(sourceTable, rows, req, opts = {}) {
+  const list = (Array.isArray(rows) ? rows : [rows]).filter(Boolean);
+  if (!list.length) return;
+
+  const via = (opts.via || `${req?.method || ''} ${req?.originalUrl || ''}`).trim().slice(0, 120);
+  const actorId   = req?.session?.userId ?? null;
+  const actorName = String(req?.session?.name || '').slice(0, 255);
+  const actorRole = String(req?.session?.role || '').slice(0, 20);
+
+  const values = list.map(row => {
+    let summary = '';
+    try {
+      summary = typeof opts.summary === 'function' ? opts.summary(row) : (opts.summary || '');
+    } catch (e) { summary = ''; }
+    return [
+      sourceTable,
+      row?.id ?? null,
+      JSON.stringify(row),
+      String(summary || '').slice(0, 255),
+      actorId, actorName, actorRole, via,
+      opts.reason || null,
+    ];
+  });
+
+  await db.query(
+    `INSERT INTO deleted_records
+       (source_table, record_id, record_data, summary,
+        deleted_by, deleted_by_name, deleted_by_role, deleted_via, delete_reason)
+     VALUES ?`,
+    [values]);
 }
 
 // ══════════════════════════════════════════════════════
@@ -1587,10 +1655,11 @@ app.put('/api/subtasks/:id', requireAuth, async (req, res) => {
 app.delete('/api/subtasks/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const [[sub]] = await db.query('SELECT task_id, created_by FROM task_subtasks WHERE id=?', [id]);
+    const [[sub]] = await db.query('SELECT * FROM task_subtasks WHERE id=?', [id]);
     if (!sub) return res.status(404).json({ error: 'Sub-task not found' });
     const isPrivileged = req.session.role === 'admin' || req.session.role === 'pc';
     if (sub.created_by !== req.session.userId && !isPrivileged) return res.status(403).json({ error: 'Not allowed' });
+    await archiveDeleted('task_subtasks', sub, req, { summary: r => `Sub-task: ${r.description || ''}` });
     await db.query('DELETE FROM task_subtasks WHERE id=?', [id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1748,7 +1817,10 @@ app.delete('/api/tasks/:id', requireAuth, async (req, res) => {
   try {
     const { type } = req.query;
     if (!await canModifyTask(req, req.params.id, type)) return res.status(403).json({ error: 'Not allowed to delete this task' });
-    await db.query(`DELETE FROM ${getTable(type||'delegation')} WHERE id=?`, [req.params.id]);
+    const tbl = getTable(type||'delegation');
+    const [rows] = await db.query(`SELECT * FROM ${tbl} WHERE id=?`, [req.params.id]);
+    await archiveDeleted(tbl, rows, req, { summary: r => `Task: ${r.description || ''}` });
+    await db.query(`DELETE FROM ${tbl} WHERE id=?`, [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1763,6 +1835,13 @@ app.delete('/api/tasks/:id/checklist-series', requireAuth, async (req, res) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
     const includePast = req.query.includePast === '1';
     const dateClause = includePast ? '' : ' AND due_date >= CURDATE()';
+    const [doomed] = await db.query(
+      `SELECT * FROM checklist_tasks WHERE description=? AND assigned_to=?${dateClause}`,
+      [task.description, task.assigned_to]);
+    await archiveDeleted('checklist_tasks', doomed, req, {
+      summary: r => `Checklist series: ${r.description || ''}`,
+      reason: 'Recurring checklist series deleted',
+    });
     const [result] = await db.query(
       `DELETE FROM checklist_tasks WHERE description=? AND assigned_to=?${dateClause}`,
       [task.description, task.assigned_to]
@@ -1776,6 +1855,11 @@ app.delete('/api/tasks/user/:userId', requireAuth, requireAdmin, async (req, res
   try {
     const { type } = req.query;
     const table = getTable(type || 'delegation');
+    const [doomed] = await db.query(`SELECT * FROM ${table} WHERE assigned_to = ?`, [req.params.userId]);
+    await archiveDeleted(table, doomed, req, {
+      summary: r => `Task: ${r.description || ''}`,
+      reason: `Bulk delete of all ${table} rows for user ${req.params.userId}`,
+    });
     await db.query(`DELETE FROM ${table} WHERE assigned_to = ?`, [req.params.userId]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1797,6 +1881,11 @@ app.delete('/api/tasks/delete-by-date', requireAuth, requireAdmin, async (req, r
   try {
     const { date } = req.body;
     if (!date) return res.status(400).json({ error: 'Date required' });
+    const [doomed] = await db.query('SELECT * FROM checklist_tasks WHERE due_date=?', [date]);
+    await archiveDeleted('checklist_tasks', doomed, req, {
+      summary: r => `Checklist: ${r.description || ''}`,
+      reason: `Bulk delete of all checklist tasks due ${date}`,
+    });
     const [result] = await db.query('DELETE FROM checklist_tasks WHERE due_date=?', [date]);
     res.json({ success: true, deleted: result.affectedRows });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1822,6 +1911,11 @@ app.post('/api/tasks/checklist-year-delete', requireAuth, requireAdmin, async (r
   try {
     const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: 'userId required' });
+    const [doomed] = await db.query(`SELECT * FROM checklist_tasks WHERE assigned_to=?`, [userId]);
+    await archiveDeleted('checklist_tasks', doomed, req, {
+      summary: r => `Checklist: ${r.description || ''}`,
+      reason: `Bulk delete of all checklist tasks for user ${userId}`,
+    });
     const [result] = await db.query(`DELETE FROM checklist_tasks WHERE assigned_to=?`, [userId]);
     res.json({ success: true, deleted: result.affectedRows });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2695,6 +2789,8 @@ app.post('/api/admin/send-birthday-reminder', requireAuth, requireAdmin, async (
 app.delete('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     if (parseInt(req.params.id) === req.session.userId) return res.status(400).json({ error: 'Cannot delete yourself' });
+    const [doomed] = await db.query('SELECT * FROM users WHERE id=?', [req.params.id]);
+    await archiveDeleted('users', doomed, req, { summary: r => `User: ${r.name || ''} <${r.email || ''}>` });
     await db.query('DELETE FROM users WHERE id=?', [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2791,6 +2887,7 @@ app.delete('/api/comments/:id', requireAuth, async (req, res) => {
     const [rows] = await db.query('SELECT * FROM task_comments WHERE id=?', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
     if (rows[0].user_id !== req.session.userId && req.session.role !== 'admin') return res.status(403).json({ error: 'Not allowed' });
+    await archiveDeleted('task_comments', rows[0], req, { summary: r => `Comment: ${r.comment || ''}` });
     await db.query('DELETE FROM task_comments WHERE id=?', [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2931,6 +3028,8 @@ app.put('/api/fms/:id', requireAuth, requireAdmin, async (req, res) => {
 
 app.delete('/api/fms/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
+    const [doomed] = await db.query('SELECT * FROM fms_sheets WHERE id=?', [req.params.id]);
+    await archiveDeleted('fms_sheets', doomed, req, { summary: r => `FMS sheet: ${r.sheet_name || ''}` });
     await db.query('DELETE FROM fms_sheets WHERE id=?', [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -6064,11 +6163,34 @@ app.delete('/api/credit-cards/statement/:id', requireAuth, async (req, res) => {
     if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     // get card_id before deleting
     const [[stmt]] = await db.query('SELECT card_id FROM cc_statements WHERE id=?', [req.params.id]);
+    // Archive the statement and everything the FK cascade will take with it.
+    // pdf_data (LONGBLOB) is deliberately excluded — it would bloat the archive
+    // by megabytes per row; drive_file_id is the recovery path for the PDF.
+    const [stmtRows] = await db.query(
+      `SELECT id, card_id, statement_date, payment_due_date, payable_amount, min_amount_due,
+              statement_period, drive_file_id, created_at
+         FROM cc_statements WHERE id=?`, [req.params.id]);
+    await archiveDeleted('cc_statements', stmtRows, req, {
+      summary: r => `CC statement: ${r.statement_period || ''} (payable ${r.payable_amount ?? '?'})`,
+      reason: 'pdf_data (LONGBLOB) not archived — recover via drive_file_id',
+    });
+    const [txnRows] = await db.query('SELECT * FROM cc_transactions WHERE statement_id=?', [req.params.id]);
+    await archiveDeleted('cc_transactions', txnRows, req, {
+      summary: r => `CC txn: ${r.description || ''} ${r.amount ?? ''}`,
+      reason: `Cascade-deleted with cc_statements #${req.params.id}`,
+    });
     await db.query('DELETE FROM cc_statements WHERE id=?', [req.params.id]);
     // if no more statements remain for this card, delete the orphan card too
     if (stmt) {
       const [[{ cnt }]] = await db.query('SELECT COUNT(*) AS cnt FROM cc_statements WHERE card_id=?', [stmt.card_id]);
-      if (cnt === 0) await db.query('DELETE FROM cc_cards WHERE id=?', [stmt.card_id]);
+      if (cnt === 0) {
+        const [cardRows] = await db.query('SELECT * FROM cc_cards WHERE id=?', [stmt.card_id]);
+        await archiveDeleted('cc_cards', cardRows, req, {
+          summary: r => `CC card: ${r.bank_name || ''} ${r.card_number || ''}`,
+          reason: 'Orphaned — last statement for this card was deleted',
+        });
+        await db.query('DELETE FROM cc_cards WHERE id=?', [stmt.card_id]);
+      }
     }
     res.json({ success:true });
   } catch(err) { res.status(500).json({ error:err.message }); }
@@ -6078,6 +6200,10 @@ app.delete('/api/credit-cards/statement/:id', requireAuth, async (req, res) => {
 app.delete('/api/credit-cards/transaction/:id', requireAuth, async (req, res) => {
   try {
     if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
+    const [doomed] = await db.query('SELECT * FROM cc_transactions WHERE id=?', [req.params.id]);
+    await archiveDeleted('cc_transactions', doomed, req, {
+      summary: r => `CC txn: ${r.description || ''} ${r.amount ?? ''}`,
+    });
     await db.query('DELETE FROM cc_transactions WHERE id=?', [req.params.id]);
     res.json({ success:true });
   } catch(err) { res.status(500).json({ error:err.message }); }
@@ -6120,6 +6246,8 @@ app.post('/api/credit-cards/departments', requireAuth, async (req, res) => {
 app.delete('/api/credit-cards/departments/:name', requireAuth, async (req, res) => {
   try {
     if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
+    const [doomed] = await db.query('SELECT * FROM cc_departments WHERE name=?', [req.params.name]);
+    await archiveDeleted('cc_departments', doomed, req, { summary: r => `CC department: ${r.name || ''}` });
     await db.query('DELETE FROM cc_departments WHERE name=?', [req.params.name]);
     res.json({ success:true });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -6187,6 +6315,10 @@ app.post('/api/payment-requests/cards', requireAuth, async (req, res) => {
 app.delete('/api/payment-requests/cards/:id', requireAuth, async (req, res) => {
   try {
     if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
+    const [doomed] = await db.query('SELECT * FROM pr_cards WHERE id=?', [req.params.id]);
+    await archiveDeleted('pr_cards', doomed, req, {
+      summary: r => `PR card: ${r.bank_name || ''} ${r.card_number || ''}`,
+    });
     await db.query('DELETE FROM pr_cards WHERE id=?', [req.params.id]);
     res.json({ success:true });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -6197,6 +6329,11 @@ app.delete('/api/payment-requests/:id', requireAuth, async (req, res) => {
   try {
     if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     const id = req.params.id;
+    const [doomed] = await db.query(
+      'SELECT * FROM payment_requests WHERE id=? OR (bank_name=\'__system__\' AND reason LIKE ?)', [id, `%:${id}%`]);
+    await archiveDeleted('payment_requests', doomed, req, {
+      summary: r => `Payment request: ${r.reason || ''} ${r.amount ?? ''}`,
+    });
     await db.query('DELETE FROM payment_requests WHERE id=? OR (bank_name=\'__system__\' AND reason LIKE ?)', [id, `%:${id}%`]);
     res.json({ success:true });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -6471,6 +6608,10 @@ app.get('/api/feedback', requireAuth, async (req, res) => {
 app.delete('/api/feedback/:id', requireAuth, async (req, res) => {
   try {
     if (!['admin','pc'].includes(req.session.role)) return res.status(403).json({ error: 'Access denied' });
+    const [doomed] = await db.query('SELECT * FROM client_feedback WHERE id=?', [parseInt(req.params.id)]);
+    await archiveDeleted('client_feedback', doomed, req, {
+      summary: r => `Feedback (${r.rating ?? '?'}★): ${r.description || ''}`,
+    });
     await db.query('DELETE FROM client_feedback WHERE id=?', [parseInt(req.params.id)]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -6518,6 +6659,13 @@ app.delete('/api/client-portal/feedback/:id', requireAuth, async (req, res) => {
     if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
     const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
     if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const [doomed] = await db.query(
+      'SELECT * FROM client_feedback WHERE id=? AND client_id=?',
+      [parseInt(req.params.id), u.client_id]);
+    await archiveDeleted('client_feedback', doomed, req, {
+      summary: r => `Feedback (${r.rating ?? '?'}★): ${r.description || ''}`,
+      reason: 'Deleted by the client from the client portal',
+    });
     const [result] = await db.query(
       'DELETE FROM client_feedback WHERE id=? AND client_id=?',
       [parseInt(req.params.id), u.client_id]);
@@ -6664,6 +6812,8 @@ app.put('/api/clients/:id/handlers', requireAuth, requireAdminOrPC, async (req, 
 
 app.delete('/api/clients/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
+    const [doomed] = await db.query('SELECT * FROM clients WHERE id=?', [req.params.id]);
+    await archiveDeleted('clients', doomed, req, { summary: r => `Client: ${r.name || ''}` });
     await db.query('DELETE FROM clients WHERE id=?', [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -6983,6 +7133,12 @@ app.delete('/api/clients/:id/dms/departments/:dept', requireAuth, requireAdminOr
   try {
     const id = req.params.id;
     const dept = decodeURIComponent(req.params.dept);
+    const [doomed] = await db.query(
+      'SELECT * FROM client_department_folders WHERE client_id=? AND department_name=?', [id, dept]);
+    await archiveDeleted('client_department_folders', doomed, req, {
+      summary: r => `DMS dept folder mapping: ${r.department_name || ''} (client ${r.client_id})`,
+      reason: 'Mapping removed — the Drive folder itself is left untouched',
+    });
     await db.query(
       'DELETE FROM client_department_folders WHERE client_id=? AND department_name=?', [id, dept]);
     res.json({ success: true });
@@ -7178,7 +7334,10 @@ app.delete('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, 
     if (fileId.startsWith('ext-')) {
       const linkId = fileId.slice(4);
       if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
-      const [[linkRow]] = await db.query('SELECT name FROM dms_external_links WHERE id=? AND folder_id=?', [linkId, folderId]);
+      const [[linkRow]] = await db.query('SELECT * FROM dms_external_links WHERE id=? AND folder_id=?', [linkId, folderId]);
+      await archiveDeleted('dms_external_links', linkRow, req, {
+        summary: r => `DMS link: ${r.name || ''}`,
+      });
       const [r] = await db.query('DELETE FROM dms_external_links WHERE id=? AND folder_id=?', [linkId, folderId]);
       if (!r.affectedRows) return res.status(404).json({ error: 'Link not found' });
       await _dmsLogActivity(fileId, 'deleted', linkRow?.name || null, req, id);
@@ -8165,6 +8324,9 @@ app.delete('/api/leaves/:id', requireAuth, async (req, res) => {
     if (role !== 'admin' && (lr.user_id !== uid || lr.status !== 'pending')) {
       return res.status(403).json({ error: 'Cannot delete this request' });
     }
+    await archiveDeleted('leave_requests', lr, req, {
+      summary: r => `Leave (${r.leave_type || ''}, ${r.status || ''}) for user ${r.user_id}`,
+    });
     await db.query('DELETE FROM leave_requests WHERE id=?', [id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -8282,7 +8444,7 @@ app.post('/api/holidays', requireAuth, requireAdmin, async (req, res) => {
     );
 
     // Cascade: delete checklist tasks on this date + push delegation tasks forward
-    const cascade = await cascadeHolidayDate(date);
+    const cascade = await cascadeHolidayDate(date, req);
     res.json({ success: true, ...cascade });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -8309,7 +8471,7 @@ app.post('/api/holidays/bulk', requireAuth, requireAdmin, async (req, res) => {
           'ON DUPLICATE KEY UPDATE name=VALUES(name)',
           [date, name, req.session.userId]
         );
-        const c = await cascadeHolidayDate(date);
+        const c = await cascadeHolidayDate(date, req);
         cascadeDeleted += c.deletedChecklist || 0;
         cascadePushed += c.pushedDelegation || 0;
         added++;
@@ -8324,15 +8486,26 @@ app.post('/api/holidays/bulk', requireAuth, requireAdmin, async (req, res) => {
 
 app.delete('/api/holidays/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
+    const [doomed] = await db.query('SELECT * FROM holidays WHERE id=?', [parseInt(req.params.id, 10)]);
+    await archiveDeleted('holidays', doomed, req, { summary: r => `Holiday: ${r.name || ''} (${r.holiday_date || ''})` });
     await db.query('DELETE FROM holidays WHERE id=?', [parseInt(req.params.id, 10)]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // On holiday add: delete checklist tasks on that date + push delegation tasks
-async function cascadeHolidayDate(dateStr) {
+async function cascadeHolidayDate(dateStr, req) {
   let deletedChecklist = 0, pushedDelegation = 0;
   try {
+    // These rows vanish as a side effect of marking a holiday — the user never
+    // explicitly deleted them — so archiving them matters more here, not less.
+    const [doomed] = await db.query(
+      "SELECT * FROM checklist_tasks WHERE due_date=? AND status='pending'", [dateStr]);
+    await archiveDeleted('checklist_tasks', doomed, req, {
+      summary: r => `Checklist: ${r.description || ''}`,
+      via: 'cascadeHolidayDate',
+      reason: `Auto-deleted: ${dateStr} was marked a holiday`,
+    });
     const [del] = await db.query("DELETE FROM checklist_tasks WHERE due_date=? AND status='pending'", [dateStr]);
     deletedChecklist = del.affectedRows || 0;
   } catch (e) { console.error('cascade checklist:', e.message); }
@@ -8824,11 +8997,14 @@ app.post('/api/day-plan-items', requireAuth, async (req, res) => {
 
 app.delete('/api/day-plan-items/:id', requireAuth, async (req, res) => {
   try {
-    const [[existing]] = await db.query('SELECT user_id FROM day_plan_items WHERE id=?', [req.params.id]);
+    const [[existing]] = await db.query('SELECT * FROM day_plan_items WHERE id=?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'not found' });
     if (existing.user_id !== req.session.userId && req.session.role !== 'admin') {
       return res.status(403).json({ error: 'only owner or admin can delete' });
     }
+    await archiveDeleted('day_plan_items', existing, req, {
+      summary: r => `Day plan: ${r.title || ''} (${r.item_date || ''})`,
+    });
     await db.query('DELETE FROM day_plan_items WHERE id=?', [req.params.id]);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -8918,9 +9094,12 @@ app.put('/api/inventory/items/:id', requireAuth, async (req, res) => {
 app.delete('/api/inventory/items/:id', requireAuth, async (req, res) => {
   if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   try {
-    const [[item]] = await db.query('SELECT status FROM inventory_items WHERE id=?', [req.params.id]);
+    const [[item]] = await db.query('SELECT * FROM inventory_items WHERE id=?', [req.params.id]);
     if (!item) return res.status(404).json({ error: 'Not found' });
     if (item.status === 'assigned') return res.status(400).json({ error: 'Cannot delete an assigned item. Return it first.' });
+    await archiveDeleted('inventory_items', item, req, {
+      summary: r => `Equipment: ${r.name || ''} (${r.type || ''})${r.serial_number ? ' SN:' + r.serial_number : ''}`,
+    });
     await db.query('DELETE FROM inventory_items WHERE id=?', [req.params.id]);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
