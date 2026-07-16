@@ -6325,15 +6325,35 @@ app.delete('/api/payment-requests/cards/:id', requireAuth, async (req, res) => {
 });
 
 // DELETE /api/payment-requests/:id — hard delete row + its sentinels (admin only, temporary cleanup)
+// Readable one-liner for an archived payment_requests row.
+// The reason column is not plain text: the frontend packs the amount into it
+// as "[<currency><amount>] <real reason>" (see prParseReason in app.html), and
+// bill/paid sentinels are stored as fake rows under bank_name '__system__'.
+// Mirror that here so the Logs page doesn't show the amount twice or print a
+// raw sentinel string.
+function prSummary(r) {
+  const raw = String(r.reason || '');
+  if (r.bank_name === '__system__') return `Payment request sentinel: ${raw}`;
+  let amount = r.amount ?? '';
+  let reason = raw;
+  if (raw.charAt(0) === '[') {
+    const close = raw.indexOf('] ');
+    if (close > 1) {
+      const inner = raw.slice(1, close);
+      const num = parseFloat(inner.slice(1).replace(/,/g, ''));
+      if (!isNaN(num) && num >= 0) { amount = inner; reason = raw.slice(close + 2); }
+    }
+  }
+  return `Payment request: ${amount}${reason ? ' — ' + reason : ''}`;
+}
+
 app.delete('/api/payment-requests/:id', requireAuth, async (req, res) => {
   try {
     if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
     const id = req.params.id;
     const [doomed] = await db.query(
       'SELECT * FROM payment_requests WHERE id=? OR (bank_name=\'__system__\' AND reason LIKE ?)', [id, `%:${id}%`]);
-    await archiveDeleted('payment_requests', doomed, req, {
-      summary: r => `Payment request: ${r.reason || ''} ${r.amount ?? ''}`,
-    });
+    await archiveDeleted('payment_requests', doomed, req, { summary: prSummary });
     await db.query('DELETE FROM payment_requests WHERE id=? OR (bank_name=\'__system__\' AND reason LIKE ?)', [id, `%:${id}%`]);
     res.json({ success:true });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -9643,7 +9663,14 @@ app.get('/api/deleted-records', requireAuth, requireAdmin, async (req, res) => {
     const [rows] = await db.query(`
       SELECT dr.id, dr.source_table, dr.record_id, dr.summary,
              dr.deleted_by, dr.deleted_by_name, dr.deleted_by_role,
-             dr.deleted_via, dr.delete_reason, dr.deleted_at,
+             dr.deleted_via, dr.delete_reason,
+             -- Format in SQL, not JS: the pool sets no timezone, so mysql2
+             -- reads these back in the Node process's tz (UTC on Vercel) while
+             -- MySQL wrote them in its own (IST) — the browser then shifts
+             -- again, landing +5:30 out. Handing the frontend a ready string
+             -- keeps the value exactly as the DB clock recorded it.
+             DATE_FORMAT(dr.deleted_at, '%d %b %Y, %h:%i %p') AS deleted_at_fmt,
+             DATE_FORMAT(dr.restored_at, '%d %b %Y, %h:%i %p') AS restored_at_fmt,
              dr.restored_at, dr.restored_by,
              ru.name AS restored_by_name,
              CHAR_LENGTH(dr.record_data) AS record_size
@@ -9660,7 +9687,11 @@ app.get('/api/deleted-records', requireAuth, requireAdmin, async (req, res) => {
 // GET /api/deleted-records/:id — one row incl. its full JSON snapshot
 app.get('/api/deleted-records/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const [[rec]] = await db.query('SELECT * FROM deleted_records WHERE id=?', [req.params.id]);
+    const [[rec]] = await db.query(
+      `SELECT *,
+              DATE_FORMAT(deleted_at, '%d %b %Y, %h:%i %p') AS deleted_at_fmt,
+              DATE_FORMAT(restored_at, '%d %b %Y, %h:%i %p') AS restored_at_fmt
+         FROM deleted_records WHERE id=?`, [req.params.id]);
     if (!rec) return res.status(404).json({ error: 'Not found' });
     let data = null;
     try { data = JSON.parse(rec.record_data); } catch (e) { /* keep raw below */ }
@@ -9714,6 +9745,46 @@ app.post('/api/deleted-records/:id/restore', requireAuth, requireAdmin, async (r
       [req.session.userId, rec.id]);
 
     res.json({ ok: true, restored_id: data.id ?? null, droppedColumns: dropped });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// How long an archived delete is kept before the purge cron drops it.
+const DELETED_RECORDS_RETENTION_DAYS = Number(process.env.DELETED_RECORDS_RETENTION_DAYS) || 60;
+
+// Purge archive rows older than the retention window.
+//
+// This is the one hard delete in the app with no archive behind it — by
+// definition, since this IS the archive. Past the window, a deleted row and
+// the record of who deleted it are both gone for good. Owner-approved
+// (2026-07-16) as an explicit trade for keeping the table from growing without
+// bound (record_data can carry base64 photos).
+async function purgeDeletedRecords() {
+  const days = DELETED_RECORDS_RETENTION_DAYS;
+  const [[{ due }]] = await db.query(
+    'SELECT COUNT(*) AS due FROM deleted_records WHERE deleted_at < NOW() - INTERVAL ? DAY', [days]);
+  if (!due) return { purged: 0, retentionDays: days };
+  const [r] = await db.query(
+    'DELETE FROM deleted_records WHERE deleted_at < NOW() - INTERVAL ? DAY', [days]);
+  const purged = r.affectedRows || 0;
+  console.log(`purgeDeletedRecords: removed ${purged} archive row(s) older than ${days} days`);
+  return { purged, retentionDays: days };
+}
+
+app.get('/api/cron/purge-deleted-records', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    res.json({ success: true, ...(await purgeDeletedRecords()) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Admin manual trigger (for testing / one-off cleanup)
+app.post('/api/admin/purge-deleted-records', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    res.json({ success: true, ...(await purgeDeletedRecords()) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
