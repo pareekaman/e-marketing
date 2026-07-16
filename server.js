@@ -8880,6 +8880,25 @@ app.post('/api/inventory/items', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Self-report equipment an employee already has — creates the item and
+// immediately assigns it to the reporting user, no admin approval step.
+app.post('/api/inventory/self-add', requireAuth, async (req, res) => {
+  try {
+    const { name, type, brand, model, serial_number, photo, item_condition, notes } = req.body;
+    if (!name || !type) return res.status(400).json({ error: 'name and type required' });
+    const validTypes = ['laptop','keyboard','mouse','mobile','sim','charger','other'];
+    if (!validTypes.includes(type)) return res.status(400).json({ error: 'Invalid type' });
+    const [r] = await db.query(
+      `INSERT INTO inventory_items (name,type,brand,model,serial_number,photo,item_condition,notes,status,created_by)
+       VALUES (?,?,?,?,?,?,?,?,'assigned',?)`,
+      [name, type, brand||'', model||'', serial_number||'', photo||null, item_condition||'good', notes||'', req.session.userId]);
+    await db.query(
+      `INSERT INTO inventory_assignments (item_id, user_id, assigned_by) VALUES (?,?,?)`,
+      [r.insertId, req.session.userId, req.session.userId]);
+    res.json({ ok: true, id: r.insertId });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Update item (admin only)
 app.put('/api/inventory/items/:id', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });

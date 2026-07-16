@@ -2718,6 +2718,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
           <option value="damaged">Damaged</option>
           <option value="retired">Retired</option>
         </select>
+        <button id="invSelfAddBtn" class="btn btn-outline" onclick="openInvAddModal(true)">📦 I Already Have This</button>
         <button id="invAddBtn" class="btn btn-primary" style="display:none" onclick="openInvAddModal()">＋ Add Item</button>
       </div>
     </div>
@@ -2730,7 +2731,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
     </div>
 
     <!-- Stats row (admin only) -->
-    <div id="invStats" style="display:none;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px">
+    <div id="invStats" style="display:none;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px">
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">
         <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Total Items</div>
         <div id="invStatTotal" style="font-size:26px;font-weight:700;color:#4f46e5">0</div>
@@ -2854,7 +2855,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
   <div class="modal-overlay" id="invAddModal">
     <div class="modal" style="width:540px">
       <button class="modal-close" onclick="closeModal('invAddModal')">×</button>
-      <h3>＋ Add Equipment</h3>
+      <h3 id="invAddModalTitle">＋ Add Equipment</h3>
       <div class="alert error" id="invAddErr" style="display:none"></div>
       <div class="form-row">
         <div class="form-group">
@@ -2911,7 +2912,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal('invAddModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="saveInventoryItem()">Save Item</button>
+        <button class="btn btn-primary" id="invAddModalSaveBtn" onclick="saveInventoryItem()">Save Item</button>
       </div>
     </div>
   </div>
@@ -5029,6 +5030,7 @@ function filterAccMatrix(q) {
 // ══════════════════════════════════════════════════════
 let _invItems = [], _invAssignments = [], _invTab = 'mine', _invAssignItemId = null, _invHandoverAssignId = null;
 let _invPhotoBase64 = null;
+let _invSelfAddMode = false;
 
 const INV_TYPE_LABELS = {laptop:'💻 Laptop',keyboard:'⌨️ Keyboard',mouse:'🖱️ Mouse',mobile:'📱 Mobile',sim:'📶 SIM',charger:'🔌 Charger',other:'📦 Other'};
 const INV_STATUS_COLORS = {available:'#10b981',assigned:'#f59e0b',damaged:'#ef4444',retired:'#94a3b8'};
@@ -5178,7 +5180,10 @@ function viewInvPhoto(src) {
   document.getElementById('invPhotoViewer').classList.add('open');
 }
 
-function openInvAddModal() {
+function openInvAddModal(selfMode) {
+  _invSelfAddMode = !!selfMode;
+  document.getElementById('invAddModalTitle').textContent = _invSelfAddMode ? '📦 Report Equipment You Have' : '＋ Add Equipment';
+  document.getElementById('invAddModalSaveBtn').textContent = _invSelfAddMode ? 'Add to My Equipment' : 'Save Item';
   document.getElementById('invName').value = ME?.name || '';
   document.getElementById('invType').value = 'laptop';
   document.getElementById('invBrand').value = '';
@@ -5206,10 +5211,10 @@ async function saveInventoryItem() {
     notes: document.getElementById('invNotes').value.trim(),
     photo: _invPhotoBase64 || null
   };
-  const r = await api('/api/inventory/items','POST', body);
+  const r = await api(_invSelfAddMode ? '/api/inventory/self-add' : '/api/inventory/items', 'POST', body);
   if (r.error) { showInvErr('invAddErr', r.error); return; }
   closeModal('invAddModal');
-  showToast('Equipment added!');
+  showToast(_invSelfAddMode ? 'Added to your equipment!' : 'Equipment added!');
   loadInventory();
 }
 
