@@ -65,7 +65,16 @@ body{
   box-shadow:1px 0 0 rgba(255,255,255,.04), 6px 0 24px -6px rgba(0,0,0,.35);
 }
 .sidebar:hover{ width:232px; }
-.sidebar.no-hover-expand:hover{ width:60px; }
+
+.dash-emp-filter-list{
+  display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:190px;max-height:260px;
+  overflow-y:auto;background:#fff;border:1px solid #e2e8f0;border-radius:8px;
+  box-shadow:0 8px 24px -4px rgba(0,0,0,.15);z-index:120;padding:4px;
+}
+.dash-emp-filter-list.open{display:block;}
+.dash-emp-filter-opt{padding:7px 10px;border-radius:6px;font-size:13px;color:#1e293b;cursor:pointer;white-space:nowrap;}
+.dash-emp-filter-opt:hover{background:#f1f5f9;}
+.dash-emp-filter-opt.selected{background:#eef2ff;color:#4f46e5;font-weight:600;}
 
 .sidebar-logo{
   padding:16px 13px;border-bottom:1px solid rgba(255,255,255,.07);
@@ -1416,7 +1425,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
      SIDEBAR
 ══════════════════════════════════════ -->
 <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
-<aside class="sidebar" id="sidebar" onmouseenter="const ae=document.activeElement; if(ae && ae.tagName==='SELECT') ae.blur();">
+<aside class="sidebar" id="sidebar" onmouseenter="const ae=document.activeElement; if(ae && ae.tagName==='SELECT') ae.blur(); if(typeof closeDashEmpDropdown==='function') closeDashEmpDropdown();">
   <div class="sidebar-logo">
     <img src="emarketing-logo.png" alt="E-Marketing"
       style="width:34px;height:34px;object-fit:cover;border-radius:6px;flex-shrink:0"
@@ -1614,12 +1623,14 @@ input:focus,select:focus,textarea:focus{outline:none;}
   <div id="page-dashboard" class="page active">
     <div class="dash-topbar">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <select id="dashEmployeeFilter" onchange="onPCFilterChange()"
-          onfocus="closeSidebar();document.getElementById('sidebar').classList.add('no-hover-expand')"
-          onblur="document.getElementById('sidebar').classList.remove('no-hover-expand')"
-          style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff;display:none">
-          <option value="all">All Employees</option>
-        </select>
+        <div style="position:relative;display:inline-block" id="dashEmpFilterWrap">
+          <select id="dashEmployeeFilter" onchange="onPCFilterChange()"
+            onmousedown="return openDashEmpDropdown(event)"
+            style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff;display:none">
+            <option value="all">All Employees</option>
+          </select>
+          <div id="dashEmpFilterList" class="dash-emp-filter-list"></div>
+        </div>
         <!-- PC-only date range filter -->
         <div id="pcDateRangeFilter" style="display:none;align-items:center;gap:6px;flex-wrap:wrap;">
           <label style="font-size:12px;color:#64748b;font-weight:600">From:</label>
@@ -5686,6 +5697,43 @@ function closeSidebar() {
   document.getElementById('sidebarBackdrop').classList.remove('open');
   document.body.style.overflow = '';
 }
+
+// Dashboard employee filter — a custom (non-native) dropdown so it renders as
+// normal page content instead of a browser-native <select> popup, which
+// always paints above everything (including the sidebar) and can't be
+// closed reliably when the sidebar opens/expands over it.
+function openDashEmpDropdown(e) {
+  e.preventDefault();
+  const sel = document.getElementById('dashEmployeeFilter');
+  const list = document.getElementById('dashEmpFilterList');
+  if (!sel || !list) return false;
+  if (list.classList.contains('open')) { closeDashEmpDropdown(); return false; }
+  list.innerHTML = Array.from(sel.options).map(o =>
+    `<div class="dash-emp-filter-opt${o.value === sel.value ? ' selected' : ''}" data-val="${dtEscape(o.value)}">${dtEscape(o.textContent)}</div>`
+  ).join('');
+  list.classList.add('open');
+  closeSidebar();
+  document.addEventListener('mousedown', dashEmpFilterOutsideClick);
+  return false;
+}
+function closeDashEmpDropdown() {
+  document.getElementById('dashEmpFilterList')?.classList.remove('open');
+  document.removeEventListener('mousedown', dashEmpFilterOutsideClick);
+}
+function dashEmpFilterOutsideClick(e) {
+  const wrap = document.getElementById('dashEmpFilterWrap');
+  if (wrap && !wrap.contains(e.target)) closeDashEmpDropdown();
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('dashEmpFilterList')?.addEventListener('click', (e) => {
+    const opt = e.target.closest('.dash-emp-filter-opt');
+    if (!opt) return;
+    const sel = document.getElementById('dashEmployeeFilter');
+    sel.value = opt.dataset.val;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    closeDashEmpDropdown();
+  });
+});
 
 // Close sidebar when user taps anywhere in main content area (mobile)
 document.addEventListener('DOMContentLoaded', () => {
