@@ -2703,8 +2703,8 @@ input:focus,select:focus,textarea:focus{outline:none;}
   ══════════════════════════════════════ -->
   <div id="page-inventory" class="page">
     <div class="page-header">
-      <h2>📦 Inventory</h2>
-      <div style="display:flex;gap:8px;align-items:center">
+      <!-- No h2 here: the topbar already shows this page's title. -->
+      <div style="display:flex;gap:8px;align-items:center;margin-left:auto">
         <select id="invFilterType" onchange="renderInventory()" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
           <option value="">All Types</option>
           <option value="laptop">💻 Laptop</option>
@@ -2761,8 +2761,8 @@ input:focus,select:focus,textarea:focus{outline:none;}
   ══════════════════════════════════════ -->
   <div id="page-logs" class="page">
     <div class="page-header">
-      <h2>🗑 Logs — Deleted Items</h2>
-      <div style="display:flex;gap:8px;align-items:center">
+      <!-- No h2 here: the topbar already shows this page's title. -->
+      <div style="display:flex;gap:8px;align-items:center;margin-left:auto">
         <input id="logsSearch" type="text" placeholder="Search…" oninput="renderLogs()"
           style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
         <select id="logsFilterTable" onchange="renderLogs()"
@@ -2928,7 +2928,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
           <label>Serial Number</label>
           <input type="text" id="invSerial" placeholder="Serial / IMEI / SIM No.">
         </div>
-        <div class="form-group">
+        <div class="form-group" id="invConditionWrap">
           <label>Condition</label>
           <select id="invCondition">
             <option value="new">New</option>
@@ -5243,7 +5243,11 @@ function openInvAddModal() {
   document.getElementById('invBrand').value = '';
   document.getElementById('invModel').value = '';
   document.getElementById('invSerial').value = '';
+  // Condition is an admin's assessment of stock; someone logging kit they
+  // already hold doesn't grade it, so it stays hidden (and defaults to 'good')
+  // in self-add mode.
   document.getElementById('invCondition').value = 'good';
+  document.getElementById('invConditionWrap').style.display = _invSelfAddMode ? 'none' : 'block';
   document.getElementById('invNotes').value = '';
   document.getElementById('invPhotoFile').value = '';
   document.getElementById('invPhotoPreview').style.display = 'none';
@@ -5394,7 +5398,9 @@ function renderLogs() {
       <th>What</th><th>Type</th><th>Deleted By</th><th>When</th><th>Status</th><th>Action</th>
     </tr></thead>
     <tbody>${rows.map(r => {
-      const when = r.deleted_at ? new Date(r.deleted_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+      // Pre-formatted by the DB — see the query. Never re-parse it as a Date
+      // here: that reintroduces the timezone double-shift.
+      const when = r.deleted_at_fmt || '—';
       const who = r.deleted_by_name
         ? `${dtEscape(r.deleted_by_name)}${r.deleted_by_role ? ` <span style="font-size:10px;color:#94a3b8">(${dtEscape(r.deleted_by_role)})</span>` : ''}`
         : '<span style="color:#94a3b8">system</span>';
@@ -5430,7 +5436,7 @@ function renderLogs() {
 async function viewLogRecord(id) {
   const r = await api(`/api/deleted-records/${id}`);
   if (r.error) { showToast(r.error, 'error'); return; }
-  const when = r.deleted_at ? new Date(r.deleted_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+  const when = r.deleted_at_fmt || '—';
   document.getElementById('logsDetailMeta').innerHTML =
     `<b>${dtEscape(logTableLabel(r.source_table))}</b> #${r.record_id ?? '—'} · deleted by ` +
     `<b>${dtEscape(r.deleted_by_name || 'system')}</b> on ${dtEscape(when)}` +
