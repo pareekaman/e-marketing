@@ -1573,6 +1573,10 @@ input:focus,select:focus,textarea:focus{outline:none;}
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
           <span class="nav-label-text">Escalation</span>
         </div>
+        <div class="nav-item" id="nav-logs" style="display:none" onclick="navigate('logs',this)">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10a2 2 0 002 2h12a2 2 0 002-2V7M4 7l1.5-3h13L20 7M4 7h16M10 11h4"/></svg>
+          <span class="nav-label-text">Logs</span>
+        </div>
       </div>
     </div>
 
@@ -2750,6 +2754,41 @@ input:focus,select:focus,textarea:focus{outline:none;}
     </div>
 
     <div id="invContent"><div class="empty">Loading…</div></div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       LOGS PAGE — deleted-records archive (admin only)
+  ══════════════════════════════════════ -->
+  <div id="page-logs" class="page">
+    <div class="page-header">
+      <h2>🗑 Logs — Deleted Items</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="logsSearch" type="text" placeholder="Search…" oninput="renderLogs()"
+          style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
+        <select id="logsFilterTable" onchange="renderLogs()"
+          style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
+          <option value="">All Types</option>
+        </select>
+        <button class="btn btn-outline" onclick="loadLogs()">⟳ Refresh</button>
+      </div>
+    </div>
+    <div style="font-size:12px;color:#64748b;margin-bottom:12px">
+      Showing the 150 most recent deletions across the whole task manager. Every delete is archived here automatically.
+    </div>
+    <div id="logsContent"><div class="empty">Loading…</div></div>
+  </div>
+
+  <!-- LOGS: Record detail modal -->
+  <div class="modal-overlay" id="logsDetailModal">
+    <div class="modal" style="width:640px">
+      <button class="modal-close" onclick="closeModal('logsDetailModal')">×</button>
+      <h3>Deleted Record</h3>
+      <div id="logsDetailMeta" style="font-size:12px;color:#64748b;margin-bottom:10px"></div>
+      <pre id="logsDetailJson" style="background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;font-size:11.5px;line-height:1.5;max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-word"></pre>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('logsDetailModal')">Close</button>
+      </div>
+    </div>
   </div>
 
   <!-- ══════════════════════════════════════
@@ -4618,6 +4657,10 @@ async function init() {
     // Credit Cards nav — all admins
     const ccNav = document.getElementById('nav-creditcards');
     if (ccNav) ccNav.style.display = (ME.role === 'admin') ? 'flex' : 'none';
+    // Logs nav — admin only, and deliberately not grantable via extra_access /
+    // user_permissions: the archive exposes every deleted row app-wide.
+    const logsNav = document.getElementById('nav-logs');
+    if (logsNav) logsNav.style.display = (ME.role === 'admin') ? 'flex' : 'none';
     // Payment Request nav — all users
     const prNav = document.getElementById('nav-paymentreq');
     if (prNav) prNav.style.display = 'flex';
@@ -4683,7 +4726,8 @@ async function init() {
       // Mirror navigate()'s own role guards so a disallowed saved page doesn't
       // silently no-op and leave the (still-default) dashboard without its data loaded.
       const blocked = (lastPage === 'mis' && ME.role !== 'admin' && ME.role !== 'hod') ||
-                      (lastPage === 'race' && ME.role !== 'admin');
+                      (lastPage === 'race' && ME.role !== 'admin') ||
+                      (lastPage === 'logs' && ME.role !== 'admin');
       if (lastPage && lastPage !== 'dashboard' && !blocked && document.getElementById('page-' + lastPage)) {
         navigate(lastPage);
         restored = true;
@@ -4779,7 +4823,7 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Scheduler','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⚠️ Client Escalations',paymentreq:'💳 Payment Request',creditcards:'💳 Credit Card Statement'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Scheduler','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⚠️ Client Escalations',paymentreq:'💳 Payment Request',creditcards:'💳 Credit Card Statement',logs:'🗑 Logs'};
 
 // ══════════════════════════════════════════════════════
 // USERS PAGE — TAB SWITCHER + ACCESS CONTROL
@@ -5297,6 +5341,118 @@ function showInvErr(id, msg) {
 }
 
 // ══════════════════════════════════════════════════════
+// LOGS JS — deleted-records archive (admin only)
+// ══════════════════════════════════════════════════════
+let _logsRows = [], _logsRestorable = {};
+
+// Table name -> what a row of it actually is, in the user's terms.
+const LOG_TABLE_LABELS = {
+  delegation_tasks: 'Delegation Task', checklist_tasks: 'Checklist Task',
+  task_subtasks: 'Sub-task', task_comments: 'Comment', users: 'User',
+  clients: 'Client', client_feedback: 'Feedback',
+  client_department_folders: 'DMS Dept Folder', dms_external_links: 'DMS Link',
+  leave_requests: 'Leave Request', holidays: 'Holiday', day_plan_items: 'Day Plan',
+  inventory_items: 'Equipment', fms_sheets: 'FMS Sheet', cc_cards: 'Credit Card',
+  cc_statements: 'CC Statement', cc_transactions: 'CC Transaction',
+  cc_departments: 'CC Department', pr_cards: 'PR Card', payment_requests: 'Payment Request',
+};
+const logTableLabel = t => LOG_TABLE_LABELS[t] || t;
+
+async function loadLogs() {
+  const el = document.getElementById('logsContent');
+  const r = await api('/api/deleted-records');
+  if (r.error) { el.innerHTML = `<div class="empty">⚠️ ${dtEscape(r.error)}</div>`; return; }
+  _logsRows = Array.isArray(r.rows) ? r.rows : [];
+  _logsRestorable = r.restorable || {};
+
+  const sel = document.getElementById('logsFilterTable');
+  const cur = sel.value;
+  const types = [...new Set(_logsRows.map(x => x.source_table))].sort();
+  sel.innerHTML = '<option value="">All Types</option>' +
+    types.map(t => `<option value="${dtEscape(t)}">${dtEscape(logTableLabel(t))}</option>`).join('');
+  if (types.includes(cur)) sel.value = cur;
+
+  renderLogs();
+}
+
+function renderLogs() {
+  const el = document.getElementById('logsContent');
+  const q = document.getElementById('logsSearch').value.trim().toLowerCase();
+  const tbl = document.getElementById('logsFilterTable').value;
+
+  let rows = _logsRows;
+  if (tbl) rows = rows.filter(r => r.source_table === tbl);
+  if (q) rows = rows.filter(r =>
+    (r.summary || '').toLowerCase().includes(q) ||
+    (r.deleted_by_name || '').toLowerCase().includes(q) ||
+    logTableLabel(r.source_table).toLowerCase().includes(q));
+
+  if (!rows.length) { el.innerHTML = '<div class="empty">No deleted records found.</div>'; return; }
+
+  el.innerHTML = `<table>
+    <thead><tr>
+      <th>What</th><th>Type</th><th>Deleted By</th><th>When</th><th>Status</th><th>Action</th>
+    </tr></thead>
+    <tbody>${rows.map(r => {
+      const when = r.deleted_at ? new Date(r.deleted_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+      const who = r.deleted_by_name
+        ? `${dtEscape(r.deleted_by_name)}${r.deleted_by_role ? ` <span style="font-size:10px;color:#94a3b8">(${dtEscape(r.deleted_by_role)})</span>` : ''}`
+        : '<span style="color:#94a3b8">system</span>';
+      const status = r.restored_at
+        ? `<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:#10b9811a;color:#10b981">Restored</span>`
+        : `<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:#ef44441a;color:#ef4444">Deleted</span>`;
+      let action;
+      if (r.restored_at) {
+        action = `<span style="font-size:11px;color:#64748b">by ${dtEscape(r.restored_by_name || '—')}</span>`;
+      } else if (_logsRestorable[r.id]) {
+        action = `<button class="action-btn done" onclick="restoreLogRecord(${r.id})">Restore</button>`;
+      } else {
+        action = `<span style="font-size:11px;color:#94a3b8" title="This record type cannot be restored from here">—</span>`;
+      }
+      return `<tr>
+        <td>
+          <div style="font-weight:600;cursor:pointer;color:#4f46e5" onclick="viewLogRecord(${r.id})" title="View full record">
+            ${dtEscape(r.summary || '(no summary)')}
+          </div>
+          ${r.delete_reason ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${dtEscape(r.delete_reason)}</div>` : ''}
+        </td>
+        <td><div style="font-size:12px">${dtEscape(logTableLabel(r.source_table))}</div>
+            <div style="font-size:10px;color:#94a3b8">#${r.record_id ?? '—'}</div></td>
+        <td style="font-size:12px">${who}</td>
+        <td style="font-size:12px;color:#64748b">${dtEscape(when)}</td>
+        <td>${status}</td>
+        <td>${action}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+async function viewLogRecord(id) {
+  const r = await api(`/api/deleted-records/${id}`);
+  if (r.error) { showToast(r.error, 'error'); return; }
+  const when = r.deleted_at ? new Date(r.deleted_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+  document.getElementById('logsDetailMeta').innerHTML =
+    `<b>${dtEscape(logTableLabel(r.source_table))}</b> #${r.record_id ?? '—'} · deleted by ` +
+    `<b>${dtEscape(r.deleted_by_name || 'system')}</b> on ${dtEscape(when)}` +
+    (r.deleted_via ? `<br>via <code>${dtEscape(r.deleted_via)}</code>` : '') +
+    (r.delete_reason ? `<br>${dtEscape(r.delete_reason)}` : '');
+  const body = r.record_data != null ? r.record_data : r.record_data_raw;
+  document.getElementById('logsDetailJson').textContent =
+    typeof body === 'string' ? body : JSON.stringify(body, null, 2);
+  document.getElementById('logsDetailModal').classList.add('open');
+}
+
+async function restoreLogRecord(id) {
+  if (!await appConfirm('Restore this record back into the app?', 'Restore?')) return;
+  const r = await api(`/api/deleted-records/${id}/restore`, 'POST', {});
+  if (r.error) { appAlert(r.error, 'Cannot restore'); return; }
+  showToast(r.droppedColumns?.length
+    ? `Restored — ${r.droppedColumns.length} obsolete column(s) skipped.`
+    : 'Record restored!');
+  loadLogs();
+}
+
+// ══════════════════════════════════════════════════════
 // HRM JS
 // ══════════════════════════════════════════════════════
 let _hrmCandidates = [], _hrmMessages = [], _hrmCurrentId = null, _hrmDepartments = [];
@@ -5801,6 +5957,8 @@ function navigate(page, el) {
   if (page === 'mis' && ME.role !== 'admin' && ME.role !== 'hod') return;
   // Race Tracker — admin only
   if (page === 'race' && ME.role !== 'admin') return;
+  // Logs (deleted-records archive) — admin only
+  if (page === 'logs' && ME.role !== 'admin') return;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
@@ -5823,7 +5981,8 @@ function navigate(page, el) {
     inventory: loadInventory, hrm: loadHRM, dms: loadDMS,
     feedback: loadFeedbackAdmin,
     creditcards: loadCreditCards,
-    paymentreq: initPaymentReqPage
+    paymentreq: initPaymentReqPage,
+    logs: loadLogs
   };
   const loaderFn = pageLoaders[page];
   if (typeof loaderFn === 'function') withPageLoader(loaderFn);

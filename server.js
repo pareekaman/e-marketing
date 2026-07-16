@@ -9618,6 +9618,105 @@ app.post('/api/hrm/messages/:id/retry', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ══════════════════════════════════════════════════════
+// LOGS — deleted-records archive viewer + restore (admin only)
+// ══════════════════════════════════════════════════════
+
+// Only rows from these tables can be restored. source_table is written by our
+// own code, but it is interpolated straight into SQL below, so it is validated
+// against this list rather than trusted. Tables whose rows are meaningless on
+// their own (join/child rows re-created by their parent's own flow) are left
+// out deliberately.
+const RESTORABLE_TABLES = new Set([
+  'delegation_tasks', 'checklist_tasks', 'task_subtasks', 'task_comments',
+  'users', 'clients', 'client_feedback', 'client_department_folders',
+  'dms_external_links', 'leave_requests', 'holidays', 'day_plan_items',
+  'inventory_items', 'fms_sheets', 'cc_cards', 'cc_statements',
+  'cc_transactions', 'cc_departments', 'pr_cards', 'payment_requests',
+]);
+
+// GET /api/deleted-records — 150 most recent deletes.
+// record_data is deliberately omitted: it can carry base64 photos and would
+// bloat the list response. Fetch a single row's full JSON via /:id below.
+app.get('/api/deleted-records', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT dr.id, dr.source_table, dr.record_id, dr.summary,
+             dr.deleted_by, dr.deleted_by_name, dr.deleted_by_role,
+             dr.deleted_via, dr.delete_reason, dr.deleted_at,
+             dr.restored_at, dr.restored_by,
+             ru.name AS restored_by_name,
+             CHAR_LENGTH(dr.record_data) AS record_size
+        FROM deleted_records dr
+        LEFT JOIN users ru ON ru.id = dr.restored_by
+       ORDER BY dr.id DESC
+       LIMIT 150`);
+    const restorable = {};
+    for (const r of rows) restorable[r.id] = RESTORABLE_TABLES.has(r.source_table);
+    res.json({ rows, restorable });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/deleted-records/:id — one row incl. its full JSON snapshot
+app.get('/api/deleted-records/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [[rec]] = await db.query('SELECT * FROM deleted_records WHERE id=?', [req.params.id]);
+    if (!rec) return res.status(404).json({ error: 'Not found' });
+    let data = null;
+    try { data = JSON.parse(rec.record_data); } catch (e) { /* keep raw below */ }
+    res.json({ ...rec, record_data: data, record_data_raw: data ? undefined : rec.record_data });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/deleted-records/:id/restore — put an archived row back.
+// Re-inserts with the ORIGINAL id so existing references to it line up again;
+// if that id has since been taken, we refuse rather than silently re-home the
+// row under a new id and leave every reference pointing at the wrong record.
+app.post('/api/deleted-records/:id/restore', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [[rec]] = await db.query('SELECT * FROM deleted_records WHERE id=?', [req.params.id]);
+    if (!rec) return res.status(404).json({ error: 'Not found' });
+    if (rec.restored_at) return res.status(400).json({ error: 'This record was already restored' });
+    if (!RESTORABLE_TABLES.has(rec.source_table)) {
+      return res.status(400).json({ error: `${rec.source_table} rows cannot be restored from here` });
+    }
+
+    let data;
+    try { data = JSON.parse(rec.record_data); }
+    catch (e) { return res.status(400).json({ error: 'Archived snapshot is not valid JSON — cannot restore' }); }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return res.status(400).json({ error: 'Archived snapshot is not a row object — cannot restore' });
+    }
+
+    // Drop any key that is no longer a real column (the schema may have moved
+    // on since the delete), so restore degrades instead of hard-failing.
+    const [cols] = await db.query('SHOW COLUMNS FROM ??', [rec.source_table]);
+    const live = new Set(cols.map(c => c.Field));
+    const keys = Object.keys(data).filter(k => live.has(k));
+    if (!keys.length) return res.status(400).json({ error: 'No columns from the snapshot still exist — cannot restore' });
+    const dropped = Object.keys(data).filter(k => !live.has(k));
+
+    if (data.id != null && live.has('id')) {
+      const [[clash]] = await db.query('SELECT id FROM ?? WHERE id=? LIMIT 1', [rec.source_table, data.id]);
+      if (clash) {
+        return res.status(409).json({
+          error: `Cannot restore: ${rec.source_table} #${data.id} already exists (that id was reused). Restore it manually if needed.`,
+        });
+      }
+    }
+
+    await db.query(
+      `INSERT INTO ?? (${keys.map(() => '??').join(',')}) VALUES (${keys.map(() => '?').join(',')})`,
+      [rec.source_table, ...keys, ...keys.map(k => data[k])]);
+
+    await db.query(
+      'UPDATE deleted_records SET restored_at=NOW(), restored_by=? WHERE id=?',
+      [req.session.userId, rec.id]);
+
+    res.json({ ok: true, restored_id: data.id ?? null, droppedColumns: dropped });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 // Auth check is handled client-side via /api/me in init() — removing server-side
 // requireAuth here prevents app.html from loading if cookie has any timing/domain issue
