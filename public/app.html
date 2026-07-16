@@ -1624,11 +1624,11 @@ input:focus,select:focus,textarea:focus{outline:none;}
     <div class="dash-topbar">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
         <div style="position:relative;display:inline-block" id="dashEmpFilterWrap">
-          <select id="dashEmployeeFilter" onchange="onPCFilterChange()"
-            onmousedown="return openDashEmpDropdown(event)"
-            style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff;display:none">
+          <select id="dashEmployeeFilter" onchange="onPCFilterChange()" tabindex="-1"
+            style="pointer-events:none;padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff;display:none">
             <option value="all">All Employees</option>
           </select>
+          <div id="dashEmpFilterClickCatcher" onclick="openDashEmpDropdown(event)" style="position:absolute;inset:0;cursor:pointer;display:none"></div>
           <div id="dashEmpFilterList" class="dash-emp-filter-list"></div>
         </div>
         <!-- PC-only date range filter -->
@@ -2594,6 +2594,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
           <div style="font-weight:700;font-size:14px;color:#0f172a">Files — <span id="dmsBrowserFolderName" style="color:#4f46e5"></span></div>
           <div style="display:flex;gap:8px;align-items:center">
+            <button id="dmsBulkDeleteBtn" onclick="dmsBulkDeleteSelected()" style="display:none;font-size:12px;padding:5px 12px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:8px;cursor:pointer;font-weight:600;white-space:nowrap">🗑 Delete Selected (<span id="dmsBulkDeleteCount">0</span>)</button>
             <button onclick="dmsRefreshFolder()" title="Refresh" style="border:1px solid #e2e8f0;background:none;border-radius:8px;width:30px;height:30px;cursor:pointer;color:#64748b;display:flex;align-items:center;justify-content:center">
               <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0114-4.5M20 15a8 8 0 01-14 4.5"/></svg>
             </button>
@@ -5880,6 +5881,8 @@ async function loadDashboard(light = false) {
     // Only admin (and PC) may switch the dashboard to another employee's view.
     // HOD sees their department's aggregate but cannot drill into individuals.
     empFilter.style.display = (isAdmin || isPC) ? 'block' : 'none';
+    const empFilterCatcher = document.getElementById('dashEmpFilterClickCatcher');
+    if (empFilterCatcher) empFilterCatcher.style.display = (isAdmin || isPC) ? 'block' : 'none';
 
     if (isPC) {
       // Show date range filter for PC
@@ -17323,6 +17326,7 @@ let _dmsSelectedClient = null;
 let _dmsBrowseFolderId = null;
 let _dmsBrowseFolderName = null;
 let _dmsFolderStack = []; // [{id, name}] — nav path within the currently browsed client folder
+let _dmsSelectedIds = new Set(); // multi-select for bulk delete in the current folder's Files table
 let _dmsDepts = [];
 
 async function loadDMS() {
@@ -17527,6 +17531,7 @@ function dmsFilterFiles() {
   document.querySelectorAll('#dmsFileList .dms-file-card').forEach(row => {
     row.style.display = row.dataset.name.toLowerCase().includes(q) ? '' : 'none';
   });
+  dmsUpdateBulkDeleteUI();
 }
 
 // Drive-style "+ New" menu on right-click of empty space in the Files list
@@ -17599,6 +17604,9 @@ async function dmsBrowseFolder(folderId, folderName, mode) {
   _dmsBrowseFolderId = folderId;
   _dmsBrowseFolderName = folderName;
   dmsRenderFolderCrumb();
+  _dmsSelectedIds.clear();
+  const bulkBtn = document.getElementById('dmsBulkDeleteBtn');
+  if (bulkBtn) bulkBtn.style.display = 'none';
   const searchInput = document.getElementById('dmsFileSearch');
   if (searchInput) searchInput.value = '';
   document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Loading files…</div>';
@@ -17617,6 +17625,7 @@ async function dmsBrowseFolder(folderId, folderName, mode) {
       <table style="width:100%;border-collapse:collapse;font-size:12.5px">
         <thead>
           <tr style="border-bottom:1.5px solid #e2e8f0;color:#64748b;text-align:left">
+            ${canCreate ? `<th style="width:32px;padding:8px 0 8px 12px"><input type="checkbox" id="dmsSelectAllCb" onclick="dmsToggleSelectAll(this)" style="cursor:pointer"/></th>` : ''}
             <th style="padding:8px 12px;font-weight:600">Name</th>
             <th style="padding:8px 12px;font-weight:600">Modified by</th>
             <th style="padding:8px 12px;font-weight:600">Date modified</th>
@@ -17632,6 +17641,7 @@ async function dmsBrowseFolder(folderId, folderName, mode) {
             const isFolder = f.mimeType === 'application/vnd.google-apps.folder';
             return `
           <tr class="dms-file-card" data-id="${f.id}" data-name="${dtEscape(f.name)}" data-link="${dtEscape(f.webViewLink)}" data-is-folder="${isFolder ? '1' : '0'}" onclick="dmsFileCardClick(event)" style="cursor:pointer;border-bottom:1px solid #f1f5f9;transition:background .1s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
+            ${canCreate ? `<td style="padding:8px 0 8px 12px" onclick="event.stopPropagation()"><input type="checkbox" class="dms-file-select-cb" onclick="dmsToggleRowSelect(this,'${f.id}')" style="cursor:pointer"/></td>` : ''}
             <td style="padding:8px 12px">
               <div style="display:flex;align-items:center;gap:8px;min-width:0">
                 ${f.thumbnailLink
@@ -17759,6 +17769,55 @@ async function dmsDeleteFile(fileId) {
     showToast(isLink ? 'Link removed' : 'Deleted');
     dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName, 'jump');
   } catch (e) { showToast('Delete failed: ' + e.message); }
+}
+
+function dmsUpdateBulkDeleteUI() {
+  const btn = document.getElementById('dmsBulkDeleteBtn');
+  if (!btn) return;
+  const n = _dmsSelectedIds.size;
+  btn.style.display = n ? 'inline-flex' : 'none';
+  document.getElementById('dmsBulkDeleteCount').textContent = n;
+  const selectAllCb = document.getElementById('dmsSelectAllCb');
+  if (selectAllCb) {
+    const rows = Array.from(document.querySelectorAll('#dmsFileList .dms-file-card')).filter(r => r.style.display !== 'none');
+    selectAllCb.checked = rows.length > 0 && rows.every(r => _dmsSelectedIds.has(r.dataset.id));
+  }
+}
+
+function dmsToggleRowSelect(cb, id) {
+  if (cb.checked) _dmsSelectedIds.add(id); else _dmsSelectedIds.delete(id);
+  dmsUpdateBulkDeleteUI();
+}
+
+function dmsToggleSelectAll(cb) {
+  const rows = Array.from(document.querySelectorAll('#dmsFileList .dms-file-card')).filter(r => r.style.display !== 'none');
+  for (const row of rows) {
+    const rowCb = row.querySelector('.dms-file-select-cb');
+    if (rowCb) rowCb.checked = cb.checked;
+    if (cb.checked) _dmsSelectedIds.add(row.dataset.id); else _dmsSelectedIds.delete(row.dataset.id);
+  }
+  dmsUpdateBulkDeleteUI();
+}
+
+async function dmsBulkDeleteSelected() {
+  const ids = Array.from(_dmsSelectedIds);
+  if (!ids.length || !_dmsSelectedClient || !_dmsBrowseFolderId) return;
+  const anyLink = ids.some(id => id.startsWith('ext-'));
+  const anyReal = ids.some(id => !id.startsWith('ext-'));
+  const noun = anyLink && anyReal ? 'item(s)' : anyLink ? 'link(s)' : 'file(s)/folder(s)';
+  const msg = anyReal
+    ? `Delete ${ids.length} ${noun}? Real files/folders move to Drive's Trash (recoverable for 30 days); links are removed permanently with no undo.`
+    : `Remove ${ids.length} ${noun}? This is permanent, no undo.`;
+  if (!await appConfirm(msg, 'Delete selected?')) return;
+  try {
+    const results = await Promise.all(ids.map(id =>
+      api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/files/${id}`, 'DELETE').catch(e => ({ error: e.message }))
+    ));
+    const failed = results.filter(r => r?.error).length;
+    showToast(failed ? `${ids.length - failed}/${ids.length} deleted, ${failed} failed` : `${ids.length} deleted`);
+    _dmsSelectedIds.clear();
+    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName, 'jump');
+  } catch (e) { showToast('Bulk delete failed: ' + e.message); }
 }
 
 async function dmsBulkSetup() {
