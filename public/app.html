@@ -2993,6 +2993,19 @@ input:focus,select:focus,textarea:focus{outline:none;}
     </div>
   </div>
 
+  <!-- INVENTORY: Item Detail Modal — the card only shows the essentials, so
+       everything else lives here, one click away. -->
+  <div class="modal-overlay" id="invDetailModal">
+    <div class="modal" style="width:460px">
+      <button class="modal-close" onclick="closeModal('invDetailModal')">×</button>
+      <h3 id="invDetailTitle">Equipment</h3>
+      <div id="invDetailBody"></div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('invDetailModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- INVENTORY: View Photo Modal -->
   <div class="modal-overlay" id="invPhotoViewer" onclick="closeModal('invPhotoViewer')" style="background:rgba(0,0,0,.85)">
     <img id="invPhotoViewerImg" src="" alt="" style="max-width:92vw;max-height:92vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
@@ -5080,6 +5093,7 @@ const INV_TYPE_LABELS = {laptop:'💻 Laptop',keyboard:'⌨️ Keyboard',mouse:'
 // form has no free-text name field (an 'other' item is named by its typed-in
 // custom type instead).
 const INV_TYPE_PLAIN = {laptop:'Laptop',keyboard:'Keyboard',mouse:'Mouse',mobile:'Mobile',sim:'SIM',charger:'Charger',other:'Other'};
+const INV_CONDITION_LABELS = {new:'New',good:'Good',fair:'Fair',poor:'Poor'};
 const INV_STATUS_COLORS = {available:'#10b981',assigned:'#f59e0b',damaged:'#ef4444',retired:'#94a3b8'};
 
 async function loadInventory() {
@@ -5140,12 +5154,21 @@ function renderInventory() {
 
 function invCard(item, isAdmin) {
   const statusColor = INV_STATUS_COLORS[item.status] || '#94a3b8';
+  // Photo click is NOT wired to the zoom viewer here — the whole card opens the
+  // detail modal, and zooming lives in there instead.
   const photoHtml = item.photo
-    ? `<img src="${esc(item.photo)}" alt="" onclick="viewInvPhoto('${esc(item.photo)}')"
-        style="width:100%;height:140px;object-fit:cover;cursor:pointer;border-radius:8px 8px 0 0">`
+    ? `<img src="${esc(item.photo)}" alt=""
+        style="width:100%;height:140px;object-fit:cover;border-radius:8px 8px 0 0">`
     : `<div style="width:100%;height:140px;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);display:flex;align-items:center;justify-content:center;border-radius:8px 8px 0 0;font-size:36px">${invTypeEmoji(item.type)}</div>`;
   const assignedBadge = item.assigned_to_name
     ? `<div style="font-size:11px;color:#f59e0b;margin-top:4px">👤 ${esc(item.assigned_to_name)}</div>` : '';
+  // The card carries only the essentials — brand and condition. Model, serial,
+  // notes and photo are one click away in the detail modal, so the grid stays
+  // scannable. The title is already the type, so it is not repeated here.
+  const specParts = [item.brand, INV_CONDITION_LABELS[item.item_condition]].filter(Boolean).map(esc);
+  const specLine = specParts.length
+    ? `<div style="font-size:12px;color:#64748b">${specParts.join(' · ')}</div>`
+    : '';
 
   let actions = '';
   if (isAdmin) {
@@ -5161,21 +5184,55 @@ function invCard(item, isAdmin) {
     actions += `<button class="action-btn delete" onclick="deleteInvItem(${item.id})">Delete</button>`;
   }
 
-  return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+  return `<div onclick="openInvDetailModal(${item.id})" title="Click for full details"
+      style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);cursor:pointer">
     ${photoHtml}
     <div style="padding:12px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
         <div style="font-weight:700;font-size:14px;color:#0f172a">${esc(item.name)}</div>
         <div style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:${statusColor}1a;color:${statusColor}">${item.status}</div>
       </div>
-      <div style="font-size:12px;color:#64748b">${INV_TYPE_LABELS[item.type]||item.type}${item.brand?' · '+esc(item.brand):''}</div>
-      ${item.model?`<div style="font-size:11px;color:#94a3b8">${esc(item.model)}</div>`:''}
-      ${item.serial_number?`<div style="font-size:11px;color:#94a3b8;font-family:monospace">SN: ${esc(item.serial_number)}</div>`:''}
+      ${specLine}
       ${assignedBadge}
       ${item.handover_status==='pending_handover'?`<div style="font-size:11px;color:#ef4444;font-weight:600;margin-top:4px">⚠️ Handover Pending</div>`:''}
-      ${actions?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${actions}</div>`:''}
+      ${actions?`<div onclick="event.stopPropagation()" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${actions}</div>`:''}
     </div>
   </div>`;
+}
+
+function openInvDetailModal(id) {
+  const item = _invItems.find(i => String(i.id) === String(id));
+  if (!item) return;
+
+  const statusColor = INV_STATUS_COLORS[item.status] || '#94a3b8';
+  const row = (label, value, mono) => value
+    ? `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9">
+         <div style="width:110px;flex-shrink:0;font-size:12px;color:#94a3b8;font-weight:600">${label}</div>
+         <div style="font-size:13px;color:#1e293b${mono ? ";font-family:monospace" : ""}">${esc(value)}</div>
+       </div>`
+    : '';
+
+  const photo = item.photo
+    ? `<img src="${esc(item.photo)}" alt="" onclick="viewInvPhoto('${esc(item.photo)}')"
+         style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;margin-bottom:12px;cursor:zoom-in">`
+    : `<div style="height:120px;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);display:flex;align-items:center;justify-content:center;border-radius:8px;margin-bottom:12px;font-size:44px">${invTypeEmoji(item.type)}</div>`;
+
+  document.getElementById('invDetailTitle').innerHTML =
+    `${invTypeEmoji(item.type)} ${esc(item.name)}
+     <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:${statusColor}1a;color:${statusColor};margin-left:6px">${esc(item.status)}</span>`;
+
+  document.getElementById('invDetailBody').innerHTML = photo +
+    row('Type', INV_TYPE_PLAIN[item.type] || item.type) +
+    row('Brand', item.brand) +
+    row('Model', item.model) +
+    row('Serial No.', item.serial_number, true) +
+    row('Condition', INV_CONDITION_LABELS[item.item_condition] || item.item_condition) +
+    row('Assigned to', item.assigned_to_name) +
+    row('Notes', item.notes) +
+    (item.handover_status === 'pending_handover'
+      ? `<div style="margin-top:10px;font-size:12px;color:#ef4444;font-weight:600">⚠️ Handover Pending</div>` : '');
+
+  document.getElementById('invDetailModal').classList.add('open');
 }
 
 function invTypeEmoji(type) {
@@ -11621,9 +11678,13 @@ function dtAddRow(prefill){
   const tbody = document.getElementById('dtRowsBody');
   const tr = document.createElement('tr');
   tr.className = 'dt-row';
+  // Most rows are for the user's own department, so preselect it — they can
+  // still switch. `??` (not `||`) so a duplicated row that deliberately has no
+  // department stays empty instead of silently acquiring one.
+  const dept = prefill?.dept ?? (ME?.department || '');
   tr.innerHTML = `
     <td><select class="dt-client">${dtClientOptions(prefill?.client)}</select></td>
-    <td><select class="dt-dept">${dtDeptOptions(prefill?.dept)}</select></td>
+    <td><select class="dt-dept">${dtDeptOptions(dept)}</select></td>
     <td><textarea class="dt-desc" placeholder="What did you do?">${dtEscape(prefill?.desc||'')}</textarea></td>
     <td><input type="number" min="1" class="dt-time" value="${prefill?.time||''}" placeholder="0" oninput="dtRecalcTotal()"/></td>
     <td><button class="dt-row-btn dt-btn-dup" onclick="dtDupRow(this)">Dup</button></td>
