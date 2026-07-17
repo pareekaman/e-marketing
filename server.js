@@ -9332,6 +9332,55 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
   </div></body></html>`;
 }
 
+// Fallback layout for the final "Offer Letter Sent" PDF — used only if the
+// Apps Script's template merge fails (or as required body content: the
+// script rejects requests with no `html` at all, regardless of templateId).
+// Not meant to match the user's real final-offer Google Doc; just a
+// reasonable generic offer letter so a send never comes back completely empty.
+function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, salary, today) {
+  const logoSrc = _getHrmLogoSrc();
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    body{margin:0;padding:0;font-family:'Times New Roman',Times,serif;font-size:16px;color:#000;line-height:1.1}
+    table.hdr{width:100%;border:none;border-collapse:collapse;margin-bottom:8px}
+    table.hdr td{border:none;vertical-align:top;padding:0}
+    h2{text-align:center;font-size:16px;font-weight:bold;letter-spacing:.3px;margin:8px 0 6px}
+    .pc{text-align:right;margin-bottom:8px;font-size:16px}
+    p{margin:0 0 7px;text-align:justify}ol{margin:2px 0 8px 18px}ol li{margin-bottom:2px}
+    .footer{margin-top:14px}a{color:#00f}
+  </style></head><body><div>
+  <table class="hdr"><tr>
+    <td width="197" valign="top" style="padding-right:12px"><img src="${logoSrc}" alt="e-Marketing" width="185" height="110" style="display:block"></td>
+    <td valign="top" style="font-size:13px;line-height:1.4;text-align:right">
+      <p style="margin:0;text-align:right"><strong>e-Marketing.io (A Unit of Jai Marketing)</strong><br>
+      Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,<br>
+      Malviya Nagar, Jaipur, Rajasthan – 307017 (India)<br>
+      <br>
+      Phone: +91-9602694444<br>
+      Email: <a href="mailto:abhishek@e-marketing.io">abhishek@e-marketing.io</a><br>
+      Website: www.e-marketing.io</p>
+    </td>
+  </tr></table>
+  <h2>OFFER LETTER</h2>
+  <div class="pc" style="text-align:right">Private &amp; Confidential<br>Date :-${today}</div>
+  <p><strong>Dear ${candidateName},</strong></p>
+  <p>With reference to your application and the subsequent interview and offer discussion, we are pleased to confirm your appointment as <strong>${candidatePosition}</strong> with <strong>e-Marketing (a unit of Jai Marketing)</strong>, Jaipur.</p>
+  <p>You are required to join us on <strong>${joiningFmt}</strong>. Your place of work will be <strong>Jaipur</strong> (8/10 shaheed amit bhardwaj marg, malviya nagar Jaipur 302017)</p>
+  <p>Your annual CTC will be <strong>${salary || 'as discussed'}</strong>. Detailed terms and conditions of your appointment shall be issued to you at the time of joining. We expect you to maintain the confidentiality of the salary offer to you.</p>
+  <p>Please submit the following documents on your Joining Day:</p>
+  <ol>
+    <li>Educational/Professional/Technical Qualification certificates</li>
+    <li>Copy of Resignation Acceptance letter or relieving letter from last employer, if applicable.</li>
+    <li>Salary Certificate from last employer, if applicable.</li>
+    <li>One (1) passport size color photograph</li>
+    <li>Copy of Present and Permanent Address Proof.</li>
+    <li>ID Proof (Aadhar Card, PAN Card).</li>
+  </ol>
+  <p>Please send a <strong>token of your acceptance</strong> of this Offer Letter.</p>
+  <p>We are excited about the growth trajectory that e-Marketing Consulting is on, and we look forward to having you on board as a team member.</p>
+  <div class="footer"><p>For</p><p>e-Marketing (a unit of Jai Marketing)</p></div>
+  </div></body></html>`;
+}
+
 async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName, overridePosition) {
   const crypto = require('crypto');
   const token = crypto.randomBytes(24).toString('hex');
@@ -9379,10 +9428,11 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
 }
 
 // Final "Offer Letter Sent" stage — separate Google Doc template from the
-// preliminary one (HRM_FINAL_OFFER_TEMPLATE_ID), no HTML fallback since its
-// content isn't a static layout this codebase owns (unlike the preliminary
-// letter's hrmBuildOfferHtml) — if the Apps Script template merge fails,
-// this throws and the caller falls back to a text-only WhatsApp message.
+// preliminary one (HRM_FINAL_OFFER_TEMPLATE_ID). The Apps Script rejects any
+// request with no `html` field at all ("html missing"), even when a
+// templateId is given, so hrmBuildFinalOfferHtml's generic layout is always
+// sent alongside the template — it's just a fallback/required-field filler,
+// not meant to be identical to the user's real final-offer Google Doc.
 async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrideName, overridePosition) {
   const candidateName     = overrideName     || candidate.name             || '';
   const candidatePosition = overridePosition || candidate.profile_position || '';
@@ -9391,6 +9441,7 @@ async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrid
     ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
     : '';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+  const html = hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, salary, today);
 
   const fetchFn = global.fetch || (await import('node-fetch')).default;
   const scriptRes = await fetchFn(HRM_OFFER_SCRIPT, {
@@ -9404,6 +9455,7 @@ async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrid
         '{{JOINING_DATE}}':   joiningFmt,
         '{{Today_Date}}':     today,
       },
+      html,
       filename: `OFFER LETTER - ${candidateName}`,
       folderId: HRM_OFFER_FOLDER_ID,
     }),
