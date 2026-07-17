@@ -9424,10 +9424,20 @@ async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrid
 
   const { drive, docs } = await _hrmDocsAndDriveClient();
 
-  // 1. Copy the template so the original is never mutated.
+  // 1. Copy the template so the original is never mutated. Force-convert to
+  // a native Google Doc on copy — the Docs API batchUpdate below only works
+  // on native Docs, not on a raw .docx/.doc file sitting in Drive (Drive
+  // lets you preview/edit those in a Docs-like UI, but that's a client-side
+  // convenience; the file itself stays Word format unless explicitly
+  // converted). Specifying a different mimeType on copy is what triggers
+  // that conversion — harmless no-op if the source is already a Google Doc.
   const copyRes = await drive.files.copy({
     fileId: HRM_FINAL_OFFER_TEMPLATE_ID,
-    requestBody: { name: `OFFER LETTER - ${candidateName}`, parents: [HRM_OFFER_FOLDER_ID] },
+    requestBody: {
+      name: `OFFER LETTER - ${candidateName}`,
+      parents: [HRM_OFFER_FOLDER_ID],
+      mimeType: 'application/vnd.google-apps.document',
+    },
     fields: 'id',
   });
   const docId = copyRes.data.id;
