@@ -9066,18 +9066,22 @@ app.get('/api/inventory/items', requireAuth, async (req, res) => {
     if (isAdmin) {
       [rows] = await db.query(`
         SELECT i.*, u.name AS assigned_to_name, u.id AS assigned_to_id,
-               a.id AS assignment_id, a.assigned_at, a.handover_status, a.return_reason
+               a.id AS assignment_id, a.assigned_at, a.handover_status, a.return_reason,
+               cu.name AS created_by_name
         FROM inventory_items i
         LEFT JOIN inventory_assignments a ON a.item_id = i.id AND a.handover_status IN ('active','pending_handover')
         LEFT JOIN users u ON u.id = a.user_id
+        LEFT JOIN users cu ON cu.id = i.created_by
         ORDER BY i.created_at DESC`);
     } else {
       [rows] = await db.query(`
         SELECT i.*, u.name AS assigned_to_name, u.id AS assigned_to_id,
-               a.id AS assignment_id, a.assigned_at, a.handover_status, a.return_reason
+               a.id AS assignment_id, a.assigned_at, a.handover_status, a.return_reason,
+               cu.name AS created_by_name
         FROM inventory_items i
         JOIN inventory_assignments a ON a.item_id = i.id AND a.user_id = ? AND a.handover_status IN ('active','pending_handover')
         JOIN users u ON u.id = a.user_id
+        LEFT JOIN users cu ON cu.id = i.created_by
         ORDER BY i.created_at DESC`, [req.session.userId]);
     }
     res.json(rows);

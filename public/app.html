@@ -5236,6 +5236,12 @@ function invCard(item, isAdmin) {
   const specLine = specParts.length
     ? `<div style="font-size:12px;color:#64748b">${specParts.join(' · ')}</div>`
     : '';
+  // Who put this in the register. Only on All Equipment: in My Equipment the
+  // answer is almost always "you", and the assignee badge already says whose
+  // it is — the interesting question there is who holds it, not who filed it.
+  const addedByLine = (_invTab === 'all' && item.created_by_name)
+    ? `<div style="font-size:11px;color:#94a3b8;margin-top:3px">✎ Added by ${esc(item.created_by_name)}</div>`
+    : '';
 
   let actions = '';
   if (isAdmin) {
@@ -5265,6 +5271,7 @@ function invCard(item, isAdmin) {
         <div style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:${statusColor}1a;color:${statusColor}">${item.status}</div>
       </div>
       ${specLine}
+      ${addedByLine}
       ${assignedBadge}
       ${item.handover_status==='pending_handover'?`<div style="font-size:11px;color:#ef4444;font-weight:600;margin-top:4px">⚠️ Handover Pending${item.return_reason?` · ${esc(INV_RETURN_REASON_LABELS[item.return_reason]||item.return_reason)}`:''}</div>`:''}
       ${actions?`<div onclick="event.stopPropagation()" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${actions}</div>`:''}
@@ -5300,6 +5307,7 @@ function openInvDetailModal(id) {
     row('Serial No.', item.serial_number, true) +
     row('Condition', INV_CONDITION_LABELS[item.item_condition] || item.item_condition) +
     row('Assigned to', item.assigned_to_name) +
+    row('Added by', item.created_by_name) +
     row('Notes', item.notes) +
     row('Return reason', INV_RETURN_REASON_LABELS[item.return_reason] || item.return_reason) +
     (item.handover_status === 'pending_handover'
