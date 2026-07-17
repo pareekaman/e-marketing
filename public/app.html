@@ -5188,6 +5188,11 @@ function invCard(item, isAdmin) {
       actions += `<button class="action-btn done" onclick="doReturn(${item.assignment_id})">Mark Returned</button>`;
     }
     actions += `<button class="action-btn delete" onclick="deleteInvItem(${item.id})">Delete</button>`;
+  } else if (_invTab === 'mine' && item.handover_status === 'active' && item.assignment_id) {
+    // The holder can only raise the intent to give it back — confirming actual
+    // receipt stays with the custodian, so no Mark Returned here. Once it is
+    // pending, the card shows the badge and no button.
+    actions += `<button class="action-btn revise" onclick="requestInvReturn(${item.assignment_id},'${esc(item.name)}')">Return</button>`;
   }
 
   return `<div onclick="openInvDetailModal(${item.id})" title="Click for full details"
@@ -5398,6 +5403,20 @@ async function doReturn(assignmentId) {
   const r = await api(`/api/inventory/return/${assignmentId}`,'POST',{});
   if (r.error) { showToast(r.error,'error'); return; }
   showToast('Item returned to inventory!');
+  loadInventory();
+}
+
+// Holder-initiated return from My Equipment: flags the item pending, then an
+// admin confirms receipt with Mark Returned on All Equipment. It stays in the
+// holder's list until they do — it is still physically with them.
+async function requestInvReturn(assignmentId, itemName) {
+  if (!await appConfirm(
+    `Return "${itemName}"? It stays listed as yours until an admin confirms they've received it.`,
+    'Return equipment?')) return;
+  const r = await api(`/api/inventory/handover/${assignmentId}`, 'POST',
+    { notes: `Return initiated by ${ME?.name || 'holder'}` });
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast('Return requested — admin will confirm once received.');
   loadInventory();
 }
 

@@ -9159,13 +9159,23 @@ app.get('/api/inventory/assignments', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Initiate handover (admin marks item as pending return when user leaves)
+// Initiate handover — flags the item as pending return.
+// Two ways in: an admin/HOD starting the handover when someone leaves, or the
+// holder themselves saying "I'm giving this back" from My Equipment. Either
+// way it only raises the intent; an admin still has to confirm physical
+// receipt via /return, so this is deliberately NOT admin-only.
 app.post('/api/inventory/handover/:assignment_id', requireAuth, async (req, res) => {
-  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
   try {
     const { notes } = req.body;
     const [[a]] = await db.query('SELECT * FROM inventory_assignments WHERE id=?', [req.params.assignment_id]);
     if (!a) return res.status(404).json({ error: 'Assignment not found' });
+    const isAdmin = ['admin','hod'].includes(req.session.role);
+    if (!isAdmin && a.user_id !== req.session.userId) {
+      return res.status(403).json({ error: 'You can only return equipment assigned to you' });
+    }
+    if (a.handover_status !== 'active') {
+      return res.status(400).json({ error: 'This assignment is not active' });
+    }
     await db.query(
       `UPDATE inventory_assignments SET handover_status='pending_handover', handover_notes=? WHERE id=?`,
       [notes||'', req.params.assignment_id]);
