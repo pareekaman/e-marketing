@@ -5149,7 +5149,13 @@ function renderInventory() {
 
   if (!items.length) { el.innerHTML = '<div class="empty">No equipment found.</div>'; return; }
 
-  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;padding:20px">${items.map(item=>invCard(item, isAdmin)).join('')}</div>`;
+  // My Equipment is a read-only view of your own kit — even for an admin. The
+  // lifecycle actions (Assign / Handover / Mark Returned / Delete) are the
+  // custodian's job and live on All Equipment, so an admin can't return their
+  // own item to stock from the tab that is meant to show what they hold. Once
+  // it is returned there, it drops out of My Equipment on its own.
+  const showActions = isAdmin && _invTab !== 'mine';
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;padding:20px">${items.map(item=>invCard(item, showActions)).join('')}</div>`;
 }
 
 function invCard(item, isAdmin) {
