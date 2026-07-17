@@ -462,6 +462,8 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN offer_html MEDIUMTEXT DEFAULT NULL`);
   await sa(`ALTER TABLE hrm_message_log ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL`);
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN department VARCHAR(255) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_candidates MODIFY COLUMN status ENUM('Scheduled','Rescheduled','Selected','Rejected','Offer Sent','Offer Letter Sent') DEFAULT 'Scheduled'`);
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN final_offer_drive_id VARCHAR(500) DEFAULT NULL`);
 
   // Per-user permissions column (replaces role_permissions)
   await sa(`ALTER TABLE users ADD COLUMN user_permissions TEXT DEFAULT NULL AFTER extra_access`);
@@ -9255,6 +9257,10 @@ const HRM_FILE_ENDPOINT   = 'https://api.aumpfy.com/api/apis/trigger/hrm-file-6b
 const HRM_COMPANY         = process.env.HRM_COMPANY || 'E-Marketing';
 const HRM_OFFER_FOLDER_ID   = process.env.HRM_OFFER_FOLDER_ID   || '1DWfwjSdkVP_sDEe62mM50Mc1mV52f6rA';
 const HRM_OFFER_TEMPLATE_ID = process.env.HRM_OFFER_TEMPLATE_ID || '11f3STYRR4Lyk2HaoBfo7Kiiw5DsEoyr0P3lZnpZR_G4';
+// Separate, final "Offer Letter Sent" stage — a distinct Google Doc template
+// from the preliminary one above, used once the candidate's official offer
+// (not just the preliminary one) goes out.
+const HRM_FINAL_OFFER_TEMPLATE_ID = process.env.HRM_FINAL_OFFER_TEMPLATE_ID || '1ON5wE86G2kD3DysDd24u4xFhh8MVCufM';
 const HRM_OFFER_SCRIPT      = process.env.HRM_OFFER_SCRIPT      || 'https://script.google.com/macros/s/AKfycbyDG7Wqih7LW3p7ttqONoqzwy5t5Gq7B3RgTxEJcD3QL6qzALTMaC3cUvnxW2CGT3VQ/exec';
 
 // Logo: pre-sized 185x110 PNG hardcoded as base64.
@@ -9372,6 +9378,48 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
   return { fileId, pdfUrl };
 }
 
+// Final "Offer Letter Sent" stage — separate Google Doc template from the
+// preliminary one (HRM_FINAL_OFFER_TEMPLATE_ID), no HTML fallback since its
+// content isn't a static layout this codebase owns (unlike the preliminary
+// letter's hrmBuildOfferHtml) — if the Apps Script template merge fails,
+// this throws and the caller falls back to a text-only WhatsApp message.
+async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrideName, overridePosition) {
+  const candidateName     = overrideName     || candidate.name             || '';
+  const candidatePosition = overridePosition || candidate.profile_position || '';
+
+  const joiningFmt = joining_date
+    ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+    : '';
+  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const fetchFn = global.fetch || (await import('node-fetch')).default;
+  const scriptRes = await fetchFn(HRM_OFFER_SCRIPT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      templateId: HRM_FINAL_OFFER_TEMPLATE_ID,
+      replacements: {
+        '{{CANDIDATE_NAME}}': candidateName,
+        '{{POSITION}}':       candidatePosition,
+        '{{JOINING_DATE}}':   joiningFmt,
+        '{{Today_Date}}':     today,
+      },
+      filename: `OFFER LETTER - ${candidateName}`,
+      folderId: HRM_OFFER_FOLDER_ID,
+    }),
+  });
+  const scriptData = await scriptRes.json();
+  if (!scriptData.ok) throw new Error(scriptData.error || 'Apps Script upload failed');
+
+  const fileId = scriptData.fileId;
+  const pdfUrl = scriptData.pdfUrl;
+
+  await db.query('UPDATE hrm_candidates SET final_offer_drive_id=? WHERE id=?', [fileId, candidate.id])
+    .catch(() => {});
+
+  return { fileId, pdfUrl };
+}
+
 async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateName, action) {
   let status = 'Failed', errorDetail = '';
   try {
@@ -9477,7 +9525,7 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   try {
     const { status, reschedule_date, reschedule_time, reschedule_reason, joining_date, salary, department } = req.body;
-    const validStatuses = ['Scheduled','Rescheduled','Selected','Rejected','Offer Sent'];
+    const validStatuses = ['Scheduled','Rescheduled','Selected','Rejected','Offer Sent','Offer Letter Sent'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Invalid status' });
     const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
     if (!c) return res.status(404).json({ error: 'Not found' });
@@ -9486,6 +9534,7 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
     const updates = { status };
     if (status === 'Rescheduled') { updates.reschedule_date = reschedule_date||null; updates.reschedule_time = reschedule_time||''; updates.reschedule_reason = reschedule_reason||''; }
     if (status === 'Offer Sent')  { updates.joining_date = joining_date||null; updates.salary = salary||''; updates.offer_sent = 1; updates.department = department||''; }
+    if (status === 'Offer Letter Sent') { updates.joining_date = joining_date||c.joining_date||null; updates.salary = salary||c.salary||''; updates.department = department||c.department||''; }
 
     const invalidCol = Object.keys(updates).find(k => !HRM_ALLOWED_COLS.has(k));
     if (invalidCol) return res.status(400).json({ error: `Invalid field: ${invalidCol}` });
@@ -9584,6 +9633,48 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
           const taskMsg = `Hello ${naman.name || ''},\n\n📋 *New Task Delegated*\n\n*By:* ${assignerName}\n*Due:* ${dueFmt}\n*Priority:* LOW\n\n*Task:* ${taskDesc}\n\n— E-Marketing Task Manager`;
           sendWhatsApp(naman.phone, taskMsg).catch(e => console.error('HRM task delegation WA err:', e.message));
         }
+      }
+    }
+
+    // Final "Offer Letter Sent" stage — reuses whatever position/department/
+    // joining-date/salary is already stored on the candidate from the
+    // preliminary stage; no new form fields, same as Selected/Rejected.
+    if (status === 'Offer Letter Sent') {
+      const { offer_name, offer_position } = req.body;
+      const displayName = offer_name || c.name;
+      const displayPos  = offer_position || c.profile_position;
+      const finalJoiningDate = joining_date || c.joining_date;
+      const finalSalary = salary || c.salary;
+      const finalJoiningFmt = finalJoiningDate ? new Date(finalJoiningDate).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
+
+      try {
+        const { fileId, pdfUrl } = await hrmGenerateFinalOfferDoc(c, finalJoiningDate, finalSalary, offer_name, offer_position);
+        await db.query('UPDATE hrm_candidates SET final_offer_drive_id=? WHERE id=?', [fileId, c.id]);
+        const caption = `Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! Please find attached your official Offer Letter for the position of *${displayPos}*.\n\n📅 Joining Date: ${finalJoiningFmt}\n💰 CTC: ${finalSalary||'To be discussed'}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
+        const fileSent = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
+          to: hrmFormatPhone(c.phone),
+          mediaUrl: pdfUrl,
+          mediaType: 'document',
+          fileName: `OFFER LETTER - ${displayName}.pdf`,
+          caption
+        }, 'file', c.id, c.name, 'Offer Letter Sent');
+        if (!fileSent) {
+          const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
+          await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+`${caption}\n\n📄 *Offer Letter PDF:*\n${driveLink}`
+          }, 'text', c.id, c.name, 'Offer Letter Sent - Link Fallback');
+        }
+      } catch (e) {
+        pdfGenerated = false;
+        pdfError = e.message;
+        console.error('HRM final offer doc generation failed:', e.message);
+        await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+`Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been issued your official Offer Letter for the position of ${displayPos}.\n\n📅 Joining Date: ${finalJoiningFmt}\n💰 CTC: ${finalSalary||'To be discussed'}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
+        }, 'text', c.id, c.name, 'Offer Letter Sent').catch(() => {});
+        await db.query(
+          `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
+          [c.id, c.name, hrmFormatPhone(c.phone), 'Offer Letter PDF (Final)', 'file', 'Failed', `Drive error: ${e.message}`, '{}']
+        ).catch(() => {});
       }
     }
 
