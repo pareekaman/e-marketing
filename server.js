@@ -9257,10 +9257,6 @@ const HRM_FILE_ENDPOINT   = 'https://api.aumpfy.com/api/apis/trigger/hrm-file-6b
 const HRM_COMPANY         = process.env.HRM_COMPANY || 'E-Marketing';
 const HRM_OFFER_FOLDER_ID   = process.env.HRM_OFFER_FOLDER_ID   || '1DWfwjSdkVP_sDEe62mM50Mc1mV52f6rA';
 const HRM_OFFER_TEMPLATE_ID = process.env.HRM_OFFER_TEMPLATE_ID || '11f3STYRR4Lyk2HaoBfo7Kiiw5DsEoyr0P3lZnpZR_G4';
-// Separate, final "Offer Letter Sent" stage — a distinct Google Doc template
-// from the preliminary one above, used once the candidate's official offer
-// (not just the preliminary one) goes out.
-const HRM_FINAL_OFFER_TEMPLATE_ID = process.env.HRM_FINAL_OFFER_TEMPLATE_ID || '1ON5wE86G2kD3DysDd24u4xFhh8MVCufM';
 const HRM_OFFER_SCRIPT      = process.env.HRM_OFFER_SCRIPT      || 'https://script.google.com/macros/s/AKfycbyDG7Wqih7LW3p7ttqONoqzwy5t5Gq7B3RgTxEJcD3QL6qzALTMaC3cUvnxW2CGT3VQ/exec';
 
 // Logo: pre-sized 185x110 PNG hardcoded as base64.
@@ -9285,32 +9281,6 @@ async function _hrmDriveClient() {
   });
   const client = await auth.getClient();
   return google.drive({ version: 'v3', auth: client });
-}
-
-// Drive + Docs client pair for the final-offer generator, which edits a
-// user-owned Google Doc template directly (copy → merge-field replace →
-// export PDF) instead of going through the HRM_OFFER_SCRIPT Apps Script —
-// needs the documents scope in addition to drive. The template doc must be
-// shared with this service account's client_email (same one used elsewhere
-// in HRM/DMS — see /api/hrm/offer-template-preview for how to read it).
-async function _hrmDocsAndDriveClient() {
-  const { google } = require('googleapis');
-  let creds;
-  if (process.env.GOOGLE_CREDENTIALS) {
-    creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-    if (creds.private_key) creds.private_key = creds.private_key.replace(/\\n/g, '\n');
-  } else {
-    creds = require('./credentials.json');
-  }
-  const auth = new google.auth.GoogleAuth({
-    credentials: creds,
-    scopes: ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/documents'],
-  });
-  const client = await auth.getClient();
-  return {
-    drive: google.drive({ version: 'v3', auth: client }),
-    docs: google.docs({ version: 'v1', auth: client }),
-  };
 }
 
 function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) {
@@ -9404,86 +9374,228 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
   return { fileId, pdfUrl };
 }
 
-// Final "Offer Letter Sent" stage — generates directly from the user's own
-// Google Doc template (HRM_FINAL_OFFER_TEMPLATE_ID) via the Drive/Docs APIs,
-// not the HRM_OFFER_SCRIPT Apps Script the preliminary letter uses. That
-// script turned out to ignore templateId entirely (it only ever renders the
-// `html` field, silently, with no error) — so going through it could never
-// actually produce the user's real document. Copy → merge-field replace →
-// export PDF keeps this fully under this codebase's control instead of
-// depending on an opaque, unverifiable external script.
+// Verbatim transcription of the user-supplied final offer letter/employment
+// contract format (screenshots, 2026-07-18) — every word, section number and
+// clause is intentionally kept identical to the source, including its own
+// inconsistencies (the stray "14.7" clause after "15.6", "theaccounts" typo
+// in 13.1, the fixed "9th day of July, 2026" / "10th day of July 2026"
+// acceptance-block dates which were static in the source, not merge fields).
+// Do not "fix" or reformat any of this without the user re-confirming the
+// change against their real document first.
+function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, salary, todayFmt) {
+  const logoSrc = _getHrmLogoSrc();
+  const header = `<table class="hdr"><tr>
+    <td width="160" valign="top"><img src="${logoSrc}" alt="e-Marketing" width="150" height="89" style="display:block"></td>
+    <td valign="top" style="font-size:11px;line-height:1.4;text-align:right">
+      <p style="margin:0;text-align:right"><strong>e-Marketing.io (A Unit of Jai Marketing)</strong> Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8, Malviya Nagar, Jaipur, Rajasthan – 307017 (India)<br>
+      Phone: +91-9602694444<br>
+      Email: <a href="mailto:abhishek@e-marketing.io">abhishek@e-marketing.io</a><br>
+      Website: www.e-marketing.io</p>
+    </td>
+  </tr></table>`;
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    body{margin:0;padding:0;font-family:'Times New Roman',Times,serif;font-size:14px;color:#000;line-height:1.35}
+    table.hdr{width:100%;border:none;border-collapse:collapse;margin-bottom:10px}
+    table.hdr td{border:none;vertical-align:top;padding:0}
+    p{margin:0 0 10px;text-align:justify}
+    ul{margin:2px 0 8px 18px}ul li{margin-bottom:4px}
+    .center{text-align:center}
+    .page{page-break-after:always}
+    a{color:#00f}
+  </style></head><body>
+
+  <div class="page">
+    ${header}
+    <p>${todayFmt}</p>
+    <p>Dear ${candidateName} ,</p>
+    <p>We are pleased to offer you an appointment as an <strong>${candidatePosition}</strong> with  e-Marketing (a unit of Jai Marketing)</p>
+    <p>We expect your appointment to be effective on or before <strong>${joiningFmt}</strong>.</p>
+    <p>Your gross remuneration package will be <strong>Rs.${salary || ''}/- per month</strong>.</p>
+    <p>Please sign the duplicate copy of this letter to acknowledge your acceptance of the above and return it to us at the address below.</p>
+    <p><strong>Sincerely Yours,</strong></p>
+    <p><strong>e-Marketing</strong></p>
+    <br><br>
+    <p>Abhishek Jain</p>
+    <p>Partner: eMarketing</p>
+    <br><br><br>
+    <p class="center">Agreed and accepted this 9th day of July, 2026.</p>
+    <p class="center">I will join eMarketing on the 10th day of July 2026.</p>
+    <p class="center"><strong>${candidateName}</strong></p>
+  </div>
+
+  <div class="page">
+    ${header}
+    <p><strong><u>CHECKLIST OF DOCUMENTS REQUIRED AT THE TIME OF JOINING:</u></strong></p>
+    <ul>
+      <li>Copy of the offer letter accepted and signed by you.</li>
+      <li>Resignation Acceptance/Relieving Certificate from last employer.</li>
+      <li>Form 16 (pertaining to tax deducted at source) from the previous employer or salary certificate.</li>
+      <li>Xerox of Educational Certificates (Copy of 10th, 12th, and graduation/post-graduation certificates).</li>
+      <li>Four recent passport-size photographs.</li>
+      <li>Xerox of Proof of Birth Date (Copy of Birth Certificate/School Leaving Certificate).</li>
+      <li>Proof of identity (original and Xerox copy of passport/driving license/voter's ID card).</li>
+      <li>Residential Proof (Ration Card Copy/Voter's ID Card/Passport).</li>
+      <li>PAN Card original and three Xerox.</li>
+      <li>Bank Account Details for Salary Transfer.</li>
+    </ul>
+  </div>
+
+  <div class="page">
+    ${header}
+    <p class="center"><strong>OFFER OF EMPLOYMENT (Private &amp; Confidential)</strong></p>
+    <p>We are pleased to offer you employment with eMarketing under the following terms and conditions set out in this Contract of Employment (&ldquo;Agreement&rdquo;), subject to satisfactory reference and background screening and upon approval of any applicable work pass application.</p>
+
+    <p><strong>1. DESIGNATION</strong></p>
+    <p>You are employed as an <strong><u>${candidatePosition}</u></strong>.</p>
+
+    <p><strong>2. COMMENCEMENT</strong></p>
+    <p>You will commence employment on <strong>${joiningFmt}</strong>. Your employment with the company will commence on your actual and effective date of joining the company, subject to the completion of all joining formalities. Till such time, no relationship (employment, contractual, or otherwise) will exist between the parties. The company reserves the right to withdraw this offer at its sole discretion at any time before the date of joining, with due communication to you.</p>
+
+    <p><strong>3. REMUNERATION</strong></p>
+    <p>Your fixed annual CTC will be Rs <strong>${salary || ''}</strong>/- subject to the appropriate withholding tax in accordance with India's laws and regulations. The prerequisites and benefits applicable within the CTC will be discussed with you further.</p>
+
+    <p><strong>4. PROBATION</strong></p>
+    <p>You shall serve a probationary period of up to <strong>2 months</strong>. The company reserves the right to extend the probationary period, if necessary.</p>
+
+    <p><strong>5. ANNUAL LEAVE</strong></p>
+    <p>All employees shall be entitled to annual leave of <strong>twelve (12) working days</strong> per year.</p>
+
+    <p><strong>6. NORMAL DAYS/HOURS OF WORK</strong></p>
+    <p>All employees would observe a <strong>Six (6) day work week</strong>, Monday through Saturday, with working hours from 9:30 am to 6:00 p.m. and a half-hour lunch break between 1:30 pm and 2:00 pm.</p>
+
+    <p><strong>7. TIMELY ARRIVAL INCENTIVE</strong></p>
+    <p>In recognition of your commitment to punctuality, we offer an additional day off on the last Saturday of every month, contingent on timely arrival to the office each day from the last Saturday of the previous month, with no exceptions, and the day will be forfeited in case of tardiness.</p>
+
+    <p><strong>8. PUBLIC HOLIDAYS</strong></p>
+    <p>All employees shall be entitled to all gazette public holidays with full pay.</p>
+
+    <p><strong>9. OUTSIDE INTEREST</strong></p>
+    <p>You will not be permitted, while in the employment of the company, to carry on any business other than the business of the company and/or divulge to any person any information concerning the methods, arrangements, practices, or transactions that may injure or prejudice the interest or reputation of the company in any manner or form.</p>
+  </div>
+
+  <div class="page">
+    ${header}
+    <p><strong>10. CONFLICT OF INTEREST</strong></p>
+    <p>All employees shall be required to report to the company if any member of his family, or close relatives, is engaged in any trade or business involving supplies of goods and/or services to the company or has any other type of business relationship with the company.</p>
+
+    <p><strong>11. AMENDMENT</strong></p>
+    <p>This agreement may be amended by the company from time to time as and when the company considers it proper in the best interests of the company. The amendment shall be in the form of a notification in writing addressed to you at your last known address, and then such amendment shall be incorporated into this Agreement and shall form part of this Agreement.</p>
+
+    <p><strong>12. PERSONAL INFORMATION</strong></p>
+    <p>12.1 For any applicable data protection legislation, you consent to the collecting, holding, processing, accessing, use, and disclosing of any personal data relating to you or provided by you to the Company for all purposes relating to compliance with any applicable laws and/or the Company's exercise of any of its rights or performance or discharge of any of its obligations under this Agreement or where such disclosure is for any purpose that is related to your employment with the Company, including but not limited to:</p>
+    <p>A. Administering and maintaining personal records;<br>
+    B. Paying and reviewing salary and other remuneration and benefits;<br>
+    C. Providing and administering benefits (including, if relevant, pension, life assurance, permanent health insurance, and medical insurance) or compliance with a legal requirement;<br>
+    D. Undertaking performance appraisals and development reviews;<br>
+    E. Maintaining sickness, holiday, and other absence records;<br>
+    F. Making decisions about your fitness for work or the need for adjustments in the workplace;<br>
+    G. Providing references and information to future employers;<br>
+    H. Providing information to governmental and quasi-governmental bodies where required or requested by such bodies, including without limitation the revenue and tax authorities, customs, and immigration authorities, and taking decisions regarding any such information;<br>
+    I. Investigating and recording the commission or alleged commission of any offense in order to comply with legal requirements and obligations to third parties;<br>
+    J. Providing information to future purchasers of the Company or any of its associated companies; and<br>
+    K. Transferring information concerning you to a country or territory outside India (all HR information is maintained in the shared services in India).</p>
+
+    <p>12.2 You also consent to the company monitoring and recording your actions and activities, such as those conducted on your laptop or desktop computer that is issued to you by the company, and any use you make of your telecommunication or computer systems. You agree to comply with the company's policy concerning the use of such systems.</p>
+
+    <p>12.3 You agree to comply with the company's data policies and will take all steps to ensure that any associated company companies' information or personal data that you have, hold, or process will be kept securely by you, particularly if such information is accessed by or accessible to you via a mobile device, such as a laptop, desktop, personal digital assistant (PDA) or mobile telephone.</p>
+
+    <p>12.4 Concerning the Personal Information shared under this Agreement, you agree that for Section 43A of the Information Technology Act 2000, the aforesaid personal data policies of the Company or such other policy of the Company dealing with data protection and security shall constitute reasonable security practices and procedures and accordingly, the Information Technology (Reasonable Security Practices and Procedures and Sensitive Personal Data or Information) Rules 2011 are hereby excluded.</p>
+  </div>
+
+  <div class="page">
+    ${header}
+    <p><strong>13. CONFIDENTIALITY</strong></p>
+    <p>13.1 You shall not during your employment or after the termination thereof (howsoever arising) make use of for your own purposes or those of any other person, firm or company or disclose to any person (except the proper officers of the Company or under the authority of the Board or required by law) any trade secrets or confidential information relating to the business, accounts, affairs or finances of the Company or its associated companies or their customers or suppliers, whether recorded or not (and if recorded, whether on paper, tape, hard drive or computer disk) and includes without limitation all and any information about business plans, new business opportunities, research and development projects, product formulae, processes, inventions, designs, discoveries or know-how, sales statistics (including targets and statistics, market share and pricing statistics, forecasts and reports) maturing business opportunities, processes, designs, marketing surveys and plans, costs, profit or loss or financial information relating to theaccounts, prices and discount structures of the Company its associated companies or their customers or suppliers, the names, addresses, telephone numbers, fax numbers, e-mail or contact details, activities or personal affairs of the Company's or its associated companies' customers, agents, consultants, distributors and suppliers, any Company or its associated companies' database, mailing list, software application, component list, any information relating the terms of business between the customers, suppliers or agents and the Company or its associated companies' (the &ldquo;Confidential Information&rdquo;).</p>
+
+    <p>13.2 You acknowledge that you will have access during your employment to Confidential Information belonging to the Company or its associated companies or their customers or suppliers and that the Company (for itself or on behalf of its associated companies or their customers or suppliers) has a legitimate commercial interest in preventing the unauthorized disclosure of such Confidential Information.</p>
+
+    <p>13.3 The obligations contained in this Clause 12 shall continue to apply without limitation in time following the termination of your employment, however arising, but they shall cease to apply to any information or knowledge that may subsequently come into the public domain other than by way of unauthorized disclosure.</p>
+
+    <p>13.4 All confidential information, plans, statistics, records, and other documentation (including any copies thereof, whether in paper or electronic form) of whatsoever nature relating to the business of the company or its associated companies or their customers or suppliers, shall immediately be returned by you to the company or, at the option of the company, destroyed or deleted (in the case of information that is stored electronically) in the event of the termination of your employment, however arising (or at any earlier time on demand).</p>
+
+    <p>13.5 You acknowledge that the remedy of damages may be inadequate to protect the interests of the Company and that the Company is entitled to seek and obtain an injunction or any other legal or equitable relief against you for any threatened or actual breach of any provisions of this Agreement by you or any other relevant person, and no proof of special damages shall be necessary for the enforcement by the Company of its rights under this Agreement.</p>
+  </div>
+
+  <div class="page">
+    ${header}
+    <p><strong>14. INTELLECTUAL PROPERTY</strong></p>
+    <p>14.1 For this Clause 13, &ldquo;Intellectual Property&rdquo; means patents, utility models, registered designs, registered trade and service marks, copyright (whether registered or not), improvements and modifications to any of the foregoing, and the right to apply for protection for such registered rights anywhere in the world, inventions, discoveries, copyright design rights, unregistered trade and service marks, brand names, secret or confidential information, know-how, or any other intellectual property and any similar or equivalent rights, whether registrable or not arising or granted under the law of any country or state.</p>
+
+    <p>14.2 Any Intellectual Property made created or discovered by you (either alone or with any other persons) during your employment (whether capable of being patented or registered or not and whether created or discovered in the course of your employment and whether or not it was created or discovered with the use of the Company's machinery or equipment of the Company or any of its associated companies) in conjunction with or in any way affecting or relating to the business of the Company or any other Intellectual Property rights for the time being and from time to time of the Company or in the opinion of the management of the Company is capable of being used or adapted for such use shall forthwith be disclosed to the Company and shall (subject to all relevant legislation), on a worldwide and perpetual basis, belong to and be the absolute property of the Company or its associated companies, as the case may be.</p>
+
+    <p>14.3 If and whenever required to do so by the company, you will, at the expense of the company, apply or join with the Company or any of its associated companies in applying for letters patent or other protection or registration in India and/or any other part of the world for any such Intellectual Property which belongs to the Company or any of its associated companies. You will, at the company's expense, execute and do or procure to be executed and done all instruments and things necessary for vesting the said letters patent or other protection or registration, and all rights, title, and interest to and in the intellectual property in the company absolutely or in such other persons or companies as the company may specify. Any assignment/transfer of such rights, titles, and interests shall not lapse if the company has not exercised its rights under the assignment for any period.</p>
+
+    <p>14.4 You waive all your moral rights under applicable law and any foreign corresponding rights in respect of any work of which you are the author or co-author.</p>
+  </div>
+
+  <div class="page">
+    ${header}
+    <p>14.5 Rights and obligations under Clause 13 shall continue in force after the termination of this Agreement and any other document created or discovered during the period of your employment and shall be binding upon your representatives.</p>
+
+    <p><strong>15. MISCELLANEOUS</strong></p>
+    <p>15.1 This Agreement together with any documents referred to in it constitutes the entire agreement and understanding between you and the Company and supersedes any previous agreement relating to your employment with the Company.</p>
+
+    <p>15.2 In the event of any conflict between the terms of this Agreement and any other document purporting to relate to your employment, the terms of this Agreement shall prevail.</p>
+
+    <p>15.3 This Agreement is personal and may not be assigned to any third party by any party.</p>
+
+    <p>15.4 If either party agrees to waive its rights under a provision of this Agreement, that waiver will only be effective if it is in writing and it is signed by that party. A party's agreement to waive any breach of any term or condition of this Agreement will not be regarded as a waiver of any subsequent breach of the same term or condition or a different term or condition.</p>
+
+    <p>15.5 Any notice or other document to be given under this Agreement shall be in writing and may be given personally to you or may be sent by first-class post or other fast postal service to, in the case of the Company, its registered office for the time being and your case, at your last known place of residence. Any such notice shall be deemed served upon the earlier of (i) delivery, if served personally; or (ii) upon receipt, if sent by mail.</p>
+
+    <p>15.6 This Agreement shall be governed by Indian law, and the Company and you submit to the exclusive jurisdiction of the Indian courts in Bangalore.</p>
+
+    <p>14.7 Notwithstanding the above terms and conditions, the Company reserves the right to amend, delete, and/or implement new terms and conditions which the Company deems necessary from time to time, and such amendment/deletion/implementation of new terms and conditions shall be notified to you in writing by prior notice.</p>
+
+    <p><strong>16. TERMINATION</strong></p>
+    <p>Employment may be terminated at any time by either party giving notice or pay in lieu of notice, or part thereof, for any reason other than redundancy. Periods of notice shall be two (2) weeks during the probationary period and one (1) month after confirmation and shall be in writing, except in the case of serious misconduct in which case you may be terminated at any time without notice. Absenteeism beyond 10 days is liable for termination unless and otherwise such absence is supported by valid reason in writing and with valid documents.</p>
+
+    <p><strong>17. AGE OF SUPERANNUATION</strong></p>
+    <p>Completion of sixty years as per date of birth and as declared by you at the time of appointment.</p>
+  </div>
+
+  <div>
+    ${header}
+    <p>If the above terms and conditions are acceptable to you, please signify by signing the duplicate of this letter and returning the same to us within three (3) working days.</p>
+  </div>
+
+  </body></html>`;
+}
+
+// Final "Offer Letter Sent" stage — sends the exact contract transcribed in
+// hrmBuildFinalOfferHtml above through the same HRM_OFFER_SCRIPT Apps Script
+// the preliminary letter uses (html-only, no templateId — the script proved
+// to ignore templateId and only ever render html, and a direct Drive/Docs-API
+// read of the user's own template hit a separate, unrelated wall: service
+// accounts have no personal Drive storage quota, so file creation failed
+// outright even once sharing/mimetype were fixed). This keeps final-offer
+// generation on the one path that's actually proven to work end-to-end.
 async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrideName, overridePosition) {
   const candidateName     = overrideName     || candidate.name             || '';
   const candidatePosition = overridePosition || candidate.profile_position || '';
-  const candidateDept     = candidate.department || '';
 
   const joiningFmt = joining_date
     ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
     : '';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+  const html = hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, salary, today);
 
-  const { drive, docs } = await _hrmDocsAndDriveClient();
-
-  // 1. Copy the template so the original is never mutated. Force-convert to
-  // a native Google Doc on copy — the Docs API batchUpdate below only works
-  // on native Docs, not on a raw .docx/.doc file sitting in Drive (Drive
-  // lets you preview/edit those in a Docs-like UI, but that's a client-side
-  // convenience; the file itself stays Word format unless explicitly
-  // converted). Specifying a different mimeType on copy is what triggers
-  // that conversion — harmless no-op if the source is already a Google Doc.
-  const copyRes = await drive.files.copy({
-    fileId: HRM_FINAL_OFFER_TEMPLATE_ID,
-    requestBody: {
-      name: `OFFER LETTER - ${candidateName}`,
-      parents: [HRM_OFFER_FOLDER_ID],
-      mimeType: 'application/vnd.google-apps.document',
-    },
-    fields: 'id',
+  const fetchFn = global.fetch || (await import('node-fetch')).default;
+  const scriptRes = await fetchFn(HRM_OFFER_SCRIPT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      html,
+      filename: `OFFER LETTER - ${candidateName}`,
+      folderId: HRM_OFFER_FOLDER_ID,
+    }),
   });
-  const docId = copyRes.data.id;
+  const scriptData = await scriptRes.json();
+  if (!scriptData.ok) throw new Error(scriptData.error || 'Apps Script upload failed');
 
-  // 2. Fill in merge fields. Tokens not present in the template are simply
-  // no-ops — safe to send all of them regardless of which ones this
-  // particular template actually uses.
-  const replacements = {
-    '{{CANDIDATE_NAME}}': candidateName,
-    '{{POSITION}}':       candidatePosition,
-    '{{DEPARTMENT}}':     candidateDept,
-    '{{JOINING_DATE}}':   joiningFmt,
-    '{{Today_Date}}':     today,
-    '{{CTC}}':            salary || '',
-    '{{SALARY}}':         salary || '',
-  };
-  await docs.documents.batchUpdate({
-    documentId: docId,
-    requestBody: {
-      requests: Object.entries(replacements).map(([text, replaceText]) => ({
-        replaceAllText: { containsText: { text, matchCase: true }, replaceText: String(replaceText) },
-      })),
-    },
-  });
-
-  // 3. Export the merged doc as a PDF.
-  const exportRes = await drive.files.export(
-    { fileId: docId, mimeType: 'application/pdf' },
-    { responseType: 'arraybuffer' }
-  );
-  const pdfBuffer = Buffer.from(exportRes.data);
-
-  // 4. Upload as its own PDF file — WhatsApp needs a fetchable file, not the
-  // Doc (which requires Google auth to view).
-  const { Readable } = require('stream');
-  const pdfUploadRes = await drive.files.create({
-    requestBody: { name: `OFFER LETTER - ${candidateName}.pdf`, parents: [HRM_OFFER_FOLDER_ID], mimeType: 'application/pdf' },
-    media: { mimeType: 'application/pdf', body: Readable.from(pdfBuffer) },
-    fields: 'id',
-  });
-  const fileId = pdfUploadRes.data.id;
-
-  // 5. Public-readable so the WhatsApp file-send API can actually fetch it.
-  await drive.permissions.create({ fileId, requestBody: { role: 'reader', type: 'anyone' } });
-
-  const pdfUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+  const fileId = scriptData.fileId;
+  const pdfUrl = scriptData.pdfUrl;
 
   await db.query('UPDATE hrm_candidates SET final_offer_drive_id=? WHERE id=?', [fileId, candidate.id])
     .catch(() => {});
