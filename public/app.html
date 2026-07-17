@@ -4648,7 +4648,10 @@ async function init() {
     const r = await fetch('/api/me', { credentials: 'include', headers });
     if (!r.ok) {
       localStorage.removeItem('authToken');
-      window.location.replace('/');
+      // Carry a ?page= deep link across the login round-trip, so a shared link
+      // still lands on the right tab for someone who wasn't signed in.
+      const next = location.pathname + location.search;
+      window.location.replace(location.search ? '/?next=' + encodeURIComponent(next) : '/');
       return;
     }
     ME = await r.json();
@@ -4762,13 +4765,21 @@ async function init() {
     // (already the default "active" page in the markup) stays put.
     let restored = false;
     try {
-      const lastPage = localStorage.getItem('lastPage');
+      // ?page=inventory makes a shareable deep link (there is no router — the
+      // app is one document and navigate() just swaps .page divs). An explicit
+      // link beats the remembered tab, so it is checked first.
+      const wanted = new URLSearchParams(location.search).get('page');
+      const lastPage = wanted || localStorage.getItem('lastPage');
       // Mirror navigate()'s own role guards so a disallowed saved page doesn't
       // silently no-op and leave the (still-default) dashboard without its data loaded.
       const blocked = (lastPage === 'mis' && ME.role !== 'admin' && ME.role !== 'hod') ||
                       (lastPage === 'race' && ME.role !== 'admin') ||
                       (lastPage === 'logs' && ME.role !== 'admin');
-      if (lastPage && lastPage !== 'dashboard' && !blocked && document.getElementById('page-' + lastPage)) {
+      // canSee() too: a deep link is public, so it must not hand someone a page
+      // their role would never show them in the nav.
+      if (lastPage && lastPage !== 'dashboard' && !blocked
+          && (!wanted || canSee(lastPage) || lastPage === 'profile')
+          && document.getElementById('page-' + lastPage)) {
         navigate(lastPage);
         restored = true;
       }

@@ -302,6 +302,15 @@
 </div>
 
 <script>
+// Where to land after login. ?next= carries a deep link (e.g. /app?page=inventory)
+// that app.html bounced here when the visitor wasn't signed in.
+// Only ever an /app path of our own: anything else and this becomes an open
+// redirect that phishing can point wherever it likes.
+function nextTarget() {
+  const n = new URLSearchParams(location.search).get('next');
+  return (n && /^\/app(\?[^\s]*)?$/.test(n)) ? n : '/app';
+}
+
 // Already-logged-in users skip the form. Clients go straight to their portal;
 // everyone else to the main app.
 (async function checkExistingSession() {
@@ -309,7 +318,7 @@
     const r = await fetch('/api/me', { credentials: 'include' });
     if (r.ok) {
       const me = await r.json();
-      window.location.replace(me.role === 'client' ? '/client' : '/app');
+      window.location.replace(me.role === 'client' ? '/client' : nextTarget());
     }
   } catch(e) {}
 })();
@@ -338,8 +347,9 @@ async function login(){
     if(!r.ok){err.textContent=d.error||'Login failed';err.style.display='block';return;}
     // Also save the token to localStorage as a backup, in case cookies get blocked
     if(d.token) localStorage.setItem('authToken', d.token);
-    // Client logins land on the dedicated /client page; team members on /app.
-    window.location.replace(d.role === 'client' ? '/client' : '/app');
+    // Client logins land on the dedicated /client page; team members on /app
+    // (or whatever deep link brought them here).
+    window.location.replace(d.role === 'client' ? '/client' : nextTarget());
   }catch(e){err.textContent='Server error. Try again.';err.style.display='block';}
 }
 </script>
