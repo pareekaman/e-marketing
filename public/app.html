@@ -5274,10 +5274,12 @@ function invCard(item, isAdmin) {
   const specLine = specParts.length
     ? `<div style="font-size:12px;color:#64748b">${specParts.join(' · ')}</div>`
     : '';
-  // Who put this in the register. Only on All Equipment: in My Equipment the
-  // answer is almost always "you", and the assignee badge already says whose
-  // it is — the interesting question there is who holds it, not who filed it.
-  const addedByLine = (_invTab === 'all' && item.created_by_name)
+  // Who put this in the register — only when that isn't already obvious. On a
+  // self-added item the filer IS the holder, so the assignee badge right below
+  // would just repeat this name. Compare ids, not names: two people can share
+  // a name, and that would hide a line that actually carries information.
+  const addedBySomeoneElse = item.created_by && String(item.created_by) !== String(item.assigned_to_id);
+  const addedByLine = (_invTab === 'all' && item.created_by_name && addedBySomeoneElse)
     ? `<div style="font-size:11px;color:#94a3b8;margin-top:3px">✎ Added by ${esc(item.created_by_name)}</div>`
     : '';
 
