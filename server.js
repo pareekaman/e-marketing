@@ -9090,6 +9090,10 @@ app.post('/api/inventory/items', requireAuth, async (req, res) => {
   try {
     const { name, type, brand, model, serial_number, photo, item_condition, notes } = req.body;
     if (!name || !type) return res.status(400).json({ error: 'name and type required' });
+    // Brand/model are what tell two items of the same type apart, since the
+    // form has no free-text name field.
+    if (!brand || !String(brand).trim()) return res.status(400).json({ error: 'Brand is required' });
+    if (!model || !String(model).trim()) return res.status(400).json({ error: 'Model is required' });
     const validTypes = ['laptop','keyboard','mouse','mobile','sim','charger','other'];
     if (!validTypes.includes(type)) return res.status(400).json({ error: 'Invalid type' });
     const [r] = await db.query(
@@ -9106,6 +9110,10 @@ app.post('/api/inventory/self-add', requireAuth, async (req, res) => {
   try {
     const { name, type, brand, model, serial_number, photo, item_condition, notes } = req.body;
     if (!name || !type) return res.status(400).json({ error: 'name and type required' });
+    // Brand/model are what tell two items of the same type apart, since the
+    // form has no free-text name field.
+    if (!brand || !String(brand).trim()) return res.status(400).json({ error: 'Brand is required' });
+    if (!model || !String(model).trim()) return res.status(400).json({ error: 'Model is required' });
     const validTypes = ['laptop','keyboard','mouse','mobile','sim','charger','other'];
     if (!validTypes.includes(type)) return res.status(400).json({ error: 'Invalid type' });
     const [r] = await db.query(

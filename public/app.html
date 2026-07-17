@@ -2915,11 +2915,11 @@ input:focus,select:focus,textarea:focus{outline:none;}
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label>Brand</label>
+          <label>Brand *</label>
           <input type="text" id="invBrand" placeholder="e.g. Dell, Apple, Samsung">
         </div>
         <div class="form-group">
-          <label>Model</label>
+          <label>Model *</label>
           <input type="text" id="invModel" placeholder="e.g. XPS 15, iPhone 14">
         </div>
       </div>
@@ -5178,14 +5178,24 @@ function switchInvTab(tab, el) {
 }
 
 function renderInventory() {
-  const typeFilter = document.getElementById('invFilterType').value;
-  const statusFilter = document.getElementById('invFilterStatus').value;
   const el = document.getElementById('invContent');
   const isAdmin = ME.role === 'admin' || ME.role === 'hod';
 
   // Add Item is contextual to the open tab — it adds to whatever the tab
   // shows. Assignments is a read-only history view, so nothing to add there.
   document.getElementById('invAddBtn').style.display = _invTab === 'assignments' ? 'none' : 'inline-flex';
+
+  // Status only varies across the shared pool; everything in My Equipment is
+  // by definition assigned, so the filter is noise there. Clear it on the way
+  // out, or a status picked on All Equipment would keep silently filtering a
+  // control the user can no longer see.
+  const statusSel = document.getElementById('invFilterStatus');
+  const showStatus = _invTab === 'all';
+  statusSel.style.display = showStatus ? 'block' : 'none';
+  if (!showStatus) statusSel.value = '';
+
+  const typeFilter = document.getElementById('invFilterType').value;
+  const statusFilter = statusSel.value;
 
   if (_invTab === 'assignments' && isAdmin) {
     renderAssignmentsTable(el);
@@ -5387,13 +5397,17 @@ async function saveInventoryItem() {
   const type = document.getElementById('invType').value;
   const otherType = document.getElementById('invTypeOther').value.trim();
   if (type === 'other' && !otherType) { showInvErr('invAddErr','Please specify the type'); return; }
+  // Brand and model are what actually tell two items of the same type apart on
+  // the card, since there is no free-text name field.
+  const brand = document.getElementById('invBrand').value.trim();
+  const model = document.getElementById('invModel').value.trim();
+  if (!brand) { showInvErr('invAddErr','Brand is required'); return; }
+  if (!model) { showInvErr('invAddErr','Model is required'); return; }
   // No name field on the form — the type names the item, except for 'other',
   // which is named by whatever type the user typed in.
   const name = type === 'other' ? otherType : INV_TYPE_PLAIN[type];
   const body = {
-    name, type,
-    brand: document.getElementById('invBrand').value.trim(),
-    model: document.getElementById('invModel').value.trim(),
+    name, type, brand, model,
     serial_number: document.getElementById('invSerial').value.trim(),
     item_condition: document.getElementById('invCondition').value,
     notes: document.getElementById('invNotes').value.trim(),
