@@ -9287,6 +9287,32 @@ async function _hrmDriveClient() {
   return google.drive({ version: 'v3', auth: client });
 }
 
+// Drive + Docs client pair for the final-offer generator, which edits a
+// user-owned Google Doc template directly (copy → merge-field replace →
+// export PDF) instead of going through the HRM_OFFER_SCRIPT Apps Script —
+// needs the documents scope in addition to drive. The template doc must be
+// shared with this service account's client_email (same one used elsewhere
+// in HRM/DMS — see /api/hrm/offer-template-preview for how to read it).
+async function _hrmDocsAndDriveClient() {
+  const { google } = require('googleapis');
+  let creds;
+  if (process.env.GOOGLE_CREDENTIALS) {
+    creds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+    if (creds.private_key) creds.private_key = creds.private_key.replace(/\\n/g, '\n');
+  } else {
+    creds = require('./credentials.json');
+  }
+  const auth = new google.auth.GoogleAuth({
+    credentials: creds,
+    scopes: ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/documents'],
+  });
+  const client = await auth.getClient();
+  return {
+    drive: google.drive({ version: 'v3', auth: client }),
+    docs: google.docs({ version: 'v1', auth: client }),
+  };
+}
+
 function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) {
   const logoSrc  = _getHrmLogoSrc();
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
@@ -9328,55 +9354,6 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
   <p>If you fail to join on the aforesaid date and in the absence of any written communication to this effect from you, the said Preliminary Offer Letter shall automatically be treated as withdrawn.</p>
   <p>Please send a <strong>token of your acceptance</strong> of this Preliminary Offer Letter.</p>
   <p>Again, we are excited about the growth trajectory that e-Marketing Consulting is on, and we look forward to having you on board as a team member.</p>
-  <div class="footer"><p>For</p><p>e-Marketing (a unit of Jai Marketing)</p></div>
-  </div></body></html>`;
-}
-
-// Fallback layout for the final "Offer Letter Sent" PDF — used only if the
-// Apps Script's template merge fails (or as required body content: the
-// script rejects requests with no `html` at all, regardless of templateId).
-// Not meant to match the user's real final-offer Google Doc; just a
-// reasonable generic offer letter so a send never comes back completely empty.
-function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, salary, today) {
-  const logoSrc = _getHrmLogoSrc();
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-    body{margin:0;padding:0;font-family:'Times New Roman',Times,serif;font-size:16px;color:#000;line-height:1.1}
-    table.hdr{width:100%;border:none;border-collapse:collapse;margin-bottom:8px}
-    table.hdr td{border:none;vertical-align:top;padding:0}
-    h2{text-align:center;font-size:16px;font-weight:bold;letter-spacing:.3px;margin:8px 0 6px}
-    .pc{text-align:right;margin-bottom:8px;font-size:16px}
-    p{margin:0 0 7px;text-align:justify}ol{margin:2px 0 8px 18px}ol li{margin-bottom:2px}
-    .footer{margin-top:14px}a{color:#00f}
-  </style></head><body><div>
-  <table class="hdr"><tr>
-    <td width="197" valign="top" style="padding-right:12px"><img src="${logoSrc}" alt="e-Marketing" width="185" height="110" style="display:block"></td>
-    <td valign="top" style="font-size:13px;line-height:1.4;text-align:right">
-      <p style="margin:0;text-align:right"><strong>e-Marketing.io (A Unit of Jai Marketing)</strong><br>
-      Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,<br>
-      Malviya Nagar, Jaipur, Rajasthan – 307017 (India)<br>
-      <br>
-      Phone: +91-9602694444<br>
-      Email: <a href="mailto:abhishek@e-marketing.io">abhishek@e-marketing.io</a><br>
-      Website: www.e-marketing.io</p>
-    </td>
-  </tr></table>
-  <h2>OFFER LETTER</h2>
-  <div class="pc" style="text-align:right">Private &amp; Confidential<br>Date :-${today}</div>
-  <p><strong>Dear ${candidateName},</strong></p>
-  <p>With reference to your application and the subsequent interview and offer discussion, we are pleased to confirm your appointment as <strong>${candidatePosition}</strong> with <strong>e-Marketing (a unit of Jai Marketing)</strong>, Jaipur.</p>
-  <p>You are required to join us on <strong>${joiningFmt}</strong>. Your place of work will be <strong>Jaipur</strong> (8/10 shaheed amit bhardwaj marg, malviya nagar Jaipur 302017)</p>
-  <p>Your annual CTC will be <strong>${salary || 'as discussed'}</strong>. Detailed terms and conditions of your appointment shall be issued to you at the time of joining. We expect you to maintain the confidentiality of the salary offer to you.</p>
-  <p>Please submit the following documents on your Joining Day:</p>
-  <ol>
-    <li>Educational/Professional/Technical Qualification certificates</li>
-    <li>Copy of Resignation Acceptance letter or relieving letter from last employer, if applicable.</li>
-    <li>Salary Certificate from last employer, if applicable.</li>
-    <li>One (1) passport size color photograph</li>
-    <li>Copy of Present and Permanent Address Proof.</li>
-    <li>ID Proof (Aadhar Card, PAN Card).</li>
-  </ol>
-  <p>Please send a <strong>token of your acceptance</strong> of this Offer Letter.</p>
-  <p>We are excited about the growth trajectory that e-Marketing Consulting is on, and we look forward to having you on board as a team member.</p>
   <div class="footer"><p>For</p><p>e-Marketing (a unit of Jai Marketing)</p></div>
   </div></body></html>`;
 }
@@ -9427,44 +9404,76 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
   return { fileId, pdfUrl };
 }
 
-// Final "Offer Letter Sent" stage — separate Google Doc template from the
-// preliminary one (HRM_FINAL_OFFER_TEMPLATE_ID). The Apps Script rejects any
-// request with no `html` field at all ("html missing"), even when a
-// templateId is given, so hrmBuildFinalOfferHtml's generic layout is always
-// sent alongside the template — it's just a fallback/required-field filler,
-// not meant to be identical to the user's real final-offer Google Doc.
+// Final "Offer Letter Sent" stage — generates directly from the user's own
+// Google Doc template (HRM_FINAL_OFFER_TEMPLATE_ID) via the Drive/Docs APIs,
+// not the HRM_OFFER_SCRIPT Apps Script the preliminary letter uses. That
+// script turned out to ignore templateId entirely (it only ever renders the
+// `html` field, silently, with no error) — so going through it could never
+// actually produce the user's real document. Copy → merge-field replace →
+// export PDF keeps this fully under this codebase's control instead of
+// depending on an opaque, unverifiable external script.
 async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrideName, overridePosition) {
   const candidateName     = overrideName     || candidate.name             || '';
   const candidatePosition = overridePosition || candidate.profile_position || '';
+  const candidateDept     = candidate.department || '';
 
   const joiningFmt = joining_date
     ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
     : '';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-  const html = hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, salary, today);
 
-  const fetchFn = global.fetch || (await import('node-fetch')).default;
-  const scriptRes = await fetchFn(HRM_OFFER_SCRIPT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      templateId: HRM_FINAL_OFFER_TEMPLATE_ID,
-      replacements: {
-        '{{CANDIDATE_NAME}}': candidateName,
-        '{{POSITION}}':       candidatePosition,
-        '{{JOINING_DATE}}':   joiningFmt,
-        '{{Today_Date}}':     today,
-      },
-      html,
-      filename: `OFFER LETTER - ${candidateName}`,
-      folderId: HRM_OFFER_FOLDER_ID,
-    }),
+  const { drive, docs } = await _hrmDocsAndDriveClient();
+
+  // 1. Copy the template so the original is never mutated.
+  const copyRes = await drive.files.copy({
+    fileId: HRM_FINAL_OFFER_TEMPLATE_ID,
+    requestBody: { name: `OFFER LETTER - ${candidateName}`, parents: [HRM_OFFER_FOLDER_ID] },
+    fields: 'id',
   });
-  const scriptData = await scriptRes.json();
-  if (!scriptData.ok) throw new Error(scriptData.error || 'Apps Script upload failed');
+  const docId = copyRes.data.id;
 
-  const fileId = scriptData.fileId;
-  const pdfUrl = scriptData.pdfUrl;
+  // 2. Fill in merge fields. Tokens not present in the template are simply
+  // no-ops — safe to send all of them regardless of which ones this
+  // particular template actually uses.
+  const replacements = {
+    '{{CANDIDATE_NAME}}': candidateName,
+    '{{POSITION}}':       candidatePosition,
+    '{{DEPARTMENT}}':     candidateDept,
+    '{{JOINING_DATE}}':   joiningFmt,
+    '{{Today_Date}}':     today,
+    '{{CTC}}':            salary || '',
+    '{{SALARY}}':         salary || '',
+  };
+  await docs.documents.batchUpdate({
+    documentId: docId,
+    requestBody: {
+      requests: Object.entries(replacements).map(([text, replaceText]) => ({
+        replaceAllText: { containsText: { text, matchCase: true }, replaceText: String(replaceText) },
+      })),
+    },
+  });
+
+  // 3. Export the merged doc as a PDF.
+  const exportRes = await drive.files.export(
+    { fileId: docId, mimeType: 'application/pdf' },
+    { responseType: 'arraybuffer' }
+  );
+  const pdfBuffer = Buffer.from(exportRes.data);
+
+  // 4. Upload as its own PDF file — WhatsApp needs a fetchable file, not the
+  // Doc (which requires Google auth to view).
+  const { Readable } = require('stream');
+  const pdfUploadRes = await drive.files.create({
+    requestBody: { name: `OFFER LETTER - ${candidateName}.pdf`, parents: [HRM_OFFER_FOLDER_ID], mimeType: 'application/pdf' },
+    media: { mimeType: 'application/pdf', body: Readable.from(pdfBuffer) },
+    fields: 'id',
+  });
+  const fileId = pdfUploadRes.data.id;
+
+  // 5. Public-readable so the WhatsApp file-send API can actually fetch it.
+  await drive.permissions.create({ fileId, requestBody: { role: 'reader', type: 'anyone' } });
+
+  const pdfUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
 
   await db.query('UPDATE hrm_candidates SET final_offer_drive_id=? WHERE id=?', [fileId, candidate.id])
     .catch(() => {});
