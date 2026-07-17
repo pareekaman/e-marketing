@@ -2979,16 +2979,43 @@ input:focus,select:focus,textarea:focus{outline:none;}
   <div class="modal-overlay" id="invHandoverModal">
     <div class="modal" style="width:420px">
       <button class="modal-close" onclick="closeModal('invHandoverModal')">×</button>
-      <h3>Initiate Handover</h3>
+      <h3 id="invHandoverTitle">Initiate Handover</h3>
       <div class="alert error" id="invHandoverErr" style="display:none"></div>
       <p style="font-size:13px;color:#64748b;margin-bottom:14px" id="invHandoverDesc">Mark this item as pending return when employee is leaving.</p>
       <div class="form-group">
-        <label>Handover Notes</label>
-        <textarea id="invHandoverNotes" rows="3" placeholder="Reason / condition at handover…"></textarea>
+        <label>Reason *</label>
+        <!-- Options are built in JS: the holder-initiated path offers fewer. -->
+        <select id="invHandoverReason"></select>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="invHandoverNotes" rows="3" placeholder="Condition at handover, anything else…"></textarea>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal('invHandoverModal')">Cancel</button>
-        <button class="btn btn-yellow" onclick="doHandover()">Mark as Handover Pending</button>
+        <button class="btn btn-yellow" id="invHandoverSubmitBtn" onclick="doHandover()">Mark as Handover Pending</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- INVENTORY: Confirm Return Modal — the admin's final call on why the item
+       came back, which decides whether it re-enters available stock. -->
+  <div class="modal-overlay" id="invReturnModal">
+    <div class="modal" style="width:420px">
+      <button class="modal-close" onclick="closeModal('invReturnModal')">×</button>
+      <h3>Confirm Return</h3>
+      <div class="alert error" id="invReturnErr" style="display:none"></div>
+      <p style="font-size:13px;color:#64748b;margin-bottom:14px" id="invReturnDesc"></p>
+      <div class="form-group">
+        <label>Reason *</label>
+        <!-- Admin-only step, so every reason is offered. Built in JS to stay in
+             step with INV_RETURN_REASON_OPTS. -->
+        <select id="invReturnReason" onchange="invReturnReasonChanged()"></select>
+      </div>
+      <div id="invReturnEffect" style="font-size:12px;color:#64748b;margin-bottom:8px"></div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('invReturnModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="doReturn()">Confirm Return</button>
       </div>
     </div>
   </div>
@@ -5084,7 +5111,7 @@ function filterAccMatrix(q) {
 // ══════════════════════════════════════════════════════
 // INVENTORY JS
 // ══════════════════════════════════════════════════════
-let _invItems = [], _invAssignments = [], _invTab = 'mine', _invAssignItemId = null, _invHandoverAssignId = null;
+let _invItems = [], _invAssignments = [], _invTab = 'mine', _invAssignItemId = null, _invHandoverAssignId = null, _invReturnAssignId = null;
 let _invPhotoBase64 = null;
 let _invSelfAddMode = false;
 
@@ -5094,6 +5121,19 @@ const INV_TYPE_LABELS = {laptop:'💻 Laptop',keyboard:'⌨️ Keyboard',mouse:'
 // custom type instead).
 const INV_TYPE_PLAIN = {laptop:'Laptop',keyboard:'Keyboard',mouse:'Mouse',mobile:'Mobile',sim:'SIM',charger:'Charger',other:'Other'};
 const INV_CONDITION_LABELS = {new:'New',good:'Good',fair:'Fair',poor:'Poor'};
+// Mirrors INV_RETURN_REASONS in server.js — keep the two in step.
+const INV_RETURN_REASON_LABELS = {damaged:'💥 Damaged',retired:'🗄 Retired',offboarding:'🚪 Offboarding'};
+const INV_RETURN_REASON_OPTS = {
+  offboarding: '🚪 Offboarding — leaving the company',
+  damaged:     '💥 Damaged',
+  retired:     '🗄 Retired — end of life',
+};
+// Retiring an item is a judgement about the asset's life, so it's the
+// custodian's call — the holder can only say why they're handing it back.
+// The server enforces this too; this just keeps the option out of their reach.
+const INV_HOLDER_REASONS = ['offboarding', 'damaged'];
+const invReasonOptions = (allowed) => '<option value="">--select--</option>' +
+  allowed.map(k => `<option value="${k}">${INV_RETURN_REASON_OPTS[k]}</option>`).join('');
 const INV_STATUS_COLORS = {available:'#10b981',assigned:'#f59e0b',damaged:'#ef4444',retired:'#94a3b8'};
 
 async function loadInventory() {
@@ -5185,7 +5225,7 @@ function invCard(item, isAdmin) {
       actions += `<button class="action-btn revise" onclick="openInvHandoverModal(${item.assignment_id},'${esc(item.name)}','${esc(item.assigned_to_name||'')}')">Handover</button>`;
     }
     if (item.handover_status === 'pending_handover' && item.assignment_id) {
-      actions += `<button class="action-btn done" onclick="doReturn(${item.assignment_id})">Mark Returned</button>`;
+      actions += `<button class="action-btn done" onclick="openInvReturnModal(${item.assignment_id},'${esc(item.name)}','${esc(item.return_reason||'')}')">Mark Returned</button>`;
     }
     actions += `<button class="action-btn delete" onclick="deleteInvItem(${item.id})">Delete</button>`;
   } else if (_invTab === 'mine' && item.handover_status === 'active' && item.assignment_id) {
@@ -5205,7 +5245,7 @@ function invCard(item, isAdmin) {
       </div>
       ${specLine}
       ${assignedBadge}
-      ${item.handover_status==='pending_handover'?`<div style="font-size:11px;color:#ef4444;font-weight:600;margin-top:4px">⚠️ Handover Pending</div>`:''}
+      ${item.handover_status==='pending_handover'?`<div style="font-size:11px;color:#ef4444;font-weight:600;margin-top:4px">⚠️ Handover Pending${item.return_reason?` · ${esc(INV_RETURN_REASON_LABELS[item.return_reason]||item.return_reason)}`:''}</div>`:''}
       ${actions?`<div onclick="event.stopPropagation()" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${actions}</div>`:''}
     </div>
   </div>`;
@@ -5240,6 +5280,7 @@ function openInvDetailModal(id) {
     row('Condition', INV_CONDITION_LABELS[item.item_condition] || item.item_condition) +
     row('Assigned to', item.assigned_to_name) +
     row('Notes', item.notes) +
+    row('Return reason', INV_RETURN_REASON_LABELS[item.return_reason] || item.return_reason) +
     (item.handover_status === 'pending_handover'
       ? `<div style="margin-top:10px;font-size:12px;color:#ef4444;font-weight:600">⚠️ Handover Pending</div>` : '');
 
@@ -5253,13 +5294,15 @@ function invTypeEmoji(type) {
 function renderAssignmentsTable(el) {
   if (!_invAssignments.length) { el.innerHTML = '<div class="empty">No assignments found.</div>'; return; }
   const rows = _invAssignments.map(a=>{
-    const hsBadge = a.handover_status === 'pending_handover'
+    const reasonTag = a.return_reason
+      ? `<div style="font-size:11px;color:#64748b;margin-top:2px">${esc(INV_RETURN_REASON_LABELS[a.return_reason]||a.return_reason)}</div>` : '';
+    const hsBadge = (a.handover_status === 'pending_handover'
       ? '<span style="color:#ef4444;font-weight:600">⚠️ Pending Return</span>'
       : a.handover_status === 'returned'
         ? '<span style="color:#94a3b8">Returned</span>'
-        : '<span style="color:#10b981">Active</span>';
+        : '<span style="color:#10b981">Active</span>') + reasonTag;
     const btnReturn = a.handover_status === 'pending_handover'
-      ? `<button class="action-btn done" onclick="doReturn(${a.id})">Mark Returned</button>` : '';
+      ? `<button class="action-btn done" onclick="openInvReturnModal(${a.id},'${esc(a.item_name||'')}','${esc(a.return_reason||'')}')">Mark Returned</button>` : '';
     const btnHandover = a.handover_status === 'active'
       ? `<button class="action-btn revise" onclick="openInvHandoverModal(${a.id},'${esc(a.item_name||'')}','${esc(a.user_name||'')}')">Handover</button>` : '';
     const photo = a.photo
@@ -5381,42 +5424,79 @@ async function doAssign() {
   loadInventory();
 }
 
+// Step 1, admin-initiated: the custodian starts a handover (e.g. someone is
+// leaving). Shares its modal with the holder-initiated path below.
 function openInvHandoverModal(assignmentId, itemName, userName) {
   _invHandoverAssignId = assignmentId;
+  document.getElementById('invHandoverTitle').textContent = 'Initiate Handover';
+  document.getElementById('invHandoverSubmitBtn').textContent = 'Mark as Handover Pending';
   document.getElementById('invHandoverDesc').textContent = `Item: ${itemName} — currently with ${userName}`;
+  document.getElementById('invHandoverReason').innerHTML = invReasonOptions(Object.keys(INV_RETURN_REASON_OPTS));
+  document.getElementById('invHandoverReason').value = '';
+  document.getElementById('invHandoverNotes').value = '';
+  document.getElementById('invHandoverErr').style.display = 'none';
+  document.getElementById('invHandoverModal').classList.add('open');
+}
+
+// Step 1, holder-initiated from My Equipment. Same endpoint and same modal —
+// only the wording differs, since it's the same act: flag it pending and let
+// an admin confirm receipt.
+function requestInvReturn(assignmentId, itemName) {
+  _invHandoverAssignId = assignmentId;
+  document.getElementById('invHandoverTitle').textContent = 'Return Equipment';
+  document.getElementById('invHandoverSubmitBtn').textContent = 'Request Return';
+  document.getElementById('invHandoverDesc').textContent =
+    `${itemName} — it stays listed as yours until an admin confirms they've received it.`;
+  document.getElementById('invHandoverReason').innerHTML = invReasonOptions(INV_HOLDER_REASONS);
+  document.getElementById('invHandoverReason').value = '';
   document.getElementById('invHandoverNotes').value = '';
   document.getElementById('invHandoverErr').style.display = 'none';
   document.getElementById('invHandoverModal').classList.add('open');
 }
 
 async function doHandover() {
+  const reason = document.getElementById('invHandoverReason').value;
+  if (!reason) { showInvErr('invHandoverErr','Please select a reason'); return; }
   const notes = document.getElementById('invHandoverNotes').value.trim();
-  const r = await api(`/api/inventory/handover/${_invHandoverAssignId}`,'POST',{notes});
+  const r = await api(`/api/inventory/handover/${_invHandoverAssignId}`,'POST',{notes, reason});
   if (r.error) { showInvErr('invHandoverErr',r.error); return; }
   closeModal('invHandoverModal');
-  showToast('Handover pending marked!');
+  showToast('Marked as handover pending — admin will confirm receipt.');
   loadInventory();
 }
 
-async function doReturn(assignmentId) {
-  if (!await appConfirm('Mark this item as fully returned?', 'Confirm Return')) return;
-  const r = await api(`/api/inventory/return/${assignmentId}`,'POST',{});
-  if (r.error) { showToast(r.error,'error'); return; }
-  showToast('Item returned to inventory!');
-  loadInventory();
+// Step 2, admin only: confirm the item is physically back. The reason picked
+// here is the final call and decides where the item lands, so it is prefilled
+// with whatever was claimed at step 1 but stays editable.
+function openInvReturnModal(assignmentId, itemName, claimedReason) {
+  _invReturnAssignId = assignmentId;
+  document.getElementById('invReturnDesc').textContent = `${itemName} — confirm you've received it back.`;
+  document.getElementById('invReturnReason').innerHTML = invReasonOptions(Object.keys(INV_RETURN_REASON_OPTS));
+  document.getElementById('invReturnReason').value = claimedReason || '';
+  document.getElementById('invReturnErr').style.display = 'none';
+  invReturnReasonChanged();
+  document.getElementById('invReturnModal').classList.add('open');
 }
 
-// Holder-initiated return from My Equipment: flags the item pending, then an
-// admin confirms receipt with Mark Returned on All Equipment. It stays in the
-// holder's list until they do — it is still physically with them.
-async function requestInvReturn(assignmentId, itemName) {
-  if (!await appConfirm(
-    `Return "${itemName}"? It stays listed as yours until an admin confirms they've received it.`,
-    'Return equipment?')) return;
-  const r = await api(`/api/inventory/handover/${assignmentId}`, 'POST',
-    { notes: `Return initiated by ${ME?.name || 'holder'}` });
-  if (r.error) { showToast(r.error, 'error'); return; }
-  showToast('Return requested — admin will confirm once received.');
+function invReturnReasonChanged() {
+  const reason = document.getElementById('invReturnReason').value;
+  const effect = {
+    offboarding: '→ Item goes back to <b>available</b> stock and can be reassigned.',
+    damaged:     '→ Item is marked <b>damaged</b> and cannot be assigned to anyone.',
+    retired:     '→ Item is marked <b>retired</b> and cannot be assigned to anyone.',
+  }[reason] || '';
+  document.getElementById('invReturnEffect').innerHTML = effect;
+}
+
+async function doReturn() {
+  const reason = document.getElementById('invReturnReason').value;
+  if (!reason) { showInvErr('invReturnErr','Please select a reason'); return; }
+  const r = await api(`/api/inventory/return/${_invReturnAssignId}`,'POST',{reason});
+  if (r.error) { showInvErr('invReturnErr', r.error); return; }
+  closeModal('invReturnModal');
+  showToast(r.itemStatus === 'available'
+    ? 'Item returned to available stock!'
+    : `Item returned and marked ${r.itemStatus}.`);
   loadInventory();
 }
 

@@ -381,6 +381,12 @@ const _startupMigrationsPromise = (async () => {
     INDEX idx_handover (handover_status)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+  // Why an assignment ended. Drives the item's post-return status, so it is an
+  // ENUM rather than free text: 'damaged'/'retired' take the item out of
+  // circulation, 'offboarding' sends it back to available stock.
+  await sa(`ALTER TABLE inventory_assignments
+    ADD COLUMN return_reason ENUM('damaged','retired','offboarding') DEFAULT NULL AFTER handover_notes`);
+
   // ── Deleted-records archive ───────────────────────────
   // Every user-facing delete snapshots the row here before the hard DELETE,
   // so nothing ever leaves the database unrecoverably. Generic by design:
@@ -9034,6 +9040,24 @@ app.delete('/api/day-plan-items/:id', requireAuth, async (req, res) => {
 // INVENTORY MANAGEMENT
 // ══════════════════════════════════════════════════════
 
+// Why an assignment ended, and where that leaves the item. Single source of
+// truth for both the valid reasons and the status each one implies — keep in
+// step with the return_reason ENUM and inventory_items.status.
+const INV_RETURN_REASONS = Object.freeze({
+  damaged:     { label: 'Damaged',     itemStatus: 'damaged'   },
+  retired:     { label: 'Retired',     itemStatus: 'retired'   },
+  offboarding: { label: 'Offboarding', itemStatus: 'available' },
+});
+// Own-property check, not a bare lookup: reason is client-supplied, and
+// `INV_RETURN_REASONS['constructor']` would otherwise pass validation and then
+// blow up with an undefined itemStatus.
+const invReturnReason = r =>
+  (typeof r === 'string' && Object.hasOwn(INV_RETURN_REASONS, r)) ? INV_RETURN_REASONS[r] : null;
+// Retiring an item is a judgement about the asset's life, so it stays with the
+// custodian — the person handing kit back can only say why they're handing it
+// back, not that it's finished.
+const INV_HOLDER_REASONS = new Set(['offboarding', 'damaged']);
+
 // Get all items (admin/hod see all; others see only assigned to them)
 app.get('/api/inventory/items', requireAuth, async (req, res) => {
   try {
@@ -9042,7 +9066,7 @@ app.get('/api/inventory/items', requireAuth, async (req, res) => {
     if (isAdmin) {
       [rows] = await db.query(`
         SELECT i.*, u.name AS assigned_to_name, u.id AS assigned_to_id,
-               a.id AS assignment_id, a.assigned_at, a.handover_status
+               a.id AS assignment_id, a.assigned_at, a.handover_status, a.return_reason
         FROM inventory_items i
         LEFT JOIN inventory_assignments a ON a.item_id = i.id AND a.handover_status IN ('active','pending_handover')
         LEFT JOIN users u ON u.id = a.user_id
@@ -9050,7 +9074,7 @@ app.get('/api/inventory/items', requireAuth, async (req, res) => {
     } else {
       [rows] = await db.query(`
         SELECT i.*, u.name AS assigned_to_name, u.id AS assigned_to_id,
-               a.id AS assignment_id, a.assigned_at, a.handover_status
+               a.id AS assignment_id, a.assigned_at, a.handover_status, a.return_reason
         FROM inventory_items i
         JOIN inventory_assignments a ON a.item_id = i.id AND a.user_id = ? AND a.handover_status IN ('active','pending_handover')
         JOIN users u ON u.id = a.user_id
@@ -9166,34 +9190,47 @@ app.get('/api/inventory/assignments', requireAuth, async (req, res) => {
 // receipt via /return, so this is deliberately NOT admin-only.
 app.post('/api/inventory/handover/:assignment_id', requireAuth, async (req, res) => {
   try {
-    const { notes } = req.body;
+    const { notes, reason } = req.body;
+    if (!invReturnReason(reason)) {
+      return res.status(400).json({ error: 'A valid return reason is required' });
+    }
     const [[a]] = await db.query('SELECT * FROM inventory_assignments WHERE id=?', [req.params.assignment_id]);
     if (!a) return res.status(404).json({ error: 'Assignment not found' });
     const isAdmin = ['admin','hod'].includes(req.session.role);
     if (!isAdmin && a.user_id !== req.session.userId) {
       return res.status(403).json({ error: 'You can only return equipment assigned to you' });
     }
+    if (!isAdmin && !INV_HOLDER_REASONS.has(reason)) {
+      return res.status(403).json({ error: 'Only an admin can retire an item' });
+    }
     if (a.handover_status !== 'active') {
       return res.status(400).json({ error: 'This assignment is not active' });
     }
     await db.query(
-      `UPDATE inventory_assignments SET handover_status='pending_handover', handover_notes=? WHERE id=?`,
-      [notes||'', req.params.assignment_id]);
+      `UPDATE inventory_assignments SET handover_status='pending_handover', handover_notes=?, return_reason=? WHERE id=?`,
+      [notes||'', reason, req.params.assignment_id]);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Complete handover — item returned
+// Complete handover — admin confirms physical receipt.
+// The reason is the admin's final call (it may correct whatever the holder
+// claimed when they raised the return) and decides where the item lands:
+// damaged/retired take it out of circulation so it can't be assigned again,
+// offboarding puts it back in available stock.
 app.post('/api/inventory/return/:assignment_id', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
   try {
+    const { reason } = req.body;
+    const mapped = invReturnReason(reason);
+    if (!mapped) return res.status(400).json({ error: 'A valid return reason is required' });
     const [[a]] = await db.query('SELECT * FROM inventory_assignments WHERE id=?', [req.params.assignment_id]);
     if (!a) return res.status(404).json({ error: 'Assignment not found' });
     await db.query(
-      `UPDATE inventory_assignments SET handover_status='returned', returned_at=NOW() WHERE id=?`,
-      [req.params.assignment_id]);
-    await db.query(`UPDATE inventory_items SET status='available' WHERE id=?`, [a.item_id]);
-    res.json({ ok: true });
+      `UPDATE inventory_assignments SET handover_status='returned', returned_at=NOW(), return_reason=? WHERE id=?`,
+      [reason, req.params.assignment_id]);
+    await db.query(`UPDATE inventory_items SET status=? WHERE id=?`, [mapped.itemStatus, a.item_id]);
+    res.json({ ok: true, itemStatus: mapped.itemStatus });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
