@@ -9407,6 +9407,11 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
   // "{one day before Date of Joining}, {present year}"): rendered literally as
   // "29 July, 2026" from opts.joiningDate (raw). Year comes from the joining
   // date. Falls back to the joiningFmt string if no raw date given.
+  // Probation period (clause 4) — HR-editable, defaults to the source Doc's 2.
+  const _probN = parseInt(opts.probationMonths, 10);
+  const probationTxt = (Number.isFinite(_probN) && _probN >= 0)
+    ? `${_probN} month${_probN === 1 ? '' : 's'}`
+    : '2 months';
   const _fmtDate = (d) => `${d.getDate()} ${d.toLocaleDateString('en-IN', { month: 'long' })}, ${d.getFullYear()}`;
   let acceptDateStr = joiningFmt || '', joinDateStr = joiningFmt || '';
   if (opts.joiningDate) {
@@ -9530,7 +9535,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
     <p>Your fixed annual CTC will be Rs <strong>${salary || ''}</strong>/- subject to the appropriate withholding tax in accordance with India's laws and regulations. The prerequisites and benefits applicable within the CTC will be discussed with you further.</p>
 
     <p><strong>4. PROBATION</strong></p>
-    <p>You shall serve a probationary period of up to <strong>2 months</strong>. The company reserves the right to extend the probationary period, if necessary.</p>
+    <p>You shall serve a probationary period of up to <strong>${probationTxt}</strong>. The company reserves the right to extend the probationary period, if necessary.</p>
 
     <p><strong>5. ANNUAL LEAVE</strong></p>
     <p>All employees shall be entitled to annual leave of <strong>twelve (12) working days</strong> per year.</p>
@@ -9646,9 +9651,9 @@ function _hrmSignBuffer() { try { return _HRM_SIGN_SRC ? Buffer.from(_HRM_SIGN_S
 // Build the final-offer HTML and render it to a PDF Buffer via pdfkit
 // (offer-letter-pdf.js): letterhead on every page, signature below the
 // sign-off, real page breaks. No browser involved.
-async function hrmRenderFinalOfferPdfBuffer({ name, position, joiningFmt, salary, today, joiningDate }) {
+async function hrmRenderFinalOfferPdfBuffer({ name, position, joiningFmt, salary, today, joiningDate, probationMonths }) {
   const { renderOfferPdfFromHtml } = require('./offer-letter-pdf');
-  const html = hrmBuildFinalOfferHtml(name || '', position || '', joiningFmt || '', salary || '', today || '', { inlineHeader: false, joiningDate });
+  const html = hrmBuildFinalOfferHtml(name || '', position || '', joiningFmt || '', salary || '', today || '', { inlineHeader: false, joiningDate, probationMonths });
   return renderOfferPdfFromHtml(html, { logoBuffer: _hrmLogoBuffer(), signBuffer: _hrmSignBuffer() });
 }
 
@@ -9755,6 +9760,7 @@ app.get('/offer-pdf/:token', async (req, res) => {
     const pdf = await hrmRenderFinalOfferPdfBuffer({
       name: d.name, position: d.position, joiningFmt: d.joiningFmt,
       salary: d.salary, today: d.today, joiningDate: d.joining_date,
+      probationMonths: d.probation_months,
     });
     const safeName = String(d.name || 'candidate').replace(/[^a-zA-Z0-9 _-]/g, '').trim() || 'candidate';
     res.setHeader('Content-Type', 'application/pdf');
@@ -10028,14 +10034,14 @@ app.get('/api/hrm/final-offer-preview-html', requireAuth, (req, res) => {
     ? new Date(req.query.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
     : '';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-  res.json({ html: hrmBuildFinalOfferHtml(name, position, joiningFmt, salary, today, { inlineHeader: true, joiningDate: req.query.joining_date }) });
+  res.json({ html: hrmBuildFinalOfferHtml(name, position, joiningFmt, salary, today, { inlineHeader: true, joiningDate: req.query.joining_date, probationMonths: req.query.probation_months }) });
 });
 
 // Exact-PDF preview for HR: streams the same pdfkit PDF the candidate will get.
 app.post('/api/hrm/final-offer-render', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const { name = '', position = '', joining_date = '', salary = '' } = req.body;
+    const { name = '', position = '', joining_date = '', salary = '', probation_months = '' } = req.body;
     const joiningFmt = joining_date
       ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
       : '';
@@ -10043,6 +10049,7 @@ app.post('/api/hrm/final-offer-render', requireAuth, async (req, res) => {
     const pdf = await hrmRenderFinalOfferPdfBuffer({
       name: String(name), position: String(position), joiningFmt,
       salary: String(salary), today, joiningDate: joining_date,
+      probationMonths: probation_months,
     });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="offer-letter-preview.pdf"');
@@ -10064,7 +10071,7 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
     const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
     if (!c) return res.status(404).json({ error: 'Not found' });
 
-    const { offer_name, offer_position, joining_date, salary, department } = req.body;
+    const { offer_name, offer_position, joining_date, salary, department, probation_months } = req.body;
     const name = (offer_name || c.name || '').trim();
     const position = (offer_position || c.profile_position || '').trim();
     const finalJoining = joining_date || c.joining_date;
@@ -10080,7 +10087,7 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
       : new Date(new Date(finalJoining).getTime() - new Date(finalJoining).getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
     const token = require('crypto').randomBytes(24).toString('hex');
-    const snapshot = { name, position, joiningFmt, joining_date: rawJoin, salary: finalSalary || '', today };
+    const snapshot = { name, position, joiningFmt, joining_date: rawJoin, salary: finalSalary || '', today, probation_months: probation_months || '' };
 
     await db.query(
       `UPDATE hrm_candidates SET status='Offer Letter Sent', joining_date=?, salary=?, department=COALESCE(?, department), final_offer_token=?, final_offer_data=? WHERE id=?`,

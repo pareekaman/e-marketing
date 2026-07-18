@@ -3245,6 +3245,10 @@ input:focus,select:focus,textarea:focus{outline:none;}
             <label>Salary / CTC</label>
             <input type="text" id="finalOfferFSalary" placeholder="e.g. 6 LPA" oninput="scheduleFinalOfferPreview()">
           </div>
+          <div class="form-group">
+            <label>Probation Period (months)</label>
+            <input type="number" id="finalOfferFProbation" min="0" max="24" step="1" value="2" oninput="scheduleFinalOfferPreview()">
+          </div>
           <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:9px 11px;font-size:11.5px;color:#1e40af;line-height:1.5;margin-top:4px">
             Preview live updates as you type. The candidate gets this exact PDF — letterhead on every page — on WhatsApp.
           </div>
@@ -6183,6 +6187,8 @@ async function openFinalOfferFormModal(id) {
   document.getElementById('finalOfferFPosition').value = c.profile_position || '';
   document.getElementById('finalOfferFJoining').value  = c.joining_date ? String(c.joining_date).slice(0,10) : '';
   document.getElementById('finalOfferFSalary').value   = c.salary || '';
+  const probEl = document.getElementById('finalOfferFProbation');
+  if (probEl) probEl.value = '2';
   await loadHrmDepartmentOptions('finalOfferFDepartment', c.department || '');
   document.getElementById('hrmFinalOfferFormModal').classList.add('open');
   renderFinalOfferPreview();
@@ -6194,6 +6200,7 @@ function _finalOfferFields() {
     position:     document.getElementById('finalOfferFPosition').value.trim(),
     joining_date: document.getElementById('finalOfferFJoining').value,
     salary:       document.getElementById('finalOfferFSalary').value.trim(),
+    probation_months: document.getElementById('finalOfferFProbation')?.value || '2',
   };
 }
 
@@ -6250,8 +6257,9 @@ function submitFinalOfferForm() {
   const btn = document.getElementById('finalOfferSendBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
 
+  const probation_months = document.getElementById('finalOfferFProbation')?.value || '2';
   api(`/api/hrm/candidates/${candidateId}/send-final-offer`, 'POST', {
-    joining_date, salary, offer_name, offer_position, department
+    joining_date, salary, offer_name, offer_position, department, probation_months
   }).then(r => {
     if (btn) { btn.disabled = false; btn.textContent = '📬 Send on WhatsApp'; }
     if (!r || r.error) { showToast((r && r.error) || 'Send failed', 'error'); return; }
