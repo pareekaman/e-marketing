@@ -12,6 +12,7 @@
     "postinstall": "echo '✅ Dependencies installed for E-Marketing Task Manager'"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^131.0.1",
     "bcryptjs": "^2.4.3",
     "canvas": "^3.2.3",
     "cookie-parser": "^1.4.7",
@@ -25,6 +26,7 @@
     "nodemailer": "^6.9.16",
     "openai": "^6.44.0",
     "pdfjs-dist": "^3.11.174",
+    "puppeteer-core": "^23.11.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

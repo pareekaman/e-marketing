@@ -3216,37 +3216,51 @@ input:focus,select:focus,textarea:focus{outline:none;}
     </div>
   </div>
 
-  <!-- HRM: Final Offer Letter Form Modal (no live preview — content lives in the user's own Google Doc template) -->
+  <!-- HRM: Final Offer Letter — live preview + edit before sending on WhatsApp -->
   <div class="modal-overlay" id="hrmFinalOfferFormModal">
-    <div class="modal" style="width:480px">
+    <div class="modal" style="width:95vw;max-width:1150px;padding:0;overflow:hidden">
       <button class="modal-close" onclick="closeModal('hrmFinalOfferFormModal')">×</button>
-      <h3>📬 Send Offer Letter</h3>
-      <div class="form-group">
-        <label>Candidate Name *</label>
-        <input type="text" id="finalOfferFName" placeholder="Full name">
+      <div style="display:flex;max-height:86vh">
+        <!-- Left: editable fields -->
+        <div style="width:320px;min-width:280px;padding:22px 20px;overflow-y:auto;border-right:1px solid #e2e8f0">
+          <h3 style="margin:0 0 14px">📬 Offer Letter</h3>
+          <div class="form-group">
+            <label>Candidate Name *</label>
+            <input type="text" id="finalOfferFName" placeholder="Full name" oninput="scheduleFinalOfferPreview()">
+          </div>
+          <div class="form-group">
+            <label>Position *</label>
+            <input type="text" id="finalOfferFPosition" placeholder="Job title" oninput="scheduleFinalOfferPreview()">
+          </div>
+          <div class="form-group">
+            <label>Department</label>
+            <select id="finalOfferFDepartment"><option value="">--select--</option></select>
+          </div>
+          <div class="form-group">
+            <label>Joining Date *</label>
+            <input type="date" id="finalOfferFJoining" oninput="scheduleFinalOfferPreview()">
+          </div>
+          <div class="form-group">
+            <label>Salary / CTC</label>
+            <input type="text" id="finalOfferFSalary" placeholder="e.g. 6 LPA" oninput="scheduleFinalOfferPreview()">
+          </div>
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:9px 11px;font-size:11.5px;color:#1e40af;line-height:1.5;margin-top:4px">
+            Preview live updates as you type. The candidate gets this exact PDF — letterhead on every page — on WhatsApp.
+          </div>
+        </div>
+        <!-- Right: live preview -->
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:#f1f5f9">
+          <div style="padding:8px 14px;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+            <span>Live Preview</span>
+            <span id="finalOfferPreviewStatus" style="font-weight:500;text-transform:none;color:#94a3b8"></span>
+          </div>
+          <iframe id="finalOfferPreviewFrame" style="flex:1;border:none;width:100%;min-height:60vh;background:#fff" title="Offer letter preview"></iframe>
+        </div>
       </div>
-      <div class="form-group">
-        <label>Position *</label>
-        <input type="text" id="finalOfferFPosition" placeholder="Job title">
-      </div>
-      <div class="form-group">
-        <label>Department</label>
-        <select id="finalOfferFDepartment"><option value="">--select--</option></select>
-      </div>
-      <div class="form-group">
-        <label>Joining Date *</label>
-        <input type="date" id="finalOfferFJoining">
-      </div>
-      <div class="form-group">
-        <label>Salary / CTC</label>
-        <input type="text" id="finalOfferFSalary" placeholder="e.g. 6 LPA">
-      </div>
-      <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:10px 12px;font-size:12px;color:#047857;margin-top:4px;line-height:1.5">
-        📬 Official offer letter will be generated from your final template, saved to Drive &amp; sent as PDF on WhatsApp
-      </div>
-      <div class="modal-footer" style="margin-top:16px">
+      <div class="modal-footer" style="margin:0;padding:12px 20px;border-top:1px solid #e2e8f0;gap:8px">
         <button class="btn btn-outline" onclick="closeModal('hrmFinalOfferFormModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="submitFinalOfferForm()">📬 Generate &amp; Send on WhatsApp</button>
+        <button class="btn btn-outline" onclick="openFinalOfferExactPdf()">🖨️ Preview exact PDF</button>
+        <button class="btn btn-primary" id="finalOfferSendBtn" onclick="submitFinalOfferForm()">📬 Send on WhatsApp</button>
       </div>
     </div>
   </div>
@@ -6119,6 +6133,57 @@ async function openFinalOfferFormModal(id) {
   document.getElementById('finalOfferFSalary').value   = c.salary || '';
   await loadHrmDepartmentOptions('finalOfferFDepartment', c.department || '');
   document.getElementById('hrmFinalOfferFormModal').classList.add('open');
+  renderFinalOfferPreview();
+}
+
+function _finalOfferFields() {
+  return {
+    name:         document.getElementById('finalOfferFName').value.trim(),
+    position:     document.getElementById('finalOfferFPosition').value.trim(),
+    joining_date: document.getElementById('finalOfferFJoining').value,
+    salary:       document.getElementById('finalOfferFSalary').value.trim(),
+  };
+}
+
+let _finalOfferPreviewTimer = null;
+function scheduleFinalOfferPreview() {
+  clearTimeout(_finalOfferPreviewTimer);
+  const st = document.getElementById('finalOfferPreviewStatus');
+  if (st) st.textContent = 'typing…';
+  _finalOfferPreviewTimer = setTimeout(renderFinalOfferPreview, 450);
+}
+
+async function renderFinalOfferPreview() {
+  const frame = document.getElementById('finalOfferPreviewFrame');
+  const st = document.getElementById('finalOfferPreviewStatus');
+  if (!frame) return;
+  if (st) st.textContent = 'updating…';
+  try {
+    const params = new URLSearchParams(_finalOfferFields());
+    const r = await api('/api/hrm/final-offer-preview-html?' + params.toString(), 'GET');
+    if (r && r.html) { frame.srcdoc = r.html; if (st) st.textContent = ''; }
+    else if (st) st.textContent = 'preview error';
+  } catch (e) { if (st) st.textContent = 'preview error'; }
+}
+
+// Render + open the exact PDF (as sent to the candidate) in a new tab.
+async function openFinalOfferExactPdf() {
+  const f = _finalOfferFields();
+  if (!f.name || !f.joining_date) { showToast('Name and joining date required', 'error'); return; }
+  showToast('Rendering exact PDF…');
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = localStorage.getItem('authToken');
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const resp = await fetch('/api/hrm/final-offer-render', {
+      method: 'POST', headers, credentials: 'include',
+      body: JSON.stringify(f)
+    });
+    if (!resp.ok) { const e = await resp.json().catch(() => ({})); showToast('PDF render failed: ' + (e.error || resp.status), 'error'); return; }
+    const url = URL.createObjectURL(await resp.blob());
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { showToast('PDF render failed: ' + e.message, 'error'); }
 }
 
 function submitFinalOfferForm() {
@@ -6130,19 +6195,18 @@ function submitFinalOfferForm() {
   if (!offer_name)   { showToast('Candidate name required', 'error'); return; }
   if (!joining_date) { showToast('Joining date required', 'error'); return; }
   const candidateId = _hrmCurrentId;
+  const btn = document.getElementById('finalOfferSendBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
 
-  closeModal('hrmFinalOfferFormModal');
-  showToast('Generating offer letter in background — you\'ll get a notification when it\'s sent.');
-
-  api(`/api/hrm/candidates/${candidateId}/status`, 'PUT', {
-    status: 'Offer Letter Sent', joining_date, salary, offer_name, offer_position, department
+  api(`/api/hrm/candidates/${candidateId}/send-final-offer`, 'POST', {
+    joining_date, salary, offer_name, offer_position, department
   }).then(r => {
-    if (r.error) { showToast(r.error, 'error'); return; }
-    if (r.pdfGenerated === false) {
-      showToast('⚠️ WhatsApp sent, but PDF generation failed: ' + (r.pdfError || 'unknown error'), 'error');
-    } else {
-      showToast('Offer letter PDF generated — sent on WhatsApp!');
-    }
+    if (btn) { btn.disabled = false; btn.textContent = '📬 Send on WhatsApp'; }
+    if (!r || r.error) { showToast((r && r.error) || 'Send failed', 'error'); return; }
+    closeModal('hrmFinalOfferFormModal');
+    showToast(r.waSent
+      ? 'Offer letter sent on WhatsApp!'
+      : 'Offer letter saved — WhatsApp not sent (no phone or send failed).');
     loadHRM();
   });
 }
