@@ -6390,19 +6390,14 @@ app.post('/api/payment-requests', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// Helper: parse encoded reason and fix amount in row before sending to client
+// Helper: pass the row to the client untouched.
+// This used to un-pack the "[<currency><amount>]" prefix out of the reason and
+// move the number into `amount`. Doing so threw away the currency symbol, so
+// every request came back with a bare number and the client always rendered ₹,
+// even for rows submitted in $ (e.g. "[$100.00] Claude Subscription"). The
+// client parses the encoded reason itself (prParseReason in app.html) to get
+// amount + currency, so it needs the reason raw. Keep this as a pass-through.
 function parsePrRow(row) {
-  if (row.bank_name === '__system__') return row;
-  if (row.reason && row.reason.charAt(0) === '[') {
-    const close = row.reason.indexOf('] ');
-    if (close > 1) {
-      const inner = row.reason.slice(1, close);
-      const num = parseFloat(inner.slice(1).replace(/,/g, ''));
-      if (!isNaN(num)) {
-        return { ...row, amount: row.amount > 0 ? row.amount : num, reason: row.reason.slice(close + 2) };
-      }
-    }
-  }
   return row;
 }
 
