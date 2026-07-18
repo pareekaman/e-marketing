@@ -2880,6 +2880,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <div class="card-head">
           <div class="card-head-title">WhatsApp Message Log</div>
           <div style="display:flex;gap:8px;align-items:center">
+            <button id="hrmMsgBulkDeleteBtn" onclick="deleteSelectedHrmMsgs()" style="display:none;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">🗑 Delete Selected (<span id="hrmMsgBulkCount">0</span>)</button>
             <input id="hrmMsgSearch" type="text" placeholder="Search candidate…" oninput="renderHrmMsgTable()" class="hrm-msg-search">
             <select id="hrmMsgFilter" onchange="renderHrmMsgTable()" class="hrm-filter-select">
               <option value="">All</option><option value="Sent">Sent</option><option value="Failed">Failed</option>
@@ -5817,6 +5818,10 @@ function renderHrmRows(list) {
   return `<table><thead><tr><th>Candidate</th><th>Position</th><th>Department</th><th>Interview</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
+// Selected message-log ids for bulk delete. Survives re-renders (filter/search)
+// but is pruned to currently loaded messages on each render.
+let _hrmMsgSelected = new Set();
+
 function renderHrmMsgTable() {
   const filter = document.getElementById('hrmMsgFilter')?.value||'';
   const search = (document.getElementById('hrmMsgSearch')?.value||'').toLowerCase();
@@ -5824,7 +5829,10 @@ function renderHrmMsgTable() {
   if (filter) list = list.filter(m=>m.status===filter);
   if (search) list = list.filter(m=>(m.candidate_name||'').toLowerCase().includes(search)||(m.phone||'').includes(search));
   const el = document.getElementById('hrm-msg-table');
-  if (!list.length) { el.innerHTML = '<div class="empty">No messages found.</div>'; return; }
+  const loadedIds = new Set(_hrmMessages.map(m=>m.id));
+  _hrmMsgSelected = new Set([..._hrmMsgSelected].filter(id=>loadedIds.has(id)));
+  if (!list.length) { el.innerHTML = '<div class="empty">No messages found.</div>'; updateHrmMsgBulkBtn(); return; }
+  const allVisibleSelected = list.every(m=>_hrmMsgSelected.has(m.id));
   const rows = list.map(m=>{
     const statusCls = m.status==='Sent' ? 'hrm-msg-status-sent' : 'hrm-msg-status-failed';
     const retryBtn = m.status==='Failed'
@@ -5832,6 +5840,7 @@ function renderHrmMsgTable() {
     const _d = m.created_at instanceof Date ? m.created_at : new Date(m.created_at);
     const ts = m.created_at && !isNaN(_d) ? _d.toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}) : '';
     return `<tr>
+      <td style="width:30px;text-align:center"><input type="checkbox" ${_hrmMsgSelected.has(m.id)?'checked':''} onchange="toggleHrmMsgSelect(${m.id}, this.checked)" style="cursor:pointer"></td>
       <td style="font-size:12px;color:#64748b;white-space:nowrap">${ts}</td>
       <td><div class="hrm-candidate-name">${esc(m.candidate_name)}</div><div class="hrm-candidate-sub">${esc(m.phone)}</div></td>
       <td style="font-size:12px;color:#475569">${esc(m.action)}</td>
@@ -5841,7 +5850,50 @@ function renderHrmMsgTable() {
       <td><button class="action-btn" style="color:#dc2626;border-color:#fecaca" title="Delete entry" onclick="deleteHrmMsg(${m.id})">🗑</button></td>
     </tr>`;
   }).join('');
-  el.innerHTML = `<table><thead><tr><th>Time</th><th>Candidate</th><th>Action</th><th>Status</th><th>Retries</th><th>Detail</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  el.innerHTML = `<table><thead><tr>
+    <th style="width:30px;text-align:center"><input type="checkbox" ${allVisibleSelected?'checked':''} onchange="toggleHrmMsgSelectAll(this.checked)" title="Select all visible" style="cursor:pointer"></th>
+    <th>Time</th><th>Candidate</th><th>Action</th><th>Status</th><th>Retries</th><th>Detail</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  updateHrmMsgBulkBtn();
+}
+
+function toggleHrmMsgSelect(id, checked) {
+  if (checked) _hrmMsgSelected.add(id); else _hrmMsgSelected.delete(id);
+  updateHrmMsgBulkBtn();
+}
+
+// Select-all applies to the currently visible (filtered/searched) rows only.
+function toggleHrmMsgSelectAll(checked) {
+  const filter = document.getElementById('hrmMsgFilter')?.value||'';
+  const search = (document.getElementById('hrmMsgSearch')?.value||'').toLowerCase();
+  let list = _hrmMessages;
+  if (filter) list = list.filter(m=>m.status===filter);
+  if (search) list = list.filter(m=>(m.candidate_name||'').toLowerCase().includes(search)||(m.phone||'').includes(search));
+  list.forEach(m => { if (checked) _hrmMsgSelected.add(m.id); else _hrmMsgSelected.delete(m.id); });
+  renderHrmMsgTable();
+}
+
+function updateHrmMsgBulkBtn() {
+  const btn = document.getElementById('hrmMsgBulkDeleteBtn');
+  const cnt = document.getElementById('hrmMsgBulkCount');
+  if (!btn) return;
+  btn.style.display = _hrmMsgSelected.size ? 'inline-block' : 'none';
+  if (cnt) cnt.textContent = _hrmMsgSelected.size;
+}
+
+// Bulk delete = the existing per-id soft-delete fired once per selected id
+// (same pattern as the DMS bulk delete) — no new endpoint.
+async function deleteSelectedHrmMsgs() {
+  const ids = [..._hrmMsgSelected];
+  if (!ids.length) return;
+  if (!confirm(`Delete ${ids.length} selected message log entr${ids.length===1?'y':'ies'}?`)) return;
+  const btn = document.getElementById('hrmMsgBulkDeleteBtn');
+  if (btn) btn.disabled = true;
+  const results = await Promise.all(ids.map(id => api(`/api/hrm/messages/${id}`,'DELETE',{}).catch(()=>({error:true}))));
+  const failed = results.filter(r => !r || !r.ok).length;
+  if (btn) btn.disabled = false;
+  _hrmMsgSelected.clear();
+  showToast(failed ? `Deleted ${ids.length-failed}, ${failed} failed` : `${ids.length} entr${ids.length===1?'y':'ies'} deleted`, failed?'error':undefined);
+  loadHRM();
 }
 
 async function retryHrmMsg(id) {
