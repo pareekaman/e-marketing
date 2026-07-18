@@ -9619,6 +9619,15 @@ async function _hrmGetBrowser() {
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
   }
+  // @sparticuz/chromium only extracts its bundled shared libraries (libnss3.so
+  // etc.) and sets LD_LIBRARY_PATH when it detects an AWS Lambda runtime via
+  // AWS_EXECUTION_ENV. Vercel runs on Lambda but does not expose that variable
+  // in the form the package expects, so chromium's binary extracts but its libs
+  // never do -> "libnss3.so: cannot open shared object file". Set the variable
+  // (matched to the Node major version: 18 -> AL2 libs, 20/22 -> AL2023 libs)
+  // BEFORE requiring the package, whose module-load code reads it once.
+  const nodeMajor = parseInt(process.versions.node.split('.')[0], 10) || 18;
+  process.env.AWS_EXECUTION_ENV = `AWS_Lambda_nodejs${nodeMajor}.x`;
   const chromium = require('@sparticuz/chromium');
   return puppeteer.launch({
     args: chromium.args,
