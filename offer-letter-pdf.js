@@ -9,9 +9,9 @@
 const PDFDocument = require('pdfkit');
 
 const PAGE = { width: 595.28, height: 841.89 }; // A4 in points
-const M = { top: 150, bottom: 60, left: 64, right: 64 };
+const M = { top: 142, bottom: 54, left: 64, right: 64 };
 const CW = PAGE.width - M.left - M.right; // content width
-const BODY_SIZE = 11.5;
+const BODY_SIZE = 11;
 
 function decodeEntities(s) {
   return s
@@ -106,22 +106,22 @@ function writePara(doc, block) {
     if (!runs.length) { doc.moveDown(0.6); continue; }
     runs.forEach((r, i) => {
       doc.font(r.bold ? 'Times-Bold' : 'Times-Roman').fontSize(BODY_SIZE);
-      const opts = { width: CW, align, underline: !!r.under, continued: i < runs.length - 1, lineGap: 1.6 };
+      const opts = { width: CW, align, underline: !!r.under, continued: i < runs.length - 1, lineGap: 1.25 };
       if (i === 0) doc.text(r.t, M.left, doc.y, opts);
       else doc.text(r.t, opts);
     });
     wrote = true;
   }
-  if (wrote) doc.moveDown(0.55);
+  if (wrote) doc.moveDown(0.5);
 }
 
 function drawBullets(doc, block) {
   doc.font('Times-Roman').fontSize(BODY_SIZE).fillColor('#000');
   doc.list(block.items, M.left + 12, doc.y, {
-    width: CW - 26, bulletRadius: 1.6, textIndent: 16, bulletIndent: 2, lineGap: 2.2,
+    width: CW - 26, bulletRadius: 1.6, textIndent: 16, bulletIndent: 2, lineGap: 1.8,
   });
   doc.x = M.left;
-  doc.moveDown(0.55);
+  doc.moveDown(0.5);
 }
 
 function drawSignature(doc, signBuffer) {

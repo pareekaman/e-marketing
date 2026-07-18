@@ -10091,7 +10091,15 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
       [finalJoining, finalSalary || null, department || null, token, JSON.stringify(snapshot), c.id]
     );
 
-    const base = (process.env.APP_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    // Build the PDF URL from the host that served THIS request — that
+    // deployment is proven to run the current code. APP_URL is only a
+    // fallback: it can point at a stale production deployment (observed:
+    // APP_URL's deployment still ran old code and 500'd on /offer-pdf, so the
+    // provider could never attach the file and fell back to a bare link).
+    const reqHost = req.headers['x-forwarded-host'] || req.get('host');
+    const base = (reqHost
+      ? `${req.headers['x-forwarded-proto'] || req.protocol}://${reqHost}`
+      : (process.env.APP_URL || '')).replace(/\/$/, '');
     const pdfUrl = `${base}/offer-pdf/${token}`;
 
     const caption = `Hello ${name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! Please find attached your official Offer Letter for the position of *${position}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${finalSalary || 'To be discussed'}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
