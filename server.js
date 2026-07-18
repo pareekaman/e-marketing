@@ -9474,6 +9474,7 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
     ul{margin:2px 0 8px 18px}ul li{margin-bottom:4px}
     .center{text-align:center}
     .pb{page-break-before:always}
+    .rule{border:none;border-top:1px solid #999;margin:12px 0}
     a{color:#00f}${printCss}
   </style></head><body>
 ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ? ' — ' + candidateName : ''}</span><button onclick="window.print()">⬇ Save as PDF</button></div>
@@ -9487,10 +9488,12 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
     <p>We expect your appointment to be effective on or before <strong>${joiningFmt}</strong>.</p>
     <p>Your gross remuneration package will be <strong>Rs.${salary || ''}/- per month</strong>.</p>
     <p>Please sign the duplicate copy of this letter to acknowledge your acceptance of the above and return it to us at the address below.</p>
-    <p><strong>Sincerely Yours, e-Marketing</strong></p>
+    <p><strong>Sincerely Yours,</strong></p>
+    <p><strong>e-Marketing</strong></p>
     ${signBlock}
     <p>Abhishek Jain</p>
     <p>Partner: eMarketing</p>
+    <hr class="rule">
     <br><br><br>
     <p class="center">Agreed and accepted this ${acceptDateStr}.</p>
     <p class="center">I will join eMarketing on the ${joinDateStr}.</p>
@@ -9640,75 +9643,17 @@ ${opts.forPrint ? '  </div>' : ''}
   </body></html>`;
 }
 
-// Running header (logo + address) painted into the top page margin on EVERY
-// page by the PDF renderer. Puppeteer header/footer templates are isolated from
-// the page's CSS and default to font-size 0, so every style here is inline and
-// explicit. The logo is shrunk vs the body letterhead to keep the band compact.
-function hrmFinalOfferHeaderTemplate() {
-  const logoSrc = _getHrmLogoSrc();
-  return `<div style="width:100%;box-sizing:border-box;padding:8px 48px 0;font-family:'Times New Roman',Times,serif;color:#000">
-    <table style="width:100%;border-collapse:collapse"><tr>
-      <td style="vertical-align:top;padding:0"><img src="${logoSrc}" style="height:46px;width:auto;display:block"></td>
-      <td style="vertical-align:top;padding:0;text-align:right;font-size:9px;line-height:1.35">
-        <span style="font-weight:bold">e-Marketing.io (A Unit of Jai Marketing)</span><br>
-        Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,<br>
-        Malviya Nagar, Jaipur, Rajasthan – 307017 (India)<br>
-        Phone: +91-9602694444 &nbsp;|&nbsp; Email: abhishek@e-marketing.io &nbsp;|&nbsp; www.e-marketing.io
-      </td>
-    </tr></table>
-  </div>`;
-}
+// Decoded image buffers for the pdfkit renderer (offer-letter-pdf.js).
+function _hrmLogoBuffer() { try { return Buffer.from(_HRM_LOGO_SRC.split(',')[1], 'base64'); } catch { return null; } }
+function _hrmSignBuffer() { try { return _HRM_SIGN_SRC ? Buffer.from(_HRM_SIGN_SRC.split(',')[1], 'base64') : null; } catch { return null; } }
 
-// Launch a headless Chromium. On Vercel/Linux we use the bundled
-// @sparticuz/chromium binary; for local dev, set CHROME_PATH to a real
-// Chrome/Edge executable (the bundled binary is Linux-only).
-async function _hrmGetBrowser() {
-  const puppeteer = require('puppeteer-core');
-  const localPath = process.env.CHROME_PATH || process.env.LOCAL_CHROME_PATH;
-  if (localPath) {
-    return puppeteer.launch({
-      headless: true,
-      executablePath: localPath,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-  }
-  // @sparticuz/chromium only extracts its bundled shared libraries and sets
-  // LD_LIBRARY_PATH when it detects an AWS Lambda runtime via AWS_EXECUTION_ENV,
-  // which Vercel does not expose. Force the Node-20+ path so it extracts the
-  // COMPLETE "al2023" library pack: the "al2" pack ships only libnss3/libnssutil3
-  // and assumes the base image provides the rest, but Vercel's image is missing
-  // libnspr4/libplc4/libplds4 too. This must run on Node 20/22 (Amazon Linux
-  // 2023) so the al2023 libs' glibc matches — pinned via package.json "engines"
-  // and the Vercel project's Node.js version. Set BEFORE requiring the package
-  // (its module-load reads AWS_EXECUTION_ENV once to configure LD_LIBRARY_PATH).
-  process.env.AWS_EXECUTION_ENV = 'AWS_Lambda_nodejs20.x';
-  const chromium = require('@sparticuz/chromium');
-  return puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath(),
-    headless: chromium.headless,
-  });
-}
-
-// Render offer-letter HTML to a print-quality A4 PDF buffer, with the letterhead
-// as a running header and a page-number footer on every page.
-async function hrmRenderOfferPdf(html) {
-  const browser = await _hrmGetBrowser();
-  try {
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    return await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      displayHeaderFooter: true,
-      headerTemplate: hrmFinalOfferHeaderTemplate(),
-      footerTemplate: `<div style="width:100%;font-size:8px;color:#888;text-align:center;padding:0 48px;font-family:'Times New Roman',Times,serif">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>`,
-      margin: { top: '132px', bottom: '42px', left: '48px', right: '48px' },
-    });
-  } finally {
-    await browser.close();
-  }
+// Build the final-offer HTML and render it to a PDF Buffer via pdfkit
+// (offer-letter-pdf.js): letterhead on every page, signature below the
+// sign-off, real page breaks. No browser involved.
+async function hrmRenderFinalOfferPdfBuffer({ name, position, joiningFmt, salary, today, joiningDate }) {
+  const { renderOfferPdfFromHtml } = require('./offer-letter-pdf');
+  const html = hrmBuildFinalOfferHtml(name || '', position || '', joiningFmt || '', salary || '', today || '', { inlineHeader: false, joiningDate });
+  return renderOfferPdfFromHtml(html, { logoBuffer: _hrmLogoBuffer(), signBuffer: _hrmSignBuffer() });
 }
 
 // Final "Offer Letter Sent" stage — sends the exact contract transcribed in
@@ -9799,10 +9744,10 @@ app.get('/offer/:token', async (req, res) => {
   }
 });
 
-// Browser-printable HTML of the final offer letter (older WhatsApp links point
-// here). Serves the letter with a "Save as PDF" button rendered by the viewer's
-// own browser — no server-side rendering. New sends attach the Apps Script PDF
-// directly, so this only backstops previously-sent links.
+// Public PDF of the final offer letter — the URL the WhatsApp provider fetches
+// to attach the document. Renders the stored HR-approved snapshot on demand via
+// pdfkit (fast, no browser). No auth: the random token is the capability, same
+// pattern as /offer/:token.
 app.get('/offer-pdf/:token', async (req, res) => {
   try {
     const [[c]] = await db.query(
@@ -9811,8 +9756,14 @@ app.get('/offer-pdf/:token', async (req, res) => {
     );
     if (!c || !c.final_offer_data) return res.status(404).send('Offer letter not found or link has expired.');
     const d = JSON.parse(c.final_offer_data);
-    const html = hrmBuildFinalOfferHtml(d.name || '', d.position || '', d.joiningFmt || '', d.salary || '', d.today || '', { forPrint: true });
-    res.type('html').send(html);
+    const pdf = await hrmRenderFinalOfferPdfBuffer({
+      name: d.name, position: d.position, joiningFmt: d.joiningFmt,
+      salary: d.salary, today: d.today, joiningDate: d.joining_date,
+    });
+    const safeName = String(d.name || 'candidate').replace(/[^a-zA-Z0-9 _-]/g, '').trim() || 'candidate';
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="OFFER LETTER - ${safeName}.pdf"`);
+    res.send(pdf);
   } catch (err) {
     console.error('offer-pdf error:', err.message);
     res.status(500).send('Failed to load offer letter.');
@@ -10084,9 +10035,33 @@ app.get('/api/hrm/final-offer-preview-html', requireAuth, (req, res) => {
   res.json({ html: hrmBuildFinalOfferHtml(name, position, joiningFmt, salary, today, { inlineHeader: true, joiningDate: req.query.joining_date }) });
 });
 
-// Send the final offer letter the same reliable way as the preliminary letter:
-// generate the PDF through the HRM_OFFER_SCRIPT Apps Script (Google Doc -> PDF)
-// and WhatsApp the resulting Drive PDF to the candidate as an attached file.
+// Exact-PDF preview for HR: streams the same pdfkit PDF the candidate will get.
+app.post('/api/hrm/final-offer-render', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { name = '', position = '', joining_date = '', salary = '' } = req.body;
+    const joiningFmt = joining_date
+      ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+      : '';
+    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    const pdf = await hrmRenderFinalOfferPdfBuffer({
+      name: String(name), position: String(position), joiningFmt,
+      salary: String(salary), today, joiningDate: joining_date,
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="offer-letter-preview.pdf"');
+    res.send(pdf);
+  } catch (err) {
+    console.error('final-offer-render error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Send the final offer letter: persist the HR-approved fields as a snapshot +
+// token, then WhatsApp the candidate the public /offer-pdf/:token URL as an
+// attached document — that endpoint serves the pdfkit-rendered PDF (letterhead
+// on every page, signature, real page breaks), which neither the Apps Script
+// Google-Doc pipeline nor Vercel-hosted Chromium could produce.
 app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   try {
@@ -10102,16 +10077,22 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
     if (!finalJoining) return res.status(400).json({ error: 'Joining date required' });
 
     const joiningFmt = new Date(finalJoining).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    // Raw YYYY-MM-DD joining date for the dynamic acceptance-block dates.
+    const rawJoin = (typeof finalJoining === 'string')
+      ? finalJoining.slice(0, 10)
+      : new Date(new Date(finalJoining).getTime() - new Date(finalJoining).getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
-    // Persist any edits back onto the candidate so the generated letter matches.
+    const token = require('crypto').randomBytes(24).toString('hex');
+    const snapshot = { name, position, joiningFmt, joining_date: rawJoin, salary: finalSalary || '', today };
+
     await db.query(
-      `UPDATE hrm_candidates SET status='Offer Letter Sent', joining_date=?, salary=?, department=COALESCE(?, department) WHERE id=?`,
-      [finalJoining, finalSalary || null, department || null, c.id]
+      `UPDATE hrm_candidates SET status='Offer Letter Sent', joining_date=?, salary=?, department=COALESCE(?, department), final_offer_token=?, final_offer_data=? WHERE id=?`,
+      [finalJoining, finalSalary || null, department || null, token, JSON.stringify(snapshot), c.id]
     );
 
-    // Generate the PDF via the Apps Script (same proven path as the preliminary
-    // letter), then WhatsApp the resulting Drive PDF as an attached document.
-    const { fileId, pdfUrl } = await hrmGenerateFinalOfferDoc(c, finalJoining, finalSalary, name, position);
+    const base = (process.env.APP_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const pdfUrl = `${base}/offer-pdf/${token}`;
 
     const caption = `Hello ${name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! Please find attached your official Offer Letter for the position of *${position}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${finalSalary || 'To be discussed'}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
 
@@ -10125,11 +10106,10 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
         caption
       }, 'file', c.id, c.name, 'Offer Letter Sent');
       if (!waSent) {
-        const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
-        await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text: `${caption}\n\n📄 *Offer Letter PDF:*\n${driveLink}` }, 'text', c.id, c.name, 'Offer Letter Sent - Link Fallback');
+        await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text: `${caption}\n\n📄 *Offer Letter PDF:*\n${pdfUrl}` }, 'text', c.id, c.name, 'Offer Letter Sent - Link Fallback');
       }
     }
-    res.json({ ok: true, fileId, pdfUrl, waSent });
+    res.json({ ok: true, pdfUrl, waSent });
   } catch (err) {
     console.error('send-final-offer error:', err.message);
     res.status(500).json({ error: err.message });

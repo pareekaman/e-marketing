@@ -3259,6 +3259,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
       </div>
       <div class="modal-footer" style="margin:0;padding:12px 20px;border-top:1px solid #e2e8f0;gap:8px">
         <button class="btn btn-outline" onclick="closeModal('hrmFinalOfferFormModal')">Cancel</button>
+        <button class="btn btn-outline" onclick="openFinalOfferExactPdf()">🖨️ Preview exact PDF</button>
         <button class="btn btn-primary" id="finalOfferSendBtn" onclick="submitFinalOfferForm()">📬 Send on WhatsApp</button>
       </div>
     </div>
@@ -6166,6 +6167,24 @@ async function renderFinalOfferPreview() {
 }
 
 // Render + open the exact PDF (as sent to the candidate) in a new tab.
+async function openFinalOfferExactPdf() {
+  const f = _finalOfferFields();
+  if (!f.name || !f.joining_date) { showToast('Name and joining date required', 'error'); return; }
+  showToast('Rendering exact PDF…');
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = localStorage.getItem('authToken');
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const resp = await fetch('/api/hrm/final-offer-render', {
+      method: 'POST', headers, credentials: 'include',
+      body: JSON.stringify(f)
+    });
+    if (!resp.ok) { const e = await resp.json().catch(() => ({})); showToast('PDF render failed: ' + (e.error || resp.status), 'error'); return; }
+    const url = URL.createObjectURL(await resp.blob());
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { showToast('PDF render failed: ' + e.message, 'error'); }
+}
 
 function submitFinalOfferForm() {
   const offer_name     = document.getElementById('finalOfferFName').value.trim();
