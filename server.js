@@ -462,6 +462,12 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN offer_html MEDIUMTEXT DEFAULT NULL`);
   await sa(`ALTER TABLE hrm_message_log ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL`);
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN department VARCHAR(255) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_candidates MODIFY COLUMN status ENUM('Scheduled','Rescheduled','Selected','Rejected','Offer Sent','Offer Letter Sent') DEFAULT 'Scheduled'`);
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN final_offer_drive_id VARCHAR(500) DEFAULT NULL`);
+  // Live-preview final offer: token addresses the public PDF endpoint; data is a
+  // JSON snapshot of the HR-approved letter fields so the PDF renders statelessly.
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN final_offer_token VARCHAR(64) DEFAULT NULL`);
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN final_offer_data MEDIUMTEXT DEFAULT NULL`);
 
   // Per-user permissions column (replaces role_permissions)
   await sa(`ALTER TABLE users ADD COLUMN user_permissions TEXT DEFAULT NULL AFTER extra_access`);
@@ -6388,19 +6394,14 @@ app.post('/api/payment-requests', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// Helper: parse encoded reason and fix amount in row before sending to client
+// Helper: pass the row to the client untouched.
+// This used to un-pack the "[<currency><amount>]" prefix out of the reason and
+// move the number into `amount`. Doing so threw away the currency symbol, so
+// every request came back with a bare number and the client always rendered ₹,
+// even for rows submitted in $ (e.g. "[$100.00] Claude Subscription"). The
+// client parses the encoded reason itself (prParseReason in app.html) to get
+// amount + currency, so it needs the reason raw. Keep this as a pass-through.
 function parsePrRow(row) {
-  if (row.bank_name === '__system__') return row;
-  if (row.reason && row.reason.charAt(0) === '[') {
-    const close = row.reason.indexOf('] ');
-    if (close > 1) {
-      const inner = row.reason.slice(1, close);
-      const num = parseFloat(inner.slice(1).replace(/,/g, ''));
-      if (!isNaN(num)) {
-        return { ...row, amount: row.amount > 0 ? row.amount : num, reason: row.reason.slice(close + 2) };
-      }
-    }
-  }
   return row;
 }
 
@@ -9066,18 +9067,22 @@ app.get('/api/inventory/items', requireAuth, async (req, res) => {
     if (isAdmin) {
       [rows] = await db.query(`
         SELECT i.*, u.name AS assigned_to_name, u.id AS assigned_to_id,
-               a.id AS assignment_id, a.assigned_at, a.handover_status, a.return_reason
+               a.id AS assignment_id, a.assigned_at, a.handover_status, a.return_reason,
+               cu.name AS created_by_name
         FROM inventory_items i
         LEFT JOIN inventory_assignments a ON a.item_id = i.id AND a.handover_status IN ('active','pending_handover')
         LEFT JOIN users u ON u.id = a.user_id
+        LEFT JOIN users cu ON cu.id = i.created_by
         ORDER BY i.created_at DESC`);
     } else {
       [rows] = await db.query(`
         SELECT i.*, u.name AS assigned_to_name, u.id AS assigned_to_id,
-               a.id AS assignment_id, a.assigned_at, a.handover_status, a.return_reason
+               a.id AS assignment_id, a.assigned_at, a.handover_status, a.return_reason,
+               cu.name AS created_by_name
         FROM inventory_items i
         JOIN inventory_assignments a ON a.item_id = i.id AND a.user_id = ? AND a.handover_status IN ('active','pending_handover')
         JOIN users u ON u.id = a.user_id
+        LEFT JOIN users cu ON cu.id = i.created_by
         ORDER BY i.created_at DESC`, [req.session.userId]);
     }
     res.json(rows);
@@ -9090,6 +9095,10 @@ app.post('/api/inventory/items', requireAuth, async (req, res) => {
   try {
     const { name, type, brand, model, serial_number, photo, item_condition, notes } = req.body;
     if (!name || !type) return res.status(400).json({ error: 'name and type required' });
+    // Brand/model are what tell two items of the same type apart, since the
+    // form has no free-text name field.
+    if (!brand || !String(brand).trim()) return res.status(400).json({ error: 'Brand is required' });
+    if (!model || !String(model).trim()) return res.status(400).json({ error: 'Model is required' });
     const validTypes = ['laptop','keyboard','mouse','mobile','sim','charger','other'];
     if (!validTypes.includes(type)) return res.status(400).json({ error: 'Invalid type' });
     const [r] = await db.query(
@@ -9106,6 +9115,10 @@ app.post('/api/inventory/self-add', requireAuth, async (req, res) => {
   try {
     const { name, type, brand, model, serial_number, photo, item_condition, notes } = req.body;
     if (!name || !type) return res.status(400).json({ error: 'name and type required' });
+    // Brand/model are what tell two items of the same type apart, since the
+    // form has no free-text name field.
+    if (!brand || !String(brand).trim()) return res.status(400).json({ error: 'Brand is required' });
+    if (!model || !String(model).trim()) return res.status(400).json({ error: 'Model is required' });
     const validTypes = ['laptop','keyboard','mouse','mobile','sim','charger','other'];
     if (!validTypes.includes(type)) return res.status(400).json({ error: 'Invalid type' });
     const [r] = await db.query(
@@ -9249,6 +9262,15 @@ const HRM_OFFER_SCRIPT      = process.env.HRM_OFFER_SCRIPT      || 'https://scri
 // Google Docs renders base64 at natural pixel size (ignores HTML w/h attrs),
 // so the image must already be 185x110 before encoding — which this file is.
 const _HRM_LOGO_SRC = 'data:image/png;base64,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';
+// Signature image for the final offer letter (Abhishek Jain), printed between
+// the "e-Marketing" line and "Abhishek Jain". Loaded once at startup from the
+// pre-trimmed public/signature.png (bundled on Vercel via includeFiles); falls
+// back to '' (blank space) if the file is missing.
+const _HRM_SIGN_SRC = (() => {
+  try {
+    return 'data:image/png;base64,' + require('fs').readFileSync(require('path').join(__dirname, 'public', 'signature.png')).toString('base64');
+  } catch { return ''; }
+})();
 function _getHrmLogoSrc() { return _HRM_LOGO_SRC; }
 
 async function _hrmDriveClient() {
@@ -9360,6 +9382,321 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
   return { fileId, pdfUrl };
 }
 
+// Verbatim transcription of the user-supplied final offer letter/employment
+// contract format (screenshots, 2026-07-18) — every word, section number and
+// clause is intentionally kept identical to the source, including its own
+// inconsistencies (the stray "14.7" clause after "15.6", "theaccounts" typo
+// in 13.1, the fixed "9th day of July, 2026" / "10th day of July 2026"
+// acceptance-block dates which were static in the source, not merge fields).
+// The clause TEXT must stay verbatim — do not "fix" wording without the user
+// re-confirming against their real document. The page STRUCTURE, however, is
+// now built for browser/Chromium rendering (user-approved): the logo/address
+// header is a running header applied on every page by the PDF renderer (see
+// hrmFinalOfferHeaderTemplate), so it is no longer repeated inline in the body;
+// section boundaries use ".pb" page-break divs (Chromium honours these, unlike
+// the old Google-Doc pipeline). Pass opts.inlineHeader=true to also show the
+// header once at the top for the on-screen live preview.
+function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, salary, todayFmt, opts = {}) {
+  const logoSrc = _getHrmLogoSrc();
+  // Signature block sits between "e-Marketing" and "Abhishek Jain". Renders the
+  // real signature image once _HRM_SIGN_SRC is set; otherwise leaves blank space.
+  const signBlock = _HRM_SIGN_SRC
+    ? `<img src="${_HRM_SIGN_SRC}" alt="signature" style="width:170px;height:auto;display:block;margin:4px 0">`
+    : `<br><br>`;
+  // Header used only for the on-screen preview (opts.inlineHeader). The printed
+  // PDF gets the same logo/address as a running header on every page instead.
+  const header = `<table class="hdr"><tr>
+    <td width="197" valign="top" style="padding-right:12px"><img src="${logoSrc}" alt="e-Marketing" width="185" height="110" style="display:block"></td>
+    <td valign="top" style="font-size:13px;line-height:1.4;text-align:right">
+      <p style="margin:0;text-align:right"><strong>e-Marketing.io (A Unit of Jai Marketing)</strong><br>
+      Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,<br>
+      Malviya Nagar, Jaipur, Rajasthan – 307017 (India)<br>
+      <br>
+      Phone: +91-9602694444<br>
+      Email: <a href="mailto:abhishek@e-marketing.io">abhishek@e-marketing.io</a><br>
+      Website: www.e-marketing.io</p>
+    </td>
+  </tr></table>`;
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    body{margin:0;padding:0;font-family:'Times New Roman',Times,serif;font-size:14px;color:#000;line-height:1.35}
+    table.hdr{width:100%;border:none;border-collapse:collapse;margin-bottom:10px}
+    table.hdr td{border:none;vertical-align:top;padding:0}
+    p{margin:0 0 10px;text-align:justify}
+    ul{margin:2px 0 8px 18px}ul li{margin-bottom:4px}
+    .center{text-align:center}
+    .pb{page-break-before:always}
+    a{color:#00f}
+  </style></head><body>
+
+  <div class="page">
+    ${opts.inlineHeader ? header : ''}
+    <p>${todayFmt}</p>
+    <p>Dear ${candidateName} ,</p>
+    <p>We are pleased to offer you an appointment as an <strong>${candidatePosition}</strong> with  e-Marketing (a unit of Jai Marketing)</p>
+    <p>We expect your appointment to be effective on or before <strong>${joiningFmt}</strong>.</p>
+    <p>Your gross remuneration package will be <strong>Rs.${salary || ''}/- per month</strong>.</p>
+    <p>Please sign the duplicate copy of this letter to acknowledge your acceptance of the above and return it to us at the address below.</p>
+    <p><strong>Sincerely Yours,</strong></p>
+    <p><strong>e-Marketing</strong></p>
+    ${signBlock}
+    <p>Abhishek Jain</p>
+    <p>Partner: eMarketing</p>
+    <br><br><br>
+    <p class="center">Agreed and accepted this 9th day of July, 2026.</p>
+    <p class="center">I will join eMarketing on the 10th day of July 2026.</p>
+    <p class="center"><strong>${candidateName}</strong></p>
+  </div>
+
+  <div class="page">
+    <div class="pb"></div>
+    <p><strong><u>CHECKLIST OF DOCUMENTS REQUIRED AT THE TIME OF JOINING:</u></strong></p>
+    <ul>
+      <li>Copy of the offer letter accepted and signed by you.</li>
+      <li>Resignation Acceptance/Relieving Certificate from last employer.</li>
+      <li>Form 16 (pertaining to tax deducted at source) from the previous employer or salary certificate.</li>
+      <li>Xerox of Educational Certificates (Copy of 10th, 12th, and graduation/post-graduation certificates).</li>
+      <li>Four recent passport-size photographs.</li>
+      <li>Xerox of Proof of Birth Date (Copy of Birth Certificate/School Leaving Certificate).</li>
+      <li>Proof of identity (original and Xerox copy of passport/driving license/voter's ID card).</li>
+      <li>Residential Proof (Ration Card Copy/Voter's ID Card/Passport).</li>
+      <li>PAN Card original and three Xerox.</li>
+      <li>Bank Account Details for Salary Transfer.</li>
+    </ul>
+  </div>
+
+  <div class="page">
+    <div class="pb"></div>
+    <p class="center"><strong>OFFER OF EMPLOYMENT (Private &amp; Confidential)</strong></p>
+    <p>We are pleased to offer you employment with eMarketing under the following terms and conditions set out in this Contract of Employment (&ldquo;Agreement&rdquo;), subject to satisfactory reference and background screening and upon approval of any applicable work pass application.</p>
+
+    <p><strong>1. DESIGNATION</strong></p>
+    <p>You are employed as an <strong><u>${candidatePosition}</u></strong>.</p>
+
+    <p><strong>2. COMMENCEMENT</strong></p>
+    <p>You will commence employment on <strong>${joiningFmt}</strong>. Your employment with the company will commence on your actual and effective date of joining the company, subject to the completion of all joining formalities. Till such time, no relationship (employment, contractual, or otherwise) will exist between the parties. The company reserves the right to withdraw this offer at its sole discretion at any time before the date of joining, with due communication to you.</p>
+
+    <p><strong>3. REMUNERATION</strong></p>
+    <p>Your fixed annual CTC will be Rs <strong>${salary || ''}</strong>/- subject to the appropriate withholding tax in accordance with India's laws and regulations. The prerequisites and benefits applicable within the CTC will be discussed with you further.</p>
+
+    <p><strong>4. PROBATION</strong></p>
+    <p>You shall serve a probationary period of up to <strong>2 months</strong>. The company reserves the right to extend the probationary period, if necessary.</p>
+
+    <p><strong>5. ANNUAL LEAVE</strong></p>
+    <p>All employees shall be entitled to annual leave of <strong>twelve (12) working days</strong> per year.</p>
+
+    <p><strong>6. NORMAL DAYS/HOURS OF WORK</strong></p>
+    <p>All employees would observe a <strong>Six (6) day work week</strong>, Monday through Saturday, with working hours from 9:30 am to 6:00 p.m. and a half-hour lunch break between 1:30 pm and 2:00 pm.</p>
+
+    <p><strong>7. TIMELY ARRIVAL INCENTIVE</strong></p>
+    <p>In recognition of your commitment to punctuality, we offer an additional day off on the last Saturday of every month, contingent on timely arrival to the office each day from the last Saturday of the previous month, with no exceptions, and the day will be forfeited in case of tardiness.</p>
+
+    <p><strong>8. PUBLIC HOLIDAYS</strong></p>
+    <p>All employees shall be entitled to all gazette public holidays with full pay.</p>
+
+    <p><strong>9. OUTSIDE INTEREST</strong></p>
+    <p>You will not be permitted, while in the employment of the company, to carry on any business other than the business of the company and/or divulge to any person any information concerning the methods, arrangements, practices, or transactions that may injure or prejudice the interest or reputation of the company in any manner or form.</p>
+  </div>
+
+  <div class="page">
+    <div class="pb"></div>
+    <p><strong>10. CONFLICT OF INTEREST</strong></p>
+    <p>All employees shall be required to report to the company if any member of his family, or close relatives, is engaged in any trade or business involving supplies of goods and/or services to the company or has any other type of business relationship with the company.</p>
+
+    <p><strong>11. AMENDMENT</strong></p>
+    <p>This agreement may be amended by the company from time to time as and when the company considers it proper in the best interests of the company. The amendment shall be in the form of a notification in writing addressed to you at your last known address, and then such amendment shall be incorporated into this Agreement and shall form part of this Agreement.</p>
+
+    <p><strong>12. PERSONAL INFORMATION</strong></p>
+    <p>12.1 For any applicable data protection legislation, you consent to the collecting, holding, processing, accessing, use, and disclosing of any personal data relating to you or provided by you to the Company for all purposes relating to compliance with any applicable laws and/or the Company's exercise of any of its rights or performance or discharge of any of its obligations under this Agreement or where such disclosure is for any purpose that is related to your employment with the Company, including but not limited to:</p>
+    <p>A. Administering and maintaining personal records;<br>
+    B. Paying and reviewing salary and other remuneration and benefits;<br>
+    C. Providing and administering benefits (including, if relevant, pension, life assurance, permanent health insurance, and medical insurance) or compliance with a legal requirement;<br>
+    D. Undertaking performance appraisals and development reviews;<br>
+    E. Maintaining sickness, holiday, and other absence records;<br>
+    F. Making decisions about your fitness for work or the need for adjustments in the workplace;<br>
+    G. Providing references and information to future employers;<br>
+    H. Providing information to governmental and quasi-governmental bodies where required or requested by such bodies, including without limitation the revenue and tax authorities, customs, and immigration authorities, and taking decisions regarding any such information;<br>
+    I. Investigating and recording the commission or alleged commission of any offense in order to comply with legal requirements and obligations to third parties;<br>
+    J. Providing information to future purchasers of the Company or any of its associated companies; and<br>
+    K. Transferring information concerning you to a country or territory outside India (all HR information is maintained in the shared services in India).</p>
+
+    <p>12.2 You also consent to the company monitoring and recording your actions and activities, such as those conducted on your laptop or desktop computer that is issued to you by the company, and any use you make of your telecommunication or computer systems. You agree to comply with the company's policy concerning the use of such systems.</p>
+
+    <p>12.3 You agree to comply with the company's data policies and will take all steps to ensure that any associated company companies' information or personal data that you have, hold, or process will be kept securely by you, particularly if such information is accessed by or accessible to you via a mobile device, such as a laptop, desktop, personal digital assistant (PDA) or mobile telephone.</p>
+
+    <p>12.4 Concerning the Personal Information shared under this Agreement, you agree that for Section 43A of the Information Technology Act 2000, the aforesaid personal data policies of the Company or such other policy of the Company dealing with data protection and security shall constitute reasonable security practices and procedures and accordingly, the Information Technology (Reasonable Security Practices and Procedures and Sensitive Personal Data or Information) Rules 2011 are hereby excluded.</p>
+  </div>
+
+  <div class="page">
+    <div class="pb"></div>
+    <p><strong>13. CONFIDENTIALITY</strong></p>
+    <p>13.1 You shall not during your employment or after the termination thereof (howsoever arising) make use of for your own purposes or those of any other person, firm or company or disclose to any person (except the proper officers of the Company or under the authority of the Board or required by law) any trade secrets or confidential information relating to the business, accounts, affairs or finances of the Company or its associated companies or their customers or suppliers, whether recorded or not (and if recorded, whether on paper, tape, hard drive or computer disk) and includes without limitation all and any information about business plans, new business opportunities, research and development projects, product formulae, processes, inventions, designs, discoveries or know-how, sales statistics (including targets and statistics, market share and pricing statistics, forecasts and reports) maturing business opportunities, processes, designs, marketing surveys and plans, costs, profit or loss or financial information relating to theaccounts, prices and discount structures of the Company its associated companies or their customers or suppliers, the names, addresses, telephone numbers, fax numbers, e-mail or contact details, activities or personal affairs of the Company's or its associated companies' customers, agents, consultants, distributors and suppliers, any Company or its associated companies' database, mailing list, software application, component list, any information relating the terms of business between the customers, suppliers or agents and the Company or its associated companies' (the &ldquo;Confidential Information&rdquo;).</p>
+
+    <p>13.2 You acknowledge that you will have access during your employment to Confidential Information belonging to the Company or its associated companies or their customers or suppliers and that the Company (for itself or on behalf of its associated companies or their customers or suppliers) has a legitimate commercial interest in preventing the unauthorized disclosure of such Confidential Information.</p>
+
+    <p>13.3 The obligations contained in this Clause 12 shall continue to apply without limitation in time following the termination of your employment, however arising, but they shall cease to apply to any information or knowledge that may subsequently come into the public domain other than by way of unauthorized disclosure.</p>
+
+    <p>13.4 All confidential information, plans, statistics, records, and other documentation (including any copies thereof, whether in paper or electronic form) of whatsoever nature relating to the business of the company or its associated companies or their customers or suppliers, shall immediately be returned by you to the company or, at the option of the company, destroyed or deleted (in the case of information that is stored electronically) in the event of the termination of your employment, however arising (or at any earlier time on demand).</p>
+
+    <p>13.5 You acknowledge that the remedy of damages may be inadequate to protect the interests of the Company and that the Company is entitled to seek and obtain an injunction or any other legal or equitable relief against you for any threatened or actual breach of any provisions of this Agreement by you or any other relevant person, and no proof of special damages shall be necessary for the enforcement by the Company of its rights under this Agreement.</p>
+  </div>
+
+  <div class="page">
+    <div class="pb"></div>
+    <p><strong>14. INTELLECTUAL PROPERTY</strong></p>
+    <p>14.1 For this Clause 13, &ldquo;Intellectual Property&rdquo; means patents, utility models, registered designs, registered trade and service marks, copyright (whether registered or not), improvements and modifications to any of the foregoing, and the right to apply for protection for such registered rights anywhere in the world, inventions, discoveries, copyright design rights, unregistered trade and service marks, brand names, secret or confidential information, know-how, or any other intellectual property and any similar or equivalent rights, whether registrable or not arising or granted under the law of any country or state.</p>
+
+    <p>14.2 Any Intellectual Property made created or discovered by you (either alone or with any other persons) during your employment (whether capable of being patented or registered or not and whether created or discovered in the course of your employment and whether or not it was created or discovered with the use of the Company's machinery or equipment of the Company or any of its associated companies) in conjunction with or in any way affecting or relating to the business of the Company or any other Intellectual Property rights for the time being and from time to time of the Company or in the opinion of the management of the Company is capable of being used or adapted for such use shall forthwith be disclosed to the Company and shall (subject to all relevant legislation), on a worldwide and perpetual basis, belong to and be the absolute property of the Company or its associated companies, as the case may be.</p>
+
+    <p>14.3 If and whenever required to do so by the company, you will, at the expense of the company, apply or join with the Company or any of its associated companies in applying for letters patent or other protection or registration in India and/or any other part of the world for any such Intellectual Property which belongs to the Company or any of its associated companies. You will, at the company's expense, execute and do or procure to be executed and done all instruments and things necessary for vesting the said letters patent or other protection or registration, and all rights, title, and interest to and in the intellectual property in the company absolutely or in such other persons or companies as the company may specify. Any assignment/transfer of such rights, titles, and interests shall not lapse if the company has not exercised its rights under the assignment for any period.</p>
+
+    <p>14.4 You waive all your moral rights under applicable law and any foreign corresponding rights in respect of any work of which you are the author or co-author.</p>
+  </div>
+
+  <div class="page">
+    <div class="pb"></div>
+    <p>14.5 Rights and obligations under Clause 13 shall continue in force after the termination of this Agreement and any other document created or discovered during the period of your employment and shall be binding upon your representatives.</p>
+
+    <p><strong>15. MISCELLANEOUS</strong></p>
+    <p>15.1 This Agreement together with any documents referred to in it constitutes the entire agreement and understanding between you and the Company and supersedes any previous agreement relating to your employment with the Company.</p>
+
+    <p>15.2 In the event of any conflict between the terms of this Agreement and any other document purporting to relate to your employment, the terms of this Agreement shall prevail.</p>
+
+    <p>15.3 This Agreement is personal and may not be assigned to any third party by any party.</p>
+
+    <p>15.4 If either party agrees to waive its rights under a provision of this Agreement, that waiver will only be effective if it is in writing and it is signed by that party. A party's agreement to waive any breach of any term or condition of this Agreement will not be regarded as a waiver of any subsequent breach of the same term or condition or a different term or condition.</p>
+
+    <p>15.5 Any notice or other document to be given under this Agreement shall be in writing and may be given personally to you or may be sent by first-class post or other fast postal service to, in the case of the Company, its registered office for the time being and your case, at your last known place of residence. Any such notice shall be deemed served upon the earlier of (i) delivery, if served personally; or (ii) upon receipt, if sent by mail.</p>
+
+    <p>15.6 This Agreement shall be governed by Indian law, and the Company and you submit to the exclusive jurisdiction of the Indian courts in Bangalore.</p>
+
+    <p>14.7 Notwithstanding the above terms and conditions, the Company reserves the right to amend, delete, and/or implement new terms and conditions which the Company deems necessary from time to time, and such amendment/deletion/implementation of new terms and conditions shall be notified to you in writing by prior notice.</p>
+
+    <p><strong>16. TERMINATION</strong></p>
+    <p>Employment may be terminated at any time by either party giving notice or pay in lieu of notice, or part thereof, for any reason other than redundancy. Periods of notice shall be two (2) weeks during the probationary period and one (1) month after confirmation and shall be in writing, except in the case of serious misconduct in which case you may be terminated at any time without notice. Absenteeism beyond 10 days is liable for termination unless and otherwise such absence is supported by valid reason in writing and with valid documents.</p>
+
+    <p><strong>17. AGE OF SUPERANNUATION</strong></p>
+    <p>Completion of sixty years as per date of birth and as declared by you at the time of appointment.</p>
+  </div>
+
+  <div>
+    <div class="pb"></div>
+    <p>If the above terms and conditions are acceptable to you, please signify by signing the duplicate of this letter and returning the same to us within three (3) working days.</p>
+  </div>
+
+  </body></html>`;
+}
+
+// Running header (logo + address) painted into the top page margin on EVERY
+// page by the PDF renderer. Puppeteer header/footer templates are isolated from
+// the page's CSS and default to font-size 0, so every style here is inline and
+// explicit. The logo is shrunk vs the body letterhead to keep the band compact.
+function hrmFinalOfferHeaderTemplate() {
+  const logoSrc = _getHrmLogoSrc();
+  return `<div style="width:100%;box-sizing:border-box;padding:8px 48px 0;font-family:'Times New Roman',Times,serif;color:#000">
+    <table style="width:100%;border-collapse:collapse"><tr>
+      <td style="vertical-align:top;padding:0"><img src="${logoSrc}" style="height:46px;width:auto;display:block"></td>
+      <td style="vertical-align:top;padding:0;text-align:right;font-size:9px;line-height:1.35">
+        <span style="font-weight:bold">e-Marketing.io (A Unit of Jai Marketing)</span><br>
+        Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,<br>
+        Malviya Nagar, Jaipur, Rajasthan – 307017 (India)<br>
+        Phone: +91-9602694444 &nbsp;|&nbsp; Email: abhishek@e-marketing.io &nbsp;|&nbsp; www.e-marketing.io
+      </td>
+    </tr></table>
+  </div>`;
+}
+
+// Launch a headless Chromium. On Vercel/Linux we use the bundled
+// @sparticuz/chromium binary; for local dev, set CHROME_PATH to a real
+// Chrome/Edge executable (the bundled binary is Linux-only).
+async function _hrmGetBrowser() {
+  const puppeteer = require('puppeteer-core');
+  const localPath = process.env.CHROME_PATH || process.env.LOCAL_CHROME_PATH;
+  if (localPath) {
+    return puppeteer.launch({
+      headless: true,
+      executablePath: localPath,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+  }
+  // @sparticuz/chromium only extracts its bundled shared libraries (libnss3.so
+  // etc.) and sets LD_LIBRARY_PATH when it detects an AWS Lambda runtime via
+  // AWS_EXECUTION_ENV. Vercel runs on Lambda but does not expose that variable
+  // in the form the package expects, so chromium's binary extracts but its libs
+  // never do -> "libnss3.so: cannot open shared object file". Set the variable
+  // (matched to the Node major version: 18 -> AL2 libs, 20/22 -> AL2023 libs)
+  // BEFORE requiring the package, whose module-load code reads it once.
+  const nodeMajor = parseInt(process.versions.node.split('.')[0], 10) || 18;
+  process.env.AWS_EXECUTION_ENV = `AWS_Lambda_nodejs${nodeMajor}.x`;
+  const chromium = require('@sparticuz/chromium');
+  return puppeteer.launch({
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
+    executablePath: await chromium.executablePath(),
+    headless: chromium.headless,
+  });
+}
+
+// Render offer-letter HTML to a print-quality A4 PDF buffer, with the letterhead
+// as a running header and a page-number footer on every page.
+async function hrmRenderOfferPdf(html) {
+  const browser = await _hrmGetBrowser();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    return await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      displayHeaderFooter: true,
+      headerTemplate: hrmFinalOfferHeaderTemplate(),
+      footerTemplate: `<div style="width:100%;font-size:8px;color:#888;text-align:center;padding:0 48px;font-family:'Times New Roman',Times,serif">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>`,
+      margin: { top: '132px', bottom: '42px', left: '48px', right: '48px' },
+    });
+  } finally {
+    await browser.close();
+  }
+}
+
+// Final "Offer Letter Sent" stage — sends the exact contract transcribed in
+// hrmBuildFinalOfferHtml above through the same HRM_OFFER_SCRIPT Apps Script
+// the preliminary letter uses (html-only, no templateId — the script proved
+// to ignore templateId and only ever render html, and a direct Drive/Docs-API
+// read of the user's own template hit a separate, unrelated wall: service
+// accounts have no personal Drive storage quota, so file creation failed
+// outright even once sharing/mimetype were fixed). This keeps final-offer
+// generation on the one path that's actually proven to work end-to-end.
+async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrideName, overridePosition) {
+  const candidateName     = overrideName     || candidate.name             || '';
+  const candidatePosition = overridePosition || candidate.profile_position || '';
+
+  const joiningFmt = joining_date
+    ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+    : '';
+  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+  const html = hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, salary, today);
+
+  const fetchFn = global.fetch || (await import('node-fetch')).default;
+  const scriptRes = await fetchFn(HRM_OFFER_SCRIPT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      html,
+      filename: `OFFER LETTER - ${candidateName}`,
+      folderId: HRM_OFFER_FOLDER_ID,
+    }),
+  });
+  const scriptData = await scriptRes.json();
+  if (!scriptData.ok) throw new Error(scriptData.error || 'Apps Script upload failed');
+
+  const fileId = scriptData.fileId;
+  const pdfUrl = scriptData.pdfUrl;
+
+  await db.query('UPDATE hrm_candidates SET final_offer_drive_id=? WHERE id=?', [fileId, candidate.id])
+    .catch(() => {});
+
+  return { fileId, pdfUrl };
+}
+
 async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateName, action) {
   let status = 'Failed', errorDetail = '';
   try {
@@ -9403,6 +9740,29 @@ app.get('/offer/:token', async (req, res) => {
     res.send(c.offer_html.replace('</head>', printCss + '</head>'));
   } catch (err) {
     res.status(500).send('<h3>Error: ' + err.message + '</h3>');
+  }
+});
+
+// Public PDF for the final offer letter — the URL WhatsApped to the candidate.
+// Renders the HR-approved snapshot on demand via Chromium (letterhead on every
+// page + signature). No auth: the random token is the capability.
+app.get('/offer-pdf/:token', async (req, res) => {
+  try {
+    const [[c]] = await db.query(
+      'SELECT final_offer_data, name FROM hrm_candidates WHERE final_offer_token=? LIMIT 1',
+      [req.params.token]
+    );
+    if (!c || !c.final_offer_data) return res.status(404).send('Offer letter not found or link has expired.');
+    const d = JSON.parse(c.final_offer_data);
+    const html = hrmBuildFinalOfferHtml(d.name || '', d.position || '', d.joiningFmt || '', d.salary || '', d.today || '', { inlineHeader: false });
+    const pdf = await hrmRenderOfferPdf(html);
+    const safeName = String(d.name || 'candidate').replace(/[^a-zA-Z0-9 _-]/g, '').trim() || 'candidate';
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="OFFER LETTER - ${safeName}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error('offer-pdf render error:', err.message);
+    res.status(500).send('Failed to render offer letter.');
   }
 });
 
@@ -9465,7 +9825,7 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   try {
     const { status, reschedule_date, reschedule_time, reschedule_reason, joining_date, salary, department } = req.body;
-    const validStatuses = ['Scheduled','Rescheduled','Selected','Rejected','Offer Sent'];
+    const validStatuses = ['Scheduled','Rescheduled','Selected','Rejected','Offer Sent','Offer Letter Sent'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Invalid status' });
     const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
     if (!c) return res.status(404).json({ error: 'Not found' });
@@ -9474,6 +9834,7 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
     const updates = { status };
     if (status === 'Rescheduled') { updates.reschedule_date = reschedule_date||null; updates.reschedule_time = reschedule_time||''; updates.reschedule_reason = reschedule_reason||''; }
     if (status === 'Offer Sent')  { updates.joining_date = joining_date||null; updates.salary = salary||''; updates.offer_sent = 1; updates.department = department||''; }
+    if (status === 'Offer Letter Sent') { updates.joining_date = joining_date||c.joining_date||null; updates.salary = salary||c.salary||''; updates.department = department||c.department||''; }
 
     const invalidCol = Object.keys(updates).find(k => !HRM_ALLOWED_COLS.has(k));
     if (invalidCol) return res.status(400).json({ error: `Invalid field: ${invalidCol}` });
@@ -9575,6 +9936,48 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       }
     }
 
+    // Final "Offer Letter Sent" stage — reuses whatever position/department/
+    // joining-date/salary is already stored on the candidate from the
+    // preliminary stage; no new form fields, same as Selected/Rejected.
+    if (status === 'Offer Letter Sent') {
+      const { offer_name, offer_position } = req.body;
+      const displayName = offer_name || c.name;
+      const displayPos  = offer_position || c.profile_position;
+      const finalJoiningDate = joining_date || c.joining_date;
+      const finalSalary = salary || c.salary;
+      const finalJoiningFmt = finalJoiningDate ? new Date(finalJoiningDate).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
+
+      try {
+        const { fileId, pdfUrl } = await hrmGenerateFinalOfferDoc(c, finalJoiningDate, finalSalary, offer_name, offer_position);
+        await db.query('UPDATE hrm_candidates SET final_offer_drive_id=? WHERE id=?', [fileId, c.id]);
+        const caption = `Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! Please find attached your official Offer Letter for the position of *${displayPos}*.\n\n📅 Joining Date: ${finalJoiningFmt}\n💰 CTC: ${finalSalary||'To be discussed'}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
+        const fileSent = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
+          to: hrmFormatPhone(c.phone),
+          mediaUrl: pdfUrl,
+          mediaType: 'document',
+          fileName: `OFFER LETTER - ${displayName}.pdf`,
+          caption
+        }, 'file', c.id, c.name, 'Offer Letter Sent');
+        if (!fileSent) {
+          const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
+          await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+`${caption}\n\n📄 *Offer Letter PDF:*\n${driveLink}`
+          }, 'text', c.id, c.name, 'Offer Letter Sent - Link Fallback');
+        }
+      } catch (e) {
+        pdfGenerated = false;
+        pdfError = e.message;
+        console.error('HRM final offer doc generation failed:', e.message);
+        await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+`Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been issued your official Offer Letter for the position of ${displayPos}.\n\n📅 Joining Date: ${finalJoiningFmt}\n💰 CTC: ${finalSalary||'To be discussed'}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
+        }, 'text', c.id, c.name, 'Offer Letter Sent').catch(() => {});
+        await db.query(
+          `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
+          [c.id, c.name, hrmFormatPhone(c.phone), 'Offer Letter PDF (Final)', 'file', 'Failed', `Drive error: ${e.message}`, '{}']
+        ).catch(() => {});
+      }
+    }
+
     res.json({ ok: true, pdfGenerated, pdfError });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -9611,6 +10014,96 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
 app.get('/api/hrm/offer-template-html', requireAuth, (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   res.json({ html: hrmBuildOfferHtml('{{CANDIDATE_NAME}}', '{{POSITION}}', '{{JOINING_DATE}}', '{{Today_Date}}') });
+});
+
+// Live HTML preview of the FINAL offer letter for the in-app editor. Returns the
+// letter with the letterhead shown once at the top (inlineHeader) so the on-screen
+// preview reads like a page; the sent PDF repeats it on every page instead.
+app.get('/api/hrm/final-offer-preview-html', requireAuth, (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+  const name = String(req.query.name || '');
+  const position = String(req.query.position || '');
+  const salary = String(req.query.salary || '');
+  const joiningFmt = req.query.joining_date
+    ? new Date(req.query.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+    : '';
+  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+  res.json({ html: hrmBuildFinalOfferHtml(name, position, joiningFmt, salary, today, { inlineHeader: true }) });
+});
+
+// Render the exact final-offer PDF from posted fields (for "preview exact PDF"
+// before sending). Streams application/pdf.
+app.post('/api/hrm/final-offer-render', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { name = '', position = '', joining_date = '', salary = '' } = req.body;
+    const joiningFmt = joining_date
+      ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+      : '';
+    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    const html = hrmBuildFinalOfferHtml(String(name), String(position), joiningFmt, String(salary), today, { inlineHeader: false });
+    const pdf = await hrmRenderOfferPdf(html);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="offer-letter-preview.pdf"');
+    res.send(pdf);
+  } catch (err) {
+    console.error('final-offer-render error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Send the final offer letter: persist the HR-approved fields as a snapshot +
+// token, set status, and WhatsApp the candidate a link to the public PDF
+// endpoint (which renders that snapshot on demand). Replaces the old Apps Script
+// / Google-Doc generation for the final letter.
+app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, res) => {
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
+    if (!c) return res.status(404).json({ error: 'Not found' });
+
+    const { offer_name, offer_position, joining_date, salary, department } = req.body;
+    const name = (offer_name || c.name || '').trim();
+    const position = (offer_position || c.profile_position || '').trim();
+    const finalJoining = joining_date || c.joining_date;
+    const finalSalary = (salary != null && salary !== '') ? salary : c.salary;
+    if (!name) return res.status(400).json({ error: 'Candidate name required' });
+    if (!finalJoining) return res.status(400).json({ error: 'Joining date required' });
+
+    const joiningFmt = new Date(finalJoining).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+
+    const token = require('crypto').randomBytes(24).toString('hex');
+    const snapshot = { name, position, joiningFmt, salary: finalSalary || '', today };
+
+    await db.query(
+      `UPDATE hrm_candidates SET status='Offer Letter Sent', joining_date=?, salary=?, department=COALESCE(?, department), final_offer_token=?, final_offer_data=? WHERE id=?`,
+      [finalJoining, finalSalary || null, department || null, token, JSON.stringify(snapshot), c.id]
+    );
+
+    const base = (process.env.APP_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const pdfUrl = `${base}/offer-pdf/${token}`;
+
+    const caption = `Hello ${name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! Please find attached your official Offer Letter for the position of *${position}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${finalSalary || 'To be discussed'}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
+
+    let waSent = false;
+    if (c.phone) {
+      waSent = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
+        to: hrmFormatPhone(c.phone),
+        mediaUrl: pdfUrl,
+        mediaType: 'document',
+        fileName: `OFFER LETTER - ${name}.pdf`,
+        caption
+      }, 'file', c.id, c.name, 'Offer Letter Sent');
+      if (!waSent) {
+        await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text: `${caption}\n\n📄 *Offer Letter PDF:*\n${pdfUrl}` }, 'text', c.id, c.name, 'Offer Letter Sent - Link Fallback');
+      }
+    }
+    res.json({ ok: true, pdfUrl, waSent });
+  } catch (err) {
+    console.error('send-final-offer error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Read offer letter template text + show service account email

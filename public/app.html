@@ -605,6 +605,7 @@ tbody tr:last-child td{border-bottom:none;}
 .hrm-badge.Selected{background:#f0fdf4;color:#059669;}
 .hrm-badge.Rejected{background:#fef2f2;color:#dc2626;}
 .hrm-badge.offer{background:#f5f3ff;color:#7c3aed;}
+.hrm-badge.offer-final{background:#ecfdf5;color:#047857;}
 .hrm-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;}
 .hrm-candidate-name{font-weight:600;font-size:13px;color:#0f172a;}
 .hrm-candidate-sub{font-size:11px;color:#64748b;margin-top:1px;}
@@ -2845,7 +2846,8 @@ input:focus,select:focus,textarea:focus{outline:none;}
             <option>Rescheduled</option>
             <option>Selected</option>
             <option>Rejected</option>
-            <option>Offer Sent</option>
+            <option value="Offer Sent">Preliminary Offer Letter Sent</option>
+            <option value="Offer Letter Sent">Offer Letter Sent</option>
           </select>
           <select id="hrmFilterPosition" onchange="renderHrmTable()" class="hrm-filter-select" style="min-width:140px">
             <option value="">All Positions</option>
@@ -2915,11 +2917,11 @@ input:focus,select:focus,textarea:focus{outline:none;}
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label>Brand</label>
+          <label>Brand *</label>
           <input type="text" id="invBrand" placeholder="e.g. Dell, Apple, Samsung">
         </div>
         <div class="form-group">
-          <label>Model</label>
+          <label>Model *</label>
           <input type="text" id="invModel" placeholder="e.g. XPS 15, iPhone 14">
         </div>
       </div>
@@ -3116,7 +3118,8 @@ input:focus,select:focus,textarea:focus{outline:none;}
           <option value="Rescheduled">🔄 Rescheduled</option>
           <option value="Selected">✅ Selected</option>
           <option value="Rejected">❌ Rejected</option>
-          <option value="Offer Sent">📄 Offer Sent</option>
+          <option value="Offer Sent">📄 Preliminary Offer Letter Sent</option>
+          <option value="Offer Letter Sent">📬 Offer Letter Sent</option>
         </select>
       </div>
       <div id="hrmReschedFields" style="display:none">
@@ -3209,6 +3212,55 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div class="modal-footer" style="margin-top:16px">
         <button class="btn btn-outline" onclick="closeModal('hrmOfferFormModal')">Cancel</button>
         <button class="btn btn-primary" id="offerFormSubmitBtn" onclick="submitOfferForm()">📄 Generate &amp; Send on WhatsApp</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HRM: Final Offer Letter — live preview + edit before sending on WhatsApp -->
+  <div class="modal-overlay" id="hrmFinalOfferFormModal">
+    <div class="modal" style="width:95vw;max-width:1150px;padding:0;overflow:hidden">
+      <button class="modal-close" onclick="closeModal('hrmFinalOfferFormModal')">×</button>
+      <div style="display:flex;max-height:86vh">
+        <!-- Left: editable fields -->
+        <div style="width:320px;min-width:280px;padding:22px 20px;overflow-y:auto;border-right:1px solid #e2e8f0">
+          <h3 style="margin:0 0 14px">📬 Offer Letter</h3>
+          <div class="form-group">
+            <label>Candidate Name *</label>
+            <input type="text" id="finalOfferFName" placeholder="Full name" oninput="scheduleFinalOfferPreview()">
+          </div>
+          <div class="form-group">
+            <label>Position *</label>
+            <input type="text" id="finalOfferFPosition" placeholder="Job title" oninput="scheduleFinalOfferPreview()">
+          </div>
+          <div class="form-group">
+            <label>Department</label>
+            <select id="finalOfferFDepartment"><option value="">--select--</option></select>
+          </div>
+          <div class="form-group">
+            <label>Joining Date *</label>
+            <input type="date" id="finalOfferFJoining" oninput="scheduleFinalOfferPreview()">
+          </div>
+          <div class="form-group">
+            <label>Salary / CTC</label>
+            <input type="text" id="finalOfferFSalary" placeholder="e.g. 6 LPA" oninput="scheduleFinalOfferPreview()">
+          </div>
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:9px 11px;font-size:11.5px;color:#1e40af;line-height:1.5;margin-top:4px">
+            Preview live updates as you type. The candidate gets this exact PDF — letterhead on every page — on WhatsApp.
+          </div>
+        </div>
+        <!-- Right: live preview -->
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:#f1f5f9">
+          <div style="padding:8px 14px;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+            <span>Live Preview</span>
+            <span id="finalOfferPreviewStatus" style="font-weight:500;text-transform:none;color:#94a3b8"></span>
+          </div>
+          <iframe id="finalOfferPreviewFrame" style="flex:1;border:none;width:100%;min-height:60vh;background:#fff" title="Offer letter preview"></iframe>
+        </div>
+      </div>
+      <div class="modal-footer" style="margin:0;padding:12px 20px;border-top:1px solid #e2e8f0;gap:8px">
+        <button class="btn btn-outline" onclick="closeModal('hrmFinalOfferFormModal')">Cancel</button>
+        <button class="btn btn-outline" onclick="openFinalOfferExactPdf()">🖨️ Preview exact PDF</button>
+        <button class="btn btn-primary" id="finalOfferSendBtn" onclick="submitFinalOfferForm()">📬 Send on WhatsApp</button>
       </div>
     </div>
   </div>
@@ -5178,14 +5230,24 @@ function switchInvTab(tab, el) {
 }
 
 function renderInventory() {
-  const typeFilter = document.getElementById('invFilterType').value;
-  const statusFilter = document.getElementById('invFilterStatus').value;
   const el = document.getElementById('invContent');
   const isAdmin = ME.role === 'admin' || ME.role === 'hod';
 
   // Add Item is contextual to the open tab — it adds to whatever the tab
   // shows. Assignments is a read-only history view, so nothing to add there.
   document.getElementById('invAddBtn').style.display = _invTab === 'assignments' ? 'none' : 'inline-flex';
+
+  // Status only varies across the shared pool; everything in My Equipment is
+  // by definition assigned, so the filter is noise there. Clear it on the way
+  // out, or a status picked on All Equipment would keep silently filtering a
+  // control the user can no longer see.
+  const statusSel = document.getElementById('invFilterStatus');
+  const showStatus = _invTab === 'all';
+  statusSel.style.display = showStatus ? 'block' : 'none';
+  if (!showStatus) statusSel.value = '';
+
+  const typeFilter = document.getElementById('invFilterType').value;
+  const statusFilter = statusSel.value;
 
   if (_invTab === 'assignments' && isAdmin) {
     renderAssignmentsTable(el);
@@ -5226,6 +5288,14 @@ function invCard(item, isAdmin) {
   const specLine = specParts.length
     ? `<div style="font-size:12px;color:#64748b">${specParts.join(' · ')}</div>`
     : '';
+  // Who put this in the register — only when that isn't already obvious. On a
+  // self-added item the filer IS the holder, so the assignee badge right below
+  // would just repeat this name. Compare ids, not names: two people can share
+  // a name, and that would hide a line that actually carries information.
+  const addedBySomeoneElse = item.created_by && String(item.created_by) !== String(item.assigned_to_id);
+  const addedByLine = (_invTab === 'all' && item.created_by_name && addedBySomeoneElse)
+    ? `<div style="font-size:11px;color:#94a3b8;margin-top:3px">✎ Added by ${esc(item.created_by_name)}</div>`
+    : '';
 
   let actions = '';
   if (isAdmin) {
@@ -5255,6 +5325,7 @@ function invCard(item, isAdmin) {
         <div style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:${statusColor}1a;color:${statusColor}">${item.status}</div>
       </div>
       ${specLine}
+      ${addedByLine}
       ${assignedBadge}
       ${item.handover_status==='pending_handover'?`<div style="font-size:11px;color:#ef4444;font-weight:600;margin-top:4px">⚠️ Handover Pending${item.return_reason?` · ${esc(INV_RETURN_REASON_LABELS[item.return_reason]||item.return_reason)}`:''}</div>`:''}
       ${actions?`<div onclick="event.stopPropagation()" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${actions}</div>`:''}
@@ -5290,6 +5361,7 @@ function openInvDetailModal(id) {
     row('Serial No.', item.serial_number, true) +
     row('Condition', INV_CONDITION_LABELS[item.item_condition] || item.item_condition) +
     row('Assigned to', item.assigned_to_name) +
+    row('Added by', item.created_by_name) +
     row('Notes', item.notes) +
     row('Return reason', INV_RETURN_REASON_LABELS[item.return_reason] || item.return_reason) +
     (item.handover_status === 'pending_handover'
@@ -5387,13 +5459,17 @@ async function saveInventoryItem() {
   const type = document.getElementById('invType').value;
   const otherType = document.getElementById('invTypeOther').value.trim();
   if (type === 'other' && !otherType) { showInvErr('invAddErr','Please specify the type'); return; }
+  // Brand and model are what actually tell two items of the same type apart on
+  // the card, since there is no free-text name field.
+  const brand = document.getElementById('invBrand').value.trim();
+  const model = document.getElementById('invModel').value.trim();
+  if (!brand) { showInvErr('invAddErr','Brand is required'); return; }
+  if (!model) { showInvErr('invAddErr','Model is required'); return; }
   // No name field on the form — the type names the item, except for 'other',
   // which is named by whatever type the user typed in.
   const name = type === 'other' ? otherType : INV_TYPE_PLAIN[type];
   const body = {
-    name, type,
-    brand: document.getElementById('invBrand').value.trim(),
-    model: document.getElementById('invModel').value.trim(),
+    name, type, brand, model,
     serial_number: document.getElementById('invSerial').value.trim(),
     item_condition: document.getElementById('invCondition').value,
     notes: document.getElementById('invNotes').value.trim(),
@@ -5636,8 +5712,11 @@ async function restoreLogRecord(id) {
 // ══════════════════════════════════════════════════════
 let _hrmCandidates = [], _hrmMessages = [], _hrmCurrentId = null, _hrmDepartments = [];
 
-const HRM_STATUS_COLORS = {'Scheduled':'#4f46e5','Rescheduled':'#f59e0b','Selected':'#10b981','Rejected':'#ef4444','Offer Sent':'#7c3aed'};
-const HRM_STATUS_BG = {'Scheduled':'#eff6ff','Rescheduled':'#fffbeb','Selected':'#f0fdf4','Rejected':'#fef2f2','Offer Sent':'#f5f3ff'};
+const HRM_STATUS_COLORS = {'Scheduled':'#4f46e5','Rescheduled':'#f59e0b','Selected':'#10b981','Rejected':'#ef4444','Offer Sent':'#7c3aed','Offer Letter Sent':'#047857'};
+const HRM_STATUS_BG = {'Scheduled':'#eff6ff','Rescheduled':'#fffbeb','Selected':'#f0fdf4','Rejected':'#fef2f2','Offer Sent':'#f5f3ff','Offer Letter Sent':'#ecfdf5'};
+// Internal status values stay unchanged (many `status === 'Offer Sent'`
+// comparisons rely on them) — this only controls what's shown to the user.
+const HRM_STATUS_LABELS = {'Offer Sent':'PRELIMINARY OFFER LETTER SENT','Offer Letter Sent':'OFFER LETTER SENT'};
 
 async function loadHRM() {
   const [stats, candidates, messages] = await Promise.all([
@@ -5699,7 +5778,7 @@ function renderHrmTable() {
 function renderHrmRows(list) {
   if (!list.length) return '<div class="empty">No candidates found.</div>';
   const rows = list.map(c=>{
-    const badgeClass = c.status === 'Offer Sent' ? 'offer' : c.status;
+    const badgeClass = c.status === 'Offer Sent' ? 'offer' : c.status === 'Offer Letter Sent' ? 'offer-final' : c.status;
     const color = HRM_STATUS_COLORS[c.status]||'#64748b';
     const bg    = HRM_STATUS_BG[c.status]||'#f8fafc';
     const initials = (c.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
@@ -5722,12 +5801,15 @@ function renderHrmRows(list) {
         <div class="hrm-date-cell">${dateStr}${c.interview_time ? ' ' + esc(c.interview_time) : ''}</div>
         ${reDateStr ? `<div class="hrm-redate">→ Rescheduled: ${reDateStr}${c.reschedule_time?' '+esc(c.reschedule_time):''}</div>` : ''}
       </td>
-      <td><span class="hrm-badge ${badgeClass}">${c.status}</span></td>
+      <td><span class="hrm-badge ${badgeClass}">${HRM_STATUS_LABELS[c.status] || c.status}</span></td>
       <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${canUpdate ? `<button class="action-btn edit" onclick="openHrmStatusModal(${c.id})">Update</button>` : '<span style="font-size:11px;color:#94a3b8">Closed</span>'}
-        ${c.status === 'Offer Sent' ? (c.offer_drive_id
-          ? `<a href="https://drive.google.com/file/d/${c.offer_drive_id}/view" target="_blank" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📄 View Offer</a>`
-          : `<button class="action-btn" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="viewOfferLetter(${c.id})">📄 View Offer</button>`)
+        ${(c.status === 'Offer Sent' || c.status === 'Offer Letter Sent') ? (c.offer_drive_id
+          ? `<a href="https://drive.google.com/file/d/${c.offer_drive_id}/view" target="_blank" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📄 View Preliminary Offer</a>`
+          : `<button class="action-btn" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="viewOfferLetter(${c.id})">📄 View Preliminary Offer</button>`)
+          : ''}
+        ${c.status === 'Offer Letter Sent' && c.final_offer_drive_id
+          ? `<a href="https://drive.google.com/file/d/${c.final_offer_drive_id}/view" target="_blank" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📬 View Offer Letter</a>`
           : ''}
       </td>
     </tr>`;
@@ -5824,6 +5906,11 @@ function onHrmStatusChange() {
   if (s === 'Offer Sent') {
     closeModal('hrmStatusModal');
     openOfferFormModal(_hrmCurrentId);
+    return;
+  }
+  if (s === 'Offer Letter Sent') {
+    closeModal('hrmStatusModal');
+    openFinalOfferFormModal(_hrmCurrentId);
     return;
   }
   document.getElementById('hrmReschedFields').style.display = s==='Rescheduled' ? 'block' : 'none';
@@ -6032,6 +6119,94 @@ function submitOfferForm() {
     } else {
       showToast('Offer letter PDF generated — sent on WhatsApp!');
     }
+    loadHRM();
+  });
+}
+
+async function openFinalOfferFormModal(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  if (!c) return;
+  _hrmCurrentId = id;
+  document.getElementById('finalOfferFName').value     = c.name || '';
+  document.getElementById('finalOfferFPosition').value = c.profile_position || '';
+  document.getElementById('finalOfferFJoining').value  = c.joining_date ? String(c.joining_date).slice(0,10) : '';
+  document.getElementById('finalOfferFSalary').value   = c.salary || '';
+  await loadHrmDepartmentOptions('finalOfferFDepartment', c.department || '');
+  document.getElementById('hrmFinalOfferFormModal').classList.add('open');
+  renderFinalOfferPreview();
+}
+
+function _finalOfferFields() {
+  return {
+    name:         document.getElementById('finalOfferFName').value.trim(),
+    position:     document.getElementById('finalOfferFPosition').value.trim(),
+    joining_date: document.getElementById('finalOfferFJoining').value,
+    salary:       document.getElementById('finalOfferFSalary').value.trim(),
+  };
+}
+
+let _finalOfferPreviewTimer = null;
+function scheduleFinalOfferPreview() {
+  clearTimeout(_finalOfferPreviewTimer);
+  const st = document.getElementById('finalOfferPreviewStatus');
+  if (st) st.textContent = 'typing…';
+  _finalOfferPreviewTimer = setTimeout(renderFinalOfferPreview, 450);
+}
+
+async function renderFinalOfferPreview() {
+  const frame = document.getElementById('finalOfferPreviewFrame');
+  const st = document.getElementById('finalOfferPreviewStatus');
+  if (!frame) return;
+  if (st) st.textContent = 'updating…';
+  try {
+    const params = new URLSearchParams(_finalOfferFields());
+    const r = await api('/api/hrm/final-offer-preview-html?' + params.toString(), 'GET');
+    if (r && r.html) { frame.srcdoc = r.html; if (st) st.textContent = ''; }
+    else if (st) st.textContent = 'preview error';
+  } catch (e) { if (st) st.textContent = 'preview error'; }
+}
+
+// Render + open the exact PDF (as sent to the candidate) in a new tab.
+async function openFinalOfferExactPdf() {
+  const f = _finalOfferFields();
+  if (!f.name || !f.joining_date) { showToast('Name and joining date required', 'error'); return; }
+  showToast('Rendering exact PDF…');
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = localStorage.getItem('authToken');
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const resp = await fetch('/api/hrm/final-offer-render', {
+      method: 'POST', headers, credentials: 'include',
+      body: JSON.stringify(f)
+    });
+    if (!resp.ok) { const e = await resp.json().catch(() => ({})); showToast('PDF render failed: ' + (e.error || resp.status), 'error'); return; }
+    const url = URL.createObjectURL(await resp.blob());
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { showToast('PDF render failed: ' + e.message, 'error'); }
+}
+
+function submitFinalOfferForm() {
+  const offer_name     = document.getElementById('finalOfferFName').value.trim();
+  const offer_position = document.getElementById('finalOfferFPosition').value.trim();
+  const department     = document.getElementById('finalOfferFDepartment').value;
+  const joining_date   = document.getElementById('finalOfferFJoining').value;
+  const salary         = document.getElementById('finalOfferFSalary').value.trim();
+  if (!offer_name)   { showToast('Candidate name required', 'error'); return; }
+  if (!joining_date) { showToast('Joining date required', 'error'); return; }
+  const candidateId = _hrmCurrentId;
+  const btn = document.getElementById('finalOfferSendBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+
+  api(`/api/hrm/candidates/${candidateId}/send-final-offer`, 'POST', {
+    joining_date, salary, offer_name, offer_position, department
+  }).then(r => {
+    if (btn) { btn.disabled = false; btn.textContent = '📬 Send on WhatsApp'; }
+    if (!r || r.error) { showToast((r && r.error) || 'Send failed', 'error'); return; }
+    closeModal('hrmFinalOfferFormModal');
+    showToast(r.waSent
+      ? 'Offer letter sent on WhatsApp!'
+      : 'Offer letter saved — WhatsApp not sent (no phone or send failed).');
     loadHRM();
   });
 }
