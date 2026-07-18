@@ -15153,7 +15153,7 @@ function paApplyFilters() {
     if (from && d < new Date(from)) return false;
     if (to   && d > new Date(to + 'T23:59:59')) return false;
     const parsed = prParseReason(r.reason);
-    const amt = r.amount ? Number(r.amount) : parsed.amount;
+    const amt = parsed.amount != null ? parsed.amount : ((parseFloat(r.amount) || 0) > 0 ? Number(r.amount) : null);
     if (minA !== null && (!amt || amt < minA)) return false;
     if (maxA !== null && (!amt || amt > maxA)) return false;
     return true;
@@ -15181,9 +15181,14 @@ function paRenderApprovalRows(rows) {
 
   const rowData = rows.map((r,i) => {
     const parsed = prParseReason(r.reason);
-    const dispAmt = r.amount ? Number(r.amount) : parsed.amount;
+    // The encoded "[<currency><amount>] <reason>" inside `reason` is
+    // authoritative (the server sends it raw since the currency fix): prefer
+    // the parsed amount/clean reason; the numeric amount column is only a
+    // fallback for legacy rows with plain reasons. Note r.amount is a DECIMAL
+    // string ("0.00" is truthy) — never use it as a boolean.
+    const dispAmt = parsed.amount != null ? parsed.amount : ((parseFloat(r.amount) || 0) > 0 ? Number(r.amount) : null);
     const dispCur = parsed.currency || '₹';
-    const dispReason = r.amount ? r.reason : parsed.reason;
+    const dispReason = parsed.amount != null ? parsed.reason : r.reason;
     const isDone = r.payment_done || sentinels.some(s => s.card_number === '__paid__' && s.reason === '__paid__:' + String(r.id));
     const cancelSentinel = sentinels.find(s => s.card_number === '__cancelled__' && s.reason.startsWith('__cancelled__:' + String(r.id) + ':'));
     const isCancelled = cancelSentinel != null;
