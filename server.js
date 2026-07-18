@@ -9384,10 +9384,15 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
 // change against their real document first.
 function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, salary, todayFmt) {
   const logoSrc = _getHrmLogoSrc();
+  // Same header block as the preliminary letter (hrmBuildOfferHtml) — the
+  // user confirmed that layout renders correctly through the Apps Script.
   const header = `<table class="hdr"><tr>
-    <td width="160" valign="top"><img src="${logoSrc}" alt="e-Marketing" width="150" height="89" style="display:block"></td>
-    <td valign="top" style="font-size:11px;line-height:1.4;text-align:right">
-      <p style="margin:0;text-align:right"><strong>e-Marketing.io (A Unit of Jai Marketing)</strong> Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8, Malviya Nagar, Jaipur, Rajasthan – 307017 (India)<br>
+    <td width="197" valign="top" style="padding-right:12px"><img src="${logoSrc}" alt="e-Marketing" width="185" height="110" style="display:block"></td>
+    <td valign="top" style="font-size:13px;line-height:1.4;text-align:right">
+      <p style="margin:0;text-align:right"><strong>e-Marketing.io (A Unit of Jai Marketing)</strong><br>
+      Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,<br>
+      Malviya Nagar, Jaipur, Rajasthan – 307017 (India)<br>
+      <br>
       Phone: +91-9602694444<br>
       Email: <a href="mailto:abhishek@e-marketing.io">abhishek@e-marketing.io</a><br>
       Website: www.e-marketing.io</p>
@@ -9405,7 +9410,7 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
     a{color:#00f}
   </style></head><body>
 
-  <div class="page">
+  <div class="page" style="page-break-after:always">
     ${header}
     <p>${todayFmt}</p>
     <p>Dear ${candidateName} ,</p>
@@ -9424,7 +9429,7 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
     <p class="center"><strong>${candidateName}</strong></p>
   </div>
 
-  <div class="page">
+  <div class="page" style="page-break-after:always">
     ${header}
     <p><strong><u>CHECKLIST OF DOCUMENTS REQUIRED AT THE TIME OF JOINING:</u></strong></p>
     <ul>
@@ -9441,7 +9446,7 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
     </ul>
   </div>
 
-  <div class="page">
+  <div class="page" style="page-break-after:always">
     ${header}
     <p class="center"><strong>OFFER OF EMPLOYMENT (Private &amp; Confidential)</strong></p>
     <p>We are pleased to offer you employment with eMarketing under the following terms and conditions set out in this Contract of Employment (&ldquo;Agreement&rdquo;), subject to satisfactory reference and background screening and upon approval of any applicable work pass application.</p>
@@ -9474,7 +9479,7 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
     <p>You will not be permitted, while in the employment of the company, to carry on any business other than the business of the company and/or divulge to any person any information concerning the methods, arrangements, practices, or transactions that may injure or prejudice the interest or reputation of the company in any manner or form.</p>
   </div>
 
-  <div class="page">
+  <div class="page" style="page-break-after:always">
     ${header}
     <p><strong>10. CONFLICT OF INTEREST</strong></p>
     <p>All employees shall be required to report to the company if any member of his family, or close relatives, is engaged in any trade or business involving supplies of goods and/or services to the company or has any other type of business relationship with the company.</p>
@@ -9503,7 +9508,7 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
     <p>12.4 Concerning the Personal Information shared under this Agreement, you agree that for Section 43A of the Information Technology Act 2000, the aforesaid personal data policies of the Company or such other policy of the Company dealing with data protection and security shall constitute reasonable security practices and procedures and accordingly, the Information Technology (Reasonable Security Practices and Procedures and Sensitive Personal Data or Information) Rules 2011 are hereby excluded.</p>
   </div>
 
-  <div class="page">
+  <div class="page" style="page-break-after:always">
     ${header}
     <p><strong>13. CONFIDENTIALITY</strong></p>
     <p>13.1 You shall not during your employment or after the termination thereof (howsoever arising) make use of for your own purposes or those of any other person, firm or company or disclose to any person (except the proper officers of the Company or under the authority of the Board or required by law) any trade secrets or confidential information relating to the business, accounts, affairs or finances of the Company or its associated companies or their customers or suppliers, whether recorded or not (and if recorded, whether on paper, tape, hard drive or computer disk) and includes without limitation all and any information about business plans, new business opportunities, research and development projects, product formulae, processes, inventions, designs, discoveries or know-how, sales statistics (including targets and statistics, market share and pricing statistics, forecasts and reports) maturing business opportunities, processes, designs, marketing surveys and plans, costs, profit or loss or financial information relating to theaccounts, prices and discount structures of the Company its associated companies or their customers or suppliers, the names, addresses, telephone numbers, fax numbers, e-mail or contact details, activities or personal affairs of the Company's or its associated companies' customers, agents, consultants, distributors and suppliers, any Company or its associated companies' database, mailing list, software application, component list, any information relating the terms of business between the customers, suppliers or agents and the Company or its associated companies' (the &ldquo;Confidential Information&rdquo;).</p>
@@ -9517,7 +9522,7 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
     <p>13.5 You acknowledge that the remedy of damages may be inadequate to protect the interests of the Company and that the Company is entitled to seek and obtain an injunction or any other legal or equitable relief against you for any threatened or actual breach of any provisions of this Agreement by you or any other relevant person, and no proof of special damages shall be necessary for the enforcement by the Company of its rights under this Agreement.</p>
   </div>
 
-  <div class="page">
+  <div class="page" style="page-break-after:always">
     ${header}
     <p><strong>14. INTELLECTUAL PROPERTY</strong></p>
     <p>14.1 For this Clause 13, &ldquo;Intellectual Property&rdquo; means patents, utility models, registered designs, registered trade and service marks, copyright (whether registered or not), improvements and modifications to any of the foregoing, and the right to apply for protection for such registered rights anywhere in the world, inventions, discoveries, copyright design rights, unregistered trade and service marks, brand names, secret or confidential information, know-how, or any other intellectual property and any similar or equivalent rights, whether registrable or not arising or granted under the law of any country or state.</p>
@@ -9529,7 +9534,7 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
     <p>14.4 You waive all your moral rights under applicable law and any foreign corresponding rights in respect of any work of which you are the author or co-author.</p>
   </div>
 
-  <div class="page">
+  <div class="page" style="page-break-after:always">
     ${header}
     <p>14.5 Rights and obligations under Clause 13 shall continue in force after the termination of this Agreement and any other document created or discovered during the period of your employment and shall be binding upon your representatives.</p>
 
