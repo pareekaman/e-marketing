@@ -9403,22 +9403,18 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
   const signBlock = _HRM_SIGN_SRC
     ? `<img src="${_HRM_SIGN_SRC}" alt="signature" style="width:170px;height:auto;display:block;margin:4px 0">`
     : `<br><br>`;
-  // Acceptance-block dates (dynamic, per the source Doc): the candidate accepts
-  // one day before joining and joins on the joining date, rendered in the Doc's
-  // "Nth day of Month, Year" style from opts.joiningDate (raw). Year comes from
-  // the joining date. Falls back to the joiningFmt string if no raw date given.
-  const _ordDate = (d) => {
-    const day = d.getDate(), v = day % 100;
-    const suf = ['th', 'st', 'nd', 'rd'][(v - 20) % 10] || ['th', 'st', 'nd', 'rd'][v] || 'th';
-    return `${day}${suf} day of ${d.toLocaleDateString('en-IN', { month: 'long' })}, ${d.getFullYear()}`;
-  };
+  // Acceptance-block dates (dynamic, per the source Doc's placeholders
+  // "{one day before Date of Joining}, {present year}"): rendered literally as
+  // "29 July, 2026" from opts.joiningDate (raw). Year comes from the joining
+  // date. Falls back to the joiningFmt string if no raw date given.
+  const _fmtDate = (d) => `${d.getDate()} ${d.toLocaleDateString('en-IN', { month: 'long' })}, ${d.getFullYear()}`;
   let acceptDateStr = joiningFmt || '', joinDateStr = joiningFmt || '';
   if (opts.joiningDate) {
     const jd = new Date(opts.joiningDate);
     if (!isNaN(jd.getTime())) {
-      joinDateStr = _ordDate(jd);
+      joinDateStr = _fmtDate(jd);
       const prev = new Date(jd); prev.setDate(prev.getDate() - 1);
-      acceptDateStr = _ordDate(prev);
+      acceptDateStr = _fmtDate(prev);
     }
   }
   // Header used only for the on-screen preview (opts.inlineHeader). The printed
@@ -10091,15 +10087,19 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
       [finalJoining, finalSalary || null, department || null, token, JSON.stringify(snapshot), c.id]
     );
 
-    // Build the PDF URL from the host that served THIS request — that
-    // deployment is proven to run the current code. APP_URL is only a
-    // fallback: it can point at a stale production deployment (observed:
-    // APP_URL's deployment still ran old code and 500'd on /offer-pdf, so the
-    // provider could never attach the file and fell back to a bare link).
-    const reqHost = req.headers['x-forwarded-host'] || req.get('host');
-    const base = (reqHost
-      ? `${req.headers['x-forwarded-proto'] || req.protocol}://${reqHost}`
-      : (process.env.APP_URL || '')).replace(/\/$/, '');
+    // Pick the host for the public PDF URL carefully — the WhatsApp provider
+    // must be able to fetch it anonymously:
+    // - *.vercel.app preview/deployment URLs (hash or branch subdomains) sit
+    //   behind Vercel Authentication and 302 to a login page for anonymous
+    //   fetchers (observed: provider got the redirect, attach failed, bare
+    //   link fallback went out) -> use APP_URL (stable production) instead.
+    // - A custom domain (e.g. taskmanager.e-marketing.io) is public: use it.
+    // Either way production must run current code, else /offer-pdf 500s there.
+    const reqHost = req.headers['x-forwarded-host'] || req.get('host') || '';
+    const isVercelPreview = /\.vercel\.app$/i.test(reqHost) ;
+    const base = ((isVercelPreview || !reqHost)
+      ? (process.env.APP_URL || `https://${reqHost}`)
+      : `${req.headers['x-forwarded-proto'] || req.protocol}://${reqHost}`).replace(/\/$/, '');
     const pdfUrl = `${base}/offer-pdf/${token}`;
 
     const caption = `Hello ${name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! Please find attached your official Offer Letter for the position of *${position}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${finalSalary || 'To be discussed'}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
