@@ -5841,8 +5841,11 @@ function renderHrmMsgTable() {
     const statusCls = m.status==='Sent' ? 'hrm-msg-status-sent' : 'hrm-msg-status-failed';
     const retryBtn = m.status==='Failed'
       ? `<button class="action-btn edit" onclick="retryHrmMsg(${m.id})">Retry</button>` : '';
+    // created_at_fmt is SQL-formatted IST wall time (see the /api/hrm/messages
+    // route). Fallback formats the raw value in UTC — the stored wall time IS
+    // IST, so rendering it as Asia/Kolkata double-shifted +5:30 (brain.md §16).
     const _d = m.created_at instanceof Date ? m.created_at : new Date(m.created_at);
-    const ts = m.created_at && !isNaN(_d) ? _d.toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}) : '';
+    const ts = m.created_at_fmt || (m.created_at && !isNaN(_d) ? _d.toLocaleString('en-IN',{timeZone:'UTC'}) : '');
     return `<tr>
       <td style="width:30px;text-align:center"><input type="checkbox" ${_hrmMsgSelected.has(m.id)?'checked':''} onchange="toggleHrmMsgSelect(${m.id}, this.checked)" style="cursor:pointer"></td>
       <td style="font-size:12px;color:#64748b;white-space:nowrap">${ts}</td>

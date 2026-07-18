@@ -10153,11 +10153,14 @@ app.get('/api/hrm/offer-template-preview', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message, serviceAccountEmail }); }
 });
 
-// Get message log
+// Get message log. created_at_fmt is formatted in SQL (the codebase convention
+// for timestamps): the DB stores IST wall-time, but mysql2 (Node on UTC) tags
+// it as UTC, so a browser-side toLocaleString('en-IN', Asia/Kolkata) adds
+// +5:30 AGAIN and shows times 5.5h in the future — see brain.md Section 16.
 app.get('/api/hrm/messages', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const [rows] = await db.query('SELECT * FROM hrm_message_log WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500');
+    const [rows] = await db.query(`SELECT *, DATE_FORMAT(created_at, '%e/%c/%Y, %l:%i:%s %p') AS created_at_fmt FROM hrm_message_log WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500`);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
