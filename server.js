@@ -9403,6 +9403,24 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
   const signBlock = _HRM_SIGN_SRC
     ? `<img src="${_HRM_SIGN_SRC}" alt="signature" style="width:170px;height:auto;display:block;margin:4px 0">`
     : `<br><br>`;
+  // Acceptance-block dates (dynamic, per the source Doc): the candidate accepts
+  // one day before joining and joins on the joining date, rendered in the Doc's
+  // "Nth day of Month, Year" style from opts.joiningDate (raw). Year comes from
+  // the joining date. Falls back to the joiningFmt string if no raw date given.
+  const _ordDate = (d) => {
+    const day = d.getDate(), v = day % 100;
+    const suf = ['th', 'st', 'nd', 'rd'][(v - 20) % 10] || ['th', 'st', 'nd', 'rd'][v] || 'th';
+    return `${day}${suf} day of ${d.toLocaleDateString('en-IN', { month: 'long' })}, ${d.getFullYear()}`;
+  };
+  let acceptDateStr = joiningFmt || '', joinDateStr = joiningFmt || '';
+  if (opts.joiningDate) {
+    const jd = new Date(opts.joiningDate);
+    if (!isNaN(jd.getTime())) {
+      joinDateStr = _ordDate(jd);
+      const prev = new Date(jd); prev.setDate(prev.getDate() - 1);
+      acceptDateStr = _ordDate(prev);
+    }
+  }
   // Header used only for the on-screen preview (opts.inlineHeader). The printed
   // PDF gets the same logo/address as a running header on every page instead.
   const header = `<table class="hdr"><tr>
@@ -9474,8 +9492,10 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
     <p>Abhishek Jain</p>
     <p>Partner: eMarketing</p>
     <br><br><br>
-    <p class="center">Agreed and accepted this 9th day of July, 2026.</p>
-    <p class="center">I will join eMarketing on the 10th day of July 2026.</p>
+    <p class="center">Agreed and accepted this ${acceptDateStr}.</p>
+    <p class="center">I will join eMarketing on the ${joinDateStr}.</p>
+    <br><br>
+    <p class="center">____________________________</p>
     <p class="center"><strong>${candidateName}</strong></p>
   </div>
 
@@ -9709,7 +9729,7 @@ async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrid
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
   // inlineHeader:true -> letterhead shown once at the top, like the preliminary
   // letter, so the Apps Script HTML->Google-Doc->PDF conversion renders cleanly.
-  const html = hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, salary, today, { inlineHeader: true });
+  const html = hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, salary, today, { inlineHeader: true, joiningDate: joining_date });
 
   const fetchFn = global.fetch || (await import('node-fetch')).default;
   const scriptRes = await fetchFn(HRM_OFFER_SCRIPT, {
@@ -10061,7 +10081,7 @@ app.get('/api/hrm/final-offer-preview-html', requireAuth, (req, res) => {
     ? new Date(req.query.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
     : '';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-  res.json({ html: hrmBuildFinalOfferHtml(name, position, joiningFmt, salary, today, { inlineHeader: true }) });
+  res.json({ html: hrmBuildFinalOfferHtml(name, position, joiningFmt, salary, today, { inlineHeader: true, joiningDate: req.query.joining_date }) });
 });
 
 // Send the final offer letter the same reliable way as the preliminary letter:
