@@ -9762,8 +9762,9 @@ app.get('/offer-pdf/:token', async (req, res) => {
     res.setHeader('Content-Disposition', `inline; filename="OFFER LETTER - ${safeName}.pdf"`);
     res.send(pdf);
   } catch (err) {
-    console.error('offer-pdf render error:', err.message);
-    res.status(500).send('Failed to render offer letter.');
+    console.error('offer-pdf render error:', (err && err.stack) || err);
+    // Temporary: expose the real error to diagnose the Vercel Chromium setup.
+    res.status(500).type('text/plain').send('Failed to render offer letter.\n\n' + ((err && (err.stack || err.message)) || String(err)));
   }
 });
 
