@@ -9403,6 +9403,20 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
   const signBlock = _HRM_SIGN_SRC
     ? `<img src="${_HRM_SIGN_SRC}" alt="signature" style="width:170px;height:auto;display:block;margin:4px 0">`
     : `<br><br>`;
+  // Acceptance-block dates (dynamic, per the source Doc's placeholders
+  // "{one day before Date of Joining}, {present year}"): rendered literally as
+  // "29 July, 2026" from opts.joiningDate (raw). Year comes from the joining
+  // date. Falls back to the joiningFmt string if no raw date given.
+  const _fmtDate = (d) => `${d.getDate()} ${d.toLocaleDateString('en-IN', { month: 'long' })}, ${d.getFullYear()}`;
+  let acceptDateStr = joiningFmt || '', joinDateStr = joiningFmt || '';
+  if (opts.joiningDate) {
+    const jd = new Date(opts.joiningDate);
+    if (!isNaN(jd.getTime())) {
+      joinDateStr = _fmtDate(jd);
+      const prev = new Date(jd); prev.setDate(prev.getDate() - 1);
+      acceptDateStr = _fmtDate(prev);
+    }
+  }
   // Header used only for the on-screen preview (opts.inlineHeader). The printed
   // PDF gets the same logo/address as a running header on every page instead.
   const header = `<table class="hdr"><tr>
@@ -9418,7 +9432,37 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
     </td>
   </tr></table>`;
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+  // Compact running header (logo + address) for browser print: repeats on every
+  // page because it is position:fixed inside the @page top margin.
+  const runHeader = `<table style="width:100%;border-collapse:collapse"><tr>
+    <td style="vertical-align:top;padding:0"><img src="${logoSrc}" alt="e-Marketing" style="height:48px;width:auto;display:block"></td>
+    <td style="vertical-align:top;padding:0;text-align:right;font-size:10px;line-height:1.4">
+      <strong>e-Marketing.io (A Unit of Jai Marketing)</strong><br>
+      Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,<br>
+      Malviya Nagar, Jaipur, Rajasthan – 307017 (India)<br>
+      Phone: +91-9602694444 &nbsp;|&nbsp; <a href="mailto:abhishek@e-marketing.io">abhishek@e-marketing.io</a> &nbsp;|&nbsp; www.e-marketing.io
+    </td>
+  </tr></table>`;
+  // Print styling: the browser (HR's or the candidate's Chrome/Edge) renders the
+  // PDF via its own print engine — no server Chromium. A .dlbar "Save as PDF"
+  // button (screen only) triggers window.print().
+  const printCss = opts.forPrint ? `
+    @page { size: A4; margin: 34mm 16mm 18mm; }
+    @media print {
+      .dlbar { display: none !important; }
+      .sheet { max-width: none !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; }
+      .run-header { position: fixed; top: 8mm; left: 16mm; right: 16mm; margin: 0 !important; }
+    }
+    @media screen {
+      body { background: #eef1f5; }
+      .sheet { max-width: 820px; margin: 16px auto; padding: 28px 34px; background: #fff; box-shadow: 0 1px 8px rgba(0,0,0,.15); }
+      .run-header { margin-bottom: 14px; }
+    }
+    .dlbar { position: sticky; top: 0; z-index: 9; background: #4f46e5; color: #fff; padding: 11px 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-family: system-ui, -apple-system, sans-serif; font-size: 14px; }
+    .dlbar button { background: #fff; color: #4f46e5; border: none; border-radius: 7px; padding: 8px 18px; font-weight: 700; font-size: 14px; cursor: pointer; white-space: nowrap; }
+    .run-header table { width: 100%; border-collapse: collapse; }
+  ` : '';
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Offer Letter${candidateName ? ' - ' + candidateName : ''}</title><style>
     body{margin:0;padding:0;font-family:'Times New Roman',Times,serif;font-size:14px;color:#000;line-height:1.35}
     table.hdr{width:100%;border:none;border-collapse:collapse;margin-bottom:10px}
     table.hdr td{border:none;vertical-align:top;padding:0}
@@ -9426,9 +9470,12 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
     ul{margin:2px 0 8px 18px}ul li{margin-bottom:4px}
     .center{text-align:center}
     .pb{page-break-before:always}
-    a{color:#00f}
+    .rule{border:none;border-top:1px solid #999;margin:12px 0}
+    a{color:#00f}${printCss}
   </style></head><body>
-
+${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ? ' — ' + candidateName : ''}</span><button onclick="window.print()">⬇ Save as PDF</button></div>
+  <div class="sheet">
+  <div class="run-header">${runHeader}</div>` : ''}
   <div class="page">
     ${opts.inlineHeader ? header : ''}
     <p>${todayFmt}</p>
@@ -9442,9 +9489,12 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
     ${signBlock}
     <p>Abhishek Jain</p>
     <p>Partner: eMarketing</p>
+    <hr class="rule">
     <br><br><br>
-    <p class="center">Agreed and accepted this 9th day of July, 2026.</p>
-    <p class="center">I will join eMarketing on the 10th day of July 2026.</p>
+    <p class="center">Agreed and accepted this ${acceptDateStr}.</p>
+    <p class="center">I will join eMarketing on the ${joinDateStr}.</p>
+    <br><br>
+    <p class="center">____________________________</p>
     <p class="center"><strong>${candidateName}</strong></p>
   </div>
 
@@ -9520,7 +9570,7 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
     J. Providing information to future purchasers of the Company or any of its associated companies; and<br>
     K. Transferring information concerning you to a country or territory outside India (all HR information is maintained in the shared services in India).</p>
 
-    <p>12.2 You also consent to the company monitoring and recording your actions and activities, such as those conducted on your laptop or desktop computer that is issued to you by the company, and any use you make of your telecommunication or computer systems. You agree to comply with the company's policy concerning the use of such systems.</p>
+    <p>12.2 You also consent to the company monitoring and recording your actions and activities, such as those conducted on your laptop or desktop computer that is issued to you by the company, telecommunications, and security systems, and any use you make of your telecommunication or computer systems. You agree to comply with the company's policy concerning the use of such systems.</p>
 
     <p>12.3 You agree to comply with the company's data policies and will take all steps to ensure that any associated company companies' information or personal data that you have, hold, or process will be kept securely by you, particularly if such information is accessed by or accessible to you via a mobile device, such as a laptop, desktop, personal digital assistant (PDA) or mobile telephone.</p>
 
@@ -9536,7 +9586,7 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
 
     <p>13.3 The obligations contained in this Clause 12 shall continue to apply without limitation in time following the termination of your employment, however arising, but they shall cease to apply to any information or knowledge that may subsequently come into the public domain other than by way of unauthorized disclosure.</p>
 
-    <p>13.4 All confidential information, plans, statistics, records, and other documentation (including any copies thereof, whether in paper or electronic form) of whatsoever nature relating to the business of the company or its associated companies or their customers or suppliers, shall immediately be returned by you to the company or, at the option of the company, destroyed or deleted (in the case of information that is stored electronically) in the event of the termination of your employment, however arising (or at any earlier time on demand).</p>
+    <p>13.4 All confidential information, plans, statistics, records, and other documentation (including any copies thereof, whether in paper or electronic form) of whatsoever nature relating to the business of the company or its associated companies or their customers or suppliers, shall be immediately returned by you to the company or, at the option of the company, destroyed or deleted (in the case of information that is stored electronically) in the event of the termination of your employment, however arising (or at any earlier time on demand).</p>
 
     <p>13.5 You acknowledge that the remedy of damages may be inadequate to protect the interests of the Company and that the Company is entitled to seek and obtain an injunction or any other legal or equitable relief against you for any threatened or actual breach of any provisions of this Agreement by you or any other relevant person, and no proof of special damages shall be necessary for the enforcement by the Company of its rights under this Agreement.</p>
   </div>
@@ -9546,16 +9596,18 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
     <p><strong>14. INTELLECTUAL PROPERTY</strong></p>
     <p>14.1 For this Clause 13, &ldquo;Intellectual Property&rdquo; means patents, utility models, registered designs, registered trade and service marks, copyright (whether registered or not), improvements and modifications to any of the foregoing, and the right to apply for protection for such registered rights anywhere in the world, inventions, discoveries, copyright design rights, unregistered trade and service marks, brand names, secret or confidential information, know-how, or any other intellectual property and any similar or equivalent rights, whether registrable or not arising or granted under the law of any country or state.</p>
 
-    <p>14.2 Any Intellectual Property made created or discovered by you (either alone or with any other persons) during your employment (whether capable of being patented or registered or not and whether created or discovered in the course of your employment and whether or not it was created or discovered with the use of the Company's machinery or equipment of the Company or any of its associated companies) in conjunction with or in any way affecting or relating to the business of the Company or any other Intellectual Property rights for the time being and from time to time of the Company or in the opinion of the management of the Company is capable of being used or adapted for such use shall forthwith be disclosed to the Company and shall (subject to all relevant legislation), on a worldwide and perpetual basis, belong to and be the absolute property of the Company or its associated companies, as the case may be.</p>
+    <p>14.2 Any Intellectual Property made created or discovered by you (either alone or with any other persons) during your employment (whether capable of being patented or registered or not and whether or not created or discovered in the course of your employment and whether or not it was created or discovered with the use of the Company's machinery or equipment of the Company or any of its associated companies) in conjunction with or in any way affecting or relating to the business or other Intellectual Property rights for the time being and from time to time of the Company or any of its associated companies or in the opinion of the management of the Company is capable of being used or adapted for such use shall forthwith be disclosed to the Company and shall (subject to all relevant legislation), on a worldwide and perpetual basis, belong to and be the absolute property of the Company or its associated companies, as the case may be.</p>
 
-    <p>14.3 If and whenever required to do so by the company, you will, at the expense of the company, apply or join with the Company or any of its associated companies in applying for letters patent or other protection or registration in India and/or any other part of the world for any such Intellectual Property which belongs to the Company or any of its associated companies. You will, at the company's expense, execute and do or procure to be executed and done all instruments and things necessary for vesting the said letters patent or other protection or registration, and all rights, title, and interest to and in the intellectual property in the company absolutely or in such other persons or companies as the company may specify. Any assignment/transfer of such rights, titles, and interests shall not lapse if the company has not exercised its rights under the assignment for any period.</p>
+    <p>14.3 If and whenever required to do so by the company, you will, at the expense of the company, apply or join with the Company or any of its associated companies in applying for letters patent or other protection or registration in India and/or any other part of the world for any such Intellectual Property which belongs to the Company or its associated companies. You will, at the company's expense, execute and do or procure to be executed and done all instruments and things necessary for vesting the said letters patent or other protection or registration when obtained, and all rights, title, and interest to and in the intellectual property in the company absolutely or in such other persons or companies as the company may specify. Any assignment/transfer of such rights, titles, and interests shall not lapse if the company has not exercised its rights under the assignment for any period.</p>
 
     <p>14.4 You waive all your moral rights under applicable law and any foreign corresponding rights in respect of any work of which you are the author or co-author.</p>
   </div>
 
   <div class="page">
     <div class="pb"></div>
-    <p>14.5 Rights and obligations under Clause 13 shall continue in force after the termination of this Agreement and any other document created or discovered during the period of your employment and shall be binding upon your representatives.</p>
+    <p>14.5 Rights and obligations under Clause 13 shall continue in force after the termination of your employment concerning intellectual property created or discovered during the period of your employment and shall be binding upon your representatives.</p>
+
+    <p>14.6 You agree that, as and when requested by the Company, you shall appoint the Company as your attorney in your name to execute and do all documents and things, that are required to give effect to the provisions of this Clause 13.</p>
 
     <p><strong>15. MISCELLANEOUS</strong></p>
     <p>15.1 This Agreement together with any documents referred to in it constitutes the entire agreement and understanding between you and the Company and supersedes any previous agreement relating to your employment with the Company.</p>
@@ -9583,78 +9635,21 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
     <div class="pb"></div>
     <p>If the above terms and conditions are acceptable to you, please signify by signing the duplicate of this letter and returning the same to us within three (3) working days.</p>
   </div>
-
+${opts.forPrint ? '  </div>' : ''}
   </body></html>`;
 }
 
-// Running header (logo + address) painted into the top page margin on EVERY
-// page by the PDF renderer. Puppeteer header/footer templates are isolated from
-// the page's CSS and default to font-size 0, so every style here is inline and
-// explicit. The logo is shrunk vs the body letterhead to keep the band compact.
-function hrmFinalOfferHeaderTemplate() {
-  const logoSrc = _getHrmLogoSrc();
-  return `<div style="width:100%;box-sizing:border-box;padding:8px 48px 0;font-family:'Times New Roman',Times,serif;color:#000">
-    <table style="width:100%;border-collapse:collapse"><tr>
-      <td style="vertical-align:top;padding:0"><img src="${logoSrc}" style="height:46px;width:auto;display:block"></td>
-      <td style="vertical-align:top;padding:0;text-align:right;font-size:9px;line-height:1.35">
-        <span style="font-weight:bold">e-Marketing.io (A Unit of Jai Marketing)</span><br>
-        Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,<br>
-        Malviya Nagar, Jaipur, Rajasthan – 307017 (India)<br>
-        Phone: +91-9602694444 &nbsp;|&nbsp; Email: abhishek@e-marketing.io &nbsp;|&nbsp; www.e-marketing.io
-      </td>
-    </tr></table>
-  </div>`;
-}
+// Decoded image buffers for the pdfkit renderer (offer-letter-pdf.js).
+function _hrmLogoBuffer() { try { return Buffer.from(_HRM_LOGO_SRC.split(',')[1], 'base64'); } catch { return null; } }
+function _hrmSignBuffer() { try { return _HRM_SIGN_SRC ? Buffer.from(_HRM_SIGN_SRC.split(',')[1], 'base64') : null; } catch { return null; } }
 
-// Launch a headless Chromium. On Vercel/Linux we use the bundled
-// @sparticuz/chromium binary; for local dev, set CHROME_PATH to a real
-// Chrome/Edge executable (the bundled binary is Linux-only).
-async function _hrmGetBrowser() {
-  const puppeteer = require('puppeteer-core');
-  const localPath = process.env.CHROME_PATH || process.env.LOCAL_CHROME_PATH;
-  if (localPath) {
-    return puppeteer.launch({
-      headless: true,
-      executablePath: localPath,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-  }
-  // @sparticuz/chromium only extracts its bundled shared libraries (libnss3.so
-  // etc.) and sets LD_LIBRARY_PATH when it detects an AWS Lambda runtime via
-  // AWS_EXECUTION_ENV. Vercel runs on Lambda but does not expose that variable
-  // in the form the package expects, so chromium's binary extracts but its libs
-  // never do -> "libnss3.so: cannot open shared object file". Set the variable
-  // (matched to the Node major version: 18 -> AL2 libs, 20/22 -> AL2023 libs)
-  // BEFORE requiring the package, whose module-load code reads it once.
-  const nodeMajor = parseInt(process.versions.node.split('.')[0], 10) || 18;
-  process.env.AWS_EXECUTION_ENV = `AWS_Lambda_nodejs${nodeMajor}.x`;
-  const chromium = require('@sparticuz/chromium');
-  return puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath(),
-    headless: chromium.headless,
-  });
-}
-
-// Render offer-letter HTML to a print-quality A4 PDF buffer, with the letterhead
-// as a running header and a page-number footer on every page.
-async function hrmRenderOfferPdf(html) {
-  const browser = await _hrmGetBrowser();
-  try {
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    return await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      displayHeaderFooter: true,
-      headerTemplate: hrmFinalOfferHeaderTemplate(),
-      footerTemplate: `<div style="width:100%;font-size:8px;color:#888;text-align:center;padding:0 48px;font-family:'Times New Roman',Times,serif">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>`,
-      margin: { top: '132px', bottom: '42px', left: '48px', right: '48px' },
-    });
-  } finally {
-    await browser.close();
-  }
+// Build the final-offer HTML and render it to a PDF Buffer via pdfkit
+// (offer-letter-pdf.js): letterhead on every page, signature below the
+// sign-off, real page breaks. No browser involved.
+async function hrmRenderFinalOfferPdfBuffer({ name, position, joiningFmt, salary, today, joiningDate }) {
+  const { renderOfferPdfFromHtml } = require('./offer-letter-pdf');
+  const html = hrmBuildFinalOfferHtml(name || '', position || '', joiningFmt || '', salary || '', today || '', { inlineHeader: false, joiningDate });
+  return renderOfferPdfFromHtml(html, { logoBuffer: _hrmLogoBuffer(), signBuffer: _hrmSignBuffer() });
 }
 
 // Final "Offer Letter Sent" stage — sends the exact contract transcribed in
@@ -9673,7 +9668,9 @@ async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrid
     ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
     : '';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-  const html = hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, salary, today);
+  // inlineHeader:true -> letterhead shown once at the top, like the preliminary
+  // letter, so the Apps Script HTML->Google-Doc->PDF conversion renders cleanly.
+  const html = hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, salary, today, { inlineHeader: true, joiningDate: joining_date });
 
   const fetchFn = global.fetch || (await import('node-fetch')).default;
   const scriptRes = await fetchFn(HRM_OFFER_SCRIPT, {
@@ -9743,26 +9740,29 @@ app.get('/offer/:token', async (req, res) => {
   }
 });
 
-// Public PDF for the final offer letter — the URL WhatsApped to the candidate.
-// Renders the HR-approved snapshot on demand via Chromium (letterhead on every
-// page + signature). No auth: the random token is the capability.
+// Public PDF of the final offer letter — the URL the WhatsApp provider fetches
+// to attach the document. Renders the stored HR-approved snapshot on demand via
+// pdfkit (fast, no browser). No auth: the random token is the capability, same
+// pattern as /offer/:token.
 app.get('/offer-pdf/:token', async (req, res) => {
   try {
     const [[c]] = await db.query(
-      'SELECT final_offer_data, name FROM hrm_candidates WHERE final_offer_token=? LIMIT 1',
+      'SELECT final_offer_data FROM hrm_candidates WHERE final_offer_token=? LIMIT 1',
       [req.params.token]
     );
     if (!c || !c.final_offer_data) return res.status(404).send('Offer letter not found or link has expired.');
     const d = JSON.parse(c.final_offer_data);
-    const html = hrmBuildFinalOfferHtml(d.name || '', d.position || '', d.joiningFmt || '', d.salary || '', d.today || '', { inlineHeader: false });
-    const pdf = await hrmRenderOfferPdf(html);
+    const pdf = await hrmRenderFinalOfferPdfBuffer({
+      name: d.name, position: d.position, joiningFmt: d.joiningFmt,
+      salary: d.salary, today: d.today, joiningDate: d.joining_date,
+    });
     const safeName = String(d.name || 'candidate').replace(/[^a-zA-Z0-9 _-]/g, '').trim() || 'candidate';
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="OFFER LETTER - ${safeName}.pdf"`);
     res.send(pdf);
   } catch (err) {
-    console.error('offer-pdf render error:', err.message);
-    res.status(500).send('Failed to render offer letter.');
+    console.error('offer-pdf error:', err.message);
+    res.status(500).send('Failed to load offer letter.');
   }
 });
 
@@ -10028,11 +10028,10 @@ app.get('/api/hrm/final-offer-preview-html', requireAuth, (req, res) => {
     ? new Date(req.query.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
     : '';
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-  res.json({ html: hrmBuildFinalOfferHtml(name, position, joiningFmt, salary, today, { inlineHeader: true }) });
+  res.json({ html: hrmBuildFinalOfferHtml(name, position, joiningFmt, salary, today, { inlineHeader: true, joiningDate: req.query.joining_date }) });
 });
 
-// Render the exact final-offer PDF from posted fields (for "preview exact PDF"
-// before sending). Streams application/pdf.
+// Exact-PDF preview for HR: streams the same pdfkit PDF the candidate will get.
 app.post('/api/hrm/final-offer-render', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   try {
@@ -10041,8 +10040,10 @@ app.post('/api/hrm/final-offer-render', requireAuth, async (req, res) => {
       ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
       : '';
     const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-    const html = hrmBuildFinalOfferHtml(String(name), String(position), joiningFmt, String(salary), today, { inlineHeader: false });
-    const pdf = await hrmRenderOfferPdf(html);
+    const pdf = await hrmRenderFinalOfferPdfBuffer({
+      name: String(name), position: String(position), joiningFmt,
+      salary: String(salary), today, joiningDate: joining_date,
+    });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="offer-letter-preview.pdf"');
     res.send(pdf);
@@ -10053,9 +10054,10 @@ app.post('/api/hrm/final-offer-render', requireAuth, async (req, res) => {
 });
 
 // Send the final offer letter: persist the HR-approved fields as a snapshot +
-// token, set status, and WhatsApp the candidate a link to the public PDF
-// endpoint (which renders that snapshot on demand). Replaces the old Apps Script
-// / Google-Doc generation for the final letter.
+// token, then WhatsApp the candidate the public /offer-pdf/:token URL as an
+// attached document — that endpoint serves the pdfkit-rendered PDF (letterhead
+// on every page, signature, real page breaks), which neither the Apps Script
+// Google-Doc pipeline nor Vercel-hosted Chromium could produce.
 app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   try {
@@ -10072,16 +10074,32 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
 
     const joiningFmt = new Date(finalJoining).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
     const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    // Raw YYYY-MM-DD joining date for the dynamic acceptance-block dates.
+    const rawJoin = (typeof finalJoining === 'string')
+      ? finalJoining.slice(0, 10)
+      : new Date(new Date(finalJoining).getTime() - new Date(finalJoining).getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
     const token = require('crypto').randomBytes(24).toString('hex');
-    const snapshot = { name, position, joiningFmt, salary: finalSalary || '', today };
+    const snapshot = { name, position, joiningFmt, joining_date: rawJoin, salary: finalSalary || '', today };
 
     await db.query(
       `UPDATE hrm_candidates SET status='Offer Letter Sent', joining_date=?, salary=?, department=COALESCE(?, department), final_offer_token=?, final_offer_data=? WHERE id=?`,
       [finalJoining, finalSalary || null, department || null, token, JSON.stringify(snapshot), c.id]
     );
 
-    const base = (process.env.APP_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    // Pick the host for the public PDF URL carefully — the WhatsApp provider
+    // must be able to fetch it anonymously:
+    // - *.vercel.app preview/deployment URLs (hash or branch subdomains) sit
+    //   behind Vercel Authentication and 302 to a login page for anonymous
+    //   fetchers (observed: provider got the redirect, attach failed, bare
+    //   link fallback went out) -> use APP_URL (stable production) instead.
+    // - A custom domain (e.g. taskmanager.e-marketing.io) is public: use it.
+    // Either way production must run current code, else /offer-pdf 500s there.
+    const reqHost = req.headers['x-forwarded-host'] || req.get('host') || '';
+    const isVercelPreview = /\.vercel\.app$/i.test(reqHost) ;
+    const base = ((isVercelPreview || !reqHost)
+      ? (process.env.APP_URL || `https://${reqHost}`)
+      : `${req.headers['x-forwarded-proto'] || req.protocol}://${reqHost}`).replace(/\/$/, '');
     const pdfUrl = `${base}/offer-pdf/${token}`;
 
     const caption = `Hello ${name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! Please find attached your official Offer Letter for the position of *${position}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${finalSalary || 'To be discussed'}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
