@@ -34,3 +34,9 @@ dist/
 build/
 E-Marketing-Architecture.pdf
 brain.md
+
+# Signature source image (raw original, untracked for privacy).
+# NOTE: public/signature.png must STAY tracked — the server reads it at
+# startup and Vercel deploys need it, else letters lose the signature.
+# Never ignore public/ as a whole: the entire frontend lives there.
+public/signature.jpeg
