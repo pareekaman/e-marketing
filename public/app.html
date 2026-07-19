@@ -7507,10 +7507,28 @@ function _buildTaskRowHtml(t, ctx) {
   </tr>`;
 }
 
+// Which doer groups are expanded — keyed by "userId|name". Kept across
+// re-renders so completing a task (Done → reload) doesn't collapse the group
+// the user is working inside.
+const _tgOpenKeys = new Set();
+
 function toggleTaskGroup(headerEl) {
   const section = headerEl.closest('.tg-section');
   if (!section) return;
   section.classList.toggle('open');
+  const key = section.dataset.tgKey;
+  if (key != null) {
+    if (section.classList.contains('open')) _tgOpenKeys.add(key);
+    else _tgOpenKeys.delete(key);
+  }
+}
+
+function tgSetAll(open) {
+  document.querySelectorAll('#tasksContent .tg-section').forEach(s => {
+    s.classList.toggle('open', open);
+    const k = s.dataset.tgKey;
+    if (k != null) { if (open) _tgOpenKeys.add(k); else _tgOpenKeys.delete(k); }
+  });
 }
 
 function renderTasksTable() {
@@ -7579,7 +7597,7 @@ function renderTasksTable() {
     const groups = new Map();
     for (const t of tasks) {
       const key = `${t.assigned_to || ''}|${t.assignedToName || '—'}`;
-      if (!groups.has(key)) groups.set(key, { name: t.assignedToName || '—', userId: t.assigned_to || '', tasks: [] });
+      if (!groups.has(key)) groups.set(key, { key, name: t.assignedToName || '—', userId: t.assigned_to || '', tasks: [] });
       groups.get(key).tasks.push(t);
     }
     const sortedGroups = [...groups.values()].sort((a,b) => a.name.localeCompare(b.name));
@@ -7591,8 +7609,8 @@ function renderTasksTable() {
       const pending = g.tasks.filter(t => t.status === 'pending').length;
       const completed = g.tasks.filter(t => t.status === 'completed').length;
       const revised = g.tasks.filter(t => t.status === 'revised').length;
-      const isOpen = autoOpen;
-      return `<div class="tg-section ${isOpen ? 'open' : ''}">
+      const isOpen = autoOpen || _tgOpenKeys.has(g.key);
+      return `<div class="tg-section ${isOpen ? 'open' : ''}" data-tg-key="${dtEscape(g.key)}">
         <button type="button" class="tg-head" onclick="toggleTaskGroup(this)" aria-expanded="${isOpen}">
           <span class="tg-caret">▶</span>
           <span class="tg-name">${dtEscape(g.name)}</span>
@@ -7617,8 +7635,8 @@ function renderTasksTable() {
     container.innerHTML = `
       <div class="tg-toolbar">
         <span class="tg-summary">${sortedGroups.length} ${sortedGroups.length === 1 ? 'doer' : 'doers'} · ${tasks.length} tasks</span>
-        <button type="button" class="tg-mini-btn" onclick="document.querySelectorAll('#tasksContent .tg-section').forEach(s=>s.classList.add('open'))">Expand all</button>
-        <button type="button" class="tg-mini-btn" onclick="document.querySelectorAll('#tasksContent .tg-section').forEach(s=>s.classList.remove('open'))">Collapse all</button>
+        <button type="button" class="tg-mini-btn" onclick="tgSetAll(true)">Expand all</button>
+        <button type="button" class="tg-mini-btn" onclick="tgSetAll(false)">Collapse all</button>
       </div>
       <div class="tg-list tasks-slide-in">${sectionsHtml}</div>`;
     return;
