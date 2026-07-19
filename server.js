@@ -9521,7 +9521,6 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
     <br><br>
     <p class="center">____________________________</p>
     <p class="center"><strong>${candidateName}</strong></p>
-    <p class="center">Date: ____________________</p>
   </div>
 
   <div class="page">
