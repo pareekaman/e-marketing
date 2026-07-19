@@ -9389,7 +9389,12 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
 // in 13.1, the fixed "9th day of July, 2026" / "10th day of July 2026"
 // acceptance-block dates which were static in the source, not merge fields).
 // The clause TEXT must stay verbatim — do not "fix" wording without the user
-// re-confirming against their real document. The page STRUCTURE, however, is
+// re-confirming against their real document. User-approved corrections
+// (2026-07-19 consistency audit): six cross-reference/numbering fixes (13.3
+// now cites Clause 13; 14.1/14.5/14.6 cite Clause 14; the stray "14.7" after
+// 15.6 is now 15.7; the article before the position is computed a/an) and a
+// blank hand-filled acceptance date. Jurisdiction stays "Bangalore" (flagged
+// vs the Jaipur letterhead, but NOT approved for change). The page STRUCTURE, however, is
 // now built for browser/Chromium rendering (user-approved): the logo/address
 // header is a running header applied on every page by the PDF renderer (see
 // hrmFinalOfferHeaderTemplate), so it is no longer repeated inline in the body;
@@ -9417,15 +9422,21 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
   // numeric. Non-numeric input (e.g. "6 LPA") is used as-is in both places.
   const _salNum = parseFloat(String(salary || '').replace(/,/g, ''));
   const annualCtc = (Number.isFinite(_salNum) && _salNum > 0) ? String(_salNum * 12) : (salary || '');
+  // "a"/"an" before the position, by pronunciation: vowel-letter words get
+  // "an"; all-caps acronyms go by the first letter's NAME (M = "em" -> "an
+  // MIS Analyst", C = "see" -> "a CA").
+  const _posFirst = String(candidatePosition || '').trim().split(/\s+/)[0] || '';
+  const _acronym = /^[A-Z]{2,}$/.test(_posFirst);
+  const article = (_acronym ? /^[AEFHILMNORSX]/.test(_posFirst) : /^[aeiouAEIOU]/.test(_posFirst)) ? 'an' : 'a';
+  // The acceptance DATE is left blank for the candidate to fill by hand
+  // (user-approved 2026-07-19, replacing the pre-filled joining−1 date, which
+  // risked reading as acceptance before the candidate ever signed). Only the
+  // join line keeps the concrete joining date — that is a term of the offer.
   const _fmtDate = (d) => `${d.getDate()} ${d.toLocaleDateString('en-IN', { month: 'long' })}, ${d.getFullYear()}`;
-  let acceptDateStr = joiningFmt || '', joinDateStr = joiningFmt || '';
+  let joinDateStr = joiningFmt || '';
   if (opts.joiningDate) {
     const jd = new Date(opts.joiningDate);
-    if (!isNaN(jd.getTime())) {
-      joinDateStr = _fmtDate(jd);
-      const prev = new Date(jd); prev.setDate(prev.getDate() - 1);
-      acceptDateStr = _fmtDate(prev);
-    }
+    if (!isNaN(jd.getTime())) joinDateStr = _fmtDate(jd);
   }
   // Header used only for the on-screen preview (opts.inlineHeader). The printed
   // PDF gets the same logo/address as a running header on every page instead.
@@ -9490,7 +9501,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
     ${opts.inlineHeader ? header : ''}
     <p>${todayFmt}</p>
     <p>Dear <strong>${candidateName}</strong> ,</p>
-    <p>We are pleased to offer you an appointment as an <strong>${candidatePosition}</strong> with e-Marketing (a unit of Jai Marketing)</p>
+    <p>We are pleased to offer you an appointment as ${article} <strong>${candidatePosition}</strong> with e-Marketing (a unit of Jai Marketing)</p>
     <p>We expect your appointment to be effective on or before <strong>${joiningFmt}</strong>.</p>
     <p>Your gross remuneration package will be <strong>Rs.${salary || ''}/- per month</strong>.</p>
     <p>Please sign the duplicate copy of this letter to acknowledge your acceptance of the above and return it to us at the address below.</p>
@@ -9501,11 +9512,12 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
     <p>Partner: eMarketing</p>
     <hr class="rule">
     <br><br><br>
-    <p class="center">Agreed and accepted this ${acceptDateStr}.</p>
+    <p class="center">Agreed and accepted this ________ day of ________________, 20____.</p>
     <p class="center">I will join eMarketing on the ${joinDateStr}.</p>
     <br><br>
     <p class="center">____________________________</p>
     <p class="center"><strong>${candidateName}</strong></p>
+    <p class="center">Date: ____________________</p>
   </div>
 
   <div class="page">
@@ -9531,7 +9543,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
     <p>We are pleased to offer you employment with eMarketing under the following terms and conditions set out in this Contract of Employment (&ldquo;Agreement&rdquo;), subject to satisfactory reference and background screening and upon approval of any applicable work pass application.</p>
 
     <p><strong>1. DESIGNATION</strong></p>
-    <p>You are employed as an <strong><u>${candidatePosition}</u></strong>.</p>
+    <p>You are employed as ${article} <strong><u>${candidatePosition}</u></strong>.</p>
 
     <p><strong>2. COMMENCEMENT</strong></p>
     <p>You will commence employment on <strong>${joiningFmt}</strong>. Your employment with the company will commence on your actual and effective date of joining the company, subject to the completion of all joining formalities. Till such time, no relationship (employment, contractual, or otherwise) will exist between the parties. The company reserves the right to withdraw this offer at its sole discretion at any time before the date of joining, with due communication to you.</p>
@@ -9592,7 +9604,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
 
     <p>13.2 You acknowledge that you will have access during your employment to Confidential Information belonging to the Company or its associated companies or their customers or suppliers and that the Company (for itself or on behalf of its associated companies or their customers or suppliers) has a legitimate commercial interest in preventing the unauthorized disclosure of such Confidential Information.</p>
 
-    <p>13.3 The obligations contained in this Clause 12 shall continue to apply without limitation in time following the termination of your employment, however arising, but they shall cease to apply to any information or knowledge that may subsequently come into the public domain other than by way of unauthorized disclosure.</p>
+    <p>13.3 The obligations contained in this Clause 13 shall continue to apply without limitation in time following the termination of your employment, however arising, but they shall cease to apply to any information or knowledge that may subsequently come into the public domain other than by way of unauthorized disclosure.</p>
 
     <p>13.4 All confidential information, plans, statistics, records, and other documentation (including any copies thereof, whether in paper or electronic form) of whatsoever nature relating to the business of the company or its associated companies or their customers or suppliers, shall be immediately returned by you to the company or, at the option of the company, destroyed or deleted (in the case of information that is stored electronically) in the event of the termination of your employment, however arising (or at any earlier time on demand).</p>
 
@@ -9601,7 +9613,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
 
   <div class="page">
     <p><strong>14. INTELLECTUAL PROPERTY</strong></p>
-    <p>14.1 For this Clause 13, &ldquo;Intellectual Property&rdquo; means patents, utility models, registered designs, registered trade and service marks, copyright (whether registered or not), improvements and modifications to any of the foregoing, and the right to apply for protection for such registered rights anywhere in the world, inventions, discoveries, copyright design rights, unregistered trade and service marks, brand names, secret or confidential information, know-how, or any other intellectual property and any similar or equivalent rights, whether registrable or not arising or granted under the law of any country or state.</p>
+    <p>14.1 For this Clause 14, &ldquo;Intellectual Property&rdquo; means patents, utility models, registered designs, registered trade and service marks, copyright (whether registered or not), improvements and modifications to any of the foregoing, and the right to apply for protection for such registered rights anywhere in the world, inventions, discoveries, copyright design rights, unregistered trade and service marks, brand names, secret or confidential information, know-how, or any other intellectual property and any similar or equivalent rights, whether registrable or not arising or granted under the law of any country or state.</p>
 
     <p>14.2 Any Intellectual Property made created or discovered by you (either alone or with any other persons) during your employment (whether capable of being patented or registered or not and whether or not created or discovered in the course of your employment and whether or not it was created or discovered with the use of the Company's machinery or equipment of the Company or any of its associated companies) in conjunction with or in any way affecting or relating to the business or other Intellectual Property rights for the time being and from time to time of the Company or any of its associated companies or in the opinion of the management of the Company is capable of being used or adapted for such use shall forthwith be disclosed to the Company and shall (subject to all relevant legislation), on a worldwide and perpetual basis, belong to and be the absolute property of the Company or its associated companies, as the case may be.</p>
 
@@ -9611,9 +9623,9 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   </div>
 
   <div class="page">
-    <p>14.5 Rights and obligations under Clause 13 shall continue in force after the termination of your employment concerning intellectual property created or discovered during the period of your employment and shall be binding upon your representatives.</p>
+    <p>14.5 Rights and obligations under Clause 14 shall continue in force after the termination of your employment concerning intellectual property created or discovered during the period of your employment and shall be binding upon your representatives.</p>
 
-    <p>14.6 You agree that, as and when requested by the Company, you shall appoint the Company as your attorney in your name to execute and do all documents and things, that are required to give effect to the provisions of this Clause 13.</p>
+    <p>14.6 You agree that, as and when requested by the Company, you shall appoint the Company as your attorney in your name to execute and do all documents and things, that are required to give effect to the provisions of this Clause 14.</p>
 
     <p><strong>15. MISCELLANEOUS</strong></p>
     <p>15.1 This Agreement together with any documents referred to in it constitutes the entire agreement and understanding between you and the Company and supersedes any previous agreement relating to your employment with the Company.</p>
@@ -9628,7 +9640,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
 
     <p>15.6 This Agreement shall be governed by Indian law, and the Company and you submit to the exclusive jurisdiction of the Indian courts in Bangalore.</p>
 
-    <p>14.7 Notwithstanding the above terms and conditions, the Company reserves the right to amend, delete, and/or implement new terms and conditions which the Company deems necessary from time to time, and such amendment/deletion/implementation of new terms and conditions shall be notified to you in writing by prior notice.</p>
+    <p>15.7 Notwithstanding the above terms and conditions, the Company reserves the right to amend, delete, and/or implement new terms and conditions which the Company deems necessary from time to time, and such amendment/deletion/implementation of new terms and conditions shall be notified to you in writing by prior notice.</p>
 
     <p><strong>16. TERMINATION</strong></p>
     <p>Employment may be terminated at any time by either party giving notice or pay in lieu of notice, or part thereof, for any reason other than redundancy. Periods of notice shall be two (2) weeks during the probationary period and one (1) month after confirmation and shall be in writing, except in the case of serious misconduct in which case you may be terminated at any time without notice. Absenteeism beyond 10 days is liable for termination unless and otherwise such absence is supported by valid reason in writing and with valid documents.</p>
