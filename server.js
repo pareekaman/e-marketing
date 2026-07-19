@@ -9428,15 +9428,19 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
   const _posFirst = String(candidatePosition || '').trim().split(/\s+/)[0] || '';
   const _acronym = /^[A-Z]{2,}$/.test(_posFirst);
   const article = (_acronym ? /^[AEFHILMNORSX]/.test(_posFirst) : /^[aeiouAEIOU]/.test(_posFirst)) ? 'an' : 'a';
-  // The acceptance DATE is left blank for the candidate to fill by hand
-  // (user-approved 2026-07-19, replacing the pre-filled joining−1 date, which
-  // risked reading as acceptance before the candidate ever signed). Only the
-  // join line keeps the concrete joining date — that is a term of the offer.
+  // Acceptance-block dates (per the source Doc's placeholders): the acceptance
+  // line pre-fills joining−1 ("one day before Date of Joining" — user chose to
+  // keep this over a blank hand-filled date), the join line the joining date.
+  // The candidate still hand-fills the "Date:" line under their signature.
   const _fmtDate = (d) => `${d.getDate()} ${d.toLocaleDateString('en-IN', { month: 'long' })}, ${d.getFullYear()}`;
-  let joinDateStr = joiningFmt || '';
+  let acceptDateStr = joiningFmt || '', joinDateStr = joiningFmt || '';
   if (opts.joiningDate) {
     const jd = new Date(opts.joiningDate);
-    if (!isNaN(jd.getTime())) joinDateStr = _fmtDate(jd);
+    if (!isNaN(jd.getTime())) {
+      joinDateStr = _fmtDate(jd);
+      const prev = new Date(jd); prev.setDate(prev.getDate() - 1);
+      acceptDateStr = _fmtDate(prev);
+    }
   }
   // Header used only for the on-screen preview (opts.inlineHeader). The printed
   // PDF gets the same logo/address as a running header on every page instead.
@@ -9512,7 +9516,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
     <p>Partner: eMarketing</p>
     <hr class="rule">
     <br><br><br>
-    <p class="center">Agreed and accepted this ________ day of ________________, 20____.</p>
+    <p class="center">Agreed and accepted this ${acceptDateStr}.</p>
     <p class="center">I will join eMarketing on the ${joinDateStr}.</p>
     <br><br>
     <p class="center">____________________________</p>
