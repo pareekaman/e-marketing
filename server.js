@@ -9554,7 +9554,6 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   </div>
 
   <div class="page">
-    <div class="pb"></div>
     <p><strong>10. CONFLICT OF INTEREST</strong></p>
     <p>All employees shall be required to report to the company if any member of his family, or close relatives, is engaged in any trade or business involving supplies of goods and/or services to the company or has any other type of business relationship with the company.</p>
 
@@ -9583,7 +9582,6 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   </div>
 
   <div class="page">
-    <div class="pb"></div>
     <p><strong>13. CONFIDENTIALITY</strong></p>
     <p>13.1 You shall not during your employment or after the termination thereof (howsoever arising) make use of for your own purposes or those of any other person, firm or company or disclose to any person (except the proper officers of the Company or under the authority of the Board or required by law) any trade secrets or confidential information relating to the business, accounts, affairs or finances of the Company or its associated companies or their customers or suppliers, whether recorded or not (and if recorded, whether on paper, tape, hard drive or computer disk) and includes without limitation all and any information about business plans, new business opportunities, research and development projects, product formulae, processes, inventions, designs, discoveries or know-how, sales statistics (including targets and statistics, market share and pricing statistics, forecasts and reports) maturing business opportunities, processes, designs, marketing surveys and plans, costs, profit or loss or financial information relating to theaccounts, prices and discount structures of the Company its associated companies or their customers or suppliers, the names, addresses, telephone numbers, fax numbers, e-mail or contact details, activities or personal affairs of the Company's or its associated companies' customers, agents, consultants, distributors and suppliers, any Company or its associated companies' database, mailing list, software application, component list, any information relating the terms of business between the customers, suppliers or agents and the Company or its associated companies' (the &ldquo;Confidential Information&rdquo;).</p>
 
@@ -9597,7 +9595,6 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   </div>
 
   <div class="page">
-    <div class="pb"></div>
     <p><strong>14. INTELLECTUAL PROPERTY</strong></p>
     <p>14.1 For this Clause 13, &ldquo;Intellectual Property&rdquo; means patents, utility models, registered designs, registered trade and service marks, copyright (whether registered or not), improvements and modifications to any of the foregoing, and the right to apply for protection for such registered rights anywhere in the world, inventions, discoveries, copyright design rights, unregistered trade and service marks, brand names, secret or confidential information, know-how, or any other intellectual property and any similar or equivalent rights, whether registrable or not arising or granted under the law of any country or state.</p>
 
@@ -9609,7 +9606,6 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   </div>
 
   <div class="page">
-    <div class="pb"></div>
     <p>14.5 Rights and obligations under Clause 13 shall continue in force after the termination of your employment concerning intellectual property created or discovered during the period of your employment and shall be binding upon your representatives.</p>
 
     <p>14.6 You agree that, as and when requested by the Company, you shall appoint the Company as your attorney in your name to execute and do all documents and things, that are required to give effect to the provisions of this Clause 13.</p>
@@ -9637,7 +9633,6 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   </div>
 
   <div>
-    <div class="pb"></div>
     <p>If the above terms and conditions are acceptable to you, please signify by signing the duplicate of this letter and returning the same to us within three (3) working days.</p>
   </div>
 ${opts.forPrint ? '  </div>' : ''}
@@ -10033,19 +10028,25 @@ app.get('/api/hrm/final-offer-preview-html', requireAuth, (req, res) => {
   const joiningFmt = req.query.joining_date
     ? new Date(req.query.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
     : '';
-  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+  const today = _hrmLetterDateFmt(req.query.letter_date);
   res.json({ html: hrmBuildFinalOfferHtml(name, position, joiningFmt, salary, today, { inlineHeader: true, joiningDate: req.query.joining_date, probationMonths: req.query.probation_months }) });
 });
+
+// Letter-date line: HR-editable (letter_date input), defaults to today.
+function _hrmLetterDateFmt(letterDate) {
+  const d = letterDate ? new Date(letterDate) : new Date();
+  return (isNaN(d.getTime()) ? new Date() : d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+}
 
 // Exact-PDF preview for HR: streams the same pdfkit PDF the candidate will get.
 app.post('/api/hrm/final-offer-render', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const { name = '', position = '', joining_date = '', salary = '', probation_months = '' } = req.body;
+    const { name = '', position = '', joining_date = '', salary = '', probation_months = '', letter_date = '' } = req.body;
     const joiningFmt = joining_date
       ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
       : '';
-    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    const today = _hrmLetterDateFmt(letter_date);
     const pdf = await hrmRenderFinalOfferPdfBuffer({
       name: String(name), position: String(position), joiningFmt,
       salary: String(salary), today, joiningDate: joining_date,
@@ -10071,7 +10072,7 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
     const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
     if (!c) return res.status(404).json({ error: 'Not found' });
 
-    const { offer_name, offer_position, joining_date, salary, department, probation_months } = req.body;
+    const { offer_name, offer_position, joining_date, salary, department, probation_months, letter_date } = req.body;
     const name = (offer_name || c.name || '').trim();
     const position = (offer_position || c.profile_position || '').trim();
     const finalJoining = joining_date || c.joining_date;
@@ -10080,7 +10081,7 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
     if (!finalJoining) return res.status(400).json({ error: 'Joining date required' });
 
     const joiningFmt = new Date(finalJoining).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    const today = _hrmLetterDateFmt(letter_date);
     // Raw YYYY-MM-DD joining date for the dynamic acceptance-block dates.
     const rawJoin = (typeof finalJoining === 'string')
       ? finalJoining.slice(0, 10)

@@ -79,15 +79,20 @@ function parseBlocks(html) {
 }
 
 // Letterhead drawn into the top margin of every page. Only absolute-positioned
-// drawing here; the text cursor is saved/restored so pdfkit's own text flow
-// (including automatic page breaks mid-paragraph) is never disturbed.
+// drawing here; the text cursor AND font state are saved/restored — this runs
+// inside pageAdded, which can fire mid-text-call on an automatic page break,
+// and leaving the header's 8.5pt Roman active corrupted the continuation of
+// the interrupted paragraph (e.g. a bold 11pt heading resumed at 8.5 Roman).
 function drawHeader(doc, logoBuffer) {
   const sx = doc.x, sy = doc.y;
+  const pFont = doc._font, pSize = doc._fontSize;
   if (logoBuffer) { try { doc.image(logoBuffer, M.left, 26, { width: 105 }); } catch { /* keep rendering without logo */ } }
   const rx = 250, rw = PAGE.width - M.right - rx;
-  doc.fillColor('#000').font('Times-Bold').fontSize(9)
-    .text('e-Marketing.io (A Unit of Jai Marketing)', rx, 30, { width: rw, align: 'right' });
-  doc.font('Times-Roman').fontSize(9)
+  // Typographic hierarchy: the company line is deliberately larger than the
+  // address/contact lines so the letterhead reads as a formal masthead.
+  doc.fillColor('#000').font('Times-Bold').fontSize(11)
+    .text('e-Marketing.io (A Unit of Jai Marketing)', rx, 28, { width: rw, align: 'right' });
+  doc.font('Times-Roman').fontSize(8.5)
     .text('Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,', { width: rw, align: 'right' })
     .text('Malviya Nagar, Jaipur, Rajasthan – 307017 (India)', { width: rw, align: 'right' })
     .moveDown(0.5)
@@ -96,6 +101,8 @@ function drawHeader(doc, logoBuffer) {
     .text('Email: abhishek@e-marketing.io', { width: rw, align: 'right', link: 'mailto:abhishek@e-marketing.io', underline: true });
   doc.fillColor('#000')
     .text('Website: www.e-marketing.io', { width: rw, align: 'right', underline: false });
+  if (pFont) doc._font = pFont;
+  if (pSize != null) doc.fontSize(pSize);
   doc.x = sx; doc.y = sy;
 }
 
@@ -106,13 +113,13 @@ function writePara(doc, block) {
     if (!runs.length) { doc.moveDown(0.6); continue; }
     runs.forEach((r, i) => {
       doc.font(r.bold ? 'Times-Bold' : 'Times-Roman').fontSize(BODY_SIZE);
-      const opts = { width: CW, align, underline: !!r.under, continued: i < runs.length - 1, lineGap: 1.25 };
+      const opts = { width: CW, align, underline: !!r.under, continued: i < runs.length - 1, lineGap: 1.45 };
       if (i === 0) doc.text(r.t, M.left, doc.y, opts);
       else doc.text(r.t, opts);
     });
     wrote = true;
   }
-  if (wrote) doc.moveDown(0.5);
+  if (wrote) doc.moveDown(0.6);
 }
 
 function drawBullets(doc, block) {

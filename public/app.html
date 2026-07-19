@@ -3226,6 +3226,10 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <div style="width:320px;min-width:280px;padding:22px 20px;overflow-y:auto;border-right:1px solid #e2e8f0">
           <h3 style="margin:0 0 14px">📬 Offer Letter</h3>
           <div class="form-group">
+            <label>Letter Date</label>
+            <input type="date" id="finalOfferFDate" oninput="scheduleFinalOfferPreview()">
+          </div>
+          <div class="form-group">
             <label>Candidate Name *</label>
             <input type="text" id="finalOfferFName" placeholder="Full name" oninput="scheduleFinalOfferPreview()">
           </div>
@@ -6192,6 +6196,12 @@ async function openFinalOfferFormModal(id) {
   document.getElementById('finalOfferFSalary').value   = c.salary || '';
   const probEl = document.getElementById('finalOfferFProbation');
   if (probEl) probEl.value = '2';
+  // Letter date defaults to today (local), editable by HR before sending.
+  const dateEl = document.getElementById('finalOfferFDate');
+  if (dateEl) {
+    const now = new Date();
+    dateEl.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  }
   await loadHrmDepartmentOptions('finalOfferFDepartment', c.department || '');
   document.getElementById('hrmFinalOfferFormModal').classList.add('open');
   renderFinalOfferPreview();
@@ -6204,6 +6214,7 @@ function _finalOfferFields() {
     joining_date: document.getElementById('finalOfferFJoining').value,
     salary:       document.getElementById('finalOfferFSalary').value.trim(),
     probation_months: document.getElementById('finalOfferFProbation')?.value || '2',
+    letter_date:  document.getElementById('finalOfferFDate')?.value || '',
   };
 }
 
@@ -6261,8 +6272,9 @@ function submitFinalOfferForm() {
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
 
   const probation_months = document.getElementById('finalOfferFProbation')?.value || '2';
+  const letter_date = document.getElementById('finalOfferFDate')?.value || '';
   api(`/api/hrm/candidates/${candidateId}/send-final-offer`, 'POST', {
-    joining_date, salary, offer_name, offer_position, department, probation_months
+    joining_date, salary, offer_name, offer_position, department, probation_months, letter_date
   }).then(r => {
     if (btn) { btn.disabled = false; btn.textContent = '📬 Send on WhatsApp'; }
     if (!r || r.error) { showToast((r && r.error) || 'Send failed', 'error'); return; }
