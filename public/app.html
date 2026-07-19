@@ -7600,7 +7600,10 @@ function renderTasksTable() {
       if (!groups.has(key)) groups.set(key, { key, name: t.assignedToName || '—', userId: t.assigned_to || '', tasks: [] });
       groups.get(key).tasks.push(t);
     }
-    const sortedGroups = [...groups.values()].sort((a,b) => a.name.localeCompare(b.name));
+    // The logged-in user's own group is pinned to the top; the rest stay A-Z.
+    const _isMe = (g) => String(g.userId) === String(ME.id);
+    const sortedGroups = [...groups.values()].sort((a,b) =>
+      (_isMe(b) - _isMe(a)) || a.name.localeCompare(b.name));
     // If a doer filter is active, auto-expand that single group.
     const autoOpen = sortedGroups.length === 1;
 
