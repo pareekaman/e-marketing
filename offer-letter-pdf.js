@@ -47,6 +47,10 @@ function parseBlocks(html) {
     // paragraph: split on <br> into lines, each line into bold/underline runs
     const center = /class="[^"]*center/.test(m[1] || '');
     const lines = m[2].split(/<br\s*\/?>/i).map((part) => {
+      // The template literal indents continuation lines ("<br>\n    B. …");
+      // HTML collapses that whitespace but pdfkit renders it literally, which
+      // left-indented short (non-justified) lines like the 12.1 B/D/E items.
+      part = part.replace(/\s*\n\s*/g, ' ').replace(/^\s+/, '');
       const runs = [];
       const tok = /<strong>|<\/strong>|<u>|<\/u>|<[^>]+>|[^<]+/gi;
       let bold = false, under = false, t;

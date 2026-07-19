@@ -9484,7 +9484,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   <div class="page">
     ${opts.inlineHeader ? header : ''}
     <p>${todayFmt}</p>
-    <p>Dear ${candidateName} ,</p>
+    <p>Dear <strong>${candidateName}</strong> ,</p>
     <p>We are pleased to offer you an appointment as an <strong>${candidatePosition}</strong> with  e-Marketing (a unit of Jai Marketing)</p>
     <p>We expect your appointment to be effective on or before <strong>${joiningFmt}</strong>.</p>
     <p>Your gross remuneration package will be <strong>Rs.${salary || ''}/- per month</strong>.</p>
@@ -9521,7 +9521,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   </div>
 
   <div class="page">
-    <div class="pb"></div>
+    <br><br>
     <p class="center"><strong>OFFER OF EMPLOYMENT (Private &amp; Confidential)</strong></p>
     <p>We are pleased to offer you employment with eMarketing under the following terms and conditions set out in this Contract of Employment (&ldquo;Agreement&rdquo;), subject to satisfactory reference and background screening and upon approval of any applicable work pass application.</p>
 
