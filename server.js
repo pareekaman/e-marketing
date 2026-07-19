@@ -9412,6 +9412,11 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
   const probationTxt = (Number.isFinite(_probN) && _probN >= 0)
     ? `${_probN} month${_probN === 1 ? '' : 's'}`
     : '2 months';
+  // HR enters the MONTHLY salary (cover page: "Rs.<salary>/- per month");
+  // clause 3 states the ANNUAL CTC, so multiply by 12 when the value is
+  // numeric. Non-numeric input (e.g. "6 LPA") is used as-is in both places.
+  const _salNum = parseFloat(String(salary || '').replace(/,/g, ''));
+  const annualCtc = (Number.isFinite(_salNum) && _salNum > 0) ? String(_salNum * 12) : (salary || '');
   const _fmtDate = (d) => `${d.getDate()} ${d.toLocaleDateString('en-IN', { month: 'long' })}, ${d.getFullYear()}`;
   let acceptDateStr = joiningFmt || '', joinDateStr = joiningFmt || '';
   if (opts.joiningDate) {
@@ -9485,7 +9490,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
     ${opts.inlineHeader ? header : ''}
     <p>${todayFmt}</p>
     <p>Dear <strong>${candidateName}</strong> ,</p>
-    <p>We are pleased to offer you an appointment as an <strong>${candidatePosition}</strong> with  e-Marketing (a unit of Jai Marketing)</p>
+    <p>We are pleased to offer you an appointment as an <strong>${candidatePosition}</strong> with e-Marketing (a unit of Jai Marketing)</p>
     <p>We expect your appointment to be effective on or before <strong>${joiningFmt}</strong>.</p>
     <p>Your gross remuneration package will be <strong>Rs.${salary || ''}/- per month</strong>.</p>
     <p>Please sign the duplicate copy of this letter to acknowledge your acceptance of the above and return it to us at the address below.</p>
@@ -9521,7 +9526,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   </div>
 
   <div class="page">
-    <br><br>
+    <div class="pb"></div>
     <p class="center"><strong>OFFER OF EMPLOYMENT (Private &amp; Confidential)</strong></p>
     <p>We are pleased to offer you employment with eMarketing under the following terms and conditions set out in this Contract of Employment (&ldquo;Agreement&rdquo;), subject to satisfactory reference and background screening and upon approval of any applicable work pass application.</p>
 
@@ -9532,7 +9537,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
     <p>You will commence employment on <strong>${joiningFmt}</strong>. Your employment with the company will commence on your actual and effective date of joining the company, subject to the completion of all joining formalities. Till such time, no relationship (employment, contractual, or otherwise) will exist between the parties. The company reserves the right to withdraw this offer at its sole discretion at any time before the date of joining, with due communication to you.</p>
 
     <p><strong>3. REMUNERATION</strong></p>
-    <p>Your fixed annual CTC will be Rs <strong>${salary || ''}</strong>/- subject to the appropriate withholding tax in accordance with India's laws and regulations. The prerequisites and benefits applicable within the CTC will be discussed with you further.</p>
+    <p>Your fixed annual CTC will be Rs <strong>${annualCtc}</strong>/- subject to the appropriate withholding tax in accordance with India's laws and regulations. The prerequisites and benefits applicable within the CTC will be discussed with you further.</p>
 
     <p><strong>4. PROBATION</strong></p>
     <p>You shall serve a probationary period of up to <strong>${probationTxt}</strong>. The company reserves the right to extend the probationary period, if necessary.</p>
