@@ -9389,7 +9389,12 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
 // in 13.1, the fixed "9th day of July, 2026" / "10th day of July 2026"
 // acceptance-block dates which were static in the source, not merge fields).
 // The clause TEXT must stay verbatim — do not "fix" wording without the user
-// re-confirming against their real document. The page STRUCTURE, however, is
+// re-confirming against their real document. User-approved corrections
+// (2026-07-19 consistency audit): six cross-reference/numbering fixes (13.3
+// now cites Clause 13; 14.1/14.5/14.6 cite Clause 14; the stray "14.7" after
+// 15.6 is now 15.7; the article before the position is computed a/an) and a
+// blank hand-filled acceptance date. Jurisdiction stays "Bangalore" (flagged
+// vs the Jaipur letterhead, but NOT approved for change). The page STRUCTURE, however, is
 // now built for browser/Chromium rendering (user-approved): the logo/address
 // header is a running header applied on every page by the PDF renderer (see
 // hrmFinalOfferHeaderTemplate), so it is no longer repeated inline in the body;
@@ -9407,6 +9412,26 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
   // "{one day before Date of Joining}, {present year}"): rendered literally as
   // "29 July, 2026" from opts.joiningDate (raw). Year comes from the joining
   // date. Falls back to the joiningFmt string if no raw date given.
+  // Probation period (clause 4) — HR-editable, defaults to the source Doc's 2.
+  const _probN = parseInt(opts.probationMonths, 10);
+  const probationTxt = (Number.isFinite(_probN) && _probN >= 0)
+    ? `${_probN} month${_probN === 1 ? '' : 's'}`
+    : '2 months';
+  // HR enters the MONTHLY salary (cover page: "Rs.<salary>/- per month");
+  // clause 3 states the ANNUAL CTC, so multiply by 12 when the value is
+  // numeric. Non-numeric input (e.g. "6 LPA") is used as-is in both places.
+  const _salNum = parseFloat(String(salary || '').replace(/,/g, ''));
+  const annualCtc = (Number.isFinite(_salNum) && _salNum > 0) ? String(_salNum * 12) : (salary || '');
+  // "a"/"an" before the position, by pronunciation: vowel-letter words get
+  // "an"; all-caps acronyms go by the first letter's NAME (M = "em" -> "an
+  // MIS Analyst", C = "see" -> "a CA").
+  const _posFirst = String(candidatePosition || '').trim().split(/\s+/)[0] || '';
+  const _acronym = /^[A-Z]{2,}$/.test(_posFirst);
+  const article = (_acronym ? /^[AEFHILMNORSX]/.test(_posFirst) : /^[aeiouAEIOU]/.test(_posFirst)) ? 'an' : 'a';
+  // Acceptance-block dates (per the source Doc's placeholders): the acceptance
+  // line pre-fills joining−1 ("one day before Date of Joining" — user chose to
+  // keep this over a blank hand-filled date), the join line the joining date.
+  // The candidate still hand-fills the "Date:" line under their signature.
   const _fmtDate = (d) => `${d.getDate()} ${d.toLocaleDateString('en-IN', { month: 'long' })}, ${d.getFullYear()}`;
   let acceptDateStr = joiningFmt || '', joinDateStr = joiningFmt || '';
   if (opts.joiningDate) {
@@ -9479,8 +9504,8 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   <div class="page">
     ${opts.inlineHeader ? header : ''}
     <p>${todayFmt}</p>
-    <p>Dear ${candidateName} ,</p>
-    <p>We are pleased to offer you an appointment as an <strong>${candidatePosition}</strong> with  e-Marketing (a unit of Jai Marketing)</p>
+    <p>Dear <strong>${candidateName}</strong> ,</p>
+    <p>We are pleased to offer you an appointment as ${article} <strong>${candidatePosition}</strong> with e-Marketing (a unit of Jai Marketing)</p>
     <p>We expect your appointment to be effective on or before <strong>${joiningFmt}</strong>.</p>
     <p>Your gross remuneration package will be <strong>Rs.${salary || ''}/- per month</strong>.</p>
     <p>Please sign the duplicate copy of this letter to acknowledge your acceptance of the above and return it to us at the address below.</p>
@@ -9521,16 +9546,16 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
     <p>We are pleased to offer you employment with eMarketing under the following terms and conditions set out in this Contract of Employment (&ldquo;Agreement&rdquo;), subject to satisfactory reference and background screening and upon approval of any applicable work pass application.</p>
 
     <p><strong>1. DESIGNATION</strong></p>
-    <p>You are employed as an <strong><u>${candidatePosition}</u></strong>.</p>
+    <p>You are employed as ${article} <strong><u>${candidatePosition}</u></strong>.</p>
 
     <p><strong>2. COMMENCEMENT</strong></p>
     <p>You will commence employment on <strong>${joiningFmt}</strong>. Your employment with the company will commence on your actual and effective date of joining the company, subject to the completion of all joining formalities. Till such time, no relationship (employment, contractual, or otherwise) will exist between the parties. The company reserves the right to withdraw this offer at its sole discretion at any time before the date of joining, with due communication to you.</p>
 
     <p><strong>3. REMUNERATION</strong></p>
-    <p>Your fixed annual CTC will be Rs <strong>${salary || ''}</strong>/- subject to the appropriate withholding tax in accordance with India's laws and regulations. The prerequisites and benefits applicable within the CTC will be discussed with you further.</p>
+    <p>Your fixed annual CTC will be Rs <strong>${annualCtc}</strong>/- subject to the appropriate withholding tax in accordance with India's laws and regulations. The prerequisites and benefits applicable within the CTC will be discussed with you further.</p>
 
     <p><strong>4. PROBATION</strong></p>
-    <p>You shall serve a probationary period of up to <strong>2 months</strong>. The company reserves the right to extend the probationary period, if necessary.</p>
+    <p>You shall serve a probationary period of up to <strong>${probationTxt}</strong>. The company reserves the right to extend the probationary period, if necessary.</p>
 
     <p><strong>5. ANNUAL LEAVE</strong></p>
     <p>All employees shall be entitled to annual leave of <strong>twelve (12) working days</strong> per year.</p>
@@ -9549,7 +9574,6 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   </div>
 
   <div class="page">
-    <div class="pb"></div>
     <p><strong>10. CONFLICT OF INTEREST</strong></p>
     <p>All employees shall be required to report to the company if any member of his family, or close relatives, is engaged in any trade or business involving supplies of goods and/or services to the company or has any other type of business relationship with the company.</p>
 
@@ -9578,13 +9602,12 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   </div>
 
   <div class="page">
-    <div class="pb"></div>
     <p><strong>13. CONFIDENTIALITY</strong></p>
     <p>13.1 You shall not during your employment or after the termination thereof (howsoever arising) make use of for your own purposes or those of any other person, firm or company or disclose to any person (except the proper officers of the Company or under the authority of the Board or required by law) any trade secrets or confidential information relating to the business, accounts, affairs or finances of the Company or its associated companies or their customers or suppliers, whether recorded or not (and if recorded, whether on paper, tape, hard drive or computer disk) and includes without limitation all and any information about business plans, new business opportunities, research and development projects, product formulae, processes, inventions, designs, discoveries or know-how, sales statistics (including targets and statistics, market share and pricing statistics, forecasts and reports) maturing business opportunities, processes, designs, marketing surveys and plans, costs, profit or loss or financial information relating to theaccounts, prices and discount structures of the Company its associated companies or their customers or suppliers, the names, addresses, telephone numbers, fax numbers, e-mail or contact details, activities or personal affairs of the Company's or its associated companies' customers, agents, consultants, distributors and suppliers, any Company or its associated companies' database, mailing list, software application, component list, any information relating the terms of business between the customers, suppliers or agents and the Company or its associated companies' (the &ldquo;Confidential Information&rdquo;).</p>
 
     <p>13.2 You acknowledge that you will have access during your employment to Confidential Information belonging to the Company or its associated companies or their customers or suppliers and that the Company (for itself or on behalf of its associated companies or their customers or suppliers) has a legitimate commercial interest in preventing the unauthorized disclosure of such Confidential Information.</p>
 
-    <p>13.3 The obligations contained in this Clause 12 shall continue to apply without limitation in time following the termination of your employment, however arising, but they shall cease to apply to any information or knowledge that may subsequently come into the public domain other than by way of unauthorized disclosure.</p>
+    <p>13.3 The obligations contained in this Clause 13 shall continue to apply without limitation in time following the termination of your employment, however arising, but they shall cease to apply to any information or knowledge that may subsequently come into the public domain other than by way of unauthorized disclosure.</p>
 
     <p>13.4 All confidential information, plans, statistics, records, and other documentation (including any copies thereof, whether in paper or electronic form) of whatsoever nature relating to the business of the company or its associated companies or their customers or suppliers, shall be immediately returned by you to the company or, at the option of the company, destroyed or deleted (in the case of information that is stored electronically) in the event of the termination of your employment, however arising (or at any earlier time on demand).</p>
 
@@ -9592,9 +9615,8 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   </div>
 
   <div class="page">
-    <div class="pb"></div>
     <p><strong>14. INTELLECTUAL PROPERTY</strong></p>
-    <p>14.1 For this Clause 13, &ldquo;Intellectual Property&rdquo; means patents, utility models, registered designs, registered trade and service marks, copyright (whether registered or not), improvements and modifications to any of the foregoing, and the right to apply for protection for such registered rights anywhere in the world, inventions, discoveries, copyright design rights, unregistered trade and service marks, brand names, secret or confidential information, know-how, or any other intellectual property and any similar or equivalent rights, whether registrable or not arising or granted under the law of any country or state.</p>
+    <p>14.1 For this Clause 14, &ldquo;Intellectual Property&rdquo; means patents, utility models, registered designs, registered trade and service marks, copyright (whether registered or not), improvements and modifications to any of the foregoing, and the right to apply for protection for such registered rights anywhere in the world, inventions, discoveries, copyright design rights, unregistered trade and service marks, brand names, secret or confidential information, know-how, or any other intellectual property and any similar or equivalent rights, whether registrable or not arising or granted under the law of any country or state.</p>
 
     <p>14.2 Any Intellectual Property made created or discovered by you (either alone or with any other persons) during your employment (whether capable of being patented or registered or not and whether or not created or discovered in the course of your employment and whether or not it was created or discovered with the use of the Company's machinery or equipment of the Company or any of its associated companies) in conjunction with or in any way affecting or relating to the business or other Intellectual Property rights for the time being and from time to time of the Company or any of its associated companies or in the opinion of the management of the Company is capable of being used or adapted for such use shall forthwith be disclosed to the Company and shall (subject to all relevant legislation), on a worldwide and perpetual basis, belong to and be the absolute property of the Company or its associated companies, as the case may be.</p>
 
@@ -9604,10 +9626,9 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   </div>
 
   <div class="page">
-    <div class="pb"></div>
-    <p>14.5 Rights and obligations under Clause 13 shall continue in force after the termination of your employment concerning intellectual property created or discovered during the period of your employment and shall be binding upon your representatives.</p>
+    <p>14.5 Rights and obligations under Clause 14 shall continue in force after the termination of your employment concerning intellectual property created or discovered during the period of your employment and shall be binding upon your representatives.</p>
 
-    <p>14.6 You agree that, as and when requested by the Company, you shall appoint the Company as your attorney in your name to execute and do all documents and things, that are required to give effect to the provisions of this Clause 13.</p>
+    <p>14.6 You agree that, as and when requested by the Company, you shall appoint the Company as your attorney in your name to execute and do all documents and things, that are required to give effect to the provisions of this Clause 14.</p>
 
     <p><strong>15. MISCELLANEOUS</strong></p>
     <p>15.1 This Agreement together with any documents referred to in it constitutes the entire agreement and understanding between you and the Company and supersedes any previous agreement relating to your employment with the Company.</p>
@@ -9622,7 +9643,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
 
     <p>15.6 This Agreement shall be governed by Indian law, and the Company and you submit to the exclusive jurisdiction of the Indian courts in Bangalore.</p>
 
-    <p>14.7 Notwithstanding the above terms and conditions, the Company reserves the right to amend, delete, and/or implement new terms and conditions which the Company deems necessary from time to time, and such amendment/deletion/implementation of new terms and conditions shall be notified to you in writing by prior notice.</p>
+    <p>15.7 Notwithstanding the above terms and conditions, the Company reserves the right to amend, delete, and/or implement new terms and conditions which the Company deems necessary from time to time, and such amendment/deletion/implementation of new terms and conditions shall be notified to you in writing by prior notice.</p>
 
     <p><strong>16. TERMINATION</strong></p>
     <p>Employment may be terminated at any time by either party giving notice or pay in lieu of notice, or part thereof, for any reason other than redundancy. Periods of notice shall be two (2) weeks during the probationary period and one (1) month after confirmation and shall be in writing, except in the case of serious misconduct in which case you may be terminated at any time without notice. Absenteeism beyond 10 days is liable for termination unless and otherwise such absence is supported by valid reason in writing and with valid documents.</p>
@@ -9632,7 +9653,6 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
   </div>
 
   <div>
-    <div class="pb"></div>
     <p>If the above terms and conditions are acceptable to you, please signify by signing the duplicate of this letter and returning the same to us within three (3) working days.</p>
   </div>
 ${opts.forPrint ? '  </div>' : ''}
@@ -9646,9 +9666,9 @@ function _hrmSignBuffer() { try { return _HRM_SIGN_SRC ? Buffer.from(_HRM_SIGN_S
 // Build the final-offer HTML and render it to a PDF Buffer via pdfkit
 // (offer-letter-pdf.js): letterhead on every page, signature below the
 // sign-off, real page breaks. No browser involved.
-async function hrmRenderFinalOfferPdfBuffer({ name, position, joiningFmt, salary, today, joiningDate }) {
+async function hrmRenderFinalOfferPdfBuffer({ name, position, joiningFmt, salary, today, joiningDate, probationMonths }) {
   const { renderOfferPdfFromHtml } = require('./offer-letter-pdf');
-  const html = hrmBuildFinalOfferHtml(name || '', position || '', joiningFmt || '', salary || '', today || '', { inlineHeader: false, joiningDate });
+  const html = hrmBuildFinalOfferHtml(name || '', position || '', joiningFmt || '', salary || '', today || '', { inlineHeader: false, joiningDate, probationMonths });
   return renderOfferPdfFromHtml(html, { logoBuffer: _hrmLogoBuffer(), signBuffer: _hrmSignBuffer() });
 }
 
@@ -9755,6 +9775,7 @@ app.get('/offer-pdf/:token', async (req, res) => {
     const pdf = await hrmRenderFinalOfferPdfBuffer({
       name: d.name, position: d.position, joiningFmt: d.joiningFmt,
       salary: d.salary, today: d.today, joiningDate: d.joining_date,
+      probationMonths: d.probation_months,
     });
     const safeName = String(d.name || 'candidate').replace(/[^a-zA-Z0-9 _-]/g, '').trim() || 'candidate';
     res.setHeader('Content-Type', 'application/pdf');
@@ -10027,22 +10048,29 @@ app.get('/api/hrm/final-offer-preview-html', requireAuth, (req, res) => {
   const joiningFmt = req.query.joining_date
     ? new Date(req.query.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
     : '';
-  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-  res.json({ html: hrmBuildFinalOfferHtml(name, position, joiningFmt, salary, today, { inlineHeader: true, joiningDate: req.query.joining_date }) });
+  const today = _hrmLetterDateFmt(req.query.letter_date);
+  res.json({ html: hrmBuildFinalOfferHtml(name, position, joiningFmt, salary, today, { inlineHeader: true, joiningDate: req.query.joining_date, probationMonths: req.query.probation_months }) });
 });
+
+// Letter-date line: HR-editable (letter_date input), defaults to today.
+function _hrmLetterDateFmt(letterDate) {
+  const d = letterDate ? new Date(letterDate) : new Date();
+  return (isNaN(d.getTime()) ? new Date() : d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+}
 
 // Exact-PDF preview for HR: streams the same pdfkit PDF the candidate will get.
 app.post('/api/hrm/final-offer-render', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const { name = '', position = '', joining_date = '', salary = '' } = req.body;
+    const { name = '', position = '', joining_date = '', salary = '', probation_months = '', letter_date = '' } = req.body;
     const joiningFmt = joining_date
       ? new Date(joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
       : '';
-    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    const today = _hrmLetterDateFmt(letter_date);
     const pdf = await hrmRenderFinalOfferPdfBuffer({
       name: String(name), position: String(position), joiningFmt,
       salary: String(salary), today, joiningDate: joining_date,
+      probationMonths: probation_months,
     });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="offer-letter-preview.pdf"');
@@ -10064,7 +10092,7 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
     const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
     if (!c) return res.status(404).json({ error: 'Not found' });
 
-    const { offer_name, offer_position, joining_date, salary, department } = req.body;
+    const { offer_name, offer_position, joining_date, salary, department, probation_months, letter_date } = req.body;
     const name = (offer_name || c.name || '').trim();
     const position = (offer_position || c.profile_position || '').trim();
     const finalJoining = joining_date || c.joining_date;
@@ -10073,14 +10101,14 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
     if (!finalJoining) return res.status(400).json({ error: 'Joining date required' });
 
     const joiningFmt = new Date(finalJoining).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    const today = _hrmLetterDateFmt(letter_date);
     // Raw YYYY-MM-DD joining date for the dynamic acceptance-block dates.
     const rawJoin = (typeof finalJoining === 'string')
       ? finalJoining.slice(0, 10)
       : new Date(new Date(finalJoining).getTime() - new Date(finalJoining).getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
     const token = require('crypto').randomBytes(24).toString('hex');
-    const snapshot = { name, position, joiningFmt, joining_date: rawJoin, salary: finalSalary || '', today };
+    const snapshot = { name, position, joiningFmt, joining_date: rawJoin, salary: finalSalary || '', today, probation_months: probation_months || '' };
 
     await db.query(
       `UPDATE hrm_candidates SET status='Offer Letter Sent', joining_date=?, salary=?, department=COALESCE(?, department), final_offer_token=?, final_offer_data=? WHERE id=?`,
@@ -10146,11 +10174,14 @@ app.get('/api/hrm/offer-template-preview', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message, serviceAccountEmail }); }
 });
 
-// Get message log
+// Get message log. created_at_fmt is formatted in SQL (the codebase convention
+// for timestamps): the DB stores IST wall-time, but mysql2 (Node on UTC) tags
+// it as UTC, so a browser-side toLocaleString('en-IN', Asia/Kolkata) adds
+// +5:30 AGAIN and shows times 5.5h in the future — see brain.md Section 16.
 app.get('/api/hrm/messages', requireAuth, async (req, res) => {
   if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const [rows] = await db.query('SELECT * FROM hrm_message_log WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500');
+    const [rows] = await db.query(`SELECT *, DATE_FORMAT(created_at, '%e/%c/%Y, %l:%i:%s %p') AS created_at_fmt FROM hrm_message_log WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500`);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
