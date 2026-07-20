@@ -8239,8 +8239,9 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
           const [[apRow]] = await db.query('SELECT name, phone FROM users WHERE id=?', [approverId]);
           if (apRow?.phone) waRecipients = [apRow];
         }
+        const waHeading = leave_type === 'extra_working' ? 'New Extra Working Request' : 'New Leave Request';
         for (const hod of waRecipients) {
-          const msg = `Hello ${hod.name || ''},\n\n🗓 *New Leave Request*\n\n` +
+          const msg = `Hello ${hod.name || ''},\n\n🗓 *${waHeading}*\n\n` +
             `*Employee:* ${me?.name || ''}\n` +
             `*Type:* ${typeLabel}\n` +
             `*Duration:* ${daysWord}\n` +
@@ -8324,8 +8325,9 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
       if (reqRow && reqRow.phone) {
         const statusIcon = newStatus === 'approved' ? '✅' : '❌';
         const statusWord = newStatus === 'approved' ? 'APPROVED' : 'REJECTED';
+        const subjectWord = lr.leave_type === 'extra_working' ? 'Extra Working' : 'Leave';
         const [[apRow]] = await db.query('SELECT name FROM users WHERE id=? LIMIT 1', [uid]);
-        const msg = `Hello ${reqRow.name || ''},\n\n${statusIcon} *Leave ${statusWord}*\n\n` +
+        const msg = `Hello ${reqRow.name || ''},\n\n${statusIcon} *${subjectWord} ${statusWord}*\n\n` +
           `*Type:* ${typeLabel}\n` +
           `*Dates:* ${datesLine}\n` +
           `*Decided by:* ${apRow?.name || 'Approver'}\n` +
@@ -9931,28 +9933,28 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
         ).catch(() => {});
       }
 
-      // Notify Naman so he can create the official email ID before joining date
-      const [[naman]] = await db.query(`SELECT id, name, phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
-      if (naman?.phone) {
-        hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(naman.phone), text:
+      // Notify Simran so she can create the official email ID before joining date
+      const [[simran]] = await db.query(`SELECT id, name, phone FROM users WHERE name='Simran Gurnani' LIMIT 1`);
+      if (simran?.phone) {
+        hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(simran.phone), text:
 `🆕 *New Employee Onboarding*\n\n👤 Name: ${displayName}\n🏢 Department: ${displayDept}\n💼 Position: ${displayPos}\n📅 Joining Date: ${joiningFmt}\n\n⚠️ Please create the official email ID before the joining date.\n\n— HR Portal`
-        }, 'text', c.id, c.name, 'Offer Sent - Naman Notify').catch(e => console.error('HRM WA naman notify err:', e.message));
+        }, 'text', c.id, c.name, 'Offer Sent - Simran Notify').catch(e => console.error('HRM WA simran notify err:', e.message));
       }
 
-      // Auto-delegate a task to Naman — due exactly on the joining date (no
+      // Auto-delegate a task to Simran — due exactly on the joining date (no
       // holiday/week-off shifting — the employee joins that day regardless).
-      if (naman?.id) {
+      if (simran?.id) {
         const taskDesc = `Create official email ID for ${displayName} — Department: ${displayDept}, Position: ${displayPos}, Joining Date: ${joiningFmt}`;
         db.query(
           `INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-          [taskDesc, naman.id, req.session.userId, joining_date||null, 'pending', 'low', 'no', '', null, null, 0]
+          [taskDesc, simran.id, req.session.userId, joining_date||null, 'pending', 'low', 'no', '', null, null, 0]
         ).catch(e => console.error('HRM auto-delegate task err:', e.message));
 
-        if (naman.phone) {
+        if (simran.phone) {
           const dueFmt = (joining_date||'').split('-').reverse().join('-');
           const assignerName = req.session.name || 'HR';
-          const taskMsg = `Hello ${naman.name || ''},\n\n📋 *New Task Delegated*\n\n*By:* ${assignerName}\n*Due:* ${dueFmt}\n*Priority:* LOW\n\n*Task:* ${taskDesc}\n\n— E-Marketing Task Manager`;
-          sendWhatsApp(naman.phone, taskMsg).catch(e => console.error('HRM task delegation WA err:', e.message));
+          const taskMsg = `Hello ${simran.name || ''},\n\n📋 *New Task Delegated*\n\n*By:* ${assignerName}\n*Due:* ${dueFmt}\n*Priority:* LOW\n\n*Task:* ${taskDesc}\n\n— E-Marketing Task Manager`;
+          sendWhatsApp(simran.phone, taskMsg).catch(e => console.error('HRM task delegation WA err:', e.message));
         }
       }
     }
