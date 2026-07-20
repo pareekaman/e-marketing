@@ -8696,7 +8696,7 @@ function _meetingMsgBody(action, meeting, clientName, organizerName, attendeeNam
   };
   const headline = action === 'created' ? '📅 *New Meeting Scheduled*'
                  : action === 'rescheduled' ? '🔄 *Meeting Rescheduled*'
-                 : action === 'reminder' ? `⏰ *${fmtTime12(meeting.start_time)} Meeting starts in 10 minutes!*`
+                 : action === 'reminder' ? `⏰ *${fmtTime12(meeting.start_time)} Meeting starts soon!*`
                  : '❌ *Meeting Cancelled*';
   // Client group sees only the essentials — no organizer / team / agenda / client name.
   // Internal DMs (organizer + attendees) get the full context.
