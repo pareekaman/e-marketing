@@ -6426,6 +6426,22 @@ app.get('/api/payment-requests/my', requireAuth, async (req, res) => {
       'SELECT * FROM payment_requests WHERE submitted_by=? ORDER BY created_at DESC',
       [req.session.userId]
     );
+    // Payment-done/cancelled/bill markers are stored as separate "__system__" sentinel
+    // rows submitted by whoever actioned them (usually an admin, not this employee), so
+    // the submitted_by filter above misses them — without this the employee's payment
+    // status stays stuck on "Pending" forever even after an admin marks it paid. Pull in
+    // only the sentinels that reference one of this employee's own request ids.
+    const myIds = new Set(rows.map(r => String(r.id)));
+    if (myIds.size) {
+      const [sentinelRows] = await db.query(
+        `SELECT * FROM payment_requests WHERE bank_name='__system__'`
+      );
+      const mySentinels = sentinelRows.filter(s => {
+        const match = /^__(?:paid|cancelled|bill)__:(\d+)/.exec(s.reason || '');
+        return match && myIds.has(match[1]);
+      });
+      rows.push(...mySentinels);
+    }
     res.json(rows.map(parsePrRow));
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
