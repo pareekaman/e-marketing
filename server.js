@@ -8239,8 +8239,9 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
           const [[apRow]] = await db.query('SELECT name, phone FROM users WHERE id=?', [approverId]);
           if (apRow?.phone) waRecipients = [apRow];
         }
+        const waHeading = leave_type === 'extra_working' ? 'New Extra Working Request' : 'New Leave Request';
         for (const hod of waRecipients) {
-          const msg = `Hello ${hod.name || ''},\n\n🗓 *New Leave Request*\n\n` +
+          const msg = `Hello ${hod.name || ''},\n\n🗓 *${waHeading}*\n\n` +
             `*Employee:* ${me?.name || ''}\n` +
             `*Type:* ${typeLabel}\n` +
             `*Duration:* ${daysWord}\n` +
@@ -8324,8 +8325,9 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
       if (reqRow && reqRow.phone) {
         const statusIcon = newStatus === 'approved' ? '✅' : '❌';
         const statusWord = newStatus === 'approved' ? 'APPROVED' : 'REJECTED';
+        const subjectWord = lr.leave_type === 'extra_working' ? 'Extra Working' : 'Leave';
         const [[apRow]] = await db.query('SELECT name FROM users WHERE id=? LIMIT 1', [uid]);
-        const msg = `Hello ${reqRow.name || ''},\n\n${statusIcon} *Leave ${statusWord}*\n\n` +
+        const msg = `Hello ${reqRow.name || ''},\n\n${statusIcon} *${subjectWord} ${statusWord}*\n\n` +
           `*Type:* ${typeLabel}\n` +
           `*Dates:* ${datesLine}\n` +
           `*Decided by:* ${apRow?.name || 'Approver'}\n` +
