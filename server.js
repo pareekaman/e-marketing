@@ -8690,7 +8690,7 @@ function _meetingMsgBody(action, meeting, clientName, organizerName, attendeeNam
       '',
       `*Title:* ${meeting.title}`,
       `*Date:* ${fmtDate(meeting.meeting_date)}`,
-      `*Time:* ${meeting.start_time} – ${meeting.end_time}`
+      `*Time:* ${fmtTime12(meeting.start_time)} – ${fmtTime12(meeting.end_time)}`
     ];
     if (action !== 'cancelled' && meeting.meet_link) lines.push('', `*Join:* ${meeting.meet_link}`);
     return lines.join('\n');
@@ -8701,7 +8701,7 @@ function _meetingMsgBody(action, meeting, clientName, organizerName, attendeeNam
     `*Title:* ${meeting.title}`,
     `*Client:* ${clientName || '—'}`,
     `*Date:* ${fmtDate(meeting.meeting_date)}`,
-    `*Time:* ${meeting.start_time} – ${meeting.end_time}`,
+    `*Time:* ${fmtTime12(meeting.start_time)} – ${fmtTime12(meeting.end_time)}`,
     `*Organizer:* ${organizerName || '—'}`
   ];
   if (attendeeNames && attendeeNames.length) lines.push(`*Team:* ${attendeeNames.join(', ')}`);
