@@ -3379,10 +3379,16 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div class="form-row">
         <div class="form-group">
           <label>Start time *</label>
-          <div style="position:relative">
-            <input type="text" id="mtgStartDisplay" placeholder="e.g. 10:00 AM" autocomplete="off"
-              oninput="mtgFilterStartDropdown()" onfocus="mtgOpenStartDropdown()" onkeydown="mtgStartKeydown(event)"/>
-            <div id="mtgStartDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;max-height:220px;overflow:auto;z-index:20;box-shadow:0 8px 24px rgba(15,23,42,.12)"></div>
+          <div style="display:flex;gap:8px">
+            <div style="position:relative;flex:1">
+              <input type="text" id="mtgStartDisplay" placeholder="e.g. 10:00" autocomplete="off" style="width:100%"
+                oninput="mtgFilterStartDropdown()" onfocus="mtgOpenStartDropdown()" onkeydown="mtgStartKeydown(event)"/>
+              <div id="mtgStartDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;max-height:220px;overflow:auto;z-index:20;box-shadow:0 8px 24px rgba(15,23,42,.12)"></div>
+            </div>
+            <select id="mtgStartPeriod" onchange="mtgPeriodChanged()" style="width:76px;flex-shrink:0">
+              <option value="AM">AM</option>
+              <option value="PM">PM</option>
+            </select>
             <input type="hidden" id="mtgStart" onchange="mtgRecalcEnd()"/>
           </div>
         </div>
@@ -17764,37 +17770,41 @@ function mtgRecalcEnd() {
   document.getElementById('mtgEnd').value = `${eh}:${em}`;
 }
 
-// Zoom-style start-time picker: text input + clickable 15-min dropdown, backed by a hidden 24h value.
+// Zoom-style start-time picker: "H:MM" text input + separate AM/PM select, backed by a
+// hidden 24h value. Dropdown list is period-scoped (shows only the times valid for whichever
+// of AM/PM is currently selected), restricted overall to 8:00 AM - 8:00 PM (business hours).
 const MTG_TIME_OPTIONS = (() => {
   const opts = [];
-  for (let mins = 0; mins < 24 * 60; mins += 15) {
+  for (let mins = 8 * 60; mins <= 20 * 60; mins += 15) {
     const h24 = Math.floor(mins / 60), min = mins % 60;
     const value = `${String(h24).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
     const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-    const label = `${h12}:${String(min).padStart(2,'0')} ${h24 < 12 ? 'AM' : 'PM'}`;
-    opts.push({ value, label });
+    const period = h24 < 12 ? 'AM' : 'PM';
+    const h12Label = `${h12}:${String(min).padStart(2,'0')}`;
+    opts.push({ value, h12Label, period });
   }
   return opts;
 })();
 
-function mtgFormatStartLabel(value24) {
-  return MTG_TIME_OPTIONS.find(o => o.value === value24)?.label || '';
-}
-
-function mtgSetStartTime(value24, { silent } = {}) {
+function mtgSetStartTime(value24raw, { silent } = {}) {
+  const value24 = (value24raw || '').slice(0, 5); // tolerate DB "HH:MM:SS" TIME values
   const hidden = document.getElementById('mtgStart');
   hidden.value = value24 || '';
-  document.getElementById('mtgStartDisplay').value = value24 ? mtgFormatStartLabel(value24) : '';
+  const opt = value24 ? MTG_TIME_OPTIONS.find(o => o.value === value24) : null;
+  document.getElementById('mtgStartDisplay').value = opt ? opt.h12Label : '';
+  if (opt) document.getElementById('mtgStartPeriod').value = opt.period;
   if (!silent) hidden.dispatchEvent(new Event('change'));
 }
 
 function mtgRenderStartDropdown(filterText) {
   const dd = document.getElementById('mtgStartDropdown');
+  const period = document.getElementById('mtgStartPeriod').value;
   const q = (filterText || '').trim().toLowerCase().replace(/\s+/g, '');
-  const matches = q ? MTG_TIME_OPTIONS.filter(o => o.label.toLowerCase().replace(/\s+/g, '').includes(q)) : MTG_TIME_OPTIONS;
+  const periodOpts = MTG_TIME_OPTIONS.filter(o => o.period === period);
+  const matches = q ? periodOpts.filter(o => o.h12Label.toLowerCase().replace(/\s+/g, '').includes(q)) : periodOpts;
   dd.innerHTML = matches.length
     ? matches.map(o => `<div data-time-opt="${o.value}" onclick="mtgPickStartTime('${o.value}')"
-        style="padding:8px 12px;font-size:13px;cursor:pointer;color:#1e293b" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">${o.label}</div>`).join('')
+        style="padding:8px 12px;font-size:13px;cursor:pointer;color:#1e293b" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">${o.h12Label}</div>`).join('')
     : `<div style="padding:10px 12px;font-size:12px;color:#94a3b8">No matching time</div>`;
   dd.style.display = 'block';
 }
@@ -17823,6 +17833,17 @@ function mtgStartKeydown(e) {
   } else if (e.key === 'Escape') {
     document.getElementById('mtgStartDropdown').style.display = 'none';
   }
+}
+
+// AM/PM select changed directly: keep the typed hour:minute if it's valid for the new period
+// (e.g. 8:00 AM <-> 8:00 PM), otherwise clear the selection and let the user re-pick from the
+// now period-scoped dropdown list.
+function mtgPeriodChanged() {
+  const typed = document.getElementById('mtgStartDisplay').value.trim().replace(/\s+/g, '');
+  const period = document.getElementById('mtgStartPeriod').value;
+  const match = MTG_TIME_OPTIONS.find(o => o.period === period && o.h12Label.replace(/\s+/g, '') === typed);
+  mtgSetStartTime(match ? match.value : '');
+  mtgRenderStartDropdown(document.getElementById('mtgStartDisplay').value);
 }
 
 // Close start-time dropdown on outside click

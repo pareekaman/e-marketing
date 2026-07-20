@@ -6426,6 +6426,22 @@ app.get('/api/payment-requests/my', requireAuth, async (req, res) => {
       'SELECT * FROM payment_requests WHERE submitted_by=? ORDER BY created_at DESC',
       [req.session.userId]
     );
+    // Payment-done/cancelled/bill markers are stored as separate "__system__" sentinel
+    // rows submitted by whoever actioned them (usually an admin, not this employee), so
+    // the submitted_by filter above misses them — without this the employee's payment
+    // status stays stuck on "Pending" forever even after an admin marks it paid. Pull in
+    // only the sentinels that reference one of this employee's own request ids.
+    const myIds = new Set(rows.map(r => String(r.id)));
+    if (myIds.size) {
+      const [sentinelRows] = await db.query(
+        `SELECT * FROM payment_requests WHERE bank_name='__system__'`
+      );
+      const mySentinels = sentinelRows.filter(s => {
+        const match = /^__(?:paid|cancelled|bill)__:(\d+)/.exec(s.reason || '');
+        return match && myIds.has(match[1]);
+      });
+      rows.push(...mySentinels);
+    }
     res.json(rows.map(parsePrRow));
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -6441,35 +6457,39 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
       'UPDATE payment_requests SET status=?, reviewed_at=NOW() WHERE id=?',
       [status, req.params.id]
     );
-    // Send WhatsApp notification before responding (serverless-safe)
-    try {
-      const [[pr]] = await db.query('SELECT submitted_by, reason FROM payment_requests WHERE id=?', [req.params.id]);
-      if (pr && pr.submitted_by) {
-        const [[submitter]] = await db.query('SELECT name, phone FROM users WHERE id=?', [pr.submitted_by]);
-        if (submitter && submitter.phone) {
-          const emoji = status === 'approved' ? '✅' : '❌';
-          const statusText = status === 'approved' ? 'Approved' : 'Rejected';
-          let amtStr = '', cleanReason = pr.reason || '';
-          if (pr.reason) {
-            const s = String(pr.reason);
-            if (s.charAt(0) === '[') {
-              const close = s.indexOf('] ');
-              if (close > 1) {
-                const inner = s.slice(1, close);
-                const num = parseFloat(inner.slice(1).replace(/,/g, ''));
-                if (!isNaN(num)) {
-                  amtStr = `\n*Amount:* ${inner.charAt(0)}${num.toFixed(2)}`;
-                  cleanReason = s.slice(close + 2);
+    res.json({ success: true });
+    // WhatsApp notification is fire-and-forget, matching the pattern used for other
+    // approval flows (mdo-tasks, leave requests, meetings) — the approve/reject
+    // response no longer waits on the WhatsApp round trip.
+    (async () => {
+      try {
+        const [[pr]] = await db.query('SELECT submitted_by, reason FROM payment_requests WHERE id=?', [req.params.id]);
+        if (pr && pr.submitted_by) {
+          const [[submitter]] = await db.query('SELECT name, phone FROM users WHERE id=?', [pr.submitted_by]);
+          if (submitter && submitter.phone) {
+            const emoji = status === 'approved' ? '✅' : '❌';
+            const statusText = status === 'approved' ? 'Approved' : 'Rejected';
+            let amtStr = '', cleanReason = pr.reason || '';
+            if (pr.reason) {
+              const s = String(pr.reason);
+              if (s.charAt(0) === '[') {
+                const close = s.indexOf('] ');
+                if (close > 1) {
+                  const inner = s.slice(1, close);
+                  const num = parseFloat(inner.slice(1).replace(/,/g, ''));
+                  if (!isNaN(num)) {
+                    amtStr = `\n*Amount:* ${inner.charAt(0)}${num.toFixed(2)}`;
+                    cleanReason = s.slice(close + 2);
+                  }
                 }
               }
             }
+            const msg = `${emoji} *Payment Request ${statusText}*\n\nHi ${submitter.name},\n\nYour payment request has been *${statusText.toLowerCase()}*.${amtStr}\n*Reason:* ${cleanReason}\n\n— E-Marketing`;
+            await sendWhatsApp(submitter.phone, msg);
           }
-          const msg = `${emoji} *Payment Request ${statusText}*\n\nHi ${submitter.name},\n\nYour payment request has been *${statusText.toLowerCase()}*.${amtStr}\n*Reason:* ${cleanReason}\n\n— E-Marketing`;
-          await sendWhatsApp(submitter.phone, msg);
         }
-      }
-    } catch(waErr) { console.error('WA payment notify err:', waErr.message); }
-    res.json({ success: true });
+      } catch(waErr) { console.error('WA payment notify err:', waErr.message); }
+    })();
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -8680,7 +8700,7 @@ function _meetingMsgBody(action, meeting, clientName, organizerName, attendeeNam
   };
   const headline = action === 'created' ? '📅 *New Meeting Scheduled*'
                  : action === 'rescheduled' ? '🔄 *Meeting Rescheduled*'
-                 : action === 'reminder' ? `⏰ *${fmtTime12(meeting.start_time)} Meeting starts in 10 minutes!*`
+                 : action === 'reminder' ? `⏰ *${fmtTime12(meeting.start_time)} Meeting starts soon!*`
                  : '❌ *Meeting Cancelled*';
   // Client group sees only the essentials — no organizer / team / agenda / client name.
   // Internal DMs (organizer + attendees) get the full context.
@@ -8690,7 +8710,7 @@ function _meetingMsgBody(action, meeting, clientName, organizerName, attendeeNam
       '',
       `*Title:* ${meeting.title}`,
       `*Date:* ${fmtDate(meeting.meeting_date)}`,
-      `*Time:* ${meeting.start_time} – ${meeting.end_time}`
+      `*Time:* ${fmtTime12(meeting.start_time)} – ${fmtTime12(meeting.end_time)}`
     ];
     if (action !== 'cancelled' && meeting.meet_link) lines.push('', `*Join:* ${meeting.meet_link}`);
     return lines.join('\n');
@@ -8701,7 +8721,7 @@ function _meetingMsgBody(action, meeting, clientName, organizerName, attendeeNam
     `*Title:* ${meeting.title}`,
     `*Client:* ${clientName || '—'}`,
     `*Date:* ${fmtDate(meeting.meeting_date)}`,
-    `*Time:* ${meeting.start_time} – ${meeting.end_time}`,
+    `*Time:* ${fmtTime12(meeting.start_time)} – ${fmtTime12(meeting.end_time)}`,
     `*Organizer:* ${organizerName || '—'}`
   ];
   if (attendeeNames && attendeeNames.length) lines.push(`*Team:* ${attendeeNames.join(', ')}`);
