@@ -776,6 +776,18 @@ tbody tr:last-child td{border-bottom:none;}
 .cm-client-row.cm-active .cm-client-arrow{transform:rotate(180deg);color:#F39C12;}
 .cm-client-del{background:transparent;color:#94a3b8;border:1px solid #e2e8f0;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;}
 .cm-client-del:hover{background:#fef2f2;color:#dc2626;border-color:#fecaca;}
+/* Active/Inactive switch — reflects clients.is_active, same flag the Employee 360 page toggles. */
+.cm-switch{display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none;}
+.cm-switch-track{width:34px;height:19px;border-radius:19px;background:#cbd5e1;position:relative;transition:background .18s;flex-shrink:0;}
+.cm-switch-track::after{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .18s;}
+.cm-switch.is-on .cm-switch-track{background:#16a34a;}
+.cm-switch.is-on .cm-switch-track::after{transform:translateX(15px);}
+.cm-switch-label{font-size:11px;font-weight:600;color:#94a3b8;min-width:52px;}
+.cm-switch.is-on .cm-switch-label{color:#16a34a;}
+.cm-switch.is-busy{opacity:.5;pointer-events:none;}
+/* Dim the whole row while a client is inactive, so it reads at a glance. */
+.cm-client-row.cm-inactive .cm-client-name,
+.cm-client-row.cm-inactive .cm-avatar{opacity:.55;}
 
 .cm-client-detail{display:none;background:#f8fafc;border-bottom:1px solid #f1f5f9;border-top:1px solid #f1f5f9;padding:18px 20px;}
 .cm-detail-inner{display:flex;gap:18px;flex-wrap:wrap;align-items:stretch;}
@@ -2130,7 +2142,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
     <div class="cm-card">
       <div class="cm-header">
         <div class="cm-header-text">
-          <div class="cm-title">Client Master</div>
+          <!-- No heading here on purpose: the global topbar already shows "Client Master". -->
           <div class="cm-sub">Manage the client list used across Daily Task and Delegation forms.</div>
         </div>
         <div class="cm-stats">
@@ -12317,7 +12329,9 @@ function cmRenderList(){
     const handlerLabel = handlerNames.length
       ? handlerNames.map(n => `<span style="font-size:11px;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:4px">👤 ${dtEscape(n)}</span>`).join('')
       : `<span style="font-size:11px;color:#94a3b8;background:#f1f5f9;padding:2px 8px;border-radius:10px;font-weight:600">No handler</span>`;
-    html += `<div class="cm-client-row" data-cm-id="${c.id}" onclick="cmShowDetail(${c.id})">
+    // is_active is absent on older rows — COALESCE'd to 1 server-side, so treat undefined as active.
+    const isOn = c.is_active === undefined || !!Number(c.is_active);
+    html += `<div class="cm-client-row${isOn ? '' : ' cm-inactive'}" data-cm-id="${c.id}" onclick="cmShowDetail(${c.id})">
         <div class="cm-client-info">
           <div class="cm-avatar" style="${avatarStyle}">${initials}</div>
           <div class="cm-client-meta">
@@ -12326,6 +12340,11 @@ function cmRenderList(){
           </div>
         </div>
         <div class="cm-client-actions">
+          <span class="cm-switch${isOn ? ' is-on' : ''}" id="cmSw${c.id}" title="${isOn ? 'Click to mark inactive' : 'Click to mark active'}"
+                onclick="event.stopPropagation();cmToggleActive(${c.id},${isOn ? 0 : 1})">
+            <span class="cm-switch-track"></span>
+            <span class="cm-switch-label">${isOn ? 'Active' : 'Inactive'}</span>
+          </span>
           <button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>
           <span class="cm-client-arrow">›</span>
         </div>
@@ -12334,6 +12353,33 @@ function cmRenderList(){
   wrap.innerHTML = html;
 }
 
+// Flip a client between Active and Inactive. Writes clients.is_active through the
+// existing PUT /api/clients/:id — the same flag and endpoint the Employee 360
+// page's "Mark active/inactive" button uses, so the two views stay in agreement.
+// Patches just this row instead of re-rendering the list, to keep scroll position.
+async function cmToggleActive(id, makeActive){
+  const sw = document.getElementById('cmSw' + id);
+  if (sw) sw.classList.add('is-busy');
+  try {
+    const r = await api('/api/clients/' + id, 'PUT', { is_active: makeActive });
+    if (r && r.error) throw new Error(r.error);
+    const client = CM_ALL.find(c => String(c.id) === String(id));
+    if (client) client.is_active = makeActive;
+    if (sw) {
+      const on = !!makeActive;
+      sw.classList.toggle('is-on', on);
+      sw.title = on ? 'Click to mark inactive' : 'Click to mark active';
+      sw.querySelector('.cm-switch-label').textContent = on ? 'Active' : 'Inactive';
+      sw.setAttribute('onclick', `event.stopPropagation();cmToggleActive(${id},${on ? 0 : 1})`);
+      sw.closest('.cm-client-row')?.classList.toggle('cm-inactive', !on);
+    }
+    showToast(makeActive ? 'Client marked active' : 'Client marked inactive');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  } finally {
+    if (sw) sw.classList.remove('is-busy');
+  }
+}
 
 function cmFilter(){ cmRenderList(); }
 
