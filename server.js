@@ -6457,35 +6457,39 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
       'UPDATE payment_requests SET status=?, reviewed_at=NOW() WHERE id=?',
       [status, req.params.id]
     );
-    // Send WhatsApp notification before responding (serverless-safe)
-    try {
-      const [[pr]] = await db.query('SELECT submitted_by, reason FROM payment_requests WHERE id=?', [req.params.id]);
-      if (pr && pr.submitted_by) {
-        const [[submitter]] = await db.query('SELECT name, phone FROM users WHERE id=?', [pr.submitted_by]);
-        if (submitter && submitter.phone) {
-          const emoji = status === 'approved' ? '✅' : '❌';
-          const statusText = status === 'approved' ? 'Approved' : 'Rejected';
-          let amtStr = '', cleanReason = pr.reason || '';
-          if (pr.reason) {
-            const s = String(pr.reason);
-            if (s.charAt(0) === '[') {
-              const close = s.indexOf('] ');
-              if (close > 1) {
-                const inner = s.slice(1, close);
-                const num = parseFloat(inner.slice(1).replace(/,/g, ''));
-                if (!isNaN(num)) {
-                  amtStr = `\n*Amount:* ${inner.charAt(0)}${num.toFixed(2)}`;
-                  cleanReason = s.slice(close + 2);
+    res.json({ success: true });
+    // WhatsApp notification is fire-and-forget, matching the pattern used for other
+    // approval flows (mdo-tasks, leave requests, meetings) — the approve/reject
+    // response no longer waits on the WhatsApp round trip.
+    (async () => {
+      try {
+        const [[pr]] = await db.query('SELECT submitted_by, reason FROM payment_requests WHERE id=?', [req.params.id]);
+        if (pr && pr.submitted_by) {
+          const [[submitter]] = await db.query('SELECT name, phone FROM users WHERE id=?', [pr.submitted_by]);
+          if (submitter && submitter.phone) {
+            const emoji = status === 'approved' ? '✅' : '❌';
+            const statusText = status === 'approved' ? 'Approved' : 'Rejected';
+            let amtStr = '', cleanReason = pr.reason || '';
+            if (pr.reason) {
+              const s = String(pr.reason);
+              if (s.charAt(0) === '[') {
+                const close = s.indexOf('] ');
+                if (close > 1) {
+                  const inner = s.slice(1, close);
+                  const num = parseFloat(inner.slice(1).replace(/,/g, ''));
+                  if (!isNaN(num)) {
+                    amtStr = `\n*Amount:* ${inner.charAt(0)}${num.toFixed(2)}`;
+                    cleanReason = s.slice(close + 2);
+                  }
                 }
               }
             }
+            const msg = `${emoji} *Payment Request ${statusText}*\n\nHi ${submitter.name},\n\nYour payment request has been *${statusText.toLowerCase()}*.${amtStr}\n*Reason:* ${cleanReason}\n\n— E-Marketing`;
+            await sendWhatsApp(submitter.phone, msg);
           }
-          const msg = `${emoji} *Payment Request ${statusText}*\n\nHi ${submitter.name},\n\nYour payment request has been *${statusText.toLowerCase()}*.${amtStr}\n*Reason:* ${cleanReason}\n\n— E-Marketing`;
-          await sendWhatsApp(submitter.phone, msg);
         }
-      }
-    } catch(waErr) { console.error('WA payment notify err:', waErr.message); }
-    res.json({ success: true });
+      } catch(waErr) { console.error('WA payment notify err:', waErr.message); }
+    })();
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
