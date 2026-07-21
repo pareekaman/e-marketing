@@ -17826,8 +17826,9 @@ function mtgRecalcEnd() {
 }
 
 // Zoom-style start-time picker: "H:MM" text input + separate AM/PM select, backed by a
-// hidden 24h value. Dropdown list is period-scoped (shows only the times valid for whichever
-// of AM/PM is currently selected), restricted overall to 8:00 AM - 8:00 PM (business hours).
+// hidden 24h value. The dropdown always lists the full business-hours range (8:00 AM - 8:00 PM)
+// with the period spelled out on each row, so a PM slot can be picked without touching the
+// AM/PM select first — picking a row syncs that select to the chosen period.
 const MTG_TIME_OPTIONS = (() => {
   const opts = [];
   for (let mins = 8 * 60; mins <= 20 * 60; mins += 15) {
@@ -17836,7 +17837,7 @@ const MTG_TIME_OPTIONS = (() => {
     const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
     const period = h24 < 12 ? 'AM' : 'PM';
     const h12Label = `${h12}:${String(min).padStart(2,'0')}`;
-    opts.push({ value, h12Label, period });
+    opts.push({ value, h12Label, period, label: `${h12Label} ${period}` });
   }
   return opts;
 })();
@@ -17853,13 +17854,14 @@ function mtgSetStartTime(value24raw, { silent } = {}) {
 
 function mtgRenderStartDropdown(filterText) {
   const dd = document.getElementById('mtgStartDropdown');
-  const period = document.getElementById('mtgStartPeriod').value;
   const q = (filterText || '').trim().toLowerCase().replace(/\s+/g, '');
-  const periodOpts = MTG_TIME_OPTIONS.filter(o => o.period === period);
-  const matches = q ? periodOpts.filter(o => o.h12Label.toLowerCase().replace(/\s+/g, '').includes(q)) : periodOpts;
+  // Match against the bare "H:MM" as well as "H:MM AM/PM", so typing "10:00" keeps both periods.
+  const matches = q
+    ? MTG_TIME_OPTIONS.filter(o => o.label.toLowerCase().replace(/\s+/g, '').includes(q))
+    : MTG_TIME_OPTIONS;
   dd.innerHTML = matches.length
     ? matches.map(o => `<div data-time-opt="${o.value}" onclick="mtgPickStartTime('${o.value}')"
-        style="padding:8px 12px;font-size:13px;cursor:pointer;color:#1e293b" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">${o.h12Label}</div>`).join('')
+        style="padding:8px 12px;font-size:13px;cursor:pointer;color:#1e293b" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">${o.label}</div>`).join('')
     : `<div style="padding:10px 12px;font-size:12px;color:#94a3b8">No matching time</div>`;
   dd.style.display = 'block';
 }
@@ -17892,7 +17894,7 @@ function mtgStartKeydown(e) {
 
 // AM/PM select changed directly: keep the typed hour:minute if it's valid for the new period
 // (e.g. 8:00 AM <-> 8:00 PM), otherwise clear the selection and let the user re-pick from the
-// now period-scoped dropdown list.
+// dropdown list.
 function mtgPeriodChanged() {
   const typed = document.getElementById('mtgStartDisplay').value.trim().replace(/\s+/g, '');
   const period = document.getElementById('mtgStartPeriod').value;
