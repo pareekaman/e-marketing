@@ -8259,7 +8259,11 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
           const [[apRow]] = await db.query('SELECT name, phone FROM users WHERE id=?', [approverId]);
           if (apRow?.phone) waRecipients = [apRow];
         }
-        const waHeading = leave_type === 'extra_working' ? 'New Extra Working Request' : 'New Leave Request';
+        const waHeading = ({
+          extra_working: 'New Extra Working Request',
+          work_from_home: 'New Work From Home Request',
+          half_day: 'New Half Day Leave Request'
+        })[leave_type] || 'New Leave Request';
         for (const hod of waRecipients) {
           const msg = `Hello ${hod.name || ''},\n\n🗓 *${waHeading}*\n\n` +
             `*Employee:* ${me?.name || ''}\n` +
