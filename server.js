@@ -6737,7 +6737,7 @@ app.get('/api/clients', requireAuth, async (req, res) => {
 
 // Update / clear client logo. Body: { logo: <data-URL string> | null }.
 // 1.5 MB cap on payload — base64 expansion + headroom for a 256x256 JPEG.
-app.put('/api/clients/:id/logo', requireAuth, requireAdminOrPC, async (req, res) => {
+app.put('/api/clients/:id/logo', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const id = req.params.id;
     let { logo } = req.body;
@@ -6757,7 +6757,7 @@ app.put('/api/clients/:id/logo', requireAuth, requireAdminOrPC, async (req, res)
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/clients', requireAuth, requireAdminOrPC, async (req, res) => {
+app.post('/api/clients', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const name = (req.body.name || '').trim();
     const handlerRaw = req.body.handler_id;
@@ -6802,7 +6802,7 @@ app.post('/api/clients', requireAuth, requireAdminOrPC, async (req, res) => {
   }
 });
 
-app.put('/api/clients/:id', requireAuth, requireAdminOrPC, async (req, res) => {
+app.put('/api/clients/:id', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const id = req.params.id;
     const name = req.body.name == null ? null : String(req.body.name).trim();
@@ -6828,7 +6828,7 @@ app.put('/api/clients/:id', requireAuth, requireAdminOrPC, async (req, res) => {
 });
 
 // Multi-handler support — get all handlers for a client
-app.get('/api/clients/:id/handlers', requireAuth, requireAdminOrPC, async (req, res) => {
+app.get('/api/clients/:id/handlers', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const [rows] = await db.query(
       `SELECT ch.user_id AS id, u.name, COALESCE(u.department,'') AS department
@@ -6839,7 +6839,7 @@ app.get('/api/clients/:id/handlers', requireAuth, requireAdminOrPC, async (req, 
 });
 
 // Multi-handler support — replace all handlers for a client
-app.put('/api/clients/:id/handlers', requireAuth, requireAdminOrPC, async (req, res) => {
+app.put('/api/clients/:id/handlers', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const userIds = Array.isArray(req.body.user_ids)
@@ -6867,7 +6867,7 @@ app.delete('/api/clients/:id', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // Bulk add clients via CSV
-app.post('/api/clients/bulk', requireAuth, requireAdminOrPC, async (req, res) => {
+app.post('/api/clients/bulk', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const { names } = req.body;
     if (!Array.isArray(names) || !names.length) {
@@ -6897,7 +6897,7 @@ app.post('/api/clients/bulk', requireAuth, requireAdminOrPC, async (req, res) =>
 // Client stats — full client snapshot for the detail page. Defaults to the
 // current month (IST). Accepts ?from=YYYY-MM-DD&to=YYYY-MM-DD to widen the
 // window. Includes delegation/checklist task counts + meetings + recent rows.
-app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res) => {
+app.get('/api/clients/:id/stats', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const id = req.params.id;
     const [[client]] = await db.query(
@@ -6994,8 +6994,8 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrPC, async (req, res
 });
 
 // Provision or update client login. Creates the users row if missing, or
-// updates email/password on the existing one. Admin/PC only.
-app.post('/api/clients/:id/login', requireAuth, requireAdminOrPC, async (req, res) => {
+// updates email/password on the existing one. Admin/HOD/PC only.
+app.post('/api/clients/:id/login', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const id = req.params.id;
     const email = (req.body.email || '').trim().toLowerCase();
