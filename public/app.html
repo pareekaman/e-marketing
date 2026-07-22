@@ -4087,8 +4087,8 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div class="form-group"><label>Department</label><input type="text" id="uDepartment" placeholder="e.g. Sales, Production"/></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Birthday <span style="color:#e53e3e;font-size:11px">*</span></label><input type="date" id="uBirthday"/></div>
-      <div class="form-group"><label>Joining Date <span style="color:#e53e3e;font-size:11px">*</span></label><input type="date" id="uJoiningDate"/></div>
+      <div class="form-group"><label>Birthday <span id="uBirthdayReq" style="color:#e53e3e;font-size:11px">*</span></label><input type="date" id="uBirthday"/></div>
+      <div class="form-group"><label>Joining Date <span id="uJoiningReq" style="color:#e53e3e;font-size:11px">*</span></label><input type="date" id="uJoiningDate"/></div>
     </div>
     <div class="form-group">
       <label>Password <span id="pwdOptional" style="color:#94a3b8;font-weight:400;text-transform:none">(leave blank to keep current)</span></label>
@@ -8718,6 +8718,8 @@ function openAddUser() {
   document.getElementById('uRole').value='user';
   document.getElementById('uUserRole').value='user';
   document.getElementById('pwdOptional').style.display='none';
+  document.getElementById('uBirthdayReq').style.display='inline';
+  document.getElementById('uJoiningReq').style.display='inline';
   document.getElementById('userErr').style.display='none';
   document.getElementById('userSuccess').style.display='none';
   document.getElementById('uExcludeReminder').checked = false;
@@ -8735,13 +8737,18 @@ function openEditUser(id) {
   document.getElementById('uNotifEmail').value=u.notification_email||'';
   document.getElementById('uPhone').value=u.phone||'';
   document.getElementById('uDepartment').value=u.department||'';
-  document.getElementById('uBirthday').value=u.birthday||'';
-  document.getElementById('uJoiningDate').value=u.joining_date||'';
+  // The API returns these as full ISO timestamps, which a date input cannot
+  // parse — without the split the field renders blank even when a date is
+  // stored, and saving would then wipe it. Same trim the Profile page does.
+  document.getElementById('uBirthday').value=String(u.birthday||'').split('T')[0];
+  document.getElementById('uJoiningDate').value=String(u.joining_date||'').split('T')[0];
   document.getElementById('uPassword').value='';
   document.getElementById('uRole').value=u.role||'user';
   document.getElementById('uUserRole').value=u.user_role||u.role||'user';
   document.getElementById('uExcludeReminder').checked = !!u.exclude_from_reminder;
   document.getElementById('pwdOptional').style.display='inline';
+  document.getElementById('uBirthdayReq').style.display='none';
+  document.getElementById('uJoiningReq').style.display='none';
   document.getElementById('userErr').style.display='none';
   document.getElementById('userSuccess').style.display='none';
   renderExtraAccessGrid(Array.isArray(u.extra_access) ? u.extra_access : []);
@@ -8764,8 +8771,10 @@ async function saveUser() {
   const user_role=document.getElementById('uUserRole').value;
   const exclude_from_reminder = document.getElementById('uExcludeReminder').checked;
   if (!name||!email) { err.textContent='Name and email required'; err.style.display='block'; return; }
-  if (!birthday) { err.textContent='Birthday is required'; err.style.display='block'; return; }
-  if (!joining_date) { err.textContent='Joining date is required'; err.style.display='block'; return; }
+  // Required only for a new user. Editing an existing one must not be blocked
+  // by a date nobody recorded when the account was made.
+  if (!id && !birthday) { err.textContent='Birthday is required'; err.style.display='block'; return; }
+  if (!id && !joining_date) { err.textContent='Joining date is required'; err.style.display='block'; return; }
   if (!id&&!password) { err.textContent='Password required for new user'; err.style.display='block'; return; }
   const extra_access = readExtraAccessFromForm();
   const body={name,email,notification_email,role,user_role,phone,department,birthday,joining_date,exclude_from_reminder,extra_access};
