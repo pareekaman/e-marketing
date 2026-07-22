@@ -5381,7 +5381,9 @@ function clientPendingDigestMessage(head, tasks) {
   const list = tasks.map((t, i) => {
     const d = Number(t.days_pending) || 0;
     const age = d === 0 ? 'today' : `${d} day${d === 1 ? '' : 's'} pending`;
-    return `${i + 1}. ${t.description}\n   _given ${t.given_on} · ${age} · ${t.handler_name}_`;
+    // No handler name per line — the whole message is addressed to one handler,
+    // so repeating it on every task just adds noise.
+    return `${i + 1}. ${t.description}\n   _given ${t.given_on} · ${age}_`;
   }).join('\n');
   return `Hello ${head.handler_name || ''},\n\n` +
     `📋 *Pending Tasks — ${head.client_name}*\n\n` +
