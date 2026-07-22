@@ -9419,8 +9419,10 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
 // (2026-07-19 consistency audit): six cross-reference/numbering fixes (13.3
 // now cites Clause 13; 14.1/14.5/14.6 cite Clause 14; the stray "14.7" after
 // 15.6 is now 15.7; the article before the position is computed a/an) and a
-// blank hand-filled acceptance date. Jurisdiction stays "Bangalore" (flagged
-// vs the Jaipur letterhead, but NOT approved for change). The page STRUCTURE, however, is
+// blank hand-filled acceptance date. Clause 15.6's jurisdiction was changed
+// from "Bangalore" to "Rajasthan" on 2026-07-22 at the user's explicit
+// request (it had been flagged as inconsistent with the Jaipur letterhead in
+// the source document, and the user then approved the correction). The page STRUCTURE, however, is
 // now built for browser/Chromium rendering (user-approved): the logo/address
 // header is a running header applied on every page by the PDF renderer (see
 // hrmFinalOfferHeaderTemplate), so it is no longer repeated inline in the body;
@@ -9667,7 +9669,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
 
     <p>15.5 Any notice or other document to be given under this Agreement shall be in writing and may be given personally to you or may be sent by first-class post or other fast postal service to, in the case of the Company, its registered office for the time being and your case, at your last known place of residence. Any such notice shall be deemed served upon the earlier of (i) delivery, if served personally; or (ii) upon receipt, if sent by mail.</p>
 
-    <p>15.6 This Agreement shall be governed by Indian law, and the Company and you submit to the exclusive jurisdiction of the Indian courts in Bangalore.</p>
+    <p>15.6 This Agreement shall be governed by Indian law, and the Company and you submit to the exclusive jurisdiction of the Indian courts in Rajasthan.</p>
 
     <p>15.7 Notwithstanding the above terms and conditions, the Company reserves the right to amend, delete, and/or implement new terms and conditions which the Company deems necessary from time to time, and such amendment/deletion/implementation of new terms and conditions shall be notified to you in writing by prior notice.</p>
 
