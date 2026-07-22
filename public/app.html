@@ -7783,6 +7783,17 @@ async function loadSubtasks(taskId) {
         <button class="action-btn" style="padding:1px 6px;font-size:11px;${s.status==='completed'?'':'opacity:.35'}" onclick="toggleSubtask(${s.id},${taskId},${s.status!=='completed'})" title="Mark done">✅</button>
         <button class="action-btn" style="padding:1px 6px;font-size:11px;margin-left:4px" onclick="deleteSubtask(${s.id},${taskId})" title="Delete">🗑️</button>
       </td>
+    </tr>
+    <tr style="border-bottom:1px solid #f1f5f9">
+      <td></td>
+      <td colspan="6" style="padding:0 8px 8px">
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="text" id="stRemark_${s.id}" value="${dtEscape(s.remarks || '')}"
+                 placeholder="Remark — e.g. FMS sheet not sent by client"
+                 style="flex:1;padding:5px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:11.5px;outline:none"/>
+          <button class="action-btn" style="padding:3px 9px;font-size:11px" onclick="saveSubtaskRemark(${s.id},${taskId})">Save</button>
+        </div>
+      </td>
     </tr>`;
   }).join('');
   wrap.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -7792,6 +7803,18 @@ async function loadSubtasks(taskId) {
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+// Handler's note on why a sub-task is stuck. Sent without a status, so saving a
+// remark never flips the sub-task's done/pending state. Blank clears it, which
+// also drops it out of the client's pending digest.
+async function saveSubtaskRemark(id, taskId) {
+  const input = document.getElementById('stRemark_' + id);
+  if (!input) return;
+  const r = await api(`/api/subtasks/${id}`, 'PUT', { remarks: input.value.trim() });
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  showToast(input.value.trim() ? 'Remark saved' : 'Remark cleared');
+  loadSubtasks(taskId);
 }
 
 async function toggleSubtask(id, taskId, checked) {

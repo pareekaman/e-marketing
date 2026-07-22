@@ -344,6 +344,10 @@ const _startupMigrationsPromise = (async () => {
     completed_at TIMESTAMP NULL,
     INDEX idx_task (task_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  // Handler's note on why a sub-task is stuck — almost always something the
+  // client still owes. Surfaced in the client's pending digest so the delay is
+  // recorded where the client can see it, instead of the handler explaining it.
+  await sa(`ALTER TABLE task_subtasks ADD COLUMN remarks TEXT DEFAULT NULL AFTER description`);
   await sa(`ALTER TABLE task_subtasks ADD COLUMN priority ENUM('low','medium','high','urgent') DEFAULT 'low' AFTER description`);
   // Revise approval holds the requested new due-date here until the assigner approves.
   await sa(`ALTER TABLE task_approvals ADD COLUMN new_date DATE DEFAULT NULL AFTER action_type`);
@@ -1647,7 +1651,7 @@ app.get('/api/tasks/:id/subtasks', requireAuth, async (req, res) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
     if (!(await canTouchSubtasks(req, task))) return res.status(403).json({ error: 'Not allowed' });
     const [subtasks] = await db.query(
-      `SELECT s.id, s.description, s.status, COALESCE(s.priority,'low') AS priority,
+      `SELECT s.id, s.description, s.remarks, s.status, COALESCE(s.priority,'low') AS priority,
               DATE_FORMAT(s.created_at,'%Y-%m-%d') AS created_at,
               DATE_FORMAT(s.completed_at,'%Y-%m-%d') AS completed_at, u.name AS createdByName
        FROM task_subtasks s JOIN users u ON s.created_by = u.id
@@ -1698,6 +1702,12 @@ app.put('/api/subtasks/:id', requireAuth, async (req, res) => {
     if (!sub) return res.status(404).json({ error: 'Sub-task not found' });
     const [[task]] = await db.query('SELECT id, assigned_to, assigned_by, client_id FROM delegation_tasks WHERE id=?', [sub.task_id]);
     if (!(await canTouchSubtasks(req, task))) return res.status(403).json({ error: 'Not allowed' });
+    // Remarks alone: leave the status untouched, so saving a note never flips a
+    // sub-task's state as a side effect.
+    if (req.body.remarks !== undefined && req.body.status === undefined) {
+      await db.query('UPDATE task_subtasks SET remarks=? WHERE id=?', [String(req.body.remarks || '').trim() || null, id]);
+      return res.json({ success: true });
+    }
     await db.query(`UPDATE task_subtasks SET status=?, completed_at=IF(?='completed', NOW(), NULL) WHERE id=?`, [status, status, id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -5378,30 +5388,93 @@ async function sendClientPendingDigests({ force = false } = {}) {
         AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''
       ORDER BY c.name ASC, d.name ASC, t.created_at ASC`);
 
+  // The other direction: what the CLIENT still owes us. Only rows whose
+  // deadline has actually passed — a task due tomorrow is not "not done".
+  // due_time is honoured when set, so a 2:30 PM deadline counts from 2:30 PM.
+  const [owed] = await db.query(
+    `SELECT t.id, t.description, t.remarks, t.assigned_by AS handler_id,
+            DATE_FORMAT(t.due_date,'%d-%m-%Y') AS due_on,
+            TIME_FORMAT(t.due_time,'%H:%i') AS due_time,
+            DATEDIFF(CURDATE(), t.due_date) AS days_over,
+            c.id AS client_id, c.name AS client_name, c.whatsapp_group_id AS group_id,
+            h.name AS handler_name
+       FROM delegation_tasks t
+       JOIN users d   ON t.assigned_to = d.id
+       JOIN users h   ON t.assigned_by = h.id
+       JOIN clients c ON t.client_id   = c.id
+      WHERE t.status IN ('pending','revised')
+        AND d.role = 'client'
+        AND t.due_date IS NOT NULL
+        AND (t.due_date < CURDATE()
+             OR (t.due_date = CURDATE() AND t.due_time IS NOT NULL AND t.due_time < CURTIME()))
+        AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''
+      ORDER BY c.name ASC, h.name ASC, t.due_date ASC`);
+
+  // Sub-tasks the handler has flagged. These carry no date of their own — the
+  // remark IS the signal, so any sub-task with one and still open is listed.
+  const [stuckSubs] = await db.query(
+    `SELECT s.id, s.description, s.remarks, t.description AS parent_desc,
+            t.assigned_to AS handler_id,
+            c.id AS client_id, c.name AS client_name, c.whatsapp_group_id AS group_id,
+            d.name AS handler_name
+       FROM task_subtasks s
+       JOIN delegation_tasks t ON s.task_id     = t.id
+       JOIN users d            ON t.assigned_to = d.id
+       JOIN clients c          ON t.client_id   = c.id
+      WHERE s.status <> 'completed'
+        AND s.remarks IS NOT NULL AND s.remarks <> ''
+        AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''
+      ORDER BY c.name ASC, d.name ASC, s.created_at ASC`);
+
   // Bucket by client+handler — that pair is one message.
   const buckets = new Map();
-  for (const r of rows) {
-    const key = `${r.client_id}|${r.assigned_to}`;
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push(r);
-  }
+  const bucketOf = (clientId, handlerId, seed) => {
+    const key = `${clientId}|${handlerId}`;
+    if (!buckets.has(key)) buckets.set(key, { head: seed, tasks: [], owed: [], subs: [] });
+    return buckets.get(key);
+  };
+  for (const r of rows)       bucketOf(r.client_id, r.assigned_to, r).tasks.push(r);
+  // Owed tasks hang off the handler who asked for them, not the client doing them.
+  for (const r of owed)       bucketOf(r.client_id, r.handler_id, r).owed.push(r);
+  for (const r of stuckSubs)  bucketOf(r.client_id, r.handler_id, r).subs.push(r);
 
   // Nothing pending anywhere → stay silent, rather than sending "0 tasks".
   if (!buckets.size) return { ok: true, sent: 0, tasks: 0, quiet: 'nothing pending' };
 
   let sent = 0;
-  for (const tasks of buckets.values()) {
-    const head = tasks[0];
-    await sendWhatsAppRaw(head.group_id, clientPendingDigestMessage(head, tasks))
+  for (const b of buckets.values()) {
+    await sendWhatsAppRaw(b.head.group_id, clientPendingDigestMessage(b))
       .catch(e => console.error('WA client digest err:', e.message));
     sent++;
   }
-  return { ok: true, sent, pairs: buckets.size, tasks: rows.length };
+  return { ok: true, sent, pairs: buckets.size, tasks: rows.length, owed: owed.length, flaggedSubtasks: stuckSubs.length };
 }
 
 // Kept separate so the wording can be reviewed without reading the query.
-function clientPendingDigestMessage(head, tasks) {
+function clientPendingDigestMessage({ head, tasks, owed, subs }) {
+  // Second half of the message: what the CLIENT owes us. Overdue tasks carry
+  // the handler's remark when one was written; flagged sub-tasks are listed by
+  // their remark, since they have no deadline of their own.
+  let tail = '';
+  if (owed.length || subs.length) {
+    const lines = [];
+    owed.forEach((t, i) => {
+      const d = Number(t.days_over) || 0;
+      const late = d <= 0 ? 'due today' : `${d} day${d === 1 ? '' : 's'} overdue`;
+      const due = `due ${t.due_on}${t.due_time ? ` · ${fmtClock(t.due_time)}` : ''} · ${late}`;
+      lines.push(`${i + 1}. ${t.description}\n   _${due}_` + (t.remarks ? `\n   _"${t.remarks}"_` : ''));
+    });
+    subs.forEach(s => {
+      lines.push(`• ${s.description}\n   _under "${s.parent_desc}"_\n   _"${s.remarks}"_`);
+    });
+    tail = `\n⚠️ *Task not done by client*\n\n${lines.join('\n')}\n`;
+  }
+
   const n = tasks.length;
+  // A client can owe us things while owing no open asks of their own, in which
+  // case the message is only the warning half.
+  if (!n) return `Hello ${head.handler_name || ''},\n${tail}\n— E-Marketing Task Manager`;
+
   const list = tasks.map((t, i) => {
     const d = Number(t.days_pending) || 0;
     const age = d === 0 ? 'today' : `${d} day${d === 1 ? '' : 's'} pending`;
@@ -5415,8 +5488,18 @@ function clientPendingDigestMessage(head, tasks) {
   return `Hello ${head.handler_name || ''},\n\n` +
     `📋 *Pending Tasks*\n\n` +
     `*${n} task${n === 1 ? '' : 's'}* ${n === 1 ? 'is' : 'are'} still open with us:\n\n` +
-    `${list}\n\n` +
-    `— E-Marketing Task Manager`;
+    `${list}\n` +
+    tail +
+    `\n— E-Marketing Task Manager`;
+}
+
+// "14:30" → "02:30 PM". Input is always the server's TIME_FORMAT '%H:%i'.
+function fmtClock(hhmm) {
+  const [h, m] = String(hhmm).split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm;
+  const period = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
 }
 
 // ── Client "completed today" digest ──────────────────────────────────
