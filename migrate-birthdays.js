@@ -1,7 +1,20 @@
-// One-time script: populate birthday & joining_date for existing users from Google Sheet data
-// Run with: node migrate-birthdays.js
+// Populate birthday & joining_date for existing users from Google Sheet data.
+//
+//   node migrate-birthdays.js              → dry run: shows what WOULD change
+//   node migrate-birthdays.js --apply      → writes, but only into empty fields
+//   node migrate-birthdays.js --apply --overwrite
+//                                          → also replaces values already set
+//
+// Dry run is the default on purpose: this writes to real people's records, and
+// a mistyped name here silently updates nobody (or, worse, the wrong row).
+// Matching is on users.name and is case-insensitive (MySQL's default
+// collation), so 'Bhanu sharma' still finds 'Bhanu Sharma' — but a genuinely
+// different spelling does not, which is why unmatched rows print suggestions.
 require('dotenv').config();
 const mysql = require('mysql2/promise');
+
+const APPLY     = process.argv.includes('--apply');
+const OVERWRITE = process.argv.includes('--overwrite');
 
 const DATA = [
   { name: 'Akhilesh Vyas',      birthday: '2001-04-28', joining_date: '2025-06-02' },
@@ -47,18 +60,66 @@ async function main() {
     port:     Number(process.env.DB_PORT) || 3306,
   });
 
-  let updated = 0, notFound = [];
+  const iso = v => (v ? new Date(v).toISOString().split('T')[0] : null);
+  let filled = 0, already = 0, conflicts = [], notFound = [];
+
   for (const row of DATA) {
-    const [res] = await db.query(
-      'UPDATE users SET birthday=?, joining_date=? WHERE name=?',
-      [row.birthday, row.joining_date, row.name]
-    );
-    if (res.affectedRows > 0) { updated++; console.log(`✅ ${row.name}`); }
-    else { notFound.push(row.name); console.log(`⚠️  NOT FOUND: ${row.name}`); }
+    const [matches] = await db.query(
+      'SELECT id, name, email, birthday, joining_date FROM users WHERE name=?', [row.name]);
+
+    if (!matches.length) {
+      // Suggest anyone sharing the first or last word, so a renamed or slightly
+      // misspelled record is easy to spot instead of silently doing nothing.
+      // Both halves matter: 'Chirag' misses because the surname is absent,
+      // 'Divyy Jain' misses because the given name itself is spelled differently.
+      const parts = row.name.split(/\s+/);
+      const [near] = await db.query(
+        'SELECT name, email FROM users WHERE (name LIKE ? OR name LIKE ?) AND role <> ?',
+        [parts[0] + '%', '%' + parts[parts.length - 1], 'client']);
+      notFound.push({ name: row.name, near: near.map(u => `${u.name} <${u.email}>`) });
+      console.log(`⚠️  NOT FOUND: ${row.name}${near.length ? `  → did you mean: ${near.map(u => u.name).join(', ')}?` : ''}`);
+      continue;
+    }
+    if (matches.length > 1) {
+      console.log(`⚠️  AMBIGUOUS: ${row.name} matches ${matches.length} users — skipped`);
+      notFound.push({ name: row.name, near: matches.map(u => `${u.name} <${u.email}>`) });
+      continue;
+    }
+
+    const u = matches[0];
+    // Build the update from only the columns that need touching.
+    const sets = [], params = [];
+    for (const col of ['birthday', 'joining_date']) {
+      const current = iso(u[col]);
+      if (current === row[col]) continue;                 // already correct
+      if (current && !OVERWRITE) {
+        conflicts.push(`${u.name}.${col}: has ${current}, sheet says ${row[col]}`);
+        continue;
+      }
+      sets.push(`${col}=?`); params.push(row[col]);
+    }
+
+    if (!sets.length) { already++; console.log(`⏭  ${u.name} — nothing to change`); continue; }
+    if (APPLY) {
+      await db.query(`UPDATE users SET ${sets.join(', ')} WHERE id=?`, [...params, u.id]);
+      console.log(`✅ ${u.name} — set ${sets.map(s => s.split('=')[0]).join(' + ')}`);
+    } else {
+      console.log(`📝 would set ${u.name}: ${sets.map((s, i) => `${s.split('=')[0]}=${params[i]}`).join(', ')}`);
+    }
+    filled++;
   }
 
-  console.log(`\nDone. Updated: ${updated}, Not found: ${notFound.length}`);
-  if (notFound.length) console.log('Missing:', notFound.join(', '));
+  console.log(`\n${APPLY ? 'Updated' : 'Would update'}: ${filled}   Already correct: ${already}   ` +
+              `Conflicts: ${conflicts.length}   Not found: ${notFound.length}`);
+  if (conflicts.length) {
+    console.log('\nAlready set to something else (re-run with --overwrite to replace):');
+    for (const c of conflicts) console.log('  · ' + c);
+  }
+  if (notFound.length) {
+    console.log('\nNo matching user — fix the name in DATA or in the app, then re-run:');
+    for (const n of notFound) console.log(`  · ${n.name}${n.near.length ? `   candidates: ${n.near.join(' | ')}` : ''}`);
+  }
+  if (!APPLY) console.log('\nDry run only — nothing was written. Re-run with --apply to save.');
   await db.end();
 }
 
