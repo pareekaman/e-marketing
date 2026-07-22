@@ -320,6 +320,10 @@ const _startupMigrationsPromise = (async () => {
   // Delegation where the doer sets their own due date (assigner doesn't know occupancy).
   // due_date stays NULL until the doer (or assigner) picks one; then this flips to 0.
   await sa(`ALTER TABLE delegation_tasks ADD COLUMN awaiting_due_date TINYINT(1) DEFAULT 0 AFTER waiting_approval`);
+  // Optional clock time on the deadline. Only the handler→client flow sets it
+  // (they commit the client to a date AND time); every internal task leaves it
+  // NULL and keeps behaving as a date-only deadline.
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN due_time TIME DEFAULT NULL AFTER due_date`);
   // Client portal delegation form offers an 'urgent' priority tier above 'high'.
   await sa(`ALTER TABLE delegation_tasks MODIFY COLUMN priority ENUM('low','medium','high','urgent') DEFAULT 'low'`);
   // Sub-tasks — follow-up asks nested under a delegation task (e.g. client says
@@ -980,6 +984,7 @@ app.get('/api/setup', async (req, res) => {
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`, 'delegation_tasks.client_id');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN url VARCHAR(2048) DEFAULT NULL AFTER client_id`, 'delegation_tasks.url');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN awaiting_due_date TINYINT(1) DEFAULT 0 AFTER waiting_approval`, 'delegation_tasks.awaiting_due_date');
+    await sa(`ALTER TABLE delegation_tasks ADD COLUMN due_time TIME DEFAULT NULL AFTER due_date`, 'delegation_tasks.due_time');
     await sa(`ALTER TABLE checklist_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`, 'checklist_tasks.client_id');
 
     await sa(`CREATE TABLE IF NOT EXISTS delegation_tasks (
@@ -1482,11 +1487,41 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
     if (!desc) return res.status(400).json({ error: 'Description required' });
     if (!doerWillSet && !date) return res.status(400).json({ error: 'Description and date required' });
 
+    // Staff delegating TO a client (the handler→client direction). The doer is
+    // the client's own portal login, so it is only allowed when that login
+    // really belongs to the client the task is tagged with — otherwise one
+    // client's login could be handed another client's work.
+    let doerIsClient = false;
+    if (!isClient && targetUser !== req.session.userId) {
+      const [[doer]] = await db.query('SELECT id, role, client_id FROM users WHERE id=? LIMIT 1', [targetUser]);
+      if (!doer) return res.status(400).json({ error: 'Doer not found' });
+      if (doer.role === 'client') {
+        if (!enforcedClientId || Number(doer.client_id) !== Number(enforcedClientId)) {
+          return res.status(403).json({ error: 'That portal login does not belong to this client' });
+        }
+        const [[cli]] = await db.query('SELECT id, handler_id FROM clients WHERE id=? LIMIT 1', [enforcedClientId]);
+        const mayDelegate = isAdmin || isHod || await isHandlerOf(req.session.userId, cli);
+        if (!mayDelegate) return res.status(403).json({ error: 'Only this client\'s handler can delegate to them' });
+        if (doerWillSet) return res.status(400).json({ error: 'A client task needs a due date set by you' });
+        doerIsClient = true;
+      }
+    }
+    // Optional clock time on the deadline — only meaningful alongside a date.
+    let dueTime = null;
+    if (!doerWillSet && req.body.dueTime) {
+      const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(req.body.dueTime).trim());
+      if (!m) return res.status(400).json({ error: 'Due time must be HH:MM (24-hour)' });
+      dueTime = `${m[1]}:${m[2]}:00`;
+    }
+
     // Holiday / week-off check — auto-adjust due_date if needed.
-    // Skipped entirely when the doer will set their own date (none yet to adjust).
+    // Skipped when the doer will set their own date (none yet to adjust), and
+    // when the doer is a client: our holiday calendar and week-offs describe
+    // staff, so silently moving a date the handler agreed with the client
+    // would be wrong.
     let effectiveDate = doerWillSet ? null : date;
     let adjusted = false, adjustedReason = '';
-    if (!doerWillSet) try {
+    if (!doerWillSet && !doerIsClient) try {
       const holidaysSet = await loadHolidaysSet();
       const [[doerUser]] = await db.query('SELECT week_off, extra_off FROM users WHERE id=? LIMIT 1', [targetUser]);
       if (doerUser && isUserOffOn(doerUser, date, holidaysSet)) {
@@ -1516,7 +1551,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
           if (aprRows.length) assignedBy = aprRows[0].id;
         }
       }
-      await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0]);
+      await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,due_time,status,priority,approval,remarks,client_id,url,awaiting_due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, dueTime, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0]);
       // 📧 Send delegation email + 📱 WhatsApp (non-blocking — fire and forget)
       (async () => {
         const target = await getNotifyTarget(targetUser);
@@ -1540,7 +1575,9 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         try {
           const [[doerRow]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [targetUser]);
           if (doerRow && doerRow.phone) {
-            const dueFmt = doerWillSet ? 'Aap set karein 👉 task me due date daalein' : (effectiveDate||'').split('-').reverse().join('-');
+            const dueFmt = doerWillSet
+              ? 'Aap set karein 👉 task me due date daalein'
+              : (effectiveDate||'').split('-').reverse().join('-') + (dueTime ? ` at ${dueTime.slice(0,5)}` : '');
             const msg = `Hello ${doerRow.name || ''},\n\n📋 *New Task Delegated*\n\n` +
               `*By:* ${assignerName}\n` +
               `*Due:* ${dueFmt}\n` +
@@ -5258,9 +5295,12 @@ function sanitizeSystemLinks(input) {
 // Decide whose portal data a request is allowed to READ.
 //  - role='client'          → always their own linked client; ?clientId= is ignored,
 //                             so a client can never read another client's portal.
-//  - admin / hod / pc       → may pass ?clientId=N to read that client's portal
-//                             read-only. This backs the Client Master "Client
-//                             Dashboard" button, which opens /client?clientId=N.
+//  - admin / hod / pc       → may pass ?clientId=N to read any client's portal.
+//                             This backs the Client Master "Client Dashboard"
+//                             button, which opens /client?clientId=N.
+//  - any other staff member → same, but only for clients they actually handle,
+//                             so a handler can open their own clients' portals
+//                             (and delegate to them) without seeing the rest.
 //  - anyone else            → 403.
 // Only the GET endpoints use this. Every write endpoint below (password, feedback
 // POST/PUT/DELETE) keeps its own hard role==='client' check on purpose: staff
@@ -5271,14 +5311,24 @@ async function resolvePortalClientId(req) {
     if (!u?.client_id) return { error: 'No linked client', status: 404 };
     return { id: u.client_id, preview: false };
   }
-  const isStaff = ['admin', 'hod', 'pc'].includes(req.session.role);
   const wanted = parseInt(req.query.clientId);
-  if (isStaff && wanted) {
-    const [[c]] = await db.query('SELECT id FROM clients WHERE id=?', [wanted]);
-    if (!c) return { error: 'Client not found', status: 404 };
-    return { id: c.id, preview: true };
-  }
+  if (!wanted) return { error: 'Client portal only', status: 403 };
+  const [[c]] = await db.query('SELECT id, handler_id FROM clients WHERE id=?', [wanted]);
+  if (!c) return { error: 'Client not found', status: 404 };
+  if (['admin', 'hod', 'pc'].includes(req.session.role)) return { id: c.id, preview: true };
+  // Not a manager — allow only if this user handles this client. Check both the
+  // primary handler_id and the many-to-many client_handlers table.
+  if (await isHandlerOf(req.session.userId, c)) return { id: c.id, preview: true };
   return { error: 'Client portal only', status: 403 };
+}
+
+// True when `userId` is a handler of the given client row (primary or secondary).
+async function isHandlerOf(userId, client) {
+  if (!client) return false;
+  if (Number(client.handler_id) === Number(userId)) return true;
+  const [[row]] = await db.query(
+    'SELECT 1 AS ok FROM client_handlers WHERE client_id=? AND user_id=? LIMIT 1', [client.id, userId]);
+  return !!row;
 }
 
 // Client changes their own portal login password.
@@ -5322,6 +5372,17 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
       `SELECT c.id, c.name, c.handler_id, c.logo_url, c.system_links, u.name AS handler_name, u.email AS handler_email
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
     if (client) client.system_links = parseSystemLinks(client.system_links);
+    // The client's own portal login, if one exists. A handler needs it to
+    // delegate TO the client; when it is null the UI says so instead of
+    // offering an option that cannot work.
+    if (client) {
+      const [[pu]] = await db.query(
+        `SELECT id, name FROM users WHERE role='client' AND client_id=? ORDER BY id LIMIT 1`, [id]);
+      client.portal_user_id   = pu?.id   || null;
+      client.portal_user_name = pu?.name || null;
+    }
+    // Who is looking: the client themselves, or a staff member previewing.
+    const viewerId = resolved.preview ? null : req.session.userId;
     const ist = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
     const y = ist.getUTCFullYear(), m = ist.getUTCMonth();
     const defaultFrom = `${y}-${String(m+1).padStart(2,'0')}-01`;
@@ -5361,6 +5422,7 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
     const [recentDel] = await db.query(
       `SELECT t.id, 'delegation' AS type, t.description, t.status, t.priority,
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              TIME_FORMAT(t.due_time,'%H:%i') AS due_time, t.assigned_to,
               u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created
        FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id
        WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
@@ -5401,6 +5463,7 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
     const [upDel] = await db.query(
       `SELECT t.id, 'delegation' AS type, t.description, t.priority,
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              TIME_FORMAT(t.due_time,'%H:%i') AS due_time, t.assigned_to,
               u.name AS doer
        FROM delegation_tasks t JOIN users u ON t.assigned_to=u.id
        WHERE t.client_id=? AND t.status IN ('pending','revised')
@@ -5416,11 +5479,26 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
     const upcoming = [...upDel, ...upChl]
       .sort((a,b) => (a.due_date||'').localeCompare(b.due_date||''))
       .slice(0, 10);
+    // Tasks the client themselves owe us — the handler→client direction. Kept
+    // separate from `recent`/`upcoming` (which cover everything tagged to this
+    // client, whoever the doer is) because this is the only list the client can
+    // act on.
+    const [clientTasks] = client?.portal_user_id ? await db.query(
+      `SELECT t.id, 'delegation' AS type, t.description, t.status, t.priority,
+              COALESCE(t.waiting_approval,0) AS waiting_approval, t.remarks,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              TIME_FORMAT(t.due_time,'%H:%i') AS due_time,
+              COALESCE(u.name,'—') AS assigned_by_name
+       FROM delegation_tasks t LEFT JOIN users u ON t.assigned_by=u.id
+       WHERE t.assigned_to=? ORDER BY t.status='completed', t.due_date ASC, t.due_time ASC
+       LIMIT 100`, [client.portal_user_id]) : [[]];
     res.json({
       client, range: { from, to },
       delegation: del, checklist: chl, meetings: { ...meet, recent: meetRecent },
       recent,
-      upcoming
+      upcoming,
+      clientTasks,
+      viewerId
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

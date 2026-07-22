@@ -158,9 +158,25 @@ body.cp-preview .cp-client-only{display:none !important;}
       <label id="cpDelHandlerLabel">Handler (auto-assigned)</label>
       <input type="text" id="cpDelHandler" readonly style="background:#f8fafc;color:#475569;font-weight:600"/>
     </div>
+    <!-- Staff preview only: send this to the handler, or ask the client to do it. -->
+    <div class="form-group" id="cpDelDoerRow" style="display:none">
+      <label>Assign to</label>
+      <select id="cpDelDoer" onchange="cpDelDoerChange()">
+        <option value="handler">Handler — our team does it</option>
+        <option value="client">Client — they do it</option>
+      </select>
+    </div>
     <div class="form-group">
       <label>Description *</label>
       <textarea id="cpDelDesc" rows="3" placeholder="What needs to be done?"></textarea>
+    </div>
+    <!-- Only for client-owned tasks: the handler commits them to a date AND time. -->
+    <div class="form-group" id="cpDelDueRow" style="display:none">
+      <label>Due date &amp; time *</label>
+      <div style="display:flex;gap:8px">
+        <input type="date" id="cpDelDate" style="flex:1"/>
+        <input type="time" id="cpDelTime" style="flex:1"/>
+      </div>
     </div>
     <div class="form-group">
       <label>Priority</label>
@@ -170,7 +186,7 @@ body.cp-preview .cp-client-only{display:none !important;}
         <option value="high">High</option>
         <option value="urgent">Urgent</option>
       </select>
-      <div style="margin-top:6px;font-size:12px;color:#64748b">🗓 Due date will be defined by Handler</div>
+      <div id="cpDelDueHint" style="margin-top:6px;font-size:12px;color:#64748b">🗓 Due date will be defined by Handler</div>
     </div>
     <div class="form-group">
       <label>Remarks</label>
@@ -291,9 +307,9 @@ const CP_PREVIEW_ID = (() => {
 let CP_IS_PREVIEW = false;  // set true only after /api/me confirms a staff role
 
 // Who may use the ＋ New Task button. A client always can (it is their own
-// channel to their handler). In preview it is admin/hod only — NOT pc, because
-// POST /api/tasks only honours `assignedTo` for admin/hod/user, so a pc's task
-// would silently land on the pc instead of the handler.
+// channel to their handler). In preview every staff role qualifies EXCEPT pc,
+// because POST /api/tasks only honours `assignedTo` for admin/hod/user — a pc's
+// task would silently land on the pc instead of the intended doer.
 let CP_CAN_CREATE_TASK = false;
 
 // Belt-and-braces guard on the handlers behind hidden controls. Mostly the
@@ -343,13 +359,15 @@ function cpNav(page){
     if (!me || !me.id) { window.location.replace('/'); return; }
     // A client login always sees its own portal and ignores ?clientId=. Staff
     // may only be here with a ?clientId=, and then only read-only.
+    // Managers may preview any client; other staff only the clients they handle,
+    // which the server decides — so we let them through and surface its refusal.
     if (me.role !== 'client') {
-      if (!CP_PREVIEW_ID || !['admin','hod','pc'].includes(me.role)) { window.location.replace('/app'); return; }
+      if (!CP_PREVIEW_ID) { window.location.replace('/app'); return; }
       CP_IS_PREVIEW = true;
       document.body.classList.add('cp-preview');
       document.getElementById('cpPreviewBar').style.display = 'flex';
     }
-    CP_CAN_CREATE_TASK = (me.role === 'client') || ['admin','hod'].includes(me.role);
+    CP_CAN_CREATE_TASK = (me.role === 'client') || ['admin','hod','user'].includes(me.role);
     _cpUser = me;
     document.getElementById('topbarSub').textContent = CP_IS_PREVIEW ? 'Admin Preview' : (me.name || 'E-Marketing');
     loadClientPortal();
@@ -363,7 +381,14 @@ async function loadClientPortal(from, to){
   wrap.innerHTML = '<div class="empty" style="padding:60px">Loading…</div>';
   try {
     const s = await api(cpUrl('/api/client-portal/stats', (from && to) ? { from, to } : null));
-    if (s.error) { wrap.innerHTML = `<div class="empty" style="padding:60px;color:#dc2626">${s.error}</div>`; return; }
+    if (s.error) {
+      // Staff who neither manage nor handle this client get the generic refusal.
+      const msg = (CP_IS_PREVIEW && s.error === 'Client portal only')
+        ? 'You do not handle this client, so their portal is not available to you.'
+        : s.error;
+      wrap.innerHTML = `<div class="empty" style="padding:60px;color:#dc2626">${dtEscape(msg)}</div>`;
+      return;
+    }
     _cpMe = s.client || {};
     _cpStats = s;
     if (CP_IS_PREVIEW) {
@@ -514,6 +539,8 @@ function cpRenderHtml(s){
       </div>
     </div>
 
+    ${cpRenderClientTasksHtml(s)}
+
     <div class="cp-card" id="cpRecentCard">
       <div class="cp-card-head">
         <h4>📋 Recent Activity</h4>
@@ -536,6 +563,74 @@ function cpRenderHtml(s){
       </div>
     </div>
   `;
+}
+
+// "Action Required" — tasks the handler delegated TO the client, so the client
+// is the doer. Hidden entirely when there are none, so a client who is never
+// asked for anything sees no empty box. The client can tick these off; a staff
+// member previewing sees the same list read-only (marking done is the doer's
+// job, and in preview the doer is not who is logged in).
+function cpRenderClientTasksHtml(s){
+  const rows = Array.isArray(s.clientTasks) ? s.clientTasks : [];
+  if (!rows.length) return '';
+  const pending = rows.filter(t => t.status !== 'completed').length;
+  const today = new Date(Date.now() + (5.5*60*60*1000)).toISOString().split('T')[0];
+  const body = rows.map(t => {
+    const done = t.status === 'completed';
+    const overdue = !done && t.due_date && t.due_date < today;
+    const due = t.due_date
+      ? `${fmtDate(t.due_date)}${t.due_time ? ` · ${cpFmtTime(t.due_time)}` : ''}`
+      : '—';
+    return `<tr${done ? ' style="opacity:.55"' : ''}>
+      <td style="word-break:break-word">${dtEscape(t.description || '')}</td>
+      <td style="white-space:nowrap">${dtEscape(t.assigned_by_name || '—')}</td>
+      <td style="white-space:nowrap;${overdue ? 'color:#dc2626;font-weight:700' : ''}">${due}${overdue ? ' ⚠️' : ''}</td>
+      <td style="white-space:nowrap">${done
+        ? '<span style="color:#16a34a;font-weight:700;font-size:12px">✓ Done</span>'
+        : (CP_IS_PREVIEW
+            ? '<span style="color:#b45309;font-weight:700;font-size:12px">Pending</span>'
+            : `<button class="btn btn-primary" style="padding:5px 12px;font-size:12px" onclick="cpCompleteMyTask(${t.id}, this)">Mark Done</button>`)}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div class="cp-card" style="margin-bottom:16px;border:1.5px solid #fed7aa">
+      <div class="cp-card-head">
+        <h4>📌 Action Required From You</h4>
+        <span style="font-size:11px;color:#94a3b8">${pending} pending</span>
+      </div>
+      <div class="cp-scroll" style="max-height:40vh">
+        <table>
+          <thead><tr style="background:#fff7ed;position:sticky;top:0;z-index:1">
+            <th>Task</th><th>Asked By</th><th>Due</th><th></th>
+          </tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// "14:30" → "02:30 PM". Input is always the server's TIME_FORMAT '%H:%i'.
+function cpFmtTime(hhmm){
+  const [h, m] = String(hhmm).split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm;
+  const period = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${String(h12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${period}`;
+}
+
+// Client ticks off a task their handler delegated to them.
+async function cpCompleteMyTask(id, btn){
+  if (CP_IS_PREVIEW) { showToast('Only the client can mark their own task done', 'error'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const r = await api(`/api/tasks/${id}/status`, 'PUT', { status: 'completed', type: 'delegation' });
+    if (r && r.error) throw new Error(r.error);
+    showToast('✅ Marked done');
+    loadClientPortal();
+  } catch (e) {
+    showToast(e.message || 'Failed', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Mark Done'; }
+  }
 }
 
 // Renders <tr> rows for the Recent Activity table — shared by the initial
@@ -738,22 +833,55 @@ function cpRenderCharts(s){
 }
 
 // ── Delegate task to handler ─────────────────────────────────────────
+// Toggle the client-owned-task fields. A task the client owes us needs a hard
+// date and time from the handler; a task for the handler keeps the existing
+// "doer sets their own date" behaviour.
+function cpDelDoerChange(){
+  const toClient = document.getElementById('cpDelDoer')?.value === 'client';
+  document.getElementById('cpDelDueRow').style.display  = toClient ? 'block' : 'none';
+  document.getElementById('cpDelDueHint').style.display = toClient ? 'none'  : 'block';
+  document.getElementById('cpDelHandlerLabel').textContent = toClient
+    ? 'Doer — the client'
+    : "Doer — this client's handler";
+  document.getElementById('cpDelHandler').value = toClient
+    ? (_cpMe.portal_user_name || _cpMe.name || 'Client')
+    : (_cpMe.handler_name || '');
+}
+
 function cpOpenDelegate(){
   if (!CP_CAN_CREATE_TASK) { showToast('Read-only preview — only the client can do this', 'error'); return; }
   if (!_cpMe?.handler_id) { showToast('No handler assigned — contact admin', 'error'); return; }
   document.getElementById('cpDelErr').style.display = 'none';
+  // Delegating TO the client needs their portal login as the doer. Without one
+  // there is nothing to assign to, so the option is offered but explains itself.
+  const doerRow = document.getElementById('cpDelDoerRow');
+  const doerSel = document.getElementById('cpDelDoer');
+  doerRow.style.display = CP_IS_PREVIEW ? 'block' : 'none';
+  doerSel.value = 'handler';
+  const clientOpt = doerSel.querySelector('option[value="client"]');
+  const hasLogin = !!_cpMe?.portal_user_id;
+  clientOpt.disabled = !hasLogin;
+  clientOpt.textContent = hasLogin
+    ? 'Client — they do it'
+    : 'Client — needs a portal login first';
+  document.getElementById('cpDelDate').value = '';
+  document.getElementById('cpDelTime').value = '';
+  document.getElementById('cpDelDesc').value = '';
+  document.getElementById('cpDelRemarks').value = '';
+  document.getElementById('cpDelPriority').value = 'low';
   // Same form either way; only the wording says who is assigning to whom.
   document.getElementById('cpDelTitle').textContent = CP_IS_PREVIEW
     ? `＋ Assign Task for ${_cpMe.name || 'this client'}`
     : '＋ Assign Task to Your Handler';
-  document.getElementById('cpDelHandlerLabel').textContent = CP_IS_PREVIEW
-    ? "Doer — this client's handler"
-    : 'Handler (auto-assigned)';
   document.getElementById('cpDelSubmitBtn').textContent = CP_IS_PREVIEW ? 'Create Task' : 'Send to Handler';
-  document.getElementById('cpDelHandler').value = _cpMe.handler_name || '';
-  document.getElementById('cpDelDesc').value = '';
-  document.getElementById('cpDelRemarks').value = '';
-  document.getElementById('cpDelPriority').value = 'low';
+  if (CP_IS_PREVIEW) {
+    cpDelDoerChange();  // owns the doer label + name + due-date fields
+  } else {
+    document.getElementById('cpDelHandlerLabel').textContent = 'Handler (auto-assigned)';
+    document.getElementById('cpDelHandler').value = _cpMe.handler_name || '';
+    document.getElementById('cpDelDueRow').style.display  = 'none';
+    document.getElementById('cpDelDueHint').style.display = 'block';
+  }
   document.getElementById('clientDelegateModal').classList.add('open');
 }
 
@@ -771,13 +899,26 @@ async function cpSaveDelegate(){
   // way the task lands on the client's handler with the doer setting the date;
   // assigned_by is whoever is logged in, so the audit trail stays honest.
   const payload = { type:'delegation', desc, priority, remarks, approval:'no', doerSetsDueDate:true };
+  const toClient = CP_IS_PREVIEW && document.getElementById('cpDelDoer')?.value === 'client';
   if (CP_IS_PREVIEW) {
-    payload.assignedTo = _cpMe.handler_id;
     payload.client_id  = CP_PREVIEW_ID;
+    payload.assignedTo = toClient ? _cpMe.portal_user_id : _cpMe.handler_id;
+  }
+  // A client-owned task is a commitment to a moment, so the handler sets both
+  // halves of it here rather than leaving the date to the doer.
+  if (toClient) {
+    const date = document.getElementById('cpDelDate').value;
+    const time = document.getElementById('cpDelTime').value;
+    if (!date || !time) { err.textContent = 'Pick both a due date and a time for the client'; err.style.display = 'block'; return; }
+    payload.doerSetsDueDate = false;
+    payload.date = date;
+    payload.dueTime = time;
   }
   const r = await api('/api/tasks', 'POST', payload);
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
-  showToast(CP_IS_PREVIEW ? `✅ Task created for ${_cpMe.handler_name || 'the handler'}` : '✅ Task sent to your handler');
+  showToast(toClient
+    ? `✅ Task assigned to ${_cpMe.name || 'the client'}`
+    : (CP_IS_PREVIEW ? `✅ Task created for ${_cpMe.handler_name || 'the handler'}` : '✅ Task sent to your handler'));
   closeModal('clientDelegateModal');
   loadClientPortal();
 }
