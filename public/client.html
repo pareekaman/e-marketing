@@ -152,10 +152,10 @@ body.cp-preview .cp-client-only{display:none !important;}
 <div class="modal-overlay" id="clientDelegateModal">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('clientDelegateModal')">×</button>
-    <h3>＋ Assign Task to Your Handler</h3>
+    <h3 id="cpDelTitle">＋ Assign Task to Your Handler</h3>
     <div class="alert error" id="cpDelErr" style="display:none"></div>
     <div class="form-group">
-      <label>Handler (auto-assigned)</label>
+      <label id="cpDelHandlerLabel">Handler (auto-assigned)</label>
       <input type="text" id="cpDelHandler" readonly style="background:#f8fafc;color:#475569;font-weight:600"/>
     </div>
     <div class="form-group">
@@ -178,7 +178,7 @@ body.cp-preview .cp-client-only{display:none !important;}
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('clientDelegateModal')">Cancel</button>
-      <button class="btn btn-primary cp-client-only" onclick="cpSaveDelegate()">Send to Handler</button>
+      <button class="btn btn-primary" id="cpDelSubmitBtn" onclick="cpSaveDelegate()">Send to Handler</button>
     </div>
   </div>
 </div>
@@ -290,10 +290,17 @@ const CP_PREVIEW_ID = (() => {
 })();
 let CP_IS_PREVIEW = false;  // set true only after /api/me confirms a staff role
 
-// Belt-and-braces guard on every write handler. The controls are already hidden
-// in preview, but cpSaveDelegate/cpAddSubtask call the generic /api/tasks routes,
-// which would happily accept a staff write — unlike the client-portal routes,
-// which reject non-clients server-side.
+// Who may use the ＋ New Task button. A client always can (it is their own
+// channel to their handler). In preview it is admin/hod only — NOT pc, because
+// POST /api/tasks only honours `assignedTo` for admin/hod/user, so a pc's task
+// would silently land on the pc instead of the handler.
+let CP_CAN_CREATE_TASK = false;
+
+// Belt-and-braces guard on the handlers behind hidden controls. Mostly the
+// server would refuse anyway, but cpAddSubtask posts to a generic /api/tasks
+// route, so an unhidden control there would be a real staff write. Task
+// creation is the one write staff DO get — see CP_CAN_CREATE_TASK — so
+// cpSaveDelegate checks that instead of this.
 function cpBlockedInPreview(){
   if (!CP_IS_PREVIEW) return false;
   showToast('Read-only preview — only the client can do this', 'error');
@@ -342,6 +349,7 @@ function cpNav(page){
       document.body.classList.add('cp-preview');
       document.getElementById('cpPreviewBar').style.display = 'flex';
     }
+    CP_CAN_CREATE_TASK = (me.role === 'client') || ['admin','hod'].includes(me.role);
     _cpUser = me;
     document.getElementById('topbarSub').textContent = CP_IS_PREVIEW ? 'Admin Preview' : (me.name || 'E-Marketing');
     loadClientPortal();
@@ -359,8 +367,9 @@ async function loadClientPortal(from, to){
     _cpMe = s.client || {};
     _cpStats = s;
     if (CP_IS_PREVIEW) {
-      document.getElementById('cpPreviewText').textContent =
-        `👁 Read-only preview of ${_cpMe.name || 'this client'}'s portal — the client sees this view when they log in`;
+      document.getElementById('cpPreviewText').textContent = CP_CAN_CREATE_TASK
+        ? `👁 ${_cpMe.name || 'This client'}'s portal as the client sees it — you can add tasks; the client's own actions are disabled`
+        : `👁 Read-only preview of ${_cpMe.name || 'this client'}'s portal — the client sees this view when they log in`;
     }
     wrap.innerHTML = cpRenderHtml(s);
     setTimeout(()=>cpRenderCharts(s), 0);
@@ -477,7 +486,7 @@ function cpRenderHtml(s){
             <input type="date" id="cpTo" value="${range.to || ''}" style="padding:5px 8px;border:1.5px solid #fde68a;border-radius:6px;font-size:12px;background:#fff;outline:none"/>
             <button class="btn btn-primary" style="padding:6px 12px;font-size:12px" onclick="cpApplyRange()">Apply</button>
           </div>
-          <button class="btn btn-primary cp-client-only" ${canDelegate ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'} onclick="cpOpenDelegate()" style="padding:10px 16px;font-size:13px;font-weight:600;border-radius:10px;box-shadow:0 4px 12px rgba(79,70,229,.25)">＋ New Task</button>
+          ${CP_CAN_CREATE_TASK ? `<button class="btn btn-primary" ${canDelegate ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'} onclick="cpOpenDelegate()" style="padding:10px 16px;font-size:13px;font-weight:600;border-radius:10px;box-shadow:0 4px 12px rgba(79,70,229,.25)">＋ New Task</button>` : ''}
         </div>
       </div>
     </div>
@@ -730,8 +739,17 @@ function cpRenderCharts(s){
 
 // ── Delegate task to handler ─────────────────────────────────────────
 function cpOpenDelegate(){
+  if (!CP_CAN_CREATE_TASK) { showToast('Read-only preview — only the client can do this', 'error'); return; }
   if (!_cpMe?.handler_id) { showToast('No handler assigned — contact admin', 'error'); return; }
   document.getElementById('cpDelErr').style.display = 'none';
+  // Same form either way; only the wording says who is assigning to whom.
+  document.getElementById('cpDelTitle').textContent = CP_IS_PREVIEW
+    ? `＋ Assign Task for ${_cpMe.name || 'this client'}`
+    : '＋ Assign Task to Your Handler';
+  document.getElementById('cpDelHandlerLabel').textContent = CP_IS_PREVIEW
+    ? "Doer — this client's handler"
+    : 'Handler (auto-assigned)';
+  document.getElementById('cpDelSubmitBtn').textContent = CP_IS_PREVIEW ? 'Create Task' : 'Send to Handler';
   document.getElementById('cpDelHandler').value = _cpMe.handler_name || '';
   document.getElementById('cpDelDesc').value = '';
   document.getElementById('cpDelRemarks').value = '';
@@ -740,16 +758,26 @@ function cpOpenDelegate(){
 }
 
 async function cpSaveDelegate(){
-  if (cpBlockedInPreview()) return;
+  if (!CP_CAN_CREATE_TASK) { showToast('Read-only preview — only the client can do this', 'error'); return; }
   const err = document.getElementById('cpDelErr');
   err.style.display = 'none';
   const desc = document.getElementById('cpDelDesc').value.trim();
   const priority = document.getElementById('cpDelPriority').value;
   const remarks = document.getElementById('cpDelRemarks').value.trim();
   if (!desc) { err.textContent = 'Description required'; err.style.display = 'block'; return; }
-  const r = await api('/api/tasks', 'POST', { type:'delegation', desc, priority, remarks, approval:'no', doerSetsDueDate:true });
+  // A client sends nothing extra — the server resolves their own client and
+  // handler from the session. Staff previewing must name both explicitly, since
+  // their session says nothing about which client this page is showing. Either
+  // way the task lands on the client's handler with the doer setting the date;
+  // assigned_by is whoever is logged in, so the audit trail stays honest.
+  const payload = { type:'delegation', desc, priority, remarks, approval:'no', doerSetsDueDate:true };
+  if (CP_IS_PREVIEW) {
+    payload.assignedTo = _cpMe.handler_id;
+    payload.client_id  = CP_PREVIEW_ID;
+  }
+  const r = await api('/api/tasks', 'POST', payload);
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
-  showToast('✅ Task sent to your handler');
+  showToast(CP_IS_PREVIEW ? `✅ Task created for ${_cpMe.handler_name || 'the handler'}` : '✅ Task sent to your handler');
   closeModal('clientDelegateModal');
   loadClientPortal();
 }
