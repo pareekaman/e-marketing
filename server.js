@@ -5249,6 +5249,85 @@ app.get('/api/cron/meeting-reminder', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Due-date nudge ───────────────────────────────────────────────────
+// A client-delegated task lands on the handler with no due date (the client
+// never sets one), so until the handler fills it in the client sees no
+// deadline at all. This nudges every handler who still owes one.
+//
+// Batched to ONE message per handler, however many tasks they owe — a handler
+// with five of them should get one nudge, not five. The 4-hourly cadence comes
+// from whatever pings the endpoint below; this function only answers "who is
+// owed a nudge right now", so it is safe to call more often (it will just send
+// again, which is the intended behaviour until the date is set).
+//
+// Deliberately runs around the clock, on the user's instruction: the nudge is
+// meant to keep arriving until the handler fills the date in, night included.
+async function remindHandlersOfMissingDueDates() {
+  // Only tasks a CLIENT delegated. A client login is role='client'; the
+  // client_id back-link is checked too, matching how assignerIsClient is
+  // decided in PUT /api/tasks/:id/status.
+  const [rows] = await db.query(
+    `SELECT t.id, t.description, t.assigned_to,
+            TIMESTAMPDIFF(HOUR, t.created_at, NOW()) AS waiting_hrs,
+            c.name AS client_name,
+            d.name AS handler_name, d.phone AS handler_phone
+       FROM delegation_tasks t
+       JOIN users a ON t.assigned_by = a.id
+       JOIN users d ON t.assigned_to = d.id
+       LEFT JOIN clients c ON t.client_id = c.id
+      WHERE t.awaiting_due_date = 1
+        AND t.status <> 'completed'
+        AND (a.role = 'client' OR a.client_id IS NOT NULL)
+      ORDER BY t.assigned_to ASC, t.created_at ASC`);
+
+  const byHandler = new Map();
+  for (const r of rows) {
+    if (!byHandler.has(r.assigned_to)) byHandler.set(r.assigned_to, []);
+    byHandler.get(r.assigned_to).push(r);
+  }
+
+  let sent = 0, noPhone = 0;
+  for (const tasks of byHandler.values()) {
+    const h = tasks[0];
+    if (!h.handler_phone) { noPhone++; continue; }
+    await sendWhatsApp(h.handler_phone, dueDateNudgeMessage(h.handler_name, tasks))
+      .catch(e => console.error('WA due-date nudge err:', e.message));
+    sent++;
+  }
+  return { ok: true, sent, handlers: byHandler.size, tasks: rows.length, noPhone };
+}
+
+// Kept separate so the wording can be reviewed without reading the query.
+function dueDateNudgeMessage(handlerName, tasks) {
+  const n = tasks.length;
+  const list = tasks.map((t, i) => {
+    const hrs = Number(t.waiting_hrs) || 0;
+    const waited = hrs < 1 ? 'waiting under an hour' : `waiting ${hrs} hr${hrs === 1 ? '' : 's'}`;
+    return `${i + 1}. *${t.client_name || 'Client'}* — ${t.description}\n   _${waited}_`;
+  }).join('\n');
+  return `Hello ${handlerName || ''},\n\n` +
+    `🗓 *Due Date Pending*\n\n` +
+    `*${n} client task${n === 1 ? '' : 's'}* ${n === 1 ? 'is' : 'are'} waiting for you to set a due date:\n\n` +
+    `${list}\n\n` +
+    `The client cannot see any deadline until you set one.\n\n` +
+    `— E-Marketing Task Manager`;
+}
+
+app.get('/api/cron/due-date-reminder', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: due-date-reminder');
+    res.json(await remindHandlersOfMissingDueDates());
+  } catch (err) {
+    console.error('Cron due-date-reminder error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ── Leave Tracker Reminder helper ──
 async function sendLeaveTrackerReminder() {
   const now = new Date();
