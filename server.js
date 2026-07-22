@@ -5385,8 +5385,11 @@ function clientPendingDigestMessage(head, tasks) {
     // so repeating it on every task just adds noise.
     return `${i + 1}. ${t.description}\n   _given ${t.given_on} · ${age}_`;
   }).join('\n');
+  // No client name in the heading: this lands in that client's own group, so
+  // telling them who they are is noise. It would only earn its place if the
+  // message went to the handler personally, where the client is the context.
   return `Hello ${head.handler_name || ''},\n\n` +
-    `📋 *Pending Tasks — ${head.client_name}*\n\n` +
+    `📋 *Pending Tasks*\n\n` +
     `*${n} task${n === 1 ? '' : 's'}* ${n === 1 ? 'is' : 'are'} still open with us:\n\n` +
     `${list}\n\n` +
     `— E-Marketing Task Manager`;
