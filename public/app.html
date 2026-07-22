@@ -776,6 +776,8 @@ tbody tr:last-child td{border-bottom:none;}
 .cm-client-row.cm-active .cm-client-arrow{transform:rotate(180deg);color:#F39C12;}
 .cm-client-del{background:transparent;color:#94a3b8;border:1px solid #e2e8f0;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;}
 .cm-client-del:hover{background:#fef2f2;color:#dc2626;border-color:#fecaca;}
+.cm-client-dash{background:#fff7ed;color:#b45309;border:1px solid #fed7aa;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.cm-client-dash:hover{background:#F39C12;color:#fff;border-color:#F39C12;}
 /* Active/Inactive switch — reflects clients.is_active, same flag the Employee 360 page toggles. */
 .cm-switch{display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none;}
 .cm-switch-track{width:34px;height:19px;border-radius:19px;background:#cbd5e1;position:relative;transition:background .18s;flex-shrink:0;}
@@ -12340,6 +12342,8 @@ function cmRenderList(){
           </div>
         </div>
         <div class="cm-client-actions">
+          <button class="cm-client-dash" title="Open this client's portal exactly as the client sees it (read-only)"
+                  onclick="event.stopPropagation();cmOpenClientPortal(${c.id})">📊 Dashboard</button>
           <span class="cm-switch${isOn ? ' is-on' : ''}" id="cmSw${c.id}" title="${isOn ? 'Click to mark inactive' : 'Click to mark active'}"
                 onclick="event.stopPropagation();cmToggleActive(${c.id},${isOn ? 0 : 1})">
             <span class="cm-switch-track"></span>
@@ -12379,6 +12383,15 @@ async function cmToggleActive(id, makeActive){
   } finally {
     if (sw) sw.classList.remove('is-busy');
   }
+}
+
+// Open the client-facing portal (public/client.html) for one client, read-only,
+// in a new tab. The ?clientId= form is only honoured for admin/hod/pc — see
+// resolvePortalClientId in server.js — and every write control there is hidden
+// behind the portal's own preview mode. This is NOT impersonation: no token is
+// swapped, and it works even for clients that have no portal login yet.
+function cmOpenClientPortal(id){
+  window.open('/client?clientId=' + encodeURIComponent(id), '_blank', 'noopener');
 }
 
 function cmFilter(){ cmRenderList(); }

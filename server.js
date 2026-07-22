@@ -5255,6 +5255,32 @@ function sanitizeSystemLinks(input) {
   return JSON.stringify(clean);
 }
 
+// Decide whose portal data a request is allowed to READ.
+//  - role='client'          → always their own linked client; ?clientId= is ignored,
+//                             so a client can never read another client's portal.
+//  - admin / hod / pc       → may pass ?clientId=N to read that client's portal
+//                             read-only. This backs the Client Master "Client
+//                             Dashboard" button, which opens /client?clientId=N.
+//  - anyone else            → 403.
+// Only the GET endpoints use this. Every write endpoint below (password, feedback
+// POST/PUT/DELETE) keeps its own hard role==='client' check on purpose: staff
+// preview must never be able to submit escalations or change a client's password.
+async function resolvePortalClientId(req) {
+  if (req.session.role === 'client') {
+    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
+    if (!u?.client_id) return { error: 'No linked client', status: 404 };
+    return { id: u.client_id, preview: false };
+  }
+  const isStaff = ['admin', 'hod', 'pc'].includes(req.session.role);
+  const wanted = parseInt(req.query.clientId);
+  if (isStaff && wanted) {
+    const [[c]] = await db.query('SELECT id FROM clients WHERE id=?', [wanted]);
+    if (!c) return { error: 'Client not found', status: 404 };
+    return { id: c.id, preview: true };
+  }
+  return { error: 'Client portal only', status: 403 };
+}
+
 // Client changes their own portal login password.
 app.put('/api/client-portal/password', requireAuth, async (req, res) => {
   try {
@@ -5271,12 +5297,11 @@ app.put('/api/client-portal/password', requireAuth, async (req, res) => {
 
 app.get('/api/client-portal/me', requireAuth, async (req, res) => {
   try {
-    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
-    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
-    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const resolved = await resolvePortalClientId(req);
+    if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
     const [[c]] = await db.query(
       `SELECT c.id, c.name, c.handler_id, u.name AS handler_name, u.email AS handler_email
-       FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [u.client_id]);
+       FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [resolved.id]);
     res.json(c || null);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -5290,10 +5315,9 @@ const TOP_PERFORMER_EXCLUDE_NAMES = ['Abhishek Jain', 'Simran Gurnani'];
 // the client_id from the logged-in client session. Defaults to current month.
 app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
   try {
-    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
-    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
-    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
-    const id = u.client_id;
+    const resolved = await resolvePortalClientId(req);
+    if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
+    const id = resolved.id;
     const [[client]] = await db.query(
       `SELECT c.id, c.name, c.handler_id, c.logo_url, c.system_links, u.name AS handler_name, u.email AS handler_email
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
@@ -5403,10 +5427,9 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
 
 app.get('/api/client-portal/tasks', requireAuth, async (req, res) => {
   try {
-    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
-    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
-    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
-    const cid = u.client_id;
+    const resolved = await resolvePortalClientId(req);
+    if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
+    const cid = resolved.id;
     const [delegation] = await db.query(
       `SELECT t.id, 'delegation' AS type, t.description, t.status, t.priority,
               COALESCE(t.waiting_approval,0) AS waiting_approval, t.remarks, t.url,
@@ -5434,14 +5457,13 @@ app.get('/api/client-portal/tasks', requireAuth, async (req, res) => {
 // Returns handlers assigned to this client (for the feedback form).
 app.get('/api/client-portal/handlers', requireAuth, async (req, res) => {
   try {
-    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
-    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
-    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const resolved = await resolvePortalClientId(req);
+    if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
     const [handlers] = await db.query(
       `SELECT ch.user_id AS id, u.name, u.department,
               (u.user_role='hod' OR u.role='hod') AS is_hod
        FROM client_handlers ch JOIN users u ON ch.user_id = u.id
-       WHERE ch.client_id = ? AND u.role != 'client'`, [u.client_id]);
+       WHERE ch.client_id = ? AND u.role != 'client'`, [resolved.id]);
     // Find HOD for each unique department (with id)
     const depts = [...new Set(handlers.map(h => h.department).filter(Boolean))];
     const hodMap = {};
@@ -6667,9 +6689,8 @@ app.delete('/api/feedback/:id', requireAuth, async (req, res) => {
 // Client: get own feedback history.
 app.get('/api/client-portal/feedback', requireAuth, async (req, res) => {
   try {
-    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
-    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
-    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const resolved = await resolvePortalClientId(req);
+    if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
     const [rows] = await db.query(
       `SELECT f.id, f.employee_id, f.rating, f.description, f.recipients,
               DATE_FORMAT(f.created_at,'%Y-%m-%dT%H:%i:%sZ') AS created_at,
@@ -6677,7 +6698,7 @@ app.get('/api/client-portal/feedback', requireAuth, async (req, res) => {
        FROM client_feedback f
        JOIN users e ON f.employee_id = e.id
        WHERE f.client_id = ?
-       ORDER BY f.created_at DESC`, [u.client_id]);
+       ORDER BY f.created_at DESC`, [resolved.id]);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -105,6 +105,12 @@ tbody tr:hover{background:#f8fafc;}
   .main{padding:14px;}
   .form-row{grid-template-columns:1fr;}
 }
+/* Staff read-only preview (/client?clientId=N). Anything a real client login
+   owns — logout, password change, task delegation, escalations — is hidden. */
+body.cp-preview .cp-client-only{display:none !important;}
+.cp-preview-bar{background:linear-gradient(135deg,#F39C12,#e67e22);color:#fff;padding:11px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;font-weight:600;border-radius:10px;margin-bottom:14px;box-shadow:0 4px 12px rgba(243,156,18,.25);}
+.cp-preview-bar a{color:#fff;background:rgba(255,255,255,.22);padding:6px 14px;border-radius:8px;text-decoration:none;font-weight:700;font-size:12px;white-space:nowrap;}
+.cp-preview-bar a:hover{background:rgba(255,255,255,.36);}
 .cp-star-row{display:flex;gap:8px;margin:8px 0;}
 .cp-star{font-size:34px;cursor:pointer;color:#e2e8f0;transition:color .15s,transform .1s;line-height:1;}
 .cp-star.lit{color:#f59e0b;}
@@ -128,9 +134,13 @@ tbody tr:hover{background:#f8fafc;}
       <button class="cp-nav-item" id="cpNavFeedback" onclick="cpNav('feedback')"><span class="cp-nav-ico">⭐</span><span class="cp-nav-label">Escalation</span></button>
       <button class="cp-nav-item" id="cpNavProfile" onclick="cpNav('profile')"><span class="cp-nav-ico">👤</span><span class="cp-nav-label">Profile</span></button>
     </nav>
-    <button class="logout-btn" onclick="logout()"><span class="cp-nav-ico">↩</span><span class="cp-logout-label">Logout</span></button>
+    <button class="logout-btn cp-client-only" onclick="logout()"><span class="cp-nav-ico">↩</span><span class="cp-logout-label">Logout</span></button>
   </aside>
   <main class="cp-main">
+    <div class="cp-preview-bar" id="cpPreviewBar" style="display:none">
+      <span id="cpPreviewText">👁 Read-only preview</span>
+      <a href="/app">← Back to Client Master</a>
+    </div>
     <div id="cpDashboard"><div id="cpContent"><div class="empty" style="padding:60px">Loading…</div></div></div>
     <div id="cpAbout" style="display:none"></div>
     <div id="cpFeedback" style="display:none"></div>
@@ -168,7 +178,7 @@ tbody tr:hover{background:#f8fafc;}
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('clientDelegateModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="cpSaveDelegate()">Send to Handler</button>
+      <button class="btn btn-primary cp-client-only" onclick="cpSaveDelegate()">Send to Handler</button>
     </div>
   </div>
 </div>
@@ -182,7 +192,7 @@ tbody tr:hover{background:#f8fafc;}
     <div id="cpTdSubtasksSection" style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0">
       <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px">🧩 Sub-tasks</div>
       <div id="cpTdSubtasksList" style="overflow-x:auto;margin-bottom:10px;font-size:13px;color:#94a3b8">Loading…</div>
-      <div style="display:flex;gap:6px">
+      <div class="cp-client-only" style="display:flex;gap:6px">
         <input type="text" id="cpTdNewSubtask" placeholder="Add a related task" style="flex:1;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter'){cpAddSubtask()}"/>
         <select id="cpTdNewSubtaskPriority" style="padding:7px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px">
           <option value="low">Low</option>
@@ -269,6 +279,35 @@ function cpInitials(name){
   return parts.map(p => p[0] || '').join('').toUpperCase() || '?';
 }
 
+// ── Staff read-only preview ──────────────────────────────────────────
+// Admin / HOD / PC open any client's portal from Client Master via
+// /client?clientId=N. The server is the real gate (resolvePortalClientId in
+// server.js decides who may pass clientId); this flag only drives the chrome —
+// the preview banner plus hiding every control that belongs to a client login.
+const CP_PREVIEW_ID = (() => {
+  const v = parseInt(new URLSearchParams(location.search).get('clientId'));
+  return v > 0 ? v : null;
+})();
+let CP_IS_PREVIEW = false;  // set true only after /api/me confirms a staff role
+
+// Belt-and-braces guard on every write handler. The controls are already hidden
+// in preview, but cpSaveDelegate/cpAddSubtask call the generic /api/tasks routes,
+// which would happily accept a staff write — unlike the client-portal routes,
+// which reject non-clients server-side.
+function cpBlockedInPreview(){
+  if (!CP_IS_PREVIEW) return false;
+  showToast('Read-only preview — only the client can do this', 'error');
+  return true;
+}
+
+// Build a portal GET url, carrying clientId while previewing.
+function cpUrl(path, params){
+  const q = new URLSearchParams(params || {});
+  if (CP_IS_PREVIEW) q.set('clientId', CP_PREVIEW_ID);
+  const qs = q.toString();
+  return qs ? `${path}?${qs}` : path;
+}
+
 // ── State + boot ─────────────────────────────────────────────────────
 let _cpMe = null;
 let _cpUser = null;
@@ -295,9 +334,16 @@ function cpNav(page){
   try {
     const me = await api('/api/me');
     if (!me || !me.id) { window.location.replace('/'); return; }
-    if (me.role !== 'client') { window.location.replace('/app'); return; }
+    // A client login always sees its own portal and ignores ?clientId=. Staff
+    // may only be here with a ?clientId=, and then only read-only.
+    if (me.role !== 'client') {
+      if (!CP_PREVIEW_ID || !['admin','hod','pc'].includes(me.role)) { window.location.replace('/app'); return; }
+      CP_IS_PREVIEW = true;
+      document.body.classList.add('cp-preview');
+      document.getElementById('cpPreviewBar').style.display = 'flex';
+    }
     _cpUser = me;
-    document.getElementById('topbarSub').textContent = me.name || 'E-Marketing';
+    document.getElementById('topbarSub').textContent = CP_IS_PREVIEW ? 'Admin Preview' : (me.name || 'E-Marketing');
     loadClientPortal();
   } catch (e) {
     window.location.replace('/');
@@ -308,11 +354,14 @@ async function loadClientPortal(from, to){
   const wrap = document.getElementById('cpContent');
   wrap.innerHTML = '<div class="empty" style="padding:60px">Loading…</div>';
   try {
-    const qs = (from && to) ? `?from=${from}&to=${to}` : '';
-    const s = await api('/api/client-portal/stats' + qs);
+    const s = await api(cpUrl('/api/client-portal/stats', (from && to) ? { from, to } : null));
     if (s.error) { wrap.innerHTML = `<div class="empty" style="padding:60px;color:#dc2626">${s.error}</div>`; return; }
     _cpMe = s.client || {};
     _cpStats = s;
+    if (CP_IS_PREVIEW) {
+      document.getElementById('cpPreviewText').textContent =
+        `👁 Read-only preview of ${_cpMe.name || 'this client'}'s portal — the client sees this view when they log in`;
+    }
     wrap.innerHTML = cpRenderHtml(s);
     setTimeout(()=>cpRenderCharts(s), 0);
     // Keep the currently-open About/Profile page fresh after a data reload.
@@ -428,7 +477,7 @@ function cpRenderHtml(s){
             <input type="date" id="cpTo" value="${range.to || ''}" style="padding:5px 8px;border:1.5px solid #fde68a;border-radius:6px;font-size:12px;background:#fff;outline:none"/>
             <button class="btn btn-primary" style="padding:6px 12px;font-size:12px" onclick="cpApplyRange()">Apply</button>
           </div>
-          <button class="btn btn-primary" ${canDelegate ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'} onclick="cpOpenDelegate()" style="padding:10px 16px;font-size:13px;font-weight:600;border-radius:10px;box-shadow:0 4px 12px rgba(79,70,229,.25)">＋ New Task</button>
+          <button class="btn btn-primary cp-client-only" ${canDelegate ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'} onclick="cpOpenDelegate()" style="padding:10px 16px;font-size:13px;font-weight:600;border-radius:10px;box-shadow:0 4px 12px rgba(79,70,229,.25)">＋ New Task</button>
         </div>
       </div>
     </div>
@@ -621,12 +670,12 @@ function cpRenderProfile(s, me){
               <div style="font-size:12px;color:#64748b">Client Account</div>
             </div>
           </div>
-          ${detail('Login Email', dtEscape(me.email || '—'))}
+          ${detail('Login Email', CP_IS_PREVIEW ? '—' : dtEscape(me.email || '—'))}
           ${detail('Handler', dtEscape(client.handler_name || 'Not assigned'))}
           ${detail('Handler Email', client.handler_email ? dtEscape(client.handler_email) : '—')}
         </div>
       </div>
-      <div class="cp-card">
+      <div class="cp-card cp-client-only">
         <div class="cp-card-head"><h4>🔒 Change Password</h4></div>
         <div style="padding:18px 20px">
           <div class="alert error" id="cpPwErr" style="display:none;margin-bottom:12px"></div>
@@ -640,6 +689,7 @@ function cpRenderProfile(s, me){
 }
 
 async function cpChangePassword(){
+  if (cpBlockedInPreview()) return;
   const err = document.getElementById('cpPwErr');
   err.style.display = 'none';
   const currentPassword = document.getElementById('cpPwCurrent').value;
@@ -690,6 +740,7 @@ function cpOpenDelegate(){
 }
 
 async function cpSaveDelegate(){
+  if (cpBlockedInPreview()) return;
   const err = document.getElementById('cpDelErr');
   err.style.display = 'none';
   const desc = document.getElementById('cpDelDesc').value.trim();
@@ -770,6 +821,7 @@ async function cpLoadSubtasks(){
 }
 
 async function cpAddSubtask(){
+  if (cpBlockedInPreview()) return;
   const input = document.getElementById('cpTdNewSubtask');
   const description = input.value.trim();
   const priority = document.getElementById('cpTdNewSubtaskPriority').value;
@@ -793,8 +845,8 @@ async function cpLoadFeedbackPage(){
   wrap.innerHTML = '<div class="empty" style="padding:40px">Loading…</div>';
   try {
     const [hr, fbr] = await Promise.all([
-      api('/api/client-portal/handlers'),
-      api('/api/client-portal/feedback')
+      api(cpUrl('/api/client-portal/handlers')),
+      api(cpUrl('/api/client-portal/feedback'))
     ]);
     if (hr.error) { wrap.innerHTML = `<div class="empty" style="color:#dc2626">${dtEscape(hr.error)}</div>`; return; }
     _cpFbHandlers = hr.handlers || [];
@@ -846,8 +898,8 @@ function cpRenderFeedbackPage(history){
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div style="font-size:18px;color:${col};letter-spacing:1px">${stars}</div>
-          <button onclick="cpFbStartEdit(${f.id})" style="background:#eff6ff;border:none;color:#4f46e5;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer">✏️ Edit</button>
-          <button onclick="cpFbDelete(${f.id})" style="background:#fef2f2;border:none;color:#dc2626;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer">🗑 Delete</button>
+          <button class="cp-client-only" onclick="cpFbStartEdit(${f.id})" style="background:#eff6ff;border:none;color:#4f46e5;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer">✏️ Edit</button>
+          <button class="cp-client-only" onclick="cpFbDelete(${f.id})" style="background:#fef2f2;border:none;color:#dc2626;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer">🗑 Delete</button>
         </div>
       </div>
       ${f.description ? `<div style="font-size:13px;color:#374151;background:#f8fafc;border-radius:8px;padding:8px 12px;line-height:1.5">"${dtEscape(f.description)}"</div>` : ''}
@@ -860,15 +912,15 @@ function cpRenderFeedbackPage(history){
     <div style="max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:0">
       <!-- Tab bar -->
       <div style="display:flex;border-bottom:2px solid #e2e8f0;margin-bottom:16px">
-        <button id="cpFbTabNew" onclick="cpFbSwitchTab('new')" style="flex:1;padding:12px 0;border:none;background:none;font-size:13px;font-weight:700;color:#4f46e5;border-bottom:2px solid #4f46e5;margin-bottom:-2px;cursor:pointer">⭐ Raise Escalation</button>
-        <button id="cpFbTabHist" onclick="cpFbSwitchTab('history')" style="flex:1;padding:12px 0;border:none;background:none;font-size:13px;font-weight:600;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer">📋 Escalation History ${historyCount ? `<span style="background:#4f46e5;color:#fff;border-radius:999px;font-size:11px;padding:1px 7px;margin-left:4px">${historyCount}</span>` : ''}</button>
+        <button id="cpFbTabNew" class="cp-client-only" onclick="cpFbSwitchTab('new')" style="flex:1;padding:12px 0;border:none;background:none;font-size:13px;font-weight:700;color:#4f46e5;border-bottom:2px solid #4f46e5;margin-bottom:-2px;cursor:pointer">⭐ Raise Escalation</button>
+        <button id="cpFbTabHist" onclick="cpFbSwitchTab('history')" style="flex:1;padding:12px 0;border:none;background:none;font-size:13px;font-weight:${CP_IS_PREVIEW ? '700' : '600'};color:${CP_IS_PREVIEW ? '#4f46e5' : '#64748b'};border-bottom:2px solid ${CP_IS_PREVIEW ? '#4f46e5' : 'transparent'};margin-bottom:-2px;cursor:pointer">📋 Escalation History ${historyCount ? `<span style="background:#4f46e5;color:#fff;border-radius:999px;font-size:11px;padding:1px 7px;margin-left:4px">${historyCount}</span>` : ''}</button>
       </div>
 
-      <!-- Past Feedback panel -->
-      <div id="cpFbPanelHistory" style="display:none;flex-direction:column;gap:10px">${historyHtml}</div>
+      <!-- Past Feedback panel. In staff preview it is the only panel, so it starts open. -->
+      <div id="cpFbPanelHistory" style="display:${CP_IS_PREVIEW ? 'flex' : 'none'};flex-direction:column;gap:10px">${historyHtml}</div>
 
       <!-- Submit / Edit Form panel -->
-      <div id="cpFbPanelNew" style="display:flex;flex-direction:column;gap:0">
+      <div id="cpFbPanelNew" class="cp-client-only" style="display:flex;flex-direction:column;gap:0">
       <div class="cp-card" id="cpFbFormCard">
         <div class="cp-card-head"><h4 id="cpFbFormTitle">⚠️ Raise Your Escalation</h4></div>
         <div style="padding:22px 24px">
@@ -970,7 +1022,7 @@ function cpFbStartEdit(id){
   const card = document.getElementById(`cpFbHistCard-${id}`);
   if (!card) return;
   // Read data from the card's data (re-fetch from API to get full data)
-  api(`/api/client-portal/feedback`).then(rows => {
+  api(cpUrl('/api/client-portal/feedback')).then(rows => {
     if (!Array.isArray(rows)) return;
     const f = rows.find(x => x.id === id);
     if (!f) return;
@@ -1027,6 +1079,7 @@ function cpFbCancelEdit(){
 }
 
 function cpFbDelete(id){
+  if (cpBlockedInPreview()) return;
   showConfirm('This feedback will be permanently deleted.', async () => {
     const r = await api(`/api/client-portal/feedback/${id}`, 'DELETE');
     if (r.error) { showToast(r.error, 'error'); return; }
@@ -1052,6 +1105,7 @@ function cpPreviewRating(val){
 }
 
 async function cpSubmitFeedback(){
+  if (cpBlockedInPreview()) return;
   const err = document.getElementById('cpFbErr');
   err.style.display = 'none';
   const employee_id = document.getElementById('cpFbEmployee')?.value;
