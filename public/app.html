@@ -8946,7 +8946,10 @@ async function approveAllRevises() {
 
 async function handleApproval(id, action) {
   const note = action === 'rejected' ? prompt('Reason for rejection (optional):') : '';
-  await api(`/api/approvals/${id}`,'PUT',{action, note: note||''});
+  const r = await api(`/api/approvals/${id}`,'PUT',{action, note: note||''});
+  // The server can refuse — e.g. a completion whose sub-tasks are still open.
+  // Without this the toast claimed success while nothing had changed.
+  if (r && r.error) { showToast(r.error, 'error'); return; }
   showToast(action === 'approved' ? '✅ Approved!' : '❌ Rejected!');
   loadApprovals();
   loadApprovalBadge();

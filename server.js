@@ -1794,6 +1794,21 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
       return res.json({ success: true, needsApproval: true });
     }
 
+    // A task cannot be finished while the client's follow-up asks are still
+    // open — those sub-tasks ARE part of the job. Checked before the approval
+    // branch below so completion cannot even be requested, and applied to every
+    // role including admin/PC: the way out is to tick the sub-tasks off or
+    // delete them, not to close over them.
+    if (status === 'completed' && tt === 'delegation') {
+      const [[open]] = await db.query(
+        `SELECT COUNT(*) AS n FROM task_subtasks WHERE task_id=? AND status<>'completed'`, [req.params.id]);
+      if (open?.n > 0) {
+        return res.status(409).json({
+          error: `${open.n} sub-task${open.n === 1 ? '' : 's'} still pending — finish those before marking this task done.`
+        });
+      }
+    }
+
     // COMPLETION approval — only when the task was created with approval='yes'.
     if (status === 'completed' && supportsApproval && task.approval === 'yes' && !isPrivileged && !reviserIsAssigner) {
       await db.query(
@@ -2011,6 +2026,18 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
     // PC and admin can approve any; others only their own
     const canApprove = role === 'admin' || role === 'pc' || appr.requested_to === req.session.userId;
     if (!canApprove) return res.status(403).json({ error: 'Not allowed' });
+    // Same sub-task rule as PUT /api/tasks/:id/status — re-checked here because
+    // the client can add a sub-task after completion was requested, and
+    // approving would otherwise close the task over it.
+    if (action === 'approved' && appr.action_type === 'completed' && appr.task_type === 'delegation') {
+      const [[open]] = await db.query(
+        `SELECT COUNT(*) AS n FROM task_subtasks WHERE task_id=? AND status<>'completed'`, [appr.task_id]);
+      if (open?.n > 0) {
+        return res.status(409).json({
+          error: `${open.n} sub-task${open.n === 1 ? '' : 's'} still pending on this task — it cannot be approved as done yet.`
+        });
+      }
+    }
     await db.query('UPDATE task_approvals SET status=?,note=? WHERE id=?', [action, note||'', req.params.id]);
     const table = getTable(appr.task_type);
     if (action === 'approved') {
