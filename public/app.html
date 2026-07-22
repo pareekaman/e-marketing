@@ -3956,6 +3956,10 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <label>Due Date</label>
         <input type="date" id="editTDate"/>
       </div>
+      <div class="form-group" id="editTTimeWrap">
+        <label>Due Time <span style="color:#94a3b8;font-weight:400;font-size:11px">(optional)</span></label>
+        <input type="time" id="editTTime"/>
+      </div>
       <div class="form-group" id="editTPriorityWrap">
         <label>Priority</label>
         <select id="editTPriority">
@@ -7939,6 +7943,9 @@ async function openEditTask(id, type) {
   const isDeleg = type === 'delegation';
   document.getElementById('editTPriorityWrap').style.display = isDeleg ? 'block' : 'none';
   document.getElementById('editTApprovalWrap').style.display = isDeleg ? 'block' : 'none';
+  // due_time is delegation-only. It arrives as "14:30:00"; a time input wants HH:MM.
+  document.getElementById('editTTimeWrap').style.display = isDeleg ? 'block' : 'none';
+  document.getElementById('editTTime').value = isDeleg ? String(t.due_time || '').slice(0, 5) : '';
   const urlWrap = document.getElementById('editTUrlWrap');
   if (urlWrap) urlWrap.style.display = isDeleg ? 'block' : 'none';
   if (isDeleg) {
@@ -7968,6 +7975,8 @@ async function saveEditTask() {
   if (type === 'delegation') {
     body.priority = document.getElementById('editTPriority').value;
     body.approval = document.getElementById('editTApproval').value;
+    // Sent even when blank — that is how a clock time gets cleared.
+    body.dueTime  = document.getElementById('editTTime').value;
     const urlEl = document.getElementById('editTUrl');
     body.url = urlEl ? (urlEl.value.trim() || null) : null;
   }

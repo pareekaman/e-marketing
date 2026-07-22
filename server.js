@@ -1513,12 +1513,8 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
       }
     }
     // Optional clock time on the deadline — only meaningful alongside a date.
-    let dueTime = null;
-    if (!doerWillSet && req.body.dueTime) {
-      const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(req.body.dueTime).trim());
-      if (!m) return res.status(400).json({ error: 'Due time must be HH:MM (24-hour)' });
-      dueTime = `${m[1]}:${m[2]}:00`;
-    }
+    const dueTime = doerWillSet ? null : parseDueTime(req.body.dueTime);
+    if (dueTime === undefined) return res.status(400).json({ error: 'Due time must be HH:MM (24-hour)' });
 
     // Holiday / week-off check — auto-adjust due_date if needed.
     // Skipped when the doer will set their own date (none yet to adjust), and
@@ -1864,6 +1860,14 @@ app.get('/api/tasks/:id/detail', requireAuth, async (req, res) => {
 
 // Allow edit/delete if user is admin/hod OR if they are the task's assigner.
 // This covers the "user delegated a task (incl. self-delegation) → can edit/delete" case.
+// Normalise an optional "HH:MM" (24-hour) into a MySQL TIME.
+// Blank/absent → null (clears the time). Invalid → undefined, so callers 400.
+function parseDueTime(raw) {
+  if (raw == null || String(raw).trim() === '') return null;
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(raw).trim());
+  return m ? `${m[1]}:${m[2]}:00` : undefined;
+}
+
 async function canModifyTask(req, taskId, type) {
   if (req.session.role === 'admin' || req.session.role === 'hod') return true;
   const [rows] = await db.query(
@@ -1879,7 +1883,14 @@ app.put('/api/tasks/:id/edit', requireAuth, async (req, res) => {
     const table = getTable(type||'delegation');
     const cidRaw = client_id != null ? client_id : clientId;
     const cid = (() => { const n = parseInt(cidRaw, 10); return Number.isFinite(n) && n > 0 ? n : null; })();
-    if (type === 'delegation') await db.query(`UPDATE ${table} SET description=?,due_date=?,priority=?,approval=?,remarks=?,url=?,client_id=? WHERE id=?`, [desc, date, priority||'low', approval||'no', remarks||'', url||null, cid, req.params.id]);
+    if (type === 'delegation') {
+      // due_time lives only on delegation_tasks. Blank clears it, so a task that
+      // had a clock time can be put back to a date-only deadline.
+      const dueTime = parseDueTime(req.body.dueTime);
+      if (dueTime === undefined) return res.status(400).json({ error: 'Due time must be HH:MM (24-hour)' });
+      await db.query(`UPDATE ${table} SET description=?,due_date=?,due_time=?,priority=?,approval=?,remarks=?,url=?,client_id=? WHERE id=?`,
+        [desc, date, dueTime, priority||'low', approval||'no', remarks||'', url||null, cid, req.params.id]);
+    }
     else await db.query(`UPDATE ${table} SET description=?,due_date=?,remarks=?,client_id=? WHERE id=?`, [desc, date, remarks||'', cid, req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
