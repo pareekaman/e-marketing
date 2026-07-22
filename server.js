@@ -324,6 +324,11 @@ const _startupMigrationsPromise = (async () => {
   // (they commit the client to a date AND time); every internal task leaves it
   // NULL and keeps behaving as a date-only deadline.
   await sa(`ALTER TABLE delegation_tasks ADD COLUMN due_time TIME DEFAULT NULL AFTER due_date`);
+  // When the task was marked done. Needed to answer "what was closed today";
+  // status alone cannot say when. Set on completion and cleared whenever the
+  // task leaves 'completed', so a reopened task stops counting. Rows completed
+  // before this column existed stay NULL and never appear in a daily digest.
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN completed_at DATETIME DEFAULT NULL AFTER status`);
   // Client portal delegation form offers an 'urgent' priority tier above 'high'.
   await sa(`ALTER TABLE delegation_tasks MODIFY COLUMN priority ENUM('low','medium','high','urgent') DEFAULT 'low'`);
   // Sub-tasks — follow-up asks nested under a delegation task (e.g. client says
@@ -985,6 +990,7 @@ app.get('/api/setup', async (req, res) => {
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN url VARCHAR(2048) DEFAULT NULL AFTER client_id`, 'delegation_tasks.url');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN awaiting_due_date TINYINT(1) DEFAULT 0 AFTER waiting_approval`, 'delegation_tasks.awaiting_due_date');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN due_time TIME DEFAULT NULL AFTER due_date`, 'delegation_tasks.due_time');
+    await sa(`ALTER TABLE delegation_tasks ADD COLUMN completed_at DATETIME DEFAULT NULL AFTER status`, 'delegation_tasks.completed_at');
     await sa(`ALTER TABLE checklist_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`, 'checklist_tasks.client_id');
 
     await sa(`CREATE TABLE IF NOT EXISTS delegation_tasks (
@@ -1825,13 +1831,15 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     if (supportsApproval && task.waiting_approval && isPrivileged) {
       await db.query(`DELETE FROM task_approvals WHERE task_id=? AND task_type=? AND status='pending'`, [req.params.id, tt]);
     }
+    // completed_at only exists on delegation_tasks, and is stamped or cleared to
+    // match the new status so a reopened task drops out of the daily digest.
     if (newDate && status === 'revised') {
       if (tt === 'checklist') await db.query(`UPDATE ${table} SET status=?,due_date=? WHERE id=?`, [status, newDate, req.params.id]);
-      else await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,due_date=? WHERE id=?`, [status, newDate, req.params.id]);
+      else await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,due_date=?,completed_at=NULL WHERE id=?`, [status, newDate, req.params.id]);
     } else {
       // checklist_tasks has no waiting_approval column
       if (tt === 'checklist') await db.query(`UPDATE ${table} SET status=? WHERE id=?`, [status, req.params.id]);
-      else await db.query(`UPDATE ${table} SET status=?,waiting_approval=0 WHERE id=?`, [status, req.params.id]);
+      else await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,completed_at=IF(?='completed',NOW(),NULL) WHERE id=?`, [status, status, req.params.id]);
     }
     res.json({ success: true, needsApproval: false });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -2046,6 +2054,11 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
         await db.query(`UPDATE ${table} SET status='pending',waiting_approval=0,due_date=? WHERE id=?`, [appr.new_date_fmt, appr.task_id]);
       } else if (appr.action_type === 'revised') {
         await db.query(`UPDATE ${table} SET status='pending',waiting_approval=0 WHERE id=?`, [appr.task_id]);
+      } else if (appr.task_type === 'delegation') {
+        // Stamp completed_at here too — approving a completion is the moment
+        // the task actually closes.
+        await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,completed_at=IF(?='completed',NOW(),NULL) WHERE id=?`,
+          [appr.action_type, appr.action_type, appr.task_id]);
       } else {
         await db.query(`UPDATE ${table} SET status=?,waiting_approval=0 WHERE id=?`, [appr.action_type, appr.task_id]);
       }
@@ -5394,6 +5407,105 @@ function clientPendingDigestMessage(head, tasks) {
     `${list}\n\n` +
     `— E-Marketing Task Manager`;
 }
+
+// ── Client "completed today" digest ──────────────────────────────────
+// The other side of the pending digest: at the end of the day, tell each
+// client's group what actually got finished for them, credited to the handler
+// who did it. Silent on days nothing was finished, so it never becomes noise —
+// which is also why it runs every day, weekends included.
+//
+// Sub-tasks are reported ONLY when their parent task is still open. Completing
+// a task already requires every sub-task to be done (see the guard in
+// PUT /api/tasks/:id/status), so a closed task's sub-tasks are implied — listing
+// both would report the same work twice. A sub-task under an open task is the
+// case worth telling the client about: the job is not finished, but this piece is.
+async function sendClientCompletedDigests() {
+  const scope = `AND (a.role = 'client' OR a.client_id IS NOT NULL)
+                 AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''`;
+
+  const [tasks] = await db.query(
+    `SELECT t.id, t.description, t.assigned_to,
+            DATE_FORMAT(t.created_at,'%d-%m-%Y') AS given_on,
+            DATEDIFF(DATE(t.completed_at), DATE(t.created_at)) AS took_days,
+            c.id AS client_id, c.name AS client_name, c.whatsapp_group_id AS group_id,
+            d.name AS handler_name
+       FROM delegation_tasks t
+       JOIN users a   ON t.assigned_by = a.id
+       JOIN users d   ON t.assigned_to = d.id
+       JOIN clients c ON t.client_id   = c.id
+      WHERE t.status = 'completed' AND DATE(t.completed_at) = CURDATE() ${scope}
+      ORDER BY c.name ASC, d.name ASC, t.completed_at ASC`);
+
+  const [subs] = await db.query(
+    `SELECT s.id, s.description, t.description AS parent_desc, t.assigned_to,
+            c.id AS client_id, c.name AS client_name, c.whatsapp_group_id AS group_id,
+            d.name AS handler_name
+       FROM task_subtasks s
+       JOIN delegation_tasks t ON s.task_id     = t.id
+       JOIN users a            ON t.assigned_by = a.id
+       JOIN users d            ON t.assigned_to = d.id
+       JOIN clients c          ON t.client_id   = c.id
+      WHERE s.status = 'completed' AND DATE(s.completed_at) = CURDATE()
+        AND t.status <> 'completed' ${scope}
+      ORDER BY c.name ASC, d.name ASC, s.completed_at ASC`);
+
+  // Bucket both lists by client+handler — that pair is one message.
+  const buckets = new Map();
+  const bucket = (r) => {
+    const key = `${r.client_id}|${r.assigned_to}`;
+    if (!buckets.has(key)) buckets.set(key, { head: r, tasks: [], subs: [] });
+    return buckets.get(key);
+  };
+  for (const t of tasks) bucket(t).tasks.push(t);
+  for (const s of subs)  bucket(s).subs.push(s);
+
+  if (!buckets.size) return { ok: true, sent: 0, tasks: 0, subtasks: 0, quiet: 'nothing completed today' };
+
+  let sent = 0;
+  for (const b of buckets.values()) {
+    await sendWhatsAppRaw(b.head.group_id, clientCompletedDigestMessage(b))
+      .catch(e => console.error('WA completed digest err:', e.message));
+    sent++;
+  }
+  return { ok: true, sent, pairs: buckets.size, tasks: tasks.length, subtasks: subs.length };
+}
+
+// Kept separate so the wording can be reviewed without reading the queries.
+function clientCompletedDigestMessage({ head, tasks, subs }) {
+  // No client name anywhere: this lands in that client's own group.
+  let msg = `✅ *Completed Today*\n\n`;
+  if (tasks.length) {
+    const list = tasks.map((t, i) => {
+      const d = Number(t.took_days) || 0;
+      const took = d === 0 ? 'same day' : `took ${d} day${d === 1 ? '' : 's'}`;
+      return `${i + 1}. ${t.description}\n   _given ${t.given_on} · ${took}_`;
+    }).join('\n');
+    msg += `*${tasks.length} task${tasks.length === 1 ? '' : 's'}* done by ${head.handler_name}:\n\n${list}\n\n`;
+  }
+  if (subs.length) {
+    const list = subs.map(s => `• ${s.description}\n   _under "${s.parent_desc}"_`).join('\n');
+    // When nothing else was closed, this section carries the handler's name.
+    msg += tasks.length
+      ? `🧩 *Also progressed:*\n\n${list}\n\n`
+      : `🧩 *Progressed by ${head.handler_name}:*\n\n${list}\n\n`;
+  }
+  return msg + `— E-Marketing Task Manager`;
+}
+
+app.get('/api/cron/client-completed-digest', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: client-completed-digest');
+    res.json(await sendClientCompletedDigests());
+  } catch (err) {
+    console.error('Cron client-completed-digest error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 app.get('/api/cron/client-pending-digest', async (req, res) => {
   const authHeader = req.headers['authorization'] || '';
