@@ -556,7 +556,7 @@ function cpRenderHtml(s){
       <div class="cp-scroll" style="max-height:65vh">
         <table>
           <thead><tr style="background:#f8fafc;position:sticky;top:0;z-index:1">
-            <th>Type</th><th>Description</th><th>Doer</th><th>Date</th><th>Time</th><th>Priority</th><th>Due Date</th><th>Status</th>
+            <th>Type</th><th>Description</th><th>Doer</th><th>Date</th><th>Time</th><th>Priority</th><th>Due Date</th><th>Done On</th><th>Status</th>
           </tr></thead>
           <tbody id="cpRecentBody">${recentHtml}</tbody>
         </table>
@@ -649,6 +649,12 @@ function cpRenderRecentRows(list){
         const priorityColors = { urgent: ['#fef2f2','#dc2626'], high: ['#fffbeb','#92400e'], medium: ['#eff6ff','#1d4ed8'], low: ['#f0fdf4','#16a34a'] };
         const [prBg, prFg] = priorityColors[t.priority] || priorityColors.low;
         const priorityPill = `<span style="font-size:10px;color:${prFg};font-weight:700;background:${prBg};padding:3px 9px;border-radius:10px;text-transform:capitalize">${dtEscape(t.priority || 'low')}</span>`;
+        // Date over time on one line each, to avoid a tenth column. Tasks closed
+        // before completed_at existed have nothing recorded, so they show a dash
+        // rather than a guess.
+        const doneCell = t.done_date
+          ? `<div>${fmtDate(t.done_date)}</div><div style="font-size:11px;color:#94a3b8">${t.done_time ? cpFmtTime(t.done_time) : ''}</div>`
+          : '—';
         return `<tr onclick="cpOpenTaskDetail('${t.type}-${t.id}')" style="cursor:pointer" title="Click to view details">
           <td>${typeBadge}</td>
           <td style="font-weight:500;color:#0f172a">${dtEscape(t.description || '')}</td>
@@ -657,10 +663,11 @@ function cpRenderRecentRows(list){
           <td style="white-space:nowrap;color:#64748b;font-size:12px">${t.created_time ? cpFmtTime(t.created_time) : '—'}</td>
           <td style="white-space:nowrap">${priorityPill}</td>
           <td style="white-space:nowrap;color:#64748b;font-size:12px">${t.due_date ? fmtDate(t.due_date) : '—'}</td>
+          <td style="white-space:nowrap;color:#64748b;font-size:12px">${doneCell}</td>
           <td style="white-space:nowrap">${statusPill}</td>
         </tr>`;
       }).join('')
-    : `<tr><td colspan="8" style="padding:32px;text-align:center;color:#94a3b8">
+    : `<tr><td colspan="9" style="padding:32px;text-align:center;color:#94a3b8">
          <div style="font-size:32px;margin-bottom:6px">📭</div>No tasks match this filter</td></tr>`;
 }
 

@@ -5921,7 +5921,9 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
               TIME_FORMAT(t.due_time,'%H:%i') AS due_time, t.assigned_to,
               u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created,
               DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created_date,
-              TIME_FORMAT(t.created_at,'%H:%i') AS created_time
+              TIME_FORMAT(t.created_at,'%H:%i') AS created_time,
+              DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS done_date,
+              TIME_FORMAT(t.completed_at,'%H:%i') AS done_time
        FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id
        WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
        ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
@@ -5930,7 +5932,8 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
               u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created,
               DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created_date,
-              TIME_FORMAT(t.created_at,'%H:%i') AS created_time
+              TIME_FORMAT(t.created_at,'%H:%i') AS created_time,
+              NULL AS done_date, NULL AS done_time
        FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id
        WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
        ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
