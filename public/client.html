@@ -556,7 +556,7 @@ function cpRenderHtml(s){
       <div class="cp-scroll" style="max-height:65vh">
         <table>
           <thead><tr style="background:#f8fafc;position:sticky;top:0;z-index:1">
-            <th>Type</th><th>Description</th><th>Doer</th><th>Priority</th><th>Date</th><th>Status</th>
+            <th>Type</th><th>Description</th><th>Doer</th><th>Date</th><th>Time</th><th>Priority</th><th>Due Date</th><th>Status</th>
           </tr></thead>
           <tbody id="cpRecentBody">${recentHtml}</tbody>
         </table>
@@ -653,12 +653,14 @@ function cpRenderRecentRows(list){
           <td>${typeBadge}</td>
           <td style="font-weight:500;color:#0f172a">${dtEscape(t.description || '')}</td>
           <td style="white-space:nowrap;color:#475569">${dtEscape(t.doer || '—')}</td>
+          <td style="white-space:nowrap;color:#64748b;font-size:12px">${fmtDate(t.created_date || '')}</td>
+          <td style="white-space:nowrap;color:#64748b;font-size:12px">${t.created_time ? cpFmtTime(t.created_time) : '—'}</td>
           <td style="white-space:nowrap">${priorityPill}</td>
-          <td style="white-space:nowrap;color:#64748b;font-size:12px">${fmtDate(t.due_date || '')}</td>
+          <td style="white-space:nowrap;color:#64748b;font-size:12px">${t.due_date ? fmtDate(t.due_date) : '—'}</td>
           <td style="white-space:nowrap">${statusPill}</td>
         </tr>`;
       }).join('')
-    : `<tr><td colspan="6" style="padding:32px;text-align:center;color:#94a3b8">
+    : `<tr><td colspan="8" style="padding:32px;text-align:center;color:#94a3b8">
          <div style="font-size:32px;margin-bottom:6px">📭</div>No tasks match this filter</td></tr>`;
 }
 

@@ -5911,18 +5911,26 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
        FROM meetings m LEFT JOIN users u ON m.organizer_id = u.id
        WHERE m.client_id=? AND m.meeting_date BETWEEN ? AND ?
        ORDER BY m.meeting_date DESC, m.start_time DESC LIMIT 15`, [id, from, to]);
+    // created_date / created_time record when the task was RAISED, as opposed
+    // to due_date. Both are formatted in SQL and never sent as a raw DATETIME:
+    // created_at is already the DB's local IST, and handing a DATETIME to the
+    // browser lets it be read as UTC and shifted a second time.
     const [recentDel] = await db.query(
       `SELECT t.id, 'delegation' AS type, t.description, t.status, t.priority,
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
               TIME_FORMAT(t.due_time,'%H:%i') AS due_time, t.assigned_to,
-              u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created
+              u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created,
+              DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created_date,
+              TIME_FORMAT(t.created_at,'%H:%i') AS created_time
        FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id
        WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
        ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
     const [recentChl] = await db.query(
       `SELECT t.id, 'checklist' AS type, t.description, t.status, t.priority,
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
-              u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created
+              u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created,
+              DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created_date,
+              TIME_FORMAT(t.created_at,'%H:%i') AS created_time
        FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id
        WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
        ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
