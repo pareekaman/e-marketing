@@ -5684,6 +5684,98 @@ app.get('/api/cron/client-completed-digest', async (req, res) => {
   }
 });
 
+// ── Handler-on-leave notice ──────────────────────────────────────────
+// On each day a handler is on approved full-day leave, their clients' groups
+// are told, and that day's tasks are pushed to the handler's next working day.
+// Scattered leave (18th, 20th, 22nd…) is handled a date at a time: each is its
+// own notice, and the push skips the handler's other leave days.
+//
+// Only the due DATE moves — the task stays with the same handler, and its
+// status is left alone so this never shows up as a "revised" against them.
+async function sendHandlerLeaveNotices({ force = false } = {}) {
+  const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+  const today = istNow.toISOString().split('T')[0];
+  if (!force && isLastSaturdayOfMonth(today)) return { ok: true, skipped: 'off day', sent: 0 };
+
+  // Candidates: anyone whose approved full-day leave window covers today. The
+  // window can be wider than the actual days when dates_json is used, so each
+  // one is expanded and re-checked below.
+  const [cands] = await db.query(
+    `SELECT DISTINCT lr.user_id, u.name, u.week_off, u.extra_off
+       FROM leave_requests lr JOIN users u ON lr.user_id = u.id
+      WHERE lr.status='approved' AND lr.leave_type='full_day'
+        AND lr.from_date <= ? AND lr.to_date >= ?`, [today, today]);
+  if (!cands.length) return { ok: true, sent: 0, quiet: 'nobody on approved leave today' };
+
+  const holidaysSet = await loadHolidaysSet();
+  let sent = 0, moved = 0, handlers = 0;
+
+  for (const h of cands) {
+    // A week back as well as ahead, so today can be placed within its block.
+    const leaveDates = await approvedLeaveDates(h.user_id, _addDays(today, -7), _addDays(today, 60));
+    if (!leaveDates.has(today)) continue;   // window covered today, the actual days did not
+    handlers++;
+    const backOn = nextWorkingDayOffLeave(h, today, holidaysSet, leaveDates);
+    // "Back on" earns its place only for a run of consecutive days, where the
+    // client genuinely does not know when the handler returns. On an isolated
+    // day it says nothing they cannot work out, so it is left off.
+    const inBlock = leaveDates.has(_addDays(today, 1)) || leaveDates.has(_addDays(today, -1));
+
+    // Push today's tasks, remembering which client each belonged to so the
+    // message only claims a move for the client it actually affected.
+    const [due] = await db.query(
+      `SELECT id, client_id FROM delegation_tasks
+        WHERE assigned_to=? AND status IN ('pending','revised') AND due_date=?`, [h.user_id, today]);
+    const movedPerClient = new Map();
+    for (const t of due) {
+      await db.query('UPDATE delegation_tasks SET due_date=? WHERE id=?', [backOn, t.id]);
+      moved++;
+      if (t.client_id) movedPerClient.set(t.client_id, (movedPerClient.get(t.client_id) || 0) + 1);
+    }
+
+    // Every client this person handles, primary or secondary, that has a group.
+    const [clients] = await db.query(
+      `SELECT DISTINCT c.id, c.whatsapp_group_id AS g
+         FROM clients c
+         LEFT JOIN client_handlers ch ON ch.client_id = c.id
+        WHERE (c.handler_id=? OR ch.user_id=?)
+          AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''`,
+      [h.user_id, h.user_id]);
+
+    for (const c of clients) {
+      await sendWhatsAppRaw(c.g, handlerLeaveMessage(h.name, today, backOn, movedPerClient.get(c.id) || 0, inBlock))
+        .catch(e => console.error('WA leave notice err:', e.message));
+      sent++;
+    }
+  }
+  return { ok: true, sent, handlers, tasksMoved: moved };
+}
+
+function handlerLeaveMessage(name, todayYmd, backOnYmd, movedCount, inBlock) {
+  const d = s => s.split('-').reverse().join('-');
+  return `📢 *Handler on Leave*\n\n` +
+    `*${name}* is on leave today (${d(todayYmd)}).\n\n` +
+    (inBlock ? `*Back on:* ${d(backOnYmd)}\n` : '') +
+    // Only claimed when something of theirs actually moved.
+    (movedCount ? `*Your pending tasks:* moved to ${d(backOnYmd)}\n` : '') +
+    `\n— E-Marketing Task Manager`;
+}
+
+app.get('/api/cron/handler-leave-notice', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: handler-leave-notice');
+    res.json(await sendHandlerLeaveNotices({ force: req.query.force === '1' }));
+  } catch (err) {
+    console.error('Cron handler-leave-notice error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.get('/api/cron/client-pending-digest', async (req, res) => {
   const authHeader = req.headers['authorization'] || '';
   const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
@@ -9043,6 +9135,13 @@ function _toDateStr(v) {
   return String(v).slice(0,10);
 }
 
+// 'YYYY-MM-DD' + n days, same format back.
+function _addDays(dateStr, n) {
+  const d = new Date(_toDateStr(dateStr) + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 // dateStr = 'YYYY-MM-DD'; holidaysSet = Set of YYYY-MM-DD strings
 // Single source of truth for off-days: Sunday, the last Saturday of the month,
 // and the Holiday tab (holidays table) — same rule applies to everyone.
@@ -9111,6 +9210,50 @@ async function usersOnLeaveSet(today) {
 }
 
 // Find next working day on/after fromDate for a given user (max 60 day lookahead)
+// Every date a user is on APPROVED full-day leave, within a window.
+// Deliberately stricter than usersOnLeaveSet(), which counts anything not
+// rejected — announcing to a client that someone is away on the strength of an
+// unapproved request would be wrong. Leave is stored either as a from/to range
+// or, when the days are scattered, as a dates_json list; the list wins.
+async function approvedLeaveDates(userId, fromYmd, toYmd) {
+  const out = new Set();
+  try {
+    const [rows] = await db.query(
+      `SELECT dates_json,
+              DATE_FORMAT(from_date,'%Y-%m-%d') AS from_date,
+              DATE_FORMAT(to_date,'%Y-%m-%d')   AS to_date
+         FROM leave_requests
+        WHERE user_id=? AND status='approved' AND leave_type='full_day'
+          AND from_date <= ? AND to_date >= ?`, [userId, toYmd, fromYmd]);
+    for (const r of rows) {
+      let listed = null;
+      if (r.dates_json) {
+        try { listed = JSON.parse(r.dates_json).map(x => _toDateStr(x.date || x)); } catch { listed = null; }
+      }
+      if (listed) { listed.forEach(d => out.add(d)); continue; }
+      const d = new Date(r.from_date + 'T00:00:00Z');
+      const end = new Date(r.to_date + 'T00:00:00Z');
+      for (let i = 0; i < 400 && d <= end; i++) {
+        out.add(d.toISOString().split('T')[0]);
+        d.setUTCDate(d.getUTCDate() + 1);
+      }
+    }
+  } catch (e) { console.error('approvedLeaveDates err:', e.message); }
+  return out;
+}
+
+// Next day this user actually works: skips Sundays, last-Saturdays, holidays —
+// and their own further leave days, so a task due on the 18th of a 18/20 leave
+// lands on the 19th, not back on the 20th.
+function nextWorkingDayOffLeave(user, fromDateStr, holidaysSet, leaveDates) {
+  let ds = _toDateStr(fromDateStr);
+  for (let i = 0; i < 60; i++) {
+    ds = nextWorkingDay(user, ds, holidaysSet);
+    if (!leaveDates || !leaveDates.has(ds)) return ds;
+  }
+  return ds;
+}
+
 function nextWorkingDay(user, fromDateStr, holidaysSet) {
   const d = new Date(_toDateStr(fromDateStr) + 'T00:00:00');
   for (let i = 0; i < 60; i++) {
