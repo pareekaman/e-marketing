@@ -12722,6 +12722,21 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>
 
+    <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div class="card-head-title">📱 WhatsApp Group <span style="font-weight:400;color:#94a3b8;font-size:12px">— where this client's pending-task digest is sent</span></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="text" id="cmWaGroup_${id}" value="${dtEscape(client.whatsapp_group_id || '')}"
+               placeholder="1203634...@g.us"
+               style="flex:1;min-width:240px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:monospace"/>
+        <button class="btn btn-primary" style="padding:7px 16px;font-size:12px" onclick="cmSaveWaGroup(${id})">💾 Save</button>
+      </div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:7px">
+        Leave blank to switch the digest off for this client. Sent 9:30 AM, Mon–Fri, only when something is pending.
+      </div>
+    </div>
+
     <div class="task-table-card" id="cmLinksCard" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">🔗 System Links <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on this client's portal</span></div>
@@ -12767,6 +12782,17 @@ function cmRenderLinksRows(){
       <button class="btn btn-outline" style="padding:6px 8px;font-size:12px;color:#dc2626;border-color:#fca5a5" onclick="cmRemoveLinkRow(${i})" title="Remove">🗑</button>
     </div>`).join('');
 }
+// Save this client's own WhatsApp group. Blank clears it, which switches the
+// pending-task digest off for them — the server never falls back to the shared
+// client group, so a blank here simply means no digest.
+async function cmSaveWaGroup(id){
+  const input = document.getElementById('cmWaGroup_' + id);
+  if (!input) return;
+  const r = await api('/api/clients/' + id, 'PUT', { whatsapp_group_id: input.value.trim() });
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  showToast(input.value.trim() ? '✅ WhatsApp group saved' : 'Digest switched off for this client');
+}
+
 function cmAddLinkRow(){ CM_LINKS.push({ label:'', url:'', liveDate:'' }); cmRenderLinksRows(); }
 function cmRemoveLinkRow(i){ CM_LINKS.splice(i,1); cmRenderLinksRows(); }
 async function cmSaveLinks(id){

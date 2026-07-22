@@ -4171,6 +4171,11 @@ const _clientsTableMigrationsPromise = (async () => {
 
   // DMS — Google Drive folder IDs per client and per department
   await sa(`ALTER TABLE clients ADD COLUMN drive_folder_id VARCHAR(255) DEFAULT NULL AFTER is_active`);
+  // This client's own WhatsApp group (e.g. "1203634...@g.us"), used for the
+  // pending-task digest. Left NULL the digest simply skips that client — the
+  // shared client group must never receive one client's task list, since every
+  // other client can read it there.
+  await sa(`ALTER TABLE clients ADD COLUMN whatsapp_group_id VARCHAR(255) DEFAULT NULL AFTER drive_folder_id`);
   await sa(`CREATE TABLE IF NOT EXISTS client_department_folders (
     id INT AUTO_INCREMENT PRIMARY KEY,
     client_id INT NOT NULL,
@@ -5312,6 +5317,93 @@ function dueDateNudgeMessage(handlerName, tasks) {
     `The client cannot see any deadline until you set one.\n\n` +
     `— E-Marketing Task Manager`;
 }
+
+// ── Client pending-task digest ───────────────────────────────────────
+// Sends each client's own WhatsApp group a list of the tasks they delegated
+// that are still open — old ones included, oldest first, so a task sitting
+// since the 13th is visible next to today's.
+//
+// One message PER HANDLER, not per client: a client with three handlers gets
+// three messages, each addressed to that handler and listing only their tasks.
+//
+// A client with no whatsapp_group_id is skipped entirely. There is a shared
+// "all clients" group in this app (MEETING_CLIENT_GROUP_ID) and it must never
+// be used as a fallback here — every other client can read it.
+//
+// Monday-Friday only, and nothing at all goes out when nothing is pending —
+// both on the user's instruction. The day check lives here rather than only in
+// the schedule so any trigger respects it; pass ?force=1 to test on a weekend.
+async function sendClientPendingDigests({ force = false } = {}) {
+  const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+  const day = istNow.getUTCDay();  // 0 Sun … 6 Sat
+  if (!force && (day === 0 || day === 6)) {
+    return { ok: true, skipped: 'weekend', sent: 0 };
+  }
+  const [rows] = await db.query(
+    `SELECT t.id, t.description, t.assigned_to,
+            DATE_FORMAT(t.created_at,'%d-%m-%Y') AS given_on,
+            DATEDIFF(CURDATE(), DATE(t.created_at)) AS days_pending,
+            c.id AS client_id, c.name AS client_name, c.whatsapp_group_id AS group_id,
+            d.name AS handler_name
+       FROM delegation_tasks t
+       JOIN users a   ON t.assigned_by = a.id
+       JOIN users d   ON t.assigned_to = d.id
+       JOIN clients c ON t.client_id   = c.id
+      WHERE t.status IN ('pending','revised')
+        AND (a.role = 'client' OR a.client_id IS NOT NULL)
+        AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''
+      ORDER BY c.name ASC, d.name ASC, t.created_at ASC`);
+
+  // Bucket by client+handler — that pair is one message.
+  const buckets = new Map();
+  for (const r of rows) {
+    const key = `${r.client_id}|${r.assigned_to}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(r);
+  }
+
+  // Nothing pending anywhere → stay silent, rather than sending "0 tasks".
+  if (!buckets.size) return { ok: true, sent: 0, tasks: 0, quiet: 'nothing pending' };
+
+  let sent = 0;
+  for (const tasks of buckets.values()) {
+    const head = tasks[0];
+    await sendWhatsAppRaw(head.group_id, clientPendingDigestMessage(head, tasks))
+      .catch(e => console.error('WA client digest err:', e.message));
+    sent++;
+  }
+  return { ok: true, sent, pairs: buckets.size, tasks: rows.length };
+}
+
+// Kept separate so the wording can be reviewed without reading the query.
+function clientPendingDigestMessage(head, tasks) {
+  const n = tasks.length;
+  const list = tasks.map((t, i) => {
+    const d = Number(t.days_pending) || 0;
+    const age = d === 0 ? 'today' : `${d} day${d === 1 ? '' : 's'} pending`;
+    return `${i + 1}. ${t.description}\n   _given ${t.given_on} · ${age} · ${t.handler_name}_`;
+  }).join('\n');
+  return `Hello ${head.handler_name || ''},\n\n` +
+    `📋 *Pending Tasks — ${head.client_name}*\n\n` +
+    `*${n} task${n === 1 ? '' : 's'}* ${n === 1 ? 'is' : 'are'} still open with us:\n\n` +
+    `${list}\n\n` +
+    `— E-Marketing Task Manager`;
+}
+
+app.get('/api/cron/client-pending-digest', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: client-pending-digest');
+    res.json(await sendClientPendingDigests({ force: req.query.force === '1' }));
+  } catch (err) {
+    console.error('Cron client-pending-digest error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 app.get('/api/cron/due-date-reminder', async (req, res) => {
   const authHeader = req.headers['authorization'] || '';
@@ -7060,6 +7152,14 @@ app.put('/api/clients/:id', requireAuth, requireAdminOrHod, async (req, res) => 
     if (handlerId !== undefined) { sets.push('handler_id=?'); params.push(handlerId); }
     if (req.body.system_links !== undefined) { sets.push('system_links=?'); params.push(sanitizeSystemLinks(req.body.system_links)); }
     if (req.body.is_active !== undefined) { sets.push('is_active=?'); params.push(req.body.is_active ? 1 : 0); }
+    if (req.body.whatsapp_group_id !== undefined) {
+      const g = String(req.body.whatsapp_group_id || '').trim();
+      // Blank clears it (and so switches the digest off for this client).
+      if (g && !/^[\w.-]+@g\.us$/.test(g)) {
+        return res.status(400).json({ error: 'WhatsApp group ID must look like 1203634...@g.us' });
+      }
+      sets.push('whatsapp_group_id=?'); params.push(g || null);
+    }
     if (!sets.length) return res.json({ success: true, noop: true });
     params.push(id);
     await db.query(`UPDATE clients SET ${sets.join(', ')} WHERE id=?`, params);
@@ -7144,7 +7244,8 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrHod, async (req, re
   try {
     const id = req.params.id;
     const [[client]] = await db.query(
-      `SELECT c.id, c.name, c.handler_id, c.logo_url, c.system_links, u.name AS handler_name, u.email AS handler_email
+      `SELECT c.id, c.name, c.handler_id, c.logo_url, c.system_links, c.whatsapp_group_id,
+              u.name AS handler_name, u.email AS handler_email
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
     client.system_links = parseSystemLinks(client.system_links);
