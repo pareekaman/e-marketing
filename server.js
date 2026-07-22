@@ -6820,8 +6820,45 @@ app.delete('/api/client-portal/feedback/:id', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Build the WHERE clause that limits the client list to what the caller may see
+// on the Client Master page. Returns null when they may see everything.
+//   admin / pc → everything.
+//   hod        → every client handled by someone in their department (which
+//                covers the clients they handle themselves).
+//   anyone else→ only the clients they personally handle.
+// "Handles" means either the primary clients.handler_id or a client_handlers row.
+async function clientMasterScope(req) {
+  const role = req.session.role;
+  if (role === 'admin' || role === 'pc') return null;
+  const uid = req.session.userId;
+  const mine = `(c.handler_id = ?
+                 OR EXISTS (SELECT 1 FROM client_handlers ch
+                            WHERE ch.client_id = c.id AND ch.user_id = ?))`;
+  if (role === 'hod') {
+    const [[me]] = await db.query('SELECT department FROM users WHERE id=? LIMIT 1', [uid]);
+    const dept = (me?.department || '').trim();
+    // An HOD with no department recorded would otherwise match every other
+    // department-less user, so fall back to just their own clients.
+    if (!dept) return { sql: mine, params: [uid, uid] };
+    return {
+      sql: `(EXISTS (SELECT 1 FROM users hu
+                     WHERE hu.id = c.handler_id AND hu.department = ?)
+             OR EXISTS (SELECT 1 FROM client_handlers ch2
+                        JOIN users hu2 ON ch2.user_id = hu2.id
+                        WHERE ch2.client_id = c.id AND hu2.department = ?))`,
+      params: [dept, dept]
+    };
+  }
+  return { sql: mine, params: [uid, uid] };
+}
+
 app.get('/api/clients', requireAuth, async (req, res) => {
   try {
+    // `?scope=master` narrows the list to what the caller may see on Client
+    // Master. Without it the list stays unfiltered on purpose — the Daily Task,
+    // Delegation, Checklist, Meetings and DMS pickers share this route and must
+    // keep offering every client.
+    const scope = req.query.scope === 'master' ? await clientMasterScope(req) : null;
     const [rows] = await db.query(
       `SELECT c.id, c.name, c.handler_id, c.logo_url, COALESCE(c.is_active,1) AS is_active,
               u.name AS handler_name,
@@ -6829,7 +6866,8 @@ app.get('/api/clients', requireAuth, async (req, res) => {
                FROM client_handlers ch JOIN users u2 ON ch.user_id = u2.id
                WHERE ch.client_id = c.id) AS all_handler_names
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id
-       ORDER BY c.name ASC`);
+       ${scope ? `WHERE ${scope.sql}` : ''}
+       ORDER BY c.name ASC`, scope ? scope.params : []);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

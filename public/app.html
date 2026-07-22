@@ -2162,7 +2162,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div class="cm-toolbar">
         <input class="cm-search" type="text" id="cmSearch" placeholder="🔍 Search clients..." oninput="cmFilter()"/>
         <div class="cm-add-row">
-          <button class="cm-btn-primary" onclick="cmOpenAddModal()">+ Add Client</button>
+          <button class="cm-btn-primary" id="cmAddBtn" onclick="cmOpenAddModal()">+ Add Client</button>
           <button class="cm-btn-ghost" onclick="cmToggleBulk()" id="cmBulkBtn">📂 Bulk Upload</button>
           <button class="cm-btn-ghost" onclick="cmExportExcel()">⬇ Excel</button>
         </div>
@@ -4685,7 +4685,9 @@ const ROLE_DEFAULTS = {
            actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','hrm_schedule','hrm_update_status','delete_leave'] },
   pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance'],
            actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task'] },
-  user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance'],
+  // 'clients' here is the Client Master tab. A user only ever sees the clients
+  // they handle (the list is scoped server-side) and cannot edit anything.
+  user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance','clients'],
            actions: ['create_task','edit_task','delete_task'] }
 };
 
@@ -12227,16 +12229,34 @@ function cmInitials(name){
   return parts.map(p => p[0] || '').join('').toUpperCase() || '?';
 }
 
+// Client Master is read-only for anyone who is not admin/HOD/PC — they reach it
+// only to see the clients they handle. The write routes already refuse them
+// (requireAdminOrHod), so this just stops the app from offering buttons that
+// would 403.
+function cmCanEdit(){ return ME && ['admin','hod','pc'].includes(ME.role); }
+
+function cmApplyRoleControls(){
+  const show = cmCanEdit() ? '' : 'none';
+  const addBtn = document.getElementById('cmAddBtn');
+  if (addBtn) addBtn.style.display = show;
+  const bulkBtn = document.getElementById('cmBulkBtn');
+  if (bulkBtn) bulkBtn.style.display = show;
+}
+
 let CM_USERS = [];
 async function loadClients(){
   const wrap = document.getElementById('cmListWrap');
   wrap.innerHTML = '<div class="empty">Loading clients…</div>';
   CM_OPEN_ID = null;
   try {
-    const [clients, users] = await Promise.all([api('/api/clients'), api('/api/users')]);
+    // scope=master → the server returns only the clients this role may manage
+    // here (admin/PC all, HOD their department's, everyone else their own).
+    // The plain /api/clients used by the task and meeting pickers stays full.
+    const [clients, users] = await Promise.all([api('/api/clients?scope=master'), api('/api/users')]);
     CM_ALL = Array.isArray(clients) ? clients : [];
     CM_USERS = Array.isArray(users) ? users : [];
     document.getElementById('cmStatTotal').textContent = CM_ALL.length;
+    cmApplyRoleControls();
     cmRenderList();
   } catch(e) {
     wrap.innerHTML = '<div class="empty">Failed to load clients</div>';
@@ -12349,7 +12369,7 @@ function cmRenderList(){
             <span class="cm-switch-track"></span>
             <span class="cm-switch-label">${isOn ? 'Active' : 'Inactive'}</span>
           </span>
-          <button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>
+          ${cmCanEdit() ? `<button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>` : ''}
           <span class="cm-client-arrow">›</span>
         </div>
       </div>`;
@@ -12594,12 +12614,12 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
               <span style="font-size:11px;color:#94a3b8">Client #${client.id}</span>
             </div>
             <div style="margin-top:8px;display:flex;gap:6px">
-              ${logoBtns}
-              <input type="file" id="cmLogoInput_${client.id}" accept="image/*" style="display:none" onchange="cmUploadLogo(${client.id}, this)"/>
+              ${cmCanEdit() ? `${logoBtns}
+              <input type="file" id="cmLogoInput_${client.id}" accept="image/*" style="display:none" onchange="cmUploadLogo(${client.id}, this)"/>` : ''}
             </div>
           </div>
         </div>
-        <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;margin-top:8px">
+        <div style="${cmCanEdit() ? 'display:flex' : 'display:none'};gap:8px;align-items:flex-start;flex-wrap:wrap;margin-top:8px">
           <label style="font-size:11px;color:#64748b;font-weight:600;padding-top:6px">Handlers:</label>
           <div style="position:relative" id="cmHandlerWidget_${id}">
             <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -12690,7 +12710,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>
 
-    <div class="task-table-card" id="cmLinksCard" style="padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s">
+    <div class="task-table-card" id="cmLinksCard" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">🔗 System Links <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on this client's portal</span></div>
         <button class="btn btn-outline" style="padding:5px 11px;font-size:12px" onclick="cmAddLinkRow()">＋ Add Link</button>
@@ -12701,7 +12721,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>
 
-    <div class="task-table-card" style="padding:14px 18px;margin-top:16px">
+    <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">📁 Documents <span style="font-weight:400;color:#94a3b8;font-size:12px">— Google Drive</span></div>
       </div>
