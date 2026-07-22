@@ -7736,6 +7736,31 @@ function openTaskDetail(t) {
       ? `<span class="status-badge ${t.status}" style="font-size:12px">${statusLabels[t.status]||t.status}</span>`
       : null);
 
+  // What we still need FROM the client to finish this. Goes to their WhatsApp
+  // group in the next digest, so it needs a deadline — and the task must have
+  // its own due date first, since the ask cannot outlive it.
+  const askSection = (t.type === 'delegation' && t.id && t.client_id) ? `
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0">
+      <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px">📥 Needed from client</div>
+      ${t.due_date ? `
+        <input type="text" id="tdAskNote" value="${dtEscape(t.client_ask || '')}"
+               placeholder="e.g. Standard hours sheet not received"
+               style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12.5px;outline:none"/>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+          <span style="font-size:11px;color:#64748b;font-weight:600">Needed by</span>
+          <input type="date" id="tdAskDate" max="${dtEscape(t.due_date || '')}" value="${dtEscape(t.client_ask_date || '')}"
+                 style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px"/>
+          <input type="time" id="tdAskTime" value="${dtEscape(t.client_ask_time || '')}"
+                 style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px"/>
+          <span style="font-size:11px;color:#94a3b8">IST</span>
+          <button class="action-btn" style="padding:4px 11px;font-size:11px" onclick="saveClientAsk(${t.id})">Save</button>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:5px">Cannot be later than this task's own due date. Blank clears it.</div>
+      ` : `<div style="font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 10px">
+             Set this task's due date first — then you can record what you need from the client.
+           </div>`}
+    </div>` : '';
+
   const subtasksSection = (t.type === 'delegation' && t.id) ? `
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0">
       <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px">🧩 Sub-tasks <span style="font-weight:500;color:#94a3b8">(added by client)</span></div>
@@ -7754,7 +7779,7 @@ function openTaskDetail(t) {
     row('Approval', t.approval === 'yes' ? '<span style="color:#16a34a;font-weight:600">Required</span>' : '<span style="color:#64748b">Not required</span>'),
     row('Remarks', t.remarks ? dtEscape(t.remarks) : null),
     row('URL', urlVal || '<span style="color:#94a3b8">No URL</span>'),
-  ].filter(Boolean).join('') + subtasksSection;
+  ].filter(Boolean).join('') + askSection + subtasksSection;
   document.getElementById('taskDetailModal').classList.add('open');
   if (t.type === 'delegation' && t.id) loadSubtasks(t.id);
 }
@@ -7803,6 +7828,18 @@ async function loadSubtasks(taskId) {
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+// Record what we still need from the client on this task. The server enforces
+// the two rules (task must have a due date; the ask cannot fall after it), so a
+// stale form here cannot slip past them.
+async function saveClientAsk(taskId) {
+  const note = document.getElementById('tdAskNote')?.value.trim() || '';
+  const body = { note, byDate: document.getElementById('tdAskDate')?.value || '',
+                       byTime: document.getElementById('tdAskTime')?.value || '' };
+  const r = await api(`/api/tasks/${taskId}/client-ask`, 'PUT', body);
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  showToast(note ? 'Saved — goes to the client group in the next digest' : 'Cleared');
 }
 
 // Handler's note on why a sub-task is stuck. Sent without a status, so saving a

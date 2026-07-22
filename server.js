@@ -329,6 +329,12 @@ const _startupMigrationsPromise = (async () => {
   // task leaves 'completed', so a reopened task stops counting. Rows completed
   // before this column existed stay NULL and never appear in a daily digest.
   await sa(`ALTER TABLE delegation_tasks ADD COLUMN completed_at DATETIME DEFAULT NULL AFTER status`);
+  // What the handler still needs FROM the client to finish this task, and by
+  // when. Kept apart from `remarks` on purpose: on a client-delegated task that
+  // column already holds the CLIENT's own note from the portal form, and
+  // overwriting it would destroy what they asked for.
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_ask TEXT DEFAULT NULL AFTER remarks`);
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_ask_by DATETIME DEFAULT NULL AFTER client_ask`);
   // Client portal delegation form offers an 'urgent' priority tier above 'high'.
   await sa(`ALTER TABLE delegation_tasks MODIFY COLUMN priority ENUM('low','medium','high','urgent') DEFAULT 'low'`);
   // Sub-tasks — follow-up asks nested under a delegation task (e.g. client says
@@ -995,6 +1001,8 @@ app.get('/api/setup', async (req, res) => {
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN awaiting_due_date TINYINT(1) DEFAULT 0 AFTER waiting_approval`, 'delegation_tasks.awaiting_due_date');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN due_time TIME DEFAULT NULL AFTER due_date`, 'delegation_tasks.due_time');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN completed_at DATETIME DEFAULT NULL AFTER status`, 'delegation_tasks.completed_at');
+    await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_ask TEXT DEFAULT NULL AFTER remarks`, 'delegation_tasks.client_ask');
+    await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_ask_by DATETIME DEFAULT NULL AFTER client_ask`, 'delegation_tasks.client_ask_by');
     await sa(`ALTER TABLE checklist_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`, 'checklist_tasks.client_id');
 
     await sa(`CREATE TABLE IF NOT EXISTS delegation_tasks (
@@ -1438,7 +1446,7 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     const subtaskCols = isDeleg
       ? "COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='completed'),0) AS subtasks_done,COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='pending'),0) AS subtasks_pending,"
       : "0 AS subtasks_done,0 AS subtasks_pending,";
-    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,"}${subtaskCols}t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
+    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_ask,DATE_FORMAT(t.client_ask_by,'%Y-%m-%d') AS client_ask_date,TIME_FORMAT(t.client_ask_by,'%H:%i') AS client_ask_time,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,NULL AS client_ask,NULL AS client_ask_date,NULL AS client_ask_time,"}${subtaskCols}t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
 
     // mine=1 mode always returns flat tasks (never grouped)
     if (isMine) {
@@ -1709,6 +1717,57 @@ app.put('/api/subtasks/:id', requireAuth, async (req, res) => {
       return res.json({ success: true });
     }
     await db.query(`UPDATE task_subtasks SET status=?, completed_at=IF(?='completed', NOW(), NULL) WHERE id=?`, [status, status, id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// The handler records what they still need FROM the client on their own task,
+// with a deadline. Two rules the user set:
+//   · the task must already have a due date — otherwise there is nothing to
+//     measure "not later than" against, and it gives a reason to fill it in;
+//   · the ask cannot be due after the task itself, since needing an input after
+//     your own deadline is meaningless.
+// Blank text clears both fields.
+app.put('/api/tasks/:id/client-ask', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role === 'client') return res.status(403).json({ error: 'Not allowed' });
+    const id = parseInt(req.params.id, 10);
+    const [[task]] = await db.query(
+      `SELECT id, assigned_to, assigned_by, due_date, due_time,
+              DATE_FORMAT(due_date,'%Y-%m-%d') AS due_ymd
+         FROM delegation_tasks WHERE id=?`, [id]);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+
+    const role = req.session.role;
+    const privileged = role === 'admin' || role === 'hod' || role === 'pc';
+    // The doer is the one who knows what is missing; the assigner may also note it.
+    if (!privileged && Number(task.assigned_to) !== Number(req.session.userId)
+                    && Number(task.assigned_by) !== Number(req.session.userId)) {
+      return res.status(403).json({ error: 'Not allowed' });
+    }
+
+    const note = String(req.body.note || '').trim();
+    if (!note) {
+      await db.query('UPDATE delegation_tasks SET client_ask=NULL, client_ask_by=NULL WHERE id=?', [id]);
+      return res.json({ success: true, cleared: true });
+    }
+    if (!task.due_ymd) {
+      return res.status(409).json({ error: 'Set this task\'s due date first, then record what you need from the client.' });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(req.body.byDate || '')) {
+      return res.status(400).json({ error: 'Needed-by date is required (YYYY-MM-DD)' });
+    }
+    const byTime = parseDueTime(req.body.byTime);
+    if (byTime === undefined) return res.status(400).json({ error: 'Needed-by time must be HH:MM (24-hour)' });
+
+    // Compare as full moments. A task with no clock time is treated as due at
+    // end of day, so an ask at any time on that date is still allowed.
+    const askAt = `${req.body.byDate} ${byTime || '23:59:00'}`;
+    const dueAt = `${task.due_ymd} ${task.due_time || '23:59:59'}`;
+    if (askAt > dueAt) {
+      return res.status(400).json({ error: `Cannot be later than the task's own due date (${task.due_ymd.split('-').reverse().join('-')})` });
+    }
+    await db.query('UPDATE delegation_tasks SET client_ask=?, client_ask_by=? WHERE id=?', [note, askAt, id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -5410,6 +5469,24 @@ async function sendClientPendingDigests({ force = false } = {}) {
         AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''
       ORDER BY c.name ASC, h.name ASC, t.due_date ASC`);
 
+  // What handlers have recorded as still needed FROM the client on their own
+  // open tasks. Listed as soon as it is written, not only once late — it is a
+  // request, not a complaint; the overdue marker gets added when the moment passes.
+  const [asks] = await db.query(
+    `SELECT t.id, t.client_ask, t.description AS parent_desc, t.assigned_to AS handler_id,
+            DATE_FORMAT(t.client_ask_by,'%d-%m-%Y') AS by_date,
+            TIME_FORMAT(t.client_ask_by,'%H:%i') AS by_time,
+            (t.client_ask_by < NOW()) AS is_late,
+            c.id AS client_id, c.name AS client_name, c.whatsapp_group_id AS group_id,
+            d.name AS handler_name
+       FROM delegation_tasks t
+       JOIN users d   ON t.assigned_to = d.id
+       JOIN clients c ON t.client_id   = c.id
+      WHERE t.status <> 'completed'
+        AND t.client_ask IS NOT NULL AND t.client_ask <> ''
+        AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''
+      ORDER BY c.name ASC, d.name ASC, t.client_ask_by ASC`);
+
   // Sub-tasks the handler has flagged. These carry no date of their own — the
   // remark IS the signal, so any sub-task with one and still open is listed.
   const [stuckSubs] = await db.query(
@@ -5430,12 +5507,13 @@ async function sendClientPendingDigests({ force = false } = {}) {
   const buckets = new Map();
   const bucketOf = (clientId, handlerId, seed) => {
     const key = `${clientId}|${handlerId}`;
-    if (!buckets.has(key)) buckets.set(key, { head: seed, tasks: [], owed: [], subs: [] });
+    if (!buckets.has(key)) buckets.set(key, { head: seed, tasks: [], owed: [], asks: [], subs: [] });
     return buckets.get(key);
   };
   for (const r of rows)       bucketOf(r.client_id, r.assigned_to, r).tasks.push(r);
   // Owed tasks hang off the handler who asked for them, not the client doing them.
   for (const r of owed)       bucketOf(r.client_id, r.handler_id, r).owed.push(r);
+  for (const r of asks)       bucketOf(r.client_id, r.handler_id, r).asks.push(r);
   for (const r of stuckSubs)  bucketOf(r.client_id, r.handler_id, r).subs.push(r);
 
   // Nothing pending anywhere → stay silent, rather than sending "0 tasks".
@@ -5447,22 +5525,27 @@ async function sendClientPendingDigests({ force = false } = {}) {
       .catch(e => console.error('WA client digest err:', e.message));
     sent++;
   }
-  return { ok: true, sent, pairs: buckets.size, tasks: rows.length, owed: owed.length, flaggedSubtasks: stuckSubs.length };
+  return { ok: true, sent, pairs: buckets.size, tasks: rows.length, owed: owed.length,
+           asks: asks.length, flaggedSubtasks: stuckSubs.length };
 }
 
 // Kept separate so the wording can be reviewed without reading the query.
-function clientPendingDigestMessage({ head, tasks, owed, subs }) {
+function clientPendingDigestMessage({ head, tasks, owed, asks, subs }) {
   // Second half of the message: what the CLIENT owes us. Overdue tasks carry
   // the handler's remark when one was written; flagged sub-tasks are listed by
   // their remark, since they have no deadline of their own.
   let tail = '';
-  if (owed.length || subs.length) {
+  if (owed.length || asks.length || subs.length) {
     const lines = [];
     owed.forEach((t, i) => {
       const d = Number(t.days_over) || 0;
       const late = d <= 0 ? 'due today' : `${d} day${d === 1 ? '' : 's'} overdue`;
-      const due = `due ${t.due_on}${t.due_time ? ` · ${fmtClock(t.due_time)}` : ''} · ${late}`;
+      const due = `due ${t.due_on}${t.due_time ? ` · ${fmtClock(t.due_time)}` : ''} IST · ${late}`;
       lines.push(`${i + 1}. ${t.description}\n   _${due}_` + (t.remarks ? `\n   _"${t.remarks}"_` : ''));
+    });
+    asks.forEach(a => {
+      lines.push(`• "${a.client_ask}"\n   _for "${a.parent_desc}"_\n   ` +
+        `_needed by ${a.by_date} · ${fmtClock(a.by_time)} IST${Number(a.is_late) ? ' · overdue' : ''}_`);
     });
     subs.forEach(s => {
       lines.push(`• ${s.description}\n   _under "${s.parent_desc}"_\n   _"${s.remarks}"_`);
