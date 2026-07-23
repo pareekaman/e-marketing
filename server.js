@@ -7734,7 +7734,7 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrHod, async (req, re
       client: {
         id: client.id, name: client.name, logo_url: client.logo_url,
         handler_id: client.handler_id, handler_name: client.handler_name, handler_email: client.handler_email,
-        system_links: client.system_links
+        system_links: client.system_links, whatsapp_group_id: client.whatsapp_group_id
       },
       login: loginUser ? { provisioned: true, email: loginUser.email } : { provisioned: false },
       range: { from, to },
