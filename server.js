@@ -1613,6 +1613,25 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
             sendWhatsApp(doerRow.phone, msg).catch(e => console.error('WA delegation err:', e.message));
           }
         } catch (e) { console.error('WA delegation lookup err:', e.message); }
+
+        // Handler → client task: announce it in the client's own WhatsApp group
+        // right away (the doer is a client login with no phone, so the message
+        // above never reaches them). Skipped when the client has no group set.
+        if (doerIsClient && enforcedClientId) try {
+          const [[cli]] = await db.query('SELECT whatsapp_group_id AS g FROM clients WHERE id=? LIMIT 1', [enforcedClientId]);
+          if (cli?.g) {
+            const due = (effectiveDate || '').split('-').reverse().join('-') +
+                        (dueTime ? ` · ${fmtClock(dueTime.slice(0,5))} IST` : '');
+            const gmsg = `📝 *New Task for You*\n\n` +
+              `*Task:* ${desc}\n` +
+              (due ? `*Due:* ${due}\n` : '') +
+              `*Priority:* ${(priority||'low').toUpperCase()}\n` +
+              `*Assigned by:* ${assignerName}` +
+              (remarks ? `\n\n*Remarks:* ${remarks}` : '') +
+              `\n\n— E-Marketing Task Manager`;
+            await sendWhatsAppRaw(cli.g, gmsg).catch(e => console.error('WA client-task group err:', e.message));
+          }
+        } catch (e) { console.error('WA client-task group lookup err:', e.message); }
       })();
     } else {
       await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks,client_id) VALUES (?,?,?,?,?,?,?,?)`, [desc, targetUser, req.session.userId, effectiveDate, 'pending', priority||'low', remarks||'', enforcedClientId]);
@@ -4342,12 +4361,18 @@ async function sendWhatsApp(phone, text) {
   else if (to.length === 11 && to.startsWith('0')) to = '91' + to.slice(1);
   else return { ok: false, reason: 'invalid phone format' };
 
+  // Cap the provider call at 30s. Without it a stalled Aumpfy fetch hangs the
+  // whole awaiting request — which is how a cron that sends WhatsApp (e.g. the
+  // due-date nudge) would run past Vercel's 60s limit and never respond.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000);
   try {
     const fetch = global.fetch || (await import('node-fetch')).default;
     const r = await fetch(AUMPFY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': AUMPFY_API_KEY },
-      body: JSON.stringify({ to, text })
+      body: JSON.stringify({ to, text }),
+      signal: ctrl.signal
     });
     const data = await r.text();
     if (r.ok) {
@@ -4358,9 +4383,10 @@ async function sendWhatsApp(phone, text) {
       return { ok: false, status: r.status, error: data };
     }
   } catch (err) {
-    console.error('  ❌ WhatsApp error:', err.message);
-    return { ok: false, error: err.message };
-  }
+    const msg = err.name === 'AbortError' ? 'provider timeout after 30s' : err.message;
+    console.error('  ❌ WhatsApp error:', msg);
+    return { ok: false, error: msg };
+  } finally { clearTimeout(timer); }
 }
 
 // Raw send — used for WhatsApp group IDs (e.g. "120363400573269993@g.us")
@@ -4375,12 +4401,15 @@ async function sendWhatsAppRaw(to, text) {
 
   if (!to) return { ok: false, reason: 'no destination' };
 
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000);
   try {
     const fetch = global.fetch || (await import('node-fetch')).default;
     const r = await fetch(AUMPFY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': AUMPFY_API_KEY },
-      body: JSON.stringify({ to: String(to), text })
+      body: JSON.stringify({ to: String(to), text }),
+      signal: ctrl.signal
     });
     const data = await r.text();
     if (r.ok) {
@@ -4391,9 +4420,10 @@ async function sendWhatsAppRaw(to, text) {
       return { ok: false, status: r.status, error: data };
     }
   } catch (err) {
-    console.error('  ❌ WhatsApp (raw) error:', err.message);
-    return { ok: false, error: err.message };
-  }
+    const msg = err.name === 'AbortError' ? 'provider timeout after 30s' : err.message;
+    console.error('  ❌ WhatsApp (raw) error:', msg);
+    return { ok: false, error: msg };
+  } finally { clearTimeout(timer); }
 }
 
 // Test endpoint — visit /api/test-whatsapp?phone=98XXXXXXXX&text=hi to test
@@ -10548,16 +10578,29 @@ async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateNa
   let status = 'Failed', errorDetail = '';
   try {
     const fetchFn = global.fetch || (await import('node-fetch')).default;
-    const resp = await fetchFn(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': HRM_AMUFIY_API_KEY },
-      body: JSON.stringify(payload)
-    });
+    // Bound the provider call. For a file send the provider fetches our
+    // mediaUrl (the /offer-pdf render) before replying, which can stall — or,
+    // from a host it can't reach (e.g. localhost during local testing), never
+    // complete. Without a timeout the awaiting endpoint (and the caller's
+    // "Sending…" button) hangs indefinitely.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    let resp;
+    try {
+      resp = await fetchFn(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': HRM_AMUFIY_API_KEY },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     if (resp.ok) { status = 'Sent'; } else {
       const txt = await resp.text();
       errorDetail = `HTTP ${resp.status}: ${txt.slice(0,200)}`;
     }
-  } catch (e) { errorDetail = e.message; }
+  } catch (e) { errorDetail = e.name === 'AbortError' ? 'WhatsApp send timed out after 30s' : e.message; }
 
   const payloadJson = JSON.stringify({ endpoint, body: payload });
   await db.query(
