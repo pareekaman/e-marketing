@@ -1588,7 +1588,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
             delegationEmailHtml({
               assigneeName: target.name,
               assignerName,
-              desc, dueDate: doerWillSet ? 'Aap set karein' : effectiveDate,
+              desc, dueDate: doerWillSet ? 'Please add the due date in the task' : effectiveDate,
               priority: priority||'low',
               approval: approval||'no',
               remarks: remarks||''
@@ -1600,11 +1600,11 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
           const [[doerRow]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [targetUser]);
           if (doerRow && doerRow.phone) {
             const dueFmt = doerWillSet
-              ? 'Aap set karein 👉 task me due date daalein'
+              ? 'Please add the due date in the task'
               : (effectiveDate||'').split('-').reverse().join('-') + (dueTime ? ` at ${dueTime.slice(0,5)}` : '');
             const msg = `Hello ${doerRow.name || ''},\n\n📋 *New Task Delegated*\n\n` +
               `*By:* ${assignerName}\n` +
-              `*Due:* ${dueFmt}\n` +
+              `*Due Date:* ${dueFmt}\n` +
               `*Priority:* ${(priority||'low').toUpperCase()}\n` +
               (approval==='yes' ? `*Approval Required:* Yes\n` : '') +
               `\n*Task:* ${desc}` +
@@ -10558,7 +10558,10 @@ async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrid
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       html,
-      filename: `OFFER LETTER - ${candidateName}`,
+      // Saved in the SAME Drive folder as the preliminary letter (HRM_OFFER_FOLDER_ID),
+      // named "Probationary Offer Letter - <candidate>" to sit beside the
+      // "PRELIMINARY OFFER LETTER - <candidate>" file for the same person.
+      filename: `Probationary Offer Letter - ${candidateName}`,
       folderId: HRM_OFFER_FOLDER_ID,
     }),
   });
