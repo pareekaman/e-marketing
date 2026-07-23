@@ -10807,28 +10807,30 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
         ).catch(() => {});
       }
 
-      // Notify Simran so she can create the official email ID before joining date
-      const [[simran]] = await db.query(`SELECT id, name, phone FROM users WHERE name='Simran Gurnani' LIMIT 1`);
-      if (simran?.phone) {
-        hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(simran.phone), text:
+      // Notify the onboarding owner (Naman Gupta) so they can create the
+      // official email ID before the joining date.
+      const [[onboarder]] = await db.query(`SELECT id, name, phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
+      if (onboarder?.phone) {
+        hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(onboarder.phone), text:
 `🆕 *New Employee Onboarding*\n\n👤 Name: ${displayName}\n🏢 Department: ${displayDept}\n💼 Position: ${displayPos}\n📅 Joining Date: ${joiningFmt}\n\n⚠️ Please create the official email ID before the joining date.\n\n— HR Portal`
-        }, 'text', c.id, c.name, 'Offer Sent - Simran Notify').catch(e => console.error('HRM WA simran notify err:', e.message));
+        }, 'text', c.id, c.name, 'Offer Sent - Onboarding Notify').catch(e => console.error('HRM WA onboarding notify err:', e.message));
       }
 
-      // Auto-delegate a task to Simran — due exactly on the joining date (no
-      // holiday/week-off shifting — the employee joins that day regardless).
-      if (simran?.id) {
+      // Auto-delegate the email-ID task to the onboarding owner — due exactly on
+      // the joining date (no holiday/week-off shifting — the employee joins that
+      // day regardless).
+      if (onboarder?.id) {
         const taskDesc = `Create official email ID for ${displayName} — Department: ${displayDept}, Position: ${displayPos}, Joining Date: ${joiningFmt}`;
         db.query(
           `INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-          [taskDesc, simran.id, req.session.userId, joining_date||null, 'pending', 'low', 'no', '', null, null, 0]
+          [taskDesc, onboarder.id, req.session.userId, joining_date||null, 'pending', 'low', 'no', '', null, null, 0]
         ).catch(e => console.error('HRM auto-delegate task err:', e.message));
 
-        if (simran.phone) {
+        if (onboarder.phone) {
           const dueFmt = (joining_date||'').split('-').reverse().join('-');
           const assignerName = req.session.name || 'HR';
-          const taskMsg = `Hello ${simran.name || ''},\n\n📋 *New Task Delegated*\n\n*By:* ${assignerName}\n*Due:* ${dueFmt}\n*Priority:* LOW\n\n*Task:* ${taskDesc}\n\n— E-Marketing Task Manager`;
-          sendWhatsApp(simran.phone, taskMsg).catch(e => console.error('HRM task delegation WA err:', e.message));
+          const taskMsg = `Hello ${onboarder.name || ''},\n\n📋 *New Task Delegated*\n\n*By:* ${assignerName}\n*Due:* ${dueFmt}\n*Priority:* LOW\n\n*Task:* ${taskDesc}\n\n— E-Marketing Task Manager`;
+          sendWhatsApp(onboarder.phone, taskMsg).catch(e => console.error('HRM task delegation WA err:', e.message));
         }
       }
     }
@@ -11008,6 +11010,36 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
 
     const caption = `Hello ${name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! Please find attached your official Offer Letter for the position of *${position}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${finalSalary || 'To be discussed'}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
 
+    // Save the same PDF straight to Drive via the DMS service-account client —
+    // NOT the Apps Script, so it can't land in the owner's bin. Named to sit
+    // beside "PRELIMINARY OFFER LETTER - <name>" in HRM_OFFER_FOLDER_ID, and the
+    // id is stored so the "View Offer Letter" button can open it. Kicked off
+    // HERE so it runs ALONGSIDE the WhatsApp send below rather than adding to
+    // "Sending…" time; awaited just before the response. Best-effort — a Drive
+    // failure (e.g. the folder isn't shared with the service account) must not
+    // fail the send and is reported back as driveError.
+    const drivePromise = (async () => {
+      try {
+        const pdf = await hrmRenderFinalOfferPdfBuffer({
+          name, position, joiningFmt, salary: finalSalary, today,
+          joiningDate: rawJoin, probationMonths: probation_months,
+        });
+        const drive = await getDriveClient();
+        const { Readable } = require('stream');
+        const created = await drive.files.create({
+          requestBody: { name: `Probationary Offer Letter - ${name}`, parents: [HRM_OFFER_FOLDER_ID], mimeType: 'application/pdf' },
+          media: { mimeType: 'application/pdf', body: Readable.from(pdf) },
+          fields: 'id',
+          supportsAllDrives: true,
+        });
+        await db.query('UPDATE hrm_candidates SET final_offer_drive_id=? WHERE id=?', [created.data.id, c.id]);
+        return { driveSaved: true, driveError: null };
+      } catch (e) {
+        console.error('final offer Drive save failed:', e.message);
+        return { driveSaved: false, driveError: e.message };
+      }
+    })();
+
     let waSent = false;
     if (c.phone) {
       waSent = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
@@ -11022,28 +11054,9 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
       }
     }
 
-    // Save the same PDF straight to Drive via the DMS service-account client —
-    // NOT the Apps Script, so it can't land in the owner's bin. Named to sit
-    // beside "PRELIMINARY OFFER LETTER - <name>" in HRM_OFFER_FOLDER_ID, and the
-    // id is stored so the "View Offer Letter" button can open it. Best-effort:
-    // a Drive failure (e.g. the folder isn't shared with the service account)
-    // must not fail the send — it is reported back as driveError.
     let driveSaved = false, driveError = null;
     try {
-      const pdf = await hrmRenderFinalOfferPdfBuffer({
-        name, position, joiningFmt, salary: finalSalary, today,
-        joiningDate: rawJoin, probationMonths: probation_months,
-      });
-      const drive = await getDriveClient();
-      const { Readable } = require('stream');
-      const created = await drive.files.create({
-        requestBody: { name: `Probationary Offer Letter - ${name}`, parents: [HRM_OFFER_FOLDER_ID], mimeType: 'application/pdf' },
-        media: { mimeType: 'application/pdf', body: Readable.from(pdf) },
-        fields: 'id',
-        supportsAllDrives: true,
-      });
-      await db.query('UPDATE hrm_candidates SET final_offer_drive_id=? WHERE id=?', [created.data.id, c.id]);
-      driveSaved = true;
+      ({ driveSaved, driveError } = await drivePromise);
     } catch (e) {
       driveError = e.message;
       console.error('final offer Drive save failed:', e.message);
