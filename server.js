@@ -11021,7 +11021,35 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
         await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text: `${caption}\n\n📄 *Offer Letter PDF:*\n${pdfUrl}` }, 'text', c.id, c.name, 'Offer Letter Sent - Link Fallback');
       }
     }
-    res.json({ ok: true, pdfUrl, waSent });
+
+    // Save the same PDF straight to Drive via the DMS service-account client —
+    // NOT the Apps Script, so it can't land in the owner's bin. Named to sit
+    // beside "PRELIMINARY OFFER LETTER - <name>" in HRM_OFFER_FOLDER_ID, and the
+    // id is stored so the "View Offer Letter" button can open it. Best-effort:
+    // a Drive failure (e.g. the folder isn't shared with the service account)
+    // must not fail the send — it is reported back as driveError.
+    let driveSaved = false, driveError = null;
+    try {
+      const pdf = await hrmRenderFinalOfferPdfBuffer({
+        name, position, joiningFmt, salary: finalSalary, today,
+        joiningDate: rawJoin, probationMonths: probation_months,
+      });
+      const drive = await getDriveClient();
+      const { Readable } = require('stream');
+      const created = await drive.files.create({
+        requestBody: { name: `Probationary Offer Letter - ${name}`, parents: [HRM_OFFER_FOLDER_ID], mimeType: 'application/pdf' },
+        media: { mimeType: 'application/pdf', body: Readable.from(pdf) },
+        fields: 'id',
+        supportsAllDrives: true,
+      });
+      await db.query('UPDATE hrm_candidates SET final_offer_drive_id=? WHERE id=?', [created.data.id, c.id]);
+      driveSaved = true;
+    } catch (e) {
+      driveError = e.message;
+      console.error('final offer Drive save failed:', e.message);
+    }
+
+    res.json({ ok: true, pdfUrl, waSent, driveSaved, driveError });
   } catch (err) {
     console.error('send-final-offer error:', err.message);
     res.status(500).json({ error: err.message });
