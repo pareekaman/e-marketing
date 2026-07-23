@@ -12510,12 +12510,13 @@ async function cmToggleActive(id, makeActive){
 }
 
 // Open the client-facing portal (public/client.html) for one client, read-only,
-// in a new tab. The ?clientId= form is only honoured for admin/hod/pc — see
+// in the SAME tab — the portal's own "← Back to Client Master" banner returns
+// here. The ?clientId= form is only honoured for admin/hod/pc — see
 // resolvePortalClientId in server.js — and every write control there is hidden
 // behind the portal's own preview mode. This is NOT impersonation: no token is
 // swapped, and it works even for clients that have no portal login yet.
 function cmOpenClientPortal(id){
-  window.open('/client?clientId=' + encodeURIComponent(id), '_blank', 'noopener');
+  window.location.href = '/client?clientId=' + encodeURIComponent(id);
 }
 
 function cmFilter(){ cmRenderList(); }
