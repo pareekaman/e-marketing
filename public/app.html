@@ -7750,8 +7750,10 @@ function openTaskDetail(t) {
           <span style="font-size:11px;color:#64748b;font-weight:600">Needed by</span>
           <input type="date" id="tdAskDate" max="${dtEscape(t.due_date || '')}" value="${dtEscape(t.client_ask_date || '')}"
                  style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px"/>
-          <input type="time" id="tdAskTime" value="${dtEscape(t.client_ask_time || '')}"
-                 style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px"/>
+          <select id="tdAskTime"
+                 style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff">
+            ${tdAskTimeOptions(t.client_ask_time || '')}
+          </select>
           <span style="font-size:11px;color:#94a3b8">IST</span>
           <button class="action-btn" style="padding:4px 11px;font-size:11px" onclick="saveClientAsk(${t.id})">Save</button>
         </div>
@@ -7828,6 +7830,27 @@ async function loadSubtasks(taskId) {
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+// "Needed by" time as a scheduler-style dropdown instead of the raw time input.
+// 30-minute slots, 6:00 AM–11:30 PM, each labelled in 12-hour with AM/PM. Option
+// values stay "HH:MM" (24h) so saveClientAsk and the server parse them unchanged.
+// A saved odd-minute time (e.g. 04:49) is kept as its own selected option so it
+// is never silently dropped.
+function tdAskTimeOptions(selected) {
+  const sel = String(selected || '').slice(0, 5);
+  const label = (v) => {
+    const [h, m] = v.split(':').map(Number);
+    const period = h < 12 ? 'AM' : 'PM', h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${String(h12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${period}`;
+  };
+  const slots = [];
+  for (let mins = 6*60; mins <= 23*60 + 30; mins += 30) {
+    slots.push(`${String(Math.floor(mins/60)).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`);
+  }
+  if (sel && !slots.includes(sel)) slots.unshift(sel);
+  return `<option value="">Time —</option>` +
+    slots.map(v => `<option value="${v}"${v === sel ? ' selected' : ''}>${label(v)}</option>`).join('');
 }
 
 // Record what we still need from the client on this task. The server enforces
