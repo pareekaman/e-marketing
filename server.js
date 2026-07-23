@@ -1588,7 +1588,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
             delegationEmailHtml({
               assigneeName: target.name,
               assignerName,
-              desc, dueDate: doerWillSet ? 'Aap set karein' : effectiveDate,
+              desc, dueDate: doerWillSet ? 'To be set by you' : effectiveDate,
               priority: priority||'low',
               approval: approval||'no',
               remarks: remarks||''
@@ -1600,7 +1600,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
           const [[doerRow]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [targetUser]);
           if (doerRow && doerRow.phone) {
             const dueFmt = doerWillSet
-              ? 'Aap set karein 👉 task me due date daalein'
+              ? 'To be set by you 👉 add the due date in the task'
               : (effectiveDate||'').split('-').reverse().join('-') + (dueTime ? ` at ${dueTime.slice(0,5)}` : '');
             const msg = `Hello ${doerRow.name || ''},\n\n📋 *New Task Delegated*\n\n` +
               `*By:* ${assignerName}\n` +
