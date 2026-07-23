@@ -10611,7 +10611,13 @@ async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateNa
      VALUES (?,?,?,?,?,?,?,?)`,
     [candidateId||null, candidateName||'', payload.to||'', action||type, type, status, errorDetail, payloadJson]
   ).catch(e => console.error('hrm_message_log insert failed:', e.message));
-  return status === 'Sent';
+  // sent — provider acked OK. timedOut — no ack within 30s, which is NOT a
+  // confirmed failure: the provider usually still delivers (it fetched our
+  // mediaUrl and sent), it just didn't reply in time. So file-send callers must
+  // only fire the link fallback when the send DEFINITELY failed (!sent &&
+  // !timedOut) — firing it on a timeout is what made the candidate get both the
+  // PDF and a duplicate link.
+  return { sent: status === 'Sent', timedOut: /timed out/i.test(errorDetail) };
 }
 
 function hrmFormatPhone(phone) {
@@ -10780,15 +10786,16 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
         // document/filename instead and was blamed for "not delivering the PDF",
         // but that failure was actually the missing offer_drive_id column
         // throwing before this call was ever reached (now fixed).
-        const fileSent = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
+        const fr = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
           to: hrmFormatPhone(c.phone),
           mediaUrl: pdfUrl,
           mediaType: 'document',
           fileName: `PRELIMINARY OFFER LETTER - ${displayName}.pdf`,
           caption
         }, 'file', c.id, c.name, 'Offer Sent');
-        if (!fileSent) {
-          // Fallback so the candidate isn't left with nothing if the file API rejects this call.
+        if (!fr.sent && !fr.timedOut) {
+          // Definite failure only — the file API rejected the call. A timeout is
+          // left alone (the PDF likely went) so the candidate isn't double-sent.
           const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
           await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
 `${caption}\n\n📄 *Offer Letter PDF:*\n${driveLink}`
@@ -10850,14 +10857,14 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
         const { fileId, pdfUrl } = await hrmGenerateFinalOfferDoc(c, finalJoiningDate, finalSalary, offer_name, offer_position);
         await db.query('UPDATE hrm_candidates SET final_offer_drive_id=? WHERE id=?', [fileId, c.id]);
         const caption = `Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! Please find attached your official Offer Letter for the position of *${displayPos}*.\n\n📅 Joining Date: ${finalJoiningFmt}\n💰 CTC: ${finalSalary||'To be discussed'}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
-        const fileSent = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
+        const fr = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
           to: hrmFormatPhone(c.phone),
           mediaUrl: pdfUrl,
           mediaType: 'document',
           fileName: `OFFER LETTER - ${displayName}.pdf`,
           caption
         }, 'file', c.id, c.name, 'Offer Letter Sent');
-        if (!fileSent) {
+        if (!fr.sent && !fr.timedOut) {
           const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
           await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
 `${caption}\n\n📄 *Offer Letter PDF:*\n${driveLink}`
@@ -10892,18 +10899,19 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
     await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
     const joiningFmt = c.joining_date ? new Date(c.joining_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
     const caption = `Hello ${c.name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${c.profile_position||''}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${c.salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
-    let waSent = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
+    const fr = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
       to: hrmFormatPhone(c.phone),
       mediaUrl: pdfUrl,
       mediaType: 'document',
       fileName: `PRELIMINARY OFFER LETTER - ${c.name}.pdf`,
       caption
     }, 'file', c.id, c.name, 'Offer Letter PDF');
-    if (!waSent) {
+    let waSent = fr.sent || fr.timedOut;   // a timeout still counts as delivered for reporting
+    if (!fr.sent && !fr.timedOut) {
       const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
-      waSent = await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+      waSent = (await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
 `${caption}\n\n📄 *Offer Letter PDF:*\n${driveLink}`
-      }, 'text', c.id, c.name, 'Offer Letter PDF - Link Fallback');
+      }, 'text', c.id, c.name, 'Offer Letter PDF - Link Fallback')).sent;
     }
     res.json({ ok: true, fileId, url: `https://drive.google.com/file/d/${fileId}/view`, pdfUrl, waSent });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -11042,14 +11050,15 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
 
     let waSent = false;
     if (c.phone) {
-      waSent = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
+      const fr = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
         to: hrmFormatPhone(c.phone),
         mediaUrl: pdfUrl,
         mediaType: 'document',
         fileName: `OFFER LETTER - ${name}.pdf`,
         caption
       }, 'file', c.id, c.name, 'Offer Letter Sent');
-      if (!waSent) {
+      waSent = fr.sent || fr.timedOut;   // timeout ≠ failure; don't double-send a link
+      if (!fr.sent && !fr.timedOut) {
         await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text: `${caption}\n\n📄 *Offer Letter PDF:*\n${pdfUrl}` }, 'text', c.id, c.name, 'Offer Letter Sent - Link Fallback');
       }
     }
