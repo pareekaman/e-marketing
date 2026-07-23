@@ -1613,6 +1613,25 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
             sendWhatsApp(doerRow.phone, msg).catch(e => console.error('WA delegation err:', e.message));
           }
         } catch (e) { console.error('WA delegation lookup err:', e.message); }
+
+        // Handler → client task: announce it in the client's own WhatsApp group
+        // right away (the doer is a client login with no phone, so the message
+        // above never reaches them). Skipped when the client has no group set.
+        if (doerIsClient && enforcedClientId) try {
+          const [[cli]] = await db.query('SELECT whatsapp_group_id AS g FROM clients WHERE id=? LIMIT 1', [enforcedClientId]);
+          if (cli?.g) {
+            const due = (effectiveDate || '').split('-').reverse().join('-') +
+                        (dueTime ? ` · ${fmtClock(dueTime.slice(0,5))} IST` : '');
+            const gmsg = `📝 *New Task for You*\n\n` +
+              `*Task:* ${desc}\n` +
+              (due ? `*Due:* ${due}\n` : '') +
+              `*Priority:* ${(priority||'low').toUpperCase()}\n` +
+              `*Assigned by:* ${assignerName}` +
+              (remarks ? `\n\n*Remarks:* ${remarks}` : '') +
+              `\n\n— E-Marketing Task Manager`;
+            await sendWhatsAppRaw(cli.g, gmsg).catch(e => console.error('WA client-task group err:', e.message));
+          }
+        } catch (e) { console.error('WA client-task group lookup err:', e.message); }
       })();
     } else {
       await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks,client_id) VALUES (?,?,?,?,?,?,?,?)`, [desc, targetUser, req.session.userId, effectiveDate, 'pending', priority||'low', remarks||'', enforcedClientId]);
