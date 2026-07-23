@@ -4361,12 +4361,18 @@ async function sendWhatsApp(phone, text) {
   else if (to.length === 11 && to.startsWith('0')) to = '91' + to.slice(1);
   else return { ok: false, reason: 'invalid phone format' };
 
+  // Cap the provider call at 30s. Without it a stalled Aumpfy fetch hangs the
+  // whole awaiting request — which is how a cron that sends WhatsApp (e.g. the
+  // due-date nudge) would run past Vercel's 60s limit and never respond.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000);
   try {
     const fetch = global.fetch || (await import('node-fetch')).default;
     const r = await fetch(AUMPFY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': AUMPFY_API_KEY },
-      body: JSON.stringify({ to, text })
+      body: JSON.stringify({ to, text }),
+      signal: ctrl.signal
     });
     const data = await r.text();
     if (r.ok) {
@@ -4377,9 +4383,10 @@ async function sendWhatsApp(phone, text) {
       return { ok: false, status: r.status, error: data };
     }
   } catch (err) {
-    console.error('  ❌ WhatsApp error:', err.message);
-    return { ok: false, error: err.message };
-  }
+    const msg = err.name === 'AbortError' ? 'provider timeout after 30s' : err.message;
+    console.error('  ❌ WhatsApp error:', msg);
+    return { ok: false, error: msg };
+  } finally { clearTimeout(timer); }
 }
 
 // Raw send — used for WhatsApp group IDs (e.g. "120363400573269993@g.us")
@@ -4394,12 +4401,15 @@ async function sendWhatsAppRaw(to, text) {
 
   if (!to) return { ok: false, reason: 'no destination' };
 
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000);
   try {
     const fetch = global.fetch || (await import('node-fetch')).default;
     const r = await fetch(AUMPFY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': AUMPFY_API_KEY },
-      body: JSON.stringify({ to: String(to), text })
+      body: JSON.stringify({ to: String(to), text }),
+      signal: ctrl.signal
     });
     const data = await r.text();
     if (r.ok) {
@@ -4410,9 +4420,10 @@ async function sendWhatsAppRaw(to, text) {
       return { ok: false, status: r.status, error: data };
     }
   } catch (err) {
-    console.error('  ❌ WhatsApp (raw) error:', err.message);
-    return { ok: false, error: err.message };
-  }
+    const msg = err.name === 'AbortError' ? 'provider timeout after 30s' : err.message;
+    console.error('  ❌ WhatsApp (raw) error:', msg);
+    return { ok: false, error: msg };
+  } finally { clearTimeout(timer); }
 }
 
 // Test endpoint — visit /api/test-whatsapp?phone=98XXXXXXXX&text=hi to test
