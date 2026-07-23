@@ -10558,7 +10558,10 @@ async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrid
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       html,
-      filename: `OFFER LETTER - ${candidateName}`,
+      // Saved in the SAME Drive folder as the preliminary letter (HRM_OFFER_FOLDER_ID),
+      // named "Probationary Offer Letter - <candidate>" to sit beside the
+      // "PRELIMINARY OFFER LETTER - <candidate>" file for the same person.
+      filename: `Probationary Offer Letter - ${candidateName}`,
       folderId: HRM_OFFER_FOLDER_ID,
     }),
   });
