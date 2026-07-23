@@ -776,6 +776,8 @@ tbody tr:last-child td{border-bottom:none;}
 .cm-client-row.cm-active .cm-client-arrow{transform:rotate(180deg);color:#F39C12;}
 .cm-client-del{background:transparent;color:#94a3b8;border:1px solid #e2e8f0;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;}
 .cm-client-del:hover{background:#fef2f2;color:#dc2626;border-color:#fecaca;}
+.cm-client-dash{background:#fff7ed;color:#b45309;border:1px solid #fed7aa;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.cm-client-dash:hover{background:#F39C12;color:#fff;border-color:#F39C12;}
 /* Active/Inactive switch — reflects clients.is_active, same flag the Employee 360 page toggles. */
 .cm-switch{display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none;}
 .cm-switch-track{width:34px;height:19px;border-radius:19px;background:#cbd5e1;position:relative;transition:background .18s;flex-shrink:0;}
@@ -2160,7 +2162,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div class="cm-toolbar">
         <input class="cm-search" type="text" id="cmSearch" placeholder="🔍 Search clients..." oninput="cmFilter()"/>
         <div class="cm-add-row">
-          <button class="cm-btn-primary" onclick="cmOpenAddModal()">+ Add Client</button>
+          <button class="cm-btn-primary" id="cmAddBtn" onclick="cmOpenAddModal()">+ Add Client</button>
           <button class="cm-btn-ghost" onclick="cmToggleBulk()" id="cmBulkBtn">📂 Bulk Upload</button>
           <button class="cm-btn-ghost" onclick="cmExportExcel()">⬇ Excel</button>
         </div>
@@ -3954,6 +3956,10 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <label>Due Date</label>
         <input type="date" id="editTDate"/>
       </div>
+      <div class="form-group" id="editTTimeWrap">
+        <label>Due Time <span style="color:#94a3b8;font-weight:400;font-size:11px">(optional)</span></label>
+        <input type="time" id="editTTime"/>
+      </div>
       <div class="form-group" id="editTPriorityWrap">
         <label>Priority</label>
         <select id="editTPriority">
@@ -4085,8 +4091,8 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div class="form-group"><label>Department</label><input type="text" id="uDepartment" placeholder="e.g. Sales, Production"/></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Birthday <span style="color:#e53e3e;font-size:11px">*</span></label><input type="date" id="uBirthday"/></div>
-      <div class="form-group"><label>Joining Date <span style="color:#e53e3e;font-size:11px">*</span></label><input type="date" id="uJoiningDate"/></div>
+      <div class="form-group"><label>Birthday <span id="uBirthdayReq" style="color:#e53e3e;font-size:11px">*</span></label><input type="date" id="uBirthday"/></div>
+      <div class="form-group"><label>Joining Date <span id="uJoiningReq" style="color:#e53e3e;font-size:11px">*</span></label><input type="date" id="uJoiningDate"/></div>
     </div>
     <div class="form-group">
       <label>Password <span id="pwdOptional" style="color:#94a3b8;font-weight:400;text-transform:none">(leave blank to keep current)</span></label>
@@ -4683,7 +4689,9 @@ const ROLE_DEFAULTS = {
            actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','hrm_schedule','hrm_update_status','delete_leave'] },
   pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance'],
            actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task'] },
-  user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance'],
+  // 'clients' here is the Client Master tab. A user only ever sees the clients
+  // they handle (the list is scoped server-side) and cannot edit anything.
+  user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance','clients'],
            actions: ['create_task','edit_task','delete_task'] }
 };
 
@@ -7728,6 +7736,31 @@ function openTaskDetail(t) {
       ? `<span class="status-badge ${t.status}" style="font-size:12px">${statusLabels[t.status]||t.status}</span>`
       : null);
 
+  // What we still need FROM the client to finish this. Goes to their WhatsApp
+  // group in the next digest, so it needs a deadline — and the task must have
+  // its own due date first, since the ask cannot outlive it.
+  const askSection = (t.type === 'delegation' && t.id && t.client_id) ? `
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0">
+      <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px">📥 Needed from client</div>
+      ${t.due_date ? `
+        <input type="text" id="tdAskNote" value="${dtEscape(t.client_ask || '')}"
+               placeholder="e.g. Standard hours sheet not received"
+               style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12.5px;outline:none"/>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+          <span style="font-size:11px;color:#64748b;font-weight:600">Needed by</span>
+          <input type="date" id="tdAskDate" max="${dtEscape(t.due_date || '')}" value="${dtEscape(t.client_ask_date || '')}"
+                 style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px"/>
+          <input type="time" id="tdAskTime" value="${dtEscape(t.client_ask_time || '')}"
+                 style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px"/>
+          <span style="font-size:11px;color:#94a3b8">IST</span>
+          <button class="action-btn" style="padding:4px 11px;font-size:11px" onclick="saveClientAsk(${t.id})">Save</button>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:5px">Cannot be later than this task's own due date. Blank clears it.</div>
+      ` : `<div style="font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 10px">
+             Set this task's due date first — then you can record what you need from the client.
+           </div>`}
+    </div>` : '';
+
   const subtasksSection = (t.type === 'delegation' && t.id) ? `
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0">
       <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px">🧩 Sub-tasks <span style="font-weight:500;color:#94a3b8">(added by client)</span></div>
@@ -7746,7 +7779,7 @@ function openTaskDetail(t) {
     row('Approval', t.approval === 'yes' ? '<span style="color:#16a34a;font-weight:600">Required</span>' : '<span style="color:#64748b">Not required</span>'),
     row('Remarks', t.remarks ? dtEscape(t.remarks) : null),
     row('URL', urlVal || '<span style="color:#94a3b8">No URL</span>'),
-  ].filter(Boolean).join('') + subtasksSection;
+  ].filter(Boolean).join('') + askSection + subtasksSection;
   document.getElementById('taskDetailModal').classList.add('open');
   if (t.type === 'delegation' && t.id) loadSubtasks(t.id);
 }
@@ -7775,6 +7808,17 @@ async function loadSubtasks(taskId) {
         <button class="action-btn" style="padding:1px 6px;font-size:11px;${s.status==='completed'?'':'opacity:.35'}" onclick="toggleSubtask(${s.id},${taskId},${s.status!=='completed'})" title="Mark done">✅</button>
         <button class="action-btn" style="padding:1px 6px;font-size:11px;margin-left:4px" onclick="deleteSubtask(${s.id},${taskId})" title="Delete">🗑️</button>
       </td>
+    </tr>
+    <tr style="border-bottom:1px solid #f1f5f9">
+      <td></td>
+      <td colspan="6" style="padding:0 8px 8px">
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="text" id="stRemark_${s.id}" value="${dtEscape(s.remarks || '')}"
+                 placeholder="Remark — e.g. FMS sheet not sent by client"
+                 style="flex:1;padding:5px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:11.5px;outline:none"/>
+          <button class="action-btn" style="padding:3px 9px;font-size:11px" onclick="saveSubtaskRemark(${s.id},${taskId})">Save</button>
+        </div>
+      </td>
     </tr>`;
   }).join('');
   wrap.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -7784,6 +7828,30 @@ async function loadSubtasks(taskId) {
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+// Record what we still need from the client on this task. The server enforces
+// the two rules (task must have a due date; the ask cannot fall after it), so a
+// stale form here cannot slip past them.
+async function saveClientAsk(taskId) {
+  const note = document.getElementById('tdAskNote')?.value.trim() || '';
+  const body = { note, byDate: document.getElementById('tdAskDate')?.value || '',
+                       byTime: document.getElementById('tdAskTime')?.value || '' };
+  const r = await api(`/api/tasks/${taskId}/client-ask`, 'PUT', body);
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  showToast(note ? 'Saved — goes to the client group in the next digest' : 'Cleared');
+}
+
+// Handler's note on why a sub-task is stuck. Sent without a status, so saving a
+// remark never flips the sub-task's done/pending state. Blank clears it, which
+// also drops it out of the client's pending digest.
+async function saveSubtaskRemark(id, taskId) {
+  const input = document.getElementById('stRemark_' + id);
+  if (!input) return;
+  const r = await api(`/api/subtasks/${id}`, 'PUT', { remarks: input.value.trim() });
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  showToast(input.value.trim() ? 'Remark saved' : 'Remark cleared');
+  loadSubtasks(taskId);
 }
 
 async function toggleSubtask(id, taskId, checked) {
@@ -7935,6 +8003,9 @@ async function openEditTask(id, type) {
   const isDeleg = type === 'delegation';
   document.getElementById('editTPriorityWrap').style.display = isDeleg ? 'block' : 'none';
   document.getElementById('editTApprovalWrap').style.display = isDeleg ? 'block' : 'none';
+  // due_time is delegation-only. It arrives as "14:30:00"; a time input wants HH:MM.
+  document.getElementById('editTTimeWrap').style.display = isDeleg ? 'block' : 'none';
+  document.getElementById('editTTime').value = isDeleg ? String(t.due_time || '').slice(0, 5) : '';
   const urlWrap = document.getElementById('editTUrlWrap');
   if (urlWrap) urlWrap.style.display = isDeleg ? 'block' : 'none';
   if (isDeleg) {
@@ -7964,6 +8035,8 @@ async function saveEditTask() {
   if (type === 'delegation') {
     body.priority = document.getElementById('editTPriority').value;
     body.approval = document.getElementById('editTApproval').value;
+    // Sent even when blank — that is how a clock time gets cleared.
+    body.dueTime  = document.getElementById('editTTime').value;
     const urlEl = document.getElementById('editTUrl');
     body.url = urlEl ? (urlEl.value.trim() || null) : null;
   }
@@ -8714,6 +8787,8 @@ function openAddUser() {
   document.getElementById('uRole').value='user';
   document.getElementById('uUserRole').value='user';
   document.getElementById('pwdOptional').style.display='none';
+  document.getElementById('uBirthdayReq').style.display='inline';
+  document.getElementById('uJoiningReq').style.display='inline';
   document.getElementById('userErr').style.display='none';
   document.getElementById('userSuccess').style.display='none';
   document.getElementById('uExcludeReminder').checked = false;
@@ -8731,13 +8806,18 @@ function openEditUser(id) {
   document.getElementById('uNotifEmail').value=u.notification_email||'';
   document.getElementById('uPhone').value=u.phone||'';
   document.getElementById('uDepartment').value=u.department||'';
-  document.getElementById('uBirthday').value=u.birthday||'';
-  document.getElementById('uJoiningDate').value=u.joining_date||'';
+  // The API returns these as full ISO timestamps, which a date input cannot
+  // parse — without the split the field renders blank even when a date is
+  // stored, and saving would then wipe it. Same trim the Profile page does.
+  document.getElementById('uBirthday').value=String(u.birthday||'').split('T')[0];
+  document.getElementById('uJoiningDate').value=String(u.joining_date||'').split('T')[0];
   document.getElementById('uPassword').value='';
   document.getElementById('uRole').value=u.role||'user';
   document.getElementById('uUserRole').value=u.user_role||u.role||'user';
   document.getElementById('uExcludeReminder').checked = !!u.exclude_from_reminder;
   document.getElementById('pwdOptional').style.display='inline';
+  document.getElementById('uBirthdayReq').style.display='none';
+  document.getElementById('uJoiningReq').style.display='none';
   document.getElementById('userErr').style.display='none';
   document.getElementById('userSuccess').style.display='none';
   renderExtraAccessGrid(Array.isArray(u.extra_access) ? u.extra_access : []);
@@ -8760,8 +8840,10 @@ async function saveUser() {
   const user_role=document.getElementById('uUserRole').value;
   const exclude_from_reminder = document.getElementById('uExcludeReminder').checked;
   if (!name||!email) { err.textContent='Name and email required'; err.style.display='block'; return; }
-  if (!birthday) { err.textContent='Birthday is required'; err.style.display='block'; return; }
-  if (!joining_date) { err.textContent='Joining date is required'; err.style.display='block'; return; }
+  // Required only for a new user. Editing an existing one must not be blocked
+  // by a date nobody recorded when the account was made.
+  if (!id && !birthday) { err.textContent='Birthday is required'; err.style.display='block'; return; }
+  if (!id && !joining_date) { err.textContent='Joining date is required'; err.style.display='block'; return; }
   if (!id&&!password) { err.textContent='Password required for new user'; err.style.display='block'; return; }
   const extra_access = readExtraAccessFromForm();
   const body={name,email,notification_email,role,user_role,phone,department,birthday,joining_date,exclude_from_reminder,extra_access};
@@ -8933,7 +9015,10 @@ async function approveAllRevises() {
 
 async function handleApproval(id, action) {
   const note = action === 'rejected' ? prompt('Reason for rejection (optional):') : '';
-  await api(`/api/approvals/${id}`,'PUT',{action, note: note||''});
+  const r = await api(`/api/approvals/${id}`,'PUT',{action, note: note||''});
+  // The server can refuse — e.g. a completion whose sub-tasks are still open.
+  // Without this the toast claimed success while nothing had changed.
+  if (r && r.error) { showToast(r.error, 'error'); return; }
   showToast(action === 'approved' ? '✅ Approved!' : '❌ Rejected!');
   loadApprovals();
   loadApprovalBadge();
@@ -12225,16 +12310,34 @@ function cmInitials(name){
   return parts.map(p => p[0] || '').join('').toUpperCase() || '?';
 }
 
+// Client Master is read-only for anyone who is not admin/HOD/PC — they reach it
+// only to see the clients they handle. The write routes already refuse them
+// (requireAdminOrHod), so this just stops the app from offering buttons that
+// would 403.
+function cmCanEdit(){ return ME && ['admin','hod','pc'].includes(ME.role); }
+
+function cmApplyRoleControls(){
+  const show = cmCanEdit() ? '' : 'none';
+  const addBtn = document.getElementById('cmAddBtn');
+  if (addBtn) addBtn.style.display = show;
+  const bulkBtn = document.getElementById('cmBulkBtn');
+  if (bulkBtn) bulkBtn.style.display = show;
+}
+
 let CM_USERS = [];
 async function loadClients(){
   const wrap = document.getElementById('cmListWrap');
   wrap.innerHTML = '<div class="empty">Loading clients…</div>';
   CM_OPEN_ID = null;
   try {
-    const [clients, users] = await Promise.all([api('/api/clients'), api('/api/users')]);
+    // scope=master → the server returns only the clients this role may manage
+    // here (admin/PC all, HOD their department's, everyone else their own).
+    // The plain /api/clients used by the task and meeting pickers stays full.
+    const [clients, users] = await Promise.all([api('/api/clients?scope=master'), api('/api/users')]);
     CM_ALL = Array.isArray(clients) ? clients : [];
     CM_USERS = Array.isArray(users) ? users : [];
     document.getElementById('cmStatTotal').textContent = CM_ALL.length;
+    cmApplyRoleControls();
     cmRenderList();
   } catch(e) {
     wrap.innerHTML = '<div class="empty">Failed to load clients</div>';
@@ -12340,12 +12443,14 @@ function cmRenderList(){
           </div>
         </div>
         <div class="cm-client-actions">
+          <button class="cm-client-dash" title="Open this client's portal exactly as the client sees it (read-only)"
+                  onclick="event.stopPropagation();cmOpenClientPortal(${c.id})">📊 Dashboard</button>
           <span class="cm-switch${isOn ? ' is-on' : ''}" id="cmSw${c.id}" title="${isOn ? 'Click to mark inactive' : 'Click to mark active'}"
                 onclick="event.stopPropagation();cmToggleActive(${c.id},${isOn ? 0 : 1})">
             <span class="cm-switch-track"></span>
             <span class="cm-switch-label">${isOn ? 'Active' : 'Inactive'}</span>
           </span>
-          <button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>
+          ${cmCanEdit() ? `<button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>` : ''}
           <span class="cm-client-arrow">›</span>
         </div>
       </div>`;
@@ -12379,6 +12484,15 @@ async function cmToggleActive(id, makeActive){
   } finally {
     if (sw) sw.classList.remove('is-busy');
   }
+}
+
+// Open the client-facing portal (public/client.html) for one client, read-only,
+// in a new tab. The ?clientId= form is only honoured for admin/hod/pc — see
+// resolvePortalClientId in server.js — and every write control there is hidden
+// behind the portal's own preview mode. This is NOT impersonation: no token is
+// swapped, and it works even for clients that have no portal login yet.
+function cmOpenClientPortal(id){
+  window.open('/client?clientId=' + encodeURIComponent(id), '_blank', 'noopener');
 }
 
 function cmFilter(){ cmRenderList(); }
@@ -12581,12 +12695,12 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
               <span style="font-size:11px;color:#94a3b8">Client #${client.id}</span>
             </div>
             <div style="margin-top:8px;display:flex;gap:6px">
-              ${logoBtns}
-              <input type="file" id="cmLogoInput_${client.id}" accept="image/*" style="display:none" onchange="cmUploadLogo(${client.id}, this)"/>
+              ${cmCanEdit() ? `${logoBtns}
+              <input type="file" id="cmLogoInput_${client.id}" accept="image/*" style="display:none" onchange="cmUploadLogo(${client.id}, this)"/>` : ''}
             </div>
           </div>
         </div>
-        <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;margin-top:8px">
+        <div style="${cmCanEdit() ? 'display:flex' : 'display:none'};gap:8px;align-items:flex-start;flex-wrap:wrap;margin-top:8px">
           <label style="font-size:11px;color:#64748b;font-weight:600;padding-top:6px">Handlers:</label>
           <div style="position:relative" id="cmHandlerWidget_${id}">
             <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -12677,7 +12791,22 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>
 
-    <div class="task-table-card" id="cmLinksCard" style="padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s">
+    <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div class="card-head-title">📱 WhatsApp Group <span style="font-weight:400;color:#94a3b8;font-size:12px">— where this client's pending-task digest is sent</span></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="text" id="cmWaGroup_${id}" value="${dtEscape(client.whatsapp_group_id || '')}"
+               placeholder="1203634...@g.us"
+               style="flex:1;min-width:240px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:monospace"/>
+        <button class="btn btn-primary" style="padding:7px 16px;font-size:12px" onclick="cmSaveWaGroup(${id})">💾 Save</button>
+      </div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:7px">
+        Leave blank to switch the digest off for this client. Sent 9:30 AM, Mon–Fri, only when something is pending.
+      </div>
+    </div>
+
+    <div class="task-table-card" id="cmLinksCard" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">🔗 System Links <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on this client's portal</span></div>
         <button class="btn btn-outline" style="padding:5px 11px;font-size:12px" onclick="cmAddLinkRow()">＋ Add Link</button>
@@ -12688,7 +12817,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>
 
-    <div class="task-table-card" style="padding:14px 18px;margin-top:16px">
+    <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">📁 Documents <span style="font-weight:400;color:#94a3b8;font-size:12px">— Google Drive</span></div>
       </div>
@@ -12722,6 +12851,17 @@ function cmRenderLinksRows(){
       <button class="btn btn-outline" style="padding:6px 8px;font-size:12px;color:#dc2626;border-color:#fca5a5" onclick="cmRemoveLinkRow(${i})" title="Remove">🗑</button>
     </div>`).join('');
 }
+// Save this client's own WhatsApp group. Blank clears it, which switches the
+// pending-task digest off for them — the server never falls back to the shared
+// client group, so a blank here simply means no digest.
+async function cmSaveWaGroup(id){
+  const input = document.getElementById('cmWaGroup_' + id);
+  if (!input) return;
+  const r = await api('/api/clients/' + id, 'PUT', { whatsapp_group_id: input.value.trim() });
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  showToast(input.value.trim() ? '✅ WhatsApp group saved' : 'Digest switched off for this client');
+}
+
 function cmAddLinkRow(){ CM_LINKS.push({ label:'', url:'', liveDate:'' }); cmRenderLinksRows(); }
 function cmRemoveLinkRow(i){ CM_LINKS.splice(i,1); cmRenderLinksRows(); }
 async function cmSaveLinks(id){

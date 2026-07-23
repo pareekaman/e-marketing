@@ -320,6 +320,21 @@ const _startupMigrationsPromise = (async () => {
   // Delegation where the doer sets their own due date (assigner doesn't know occupancy).
   // due_date stays NULL until the doer (or assigner) picks one; then this flips to 0.
   await sa(`ALTER TABLE delegation_tasks ADD COLUMN awaiting_due_date TINYINT(1) DEFAULT 0 AFTER waiting_approval`);
+  // Optional clock time on the deadline. Only the handler→client flow sets it
+  // (they commit the client to a date AND time); every internal task leaves it
+  // NULL and keeps behaving as a date-only deadline.
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN due_time TIME DEFAULT NULL AFTER due_date`);
+  // When the task was marked done. Needed to answer "what was closed today";
+  // status alone cannot say when. Set on completion and cleared whenever the
+  // task leaves 'completed', so a reopened task stops counting. Rows completed
+  // before this column existed stay NULL and never appear in a daily digest.
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN completed_at DATETIME DEFAULT NULL AFTER status`);
+  // What the handler still needs FROM the client to finish this task, and by
+  // when. Kept apart from `remarks` on purpose: on a client-delegated task that
+  // column already holds the CLIENT's own note from the portal form, and
+  // overwriting it would destroy what they asked for.
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_ask TEXT DEFAULT NULL AFTER remarks`);
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_ask_by DATETIME DEFAULT NULL AFTER client_ask`);
   // Client portal delegation form offers an 'urgent' priority tier above 'high'.
   await sa(`ALTER TABLE delegation_tasks MODIFY COLUMN priority ENUM('low','medium','high','urgent') DEFAULT 'low'`);
   // Sub-tasks — follow-up asks nested under a delegation task (e.g. client says
@@ -335,6 +350,10 @@ const _startupMigrationsPromise = (async () => {
     completed_at TIMESTAMP NULL,
     INDEX idx_task (task_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  // Handler's note on why a sub-task is stuck — almost always something the
+  // client still owes. Surfaced in the client's pending digest so the delay is
+  // recorded where the client can see it, instead of the handler explaining it.
+  await sa(`ALTER TABLE task_subtasks ADD COLUMN remarks TEXT DEFAULT NULL AFTER description`);
   await sa(`ALTER TABLE task_subtasks ADD COLUMN priority ENUM('low','medium','high','urgent') DEFAULT 'low' AFTER description`);
   // Revise approval holds the requested new due-date here until the assigner approves.
   await sa(`ALTER TABLE task_approvals ADD COLUMN new_date DATE DEFAULT NULL AFTER action_type`);
@@ -980,6 +999,10 @@ app.get('/api/setup', async (req, res) => {
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`, 'delegation_tasks.client_id');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN url VARCHAR(2048) DEFAULT NULL AFTER client_id`, 'delegation_tasks.url');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN awaiting_due_date TINYINT(1) DEFAULT 0 AFTER waiting_approval`, 'delegation_tasks.awaiting_due_date');
+    await sa(`ALTER TABLE delegation_tasks ADD COLUMN due_time TIME DEFAULT NULL AFTER due_date`, 'delegation_tasks.due_time');
+    await sa(`ALTER TABLE delegation_tasks ADD COLUMN completed_at DATETIME DEFAULT NULL AFTER status`, 'delegation_tasks.completed_at');
+    await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_ask TEXT DEFAULT NULL AFTER remarks`, 'delegation_tasks.client_ask');
+    await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_ask_by DATETIME DEFAULT NULL AFTER client_ask`, 'delegation_tasks.client_ask_by');
     await sa(`ALTER TABLE checklist_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`, 'checklist_tasks.client_id');
 
     await sa(`CREATE TABLE IF NOT EXISTS delegation_tasks (
@@ -1423,7 +1446,7 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     const subtaskCols = isDeleg
       ? "COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='completed'),0) AS subtasks_done,COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='pending'),0) AS subtasks_pending,"
       : "0 AS subtasks_done,0 AS subtasks_pending,";
-    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,"}${subtaskCols}t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
+    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_ask,DATE_FORMAT(t.client_ask_by,'%Y-%m-%d') AS client_ask_date,TIME_FORMAT(t.client_ask_by,'%H:%i') AS client_ask_time,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,NULL AS client_ask,NULL AS client_ask_date,NULL AS client_ask_time,"}${subtaskCols}t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
 
     // mine=1 mode always returns flat tasks (never grouped)
     if (isMine) {
@@ -1482,11 +1505,37 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
     if (!desc) return res.status(400).json({ error: 'Description required' });
     if (!doerWillSet && !date) return res.status(400).json({ error: 'Description and date required' });
 
+    // Staff delegating TO a client (the handler→client direction). The doer is
+    // the client's own portal login, so it is only allowed when that login
+    // really belongs to the client the task is tagged with — otherwise one
+    // client's login could be handed another client's work.
+    let doerIsClient = false;
+    if (!isClient && targetUser !== req.session.userId) {
+      const [[doer]] = await db.query('SELECT id, role, client_id FROM users WHERE id=? LIMIT 1', [targetUser]);
+      if (!doer) return res.status(400).json({ error: 'Doer not found' });
+      if (doer.role === 'client') {
+        if (!enforcedClientId || Number(doer.client_id) !== Number(enforcedClientId)) {
+          return res.status(403).json({ error: 'That portal login does not belong to this client' });
+        }
+        const [[cli]] = await db.query('SELECT id, handler_id FROM clients WHERE id=? LIMIT 1', [enforcedClientId]);
+        const mayDelegate = isAdmin || isHod || await isHandlerOf(req.session.userId, cli);
+        if (!mayDelegate) return res.status(403).json({ error: 'Only this client\'s handler can delegate to them' });
+        if (doerWillSet) return res.status(400).json({ error: 'A client task needs a due date set by you' });
+        doerIsClient = true;
+      }
+    }
+    // Optional clock time on the deadline — only meaningful alongside a date.
+    const dueTime = doerWillSet ? null : parseDueTime(req.body.dueTime);
+    if (dueTime === undefined) return res.status(400).json({ error: 'Due time must be HH:MM (24-hour)' });
+
     // Holiday / week-off check — auto-adjust due_date if needed.
-    // Skipped entirely when the doer will set their own date (none yet to adjust).
+    // Skipped when the doer will set their own date (none yet to adjust), and
+    // when the doer is a client: our holiday calendar and week-offs describe
+    // staff, so silently moving a date the handler agreed with the client
+    // would be wrong.
     let effectiveDate = doerWillSet ? null : date;
     let adjusted = false, adjustedReason = '';
-    if (!doerWillSet) try {
+    if (!doerWillSet && !doerIsClient) try {
       const holidaysSet = await loadHolidaysSet();
       const [[doerUser]] = await db.query('SELECT week_off, extra_off FROM users WHERE id=? LIMIT 1', [targetUser]);
       if (doerUser && isUserOffOn(doerUser, date, holidaysSet)) {
@@ -1516,7 +1565,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
           if (aprRows.length) assignedBy = aprRows[0].id;
         }
       }
-      await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0]);
+      await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,due_time,status,priority,approval,remarks,client_id,url,awaiting_due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, dueTime, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0]);
       // 📧 Send delegation email + 📱 WhatsApp (non-blocking — fire and forget)
       (async () => {
         const target = await getNotifyTarget(targetUser);
@@ -1540,7 +1589,9 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         try {
           const [[doerRow]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [targetUser]);
           if (doerRow && doerRow.phone) {
-            const dueFmt = doerWillSet ? 'Aap set karein 👉 task me due date daalein' : (effectiveDate||'').split('-').reverse().join('-');
+            const dueFmt = doerWillSet
+              ? 'Aap set karein 👉 task me due date daalein'
+              : (effectiveDate||'').split('-').reverse().join('-') + (dueTime ? ` at ${dueTime.slice(0,5)}` : '');
             const msg = `Hello ${doerRow.name || ''},\n\n📋 *New Task Delegated*\n\n` +
               `*By:* ${assignerName}\n` +
               `*Due:* ${dueFmt}\n` +
@@ -1608,7 +1659,7 @@ app.get('/api/tasks/:id/subtasks', requireAuth, async (req, res) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
     if (!(await canTouchSubtasks(req, task))) return res.status(403).json({ error: 'Not allowed' });
     const [subtasks] = await db.query(
-      `SELECT s.id, s.description, s.status, COALESCE(s.priority,'low') AS priority,
+      `SELECT s.id, s.description, s.remarks, s.status, COALESCE(s.priority,'low') AS priority,
               DATE_FORMAT(s.created_at,'%Y-%m-%d') AS created_at,
               DATE_FORMAT(s.completed_at,'%Y-%m-%d') AS completed_at, u.name AS createdByName
        FROM task_subtasks s JOIN users u ON s.created_by = u.id
@@ -1659,7 +1710,64 @@ app.put('/api/subtasks/:id', requireAuth, async (req, res) => {
     if (!sub) return res.status(404).json({ error: 'Sub-task not found' });
     const [[task]] = await db.query('SELECT id, assigned_to, assigned_by, client_id FROM delegation_tasks WHERE id=?', [sub.task_id]);
     if (!(await canTouchSubtasks(req, task))) return res.status(403).json({ error: 'Not allowed' });
+    // Remarks alone: leave the status untouched, so saving a note never flips a
+    // sub-task's state as a side effect.
+    if (req.body.remarks !== undefined && req.body.status === undefined) {
+      await db.query('UPDATE task_subtasks SET remarks=? WHERE id=?', [String(req.body.remarks || '').trim() || null, id]);
+      return res.json({ success: true });
+    }
     await db.query(`UPDATE task_subtasks SET status=?, completed_at=IF(?='completed', NOW(), NULL) WHERE id=?`, [status, status, id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// The handler records what they still need FROM the client on their own task,
+// with a deadline. Two rules the user set:
+//   · the task must already have a due date — otherwise there is nothing to
+//     measure "not later than" against, and it gives a reason to fill it in;
+//   · the ask cannot be due after the task itself, since needing an input after
+//     your own deadline is meaningless.
+// Blank text clears both fields.
+app.put('/api/tasks/:id/client-ask', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role === 'client') return res.status(403).json({ error: 'Not allowed' });
+    const id = parseInt(req.params.id, 10);
+    const [[task]] = await db.query(
+      `SELECT id, assigned_to, assigned_by, due_date, due_time,
+              DATE_FORMAT(due_date,'%Y-%m-%d') AS due_ymd
+         FROM delegation_tasks WHERE id=?`, [id]);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+
+    const role = req.session.role;
+    const privileged = role === 'admin' || role === 'hod' || role === 'pc';
+    // The doer is the one who knows what is missing; the assigner may also note it.
+    if (!privileged && Number(task.assigned_to) !== Number(req.session.userId)
+                    && Number(task.assigned_by) !== Number(req.session.userId)) {
+      return res.status(403).json({ error: 'Not allowed' });
+    }
+
+    const note = String(req.body.note || '').trim();
+    if (!note) {
+      await db.query('UPDATE delegation_tasks SET client_ask=NULL, client_ask_by=NULL WHERE id=?', [id]);
+      return res.json({ success: true, cleared: true });
+    }
+    if (!task.due_ymd) {
+      return res.status(409).json({ error: 'Set this task\'s due date first, then record what you need from the client.' });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(req.body.byDate || '')) {
+      return res.status(400).json({ error: 'Needed-by date is required (YYYY-MM-DD)' });
+    }
+    const byTime = parseDueTime(req.body.byTime);
+    if (byTime === undefined) return res.status(400).json({ error: 'Needed-by time must be HH:MM (24-hour)' });
+
+    // Compare as full moments. A task with no clock time is treated as due at
+    // end of day, so an ask at any time on that date is still allowed.
+    const askAt = `${req.body.byDate} ${byTime || '23:59:00'}`;
+    const dueAt = `${task.due_ymd} ${task.due_time || '23:59:59'}`;
+    if (askAt > dueAt) {
+      return res.status(400).json({ error: `Cannot be later than the task's own due date (${task.due_ymd.split('-').reverse().join('-')})` });
+    }
+    await db.query('UPDATE delegation_tasks SET client_ask=?, client_ask_by=? WHERE id=?', [note, askAt, id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1757,6 +1865,21 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
       return res.json({ success: true, needsApproval: true });
     }
 
+    // A task cannot be finished while the client's follow-up asks are still
+    // open — those sub-tasks ARE part of the job. Checked before the approval
+    // branch below so completion cannot even be requested, and applied to every
+    // role including admin/PC: the way out is to tick the sub-tasks off or
+    // delete them, not to close over them.
+    if (status === 'completed' && tt === 'delegation') {
+      const [[open]] = await db.query(
+        `SELECT COUNT(*) AS n FROM task_subtasks WHERE task_id=? AND status<>'completed'`, [req.params.id]);
+      if (open?.n > 0) {
+        return res.status(409).json({
+          error: `${open.n} sub-task${open.n === 1 ? '' : 's'} still pending — finish those before marking this task done.`
+        });
+      }
+    }
+
     // COMPLETION approval — only when the task was created with approval='yes'.
     if (status === 'completed' && supportsApproval && task.approval === 'yes' && !isPrivileged && !reviserIsAssigner) {
       await db.query(
@@ -1773,13 +1896,15 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     if (supportsApproval && task.waiting_approval && isPrivileged) {
       await db.query(`DELETE FROM task_approvals WHERE task_id=? AND task_type=? AND status='pending'`, [req.params.id, tt]);
     }
+    // completed_at only exists on delegation_tasks, and is stamped or cleared to
+    // match the new status so a reopened task drops out of the daily digest.
     if (newDate && status === 'revised') {
       if (tt === 'checklist') await db.query(`UPDATE ${table} SET status=?,due_date=? WHERE id=?`, [status, newDate, req.params.id]);
-      else await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,due_date=? WHERE id=?`, [status, newDate, req.params.id]);
+      else await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,due_date=?,completed_at=NULL WHERE id=?`, [status, newDate, req.params.id]);
     } else {
       // checklist_tasks has no waiting_approval column
       if (tt === 'checklist') await db.query(`UPDATE ${table} SET status=? WHERE id=?`, [status, req.params.id]);
-      else await db.query(`UPDATE ${table} SET status=?,waiting_approval=0 WHERE id=?`, [status, req.params.id]);
+      else await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,completed_at=IF(?='completed',NOW(),NULL) WHERE id=?`, [status, status, req.params.id]);
     }
     res.json({ success: true, needsApproval: false });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1804,6 +1929,14 @@ app.get('/api/tasks/:id/detail', requireAuth, async (req, res) => {
 
 // Allow edit/delete if user is admin/hod OR if they are the task's assigner.
 // This covers the "user delegated a task (incl. self-delegation) → can edit/delete" case.
+// Normalise an optional "HH:MM" (24-hour) into a MySQL TIME.
+// Blank/absent → null (clears the time). Invalid → undefined, so callers 400.
+function parseDueTime(raw) {
+  if (raw == null || String(raw).trim() === '') return null;
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(raw).trim());
+  return m ? `${m[1]}:${m[2]}:00` : undefined;
+}
+
 async function canModifyTask(req, taskId, type) {
   if (req.session.role === 'admin' || req.session.role === 'hod') return true;
   const [rows] = await db.query(
@@ -1819,7 +1952,14 @@ app.put('/api/tasks/:id/edit', requireAuth, async (req, res) => {
     const table = getTable(type||'delegation');
     const cidRaw = client_id != null ? client_id : clientId;
     const cid = (() => { const n = parseInt(cidRaw, 10); return Number.isFinite(n) && n > 0 ? n : null; })();
-    if (type === 'delegation') await db.query(`UPDATE ${table} SET description=?,due_date=?,priority=?,approval=?,remarks=?,url=?,client_id=? WHERE id=?`, [desc, date, priority||'low', approval||'no', remarks||'', url||null, cid, req.params.id]);
+    if (type === 'delegation') {
+      // due_time lives only on delegation_tasks. Blank clears it, so a task that
+      // had a clock time can be put back to a date-only deadline.
+      const dueTime = parseDueTime(req.body.dueTime);
+      if (dueTime === undefined) return res.status(400).json({ error: 'Due time must be HH:MM (24-hour)' });
+      await db.query(`UPDATE ${table} SET description=?,due_date=?,due_time=?,priority=?,approval=?,remarks=?,url=?,client_id=? WHERE id=?`,
+        [desc, date, dueTime, priority||'low', approval||'no', remarks||'', url||null, cid, req.params.id]);
+    }
     else await db.query(`UPDATE ${table} SET description=?,due_date=?,remarks=?,client_id=? WHERE id=?`, [desc, date, remarks||'', cid, req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1974,6 +2114,18 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
     // PC and admin can approve any; others only their own
     const canApprove = role === 'admin' || role === 'pc' || appr.requested_to === req.session.userId;
     if (!canApprove) return res.status(403).json({ error: 'Not allowed' });
+    // Same sub-task rule as PUT /api/tasks/:id/status — re-checked here because
+    // the client can add a sub-task after completion was requested, and
+    // approving would otherwise close the task over it.
+    if (action === 'approved' && appr.action_type === 'completed' && appr.task_type === 'delegation') {
+      const [[open]] = await db.query(
+        `SELECT COUNT(*) AS n FROM task_subtasks WHERE task_id=? AND status<>'completed'`, [appr.task_id]);
+      if (open?.n > 0) {
+        return res.status(409).json({
+          error: `${open.n} sub-task${open.n === 1 ? '' : 's'} still pending on this task — it cannot be approved as done yet.`
+        });
+      }
+    }
     await db.query('UPDATE task_approvals SET status=?,note=? WHERE id=?', [action, note||'', req.params.id]);
     const table = getTable(appr.task_type);
     if (action === 'approved') {
@@ -1982,6 +2134,11 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
         await db.query(`UPDATE ${table} SET status='pending',waiting_approval=0,due_date=? WHERE id=?`, [appr.new_date_fmt, appr.task_id]);
       } else if (appr.action_type === 'revised') {
         await db.query(`UPDATE ${table} SET status='pending',waiting_approval=0 WHERE id=?`, [appr.task_id]);
+      } else if (appr.task_type === 'delegation') {
+        // Stamp completed_at here too — approving a completion is the moment
+        // the task actually closes.
+        await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,completed_at=IF(?='completed',NOW(),NULL) WHERE id=?`,
+          [appr.action_type, appr.action_type, appr.task_id]);
       } else {
         await db.query(`UPDATE ${table} SET status=?,waiting_approval=0 WHERE id=?`, [appr.action_type, appr.task_id]);
       }
@@ -4107,6 +4264,11 @@ const _clientsTableMigrationsPromise = (async () => {
 
   // DMS — Google Drive folder IDs per client and per department
   await sa(`ALTER TABLE clients ADD COLUMN drive_folder_id VARCHAR(255) DEFAULT NULL AFTER is_active`);
+  // This client's own WhatsApp group (e.g. "1203634...@g.us"), used for the
+  // pending-task digest. Left NULL the digest simply skips that client — the
+  // shared client group must never receive one client's task list, since every
+  // other client can read it there.
+  await sa(`ALTER TABLE clients ADD COLUMN whatsapp_group_id VARCHAR(255) DEFAULT NULL AFTER drive_folder_id`);
   await sa(`CREATE TABLE IF NOT EXISTS client_department_folders (
     id INT AUTO_INCREMENT PRIMARY KEY,
     client_id INT NOT NULL,
@@ -5185,6 +5347,465 @@ app.get('/api/cron/meeting-reminder', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Due-date nudge ───────────────────────────────────────────────────
+// A client-delegated task lands on the handler with no due date (the client
+// never sets one), so until the handler fills it in the client sees no
+// deadline at all. This nudges every handler who still owes one.
+//
+// Batched to ONE message per handler, however many tasks they owe — a handler
+// with five of them should get one nudge, not five. The 4-hourly cadence comes
+// from whatever pings the endpoint below; this function only answers "who is
+// owed a nudge right now", so it is safe to call more often (it will just send
+// again, which is the intended behaviour until the date is set).
+//
+// Deliberately runs around the clock, on the user's instruction: the nudge is
+// meant to keep arriving until the handler fills the date in, night included.
+async function remindHandlersOfMissingDueDates() {
+  // Only tasks a CLIENT delegated. A client login is role='client'; the
+  // client_id back-link is checked too, matching how assignerIsClient is
+  // decided in PUT /api/tasks/:id/status.
+  const [rows] = await db.query(
+    `SELECT t.id, t.description, t.assigned_to,
+            TIMESTAMPDIFF(HOUR, t.created_at, NOW()) AS waiting_hrs,
+            c.name AS client_name,
+            d.name AS handler_name, d.phone AS handler_phone
+       FROM delegation_tasks t
+       JOIN users a ON t.assigned_by = a.id
+       JOIN users d ON t.assigned_to = d.id
+       LEFT JOIN clients c ON t.client_id = c.id
+      WHERE t.awaiting_due_date = 1
+        AND t.status <> 'completed'
+        AND (a.role = 'client' OR a.client_id IS NOT NULL)
+      ORDER BY t.assigned_to ASC, t.created_at ASC`);
+
+  const byHandler = new Map();
+  for (const r of rows) {
+    if (!byHandler.has(r.assigned_to)) byHandler.set(r.assigned_to, []);
+    byHandler.get(r.assigned_to).push(r);
+  }
+
+  let sent = 0, noPhone = 0;
+  for (const tasks of byHandler.values()) {
+    const h = tasks[0];
+    if (!h.handler_phone) { noPhone++; continue; }
+    await sendWhatsApp(h.handler_phone, dueDateNudgeMessage(h.handler_name, tasks))
+      .catch(e => console.error('WA due-date nudge err:', e.message));
+    sent++;
+  }
+  return { ok: true, sent, handlers: byHandler.size, tasks: rows.length, noPhone };
+}
+
+// Kept separate so the wording can be reviewed without reading the query.
+function dueDateNudgeMessage(handlerName, tasks) {
+  const n = tasks.length;
+  const list = tasks.map((t, i) => {
+    const hrs = Number(t.waiting_hrs) || 0;
+    const waited = hrs < 1 ? 'waiting under an hour' : `waiting ${hrs} hr${hrs === 1 ? '' : 's'}`;
+    return `${i + 1}. *${t.client_name || 'Client'}* — ${t.description}\n   _${waited}_`;
+  }).join('\n');
+  return `Hello ${handlerName || ''},\n\n` +
+    `🗓 *Due Date Pending*\n\n` +
+    `*${n} client task${n === 1 ? '' : 's'}* ${n === 1 ? 'is' : 'are'} waiting for you to set a due date:\n\n` +
+    `${list}\n\n` +
+    `The client cannot see any deadline until you set one.\n\n` +
+    `— E-Marketing Task Manager`;
+}
+
+// ── Client pending-task digest ───────────────────────────────────────
+// Sends each client's own WhatsApp group a list of the tasks they delegated
+// that are still open — old ones included, oldest first, so a task sitting
+// since the 13th is visible next to today's.
+//
+// One message PER HANDLER, not per client: a client with three handlers gets
+// three messages, each addressed to that handler and listing only their tasks.
+//
+// A client with no whatsapp_group_id is skipped entirely. There is a shared
+// "all clients" group in this app (MEETING_CLIENT_GROUP_ID) and it must never
+// be used as a fallback here — every other client can read it.
+//
+// Monday-Friday only, and nothing at all goes out when nothing is pending —
+// both on the user's instruction. The day check lives here rather than only in
+// the schedule so any trigger respects it; pass ?force=1 to test on a weekend.
+async function sendClientPendingDigests({ force = false } = {}) {
+  const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+  const day = istNow.getUTCDay();  // 0 Sun … 6 Sat
+  if (!force && (day === 0 || day === 6)) {
+    return { ok: true, skipped: 'weekend', sent: 0 };
+  }
+  const [rows] = await db.query(
+    `SELECT t.id, t.description, t.assigned_to,
+            DATE_FORMAT(t.created_at,'%d-%m-%Y') AS given_on,
+            DATEDIFF(CURDATE(), DATE(t.created_at)) AS days_pending,
+            c.id AS client_id, c.name AS client_name, c.whatsapp_group_id AS group_id,
+            d.name AS handler_name
+       FROM delegation_tasks t
+       JOIN users a   ON t.assigned_by = a.id
+       JOIN users d   ON t.assigned_to = d.id
+       JOIN clients c ON t.client_id   = c.id
+      WHERE t.status IN ('pending','revised')
+        AND (a.role = 'client' OR a.client_id IS NOT NULL)
+        AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''
+      ORDER BY c.name ASC, d.name ASC, t.created_at ASC`);
+
+  // The other direction: what the CLIENT still owes us. Only rows whose
+  // deadline has actually passed — a task due tomorrow is not "not done".
+  // due_time is honoured when set, so a 2:30 PM deadline counts from 2:30 PM.
+  const [owed] = await db.query(
+    `SELECT t.id, t.description, t.remarks, t.assigned_by AS handler_id,
+            DATE_FORMAT(t.due_date,'%d-%m-%Y') AS due_on,
+            TIME_FORMAT(t.due_time,'%H:%i') AS due_time,
+            DATEDIFF(CURDATE(), t.due_date) AS days_over,
+            c.id AS client_id, c.name AS client_name, c.whatsapp_group_id AS group_id,
+            h.name AS handler_name
+       FROM delegation_tasks t
+       JOIN users d   ON t.assigned_to = d.id
+       JOIN users h   ON t.assigned_by = h.id
+       JOIN clients c ON t.client_id   = c.id
+      WHERE t.status IN ('pending','revised')
+        AND d.role = 'client'
+        AND t.due_date IS NOT NULL
+        AND (t.due_date < CURDATE()
+             OR (t.due_date = CURDATE() AND t.due_time IS NOT NULL AND t.due_time < CURTIME()))
+        AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''
+      ORDER BY c.name ASC, h.name ASC, t.due_date ASC`);
+
+  // What handlers have recorded as still needed FROM the client on their own
+  // open tasks. Listed as soon as it is written, not only once late — it is a
+  // request, not a complaint; the overdue marker gets added when the moment passes.
+  const [asks] = await db.query(
+    `SELECT t.id, t.client_ask, t.description AS parent_desc, t.assigned_to AS handler_id,
+            DATE_FORMAT(t.client_ask_by,'%d-%m-%Y') AS by_date,
+            TIME_FORMAT(t.client_ask_by,'%H:%i') AS by_time,
+            (t.client_ask_by < NOW()) AS is_late,
+            c.id AS client_id, c.name AS client_name, c.whatsapp_group_id AS group_id,
+            d.name AS handler_name
+       FROM delegation_tasks t
+       JOIN users d   ON t.assigned_to = d.id
+       JOIN clients c ON t.client_id   = c.id
+      WHERE t.status <> 'completed'
+        AND t.client_ask IS NOT NULL AND t.client_ask <> ''
+        AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''
+      ORDER BY c.name ASC, d.name ASC, t.client_ask_by ASC`);
+
+  // Sub-tasks the handler has flagged. These carry no date of their own — the
+  // remark IS the signal, so any sub-task with one and still open is listed.
+  const [stuckSubs] = await db.query(
+    `SELECT s.id, s.description, s.remarks, t.description AS parent_desc,
+            t.assigned_to AS handler_id,
+            c.id AS client_id, c.name AS client_name, c.whatsapp_group_id AS group_id,
+            d.name AS handler_name
+       FROM task_subtasks s
+       JOIN delegation_tasks t ON s.task_id     = t.id
+       JOIN users d            ON t.assigned_to = d.id
+       JOIN clients c          ON t.client_id   = c.id
+      WHERE s.status <> 'completed'
+        AND s.remarks IS NOT NULL AND s.remarks <> ''
+        AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''
+      ORDER BY c.name ASC, d.name ASC, s.created_at ASC`);
+
+  // Bucket by client+handler — that pair is one message.
+  const buckets = new Map();
+  const bucketOf = (clientId, handlerId, seed) => {
+    const key = `${clientId}|${handlerId}`;
+    if (!buckets.has(key)) buckets.set(key, { head: seed, tasks: [], owed: [], asks: [], subs: [] });
+    return buckets.get(key);
+  };
+  for (const r of rows)       bucketOf(r.client_id, r.assigned_to, r).tasks.push(r);
+  // Owed tasks hang off the handler who asked for them, not the client doing them.
+  for (const r of owed)       bucketOf(r.client_id, r.handler_id, r).owed.push(r);
+  for (const r of asks)       bucketOf(r.client_id, r.handler_id, r).asks.push(r);
+  for (const r of stuckSubs)  bucketOf(r.client_id, r.handler_id, r).subs.push(r);
+
+  // Nothing pending anywhere → stay silent, rather than sending "0 tasks".
+  if (!buckets.size) return { ok: true, sent: 0, tasks: 0, quiet: 'nothing pending' };
+
+  let sent = 0;
+  for (const b of buckets.values()) {
+    await sendWhatsAppRaw(b.head.group_id, clientPendingDigestMessage(b))
+      .catch(e => console.error('WA client digest err:', e.message));
+    sent++;
+  }
+  return { ok: true, sent, pairs: buckets.size, tasks: rows.length, owed: owed.length,
+           asks: asks.length, flaggedSubtasks: stuckSubs.length };
+}
+
+// Kept separate so the wording can be reviewed without reading the query.
+function clientPendingDigestMessage({ head, tasks, owed, asks, subs }) {
+  // Second half of the message: what the CLIENT owes us. Overdue tasks carry
+  // the handler's remark when one was written; flagged sub-tasks are listed by
+  // their remark, since they have no deadline of their own.
+  let tail = '';
+  if (owed.length || asks.length || subs.length) {
+    const lines = [];
+    owed.forEach((t, i) => {
+      const d = Number(t.days_over) || 0;
+      const late = d <= 0 ? 'due today' : `${d} day${d === 1 ? '' : 's'} overdue`;
+      const due = `due ${t.due_on}${t.due_time ? ` · ${fmtClock(t.due_time)}` : ''} IST · ${late}`;
+      lines.push(`${i + 1}. ${t.description}\n   _${due}_` + (t.remarks ? `\n   _"${t.remarks}"_` : ''));
+    });
+    asks.forEach(a => {
+      lines.push(`• "${a.client_ask}"\n   _for "${a.parent_desc}"_\n   ` +
+        `_needed by ${a.by_date} · ${fmtClock(a.by_time)} IST${Number(a.is_late) ? ' · overdue' : ''}_`);
+    });
+    subs.forEach(s => {
+      lines.push(`• ${s.description}\n   _under "${s.parent_desc}"_\n   _"${s.remarks}"_`);
+    });
+    tail = `\n⚠️ *Task not done by client*\n\n${lines.join('\n')}\n`;
+  }
+
+  const n = tasks.length;
+  // A client can owe us things while owing no open asks of their own, in which
+  // case the message is only the warning half.
+  if (!n) return `Hello ${head.handler_name || ''},\n${tail}\n— E-Marketing Task Manager`;
+
+  const list = tasks.map((t, i) => {
+    const d = Number(t.days_pending) || 0;
+    const age = d === 0 ? 'today' : `${d} day${d === 1 ? '' : 's'} pending`;
+    // No handler name per line — the whole message is addressed to one handler,
+    // so repeating it on every task just adds noise.
+    return `${i + 1}. ${t.description}\n   _given ${t.given_on} · ${age}_`;
+  }).join('\n');
+  // No client name in the heading: this lands in that client's own group, so
+  // telling them who they are is noise. It would only earn its place if the
+  // message went to the handler personally, where the client is the context.
+  return `Hello ${head.handler_name || ''},\n\n` +
+    `📋 *Pending Tasks*\n\n` +
+    `*${n} task${n === 1 ? '' : 's'}* ${n === 1 ? 'is' : 'are'} still open with us:\n\n` +
+    `${list}\n` +
+    tail +
+    `\n— E-Marketing Task Manager`;
+}
+
+// "14:30" → "02:30 PM". Input is always the server's TIME_FORMAT '%H:%i'.
+function fmtClock(hhmm) {
+  const [h, m] = String(hhmm).split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm;
+  const period = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+// ── Client "completed today" digest ──────────────────────────────────
+// The other side of the pending digest: at the end of the day, tell each
+// client's group what actually got finished for them, credited to the handler
+// who did it. Silent on days nothing was finished, so it never becomes noise —
+// which is also why it runs every day, weekends included.
+//
+// Sub-tasks are reported ONLY when their parent task is still open. Completing
+// a task already requires every sub-task to be done (see the guard in
+// PUT /api/tasks/:id/status), so a closed task's sub-tasks are implied — listing
+// both would report the same work twice. A sub-task under an open task is the
+// case worth telling the client about: the job is not finished, but this piece is.
+async function sendClientCompletedDigests() {
+  const scope = `AND (a.role = 'client' OR a.client_id IS NOT NULL)
+                 AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''`;
+
+  const [tasks] = await db.query(
+    `SELECT t.id, t.description, t.assigned_to,
+            DATE_FORMAT(t.created_at,'%d-%m-%Y') AS given_on,
+            DATEDIFF(DATE(t.completed_at), DATE(t.created_at)) AS took_days,
+            c.id AS client_id, c.name AS client_name, c.whatsapp_group_id AS group_id,
+            d.name AS handler_name
+       FROM delegation_tasks t
+       JOIN users a   ON t.assigned_by = a.id
+       JOIN users d   ON t.assigned_to = d.id
+       JOIN clients c ON t.client_id   = c.id
+      WHERE t.status = 'completed' AND DATE(t.completed_at) = CURDATE() ${scope}
+      ORDER BY c.name ASC, d.name ASC, t.completed_at ASC`);
+
+  const [subs] = await db.query(
+    `SELECT s.id, s.description, t.description AS parent_desc, t.assigned_to,
+            c.id AS client_id, c.name AS client_name, c.whatsapp_group_id AS group_id,
+            d.name AS handler_name
+       FROM task_subtasks s
+       JOIN delegation_tasks t ON s.task_id     = t.id
+       JOIN users a            ON t.assigned_by = a.id
+       JOIN users d            ON t.assigned_to = d.id
+       JOIN clients c          ON t.client_id   = c.id
+      WHERE s.status = 'completed' AND DATE(s.completed_at) = CURDATE()
+        AND t.status <> 'completed' ${scope}
+      ORDER BY c.name ASC, d.name ASC, s.completed_at ASC`);
+
+  // Bucket both lists by client+handler — that pair is one message.
+  const buckets = new Map();
+  const bucket = (r) => {
+    const key = `${r.client_id}|${r.assigned_to}`;
+    if (!buckets.has(key)) buckets.set(key, { head: r, tasks: [], subs: [] });
+    return buckets.get(key);
+  };
+  for (const t of tasks) bucket(t).tasks.push(t);
+  for (const s of subs)  bucket(s).subs.push(s);
+
+  if (!buckets.size) return { ok: true, sent: 0, tasks: 0, subtasks: 0, quiet: 'nothing completed today' };
+
+  let sent = 0;
+  for (const b of buckets.values()) {
+    await sendWhatsAppRaw(b.head.group_id, clientCompletedDigestMessage(b))
+      .catch(e => console.error('WA completed digest err:', e.message));
+    sent++;
+  }
+  return { ok: true, sent, pairs: buckets.size, tasks: tasks.length, subtasks: subs.length };
+}
+
+// Kept separate so the wording can be reviewed without reading the queries.
+function clientCompletedDigestMessage({ head, tasks, subs }) {
+  // No client name anywhere: this lands in that client's own group.
+  let msg = `✅ *Completed Today*\n\n`;
+  if (tasks.length) {
+    const list = tasks.map((t, i) => {
+      const d = Number(t.took_days) || 0;
+      const took = d === 0 ? 'same day' : `took ${d} day${d === 1 ? '' : 's'}`;
+      return `${i + 1}. ${t.description}\n   _given ${t.given_on} · ${took}_`;
+    }).join('\n');
+    msg += `*${tasks.length} task${tasks.length === 1 ? '' : 's'}* done by ${head.handler_name}:\n\n${list}\n\n`;
+  }
+  if (subs.length) {
+    const list = subs.map(s => `• ${s.description}\n   _under "${s.parent_desc}"_`).join('\n');
+    // When nothing else was closed, this section carries the handler's name.
+    msg += tasks.length
+      ? `🧩 *Also progressed:*\n\n${list}\n\n`
+      : `🧩 *Progressed by ${head.handler_name}:*\n\n${list}\n\n`;
+  }
+  return msg + `— E-Marketing Task Manager`;
+}
+
+app.get('/api/cron/client-completed-digest', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: client-completed-digest');
+    res.json(await sendClientCompletedDigests());
+  } catch (err) {
+    console.error('Cron client-completed-digest error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Handler-on-leave notice ──────────────────────────────────────────
+// On each day a handler is on approved full-day leave, their clients' groups
+// are told, and that day's tasks are pushed to the handler's next working day.
+// Scattered leave (18th, 20th, 22nd…) is handled a date at a time: each is its
+// own notice, and the push skips the handler's other leave days.
+//
+// Only the due DATE moves — the task stays with the same handler, and its
+// status is left alone so this never shows up as a "revised" against them.
+async function sendHandlerLeaveNotices({ force = false } = {}) {
+  const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+  const today = istNow.toISOString().split('T')[0];
+  if (!force && isLastSaturdayOfMonth(today)) return { ok: true, skipped: 'off day', sent: 0 };
+
+  // Candidates: anyone whose approved full-day leave window covers today. The
+  // window can be wider than the actual days when dates_json is used, so each
+  // one is expanded and re-checked below.
+  const [cands] = await db.query(
+    `SELECT DISTINCT lr.user_id, u.name, u.week_off, u.extra_off
+       FROM leave_requests lr JOIN users u ON lr.user_id = u.id
+      WHERE lr.status='approved' AND lr.leave_type='full_day'
+        AND lr.from_date <= ? AND lr.to_date >= ?`, [today, today]);
+  if (!cands.length) return { ok: true, sent: 0, quiet: 'nobody on approved leave today' };
+
+  const holidaysSet = await loadHolidaysSet();
+  let sent = 0, moved = 0, handlers = 0;
+
+  for (const h of cands) {
+    // A week back as well as ahead, so today can be placed within its block.
+    const leaveDates = await approvedLeaveDates(h.user_id, _addDays(today, -7), _addDays(today, 60));
+    if (!leaveDates.has(today)) continue;   // window covered today, the actual days did not
+    handlers++;
+    const backOn = nextWorkingDayOffLeave(h, today, holidaysSet, leaveDates);
+    // "Back on" earns its place only for a run of consecutive days, where the
+    // client genuinely does not know when the handler returns. On an isolated
+    // day it says nothing they cannot work out, so it is left off.
+    const inBlock = leaveDates.has(_addDays(today, 1)) || leaveDates.has(_addDays(today, -1));
+
+    // Push today's tasks, remembering which client each belonged to so the
+    // message only claims a move for the client it actually affected.
+    const [due] = await db.query(
+      `SELECT id, client_id FROM delegation_tasks
+        WHERE assigned_to=? AND status IN ('pending','revised') AND due_date=?`, [h.user_id, today]);
+    const movedPerClient = new Map();
+    for (const t of due) {
+      await db.query('UPDATE delegation_tasks SET due_date=? WHERE id=?', [backOn, t.id]);
+      moved++;
+      if (t.client_id) movedPerClient.set(t.client_id, (movedPerClient.get(t.client_id) || 0) + 1);
+    }
+
+    // Every client this person handles, primary or secondary, that has a group.
+    const [clients] = await db.query(
+      `SELECT DISTINCT c.id, c.whatsapp_group_id AS g
+         FROM clients c
+         LEFT JOIN client_handlers ch ON ch.client_id = c.id
+        WHERE (c.handler_id=? OR ch.user_id=?)
+          AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''`,
+      [h.user_id, h.user_id]);
+
+    for (const c of clients) {
+      await sendWhatsAppRaw(c.g, handlerLeaveMessage(h.name, today, backOn, movedPerClient.get(c.id) || 0, inBlock))
+        .catch(e => console.error('WA leave notice err:', e.message));
+      sent++;
+    }
+  }
+  return { ok: true, sent, handlers, tasksMoved: moved };
+}
+
+function handlerLeaveMessage(name, todayYmd, backOnYmd, movedCount, inBlock) {
+  const d = s => s.split('-').reverse().join('-');
+  return `📢 *Handler on Leave*\n\n` +
+    `*${name}* is on leave today (${d(todayYmd)}).\n\n` +
+    (inBlock ? `*Back on:* ${d(backOnYmd)}\n` : '') +
+    // Only claimed when something of theirs actually moved.
+    (movedCount ? `*Your pending tasks:* moved to ${d(backOnYmd)}\n` : '') +
+    `\n— E-Marketing Task Manager`;
+}
+
+app.get('/api/cron/handler-leave-notice', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: handler-leave-notice');
+    res.json(await sendHandlerLeaveNotices({ force: req.query.force === '1' }));
+  } catch (err) {
+    console.error('Cron handler-leave-notice error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get('/api/cron/client-pending-digest', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: client-pending-digest');
+    res.json(await sendClientPendingDigests({ force: req.query.force === '1' }));
+  } catch (err) {
+    console.error('Cron client-pending-digest error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get('/api/cron/due-date-reminder', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: due-date-reminder');
+    res.json(await remindHandlersOfMissingDueDates());
+  } catch (err) {
+    console.error('Cron due-date-reminder error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ── Leave Tracker Reminder helper ──
 async function sendLeaveTrackerReminder() {
   const now = new Date();
@@ -5255,6 +5876,45 @@ function sanitizeSystemLinks(input) {
   return JSON.stringify(clean);
 }
 
+// Decide whose portal data a request is allowed to READ.
+//  - role='client'          → always their own linked client; ?clientId= is ignored,
+//                             so a client can never read another client's portal.
+//  - admin / hod / pc       → may pass ?clientId=N to read any client's portal.
+//                             This backs the Client Master "Client Dashboard"
+//                             button, which opens /client?clientId=N.
+//  - any other staff member → same, but only for clients they actually handle,
+//                             so a handler can open their own clients' portals
+//                             (and delegate to them) without seeing the rest.
+//  - anyone else            → 403.
+// Only the GET endpoints use this. Every write endpoint below (password, feedback
+// POST/PUT/DELETE) keeps its own hard role==='client' check on purpose: staff
+// preview must never be able to submit escalations or change a client's password.
+async function resolvePortalClientId(req) {
+  if (req.session.role === 'client') {
+    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
+    if (!u?.client_id) return { error: 'No linked client', status: 404 };
+    return { id: u.client_id, preview: false };
+  }
+  const wanted = parseInt(req.query.clientId);
+  if (!wanted) return { error: 'Client portal only', status: 403 };
+  const [[c]] = await db.query('SELECT id, handler_id FROM clients WHERE id=?', [wanted]);
+  if (!c) return { error: 'Client not found', status: 404 };
+  if (['admin', 'hod', 'pc'].includes(req.session.role)) return { id: c.id, preview: true };
+  // Not a manager — allow only if this user handles this client. Check both the
+  // primary handler_id and the many-to-many client_handlers table.
+  if (await isHandlerOf(req.session.userId, c)) return { id: c.id, preview: true };
+  return { error: 'Client portal only', status: 403 };
+}
+
+// True when `userId` is a handler of the given client row (primary or secondary).
+async function isHandlerOf(userId, client) {
+  if (!client) return false;
+  if (Number(client.handler_id) === Number(userId)) return true;
+  const [[row]] = await db.query(
+    'SELECT 1 AS ok FROM client_handlers WHERE client_id=? AND user_id=? LIMIT 1', [client.id, userId]);
+  return !!row;
+}
+
 // Client changes their own portal login password.
 app.put('/api/client-portal/password', requireAuth, async (req, res) => {
   try {
@@ -5271,12 +5931,11 @@ app.put('/api/client-portal/password', requireAuth, async (req, res) => {
 
 app.get('/api/client-portal/me', requireAuth, async (req, res) => {
   try {
-    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
-    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
-    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const resolved = await resolvePortalClientId(req);
+    if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
     const [[c]] = await db.query(
       `SELECT c.id, c.name, c.handler_id, u.name AS handler_name, u.email AS handler_email
-       FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [u.client_id]);
+       FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [resolved.id]);
     res.json(c || null);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -5290,14 +5949,24 @@ const TOP_PERFORMER_EXCLUDE_NAMES = ['Abhishek Jain', 'Simran Gurnani'];
 // the client_id from the logged-in client session. Defaults to current month.
 app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
   try {
-    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
-    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
-    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
-    const id = u.client_id;
+    const resolved = await resolvePortalClientId(req);
+    if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
+    const id = resolved.id;
     const [[client]] = await db.query(
       `SELECT c.id, c.name, c.handler_id, c.logo_url, c.system_links, u.name AS handler_name, u.email AS handler_email
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
     if (client) client.system_links = parseSystemLinks(client.system_links);
+    // The client's own portal login, if one exists. A handler needs it to
+    // delegate TO the client; when it is null the UI says so instead of
+    // offering an option that cannot work.
+    if (client) {
+      const [[pu]] = await db.query(
+        `SELECT id, name FROM users WHERE role='client' AND client_id=? ORDER BY id LIMIT 1`, [id]);
+      client.portal_user_id   = pu?.id   || null;
+      client.portal_user_name = pu?.name || null;
+    }
+    // Who is looking: the client themselves, or a staff member previewing.
+    const viewerId = resolved.preview ? null : req.session.userId;
     const ist = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
     const y = ist.getUTCFullYear(), m = ist.getUTCMonth();
     const defaultFrom = `${y}-${String(m+1).padStart(2,'0')}-01`;
@@ -5334,17 +6003,29 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
        FROM meetings m LEFT JOIN users u ON m.organizer_id = u.id
        WHERE m.client_id=? AND m.meeting_date BETWEEN ? AND ?
        ORDER BY m.meeting_date DESC, m.start_time DESC LIMIT 15`, [id, from, to]);
+    // created_date / created_time record when the task was RAISED, as opposed
+    // to due_date. Both are formatted in SQL and never sent as a raw DATETIME:
+    // created_at is already the DB's local IST, and handing a DATETIME to the
+    // browser lets it be read as UTC and shifted a second time.
     const [recentDel] = await db.query(
       `SELECT t.id, 'delegation' AS type, t.description, t.status, t.priority,
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
-              u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created
+              TIME_FORMAT(t.due_time,'%H:%i') AS due_time, t.assigned_to,
+              u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created,
+              DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created_date,
+              TIME_FORMAT(t.created_at,'%H:%i') AS created_time,
+              DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS done_date,
+              TIME_FORMAT(t.completed_at,'%H:%i') AS done_time
        FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id
        WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
        ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
     const [recentChl] = await db.query(
       `SELECT t.id, 'checklist' AS type, t.description, t.status, t.priority,
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
-              u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created
+              u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created,
+              DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created_date,
+              TIME_FORMAT(t.created_at,'%H:%i') AS created_time,
+              NULL AS done_date, NULL AS done_time
        FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id
        WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
        ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
@@ -5377,6 +6058,7 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
     const [upDel] = await db.query(
       `SELECT t.id, 'delegation' AS type, t.description, t.priority,
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              TIME_FORMAT(t.due_time,'%H:%i') AS due_time, t.assigned_to,
               u.name AS doer
        FROM delegation_tasks t JOIN users u ON t.assigned_to=u.id
        WHERE t.client_id=? AND t.status IN ('pending','revised')
@@ -5392,21 +6074,35 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
     const upcoming = [...upDel, ...upChl]
       .sort((a,b) => (a.due_date||'').localeCompare(b.due_date||''))
       .slice(0, 10);
+    // Tasks the client themselves owe us — the handler→client direction. Kept
+    // separate from `recent`/`upcoming` (which cover everything tagged to this
+    // client, whoever the doer is) because this is the only list the client can
+    // act on.
+    const [clientTasks] = client?.portal_user_id ? await db.query(
+      `SELECT t.id, 'delegation' AS type, t.description, t.status, t.priority,
+              COALESCE(t.waiting_approval,0) AS waiting_approval, t.remarks,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              TIME_FORMAT(t.due_time,'%H:%i') AS due_time,
+              COALESCE(u.name,'—') AS assigned_by_name
+       FROM delegation_tasks t LEFT JOIN users u ON t.assigned_by=u.id
+       WHERE t.assigned_to=? ORDER BY t.status='completed', t.due_date ASC, t.due_time ASC
+       LIMIT 100`, [client.portal_user_id]) : [[]];
     res.json({
       client, range: { from, to },
       delegation: del, checklist: chl, meetings: { ...meet, recent: meetRecent },
       recent,
-      upcoming
+      upcoming,
+      clientTasks,
+      viewerId
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/client-portal/tasks', requireAuth, async (req, res) => {
   try {
-    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
-    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
-    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
-    const cid = u.client_id;
+    const resolved = await resolvePortalClientId(req);
+    if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
+    const cid = resolved.id;
     const [delegation] = await db.query(
       `SELECT t.id, 'delegation' AS type, t.description, t.status, t.priority,
               COALESCE(t.waiting_approval,0) AS waiting_approval, t.remarks, t.url,
@@ -5434,14 +6130,13 @@ app.get('/api/client-portal/tasks', requireAuth, async (req, res) => {
 // Returns handlers assigned to this client (for the feedback form).
 app.get('/api/client-portal/handlers', requireAuth, async (req, res) => {
   try {
-    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
-    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
-    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const resolved = await resolvePortalClientId(req);
+    if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
     const [handlers] = await db.query(
       `SELECT ch.user_id AS id, u.name, u.department,
               (u.user_role='hod' OR u.role='hod') AS is_hod
        FROM client_handlers ch JOIN users u ON ch.user_id = u.id
-       WHERE ch.client_id = ? AND u.role != 'client'`, [u.client_id]);
+       WHERE ch.client_id = ? AND u.role != 'client'`, [resolved.id]);
     // Find HOD for each unique department (with id)
     const depts = [...new Set(handlers.map(h => h.department).filter(Boolean))];
     const hodMap = {};
@@ -6667,9 +7362,8 @@ app.delete('/api/feedback/:id', requireAuth, async (req, res) => {
 // Client: get own feedback history.
 app.get('/api/client-portal/feedback', requireAuth, async (req, res) => {
   try {
-    if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
-    const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
-    if (!u?.client_id) return res.status(404).json({ error: 'No linked client' });
+    const resolved = await resolvePortalClientId(req);
+    if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
     const [rows] = await db.query(
       `SELECT f.id, f.employee_id, f.rating, f.description, f.recipients,
               DATE_FORMAT(f.created_at,'%Y-%m-%dT%H:%i:%sZ') AS created_at,
@@ -6677,7 +7371,7 @@ app.get('/api/client-portal/feedback', requireAuth, async (req, res) => {
        FROM client_feedback f
        JOIN users e ON f.employee_id = e.id
        WHERE f.client_id = ?
-       ORDER BY f.created_at DESC`, [u.client_id]);
+       ORDER BY f.created_at DESC`, [resolved.id]);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -6721,8 +7415,45 @@ app.delete('/api/client-portal/feedback/:id', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Build the WHERE clause that limits the client list to what the caller may see
+// on the Client Master page. Returns null when they may see everything.
+//   admin / pc → everything.
+//   hod        → every client handled by someone in their department (which
+//                covers the clients they handle themselves).
+//   anyone else→ only the clients they personally handle.
+// "Handles" means either the primary clients.handler_id or a client_handlers row.
+async function clientMasterScope(req) {
+  const role = req.session.role;
+  if (role === 'admin' || role === 'pc') return null;
+  const uid = req.session.userId;
+  const mine = `(c.handler_id = ?
+                 OR EXISTS (SELECT 1 FROM client_handlers ch
+                            WHERE ch.client_id = c.id AND ch.user_id = ?))`;
+  if (role === 'hod') {
+    const [[me]] = await db.query('SELECT department FROM users WHERE id=? LIMIT 1', [uid]);
+    const dept = (me?.department || '').trim();
+    // An HOD with no department recorded would otherwise match every other
+    // department-less user, so fall back to just their own clients.
+    if (!dept) return { sql: mine, params: [uid, uid] };
+    return {
+      sql: `(EXISTS (SELECT 1 FROM users hu
+                     WHERE hu.id = c.handler_id AND hu.department = ?)
+             OR EXISTS (SELECT 1 FROM client_handlers ch2
+                        JOIN users hu2 ON ch2.user_id = hu2.id
+                        WHERE ch2.client_id = c.id AND hu2.department = ?))`,
+      params: [dept, dept]
+    };
+  }
+  return { sql: mine, params: [uid, uid] };
+}
+
 app.get('/api/clients', requireAuth, async (req, res) => {
   try {
+    // `?scope=master` narrows the list to what the caller may see on Client
+    // Master. Without it the list stays unfiltered on purpose — the Daily Task,
+    // Delegation, Checklist, Meetings and DMS pickers share this route and must
+    // keep offering every client.
+    const scope = req.query.scope === 'master' ? await clientMasterScope(req) : null;
     const [rows] = await db.query(
       `SELECT c.id, c.name, c.handler_id, c.logo_url, COALESCE(c.is_active,1) AS is_active,
               u.name AS handler_name,
@@ -6730,7 +7461,8 @@ app.get('/api/clients', requireAuth, async (req, res) => {
                FROM client_handlers ch JOIN users u2 ON ch.user_id = u2.id
                WHERE ch.client_id = c.id) AS all_handler_names
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id
-       ORDER BY c.name ASC`);
+       ${scope ? `WHERE ${scope.sql}` : ''}
+       ORDER BY c.name ASC`, scope ? scope.params : []);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -6817,6 +7549,14 @@ app.put('/api/clients/:id', requireAuth, requireAdminOrHod, async (req, res) => 
     if (handlerId !== undefined) { sets.push('handler_id=?'); params.push(handlerId); }
     if (req.body.system_links !== undefined) { sets.push('system_links=?'); params.push(sanitizeSystemLinks(req.body.system_links)); }
     if (req.body.is_active !== undefined) { sets.push('is_active=?'); params.push(req.body.is_active ? 1 : 0); }
+    if (req.body.whatsapp_group_id !== undefined) {
+      const g = String(req.body.whatsapp_group_id || '').trim();
+      // Blank clears it (and so switches the digest off for this client).
+      if (g && !/^[\w.-]+@g\.us$/.test(g)) {
+        return res.status(400).json({ error: 'WhatsApp group ID must look like 1203634...@g.us' });
+      }
+      sets.push('whatsapp_group_id=?'); params.push(g || null);
+    }
     if (!sets.length) return res.json({ success: true, noop: true });
     params.push(id);
     await db.query(`UPDATE clients SET ${sets.join(', ')} WHERE id=?`, params);
@@ -6901,7 +7641,8 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrHod, async (req, re
   try {
     const id = req.params.id;
     const [[client]] = await db.query(
-      `SELECT c.id, c.name, c.handler_id, c.logo_url, c.system_links, u.name AS handler_name, u.email AS handler_email
+      `SELECT c.id, c.name, c.handler_id, c.logo_url, c.system_links, c.whatsapp_group_id,
+              u.name AS handler_name, u.email AS handler_email
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
     client.system_links = parseSystemLinks(client.system_links);
@@ -8394,6 +9135,13 @@ function _toDateStr(v) {
   return String(v).slice(0,10);
 }
 
+// 'YYYY-MM-DD' + n days, same format back.
+function _addDays(dateStr, n) {
+  const d = new Date(_toDateStr(dateStr) + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 // dateStr = 'YYYY-MM-DD'; holidaysSet = Set of YYYY-MM-DD strings
 // Single source of truth for off-days: Sunday, the last Saturday of the month,
 // and the Holiday tab (holidays table) — same rule applies to everyone.
@@ -8462,6 +9210,50 @@ async function usersOnLeaveSet(today) {
 }
 
 // Find next working day on/after fromDate for a given user (max 60 day lookahead)
+// Every date a user is on APPROVED full-day leave, within a window.
+// Deliberately stricter than usersOnLeaveSet(), which counts anything not
+// rejected — announcing to a client that someone is away on the strength of an
+// unapproved request would be wrong. Leave is stored either as a from/to range
+// or, when the days are scattered, as a dates_json list; the list wins.
+async function approvedLeaveDates(userId, fromYmd, toYmd) {
+  const out = new Set();
+  try {
+    const [rows] = await db.query(
+      `SELECT dates_json,
+              DATE_FORMAT(from_date,'%Y-%m-%d') AS from_date,
+              DATE_FORMAT(to_date,'%Y-%m-%d')   AS to_date
+         FROM leave_requests
+        WHERE user_id=? AND status='approved' AND leave_type='full_day'
+          AND from_date <= ? AND to_date >= ?`, [userId, toYmd, fromYmd]);
+    for (const r of rows) {
+      let listed = null;
+      if (r.dates_json) {
+        try { listed = JSON.parse(r.dates_json).map(x => _toDateStr(x.date || x)); } catch { listed = null; }
+      }
+      if (listed) { listed.forEach(d => out.add(d)); continue; }
+      const d = new Date(r.from_date + 'T00:00:00Z');
+      const end = new Date(r.to_date + 'T00:00:00Z');
+      for (let i = 0; i < 400 && d <= end; i++) {
+        out.add(d.toISOString().split('T')[0]);
+        d.setUTCDate(d.getUTCDate() + 1);
+      }
+    }
+  } catch (e) { console.error('approvedLeaveDates err:', e.message); }
+  return out;
+}
+
+// Next day this user actually works: skips Sundays, last-Saturdays, holidays —
+// and their own further leave days, so a task due on the 18th of a 18/20 leave
+// lands on the 19th, not back on the 20th.
+function nextWorkingDayOffLeave(user, fromDateStr, holidaysSet, leaveDates) {
+  let ds = _toDateStr(fromDateStr);
+  for (let i = 0; i < 60; i++) {
+    ds = nextWorkingDay(user, ds, holidaysSet);
+    if (!leaveDates || !leaveDates.has(ds)) return ds;
+  }
+  return ds;
+}
+
 function nextWorkingDay(user, fromDateStr, holidaysSet) {
   const d = new Date(_toDateStr(fromDateStr) + 'T00:00:00');
   for (let i = 0; i < 60; i++) {
@@ -9419,8 +10211,10 @@ async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName
 // (2026-07-19 consistency audit): six cross-reference/numbering fixes (13.3
 // now cites Clause 13; 14.1/14.5/14.6 cite Clause 14; the stray "14.7" after
 // 15.6 is now 15.7; the article before the position is computed a/an) and a
-// blank hand-filled acceptance date. Jurisdiction stays "Bangalore" (flagged
-// vs the Jaipur letterhead, but NOT approved for change). The page STRUCTURE, however, is
+// blank hand-filled acceptance date. Clause 15.6's jurisdiction was changed
+// from "Bangalore" to "Rajasthan" on 2026-07-22 at the user's explicit
+// request (it had been flagged as inconsistent with the Jaipur letterhead in
+// the source document, and the user then approved the correction). The page STRUCTURE, however, is
 // now built for browser/Chromium rendering (user-approved): the logo/address
 // header is a running header applied on every page by the PDF renderer (see
 // hrmFinalOfferHeaderTemplate), so it is no longer repeated inline in the body;
@@ -9667,7 +10461,7 @@ ${opts.forPrint ? `  <div class="dlbar"><span>📄 Offer Letter${candidateName ?
 
     <p>15.5 Any notice or other document to be given under this Agreement shall be in writing and may be given personally to you or may be sent by first-class post or other fast postal service to, in the case of the Company, its registered office for the time being and your case, at your last known place of residence. Any such notice shall be deemed served upon the earlier of (i) delivery, if served personally; or (ii) upon receipt, if sent by mail.</p>
 
-    <p>15.6 This Agreement shall be governed by Indian law, and the Company and you submit to the exclusive jurisdiction of the Indian courts in Bangalore.</p>
+    <p>15.6 This Agreement shall be governed by Indian law, and the Company and you submit to the exclusive jurisdiction of the Indian courts in Rajasthan.</p>
 
     <p>15.7 Notwithstanding the above terms and conditions, the Company reserves the right to amend, delete, and/or implement new terms and conditions which the Company deems necessary from time to time, and such amendment/deletion/implementation of new terms and conditions shall be notified to you in writing by prior notice.</p>
 

@@ -105,6 +105,12 @@ tbody tr:hover{background:#f8fafc;}
   .main{padding:14px;}
   .form-row{grid-template-columns:1fr;}
 }
+/* Staff read-only preview (/client?clientId=N). Anything a real client login
+   owns — logout, password change, task delegation, escalations — is hidden. */
+body.cp-preview .cp-client-only{display:none !important;}
+.cp-preview-bar{background:linear-gradient(135deg,#F39C12,#e67e22);color:#fff;padding:11px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;font-weight:600;border-radius:10px;margin-bottom:14px;box-shadow:0 4px 12px rgba(243,156,18,.25);}
+.cp-preview-bar a{color:#fff;background:rgba(255,255,255,.22);padding:6px 14px;border-radius:8px;text-decoration:none;font-weight:700;font-size:12px;white-space:nowrap;}
+.cp-preview-bar a:hover{background:rgba(255,255,255,.36);}
 .cp-star-row{display:flex;gap:8px;margin:8px 0;}
 .cp-star{font-size:34px;cursor:pointer;color:#e2e8f0;transition:color .15s,transform .1s;line-height:1;}
 .cp-star.lit{color:#f59e0b;}
@@ -128,9 +134,13 @@ tbody tr:hover{background:#f8fafc;}
       <button class="cp-nav-item" id="cpNavFeedback" onclick="cpNav('feedback')"><span class="cp-nav-ico">⭐</span><span class="cp-nav-label">Escalation</span></button>
       <button class="cp-nav-item" id="cpNavProfile" onclick="cpNav('profile')"><span class="cp-nav-ico">👤</span><span class="cp-nav-label">Profile</span></button>
     </nav>
-    <button class="logout-btn" onclick="logout()"><span class="cp-nav-ico">↩</span><span class="cp-logout-label">Logout</span></button>
+    <button class="logout-btn cp-client-only" onclick="logout()"><span class="cp-nav-ico">↩</span><span class="cp-logout-label">Logout</span></button>
   </aside>
   <main class="cp-main">
+    <div class="cp-preview-bar" id="cpPreviewBar" style="display:none">
+      <span id="cpPreviewText">👁 Read-only preview</span>
+      <a href="/app">← Back to Client Master</a>
+    </div>
     <div id="cpDashboard"><div id="cpContent"><div class="empty" style="padding:60px">Loading…</div></div></div>
     <div id="cpAbout" style="display:none"></div>
     <div id="cpFeedback" style="display:none"></div>
@@ -142,15 +152,31 @@ tbody tr:hover{background:#f8fafc;}
 <div class="modal-overlay" id="clientDelegateModal">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('clientDelegateModal')">×</button>
-    <h3>＋ Assign Task to Your Handler</h3>
+    <h3 id="cpDelTitle">＋ Assign Task to Your Handler</h3>
     <div class="alert error" id="cpDelErr" style="display:none"></div>
     <div class="form-group">
-      <label>Handler (auto-assigned)</label>
+      <label id="cpDelHandlerLabel">Handler (auto-assigned)</label>
       <input type="text" id="cpDelHandler" readonly style="background:#f8fafc;color:#475569;font-weight:600"/>
+    </div>
+    <!-- Staff preview only: send this to the handler, or ask the client to do it. -->
+    <div class="form-group" id="cpDelDoerRow" style="display:none">
+      <label>Assign to</label>
+      <select id="cpDelDoer" onchange="cpDelDoerChange()">
+        <option value="handler">Handler — our team does it</option>
+        <option value="client">Client — they do it</option>
+      </select>
     </div>
     <div class="form-group">
       <label>Description *</label>
       <textarea id="cpDelDesc" rows="3" placeholder="What needs to be done?"></textarea>
+    </div>
+    <!-- Only for client-owned tasks: the handler commits them to a date AND time. -->
+    <div class="form-group" id="cpDelDueRow" style="display:none">
+      <label>Due date &amp; time *</label>
+      <div style="display:flex;gap:8px">
+        <input type="date" id="cpDelDate" style="flex:1"/>
+        <input type="time" id="cpDelTime" style="flex:1"/>
+      </div>
     </div>
     <div class="form-group">
       <label>Priority</label>
@@ -160,7 +186,7 @@ tbody tr:hover{background:#f8fafc;}
         <option value="high">High</option>
         <option value="urgent">Urgent</option>
       </select>
-      <div style="margin-top:6px;font-size:12px;color:#64748b">🗓 Due date will be defined by Handler</div>
+      <div id="cpDelDueHint" style="margin-top:6px;font-size:12px;color:#64748b">🗓 Due date will be defined by Handler</div>
     </div>
     <div class="form-group">
       <label>Remarks</label>
@@ -168,7 +194,7 @@ tbody tr:hover{background:#f8fafc;}
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('clientDelegateModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="cpSaveDelegate()">Send to Handler</button>
+      <button class="btn btn-primary" id="cpDelSubmitBtn" onclick="cpSaveDelegate()">Send to Handler</button>
     </div>
   </div>
 </div>
@@ -182,7 +208,7 @@ tbody tr:hover{background:#f8fafc;}
     <div id="cpTdSubtasksSection" style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0">
       <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px">🧩 Sub-tasks</div>
       <div id="cpTdSubtasksList" style="overflow-x:auto;margin-bottom:10px;font-size:13px;color:#94a3b8">Loading…</div>
-      <div style="display:flex;gap:6px">
+      <div class="cp-client-only" style="display:flex;gap:6px">
         <input type="text" id="cpTdNewSubtask" placeholder="Add a related task" style="flex:1;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter'){cpAddSubtask()}"/>
         <select id="cpTdNewSubtaskPriority" style="padding:7px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px">
           <option value="low">Low</option>
@@ -269,6 +295,42 @@ function cpInitials(name){
   return parts.map(p => p[0] || '').join('').toUpperCase() || '?';
 }
 
+// ── Staff read-only preview ──────────────────────────────────────────
+// Admin / HOD / PC open any client's portal from Client Master via
+// /client?clientId=N. The server is the real gate (resolvePortalClientId in
+// server.js decides who may pass clientId); this flag only drives the chrome —
+// the preview banner plus hiding every control that belongs to a client login.
+const CP_PREVIEW_ID = (() => {
+  const v = parseInt(new URLSearchParams(location.search).get('clientId'));
+  return v > 0 ? v : null;
+})();
+let CP_IS_PREVIEW = false;  // set true only after /api/me confirms a staff role
+
+// Who may use the ＋ New Task button. A client always can (it is their own
+// channel to their handler). In preview every staff role qualifies EXCEPT pc,
+// because POST /api/tasks only honours `assignedTo` for admin/hod/user — a pc's
+// task would silently land on the pc instead of the intended doer.
+let CP_CAN_CREATE_TASK = false;
+
+// Belt-and-braces guard on the handlers behind hidden controls. Mostly the
+// server would refuse anyway, but cpAddSubtask posts to a generic /api/tasks
+// route, so an unhidden control there would be a real staff write. Task
+// creation is the one write staff DO get — see CP_CAN_CREATE_TASK — so
+// cpSaveDelegate checks that instead of this.
+function cpBlockedInPreview(){
+  if (!CP_IS_PREVIEW) return false;
+  showToast('Read-only preview — only the client can do this', 'error');
+  return true;
+}
+
+// Build a portal GET url, carrying clientId while previewing.
+function cpUrl(path, params){
+  const q = new URLSearchParams(params || {});
+  if (CP_IS_PREVIEW) q.set('clientId', CP_PREVIEW_ID);
+  const qs = q.toString();
+  return qs ? `${path}?${qs}` : path;
+}
+
 // ── State + boot ─────────────────────────────────────────────────────
 let _cpMe = null;
 let _cpUser = null;
@@ -295,9 +357,19 @@ function cpNav(page){
   try {
     const me = await api('/api/me');
     if (!me || !me.id) { window.location.replace('/'); return; }
-    if (me.role !== 'client') { window.location.replace('/app'); return; }
+    // A client login always sees its own portal and ignores ?clientId=. Staff
+    // may only be here with a ?clientId=, and then only read-only.
+    // Managers may preview any client; other staff only the clients they handle,
+    // which the server decides — so we let them through and surface its refusal.
+    if (me.role !== 'client') {
+      if (!CP_PREVIEW_ID) { window.location.replace('/app'); return; }
+      CP_IS_PREVIEW = true;
+      document.body.classList.add('cp-preview');
+      document.getElementById('cpPreviewBar').style.display = 'flex';
+    }
+    CP_CAN_CREATE_TASK = (me.role === 'client') || ['admin','hod','user'].includes(me.role);
     _cpUser = me;
-    document.getElementById('topbarSub').textContent = me.name || 'E-Marketing';
+    document.getElementById('topbarSub').textContent = CP_IS_PREVIEW ? 'Admin Preview' : (me.name || 'E-Marketing');
     loadClientPortal();
   } catch (e) {
     window.location.replace('/');
@@ -308,11 +380,22 @@ async function loadClientPortal(from, to){
   const wrap = document.getElementById('cpContent');
   wrap.innerHTML = '<div class="empty" style="padding:60px">Loading…</div>';
   try {
-    const qs = (from && to) ? `?from=${from}&to=${to}` : '';
-    const s = await api('/api/client-portal/stats' + qs);
-    if (s.error) { wrap.innerHTML = `<div class="empty" style="padding:60px;color:#dc2626">${s.error}</div>`; return; }
+    const s = await api(cpUrl('/api/client-portal/stats', (from && to) ? { from, to } : null));
+    if (s.error) {
+      // Staff who neither manage nor handle this client get the generic refusal.
+      const msg = (CP_IS_PREVIEW && s.error === 'Client portal only')
+        ? 'You do not handle this client, so their portal is not available to you.'
+        : s.error;
+      wrap.innerHTML = `<div class="empty" style="padding:60px;color:#dc2626">${dtEscape(msg)}</div>`;
+      return;
+    }
     _cpMe = s.client || {};
     _cpStats = s;
+    if (CP_IS_PREVIEW) {
+      document.getElementById('cpPreviewText').textContent = CP_CAN_CREATE_TASK
+        ? `👁 ${_cpMe.name || 'This client'}'s portal as the client sees it — you can add tasks; the client's own actions are disabled`
+        : `👁 Read-only preview of ${_cpMe.name || 'this client'}'s portal — the client sees this view when they log in`;
+    }
     wrap.innerHTML = cpRenderHtml(s);
     setTimeout(()=>cpRenderCharts(s), 0);
     // Keep the currently-open About/Profile page fresh after a data reload.
@@ -428,7 +511,7 @@ function cpRenderHtml(s){
             <input type="date" id="cpTo" value="${range.to || ''}" style="padding:5px 8px;border:1.5px solid #fde68a;border-radius:6px;font-size:12px;background:#fff;outline:none"/>
             <button class="btn btn-primary" style="padding:6px 12px;font-size:12px" onclick="cpApplyRange()">Apply</button>
           </div>
-          <button class="btn btn-primary" ${canDelegate ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'} onclick="cpOpenDelegate()" style="padding:10px 16px;font-size:13px;font-weight:600;border-radius:10px;box-shadow:0 4px 12px rgba(79,70,229,.25)">＋ New Task</button>
+          ${CP_CAN_CREATE_TASK ? `<button class="btn btn-primary" ${canDelegate ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'} onclick="cpOpenDelegate()" style="padding:10px 16px;font-size:13px;font-weight:600;border-radius:10px;box-shadow:0 4px 12px rgba(79,70,229,.25)">＋ New Task</button>` : ''}
         </div>
       </div>
     </div>
@@ -456,6 +539,8 @@ function cpRenderHtml(s){
       </div>
     </div>
 
+    ${cpRenderClientTasksHtml(s)}
+
     <div class="cp-card" id="cpRecentCard">
       <div class="cp-card-head">
         <h4>📋 Recent Activity</h4>
@@ -471,13 +556,81 @@ function cpRenderHtml(s){
       <div class="cp-scroll" style="max-height:65vh">
         <table>
           <thead><tr style="background:#f8fafc;position:sticky;top:0;z-index:1">
-            <th>Type</th><th>Description</th><th>Doer</th><th>Priority</th><th>Date</th><th>Status</th>
+            <th>Type</th><th>Description</th><th>Doer</th><th>Date</th><th>Time</th><th>Priority</th><th>Due Date</th><th>Done On</th><th>Status</th>
           </tr></thead>
           <tbody id="cpRecentBody">${recentHtml}</tbody>
         </table>
       </div>
     </div>
   `;
+}
+
+// "Action Required" — tasks the handler delegated TO the client, so the client
+// is the doer. Hidden entirely when there are none, so a client who is never
+// asked for anything sees no empty box. The client can tick these off; a staff
+// member previewing sees the same list read-only (marking done is the doer's
+// job, and in preview the doer is not who is logged in).
+function cpRenderClientTasksHtml(s){
+  const rows = Array.isArray(s.clientTasks) ? s.clientTasks : [];
+  if (!rows.length) return '';
+  const pending = rows.filter(t => t.status !== 'completed').length;
+  const today = new Date(Date.now() + (5.5*60*60*1000)).toISOString().split('T')[0];
+  const body = rows.map(t => {
+    const done = t.status === 'completed';
+    const overdue = !done && t.due_date && t.due_date < today;
+    const due = t.due_date
+      ? `${fmtDate(t.due_date)}${t.due_time ? ` · ${cpFmtTime(t.due_time)}` : ''}`
+      : '—';
+    return `<tr${done ? ' style="opacity:.55"' : ''}>
+      <td style="word-break:break-word">${dtEscape(t.description || '')}</td>
+      <td style="white-space:nowrap">${dtEscape(t.assigned_by_name || '—')}</td>
+      <td style="white-space:nowrap;${overdue ? 'color:#dc2626;font-weight:700' : ''}">${due}${overdue ? ' ⚠️' : ''}</td>
+      <td style="white-space:nowrap">${done
+        ? '<span style="color:#16a34a;font-weight:700;font-size:12px">✓ Done</span>'
+        : (CP_IS_PREVIEW
+            ? '<span style="color:#b45309;font-weight:700;font-size:12px">Pending</span>'
+            : `<button class="btn btn-primary" style="padding:5px 12px;font-size:12px" onclick="cpCompleteMyTask(${t.id}, this)">Mark Done</button>`)}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div class="cp-card" style="margin-bottom:16px;border:1.5px solid #fed7aa">
+      <div class="cp-card-head">
+        <h4>📌 Action Required From You</h4>
+        <span style="font-size:11px;color:#94a3b8">${pending} pending</span>
+      </div>
+      <div class="cp-scroll" style="max-height:40vh">
+        <table>
+          <thead><tr style="background:#fff7ed;position:sticky;top:0;z-index:1">
+            <th>Task</th><th>Asked By</th><th>Due</th><th></th>
+          </tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// "14:30" → "02:30 PM". Input is always the server's TIME_FORMAT '%H:%i'.
+function cpFmtTime(hhmm){
+  const [h, m] = String(hhmm).split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm;
+  const period = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${String(h12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${period}`;
+}
+
+// Client ticks off a task their handler delegated to them.
+async function cpCompleteMyTask(id, btn){
+  if (CP_IS_PREVIEW) { showToast('Only the client can mark their own task done', 'error'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const r = await api(`/api/tasks/${id}/status`, 'PUT', { status: 'completed', type: 'delegation' });
+    if (r && r.error) throw new Error(r.error);
+    showToast('✅ Marked done');
+    loadClientPortal();
+  } catch (e) {
+    showToast(e.message || 'Failed', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Mark Done'; }
+  }
 }
 
 // Renders <tr> rows for the Recent Activity table — shared by the initial
@@ -496,16 +649,25 @@ function cpRenderRecentRows(list){
         const priorityColors = { urgent: ['#fef2f2','#dc2626'], high: ['#fffbeb','#92400e'], medium: ['#eff6ff','#1d4ed8'], low: ['#f0fdf4','#16a34a'] };
         const [prBg, prFg] = priorityColors[t.priority] || priorityColors.low;
         const priorityPill = `<span style="font-size:10px;color:${prFg};font-weight:700;background:${prBg};padding:3px 9px;border-radius:10px;text-transform:capitalize">${dtEscape(t.priority || 'low')}</span>`;
+        // Date over time on one line each, to avoid a tenth column. Tasks closed
+        // before completed_at existed have nothing recorded, so they show a dash
+        // rather than a guess.
+        const doneCell = t.done_date
+          ? `<div>${fmtDate(t.done_date)}</div><div style="font-size:11px;color:#94a3b8">${t.done_time ? cpFmtTime(t.done_time) : ''}</div>`
+          : '—';
         return `<tr onclick="cpOpenTaskDetail('${t.type}-${t.id}')" style="cursor:pointer" title="Click to view details">
           <td>${typeBadge}</td>
           <td style="font-weight:500;color:#0f172a">${dtEscape(t.description || '')}</td>
           <td style="white-space:nowrap;color:#475569">${dtEscape(t.doer || '—')}</td>
+          <td style="white-space:nowrap;color:#64748b;font-size:12px">${fmtDate(t.created_date || '')}</td>
+          <td style="white-space:nowrap;color:#64748b;font-size:12px">${t.created_time ? cpFmtTime(t.created_time) : '—'}</td>
           <td style="white-space:nowrap">${priorityPill}</td>
-          <td style="white-space:nowrap;color:#64748b;font-size:12px">${fmtDate(t.due_date || '')}</td>
+          <td style="white-space:nowrap;color:#64748b;font-size:12px">${t.due_date ? fmtDate(t.due_date) : '—'}</td>
+          <td style="white-space:nowrap;color:#64748b;font-size:12px">${doneCell}</td>
           <td style="white-space:nowrap">${statusPill}</td>
         </tr>`;
       }).join('')
-    : `<tr><td colspan="6" style="padding:32px;text-align:center;color:#94a3b8">
+    : `<tr><td colspan="9" style="padding:32px;text-align:center;color:#94a3b8">
          <div style="font-size:32px;margin-bottom:6px">📭</div>No tasks match this filter</td></tr>`;
 }
 
@@ -621,12 +783,12 @@ function cpRenderProfile(s, me){
               <div style="font-size:12px;color:#64748b">Client Account</div>
             </div>
           </div>
-          ${detail('Login Email', dtEscape(me.email || '—'))}
+          ${detail('Login Email', CP_IS_PREVIEW ? '—' : dtEscape(me.email || '—'))}
           ${detail('Handler', dtEscape(client.handler_name || 'Not assigned'))}
           ${detail('Handler Email', client.handler_email ? dtEscape(client.handler_email) : '—')}
         </div>
       </div>
-      <div class="cp-card">
+      <div class="cp-card cp-client-only">
         <div class="cp-card-head"><h4>🔒 Change Password</h4></div>
         <div style="padding:18px 20px">
           <div class="alert error" id="cpPwErr" style="display:none;margin-bottom:12px"></div>
@@ -640,6 +802,7 @@ function cpRenderProfile(s, me){
 }
 
 async function cpChangePassword(){
+  if (cpBlockedInPreview()) return;
   const err = document.getElementById('cpPwErr');
   err.style.display = 'none';
   const currentPassword = document.getElementById('cpPwCurrent').value;
@@ -679,26 +842,92 @@ function cpRenderCharts(s){
 }
 
 // ── Delegate task to handler ─────────────────────────────────────────
+// Toggle the client-owned-task fields. A task the client owes us needs a hard
+// date and time from the handler; a task for the handler keeps the existing
+// "doer sets their own date" behaviour.
+function cpDelDoerChange(){
+  const toClient = document.getElementById('cpDelDoer')?.value === 'client';
+  document.getElementById('cpDelDueRow').style.display  = toClient ? 'block' : 'none';
+  document.getElementById('cpDelDueHint').style.display = toClient ? 'none'  : 'block';
+  document.getElementById('cpDelHandlerLabel').textContent = toClient
+    ? 'Doer — the client'
+    : "Doer — this client's handler";
+  document.getElementById('cpDelHandler').value = toClient
+    ? (_cpMe.portal_user_name || _cpMe.name || 'Client')
+    : (_cpMe.handler_name || '');
+}
+
 function cpOpenDelegate(){
+  if (!CP_CAN_CREATE_TASK) { showToast('Read-only preview — only the client can do this', 'error'); return; }
   if (!_cpMe?.handler_id) { showToast('No handler assigned — contact admin', 'error'); return; }
   document.getElementById('cpDelErr').style.display = 'none';
-  document.getElementById('cpDelHandler').value = _cpMe.handler_name || '';
+  // Delegating TO the client needs their portal login as the doer. Without one
+  // there is nothing to assign to, so the option is offered but explains itself.
+  const doerRow = document.getElementById('cpDelDoerRow');
+  const doerSel = document.getElementById('cpDelDoer');
+  doerRow.style.display = CP_IS_PREVIEW ? 'block' : 'none';
+  doerSel.value = 'handler';
+  const clientOpt = doerSel.querySelector('option[value="client"]');
+  const hasLogin = !!_cpMe?.portal_user_id;
+  clientOpt.disabled = !hasLogin;
+  clientOpt.textContent = hasLogin
+    ? 'Client — they do it'
+    : 'Client — needs a portal login first';
+  document.getElementById('cpDelDate').value = '';
+  document.getElementById('cpDelTime').value = '';
   document.getElementById('cpDelDesc').value = '';
   document.getElementById('cpDelRemarks').value = '';
   document.getElementById('cpDelPriority').value = 'low';
+  // Same form either way; only the wording says who is assigning to whom.
+  document.getElementById('cpDelTitle').textContent = CP_IS_PREVIEW
+    ? `＋ Assign Task for ${_cpMe.name || 'this client'}`
+    : '＋ Assign Task to Your Handler';
+  document.getElementById('cpDelSubmitBtn').textContent = CP_IS_PREVIEW ? 'Create Task' : 'Send to Handler';
+  if (CP_IS_PREVIEW) {
+    cpDelDoerChange();  // owns the doer label + name + due-date fields
+  } else {
+    document.getElementById('cpDelHandlerLabel').textContent = 'Handler (auto-assigned)';
+    document.getElementById('cpDelHandler').value = _cpMe.handler_name || '';
+    document.getElementById('cpDelDueRow').style.display  = 'none';
+    document.getElementById('cpDelDueHint').style.display = 'block';
+  }
   document.getElementById('clientDelegateModal').classList.add('open');
 }
 
 async function cpSaveDelegate(){
+  if (!CP_CAN_CREATE_TASK) { showToast('Read-only preview — only the client can do this', 'error'); return; }
   const err = document.getElementById('cpDelErr');
   err.style.display = 'none';
   const desc = document.getElementById('cpDelDesc').value.trim();
   const priority = document.getElementById('cpDelPriority').value;
   const remarks = document.getElementById('cpDelRemarks').value.trim();
   if (!desc) { err.textContent = 'Description required'; err.style.display = 'block'; return; }
-  const r = await api('/api/tasks', 'POST', { type:'delegation', desc, priority, remarks, approval:'no', doerSetsDueDate:true });
+  // A client sends nothing extra — the server resolves their own client and
+  // handler from the session. Staff previewing must name both explicitly, since
+  // their session says nothing about which client this page is showing. Either
+  // way the task lands on the client's handler with the doer setting the date;
+  // assigned_by is whoever is logged in, so the audit trail stays honest.
+  const payload = { type:'delegation', desc, priority, remarks, approval:'no', doerSetsDueDate:true };
+  const toClient = CP_IS_PREVIEW && document.getElementById('cpDelDoer')?.value === 'client';
+  if (CP_IS_PREVIEW) {
+    payload.client_id  = CP_PREVIEW_ID;
+    payload.assignedTo = toClient ? _cpMe.portal_user_id : _cpMe.handler_id;
+  }
+  // A client-owned task is a commitment to a moment, so the handler sets both
+  // halves of it here rather than leaving the date to the doer.
+  if (toClient) {
+    const date = document.getElementById('cpDelDate').value;
+    const time = document.getElementById('cpDelTime').value;
+    if (!date || !time) { err.textContent = 'Pick both a due date and a time for the client'; err.style.display = 'block'; return; }
+    payload.doerSetsDueDate = false;
+    payload.date = date;
+    payload.dueTime = time;
+  }
+  const r = await api('/api/tasks', 'POST', payload);
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
-  showToast('✅ Task sent to your handler');
+  showToast(toClient
+    ? `✅ Task assigned to ${_cpMe.name || 'the client'}`
+    : (CP_IS_PREVIEW ? `✅ Task created for ${_cpMe.handler_name || 'the handler'}` : '✅ Task sent to your handler'));
   closeModal('clientDelegateModal');
   loadClientPortal();
 }
@@ -770,6 +999,7 @@ async function cpLoadSubtasks(){
 }
 
 async function cpAddSubtask(){
+  if (cpBlockedInPreview()) return;
   const input = document.getElementById('cpTdNewSubtask');
   const description = input.value.trim();
   const priority = document.getElementById('cpTdNewSubtaskPriority').value;
@@ -793,8 +1023,8 @@ async function cpLoadFeedbackPage(){
   wrap.innerHTML = '<div class="empty" style="padding:40px">Loading…</div>';
   try {
     const [hr, fbr] = await Promise.all([
-      api('/api/client-portal/handlers'),
-      api('/api/client-portal/feedback')
+      api(cpUrl('/api/client-portal/handlers')),
+      api(cpUrl('/api/client-portal/feedback'))
     ]);
     if (hr.error) { wrap.innerHTML = `<div class="empty" style="color:#dc2626">${dtEscape(hr.error)}</div>`; return; }
     _cpFbHandlers = hr.handlers || [];
@@ -846,8 +1076,8 @@ function cpRenderFeedbackPage(history){
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div style="font-size:18px;color:${col};letter-spacing:1px">${stars}</div>
-          <button onclick="cpFbStartEdit(${f.id})" style="background:#eff6ff;border:none;color:#4f46e5;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer">✏️ Edit</button>
-          <button onclick="cpFbDelete(${f.id})" style="background:#fef2f2;border:none;color:#dc2626;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer">🗑 Delete</button>
+          <button class="cp-client-only" onclick="cpFbStartEdit(${f.id})" style="background:#eff6ff;border:none;color:#4f46e5;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer">✏️ Edit</button>
+          <button class="cp-client-only" onclick="cpFbDelete(${f.id})" style="background:#fef2f2;border:none;color:#dc2626;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer">🗑 Delete</button>
         </div>
       </div>
       ${f.description ? `<div style="font-size:13px;color:#374151;background:#f8fafc;border-radius:8px;padding:8px 12px;line-height:1.5">"${dtEscape(f.description)}"</div>` : ''}
@@ -860,15 +1090,15 @@ function cpRenderFeedbackPage(history){
     <div style="max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:0">
       <!-- Tab bar -->
       <div style="display:flex;border-bottom:2px solid #e2e8f0;margin-bottom:16px">
-        <button id="cpFbTabNew" onclick="cpFbSwitchTab('new')" style="flex:1;padding:12px 0;border:none;background:none;font-size:13px;font-weight:700;color:#4f46e5;border-bottom:2px solid #4f46e5;margin-bottom:-2px;cursor:pointer">⭐ Raise Escalation</button>
-        <button id="cpFbTabHist" onclick="cpFbSwitchTab('history')" style="flex:1;padding:12px 0;border:none;background:none;font-size:13px;font-weight:600;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer">📋 Escalation History ${historyCount ? `<span style="background:#4f46e5;color:#fff;border-radius:999px;font-size:11px;padding:1px 7px;margin-left:4px">${historyCount}</span>` : ''}</button>
+        <button id="cpFbTabNew" class="cp-client-only" onclick="cpFbSwitchTab('new')" style="flex:1;padding:12px 0;border:none;background:none;font-size:13px;font-weight:700;color:#4f46e5;border-bottom:2px solid #4f46e5;margin-bottom:-2px;cursor:pointer">⭐ Raise Escalation</button>
+        <button id="cpFbTabHist" onclick="cpFbSwitchTab('history')" style="flex:1;padding:12px 0;border:none;background:none;font-size:13px;font-weight:${CP_IS_PREVIEW ? '700' : '600'};color:${CP_IS_PREVIEW ? '#4f46e5' : '#64748b'};border-bottom:2px solid ${CP_IS_PREVIEW ? '#4f46e5' : 'transparent'};margin-bottom:-2px;cursor:pointer">📋 Escalation History ${historyCount ? `<span style="background:#4f46e5;color:#fff;border-radius:999px;font-size:11px;padding:1px 7px;margin-left:4px">${historyCount}</span>` : ''}</button>
       </div>
 
-      <!-- Past Feedback panel -->
-      <div id="cpFbPanelHistory" style="display:none;flex-direction:column;gap:10px">${historyHtml}</div>
+      <!-- Past Feedback panel. In staff preview it is the only panel, so it starts open. -->
+      <div id="cpFbPanelHistory" style="display:${CP_IS_PREVIEW ? 'flex' : 'none'};flex-direction:column;gap:10px">${historyHtml}</div>
 
       <!-- Submit / Edit Form panel -->
-      <div id="cpFbPanelNew" style="display:flex;flex-direction:column;gap:0">
+      <div id="cpFbPanelNew" class="cp-client-only" style="display:flex;flex-direction:column;gap:0">
       <div class="cp-card" id="cpFbFormCard">
         <div class="cp-card-head"><h4 id="cpFbFormTitle">⚠️ Raise Your Escalation</h4></div>
         <div style="padding:22px 24px">
@@ -970,7 +1200,7 @@ function cpFbStartEdit(id){
   const card = document.getElementById(`cpFbHistCard-${id}`);
   if (!card) return;
   // Read data from the card's data (re-fetch from API to get full data)
-  api(`/api/client-portal/feedback`).then(rows => {
+  api(cpUrl('/api/client-portal/feedback')).then(rows => {
     if (!Array.isArray(rows)) return;
     const f = rows.find(x => x.id === id);
     if (!f) return;
@@ -1027,6 +1257,7 @@ function cpFbCancelEdit(){
 }
 
 function cpFbDelete(id){
+  if (cpBlockedInPreview()) return;
   showConfirm('This feedback will be permanently deleted.', async () => {
     const r = await api(`/api/client-portal/feedback/${id}`, 'DELETE');
     if (r.error) { showToast(r.error, 'error'); return; }
@@ -1052,6 +1283,7 @@ function cpPreviewRating(val){
 }
 
 async function cpSubmitFeedback(){
+  if (cpBlockedInPreview()) return;
   const err = document.getElementById('cpFbErr');
   err.style.display = 'none';
   const employee_id = document.getElementById('cpFbEmployee')?.value;
