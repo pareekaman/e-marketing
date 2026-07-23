@@ -10567,16 +10567,29 @@ async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateNa
   let status = 'Failed', errorDetail = '';
   try {
     const fetchFn = global.fetch || (await import('node-fetch')).default;
-    const resp = await fetchFn(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': HRM_AMUFIY_API_KEY },
-      body: JSON.stringify(payload)
-    });
+    // Bound the provider call. For a file send the provider fetches our
+    // mediaUrl (the /offer-pdf render) before replying, which can stall — or,
+    // from a host it can't reach (e.g. localhost during local testing), never
+    // complete. Without a timeout the awaiting endpoint (and the caller's
+    // "Sending…" button) hangs indefinitely.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    let resp;
+    try {
+      resp = await fetchFn(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': HRM_AMUFIY_API_KEY },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     if (resp.ok) { status = 'Sent'; } else {
       const txt = await resp.text();
       errorDetail = `HTTP ${resp.status}: ${txt.slice(0,200)}`;
     }
-  } catch (e) { errorDetail = e.message; }
+  } catch (e) { errorDetail = e.name === 'AbortError' ? 'WhatsApp send timed out after 30s' : e.message; }
 
   const payloadJson = JSON.stringify({ endpoint, body: payload });
   await db.query(
