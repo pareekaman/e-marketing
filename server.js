@@ -29,6 +29,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 // columns (e.g. client_id) fail with "Unknown column" errors.
 // On warm starts the promises are already resolved → near-zero overhead.
 // ══════════════════════════════════════════════════════
+// API responses must never be cached. Express sends an ETag by default, so the
+// browser (and Vercel's edge) were serving GETs like /api/clients/:id/stats
+// from cache via 304 — a value saved a moment earlier (e.g. whatsapp_group_id)
+// then appeared to vanish on refresh because the stale cached body was shown.
+// no-store forces every read to come fresh from the server.
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  next();
+});
+
 app.use('/api', async (req, res, next) => {
   try {
     await _startupMigrationsPromise;
