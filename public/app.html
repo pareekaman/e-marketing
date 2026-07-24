@@ -2476,7 +2476,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
         style="padding:8px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:600;color:#0f172a;background:#fff;outline:none;cursor:pointer;min-width:160px">
         <option value="">— Select Bank —</option>
       </select>
-      <label style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:#4f46e5;color:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s"
+      <label id="ccUploadBtn" style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:#4f46e5;color:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s"
         onmouseover="this.style.background='#1e40af'" onmouseout="this.style.background='#4f46e5'">
         📄 Upload
         <input type="file" accept=".pdf" style="display:none" onchange="ccUploadPdf(this)">
@@ -4784,9 +4784,9 @@ async function init() {
       const el = document.getElementById(navId);
       if (el) el.style.display = canSee(page) ? 'flex' : 'none';
     }
-    // Credit Cards nav — all admins
+    // Credit Cards nav — all admins (full access), plus CC_VIEWERS (read-only)
     const ccNav = document.getElementById('nav-creditcards');
-    if (ccNav) ccNav.style.display = (ME.role === 'admin') ? 'flex' : 'none';
+    if (ccNav) ccNav.style.display = ccCanView() ? 'flex' : 'none';
     // Logs nav — admin only, and deliberately not grantable via extra_access /
     // user_permissions: the archive exposes every deleted row app-wide.
     const logsNav = document.getElementById('nav-logs');
@@ -15836,6 +15836,14 @@ let _ccDepts = [];
 let _ccFilter  = { preset:'all', dateFrom:null, dateTo:null, amtMin:'', amtMax:'' };
 let _ccCal     = { show:false, leftYear:new Date().getFullYear(), leftMonth:new Date().getMonth()-1, tempFrom:null, tempTo:null, hover:null };
 
+// Credit Cards access. Admins get full read/write; the names in _CC_VIEWERS get
+// a read-only page — no upload, no edit, no delete. Keep _CC_VIEWERS in sync
+// with CC_VIEWERS in server.js, which is what actually enforces this; every
+// ccCanEdit() check below is UI-level only.
+const _CC_VIEWERS = ['Rotan Singh'];
+function ccCanView() { return !!ME && (ME.role === 'admin' || _CC_VIEWERS.includes(ME.name)); }
+function ccCanEdit() { return !!ME && ME.role === 'admin'; }
+
 function ccSave() {
   try {
     if (_ccActiveBank) localStorage.setItem('cc_active_bank', _ccActiveBank); else localStorage.removeItem('cc_active_bank');
@@ -15850,6 +15858,9 @@ async function loadCreditCards() {
       CC_BANKS.map(b => `<option value="${b}">${b}</option>`).join('');
     if (_ccActiveBank) dd.value = _ccActiveBank;
   }
+  // Read-only viewers get no statement upload
+  const upBtn = document.getElementById('ccUploadBtn');
+  if (upBtn) upBtn.style.display = ccCanEdit() ? 'inline-flex' : 'none';
   try {
     const depts = await api('/api/credit-cards/departments');
     _ccDepts = Array.isArray(depts) ? depts : [];
@@ -15914,6 +15925,7 @@ function ccOwnSaveOptions() { try { localStorage.setItem('cc_own_options', JSON.
 let _ccOwnDropCtx = null; // { bank, card, si, oi }
 
 function ccOwnToggleDrop(bank, card, si, oi) {
+  if (!ccCanEdit()) return;
   const panel = document.getElementById('ccOwnDropPanel');
   if (_ccOwnDropCtx && _ccOwnDropCtx.si === si && _ccOwnDropCtx.oi === oi) {
     panel.style.display = 'none'; _ccOwnDropCtx = null; return;
@@ -15974,7 +15986,9 @@ function ccBuildSummaryModal(si) {
   const deptMap = {}, ownMap = {};
   Array.from(tbody.rows).forEach(row => {
     if (row.style.display === 'none') return;
-    const amtCell = row.cells[3];
+    // Column index shifts when the select column is hidden (read-only viewers),
+    // so find the amount cell by class rather than position.
+    const amtCell = row.querySelector('.ccAmtCell') || row.cells[3];
     const rawAmt  = amtCell ? amtCell.textContent.replace(/[^\d.]/g, '') : '0';
     const isCredit = amtCell && amtCell.style.color === 'rgb(22, 163, 74)';
     const amt = (parseFloat(rawAmt) || 0) * (isCredit ? -1 : 1);
@@ -16052,6 +16066,7 @@ function ccOwnClear() {
 }
 
 function ccOwnDeleteOption(val) {
+  if (!ccCanEdit()) return;
   const idx = _CC_OWN_OPTIONS.indexOf(val);
   if (idx !== -1) { _CC_OWN_OPTIONS.splice(idx, 1); ccOwnSaveOptions(); }
   ccOwnBuildPanel();
@@ -16064,6 +16079,7 @@ function ccOwnShowOtherInput() {
 }
 
 function ccOwnConfirmPanel() {
+  if (!ccCanEdit()) return;
   const val = (document.getElementById('ccOwnPanelTxt')?.value || '').trim();
   if (!val || !_ccOwnDropCtx) return;
   const { bank, card, si, oi } = _ccOwnDropCtx;
@@ -16093,6 +16109,7 @@ document.addEventListener('click', function(e) {
 let _ccDeptDropCtx = null;
 
 function ccDeptToggleDrop(bank, card, si, oi) {
+  if (!ccCanEdit()) return;
   const panel = document.getElementById('ccDeptDropPanel');
   if (_ccDeptDropCtx && _ccDeptDropCtx.si === si && _ccDeptDropCtx.oi === oi) {
     panel.style.display = 'none'; _ccDeptDropCtx = null; return;
@@ -16147,6 +16164,7 @@ function ccDeptSelectOption(val) {
 }
 
 async function ccDeptDeleteOption(val) {
+  if (!ccCanEdit()) return;
   try {
     const token = localStorage.getItem('authToken') || '';
     await fetch(`/api/credit-cards/departments/${encodeURIComponent(val)}`, { method:'DELETE', headers: token ? {'Authorization':'Bearer '+token} : {} });
@@ -16162,6 +16180,7 @@ function ccDeptShowOtherInput() {
 }
 
 async function ccDeptConfirmPanel() {
+  if (!ccCanEdit()) return;
   const val = (document.getElementById('ccDeptPanelTxt')?.value || '').trim();
   if (!val || !_ccDeptDropCtx) return;
   const { bank, card, si, oi } = _ccDeptDropCtx;
@@ -16366,6 +16385,7 @@ function ccCalRender() {
 // ─────────────────────────────────────────────────────────
 
 async function ccUploadPdf(input) {
+  if (!ccCanEdit()) return;
   const file = input.files[0];
   if (!file) return;
   input.value = '';
@@ -16390,6 +16410,7 @@ function ccPreviewStmtPdf(stmtId) {
 }
 
 async function ccRetryWithPassword() {
+  if (!ccCanEdit()) return;
   const pwd = document.getElementById('ccPdfPwdRetry')?.value || '';
   if (!pwd) return;
   await _ccDoUpload(pwd);
@@ -16460,6 +16481,14 @@ async function _ccDoUpload(password) {
 
 function ccBillCellHtml(si, oi, safeBank, safeCard, txnId, driveId) {
   const fileInput = `<input type="file" accept=".pdf" style="display:none" onchange="ccUploadBill('${safeBank}','${safeCard}',${si},${oi},${txnId},this)">`;
+  // Read-only viewers can open an attached bill but never upload or replace one
+  if (!ccCanEdit()) {
+    return driveId
+      ? `<a href="https://drive.google.com/file/d/${driveId}/view" target="_blank"
+          style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:6px;font-size:11px;font-weight:600;color:#16a34a;text-decoration:none;white-space:nowrap"
+          title="View bill">👁 View</a>`
+      : `<span style="font-size:11px;color:#cbd5e1">—</span>`;
+  }
   if (driveId) {
     return `<div style="display:flex;align-items:center;justify-content:center;gap:4px">
       <a href="https://drive.google.com/file/d/${driveId}/view" target="_blank"
@@ -16476,6 +16505,7 @@ function ccBillCellHtml(si, oi, safeBank, safeCard, txnId, driveId) {
 }
 
 async function ccUploadBill(bank, card, si, oi, txnId, input) {
+  if (!ccCanEdit()) return;
   const file = input.files[0];
   if (!file) return;
   input.value = '';
@@ -16548,6 +16578,7 @@ function ccToggleSummary(si) {
 }
 
 function ccBulkApply(si, bank, card) {
+  if (!ccCanEdit()) return;
   const ownVal  = document.getElementById('ccBulkOwn-'  + si)?.value || '';
   const deptVal = document.getElementById('ccBulkDept-' + si)?.value || '';
   if (!ownVal && !deptVal) { showToast('Select an Owner or Dept first', 'error'); return; }
@@ -16630,6 +16661,7 @@ function ccSearchTxns(si) {
 }
 
 async function ccDeleteStatement(bank, cardNum, stmtIdx) {
+  if (!ccCanEdit()) return;
   if (!_ccData[bank]?.[cardNum]) return;
   const stmt = _ccData[bank][cardNum][stmtIdx];
   const label = stmt?.statement_date ? `Statement: ${stmt.statement_date}` : 'this statement';
@@ -16655,6 +16687,7 @@ async function ccDeleteStatement(bank, cardNum, stmtIdx) {
 }
 
 async function ccDeleteTransaction(bank, cardNum, stmtIdx, txIdx) {
+  if (!ccCanEdit()) return;
   const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
   if (t?.id) {
     const token = localStorage.getItem('authToken') || '';
@@ -16672,6 +16705,7 @@ const PR_BILL_FOLDER = 'https://drive.google.com/drive/folders/1Zpmc-Vcenjzw7uWa
 const CC_DRIVE_FOLDER = 'https://drive.google.com/drive/folders/1G_wzP734PykkLoS6k0KKEqIs3V_TiWgH?usp=drive_link';
 
 async function ccOpenStatementDrive(bank, cardNum, stmtIdx, btn) {
+  if (!ccCanEdit()) return;
   const stmt = _ccData[bank]?.[cardNum]?.[stmtIdx];
   if (!stmt) return;
   const txns = stmt.transactions || [];
@@ -16848,6 +16882,7 @@ async function ccOpenStatementDrive(bank, cardNum, stmtIdx, btn) {
 }
 
 async function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
+  if (!ccCanEdit()) return;
   if (!CC_DRIVE_URL) { showToast('Apps Script URL not configured.', 'error'); return; }
   const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
   if (!t) return;
@@ -16922,6 +16957,7 @@ async function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
 
 let _ccUpdateTimer = {};
 function ccUpdateField(bank, cardNum, stmtIdx, txIdx, field, val) {
+  if (!ccCanEdit()) return;
   const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
   if (!t) return;
   t[field] = val;
@@ -17018,7 +17054,7 @@ function ccRenderDetail() {
         <div style="text-align:center;padding:60px 20px">
           <div style="font-size:52px;margin-bottom:16px;opacity:.25">💳</div>
           <div style="font-size:16px;font-weight:700;color:#0f172a;margin-bottom:8px">No data</div>
-          <div style="font-size:13px;color:#94a3b8">Upload a PDF statement using the button above to get started.</div>
+          <div style="font-size:13px;color:#94a3b8">${ccCanEdit() ? 'Upload a PDF statement using the button above to get started.' : 'No statements have been uploaded yet.'}</div>
         </div>`}
       </div>`;
     return;
@@ -17029,7 +17065,7 @@ function ccRenderDetail() {
 
   // If no cards yet, show empty state
   if (!cards.length) {
-    panel.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#94a3b8;font-size:14px">No statements for <strong>${dtEscape(bank)}</strong> yet — upload a PDF statement above.</div>`;
+    panel.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#94a3b8;font-size:14px">No statements for <strong>${dtEscape(bank)}</strong> yet${ccCanEdit() ? ' — upload a PDF statement above' : ''}.</div>`;
     return;
   }
 
@@ -17133,6 +17169,10 @@ function ccRenderStatements() {
   const stmts   = _ccData[bank]?.[cardNum] || [];
   const safeCard = (cardNum||'').replace(/'/g,"\\'");
   const safeBank = (bank||'').replace(/'/g,"\\'");
+  // Read-only viewers lose every write control: the select column (it only
+  // feeds Bulk Apply), the owner/dept editors, upload-to-Drive and delete.
+  const canEdit = ccCanEdit();
+  const NCOLS   = canEdit ? 7 : 6;
 
   if (!stmts.length) {
     wrap.innerHTML = `<div style="text-align:center;padding:40px;color:#94a3b8;font-size:14px">No statements for this card yet.</div>`;
@@ -17170,29 +17210,29 @@ function ccRenderStatements() {
       const rowBg = ti%2===1?'background:#fafafa':'';
       return `
       <tr data-oi="${oi}" style="border-top:1px solid #f1f5f9;${rowBg}">
-        <td style="padding:8px 14px;text-align:center;border-right:1px solid #f1f5f9;width:36px">
+        ${canEdit ? `<td style="padding:8px 14px;text-align:center;border-right:1px solid #f1f5f9;width:36px">
           <input type="checkbox" class="ccTxChk-${si}" data-oi="${oi}" onchange="ccRowChkChange(${si})" style="width:15px;height:15px;cursor:pointer;accent-color:#4f46e5">
-        </td>
+        </td>` : ''}
         <td style="padding:8px 14px;font-size:13px;color:#475569;white-space:nowrap;text-align:center;border-right:1px solid #f1f5f9">${dtEscape(t.date||'—')}</td>
         <td style="padding:8px 14px;font-size:13px;color:#0f172a;border-right:1px solid #f1f5f9">${dtEscape(t.description||'—')}</td>
-        <td style="padding:8px 14px;font-size:13px;font-weight:600;color:${t.txn_type==='credit'?'#16a34a':'#0f172a'};text-align:right;white-space:nowrap;border-right:1px solid #f1f5f9">${t.txn_type==='credit'?'+ ':''}${(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+        <td class="ccAmtCell" style="padding:8px 14px;font-size:13px;font-weight:600;color:${t.txn_type==='credit'?'#16a34a':'#0f172a'};text-align:right;white-space:nowrap;border-right:1px solid #f1f5f9">${t.txn_type==='credit'?'+ ':''}${(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
         <td style="padding:6px 8px;border-right:1px solid #f1f5f9;text-align:center">
-          <div style="position:relative;display:inline-block">
+          ${canEdit ? `<div style="position:relative;display:inline-block">
             <div id="ccOwnBtn-${si}-${oi}" onclick="ccOwnToggleDrop('${safeBank}','${safeCard}',${si},${oi})"
               style="min-width:120px;padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:6px;user-select:none">
               <span id="ccOwnLabel-${si}-${oi}" style="color:#94a3b8;flex:1;text-align:left">— Owner —</span>
               <span style="color:#94a3b8;font-size:10px">▾</span>
             </div>
-          </div>
+          </div>` : `<span id="ccOwnLabel-${si}-${oi}" style="color:#94a3b8;font-size:12px">— Owner —</span>`}
         </td>
         <td style="padding:6px 8px;border-right:1px solid #f1f5f9;text-align:center">
-          <div style="position:relative;display:inline-block">
+          ${canEdit ? `<div style="position:relative;display:inline-block">
             <div id="ccDeptBtn-${si}-${oi}" onclick="ccDeptToggleDrop('${safeBank}','${safeCard}',${si},${oi})"
               style="min-width:130px;padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:6px;user-select:none">
               <span id="ccDeptLabel-${si}-${oi}" style="color:#94a3b8;flex:1;text-align:left">— Dept —</span>
               <span style="color:#94a3b8;font-size:10px">▾</span>
             </div>
-          </div>
+          </div>` : `<span id="ccDeptLabel-${si}-${oi}" style="color:#94a3b8;font-size:12px">— Dept —</span>`}
         </td>
         <td id="ccBillCell-${si}-${oi}" style="padding:6px 8px;text-align:center;min-width:80px">
           ${ccBillCellHtml(si, oi, safeBank, safeCard, t.id, t.bill_drive_id)}
@@ -17247,7 +17287,7 @@ function ccRenderStatements() {
             style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,.6);font-size:16px;cursor:pointer;line-height:1;padding:2px 4px;border-radius:4px"
             onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,.6)'">×</span>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        ${canEdit ? `<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
           <button onclick="ccOpenStatementDrive('${safeBank}','${safeCard}',${si},this)" title="Upload statement PDF to Drive"
             style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);border-radius:8px;padding:5px 10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center"
             onmouseover="this.style.background='rgba(255,255,255,.35)'"
@@ -17266,7 +17306,7 @@ function ccRenderStatements() {
             style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);color:#fff;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap"
             onmouseover="this.style.background='rgba(220,38,38,.6)'"
             onmouseout="this.style.background='rgba(255,255,255,.15)'">🗑 Delete</button>
-        </div>
+        </div>` : ''}
       </div>
       <!-- Stats grid -->
       <div style="display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-bottom:1px solid #e2e8f0">
@@ -17315,7 +17355,7 @@ function ccRenderStatements() {
         </div>`;
       })()}
       <!-- Bulk Apply bar -->
-      <div style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      ${canEdit ? `<div style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span style="font-size:12px;font-weight:700;color:#64748b;white-space:nowrap">Apply to selected / all visible:</span>
         <select id="ccBulkOwn-${si}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;outline:none;font-family:inherit;background:#fff">
           <option value="">— Owner —</option>
@@ -17331,15 +17371,15 @@ function ccRenderStatements() {
           style="padding:6px 14px;background:#4f46e5;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
           ✓ Apply
         </button>
-      </div>
+      </div>` : ''}
       <!-- Transactions -->
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;min-width:640px">
           <thead>
             <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
-              <th style="padding:9px 14px;text-align:center;border-right:1px solid #e2e8f0;width:36px">
+              ${canEdit ? `<th style="padding:9px 14px;text-align:center;border-right:1px solid #e2e8f0;width:36px">
                 <input type="checkbox" id="ccSelAll-${si}" onchange="ccToggleSelAll(${si})" title="Select all" style="width:15px;height:15px;cursor:pointer;accent-color:#4f46e5">
-              </th>
+              </th>` : ''}
               <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;border-right:1px solid #e2e8f0">Date</th>
               <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;border-right:1px solid #e2e8f0">Description</th>
               <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;border-right:1px solid #e2e8f0">Amount (₹)</th>
@@ -17349,12 +17389,12 @@ function ccRenderStatements() {
             </tr>
           </thead>
           <tbody id="ccTxBody-${si}">
-            ${txRows || `<tr><td colspan="7" style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">No transactions in this statement</td></tr>`}
+            ${txRows || `<tr><td colspan="${NCOLS}" style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">No transactions in this statement</td></tr>`}
           </tbody>
           ${txns.length ? `
           <tfoot>
             <tr style="border-top:2px solid #e2e8f0;background:#f8fafc">
-              <td colspan="3" style="padding:9px 12px;font-size:13px;font-weight:700;color:#0f172a">Transaction Sum</td>
+              <td colspan="${canEdit ? 3 : 2}" style="padding:9px 12px;font-size:13px;font-weight:700;color:#0f172a">Transaction Sum</td>
               <td style="padding:9px 12px;font-size:13px;font-weight:800;color:#dc2626;text-align:right">₹${txSum.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
               <td colspan="3"></td>
             </tr>
