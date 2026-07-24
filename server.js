@@ -7588,27 +7588,20 @@ app.delete('/api/client-portal/feedback/:id', requireAuth, async (req, res) => {
 // "Handles" means either the primary clients.handler_id or a client_handlers row.
 async function clientMasterScope(req) {
   const role = req.session.role;
-  if (role === 'admin' || role === 'pc') return null;
+  // admin / PC / HOD see every client. HODs were scoped to the clients handled
+  // by their own department, but handler assignments are not filled in yet, so
+  // that left them with almost an empty list — they get the full list until
+  // those assignments exist and the user asks to narrow it again.
+  if (role === 'admin' || role === 'pc' || role === 'hod') return null;
   const uid = req.session.userId;
-  const mine = `(c.handler_id = ?
-                 OR EXISTS (SELECT 1 FROM client_handlers ch
-                            WHERE ch.client_id = c.id AND ch.user_id = ?))`;
-  if (role === 'hod') {
-    const [[me]] = await db.query('SELECT department FROM users WHERE id=? LIMIT 1', [uid]);
-    const dept = (me?.department || '').trim();
-    // An HOD with no department recorded would otherwise match every other
-    // department-less user, so fall back to just their own clients.
-    if (!dept) return { sql: mine, params: [uid, uid] };
-    return {
-      sql: `(EXISTS (SELECT 1 FROM users hu
-                     WHERE hu.id = c.handler_id AND hu.department = ?)
-             OR EXISTS (SELECT 1 FROM client_handlers ch2
-                        JOIN users hu2 ON ch2.user_id = hu2.id
-                        WHERE ch2.client_id = c.id AND hu2.department = ?))`,
-      params: [dept, dept]
-    };
-  }
-  return { sql: mine, params: [uid, uid] };
+  // Everyone else: only the clients they personally handle, by the primary
+  // handler_id or a client_handlers row.
+  return {
+    sql: `(c.handler_id = ?
+           OR EXISTS (SELECT 1 FROM client_handlers ch
+                      WHERE ch.client_id = c.id AND ch.user_id = ?))`,
+    params: [uid, uid],
+  };
 }
 
 app.get('/api/clients', requireAuth, async (req, res) => {
