@@ -1806,7 +1806,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
           <input type="text" id="userSearch" placeholder="Search by name, email, dept, role…" oninput="filterUsers()"
             style="padding:8px 12px 8px 32px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;width:240px"/>
         </div>
-        <button class="btn btn-primary" id="usersAddBtn" onclick="openAddUser()">+ Add User</button>
+        <button class="btn btn-primary" onclick="openAddUser()">+ Add User</button>
 <button class="btn btn-outline" onclick="downloadUsersCSV()" style="display:flex;align-items:center;gap:6px;white-space:nowrap">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           CSV
@@ -4692,13 +4692,13 @@ let ME = null;
 // migration in server.js, which does the same for already-saved overrides.
 const ROLE_DEFAULTS = {
   hod:  { pages: ['dashboard','alltasks','approvals','mis','hrm','clients','leaves','meetings','daily','fms-tasks','inventory','compliance','paymentreq','feedback','creditcards'],
-           actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','hrm_schedule','hrm_update_status','delete_leave','edit_clients','edit_inventory','edit_paymentreq'] },
+           actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','hrm_schedule','hrm_update_status','delete_leave'] },
   pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance','paymentreq','feedback','creditcards'],
-           actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task','edit_clients','edit_paymentreq'] },
+           actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task'] },
   // 'clients' here is the Client Master tab. A user only ever sees the clients
   // they handle (the list is scoped server-side) and cannot edit anything.
   user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance','clients','paymentreq','feedback','creditcards'],
-           actions: ['create_task','edit_task','delete_task','edit_paymentreq'] }
+           actions: ['create_task','edit_task','delete_task'] }
 };
 
 function canSee(page) {
@@ -4993,10 +4993,6 @@ function switchUsersTab(tab, el) {
   document.getElementById('usersSubPanel-users').style.display  = tab === 'users'  ? 'block' : 'none';
   document.getElementById('usersSubPanel-access').style.display = tab === 'access' ? 'block' : 'none';
   document.getElementById('usersTabActions').style.display      = tab === 'users'  ? 'flex'  : 'none';
-  const addBtn = document.getElementById('usersAddBtn');
-  if (addBtn) addBtn.style.display = canDo('edit_users') ? '' : 'none';
-  const accTab = document.getElementById('usersSubTab-access');
-  if (accTab) accTab.style.display = ME.role === 'admin' ? '' : 'none';
   if (tab === 'access') renderAccessMatrix();
 }
 
@@ -5045,7 +5041,7 @@ const PERM_TREE = [
     { key: 'transfer_task',    label: 'Transfer' },
     { key: 'set_plan',         label: 'Set Plan' },
   ]},
-  { page: 'clients',      label: 'Client Master',  icon: '🏢', enforced: true, actions: [
+  { page: 'clients',      label: 'Client Master',  icon: '🏢', enforced: false, actions: [
     { key: 'edit_clients', label: 'Edit' },
   ]},
   { page: 'compliance',   label: 'Compliance',     icon: '✅', enforced: false, actions: [
@@ -5060,7 +5056,7 @@ const PERM_TREE = [
   { page: 'meetings',     label: 'Scheduler',      icon: '📆', enforced: false, actions: [
     { key: 'edit_meetings', label: 'Edit' },
   ]},
-  { page: 'inventory',    label: 'Inventory',      icon: '📦', enforced: true, actions: [
+  { page: 'inventory',    label: 'Inventory',      icon: '📦', enforced: false, actions: [
     { key: 'edit_inventory', label: 'Edit' },
   ]},
   { page: 'hrm',          label: 'HR Portal',      icon: '👥', enforced: true, actions: [
@@ -5070,13 +5066,13 @@ const PERM_TREE = [
   { page: 'dms',          label: 'DMS',            icon: '🗂️', enforced: false, actions: [
     { key: 'edit_dms', label: 'Edit' },
   ]},
-  { page: 'paymentreq',   label: 'Payment Request', icon: '💰', enforced: true, actions: [
+  { page: 'paymentreq',   label: 'Payment Request', icon: '💰', enforced: false, actions: [
     { key: 'edit_paymentreq', label: 'Edit' },
   ]},
   { page: 'feedback',     label: 'Escalation',     icon: '💬', enforced: false, actions: [
     { key: 'edit_feedback', label: 'Edit' },
   ]},
-  { page: 'users',        label: 'Users',          icon: '👤', enforced: true, actions: [
+  { page: 'users',        label: 'Users',          icon: '👤', enforced: false, actions: [
     { key: 'edit_users', label: 'Edit' },
   ]},
   // The last two are `grantable:false` — their real gate lives outside this
@@ -5115,8 +5111,6 @@ function accSetLevel(perms, pg, level) {
   return perms;
 }
 
-let _accFeatureQuery = '';  // feature-search text, kept outside the panel HTML
-                            // because loadUserPerms() rebuilds it on every change
 let _accPerms = {};        // working copy, keyed by user id — {pages, actions}
 let _accSaved = {};        // last-saved copy, for the dirty check
 let _accRoles = {};        // working copy of each user's role
@@ -5274,7 +5268,7 @@ function loadUserPerms(userId) {
     const opts = ACC_LEVELS.map(l =>
       `<option value="${l.key}" ${l.key===lvl?'selected':''}>${l.label}</option>`).join('');
     const dim = lvl === 'none';
-    return `<div class="acc-page-row" data-feature="${esc((pg.label + ' ' + pg.page).toLowerCase())}">
+    return `<div class="acc-page-row">
       <div class="acc-page-row-main">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
           <span style="font-size:20px;width:28px;text-align:center;flex-shrink:0">${pg.icon}</span>
@@ -5293,42 +5287,10 @@ function loadUserPerms(userId) {
   panel.innerHTML = accPanelHeaderHtml(u) + `
     <div style="padding:8px 20px;border-bottom:1px solid #f1f5f9;background:#fffbeb;font-size:11px;color:#92400e">
       <strong>No Access</strong> hides the feature · <strong>View</strong> shows it read-only · <strong>Editor</strong> allows changes.
-      Most features are enforced in the app only — it controls what the app shows, not what the API accepts.
+      Nothing here is enforced by the server yet — it controls what the app shows, not what the API accepts.
     </div>
-    <div style="padding:10px 20px;border-bottom:1px solid #f1f5f9;background:#fff;display:flex;align-items:center;gap:10px">
-      <input id="accFeatureSearch" type="text" placeholder="🔍 Search features…" value="${esc(_accFeatureQuery)}"
-        oninput="filterAccFeatures(this.value)"
-        style="flex:1;min-width:0;box-sizing:border-box;border:1.5px solid #e2e8f0;border-radius:8px;padding:7px 12px;font-size:12px;outline:none;font-family:inherit"
-        onfocus="this.style.borderColor='#4f46e5'" onblur="this.style.borderColor='#e2e8f0'">
-      <span id="accFeatureCount" style="font-size:11px;color:#94a3b8;white-space:nowrap"></span>
-    </div>
-    <div id="accFeatureRows" style="overflow-y:auto;max-height:calc(100vh - 380px)">${rows}
-      <div id="accNoFeatureMatch" style="display:none;padding:28px 20px;text-align:center;color:#94a3b8;font-size:13px">No feature matches that search.</div>
-    </div>`;
-  applyAccFeatureFilter();
+    <div style="overflow-y:auto;max-height:calc(100vh - 320px)">${rows}</div>`;
   accSyncDirty(userId);
-}
-
-function filterAccFeatures(q) {
-  _accFeatureQuery = q || '';
-  applyAccFeatureFilter();
-}
-
-// Re-applied after every panel render, since changing a dropdown rebuilds the
-// whole list and would otherwise drop the active search.
-function applyAccFeatureFilter() {
-  const q = _accFeatureQuery.trim().toLowerCase();
-  const rows = document.querySelectorAll('#accFeatureRows .acc-page-row');
-  let shown = 0;
-  rows.forEach(el => {
-    const hit = !q || (el.dataset.feature || '').includes(q);
-    el.style.display = hit ? '' : 'none';
-    if (hit) shown++;
-  });
-  const empty = document.getElementById('accNoFeatureMatch');
-  if (empty) empty.style.display = (q && shown === 0) ? 'block' : 'none';
-  const count = document.getElementById('accFeatureCount');
-  if (count) count.textContent = q ? `${shown} of ${rows.length}` : `${rows.length} features`;
 }
 
 function onAccLevelChange(userId, page, level) {
@@ -5440,7 +5402,7 @@ const invReasonOptions = (allowed) => '<option value="">--select--</option>' +
 const INV_STATUS_COLORS = {available:'#10b981',assigned:'#f59e0b',damaged:'#ef4444',retired:'#94a3b8'};
 
 async function loadInventory() {
-  const isAdmin = canDo('edit_inventory'); // custodian rights, not the admin role
+  const isAdmin = ME.role === 'admin' || ME.role === 'hod';
   if (isAdmin) {
     document.getElementById('invTabAll').style.display = 'inline-flex';
     document.getElementById('invTabAssign').style.display = 'inline-flex';
@@ -5471,7 +5433,7 @@ function switchInvTab(tab, el) {
 
 function renderInventory() {
   const el = document.getElementById('invContent');
-  const isAdmin = canDo('edit_inventory'); // custodian rights, not the admin role
+  const isAdmin = ME.role === 'admin' || ME.role === 'hod';
 
   // Add Item is contextual to the open tab — it adds to whatever the tab
   // shows. Assignments is a read-only history view, so nothing to add there.
@@ -8935,8 +8897,8 @@ function renderUsersTable(users) {
         ${showBoth ? `<br><span class="role-badge ${['admin','hod','pc','user'].includes(userRole)?userRole:'user'}" style="font-size:10px;margin-top:3px;display:inline-block;opacity:.85" title="User Role — leave hierarchy">→ ${roleLabel(userRole)}</span>` : ''}
       </td>
       <td>
-        ${canDo('edit_users') ? `<button class="action-btn edit" onclick="openEditUser(${u.id})">Edit</button>
-        <button class="action-btn delete" style="margin-left:6px" onclick="deleteUser(${u.id})">Delete</button>` : '<span style="font-size:11px;color:#94a3b8">—</span>'}
+        <button class="action-btn edit" onclick="openEditUser(${u.id})">Edit</button>
+        <button class="action-btn delete" style="margin-left:6px" onclick="deleteUser(${u.id})">Delete</button>
       </td>
     </tr>`;
   }).join('');
@@ -9020,7 +8982,6 @@ function readExtraAccessFromForm() {
 }
 
 function openAddUser() {
-  if (!canDo('edit_users')) return;
   document.getElementById('userModalTitle').textContent='Add User';
   ['editUserId','uName','uEmail','uNotifEmail','uPhone','uDepartment','uPassword','uBirthday','uJoiningDate'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('uRole').value='user';
@@ -9036,7 +8997,6 @@ function openAddUser() {
 }
 
 function openEditUser(id) {
-  if (!canDo('edit_users')) return;
   const u = _usersMap[id];
   if (!u) { appAlert('User data not found. Please refresh the page.'); return; }
   document.getElementById('userModalTitle').textContent='Edit User';
@@ -12550,14 +12510,11 @@ function cmInitials(name){
   return parts.map(p => p[0] || '').join('').toUpperCase() || '?';
 }
 
-// Client Master edit rights. Was a flat admin/HOD/PC role test; it is now the
-// Access Control "Editor" level, which the client write routes enforce with the
-// same key server-side. admin/hod/pc still pass by default because edit_clients
-// is in their ROLE_DEFAULTS — the difference is that an admin can now grant it
-// to one plain user, or revoke it from a single HOD.
-// Note "Remove" is still admin-only server-side (requireAdmin): deleting a
-// client takes its tasks, handlers and DMS links with it.
-function cmCanEdit(){ return canDo('edit_clients'); }
+// Client Master is read-only for anyone who is not admin/HOD/PC — they reach it
+// only to see the clients they handle. The write routes already refuse them
+// (requireAdminOrHod), so this just stops the app from offering buttons that
+// would 403.
+function cmCanEdit(){ return ME && ['admin','hod','pc'].includes(ME.role); }
 
 function cmApplyRoleControls(){
   const show = cmCanEdit() ? '' : 'none';
@@ -12693,7 +12650,7 @@ function cmRenderList(){
             <span class="cm-switch-track"></span>
             <span class="cm-switch-label">${isOn ? 'Active' : 'Inactive'}</span>
           </span>
-          ${ME.role === 'admin' ? `<button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>` : ''}
+          ${cmCanEdit() ? `<button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>` : ''}
           <span class="cm-client-arrow">›</span>
         </div>
       </div>`;
@@ -15340,11 +15297,8 @@ async function initPaymentReqPage() {
     _prCards = Array.isArray(res) ? res : [];
   } catch(e) { _prCards = []; }
   prPopulateBanks();
-  // View level gets the page read-only: the submission form goes away, the
-  // request list stays. Approve/reject and mark-paid are a separate,
-  // name-based question and are untouched by this.
   const formWrap = document.getElementById('prFormWrap');
-  if (formWrap) formWrap.style.display = canDo('edit_paymentreq') ? '' : 'none';
+  if (formWrap) formWrap.style.display = '';
   const listTitle = document.getElementById('prMyListTitle');
   if (listTitle) listTitle.textContent = ME.role === 'admin' ? 'All Requests' : 'My Requests';
   loadMyPaymentRequests();
@@ -15487,7 +15441,6 @@ function prParseReason(raw) {
 }
 
 async function prSubmit() {
-  if (!canDo('edit_paymentreq')) return;
   const bankSel = document.getElementById('prBank').value;
   const cardSel = document.getElementById('prCard').value;
   const reason  = document.getElementById('prReason').value.trim();

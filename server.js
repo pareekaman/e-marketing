@@ -2864,8 +2864,7 @@ app.get('/api/users', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/users', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_users'))) return res.status(403).json({ error: 'Forbidden' });
+app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { name, email, notification_email, password, role, user_role, phone, department, week_off, extra_off, exclude_from_reminder, extra_access, birthday, joining_date } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
@@ -2895,8 +2894,7 @@ app.post('/api/users', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.put('/api/users/:id', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_users'))) return res.status(403).json({ error: 'Forbidden' });
+app.put('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { name, email, notification_email, role, user_role, password, phone, department, week_off, extra_off, exclude_from_reminder, extra_access, birthday, joining_date } = req.body;
     const exclVal = exclude_from_reminder ? 1 : 0;
@@ -2986,8 +2984,7 @@ app.post('/api/admin/send-birthday-reminder', requireAuth, requireAdmin, async (
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/users/:id', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_users'))) return res.status(403).json({ error: 'Forbidden' });
+app.delete('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     if (parseInt(req.params.id) === req.session.userId) return res.status(400).json({ error: 'Cannot delete yourself' });
     const [doomed] = await db.query('SELECT * FROM users WHERE id=?', [req.params.id]);
@@ -2998,8 +2995,7 @@ app.delete('/api/users/:id', requireAuth, async (req, res) => {
 });
 
 // Bulk add users via CSV
-app.post('/api/users/bulk', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_users'))) return res.status(403).json({ error: 'Forbidden' });
+app.post('/api/users/bulk', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { users } = req.body;
     if (!users || !users.length) return res.status(400).json({ error: 'No users provided' });
@@ -3039,11 +3035,11 @@ const VALID_UP_ACTIONS = new Set(['edit_task','delete_task','create_task','creat
 // offering a page the API then rejects.
 const SERVER_ROLE_DEFAULTS = {
   hod:  { pages: ['dashboard','alltasks','approvals','mis','hrm','clients','leaves','meetings','daily','fms-tasks','inventory','compliance','paymentreq','feedback','creditcards'],
-          actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','hrm_schedule','hrm_update_status','delete_leave','edit_clients','edit_inventory','edit_paymentreq'] },
+          actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','hrm_schedule','hrm_update_status','delete_leave'] },
   pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance','paymentreq','feedback','creditcards'],
-          actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task','edit_clients','edit_paymentreq'] },
+          actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task'] },
   user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance','clients','paymentreq','feedback','creditcards'],
-          actions: ['create_task','edit_task','delete_task','edit_paymentreq'] }
+          actions: ['create_task','edit_task','delete_task'] }
 };
 
 // Mirrors canSee()'s cascade exactly: an explicit user_permissions row wins
@@ -7158,7 +7154,6 @@ const PR_APPROVERS = ['Naman Gupta', 'Abhishek Jain', 'Simran Gurnani'];
 
 // GET /api/payment-requests/cards — card list for dropdown (all logged-in users)
 app.get('/api/payment-requests/cards', requireAuth, async (req, res) => {
-    if (!(await userCanSee(req.session, 'paymentreq'))) return res.status(403).json({ error:'Access denied' });
   try {
     // Merge manually-managed pr_cards + any cc_cards from PDF uploads
     const [rows] = await db.query(`
@@ -7239,7 +7234,6 @@ app.delete('/api/payment-requests/:id', requireAuth, async (req, res) => {
 app.post('/api/payment-requests', requireAuth, async (req, res) => {
   try {
     const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!(await userCanDo(req.session, 'edit_paymentreq'))) return res.status(403).json({ error:'Access denied' });
     if (!me) return res.status(403).json({ error:'Access denied' });
     const { bank_name, card_number, amount, reason } = req.body;
     if (!bank_name || !card_number || !reason) return res.status(400).json({ error:'All fields required' });
@@ -7284,7 +7278,6 @@ app.get('/api/payment-requests', requireAuth, async (req, res) => {
 
 // GET /api/payment-requests/my — own requests (any logged-in user)
 app.get('/api/payment-requests/my', requireAuth, async (req, res) => {
-    if (!(await userCanSee(req.session, 'paymentreq'))) return res.status(403).json({ error:'Access denied' });
   try {
     const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
     if (!me) return res.status(403).json({ error:'Access denied' });
@@ -7633,8 +7626,7 @@ app.get('/api/clients', requireAuth, async (req, res) => {
 
 // Update / clear client logo. Body: { logo: <data-URL string> | null }.
 // 1.5 MB cap on payload — base64 expansion + headroom for a 256x256 JPEG.
-app.put('/api/clients/:id/logo', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_clients'))) return res.status(403).json({ error: 'Forbidden' });
+app.put('/api/clients/:id/logo', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const id = req.params.id;
     let { logo } = req.body;
@@ -7654,8 +7646,7 @@ app.put('/api/clients/:id/logo', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/clients', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_clients'))) return res.status(403).json({ error: 'Forbidden' });
+app.post('/api/clients', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const name = (req.body.name || '').trim();
     const handlerRaw = req.body.handler_id;
@@ -7700,8 +7691,7 @@ app.post('/api/clients', requireAuth, async (req, res) => {
   }
 });
 
-app.put('/api/clients/:id', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_clients'))) return res.status(403).json({ error: 'Forbidden' });
+app.put('/api/clients/:id', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const id = req.params.id;
     const name = req.body.name == null ? null : String(req.body.name).trim();
@@ -7736,7 +7726,6 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
 
 // Multi-handler support — get all handlers for a client
 app.get('/api/clients/:id/handlers', requireAuth, requireAdminOrHod, async (req, res) => {
-  if (!(await userCanSee(req.session, 'clients'))) return res.status(403).json({ error: 'Forbidden' });
   try {
     const [rows] = await db.query(
       `SELECT ch.user_id AS id, u.name, COALESCE(u.department,'') AS department
@@ -7747,8 +7736,7 @@ app.get('/api/clients/:id/handlers', requireAuth, requireAdminOrHod, async (req,
 });
 
 // Multi-handler support — replace all handlers for a client
-app.put('/api/clients/:id/handlers', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_clients'))) return res.status(403).json({ error: 'Forbidden' });
+app.put('/api/clients/:id/handlers', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const userIds = Array.isArray(req.body.user_ids)
@@ -7776,8 +7764,7 @@ app.delete('/api/clients/:id', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // Bulk add clients via CSV
-app.post('/api/clients/bulk', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_clients'))) return res.status(403).json({ error: 'Forbidden' });
+app.post('/api/clients/bulk', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const { names } = req.body;
     if (!Array.isArray(names) || !names.length) {
@@ -7808,7 +7795,6 @@ app.post('/api/clients/bulk', requireAuth, async (req, res) => {
 // current month (IST). Accepts ?from=YYYY-MM-DD&to=YYYY-MM-DD to widen the
 // window. Includes delegation/checklist task counts + meetings + recent rows.
 app.get('/api/clients/:id/stats', requireAuth, requireAdminOrHod, async (req, res) => {
-  if (!(await userCanSee(req.session, 'clients'))) return res.status(403).json({ error: 'Forbidden' });
   try {
     const id = req.params.id;
     const [[client]] = await db.query(
@@ -7907,8 +7893,7 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrHod, async (req, re
 
 // Provision or update client login. Creates the users row if missing, or
 // updates email/password on the existing one. Admin/HOD/PC only.
-app.post('/api/clients/:id/login', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_clients'))) return res.status(403).json({ error: 'Forbidden' });
+app.post('/api/clients/:id/login', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
     const id = req.params.id;
     const email = (req.body.email || '').trim().toLowerCase();
@@ -10052,7 +10037,7 @@ const INV_HOLDER_REASONS = new Set(['offboarding', 'damaged']);
 // Get all items (admin/hod see all; others see only assigned to them)
 app.get('/api/inventory/items', requireAuth, async (req, res) => {
   try {
-    const isAdmin = await userCanDo(req.session, 'edit_inventory');
+    const isAdmin = ['admin','hod'].includes(req.session.role);
     let rows;
     if (isAdmin) {
       [rows] = await db.query(`
@@ -10081,7 +10066,7 @@ app.get('/api/inventory/items', requireAuth, async (req, res) => {
 
 // Add new item (admin only)
 app.post('/api/inventory/items', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_inventory'))) return res.status(403).json({ error: 'Forbidden' });
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
   try {
     const { name, type, brand, model, serial_number, photo, item_condition, notes } = req.body;
     if (!name || !type) return res.status(400).json({ error: 'name and type required' });
@@ -10124,7 +10109,7 @@ app.post('/api/inventory/self-add', requireAuth, async (req, res) => {
 
 // Update item (admin only)
 app.put('/api/inventory/items/:id', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_inventory'))) return res.status(403).json({ error: 'Forbidden' });
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
   try {
     const { name, brand, model, serial_number, photo, item_condition, status, notes } = req.body;
     await db.query(
@@ -10154,7 +10139,7 @@ app.delete('/api/inventory/items/:id', requireAuth, async (req, res) => {
 
 // Assign item to user (admin only)
 app.post('/api/inventory/assign', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_inventory'))) return res.status(403).json({ error: 'Forbidden' });
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
   try {
     const { item_id, user_id } = req.body;
     if (!item_id || !user_id) return res.status(400).json({ error: 'item_id and user_id required' });
@@ -10171,7 +10156,7 @@ app.post('/api/inventory/assign', requireAuth, async (req, res) => {
 
 // Get all assignments (admin/hod)
 app.get('/api/inventory/assignments', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_inventory'))) return res.status(403).json({ error: 'Forbidden' });
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
   try {
     const [rows] = await db.query(`
       SELECT a.*, i.name AS item_name, i.type AS item_type, i.brand, i.model, i.serial_number, i.photo,
@@ -10199,7 +10184,7 @@ app.post('/api/inventory/handover/:assignment_id', requireAuth, async (req, res)
     }
     const [[a]] = await db.query('SELECT * FROM inventory_assignments WHERE id=?', [req.params.assignment_id]);
     if (!a) return res.status(404).json({ error: 'Assignment not found' });
-    const isAdmin = await userCanDo(req.session, 'edit_inventory');
+    const isAdmin = ['admin','hod'].includes(req.session.role);
     if (!isAdmin && a.user_id !== req.session.userId) {
       return res.status(403).json({ error: 'You can only return equipment assigned to you' });
     }
@@ -10222,7 +10207,7 @@ app.post('/api/inventory/handover/:assignment_id', requireAuth, async (req, res)
 // damaged/retired take it out of circulation so it can't be assigned again,
 // offboarding puts it back in available stock.
 app.post('/api/inventory/return/:assignment_id', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_inventory'))) return res.status(403).json({ error: 'Forbidden' });
+  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
   try {
     const { reason } = req.body;
     const mapped = invReturnReason(reason);
