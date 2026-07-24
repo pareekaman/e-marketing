@@ -1464,7 +1464,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <svg class="nav-group-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 9l6 6 6-6"/></svg>
       </div>
       <div class="nav-group-items">
-        <div class="nav-item" onclick="navigate('alltasks',this)">
+        <div class="nav-item" id="nav-alltasks" onclick="navigate('alltasks',this)">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
           <span class="nav-label-text">All Tasks</span>
         </div>
@@ -2842,7 +2842,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
           <div class="card-head-title">Recent Candidates</div>
           <div style="display:flex;gap:8px;align-items:center">
             <button class="hrm-view-all" onclick="switchHrmTab('candidates',document.querySelector('#page-hrm .tab-group .tab:nth-child(2)'))">View All →</button>
-            <button class="btn btn-primary btn-sm" onclick="openHrmAddModal()">＋ Schedule Interview</button>
+            <button class="btn btn-primary btn-sm" id="hrmScheduleBtnTop" onclick="openHrmAddModal()">＋ Schedule Interview</button>
           </div>
         </div>
         <div id="hrm-recent-table"><div class="empty">Loading…</div></div>
@@ -2867,7 +2867,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
             <option value="">All Positions</option>
           </select>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="openHrmAddModal()">＋ Schedule Interview</button>
+        <button class="btn btn-primary btn-sm" id="hrmScheduleBtnList" onclick="openHrmAddModal()">＋ Schedule Interview</button>
       </div>
       <div class="hrm-card">
         <div id="hrm-candidates-table"><div class="empty">Loading…</div></div>
@@ -4691,13 +4691,13 @@ let ME = null;
 // would lose a page they can reach today. See also the perm_pages_backfill_v1
 // migration in server.js, which does the same for already-saved overrides.
 const ROLE_DEFAULTS = {
-  hod:  { pages: ['dashboard','alltasks','approvals','mis','hrm','clients','leaves','meetings','daily','fms-tasks','inventory','compliance','paymentreq','feedback'],
+  hod:  { pages: ['dashboard','alltasks','approvals','mis','hrm','clients','leaves','meetings','daily','fms-tasks','inventory','compliance','paymentreq','feedback','creditcards'],
            actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','hrm_schedule','hrm_update_status','delete_leave'] },
-  pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance','paymentreq','feedback'],
+  pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance','paymentreq','feedback','creditcards'],
            actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task'] },
   // 'clients' here is the Client Master tab. A user only ever sees the clients
   // they handle (the list is scoped server-side) and cannot edit anything.
-  user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance','clients','paymentreq','feedback'],
+  user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance','clients','paymentreq','feedback','creditcards'],
            actions: ['create_task','edit_task','delete_task'] }
 };
 
@@ -4785,6 +4785,14 @@ async function init() {
       'nav-meetings':     'meetings',
       'nav-inventory':    'inventory',
       'nav-dms':          'dms',
+      // These five were previously ungated — their sidebar entry was always
+      // visible, so a "No Access" grant in the panel silently did nothing.
+      // All of them are in every role's defaults, so adding them here changes
+      // nothing until an admin actually revokes one.
+      'nav-alltasks':     'alltasks',
+      'nav-approvals':    'approvals',
+      'nav-daily':        'daily',
+      'nav-leaves':       'leaves',
     };
     for (const [navId, page] of Object.entries(NAV_MAP)) {
       const el = document.getElementById(navId);
@@ -4792,11 +4800,11 @@ async function init() {
     }
     // Credit Cards nav — all admins (full access), plus CC_VIEWERS (read-only)
     const ccNav = document.getElementById('nav-creditcards');
-    if (ccNav) ccNav.style.display = ccCanView() ? 'flex' : 'none';
+    if (ccNav) ccNav.style.display = (ccCanView() && canSee('creditcards')) ? 'flex' : 'none';
     // Logs nav — admin only, and deliberately not grantable via extra_access /
     // user_permissions: the archive exposes every deleted row app-wide.
     const logsNav = document.getElementById('nav-logs');
-    if (logsNav) logsNav.style.display = (ME.role === 'admin') ? 'flex' : 'none';
+    if (logsNav) logsNav.style.display = (ME.role === 'admin' && canSee('logs')) ? 'flex' : 'none';
     // Payment Request nav — every role has it by default (ROLE_DEFAULTS), but
     // it is revocable per user from Access Control.
     const prNav = document.getElementById('nav-paymentreq');
@@ -5003,9 +5011,9 @@ function switchUsersTab(tab, el) {
 // canDo(), but right now View and Editor behave the same there — the panel
 // labels those rows rather than pretending otherwise.
 const PERM_TREE = [
-  { page: 'dashboard',    label: 'Dashboard',      icon: '🏠', enforced: false, actions: [
-    { key: 'edit_dashboard', label: 'Edit' },
-  ]},
+  { page: 'dashboard',    label: 'Dashboard',      icon: '🏠', enforced: false, locked: true,
+    note: 'Always on — this is the landing page every user falls back to',
+    actions: [{ key: 'edit_dashboard', label: 'Edit' }] },
   { page: 'alltasks',     label: 'All Tasks',      icon: '✅', enforced: true, actions: [
     { key: 'edit_task',    label: 'Edit' },
     { key: 'delete_task',  label: 'Delete' },
@@ -5015,7 +5023,7 @@ const PERM_TREE = [
     { key: 'approve_revision', label: 'Approve' },
     { key: 'bulk_approve',     label: 'Bulk' },
   ]},
-  { page: 'mis',          label: 'MIS',            icon: '📊', enforced: false, actions: [
+  { page: 'mis',          label: 'MIS Report',     icon: '📊', enforced: false, actions: [
     { key: 'edit_mis', label: 'Edit' },
   ]},
   { page: 'race',         label: 'Race Tracker',   icon: '🏁', enforced: false, actions: [
@@ -5024,16 +5032,16 @@ const PERM_TREE = [
   { page: 'fms',          label: 'FMS Admin',      icon: '📋', enforced: false, actions: [
     { key: 'edit_fms', label: 'Edit' },
   ]},
-  { page: 'fms-tasks',    label: 'FMS Tasks',      icon: '📝', enforced: false, actions: [
-    { key: 'edit_fms_tasks', label: 'Edit' },
-  ]},
+  { page: 'fms-tasks',    label: 'FMS Tasks',      icon: '📝', enforced: false,
+    note: 'Also shows automatically for anyone assigned as an FMS doer, even on No Access',
+    actions: [{ key: 'edit_fms_tasks', label: 'Edit' }] },
   { page: 'daily',        label: 'Daily Task',     icon: '📅', enforced: true, actions: [
     { key: 'create_task',      label: 'Delegate' },
     { key: 'create_checklist', label: 'Checklist' },
     { key: 'transfer_task',    label: 'Transfer' },
     { key: 'set_plan',         label: 'Set Plan' },
   ]},
-  { page: 'clients',      label: 'Clients',        icon: '🏢', enforced: false, actions: [
+  { page: 'clients',      label: 'Client Master',  icon: '🏢', enforced: false, actions: [
     { key: 'edit_clients', label: 'Edit' },
   ]},
   { page: 'compliance',   label: 'Compliance',     icon: '✅', enforced: false, actions: [
@@ -5051,22 +5059,32 @@ const PERM_TREE = [
   { page: 'inventory',    label: 'Inventory',      icon: '📦', enforced: false, actions: [
     { key: 'edit_inventory', label: 'Edit' },
   ]},
-  { page: 'hrm',          label: 'HR Portal',      icon: '👥', enforced: false, actions: [
+  { page: 'hrm',          label: 'HR Portal',      icon: '👥', enforced: true, actions: [
     { key: 'hrm_schedule',      label: 'Schedule' },
     { key: 'hrm_update_status', label: 'Status' },
   ]},
-  { page: 'dms',          label: 'Drive DMS',      icon: '🗂️', enforced: false, actions: [
+  { page: 'dms',          label: 'DMS',            icon: '🗂️', enforced: false, actions: [
     { key: 'edit_dms', label: 'Edit' },
   ]},
   { page: 'paymentreq',   label: 'Payment Request', icon: '💰', enforced: false, actions: [
     { key: 'edit_paymentreq', label: 'Edit' },
   ]},
-  { page: 'feedback',     label: 'Feedback',       icon: '💬', enforced: false, actions: [
+  { page: 'feedback',     label: 'Escalation',     icon: '💬', enforced: false, actions: [
     { key: 'edit_feedback', label: 'Edit' },
   ]},
-  { page: 'users',        label: 'User Mgmt',      icon: '👤', enforced: false, actions: [
+  { page: 'users',        label: 'Users',          icon: '👤', enforced: false, actions: [
     { key: 'edit_users', label: 'Edit' },
   ]},
+  // The last two are `grantable:false` — their real gate lives outside this
+  // panel, so the dropdown can only take access AWAY, never hand it out. They
+  // are listed anyway so the feature list matches the sidebar; leaving them
+  // out just makes the panel look broken.
+  { page: 'creditcards',  label: 'Credit Card Statement', icon: '💳', enforced: false, grantable: false,
+    note: 'Granted by admin role + the CC_VIEWERS list in code — this can only revoke',
+    actions: [{ key: 'edit_creditcards', label: 'Edit' }] },
+  { page: 'logs',         label: 'Logs',           icon: '🗒️', enforced: false, grantable: false, locked: true,
+    note: 'Admin only by design (exposes every deleted row app-wide) — not grantable here',
+    actions: [{ key: 'edit_logs', label: 'Edit' }] },
 ];
 
 const ACC_LEVELS = [
@@ -5256,11 +5274,12 @@ function loadUserPerms(userId) {
           <span style="font-size:20px;width:28px;text-align:center;flex-shrink:0">${pg.icon}</span>
           <div style="min-width:0">
             <div style="font-size:13px;font-weight:600;color:${dim?'#94a3b8':'#1e293b'}">${pg.label}</div>
-            ${!pg.enforced ? `<div style="font-size:11px;color:#d97706;margin-top:1px" title="The Editor choice is saved, but this page's buttons are not wired to the permission check yet — View and Editor behave the same here for now.">⚠ Editor not enforced yet</div>` : ''}
+            ${pg.note ? `<div style="font-size:11px;color:#64748b;margin-top:1px">🔒 ${pg.note}</div>` : ''}
+            ${!pg.enforced && pg.grantable !== false ? `<div style="font-size:11px;color:#d97706;margin-top:1px" title="The Editor choice is saved, but this page's buttons are not wired to the permission check yet — View and Editor behave the same here for now.">⚠ Editor not enforced yet</div>` : ''}
           </div>
         </div>
-        <select onchange="onAccLevelChange(${userId},'${pg.page}',this.value)"
-          style="flex-shrink:0;min-width:120px;padding:6px 10px;border:1.5px solid ${lvl==='edit'?'#4f46e5':lvl==='view'?'#e2e8f0':'#e2e8f0'};border-radius:8px;font-size:12px;font-weight:600;font-family:inherit;outline:none;cursor:pointer;background:#fff;color:${dim?'#94a3b8':'#0f172a'}">${opts}</select>
+        <select onchange="onAccLevelChange(${userId},'${pg.page}',this.value)" ${pg.locked?'disabled':''}
+          style="flex-shrink:0;min-width:120px;padding:6px 10px;border:1.5px solid ${lvl==='edit'?'#4f46e5':'#e2e8f0'};border-radius:8px;font-size:12px;font-weight:600;font-family:inherit;outline:none;cursor:${pg.locked?'not-allowed':'pointer'};background:${pg.locked?'#f1f5f9':'#fff'};color:${dim?'#94a3b8':'#0f172a'}">${opts}</select>
       </div>
     </div>`;
   }).join('');
@@ -5910,6 +5929,13 @@ async function loadHRM() {
   _hrmCandidates = Array.isArray(candidates) ? candidates : [];
   _hrmMessages   = Array.isArray(messages)   ? messages   : [];
 
+  // View-level access gets the page read-only: no scheduling, no status edits.
+  const canSchedule = canDo('hrm_schedule');
+  ['hrmScheduleBtnTop','hrmScheduleBtnList'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.style.display = canSchedule ? '' : 'none';
+  });
+
   if (stats && !stats.error) {
     document.getElementById('hrm-stat-total').textContent    = stats.total || 0;
     document.getElementById('hrm-stat-today').textContent    = stats.today_interviews || 0;
@@ -5967,7 +5993,7 @@ function renderHrmRows(list) {
     const initials = (c.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
     const dateStr = c.interview_date ? new Date(c.interview_date).toLocaleDateString('en-IN') : '—';
     const reDateStr = c.reschedule_date ? new Date(c.reschedule_date).toLocaleDateString('en-IN') : '';
-    const canUpdate = c.status !== 'Rejected';
+    const canUpdate = c.status !== 'Rejected' && canDo('hrm_update_status');
     return `<tr>
       <td>
         <div style="display:flex;align-items:center;gap:10px">
@@ -6094,6 +6120,7 @@ async function deleteHrmMsg(id) {
 }
 
 async function openHrmAddModal() {
+  if (!canDo('hrm_schedule')) return;
   ['hrmCName','hrmCProfile','hrmCPhone','hrmCInterviewer','hrmCLink','hrmCNotes'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('hrmCDate').value = '';
   document.getElementById('hrmCTime').value = '';
@@ -6562,6 +6589,8 @@ function navigate(page, el) {
   if (page === 'race' && ME.role !== 'admin') return;
   // Logs (deleted-records archive) — admin only
   if (page === 'logs' && ME.role !== 'admin') return;
+  // Credit Cards — server-side viewer list decides, Access Control can revoke
+  if (page === 'creditcards' && !(ccCanView() && canSee('creditcards'))) return;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
