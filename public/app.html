@@ -4684,14 +4684,20 @@ function renderDbmTable() {
 // STATE
 // ══════════════════════════════════════════════════════
 let ME = null;
+// 'paymentreq' and 'feedback' are in every role's defaults on purpose: the
+// Payment Request nav used to be shown to everyone unconditionally, and the
+// Feedback nav is granted by /api/feedback/access. Both are now additionally
+// gated on canSee(), so they must be present by default or every non-admin
+// would lose a page they can reach today. See also the perm_pages_backfill_v1
+// migration in server.js, which does the same for already-saved overrides.
 const ROLE_DEFAULTS = {
-  hod:  { pages: ['dashboard','alltasks','approvals','mis','hrm','clients','leaves','meetings','daily','fms-tasks','inventory','compliance'],
+  hod:  { pages: ['dashboard','alltasks','approvals','mis','hrm','clients','leaves','meetings','daily','fms-tasks','inventory','compliance','paymentreq','feedback'],
            actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','hrm_schedule','hrm_update_status','delete_leave'] },
-  pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance'],
+  pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance','paymentreq','feedback'],
            actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task'] },
   // 'clients' here is the Client Master tab. A user only ever sees the clients
   // they handle (the list is scoped server-side) and cannot edit anything.
-  user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance','clients'],
+  user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance','clients','paymentreq','feedback'],
            actions: ['create_task','edit_task','delete_task'] }
 };
 
@@ -4791,21 +4797,24 @@ async function init() {
     // user_permissions: the archive exposes every deleted row app-wide.
     const logsNav = document.getElementById('nav-logs');
     if (logsNav) logsNav.style.display = (ME.role === 'admin') ? 'flex' : 'none';
-    // Payment Request nav — all users
+    // Payment Request nav — every role has it by default (ROLE_DEFAULTS), but
+    // it is revocable per user from Access Control.
     const prNav = document.getElementById('nav-paymentreq');
-    if (prNav) prNav.style.display = 'flex';
+    if (prNav) prNav.style.display = canSee('paymentreq') ? 'flex' : 'none';
     refreshNavGroupVisibility();
 
     // Mirror the sidebar into the mobile bottom tab bar, and keep it in sync
     // as later async permission checks (feedback, fms-tasks) toggle nav items.
     initMobileBottomNavSync();
 
-    // Feedback nav — check server if this user is a valid recipient (HOD / fixed recipients)
+    // Feedback nav — the server decides who is a valid recipient (HOD / fixed
+    // recipients); Access Control can only take that away, never grant it, so
+    // both checks must pass.
     const fbNav = document.getElementById('nav-feedback');
     if (fbNav) {
       fbNav.style.display = 'none'; // hidden until access confirmed
       api('/api/feedback/access').then(r => {
-        if (r && r.canAccess) fbNav.style.display = 'flex';
+        if (r && r.canAccess && canSee('feedback')) fbNav.style.display = 'flex';
         refreshNavGroupVisibility();
       }).catch(() => {});
     }
@@ -4979,46 +4988,133 @@ function switchUsersTab(tab, el) {
   if (tab === 'access') renderAccessMatrix();
 }
 
+// Access Control feature list. Each feature gets three levels — No Access /
+// View / Editor — stored on top of the existing {pages,actions} shape so
+// canSee()/canDo() keep working unchanged:
+//   No Access → page absent from perms.pages
+//   View      → page present, none of its action keys granted
+//   Editor    → page present, all of its action keys granted
+//
+// Every feature therefore needs at least one action key or "Editor" would be
+// unstorable; pages with no real gated buttons get a synthetic `edit_<page>`
+// key. `enforced` says whether the app ACTUALLY checks those keys today (i.e.
+// there is a canDo() call site behind them). Where it is false the choice is
+// saved and will start working the moment that page's buttons are wired to
+// canDo(), but right now View and Editor behave the same there — the panel
+// labels those rows rather than pretending otherwise.
 const PERM_TREE = [
-  { page: 'dashboard',    label: 'Dashboard',     icon: '🏠', actions: [] },
-  { page: 'alltasks',     label: 'All Tasks',      icon: '✅', actions: [
+  { page: 'dashboard',    label: 'Dashboard',      icon: '🏠', enforced: false, actions: [
+    { key: 'edit_dashboard', label: 'Edit' },
+  ]},
+  { page: 'alltasks',     label: 'All Tasks',      icon: '✅', enforced: true, actions: [
     { key: 'edit_task',    label: 'Edit' },
     { key: 'delete_task',  label: 'Delete' },
     { key: 'reopen_task',  label: 'Reopen' },
   ]},
-  { page: 'approvals',    label: 'Approvals',      icon: '☑️', actions: [
+  { page: 'approvals',    label: 'Approvals',      icon: '☑️', enforced: false, actions: [
     { key: 'approve_revision', label: 'Approve' },
     { key: 'bulk_approve',     label: 'Bulk' },
   ]},
-  { page: 'mis',          label: 'MIS',            icon: '📊', actions: [] },
-  { page: 'race',         label: 'Race Tracker',   icon: '🏁', actions: [] },
-  { page: 'fms',          label: 'FMS Admin',      icon: '📋', actions: [] },
-  { page: 'fms-tasks',    label: 'FMS Tasks',      icon: '📝', actions: [] },
-  { page: 'daily',        label: 'Daily Task',     icon: '📅', actions: [
+  { page: 'mis',          label: 'MIS',            icon: '📊', enforced: false, actions: [
+    { key: 'edit_mis', label: 'Edit' },
+  ]},
+  { page: 'race',         label: 'Race Tracker',   icon: '🏁', enforced: false, actions: [
+    { key: 'edit_race', label: 'Edit' },
+  ]},
+  { page: 'fms',          label: 'FMS Admin',      icon: '📋', enforced: false, actions: [
+    { key: 'edit_fms', label: 'Edit' },
+  ]},
+  { page: 'fms-tasks',    label: 'FMS Tasks',      icon: '📝', enforced: false, actions: [
+    { key: 'edit_fms_tasks', label: 'Edit' },
+  ]},
+  { page: 'daily',        label: 'Daily Task',     icon: '📅', enforced: true, actions: [
     { key: 'create_task',      label: 'Delegate' },
     { key: 'create_checklist', label: 'Checklist' },
     { key: 'transfer_task',    label: 'Transfer' },
     { key: 'set_plan',         label: 'Set Plan' },
   ]},
-  { page: 'clients',      label: 'Clients',        icon: '🏢', actions: [] },
-  { page: 'compliance',   label: 'Compliance',     icon: '✅', actions: [] },
-  { page: 'dailyreports', label: 'Daily Reports',  icon: '📈', actions: [] },
-  { page: 'leaves',       label: 'Leave Tracker',  icon: '🏖️', actions: [
+  { page: 'clients',      label: 'Clients',        icon: '🏢', enforced: false, actions: [
+    { key: 'edit_clients', label: 'Edit' },
+  ]},
+  { page: 'compliance',   label: 'Compliance',     icon: '✅', enforced: false, actions: [
+    { key: 'edit_compliance', label: 'Edit' },
+  ]},
+  { page: 'dailyreports', label: 'Daily Reports',  icon: '📈', enforced: false, actions: [
+    { key: 'edit_dailyreports', label: 'Edit' },
+  ]},
+  { page: 'leaves',       label: 'Leave Tracker',  icon: '🏖️', enforced: false, actions: [
     { key: 'delete_leave', label: 'Delete' },
   ]},
-  { page: 'meetings',     label: 'Scheduler',      icon: '📆', actions: [] },
-  { page: 'inventory',    label: 'Inventory',      icon: '📦', actions: [] },
-  { page: 'hrm',          label: 'HR Portal',      icon: '👥', actions: [
+  { page: 'meetings',     label: 'Scheduler',      icon: '📆', enforced: false, actions: [
+    { key: 'edit_meetings', label: 'Edit' },
+  ]},
+  { page: 'inventory',    label: 'Inventory',      icon: '📦', enforced: false, actions: [
+    { key: 'edit_inventory', label: 'Edit' },
+  ]},
+  { page: 'hrm',          label: 'HR Portal',      icon: '👥', enforced: false, actions: [
     { key: 'hrm_schedule',      label: 'Schedule' },
     { key: 'hrm_update_status', label: 'Status' },
   ]},
-  { page: 'users',        label: 'User Mgmt',      icon: '👤', actions: [] },
+  { page: 'dms',          label: 'Drive DMS',      icon: '🗂️', enforced: false, actions: [
+    { key: 'edit_dms', label: 'Edit' },
+  ]},
+  { page: 'paymentreq',   label: 'Payment Request', icon: '💰', enforced: false, actions: [
+    { key: 'edit_paymentreq', label: 'Edit' },
+  ]},
+  { page: 'feedback',     label: 'Feedback',       icon: '💬', enforced: false, actions: [
+    { key: 'edit_feedback', label: 'Edit' },
+  ]},
+  { page: 'users',        label: 'User Mgmt',      icon: '👤', enforced: false, actions: [
+    { key: 'edit_users', label: 'Edit' },
+  ]},
 ];
 
-let _accPerms = {};
+const ACC_LEVELS = [
+  { key: 'none', label: 'No Access' },
+  { key: 'view', label: 'View' },
+  { key: 'edit', label: 'Editor' },
+];
+
+// Current level of one feature for one permission set.
+function accLevelOf(perms, pg) {
+  if (!perms.pages.includes(pg.page)) return 'none';
+  return pg.actions.some(a => perms.actions.includes(a.key)) ? 'edit' : 'view';
+}
+
+// Apply a level, normalising the stored arrays. A pre-existing partial action
+// set (e.g. edit_task but not delete_task, possible from the old checkbox UI)
+// reads back as "Editor" and is levelled up to the full set on the next save.
+function accSetLevel(perms, pg, level) {
+  perms.pages   = perms.pages.filter(p => p !== pg.page);
+  perms.actions = perms.actions.filter(k => !pg.actions.some(a => a.key === k));
+  if (level === 'none') return perms;
+  perms.pages.push(pg.page);
+  if (level === 'edit') perms.actions.push(...pg.actions.map(a => a.key));
+  return perms;
+}
+
+let _accPerms = {};        // working copy, keyed by user id — {pages, actions}
+let _accSaved = {};        // last-saved copy, for the dirty check
+let _accRoles = {};        // working copy of each user's role
+let _accSavedRoles = {};
 let _accUsers = [];
-let _accSaveTimers = {};
 let _accSelUser = null;
+
+function accDefaultsFor(role) {
+  const def = ROLE_DEFAULTS[role] || { pages: [], actions: [] };
+  return {
+    pages:   def.pages   === 'all' ? PERM_TREE.map(p => p.page) : [...(def.pages || [])],
+    actions: def.actions === 'all' ? PERM_TREE.flatMap(p => p.actions.map(a => a.key)) : [...(def.actions || [])]
+  };
+}
+
+function accIsDirty(userId) {
+  if (_accRoles[userId] !== _accSavedRoles[userId]) return true;
+  const a = _accPerms[userId], b = _accSaved[userId];
+  if (!a || !b) return false;
+  const same = (x, y) => x.length === y.length && [...x].sort().join('|') === [...y].sort().join('|');
+  return !(same(a.pages, b.pages) && same(a.actions, b.actions));
+}
 
 async function renderAccessMatrix() {
   const box = document.getElementById('accessMatrix');
@@ -5035,26 +5131,22 @@ async function renderAccessMatrix() {
     return;
   }
 
-  _accPerms = {};
+  _accPerms = {}; _accSaved = {}; _accRoles = {}; _accSavedRoles = {};
   for (const u of _accUsers) {
-    if (u.user_permissions && Array.isArray(u.user_permissions.pages)) {
-      _accPerms[u.id] = { pages:[...u.user_permissions.pages], actions:[...(u.user_permissions.actions||[])] };
-    } else {
-      const def = ROLE_DEFAULTS[u.role] || { pages:[], actions:[] };
-      _accPerms[u.id] = {
-        pages:   def.pages==='all'   ? PERM_TREE.map(p=>p.page) : [...(def.pages||[])],
-        actions: def.actions==='all' ? PERM_TREE.flatMap(p=>p.actions.map(a=>a.key)) : [...(def.actions||[])]
-      };
-    }
+    const perms = (u.user_permissions && Array.isArray(u.user_permissions.pages))
+      ? { pages: [...u.user_permissions.pages], actions: [...(u.user_permissions.actions || [])] }
+      : accDefaultsFor(u.role);
+    _accPerms[u.id] = perms;
+    _accSaved[u.id] = { pages: [...perms.pages], actions: [...perms.actions] };
+    _accRoles[u.id] = u.role;
+    _accSavedRoles[u.id] = u.role;
   }
 
-  const roleLabel = r => r==='admin'?'👑 Admin':r==='hod'?'🏢 HOD':r==='pc'?'🖥️ PC':'👤 User';
-
   const userItems = _accUsers.map(u => `
-    <div class="acc-user-item" id="acc-li-${u.id}" onclick="loadUserPerms(${u.id})">
+    <div class="acc-user-item" id="acc-li-${u.id}" onclick="selectAccUser(${u.id})">
       <div class="acc-user-item-name">${esc(u.name)}</div>
       <div style="display:flex;align-items:center;gap:5px;margin-top:3px;flex-wrap:wrap">
-        <span class="role-badge ${u.role}" style="font-size:10px;padding:1px 6px">${roleLabel(u.role)}</span>
+        <span class="role-badge ${u.role}" id="acc-badge-${u.id}" style="font-size:10px;padding:1px 6px">${accRoleLabel(u.role)}</span>
         ${u.department?`<span style="font-size:11px;color:#94a3b8">${esc(u.department)}</span>`:''}
       </div>
     </div>`).join('');
@@ -5073,12 +5165,59 @@ async function renderAccessMatrix() {
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;padding:40px;text-align:center">
           <div style="font-size:36px;margin-bottom:12px">🔐</div>
           <div style="font-size:14px;font-weight:600;color:#64748b;margin-bottom:6px">Select a user</div>
-          <div style="font-size:13px">Click on a user from the left to view and edit their page and button permissions.</div>
+          <div style="font-size:13px">Click a user on the left to set their role and per-feature access.</div>
         </div>
       </div>
     </div>`;
 
   if (_accSelUser) loadUserPerms(_accSelUser);
+}
+
+function accRoleLabel(r) {
+  return r === 'admin' ? '👑 Admin' : r === 'hod' ? '🏢 HOD' : r === 'pc' ? '🖥️ PC' : '👤 User';
+}
+
+function accRoleSelectHtml(userId) {
+  const cur = _accRoles[userId];
+  const isMe = ME && String(ME.id) === String(userId);
+  const opts = ['admin','hod','pc','user'].map(r =>
+    `<option value="${r}" ${r===cur?'selected':''}>${accRoleLabel(r)}</option>`).join('');
+  return `<select id="acc-role-${userId}" onchange="onAccRoleChange(${userId},this.value)" ${isMe?'disabled':''}
+    title="${isMe?'You cannot change your own role':'Application role'}"
+    style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:600;background:${isMe?'#f1f5f9':'#fff'};color:#0f172a;outline:none;font-family:inherit;cursor:${isMe?'not-allowed':'pointer'}">${opts}</select>`;
+}
+
+function accPanelHeaderHtml(u) {
+  return `
+    <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:15px;font-weight:700;color:#1e293b">${esc(u.name)}</div>
+        ${u.department?`<div style="font-size:12px;color:#94a3b8;margin-top:2px">${esc(u.department)}</div>`:''}
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:600;color:#64748b">Role</span>
+        ${accRoleSelectHtml(u.id)}
+        <span id="acc-st-${u.id}" style="font-size:12px;opacity:0;transition:opacity .3s"></span>
+        <button class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="resetUserPerms(${u.id})">↺ Defaults</button>
+        <button id="acc-save-${u.id}" class="btn btn-primary" style="font-size:12px;padding:5px 16px" onclick="saveUserPerms(${u.id})">✓ Done</button>
+      </div>
+    </div>`;
+}
+
+// Switching users from the left list. Changes are only written on Done now,
+// so warn before walking away from an unsaved edit rather than dropping it.
+async function selectAccUser(userId) {
+  const prev = _accSelUser;
+  if (prev && prev !== userId && accIsDirty(prev)) {
+    const u = _accUsers.find(x => x.id === prev);
+    const ok = await appConfirm(
+      `${u ? u.name : 'This user'} has unsaved access changes. Leaving now discards them.`,
+      'Discard unsaved changes?');
+    if (!ok) return;
+    _accPerms[prev] = { pages: [..._accSaved[prev].pages], actions: [..._accSaved[prev].actions] };
+    _accRoles[prev] = _accSavedRoles[prev];
+  }
+  loadUserPerms(userId);
 }
 
 function loadUserPerms(userId) {
@@ -5091,111 +5230,120 @@ function loadUserPerms(userId) {
   const panel = document.getElementById('accPermPanel');
   if (!u || !panel) return;
 
-  const roleLabel = r => r==='admin'?'👑 Admin':r==='hod'?'🏢 HOD':r==='pc'?'🖥️ PC':'👤 User';
-  const perms = _accPerms[userId] || { pages:[], actions:[] };
-
-  if (u.role === 'admin') {
-    panel.innerHTML = `
-      <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;background:#f8fafc">
-        <div style="font-size:15px;font-weight:700;color:#1e293b">${esc(u.name)}</div>
-        <span class="role-badge admin" style="font-size:11px;margin-top:4px;display:inline-block">👑 Admin</span>
-      </div>
+  // Admin bypasses canSee()/canDo() entirely, so per-feature rows would be a
+  // lie. The role dropdown still shows, so an admin can be demoted from here.
+  if (_accRoles[userId] === 'admin') {
+    panel.innerHTML = accPanelHeaderHtml(u) + `
       <div style="padding:48px;text-align:center;color:#64748b">
         <div style="font-size:48px;margin-bottom:14px">🔓</div>
         <div style="font-size:15px;font-weight:600;color:#1e293b;margin-bottom:8px">Full Access</div>
-        <div style="font-size:13px">Admin has unrestricted access to all pages and actions. Not configurable.</div>
+        <div style="font-size:13px">Admin can reach every feature. Change the role above to set per-feature access.</div>
       </div>`;
+    accSyncDirty(userId);
     return;
   }
 
-  const pageRows = PERM_TREE.map(pg => {
-    const pgOn = perms.pages.includes(pg.page);
-    const chips = pg.actions.map(ac => {
-      const acOn = pgOn && perms.actions.includes(ac.key);
-      return `<label class="acc-chip${!pgOn?' acc-dim':''}" title="${ac.label}">
-        <input type="checkbox" ${acOn?'checked':''} ${!pgOn?'disabled':''} style="display:none"
-          onchange="onAccToggle(${userId},'action','${ac.key}',this.checked)">
-        <span class="acc-chip-dot"></span>
-        <span>${ac.label}</span>
-      </label>`;
-    }).join('');
+  const perms = _accPerms[userId] || { pages: [], actions: [] };
 
-    return `<div class="acc-page-row" id="acc-pg-${userId}-${pg.page}">
+  const rows = PERM_TREE.map(pg => {
+    const lvl = accLevelOf(perms, pg);
+    const opts = ACC_LEVELS.map(l =>
+      `<option value="${l.key}" ${l.key===lvl?'selected':''}>${l.label}</option>`).join('');
+    const dim = lvl === 'none';
+    return `<div class="acc-page-row">
       <div class="acc-page-row-main">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="font-size:20px;width:28px;text-align:center">${pg.icon}</span>
-          <div>
-            <div style="font-size:13px;font-weight:600;color:${pgOn?'#1e293b':'#94a3b8'}">${pg.label}</div>
-            ${!pgOn && pg.actions.length ? `<div style="font-size:11px;color:#cbd5e1;margin-top:1px">${pg.actions.map(a=>a.label).join(' · ')}</div>` : ''}
+        <div style="display:flex;align-items:center;gap:10px;min-width:0">
+          <span style="font-size:20px;width:28px;text-align:center;flex-shrink:0">${pg.icon}</span>
+          <div style="min-width:0">
+            <div style="font-size:13px;font-weight:600;color:${dim?'#94a3b8':'#1e293b'}">${pg.label}</div>
+            ${!pg.enforced ? `<div style="font-size:11px;color:#d97706;margin-top:1px" title="The Editor choice is saved, but this page's buttons are not wired to the permission check yet — View and Editor behave the same here for now.">⚠ Editor not enforced yet</div>` : ''}
           </div>
         </div>
-        <label class="acc-toggle" style="flex-shrink:0">
-          <input type="checkbox" ${pgOn?'checked':''} style="display:none"
-            onchange="onAccToggle(${userId},'page','${pg.page}',this.checked)">
-          <span class="acc-track"></span>
-        </label>
+        <select onchange="onAccLevelChange(${userId},'${pg.page}',this.value)"
+          style="flex-shrink:0;min-width:120px;padding:6px 10px;border:1.5px solid ${lvl==='edit'?'#4f46e5':lvl==='view'?'#e2e8f0':'#e2e8f0'};border-radius:8px;font-size:12px;font-weight:600;font-family:inherit;outline:none;cursor:pointer;background:#fff;color:${dim?'#94a3b8':'#0f172a'}">${opts}</select>
       </div>
-      ${pgOn && pg.actions.length ? `<div class="acc-action-chips">${chips}</div>` : ''}
     </div>`;
   }).join('');
 
-  panel.innerHTML = `
-    <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-      <div>
-        <div style="font-size:15px;font-weight:700;color:#1e293b">${esc(u.name)}</div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
-          <span class="role-badge ${u.role}" style="font-size:11px">${roleLabel(u.role)}</span>
-          ${u.department?`<span style="font-size:12px;color:#94a3b8">${esc(u.department)}</span>`:''}
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px">
-        <span id="acc-st-${userId}" style="font-size:12px;opacity:0;transition:opacity .3s"></span>
-        <button class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="resetUserPerms(${userId})">↺ Reset to Defaults</button>
-      </div>
+  panel.innerHTML = accPanelHeaderHtml(u) + `
+    <div style="padding:8px 20px;border-bottom:1px solid #f1f5f9;background:#fffbeb;font-size:11px;color:#92400e">
+      <strong>No Access</strong> hides the feature · <strong>View</strong> shows it read-only · <strong>Editor</strong> allows changes.
+      Nothing here is enforced by the server yet — it controls what the app shows, not what the API accepts.
     </div>
-    <div style="overflow-y:auto;max-height:calc(100vh - 300px)">${pageRows}</div>`;
+    <div style="overflow-y:auto;max-height:calc(100vh - 320px)">${rows}</div>`;
+  accSyncDirty(userId);
 }
 
-async function onAccToggle(userId, type, key, checked) {
-  const perms = _accPerms[userId] || { pages:[], actions:[] };
-  if (type === 'page') {
-    if (checked) { if (!perms.pages.includes(key)) perms.pages.push(key); }
-    else {
-      perms.pages = perms.pages.filter(k=>k!==key);
-      const pg = PERM_TREE.find(p=>p.page===key);
-      if (pg) perms.actions = perms.actions.filter(a => !pg.actions.some(ac=>ac.key===a));
-    }
-  } else {
-    if (checked) { if (!perms.actions.includes(key)) perms.actions.push(key); }
-    else { perms.actions = perms.actions.filter(k=>k!==key); }
-  }
-  _accPerms[userId] = perms;
-  // Re-render right panel to reflect chip state
+function onAccLevelChange(userId, page, level) {
+  const pg = PERM_TREE.find(p => p.page === page);
+  if (!pg) return;
+  _accPerms[userId] = accSetLevel(_accPerms[userId] || { pages: [], actions: [] }, pg, level);
   loadUserPerms(userId);
-
-  const st = document.getElementById(`acc-st-${userId}`);
-  if (st) { st.textContent='⏳ Saving…'; st.style.color='#f59e0b'; st.style.opacity='1'; }
-  if (_accSaveTimers[userId]) clearTimeout(_accSaveTimers[userId]);
-  _accSaveTimers[userId] = setTimeout(async () => {
-    const r = await api(`/api/user-permissions/${userId}`, 'PUT', { pages:perms.pages, actions:perms.actions });
-    const s2 = document.getElementById(`acc-st-${userId}`);
-    if (s2) {
-      s2.textContent = r&&!r.error ? '✓ Saved' : '❌ Error';
-      s2.style.color  = r&&!r.error ? '#10b981' : '#ef4444';
-      if (!r?.error) setTimeout(()=>{ if(s2) s2.style.opacity='0'; }, 2000);
-    }
-    if (r?.error) showToast(r.error, 'error');
-  }, 600);
 }
 
-async function resetUserPerms(userId) {
-  const u = _accUsers.find(x=>x.id===userId);
-  if (!u) return;
-  const def = ROLE_DEFAULTS[u.role] || { pages:[], actions:[] };
-  _accPerms[userId] = { pages:[...(def.pages||[])], actions:[...(def.actions||[])] };
-  const r = await api(`/api/user-permissions/${userId}`, 'PUT', _accPerms[userId]);
-  if (!r?.error) { showToast('Reset to role defaults', 'success'); loadUserPerms(userId); }
-  else showToast(r.error, 'error');
+function onAccRoleChange(userId, role) {
+  _accRoles[userId] = role;
+  // Switching role changes what "defaults" means, so reload the row set. The
+  // permission override is left alone — an admin who wants the new role's
+  // defaults can hit ↺ Defaults.
+  loadUserPerms(userId);
+}
+
+// Reflect unsaved state on the Done button so it is obvious a save is pending.
+function accSyncDirty(userId) {
+  const btn = document.getElementById(`acc-save-${userId}`);
+  if (!btn) return;
+  const dirty = accIsDirty(userId);
+  btn.textContent = dirty ? '✓ Done — save changes' : '✓ Done';
+  btn.style.opacity = dirty ? '1' : '.55';
+}
+
+async function saveUserPerms(userId) {
+  const btn = document.getElementById(`acc-save-${userId}`);
+  const st  = document.getElementById(`acc-st-${userId}`);
+  const setStatus = (text, color) => {
+    if (!st) return;
+    st.textContent = text; st.style.color = color; st.style.opacity = '1';
+  };
+  if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
+  setStatus('⏳ Saving…', '#f59e0b');
+
+  try {
+    // Role first: it decides which defaults apply, and a failure here (e.g.
+    // demoting yourself) must not leave the permissions half-written.
+    if (_accRoles[userId] !== _accSavedRoles[userId]) {
+      const rr = await api(`/api/users/${userId}/role`, 'PATCH', { role: _accRoles[userId] });
+      if (rr?.error) throw new Error(rr.error);
+      _accSavedRoles[userId] = _accRoles[userId];
+      const u = _accUsers.find(x => x.id === userId);
+      if (u) u.role = _accRoles[userId];
+      const badge = document.getElementById(`acc-badge-${userId}`);
+      if (badge) { badge.className = `role-badge ${_accRoles[userId]}`; badge.textContent = accRoleLabel(_accRoles[userId]); }
+    }
+
+    const perms = _accPerms[userId] || { pages: [], actions: [] };
+    const r = await api(`/api/user-permissions/${userId}`, 'PUT', { pages: perms.pages, actions: perms.actions });
+    if (r?.error) throw new Error(r.error);
+    _accSaved[userId] = { pages: [...perms.pages], actions: [...perms.actions] };
+
+    setStatus('✓ Saved', '#10b981');
+    setTimeout(() => { if (st) st.style.opacity = '0'; }, 2000);
+    showToast('Access saved', 'success');
+  } catch(e) {
+    setStatus('❌ Error', '#ef4444');
+    showToast(e.message || 'Failed to save', 'error');
+    // Put the role dropdown back to what the server still has
+    _accRoles[userId] = _accSavedRoles[userId];
+  }
+  if (btn) btn.disabled = false;
+  loadUserPerms(userId);
+}
+
+function resetUserPerms(userId) {
+  const role = _accRoles[userId];
+  _accPerms[userId] = accDefaultsFor(role);
+  loadUserPerms(userId);
+  showToast('Reset to ' + accRoleLabel(role).replace(/^\S+\s/, '') + ' defaults — press Done to save');
 }
 
 function filterAccMatrix(q) {

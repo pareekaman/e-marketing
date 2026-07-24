@@ -3016,8 +3016,13 @@ app.post('/api/users/bulk', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // Per-user permission overrides
-const VALID_UP_PAGES   = new Set(['dashboard','alltasks','approvals','mis','race','fms','fms-tasks','daily','clients','compliance','dailyreports','leaves','meetings','inventory','hrm','users']);
-const VALID_UP_ACTIONS = new Set(['edit_task','delete_task','create_task','create_checklist','approve_revision','bulk_approve','transfer_task','reopen_task','delete_leave','set_plan','hrm_schedule','hrm_update_status']);
+const VALID_UP_PAGES   = new Set(['dashboard','alltasks','approvals','mis','race','fms','fms-tasks','daily','clients','compliance','dailyreports','leaves','meetings','inventory','hrm','users','dms','paymentreq','feedback']);
+// The edit_<page> keys carry the Access Control panel's "Editor" level for
+// features that have no individually gated buttons. They are stored now so the
+// choice survives; a page starts honouring it as soon as its controls are
+// wired to canDo('edit_<page>'). Keep this in sync with PERM_TREE in app.html.
+const VALID_UP_ACTIONS = new Set(['edit_task','delete_task','create_task','create_checklist','approve_revision','bulk_approve','transfer_task','reopen_task','delete_leave','set_plan','hrm_schedule','hrm_update_status',
+  'edit_dashboard','edit_mis','edit_race','edit_fms','edit_fms_tasks','edit_clients','edit_compliance','edit_dailyreports','edit_meetings','edit_inventory','edit_dms','edit_paymentreq','edit_feedback','edit_users']);
 
 app.put('/api/user-permissions/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -3029,6 +3034,28 @@ app.put('/api/user-permissions/:id', requireAuth, requireAdmin, async (req, res)
     const cleanActions = actions.filter(a => VALID_UP_ACTIONS.has(a));
     await db.query('UPDATE users SET user_permissions=? WHERE id=?',
       [JSON.stringify({ pages: cleanPages, actions: cleanActions }), userId]);
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// PATCH /api/users/:id/role — role-only update from the Access Control panel.
+// PUT /api/users/:id rewrites every profile column, so it cannot be used to
+// change just the role without the caller re-sending the whole user.
+app.patch('/api/users/:id/role', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    if (!userId) return res.status(400).json({ error: 'Invalid user ID' });
+    const role = req.body.role;
+    // 'client' is deliberately excluded: a client login is tied to a clients
+    // row via users.client_id, so switching roles into/out of it here would
+    // leave that link inconsistent. Use the Users form for those.
+    if (!['admin','hod','pc','user'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+    if (userId === req.session.userId && role !== 'admin')
+      return res.status(400).json({ error: 'You cannot remove your own admin role' });
+    const [[target]] = await db.query('SELECT role FROM users WHERE id=?', [userId]);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+    if (target.role === 'client') return res.status(400).json({ error: 'Client logins cannot be changed here' });
+    await db.query('UPDATE users SET role=? WHERE id=?', [role, userId]);
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -4340,6 +4367,39 @@ const _clientsTableMigrationsPromise = (async () => {
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_del_folder (folder_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
+  // ── One-time data migration: Access Control page keys ─────────────────
+  // 'dms', 'paymentreq' and 'feedback' were added to the Access Control
+  // feature list after some users already had a saved user_permissions row.
+  // canSee() trusts user_permissions.pages exclusively when it exists, so
+  // without this those users would silently LOSE pages they can currently
+  // reach (Payment Request is shown to everyone today, and Feedback is
+  // granted by /api/feedback/access). Append the keys once, to existing rows
+  // only, so current access is preserved; after that an admin's explicit
+  // revoke must stick, which is why this is marker-guarded and not re-run.
+  try {
+    const [[marker]] = await db.query(`SELECT value FROM app_settings WHERE key_name='perm_pages_backfill_v1'`);
+    if (!marker) {
+      const [rows] = await db.query(`SELECT id, user_permissions FROM users WHERE user_permissions IS NOT NULL AND user_permissions <> ''`);
+      let patched = 0;
+      for (const r of rows) {
+        let up;
+        try { up = JSON.parse(r.user_permissions); } catch { continue; }
+        if (!up || !Array.isArray(up.pages)) continue;
+        const before = up.pages.length;
+        for (const key of ['dms','paymentreq','feedback']) {
+          if (!up.pages.includes(key)) up.pages.push(key);
+        }
+        if (up.pages.length === before) continue;
+        await db.query(`UPDATE users SET user_permissions=? WHERE id=?`,
+          [JSON.stringify({ pages: up.pages, actions: Array.isArray(up.actions) ? up.actions : [] }), r.id]);
+        patched++;
+      }
+      await db.query(`INSERT INTO app_settings (key_name, value) VALUES ('perm_pages_backfill_v1', ?)`,
+        [`patched ${patched} of ${rows.length} rows`]);
+      console.log(`  ✅ Access Control page backfill — ${patched} user_permissions rows updated`);
+    }
+  } catch(e) { console.log('  ⚠️ Access Control page backfill skipped —', e.code || e.message); }
 
   console.log('  ✅ Daily Task + Meetings tables ready');
 })();
