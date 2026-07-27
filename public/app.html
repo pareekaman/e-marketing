@@ -1007,9 +1007,14 @@ tbody tr:last-child td{border-bottom:none;}
 .lv-extra-date-block{border:1.5px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:10px;background:#fafcff;}
 .lv-extra-date-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;font-weight:700;color:#1e293b;}
 .lv-extra-date-total{margin-left:auto;background:#dcfce7;color:#166534;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;}
-.lv-extra-row{display:grid;grid-template-columns:minmax(130px,1.1fr) 2fr 70px 26px;gap:6px;margin-bottom:6px;align-items:center;}
+.lv-extra-row{display:grid;grid-template-columns:minmax(150px,1.3fr) 2fr 64px 26px;gap:6px;margin-bottom:6px;align-items:center;}
 .lv-extra-row select,.lv-extra-row input{width:100%;padding:6px 8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:inherit;background:#fff;}
 .lv-extra-row select:focus,.lv-extra-row input:focus{outline:none;border-color:#F39C12;}
+.lv-client-combo{position:relative;}
+/* Suggestion popup sizes to the longest client name (up to 320px), never the column width */
+.lv-client-combo-list{position:absolute;top:calc(100% + 2px);left:0;z-index:60;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 20px rgba(15,23,42,.12);max-height:190px;overflow-y:auto;min-width:100%;width:max-content;max-width:320px;}
+.lv-client-combo-item{padding:7px 11px;font-size:12px;cursor:pointer;white-space:normal;line-height:1.35;color:#1e293b;}
+.lv-client-combo-item:hover{background:#fff7ed;}
 .lv-extra-row-del{background:transparent;border:none;color:#ef4444;font-size:14px;cursor:pointer;padding:0;line-height:1;}
 .lv-extra-add-row{background:#f0fdf4;color:#166534;border:1.5px dashed #86efac;padding:5px 12px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;}
 .lv-extra-add-row:hover{background:#dcfce7;}
@@ -14716,11 +14721,12 @@ function lvRenderSelectedList(){
       </div>
       ${rows.map((row, i) => `
       <div class="lv-extra-row">
-        <select onchange="lvExtraSet('${k}',${i},'client',this.value)">
-          <option value="">-- client --</option>
-          <option value="${LEAVE_INTERNAL_CLIENT}" ${row.client === LEAVE_INTERNAL_CLIENT ? 'selected' : ''}>🏢 ${LEAVE_INTERNAL_CLIENT}</option>
-          ${LEAVE_CLIENTS.map(c => `<option value="${dtEscape(c)}" ${row.client === c ? 'selected' : ''}>${dtEscape(c)}</option>`).join('')}
-        </select>
+        <div class="lv-client-combo">
+          <input type="text" placeholder="Client…" value="${dtEscape(row.client || '')}"
+            oninput="lvClientCombo('${k}',${i},this)" onfocus="lvClientCombo('${k}',${i},this)"
+            onblur="lvClientComboHide(this)"/>
+          <div class="lv-client-combo-list" style="display:none"></div>
+        </div>
         <input type="text" placeholder="What did you do?" value="${dtEscape(row.description || '')}"
           oninput="lvExtraSet('${k}',${i},'description',this.value)"/>
         <input type="number" min="0.5" max="24" step="0.5" placeholder="hrs" value="${row.hours || ''}"
@@ -14743,6 +14749,32 @@ function lvExtraDateTotal(key){
   const rows = LEAVE_EXTRA_ROWS.get(key) || [];
   const t = rows.reduce((s, r) => s + (parseFloat(r.hours) || 0), 0);
   return Math.round(t * 100) / 100;
+}
+
+// Searchable client picker — the popup widens to the full client name (never truncates)
+function lvClientCombo(key, idx, input){
+  lvExtraSet(key, idx, 'client', input.value);
+  const listEl = input.parentElement.querySelector('.lv-client-combo-list');
+  const q = input.value.trim().toLowerCase();
+  const names = [LEAVE_INTERNAL_CLIENT, ...LEAVE_CLIENTS];
+  const matches = names.filter(n => !q || n.toLowerCase().includes(q)).slice(0, 50);
+  if (!matches.length) { listEl.style.display = 'none'; return; }
+  listEl.innerHTML = matches.map(n =>
+    `<div class="lv-client-combo-item" onmousedown="lvClientComboPick('${key}',${idx},this)">${dtEscape(n)}</div>`).join('');
+  listEl.style.display = 'block';
+}
+
+function lvClientComboPick(key, idx, el){
+  const name = el.textContent;
+  lvExtraSet(key, idx, 'client', name);
+  el.closest('.lv-client-combo').querySelector('input').value = name;
+  el.parentElement.style.display = 'none';
+}
+
+function lvClientComboHide(input){
+  const listEl = input.parentElement.querySelector('.lv-client-combo-list');
+  // mousedown on an item fires before blur, so a pick still lands
+  setTimeout(() => { listEl.style.display = 'none'; }, 150);
 }
 
 function lvExtraSet(key, idx, field, value){
@@ -14790,10 +14822,18 @@ async function saveLeave(){
       if (!rows.length) return showErr(`Add at least one client row for ${fmtDate(key)}`);
       const entries = [];
       for (const row of rows) {
-        const client = (row.client || '').trim();
+        let client = (row.client || '').trim();
         const description = (row.description || '').trim();
         const h = parseFloat(row.hours);
         if (!client) return showErr(`Select a client for ${fmtDate(key)}`);
+        // Normalize a typed name to the canonical list entry; reject unknown names
+        // (skipped when the client list failed to load, so submission never dead-ends)
+        if (LEAVE_CLIENTS.length) {
+          const all = [LEAVE_INTERNAL_CLIENT, ...LEAVE_CLIENTS];
+          const match = all.find(n => n.toLowerCase() === client.toLowerCase());
+          if (!match) return showErr(`"${client}" is not in the client list (${fmtDate(key)}) — pick from the suggestions`);
+          client = match;
+        }
         if (!description) return showErr(`Enter task description for ${client} on ${fmtDate(key)}`);
         if (!h || h <= 0) return showErr(`Enter hours for ${client} on ${fmtDate(key)}`);
         entries.push({ client, description, hours: h });
