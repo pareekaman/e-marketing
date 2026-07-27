@@ -24,11 +24,11 @@ function decodeEntities(s) {
 }
 
 // Parse the letter body (self-generated markup only: p / strong / u / br / ul /
-// li / img / div.pb / hr.rule) into a flat list of drawable blocks.
+// ol / li / img / div.pb / hr.rule) into a flat list of drawable blocks.
 function parseBlocks(html) {
   const body = html.replace(/^[\s\S]*?<body>/i, '').replace(/<\/body>[\s\S]*$/i, '');
   const blocks = [];
-  const re = /<div class="pb"><\/div>|<hr class="rule"[^>]*>|<img[^>]*>|<p([^>]*)>([\s\S]*?)<\/p>|<ul>([\s\S]*?)<\/ul>|<br\s*\/?>/gi;
+  const re = /<div class="pb"><\/div>|<hr class="rule"[^>]*>|<img[^>]*>|<p([^>]*)>([\s\S]*?)<\/p>|<ul>([\s\S]*?)<\/ul>|<ol>([\s\S]*?)<\/ol>|<br\s*\/?>/gi;
   let m;
   while ((m = re.exec(body))) {
     const tag = m[0];
@@ -36,16 +36,19 @@ function parseBlocks(html) {
     if (/^<hr class="rule"/i.test(tag)) { blocks.push({ type: 'rule' }); continue; }
     if (/^<img/i.test(tag)) { blocks.push({ type: 'signature' }); continue; }
     if (/^<br/i.test(tag)) { blocks.push({ type: 'space' }); continue; }
-    if (/^<ul>/i.test(tag)) {
+    if (/^<ul>/i.test(tag) || /^<ol>/i.test(tag)) {
+      const ordered = /^<ol>/i.test(tag);
+      const inner = ordered ? m[4] : m[3];
       const items = [];
       const li = /<li>([\s\S]*?)<\/li>/gi;
       let l;
-      while ((l = li.exec(m[3]))) items.push(decodeEntities(l[1].replace(/<[^>]+>/g, '')).trim());
-      blocks.push({ type: 'bullets', items });
+      while ((l = li.exec(inner))) items.push(decodeEntities(l[1].replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim());
+      blocks.push({ type: 'list', ordered, items });
       continue;
     }
     // paragraph: split on <br> into lines, each line into bold/underline runs
     const center = /class="[^"]*center/.test(m[1] || '');
+    const right = /class="[^"]*right/.test(m[1] || '');
     const lines = m[2].split(/<br\s*\/?>/i).map((part) => {
       // The template literal indents continuation lines ("<br>\n    B. …");
       // HTML collapses that whitespace but pdfkit renders it literally, which
@@ -77,7 +80,7 @@ function parseBlocks(html) {
       }
       return runs.filter((r) => r.t.length);
     });
-    blocks.push({ type: 'para', center, lines });
+    blocks.push({ type: 'para', center, right, lines });
   }
   return blocks;
 }
@@ -204,11 +207,13 @@ function writePara(doc, block) {
   let wrote = false;
   for (const runs of block.lines) {
     if (!runs.length) { doc.moveDown(0.6); continue; }
-    if (block.center) {
-      // centered lines are single-style here; one text call keeps it simple
+    if (block.center || block.right) {
+      // centered/right-aligned lines are single-style here; one text call keeps
+      // it simple (justify's manual word layout isn't needed off the left edge).
+      const align = block.center ? 'center' : 'right';
       runs.forEach((r, i) => {
         doc.font(r.bold ? 'Times-Bold' : 'Times-Roman').fontSize(BODY_SIZE);
-        const opts = { width: CW, align: 'center', underline: !!r.under, continued: i < runs.length - 1, lineGap: LINE_GAP };
+        const opts = { width: CW, align, underline: !!r.under, continued: i < runs.length - 1, lineGap: LINE_GAP };
         if (i === 0) doc.text(r.t, M.left, doc.y, opts);
         else doc.text(r.t, opts);
       });
@@ -220,19 +225,25 @@ function writePara(doc, block) {
   if (wrote) doc.moveDown(0.6);
 }
 
-// Checklist bullets with a template-style blank gap between items.
-function drawBullets(doc, block) {
+// A list with a template-style blank gap between items. Unordered → "•"
+// marker; ordered → "1." "2." … The marker sits in a fixed left gutter and the
+// item text hangs at a common indent so wrapped lines line up under the text.
+function drawList(doc, block) {
   doc.font('Times-Roman').fontSize(BODY_SIZE).fillColor('#000');
-  const tx = M.left + 18, tw = CW - 18;
+  // Unordered keeps the original 18pt gutter (final-letter checklist geometry
+  // unchanged); ordered needs a touch more room for a two-digit "10." marker.
+  const gutter = block.ordered ? 22 : 18;
+  const tx = M.left + gutter, tw = CW - gutter;
   const lineH = doc.currentLineHeight() + LINE_GAP;
-  for (const item of block.items) {
+  block.items.forEach((item, idx) => {
     if (doc.y + lineH > PAGE.height - M.bottom) doc.addPage();
     const y0 = doc.y;
-    doc.text('•', M.left + 4, y0, { lineBreak: false });
+    const marker = block.ordered ? `${idx + 1}.` : '•';
+    doc.text(marker, M.left + 4, y0, { lineBreak: false });
     doc.text(item, tx, y0, { width: tw, align: 'left', lineGap: LINE_GAP });
     doc.x = M.left;
     doc.moveDown(0.65); // the gap between items, per the user's old template
-  }
+  });
   doc.moveDown(0.1);
 }
 
@@ -275,7 +286,7 @@ function renderOfferPdfFromHtml(html, { logoBuffer, signBuffer } = {}) {
         else if (b.type === 'rule') drawRule(doc);
         else if (b.type === 'space') doc.moveDown(0.8);
         else if (b.type === 'signature') drawSignature(doc, signBuffer);
-        else if (b.type === 'bullets') drawBullets(doc, b);
+        else if (b.type === 'list') drawList(doc, b);
         else writePara(doc, b);
       }
       doc.end();

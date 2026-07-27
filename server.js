@@ -497,6 +497,10 @@ const _startupMigrationsPromise = (async () => {
   // JSON snapshot of the HR-approved letter fields so the PDF renders statelessly.
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN final_offer_token VARCHAR(64) DEFAULT NULL`);
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN final_offer_data MEDIUMTEXT DEFAULT NULL`);
+  // Preliminary offer: its own token/snapshot (separate from final_offer_* so a
+  // later final send can't overwrite the still-live preliminary PDF link).
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN prelim_offer_token VARCHAR(64) DEFAULT NULL`);
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN prelim_offer_data MEDIUMTEXT DEFAULT NULL`);
 
   // Per-user permissions column (replaces role_permissions)
   await sa(`ALTER TABLE users ADD COLUMN user_permissions TEXT DEFAULT NULL AFTER extra_access`);
@@ -10326,6 +10330,39 @@ function hrmBuildOfferHtml(candidateName, candidatePosition, joiningFmt, today) 
   </div></body></html>`;
 }
 
+// Preliminary offer letter in the pdfkit renderer's own markup (offer-letter-pdf.js):
+// NO inline letterhead (drawHeader paints it on every page), <p>/<strong>/<u>,
+// a centered title, a right-aligned Private&Confidential/Date block, and an
+// <ol> numbered document list. Same wording as hrmBuildOfferHtml above — kept
+// verbatim — but routed through pdfkit instead of the Apps Script/Google-Doc
+// pipeline, whose font rendering was unreliable (some letters came out Arial,
+// some Times). Both letters now share one engine → identical Times layout.
+function hrmBuildPrelimOfferHtmlPdfkit(candidateName, candidatePosition, joiningFmt, today) {
+  return `<body>
+  <p class="center"><strong>PRELIMINARY OFFER LETTER</strong></p>
+  <p class="right">Private &amp; Confidential<br>Date :-${today}</p>
+  <p><strong>Dear ${candidateName},</strong></p>
+  <p>With reference to your application and the subsequent interview you had with us, we are pleased to offer you an appointment as <strong>${candidatePosition}</strong> with <strong>e-Marketing (a unit of Jai Marketing)</strong>, Jaipur.</p>
+  <p>You are required to join us on <strong>${joiningFmt}</strong>. Your place of work will be <strong>Jaipur</strong> (8/10 shaheed amit bhardwaj marg, malviya nagar Jaipur 302017)</p>
+  <p>The detailed terms and conditions of your appointment and the salary details, as discussed, shall be issued to you at the time of joining. We expect you to maintain the confidentiality of the salary offer to you.</p>
+  <p>Please submit the following documents on your Joining Day:</p>
+  <ol>
+    <li>Educational/Professional/Technical Qualification certificates</li>
+    <li>Copy of Resignation Acceptance letter or relieving letter from last employer, if applicable.</li>
+    <li>Salary Certificate from last employer, if applicable.</li>
+    <li>One (1) passport size color photograph</li>
+    <li>Copy of Present and Permanent Address Proof.</li>
+    <li>ID Proof (Aadhar Card, PAN Card).</li>
+  </ol>
+  <p>If you fail to join on the aforesaid date and in the absence of any written communication to this effect from you, the said Preliminary Offer Letter shall automatically be treated as withdrawn.</p>
+  <p>Please send a <strong>token of your acceptance</strong> of this Preliminary Offer Letter.</p>
+  <p>Again, we are excited about the growth trajectory that e-Marketing Consulting is on, and we look forward to having you on board as a team member.</p>
+  <br>
+  <p>For</p>
+  <p>e-Marketing (a unit of Jai Marketing)</p>
+  </body>`;
+}
+
 async function hrmGenerateOfferDoc(candidate, joining_date, salary, overrideName, overridePosition) {
   const crypto = require('crypto');
   const token = crypto.randomBytes(24).toString('hex');
@@ -10664,6 +10701,15 @@ async function hrmRenderFinalOfferPdfBuffer({ name, position, joiningFmt, salary
   return renderOfferPdfFromHtml(html, { logoBuffer: _hrmLogoBuffer(), signBuffer: _hrmSignBuffer() });
 }
 
+// Preliminary offer letter → PDF Buffer via the same pdfkit engine. No
+// signBuffer: the preliminary letter has no signature block (it ends at
+// "For / e-Marketing (a unit of Jai Marketing)").
+async function hrmRenderPrelimOfferPdfBuffer({ name, position, joiningFmt, today }) {
+  const { renderOfferPdfFromHtml } = require('./offer-letter-pdf');
+  const html = hrmBuildPrelimOfferHtmlPdfkit(name || '', position || '', joiningFmt || '', today || '');
+  return renderOfferPdfFromHtml(html, { logoBuffer: _hrmLogoBuffer() });
+}
+
 // Final "Offer Letter Sent" stage — sends the exact contract transcribed in
 // hrmBuildFinalOfferHtml above through the same HRM_OFFER_SCRIPT Apps Script
 // the preliminary letter uses (html-only, no templateId — the script proved
@@ -10801,6 +10847,31 @@ app.get('/offer-pdf/:token', async (req, res) => {
   }
 });
 
+// Public PDF of the PRELIMINARY offer letter — the URL the WhatsApp provider
+// fetches to attach the document. Same token-is-the-capability pattern as
+// /offer-pdf, but keyed on prelim_offer_token/prelim_offer_data so a later
+// final-offer send (which writes final_offer_*) can't overwrite it.
+app.get('/offer-pdf-prelim/:token', async (req, res) => {
+  try {
+    const [[c]] = await db.query(
+      'SELECT prelim_offer_data FROM hrm_candidates WHERE prelim_offer_token=? LIMIT 1',
+      [req.params.token]
+    );
+    if (!c || !c.prelim_offer_data) return res.status(404).send('Offer letter not found or link has expired.');
+    const d = JSON.parse(c.prelim_offer_data);
+    const pdf = await hrmRenderPrelimOfferPdfBuffer({
+      name: d.name, position: d.position, joiningFmt: d.joiningFmt, today: d.today,
+    });
+    const safeName = String(d.name || 'candidate').replace(/[^a-zA-Z0-9 _-]/g, '').trim() || 'candidate';
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="PRELIMINARY OFFER LETTER - ${safeName}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error('offer-pdf-prelim error:', err.message);
+    res.status(500).send('Failed to load offer letter.');
+  }
+});
+
 // Dashboard stats
 app.get('/api/hrm/stats', requireAuth, async (req, res) => {
   if (!(await userCanSee(req.session, 'hrm'))) return res.status(403).json({ error: 'Forbidden' });
@@ -10906,18 +10977,41 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       const displayDept = department || displayPos;
       const joiningFmt  = joining_date ? new Date(joining_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
 
-      // Awaited (not fire-and-forget) — on Vercel serverless, work started after
-      // the response is sent can get frozen mid-flight, which was silently
-      // dropping the PDF generation / WhatsApp send for some candidates.
+      // Generate + send via pdfkit (offer-letter-pdf.js), NOT the old Apps
+      // Script Google-Doc pipeline — that rendered fonts inconsistently (some
+      // letters came out Arial, some Times). Persist a token + snapshot and
+      // WhatsApp the public /offer-pdf-prelim/:token URL the provider fetches;
+      // same engine and pattern as the final letter, so both are identical Times.
+      const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+      const caption = `Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${displayPos}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
+      // Same public-host logic as send-final-offer: the WhatsApp provider must
+      // fetch the URL anonymously, so avoid auth-gated *.vercel.app preview hosts.
+      const reqHost = req.headers['x-forwarded-host'] || req.get('host') || '';
+      const isVercelPreview = /\.vercel\.app$/i.test(reqHost);
+      const base = ((isVercelPreview || !reqHost)
+        ? (process.env.APP_URL || `https://${reqHost}`)
+        : `${req.headers['x-forwarded-proto'] || req.protocol}://${reqHost}`).replace(/\/$/, '');
       try {
-        const { fileId, pdfUrl } = await hrmGenerateOfferDoc(c, joining_date, salary, offer_name, offer_position);
-        await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
-        const caption = `Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${displayPos}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
-        // Field names (mediaUrl/mediaType/fileName) match the old Apps Script's
-        // working sendWhatsAppFile() call — a previous attempt here used
-        // document/filename instead and was blamed for "not delivering the PDF",
-        // but that failure was actually the missing offer_drive_id column
-        // throwing before this call was ever reached (now fixed).
+        const prelimToken = require('crypto').randomBytes(24).toString('hex');
+        const snapshot = { name: displayName, position: displayPos, joiningFmt, today };
+        await db.query('UPDATE hrm_candidates SET prelim_offer_token=?, prelim_offer_data=? WHERE id=?', [prelimToken, JSON.stringify(snapshot), c.id]);
+        const pdfUrl = `${base}/offer-pdf-prelim/${prelimToken}`;
+
+        // Best-effort Drive save (for the HR "View Offer" button) — awaited so
+        // Vercel can't freeze it after the response; a Drive failure must not
+        // fail the send.
+        try {
+          const pdf = await hrmRenderPrelimOfferPdfBuffer({ name: displayName, position: displayPos, joiningFmt, today });
+          const drive = await getDriveClient();
+          const { Readable } = require('stream');
+          const created = await drive.files.create({
+            requestBody: { name: `Preliminary Offer Letter - ${displayName}`, parents: [HRM_OFFER_FOLDER_ID], mimeType: 'application/pdf' },
+            media: { mimeType: 'application/pdf', body: Readable.from(pdf) },
+            fields: 'id', supportsAllDrives: true,
+          });
+          await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [created.data.id, c.id]);
+        } catch (e) { console.error('preliminary offer Drive save failed:', e.message); }
+
         const fr = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
           to: hrmFormatPhone(c.phone),
           mediaUrl: pdfUrl,
@@ -10928,21 +11022,20 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
         if (!fr.sent && !fr.timedOut) {
           // Definite failure only — the file API rejected the call. A timeout is
           // left alone (the PDF likely went) so the candidate isn't double-sent.
-          const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
           await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`${caption}\n\n📄 *Offer Letter PDF:*\n${driveLink}`
+`${caption}\n\n📄 *Offer Letter PDF:*\n${pdfUrl}`
           }, 'text', c.id, c.name, 'Offer Sent - Link Fallback');
         }
       } catch (e) {
         pdfGenerated = false;
         pdfError = e.message;
-        console.error('HRM offer doc generation failed:', e.message);
+        console.error('HRM preliminary offer generation failed:', e.message);
         await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
 `Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${displayPos}.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
         }, 'text', c.id, c.name, 'Offer Sent').catch(() => {});
         await db.query(
           `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
-          [c.id, c.name, hrmFormatPhone(c.phone), 'Offer Letter PDF', 'file', 'Failed', `Drive error: ${e.message}`, '{}']
+          [c.id, c.name, hrmFormatPhone(c.phone), 'Offer Letter PDF', 'file', 'Failed', `PDF error: ${e.message}`, '{}']
         ).catch(() => {});
       }
 
@@ -11027,25 +11120,52 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
     const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
     if (!c) return res.status(404).json({ error: 'Not found' });
     if (c.status !== 'Offer Sent') return res.status(400).json({ error: 'Candidate status is not Offer Sent' });
-    const { fileId, pdfUrl } = await hrmGenerateOfferDoc(c, c.joining_date, c.salary);
-    await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [fileId, c.id]);
+    // pdfkit path (same as the Offer Sent send) — not the Apps Script Google-Doc
+    // pipeline, so a regenerate can't reintroduce the Arial/Times font mismatch.
+    const name = c.name || '';
+    const position = c.profile_position || '';
     const joiningFmt = c.joining_date ? new Date(c.joining_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
-    const caption = `Hello ${c.name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${c.profile_position||''}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${c.salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
+    const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+
+    const prelimToken = require('crypto').randomBytes(24).toString('hex');
+    await db.query('UPDATE hrm_candidates SET prelim_offer_token=?, prelim_offer_data=? WHERE id=?',
+      [prelimToken, JSON.stringify({ name, position, joiningFmt, today }), c.id]);
+
+    const reqHost = req.headers['x-forwarded-host'] || req.get('host') || '';
+    const isVercelPreview = /\.vercel\.app$/i.test(reqHost);
+    const base = ((isVercelPreview || !reqHost)
+      ? (process.env.APP_URL || `https://${reqHost}`)
+      : `${req.headers['x-forwarded-proto'] || req.protocol}://${reqHost}`).replace(/\/$/, '');
+    const pdfUrl = `${base}/offer-pdf-prelim/${prelimToken}`;
+
+    // Best-effort Drive save for the "View Offer" button.
+    try {
+      const pdf = await hrmRenderPrelimOfferPdfBuffer({ name, position, joiningFmt, today });
+      const drive = await getDriveClient();
+      const { Readable } = require('stream');
+      const created = await drive.files.create({
+        requestBody: { name: `Preliminary Offer Letter - ${name}`, parents: [HRM_OFFER_FOLDER_ID], mimeType: 'application/pdf' },
+        media: { mimeType: 'application/pdf', body: Readable.from(pdf) },
+        fields: 'id', supportsAllDrives: true,
+      });
+      await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [created.data.id, c.id]);
+    } catch (e) { console.error('preliminary offer Drive save failed:', e.message); }
+
+    const caption = `Hello ${name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${position}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${c.salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
     const fr = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
       to: hrmFormatPhone(c.phone),
       mediaUrl: pdfUrl,
       mediaType: 'document',
-      fileName: `PRELIMINARY OFFER LETTER - ${c.name}.pdf`,
+      fileName: `PRELIMINARY OFFER LETTER - ${name}.pdf`,
       caption
     }, 'file', c.id, c.name, 'Offer Letter PDF');
     let waSent = fr.sent || fr.timedOut;   // a timeout still counts as delivered for reporting
     if (!fr.sent && !fr.timedOut) {
-      const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
       waSent = (await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`${caption}\n\n📄 *Offer Letter PDF:*\n${driveLink}`
+`${caption}\n\n📄 *Offer Letter PDF:*\n${pdfUrl}`
       }, 'text', c.id, c.name, 'Offer Letter PDF - Link Fallback')).sent;
     }
-    res.json({ ok: true, fileId, url: `https://drive.google.com/file/d/${fileId}/view`, pdfUrl, waSent });
+    res.json({ ok: true, pdfUrl, waSent });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
