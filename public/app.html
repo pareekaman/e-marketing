@@ -1011,8 +1011,11 @@ tbody tr:last-child td{border-bottom:none;}
 .lv-extra-row select,.lv-extra-row input{width:100%;padding:6px 8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:inherit;background:#fff;}
 .lv-extra-row select:focus,.lv-extra-row input:focus{outline:none;border-color:#F39C12;}
 .lv-client-combo{position:relative;}
-/* Suggestion popup sizes to the longest client name (up to 320px), never the column width */
-.lv-client-combo-list{position:absolute;top:calc(100% + 2px);left:0;z-index:60;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 20px rgba(15,23,42,.12);max-height:190px;overflow-y:auto;min-width:100%;width:max-content;max-width:320px;}
+/* Suggestion popup sizes to the longest client name (up to 320px), never the column width.
+   position:fixed (placed via JS) so no scrolling ancestor — the green list box or the modal — can clip it. */
+.lv-client-combo-list{position:fixed;z-index:2000;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 20px rgba(15,23,42,.12);max-height:190px;overflow-y:auto;width:max-content;max-width:320px;}
+/* Extra-working mode: the date blocks grow freely and the modal itself scrolls */
+.lv-selected-list.lv-extra-mode{max-height:none;overflow:visible;}
 .lv-client-combo-item{padding:7px 11px;font-size:12px;cursor:pointer;white-space:normal;line-height:1.35;color:#1e293b;}
 .lv-client-combo-item:hover{background:#fff7ed;}
 .lv-extra-row-del{background:transparent;border:none;color:#ef4444;font-size:14px;cursor:pointer;padding:0;line-height:1;}
@@ -14686,6 +14689,7 @@ function lvRenderSelectedList(){
   const list = document.getElementById('lvSelectedList');
   const label = document.getElementById('lvSelectedLabel');
   const isExtra = LEAVE_PICKED_TYPE === 'extra_working';
+  list.classList.toggle('lv-extra-mode', isExtra);
 
   if (!LEAVE_SELECTED.size) {
     box.style.display = 'none';
@@ -14762,6 +14766,14 @@ function lvClientCombo(key, idx, input){
   listEl.innerHTML = matches.map(n =>
     `<div class="lv-client-combo-item" onmousedown="lvClientComboPick('${key}',${idx},this)">${dtEscape(n)}</div>`).join('');
   listEl.style.display = 'block';
+  // Fixed-position under the input; flip above / pull left when the viewport runs out
+  const r = input.getBoundingClientRect();
+  listEl.style.minWidth = r.width + 'px';
+  listEl.style.left = r.left + 'px';
+  listEl.style.top = (r.bottom + 2) + 'px';
+  const w = listEl.offsetWidth, h = listEl.offsetHeight;
+  if (r.left + w > window.innerWidth - 8) listEl.style.left = Math.max(8, window.innerWidth - 8 - w) + 'px';
+  if (r.bottom + h + 8 > window.innerHeight) listEl.style.top = Math.max(8, r.top - h - 2) + 'px';
 }
 
 function lvClientComboPick(key, idx, el){
