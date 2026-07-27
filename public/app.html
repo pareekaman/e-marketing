@@ -1010,9 +1010,9 @@ tbody tr:last-child td{border-bottom:none;}
 .lv-extra-row{display:grid;grid-template-columns:minmax(150px,1.3fr) 2fr 64px 26px;gap:6px;margin-bottom:6px;align-items:center;}
 .lv-extra-row select,.lv-extra-row input{width:100%;padding:6px 8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:inherit;background:#fff;}
 .lv-extra-row select:focus,.lv-extra-row input:focus{outline:none;border-color:#F39C12;}
-.lv-client-combo{position:relative;}
 /* Suggestion popup sizes to the longest client name (up to 320px), never the column width.
-   position:fixed (placed via JS) so no scrolling ancestor — the green list box or the modal — can clip it. */
+   position:fixed on a <body>-level element (placed via JS) so no scrolling or transformed
+   ancestor — the green list box or the modal — can clip or re-anchor it. */
 .lv-client-combo-list{position:fixed;z-index:2000;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 20px rgba(15,23,42,.12);max-height:190px;overflow-y:auto;width:max-content;max-width:320px;}
 /* Extra-working mode: the date blocks grow freely and the modal itself scrolls */
 .lv-selected-list.lv-extra-mode{max-height:none;overflow:visible;}
@@ -14690,6 +14690,7 @@ function lvRenderSelectedList(){
   const label = document.getElementById('lvSelectedLabel');
   const isExtra = LEAVE_PICKED_TYPE === 'extra_working';
   list.classList.toggle('lv-extra-mode', isExtra);
+  lvComboHideNow(); // rows are about to be re-rendered; the popup would point at a dead input
 
   if (!LEAVE_SELECTED.size) {
     box.style.display = 'none';
@@ -14725,12 +14726,9 @@ function lvRenderSelectedList(){
       </div>
       ${rows.map((row, i) => `
       <div class="lv-extra-row">
-        <div class="lv-client-combo">
-          <input type="text" placeholder="Client…" value="${dtEscape(row.client || '')}"
-            oninput="lvClientCombo('${k}',${i},this)" onfocus="lvClientCombo('${k}',${i},this)"
-            onblur="lvClientComboHide(this)"/>
-          <div class="lv-client-combo-list" style="display:none"></div>
-        </div>
+        <input type="text" placeholder="Client…" value="${dtEscape(row.client || '')}"
+          oninput="lvClientCombo('${k}',${i},this)" onfocus="lvClientCombo('${k}',${i},this)"
+          onblur="lvClientComboHide(this)"/>
         <input type="text" placeholder="What did you do?" value="${dtEscape(row.description || '')}"
           oninput="lvExtraSet('${k}',${i},'description',this.value)"/>
         <input type="number" min="0.5" max="24" step="0.5" placeholder="hrs" value="${row.hours || ''}"
@@ -14755,10 +14753,34 @@ function lvExtraDateTotal(key){
   return Math.round(t * 100) / 100;
 }
 
-// Searchable client picker — the popup widens to the full client name (never truncates)
+// Searchable client picker — the popup widens to the full client name (never truncates).
+// It is ONE global element appended to <body>: inside the modal, position:fixed re-anchors
+// to .modal because its entrance animation (fill-mode:both) leaves transform:scale(1)
+// applied forever, which made the popup land in scrolled-away content and vanish.
+let LV_COMBO_INPUT = null;
+
+function lvComboEl(){
+  let el = document.getElementById('lvClientComboPop');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'lvClientComboPop';
+    el.className = 'lv-client-combo-list';
+    el.style.display = 'none';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function lvComboHideNow(){
+  const el = document.getElementById('lvClientComboPop');
+  if (el) el.style.display = 'none';
+  LV_COMBO_INPUT = null;
+}
+
 function lvClientCombo(key, idx, input){
   lvExtraSet(key, idx, 'client', input.value);
-  const listEl = input.parentElement.querySelector('.lv-client-combo-list');
+  LV_COMBO_INPUT = input;
+  const listEl = lvComboEl();
   const q = input.value.trim().toLowerCase();
   const names = [LEAVE_INTERNAL_CLIENT, ...LEAVE_CLIENTS];
   const matches = names.filter(n => !q || n.toLowerCase().includes(q)).slice(0, 50);
@@ -14779,14 +14801,16 @@ function lvClientCombo(key, idx, input){
 function lvClientComboPick(key, idx, el){
   const name = el.textContent;
   lvExtraSet(key, idx, 'client', name);
-  el.closest('.lv-client-combo').querySelector('input').value = name;
-  el.parentElement.style.display = 'none';
+  if (LV_COMBO_INPUT) LV_COMBO_INPUT.value = name;
+  lvComboHideNow();
 }
 
 function lvClientComboHide(input){
-  const listEl = input.parentElement.querySelector('.lv-client-combo-list');
-  // mousedown on an item fires before blur, so a pick still lands
-  setTimeout(() => { listEl.style.display = 'none'; }, 150);
+  // mousedown on an item fires before blur, so a pick still lands;
+  // keep the popup when focus moved straight into another client input
+  setTimeout(() => {
+    if (document.activeElement !== LV_COMBO_INPUT) lvComboHideNow();
+  }, 150);
 }
 
 function lvExtraSet(key, idx, field, value){
