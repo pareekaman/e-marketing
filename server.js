@@ -9099,7 +9099,9 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
     const allowedTypes = ['full_day','half_day','work_from_home','extra_working'];
     if (!allowedTypes.includes(leave_type)) return res.status(400).json({ error: 'Invalid leave type' });
     if (!Array.isArray(dates) || !dates.length) return res.status(400).json({ error: 'Select at least one date' });
-    if (!reason || !reason.trim()) return res.status(400).json({ error: 'Reason required' });
+    // Extra working carries per-row task descriptions instead of a single reason
+    if (leave_type !== 'extra_working' && (!reason || !reason.trim()))
+      return res.status(400).json({ error: 'Reason required' });
 
     // Normalize + validate dates
     const dateRe = /^\d{4}-\d{2}-\d{2}$/;
@@ -9112,9 +9114,30 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
       seen.add(date);
       const item = { date };
       if (leave_type === 'extra_working') {
-        const h = Number(d && d.hours);
-        if (!h || h <= 0 || h > 24) return res.status(400).json({ error: `Hours required (1-24) for ${date}` });
-        item.hours = h;
+        if (Array.isArray(d && d.entries)) {
+          // Client-wise work rows: [{client, description, hours}]
+          const entries = [];
+          let total = 0;
+          for (const e of d.entries) {
+            const client = String((e && e.client) || '').trim().slice(0, 120);
+            const description = String((e && e.description) || '').trim().slice(0, 500);
+            const h = Number(e && e.hours);
+            if (!client) return res.status(400).json({ error: `Client required for ${date}` });
+            if (!description) return res.status(400).json({ error: `Task description required for ${client} on ${date}` });
+            if (!h || h <= 0 || h > 24) return res.status(400).json({ error: `Hours required (1-24) for ${client} on ${date}` });
+            entries.push({ client, description, hours: h });
+            total += h;
+          }
+          if (!entries.length) return res.status(400).json({ error: `Add at least one client row for ${date}` });
+          if (total > 24) return res.status(400).json({ error: `Total hours exceed 24 for ${date}` });
+          item.entries = entries;
+          item.hours = Math.round(total * 100) / 100;
+        } else {
+          // Legacy payload from a cached page: plain hours per date
+          const h = Number(d && d.hours);
+          if (!h || h <= 0 || h > 24) return res.status(400).json({ error: `Hours required (1-24) for ${date}` });
+          item.hours = h;
+        }
       }
       cleanDates.push(item);
     }
@@ -9129,7 +9152,7 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
       `INSERT INTO leave_requests
        (user_id, leave_type, from_date, to_date, dates_json, reason, status, approver_id)
        VALUES (?,?,?,?,?,?,'pending',?)`,
-      [uid, leave_type, from_date, to_date, JSON.stringify(cleanDates), reason.trim(), approverId]
+      [uid, leave_type, from_date, to_date, JSON.stringify(cleanDates), (reason || '').trim(), approverId]
     );
 
     // Notify approver — email + WhatsApp (best-effort)
@@ -9137,24 +9160,38 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
       const typeLabel = ({full_day:'Full Day Leave',half_day:'Half Day Leave',work_from_home:'Work From Home',extra_working:'Extra Working'})[leave_type];
       const datesLine = cleanDates.map(d => leave_type === 'extra_working' ? `${d.date} (${d.hours}h)` : d.date).join(', ');
       const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [uid]);
+      const esc = (s) => String(s || '').replace(/</g, '&lt;');
+      const hasEntries = leave_type === 'extra_working' && cleanDates.some(d => Array.isArray(d.entries) && d.entries.length);
+      const totalHours = leave_type === 'extra_working'
+        ? Math.round(cleanDates.reduce((s, d) => s + (d.hours || 0), 0) * 100) / 100 : 0;
 
       const target = await getNotifyTarget(approverId);
       if (target) {
+        // Client-wise work breakdown rows (extra_working only)
+        const breakdownHtml = hasEntries
+          ? cleanDates.map(d =>
+              `<div style="margin-top:6px"><b>${d.date.split('-').reverse().join('-')} (${d.hours}h)</b></div>` +
+              (d.entries || []).map(e =>
+                `<div style="padding-left:12px">• ${esc(e.client)} — ${esc(e.description)} <b>(${e.hours}h)</b></div>`).join(''))
+              .join('')
+          : '';
         const html = `
           <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f6f9fc;padding:20px;">
             <div style="background:#fff;border-radius:8px;padding:30px;">
-              <h2 style="color:#F39C12;margin-top:0;">🗓 New Leave Request</h2>
+              <h2 style="color:#F39C12;margin-top:0;">🗓 ${hasEntries ? 'New Extra Working Request' : 'New Leave Request'}</h2>
               <p>Hi <b>${target.name||'there'}</b>,</p>
-              <p><b>${me?.name || 'An employee'}</b> has submitted a leave request for your approval.</p>
+              <p><b>${me?.name || 'An employee'}</b> has submitted ${hasEntries ? 'an extra working' : 'a leave'} request for your approval.</p>
               <table style="width:100%;border-collapse:collapse;margin:14px 0;">
                 <tr><td style="padding:8px;background:#f0f4f8;width:140px"><b>Type</b></td><td style="padding:8px;">${typeLabel}</td></tr>
                 <tr><td style="padding:8px;background:#f0f4f8;"><b>Dates</b></td><td style="padding:8px;">${datesLine}</td></tr>
-                <tr><td style="padding:8px;background:#f0f4f8;"><b>Reason</b></td><td style="padding:8px;">${(reason||'').replace(/</g,'&lt;')}</td></tr>
+                ${hasEntries
+                  ? `<tr><td style="padding:8px;background:#f0f4f8;"><b>Work done</b></td><td style="padding:8px;">${breakdownHtml}</td></tr>`
+                  : `<tr><td style="padding:8px;background:#f0f4f8;"><b>Reason</b></td><td style="padding:8px;">${esc(reason)}</td></tr>`}
               </table>
               <p style="color:#777;font-size:12px;margin-top:20px;">E-Marketing Task Manager · Leave Tracker</p>
             </div>
           </div>`;
-        sendMail(target.email, `Leave Request — ${me?.name || ''}`, html).catch(()=>{});
+        sendMail(target.email, `${hasEntries ? 'Extra Working' : 'Leave'} Request — ${me?.name || ''}`, html).catch(()=>{});
       }
       // WhatsApp to ALL HODs in same department (so both HODs get notified)
       try {
@@ -9181,13 +9218,22 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
           work_from_home: 'New Work From Home Request',
           half_day: 'New Half Day Leave Request'
         })[leave_type] || 'New Leave Request';
+        // Client-wise breakdown replaces the Dates/Reason lines for extra_working
+        const waDetail = hasEntries
+          ? `*Total:* ${totalHours}h\n\n` +
+            cleanDates.map(d => {
+              const dd = d.date.split('-').reverse().join('-');
+              const lines = (d.entries || []).map(e => `  • ${e.client} — ${e.description} (${e.hours}h)`).join('\n');
+              return `*${dd} (${d.hours}h):*${lines ? '\n' + lines : ''}`;
+            }).join('\n')
+          : `*Dates:* ${datesPretty}\n` +
+            `*Reason:* ${reason}`;
         for (const hod of waRecipients) {
           const msg = `Hello ${hod.name || ''},\n\n🗓 *${waHeading}*\n\n` +
             `*Employee:* ${me?.name || ''}\n` +
             `*Type:* ${typeLabel}\n` +
             `*Duration:* ${daysWord}\n` +
-            `*Dates:* ${datesPretty}\n` +
-            `*Reason:* ${reason}\n\n` +
+            waDetail + `\n\n` +
             `Please approve / reject from the Approvals tab.\n\n— E-Marketing Task Manager`;
           sendWhatsApp(hod.phone, msg).catch(e => console.error('WA leave req err:', e.message));
         }

@@ -1003,6 +1003,20 @@ tbody tr:last-child td{border-bottom:none;}
 .lv-btn-delete{background:transparent;color:#ef4444;border:1.5px solid #fecaca;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;}
 .lv-btn-delete:hover{background:#ef4444;color:#fff;}
 
+/* Extra Working — per-date client/task rows (Daily Task style) */
+.lv-extra-date-block{border:1.5px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:10px;background:#fafcff;}
+.lv-extra-date-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;font-weight:700;color:#1e293b;}
+.lv-extra-date-total{margin-left:auto;background:#dcfce7;color:#166534;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;}
+.lv-extra-row{display:grid;grid-template-columns:minmax(130px,1.1fr) 2fr 70px 26px;gap:6px;margin-bottom:6px;align-items:center;}
+.lv-extra-row select,.lv-extra-row input{width:100%;padding:6px 8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:inherit;background:#fff;}
+.lv-extra-row select:focus,.lv-extra-row input:focus{outline:none;border-color:#F39C12;}
+.lv-extra-row-del{background:transparent;border:none;color:#ef4444;font-size:14px;cursor:pointer;padding:0;line-height:1;}
+.lv-extra-add-row{background:#f0fdf4;color:#166534;border:1.5px dashed #86efac;padding:5px 12px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;}
+.lv-extra-add-row:hover{background:#dcfce7;}
+.lv-extra-breakdown{font-size:12px;color:#475569;line-height:1.6;margin-top:2px;}
+.lv-extra-bd-date{margin-top:4px;color:#1e293b;}
+.lv-extra-bd-line{padding-left:10px;}
+
 /* Modal */
 .lv-modal{max-width:520px;}
 .lv-modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;padding-bottom:14px;border-bottom:2px dashed #fef3c7;}
@@ -4542,7 +4556,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div id="lvSelectedList" class="lv-selected-list"></div>
     </div>
 
-    <div class="form-group">
+    <div class="form-group" id="lvReasonGroup">
       <label>Reason <span class="lv-req">*</span></label>
       <textarea id="lvReason" placeholder="Reason for leave (sick, personal work, urgent matter…)"></textarea>
     </div>
@@ -14348,6 +14362,21 @@ let LEAVE_DECIDE_ID = null;
 // Calendar state
 let LEAVE_CAL_VIEW = new Date(); // month being viewed
 const LEAVE_SELECTED = new Map(); // dateStr -> hours (only meaningful for extra_working)
+// Extra working — per-date client/task rows: dateStr -> [{client, description, hours}]
+const LEAVE_EXTRA_ROWS = new Map();
+const LEAVE_INTERNAL_CLIENT = 'Internal / Office Work';
+let LEAVE_CLIENTS = [];
+
+async function lvLoadClients(){
+  try {
+    const list = await api('/api/clients');
+    LEAVE_CLIENTS = (Array.isArray(list) ? list : [])
+      .filter(c => c.is_active === undefined || !!Number(c.is_active))
+      .map(c => c.name);
+  } catch { LEAVE_CLIENTS = []; }
+  // If the user already picked Extra Working before clients arrived, refresh dropdowns
+  if (LEAVE_PICKED_TYPE === 'extra_working') lvRenderSelectedList();
+}
 
 async function loadLeaves(){
   const wrap = document.getElementById('lvListWrap');
@@ -14405,6 +14434,23 @@ function lvClearFilters() {
   const f = document.getElementById('lvDateFrom'); if (f) f.value = '';
   const t = document.getElementById('lvDateTo'); if (t) t.value = '';
   renderLeaves();
+}
+
+// Client-wise work breakdown for extra_working requests (empty for legacy rows without entries)
+function lvExtraBreakdownHtml(r){
+  if (r.leave_type !== 'extra_working') return '';
+  const dates = Array.isArray(r.dates) ? r.dates : [];
+  const parts = [];
+  for (const d of dates) {
+    if (!Array.isArray(d.entries) || !d.entries.length) continue;
+    parts.push(
+      `<div class="lv-extra-bd-date"><b>${fmtDate(d.date)}</b> (${Number(d.hours) || 0}h)</div>` +
+      d.entries.map(e =>
+        `<div class="lv-extra-bd-line">• ${dtEscape(e.client || '')} — ${dtEscape(e.description || '')} <b>(${Number(e.hours) || 0}h)</b></div>`
+      ).join('')
+    );
+  }
+  return parts.length ? `<div class="lv-extra-breakdown">${parts.join('')}</div>` : '';
 }
 
 function renderLeaves(){
@@ -14486,7 +14532,7 @@ function renderLeaves(){
             <span class="lv-type-pill lv-type-${r.leave_type}">${LEAVE_TYPE_ICON[r.leave_type]||''} ${LEAVE_TYPE_LABEL[r.leave_type]||r.leave_type}</span>
             <span class="lv-status lv-status-${r.status}">${r.status}</span>
           </div>
-          <div class="lv-item-reason">${dtEscape(r.reason)}</div>
+          ${(() => { const bd = lvExtraBreakdownHtml(r); return bd || `<div class="lv-item-reason">${dtEscape(r.reason)}</div>`; })()}
           <div class="lv-item-meta">
             <b>Applied:</b> ${dtEscape((r.created_at||'').slice(0,16))}
             ${r.status === 'pending'
@@ -14535,6 +14581,9 @@ function openLeaveForm(){
   document.querySelectorAll('#lvTypeGrid .lv-type-btn').forEach(b => b.classList.remove('active'));
   LEAVE_PICKED_TYPE = '';
   LEAVE_SELECTED.clear();
+  LEAVE_EXTRA_ROWS.clear();
+  document.getElementById('lvReasonGroup').style.display = '';
+  lvLoadClients();
   LEAVE_CAL_VIEW = new Date();
   LEAVE_CAL_VIEW.setDate(1);
   lvRenderCalendar();
@@ -14559,6 +14608,8 @@ function lvPickType(type, el){
   LEAVE_PICKED_TYPE = type;
   document.querySelectorAll('#lvTypeGrid .lv-type-btn').forEach(b => b.classList.remove('active'));
   if (el) el.classList.add('active');
+  // Extra working uses per-row task descriptions instead of a single reason
+  document.getElementById('lvReasonGroup').style.display = type === 'extra_working' ? 'none' : '';
   // Show / hide selected list (hours input panel)
   lvRenderSelectedList();
 }
@@ -14617,6 +14668,7 @@ function lvRenderCalendar(){
 function lvToggleDate(key){
   if (LEAVE_SELECTED.has(key)) {
     LEAVE_SELECTED.delete(key);
+    LEAVE_EXTRA_ROWS.delete(key);
   } else {
     LEAVE_SELECTED.set(key, '');
   }
@@ -14649,26 +14701,71 @@ function lvRenderSelectedList(){
     </div>`;
     return;
   }
-  // Extra working — show hours input per date
+  // Extra working — client/task rows per date (Daily Task style)
   box.style.display = 'block';
-  label.textContent = 'Hours per Date';
+  label.textContent = 'Work Details per Date';
   const sorted = [...LEAVE_SELECTED.keys()].sort();
-  list.innerHTML = sorted.map(k => `
-    <div class="lv-selected-row">
-      <span class="lv-selected-date">📅 ${fmtDate(k)}</span>
-      <div class="lv-selected-hours">
-        <input type="number" min="0.5" max="24" step="0.5" placeholder="0"
-          value="${LEAVE_SELECTED.get(k) || ''}"
-          oninput="lvUpdateHours('${k}', this.value)"/>
-        <span class="lv-selected-hours-label">hrs</span>
+  list.innerHTML = sorted.map(k => {
+    const rows = lvExtraRowsFor(k);
+    return `
+    <div class="lv-extra-date-block">
+      <div class="lv-extra-date-head">
+        <span>📅 ${fmtDate(k)}</span>
+        <span class="lv-extra-date-total" id="lvExtraTotal-${k}">${lvExtraDateTotal(k)}h</span>
+        <button type="button" class="lv-selected-remove" onclick="lvToggleDate('${k}')">✕</button>
       </div>
-      <button type="button" class="lv-selected-remove" onclick="lvToggleDate('${k}')">✕</button>
-    </div>`).join('');
+      ${rows.map((row, i) => `
+      <div class="lv-extra-row">
+        <select onchange="lvExtraSet('${k}',${i},'client',this.value)">
+          <option value="">-- client --</option>
+          <option value="${LEAVE_INTERNAL_CLIENT}" ${row.client === LEAVE_INTERNAL_CLIENT ? 'selected' : ''}>🏢 ${LEAVE_INTERNAL_CLIENT}</option>
+          ${LEAVE_CLIENTS.map(c => `<option value="${dtEscape(c)}" ${row.client === c ? 'selected' : ''}>${dtEscape(c)}</option>`).join('')}
+        </select>
+        <input type="text" placeholder="What did you do?" value="${dtEscape(row.description || '')}"
+          oninput="lvExtraSet('${k}',${i},'description',this.value)"/>
+        <input type="number" min="0.5" max="24" step="0.5" placeholder="hrs" value="${row.hours || ''}"
+          oninput="lvExtraSet('${k}',${i},'hours',this.value)"/>
+        <button type="button" class="lv-extra-row-del" onclick="lvExtraDelRow('${k}',${i})" title="Remove row">✕</button>
+      </div>`).join('')}
+      <button type="button" class="lv-extra-add-row" onclick="lvExtraAddRow('${k}')">+ Add Client Row</button>
+    </div>`;
+  }).join('');
 }
 
-function lvUpdateHours(key, val){
-  if (!LEAVE_SELECTED.has(key)) return;
-  LEAVE_SELECTED.set(key, val);
+function lvExtraRowsFor(key){
+  if (!LEAVE_EXTRA_ROWS.has(key)) {
+    LEAVE_EXTRA_ROWS.set(key, [{ client: '', description: '', hours: '' }]);
+  }
+  return LEAVE_EXTRA_ROWS.get(key);
+}
+
+function lvExtraDateTotal(key){
+  const rows = LEAVE_EXTRA_ROWS.get(key) || [];
+  const t = rows.reduce((s, r) => s + (parseFloat(r.hours) || 0), 0);
+  return Math.round(t * 100) / 100;
+}
+
+function lvExtraSet(key, idx, field, value){
+  const rows = LEAVE_EXTRA_ROWS.get(key);
+  if (!rows || !rows[idx]) return;
+  rows[idx][field] = value;
+  if (field === 'hours') {
+    const el = document.getElementById('lvExtraTotal-' + key);
+    if (el) el.textContent = lvExtraDateTotal(key) + 'h';
+  }
+}
+
+function lvExtraAddRow(key){
+  lvExtraRowsFor(key).push({ client: '', description: '', hours: '' });
+  lvRenderSelectedList();
+}
+
+function lvExtraDelRow(key, idx){
+  const rows = LEAVE_EXTRA_ROWS.get(key);
+  if (!rows) return;
+  rows.splice(idx, 1);
+  if (!rows.length) rows.push({ client: '', description: '', hours: '' });
+  lvRenderSelectedList();
 }
 
 async function saveLeave(){
@@ -14679,17 +14776,29 @@ async function saveLeave(){
   if (!LEAVE_PICKED_TYPE) return showErr('Please pick a Leave Type');
   if (!LEAVE_SELECTED.size) return showErr('Select at least one date');
 
-  const reason = document.getElementById('lvReason').value.trim();
-  if (!reason) return showErr('Reason is required');
-
   const isExtra = LEAVE_PICKED_TYPE === 'extra_working';
+  const reason = document.getElementById('lvReason').value.trim();
+  if (!isExtra && !reason) return showErr('Reason is required');
+
   const dates = [];
   for (const key of [...LEAVE_SELECTED.keys()].sort()) {
     const item = { date: key };
     if (isExtra) {
-      const h = parseFloat(LEAVE_SELECTED.get(key));
-      if (!h || h <= 0) return showErr(`Enter hours for ${fmtDate(key)}`);
-      item.hours = h;
+      // Keep only rows the user actually touched; require complete rows
+      const rows = (LEAVE_EXTRA_ROWS.get(key) || [])
+        .filter(r => r.client || (r.description || '').trim() || r.hours);
+      if (!rows.length) return showErr(`Add at least one client row for ${fmtDate(key)}`);
+      const entries = [];
+      for (const row of rows) {
+        const client = (row.client || '').trim();
+        const description = (row.description || '').trim();
+        const h = parseFloat(row.hours);
+        if (!client) return showErr(`Select a client for ${fmtDate(key)}`);
+        if (!description) return showErr(`Enter task description for ${client} on ${fmtDate(key)}`);
+        if (!h || h <= 0) return showErr(`Enter hours for ${client} on ${fmtDate(key)}`);
+        entries.push({ client, description, hours: h });
+      }
+      item.entries = entries;
     }
     dates.push(item);
   }
@@ -14725,11 +14834,12 @@ function openLeaveDecision(id, action){
       ? `${fmtDate(d.date)} <span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:5px;font-size:10px;font-weight:700;margin-left:3px">${d.hours}h</span>`
       : fmtDate(d.date)
   ).join(' · ');
+  const bd = lvExtraBreakdownHtml(lr);
   document.getElementById('lvDecisionInfo').innerHTML = `
     <div><b>Employee:</b> ${dtEscape(lr.user_name)}</div>
     <div><b>Type:</b> ${LEAVE_TYPE_LABEL[lr.leave_type]||lr.leave_type}</div>
     <div><b>Dates (${dates.length}):</b> ${datesHtml}</div>
-    <div><b>Reason:</b> ${dtEscape(lr.reason)}</div>`;
+    ${bd ? `<div><b>Work done:</b>${bd}</div>` : `<div><b>Reason:</b> ${dtEscape(lr.reason)}</div>`}`;
   const approveBtn = document.getElementById('lvApproveBtn');
   const rejectBtn = document.getElementById('lvRejectBtn');
   approveBtn.style.opacity = action === 'approve' ? '1' : '.7';
@@ -14800,7 +14910,7 @@ async function loadLeaveApprovals(){
               <td><b>${dtEscape(r.user_name)}</b>${r.user_department ? `<br><span style="color:#94a3b8;font-size:11px">${dtEscape(r.user_department)}</span>` : ''}</td>
               <td><span class="lv-type-pill lv-type-${r.leave_type}">${LEAVE_TYPE_ICON[r.leave_type]||''} ${LEAVE_TYPE_LABEL[r.leave_type]||r.leave_type}</span></td>
               <td style="font-size:12px;line-height:1.5">${datesHtml}<br><span style="color:#94a3b8;font-size:11px">${dates.length} day${dates.length===1?'':'s'}</span></td>
-              <td style="font-size:12px;max-width:240px">${dtEscape(r.reason)}</td>
+              <td style="font-size:12px;max-width:280px">${lvExtraBreakdownHtml(r) || dtEscape(r.reason)}</td>
               <td style="color:#64748b;font-size:11px">${dtEscape((r.created_at||'').slice(0,16))}</td>
               <td style="white-space:nowrap">
                 <button class="action-btn done" onclick="openLeaveDecision(${r.id},'approve')">Approve</button>
