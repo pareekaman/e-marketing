@@ -3197,6 +3197,18 @@ input:focus,select:focus,textarea:focus{outline:none;}
     </div>
   </div>
 
+  <!-- HRM: Joining Details Modal (submitted by the candidate on the form) -->
+  <div class="modal-overlay" id="hrmJoiningDetailsModal">
+    <div class="modal" style="width:520px;max-width:95vw">
+      <button class="modal-close" onclick="closeModal('hrmJoiningDetailsModal')">×</button>
+      <h3>📋 Joining Details</h3>
+      <div id="hrmJoiningDetailsBody" style="margin-top:12px"></div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('hrmJoiningDetailsModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- HRM: Offer Letter View Modal -->
   <div class="modal-overlay" id="hrmOfferViewModal">
     <div class="modal" style="width:720px;max-width:95vw">
@@ -6054,6 +6066,13 @@ function renderHrmRows(list) {
     const dateStr = c.interview_date ? new Date(c.interview_date).toLocaleDateString('en-IN') : '—';
     const reDateStr = c.reschedule_date ? new Date(c.reschedule_date).toLocaleDateString('en-IN') : '';
     const canUpdate = c.status !== 'Rejected' && canDo('hrm_update_status');
+    // Joining-details chip — only from selection onwards, since that is when the
+    // form link goes out; before that it would just be noise on every row.
+    const showJoining = c.joining_form_required && ['Selected','Offer Sent','Offer Letter Sent'].includes(c.status);
+    const joiningCell = !showJoining ? '' : (c.joining_details_at
+      ? `<button class="action-btn" style="background:#ecfeff;color:#0e7490;border:1px solid #a5f3fc;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="viewJoiningDetails(${c.id})">📋 View Details</button>`
+      : `<span style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;font-size:11px;padding:4px 9px;border-radius:6px;white-space:nowrap">📋 Details Pending</span>`
+        + (canUpdate ? `<button class="action-btn" style="background:#fff;color:#c2410c;border:1px solid #fed7aa;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="resendJoiningForm(${c.id})">Resend Form</button>` : ''));
     return `<tr>
       <td>
         <div style="display:flex;align-items:center;gap:10px">
@@ -6080,6 +6099,7 @@ function renderHrmRows(list) {
         ${c.status === 'Offer Letter Sent' && c.final_offer_drive_id
           ? `<a href="https://drive.google.com/file/d/${c.final_offer_drive_id}/view" target="_blank" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📬 View Offer Letter</a>`
           : ''}
+        ${joiningCell}
       </td>
     </tr>`;
   }).join('');
@@ -6227,6 +6247,16 @@ function openHrmStatusModal(id) {
 
 function onHrmStatusChange() {
   const s = document.getElementById('hrmNewStatus').value;
+  // Departments that require the joining-details form can't reach either offer
+  // stage until the candidate has submitted it (the server enforces this too).
+  if (s === 'Offer Sent' || s === 'Offer Letter Sent') {
+    const c = _hrmCandidates.find(x => String(x.id) === String(_hrmCurrentId));
+    if (c && c.joining_form_required && !c.joining_details_at) {
+      document.getElementById('hrmNewStatus').value = '';
+      showToast('Joining details pending — the offer letter can only be sent after the candidate submits the form.', 'error');
+      return;
+    }
+  }
   if (s === 'Offer Sent') {
     closeModal('hrmStatusModal');
     openOfferFormModal(_hrmCurrentId);
@@ -6260,7 +6290,67 @@ async function submitHrmStatus() {
   const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/status`,'PUT',body);
   if (r.error) { showToast(r.error,'error'); return; }
   closeModal('hrmStatusModal');
-  showToast('Status updated! WhatsApp queued.');
+  if (r.joiningFormError)     showToast('Status updated, but the joining details form could not be sent: ' + r.joiningFormError, 'error');
+  else if (r.joiningFormSent) showToast('Status updated! Joining details form sent on WhatsApp.');
+  else                        showToast('Status updated! WhatsApp queued.');
+  loadHRM();
+}
+
+async function viewJoiningDetails(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  const r = await api(`/api/hrm/candidates/${id}/joining-details`, 'GET');
+  if (!r || r.error) { showToast((r && r.error) || 'Could not load details', 'error'); return; }
+  const dob = r.dob ? new Date(r.dob).toLocaleDateString('en-IN') : '—';
+  // submitted_at is stored as IST wall time — render it as UTC so it isn't
+  // shifted a second time (brain.md §16).
+  const at = r.submitted_at ? new Date(r.submitted_at).toLocaleString('en-IN', { timeZone: 'UTC' }) : '';
+  const row = (label, value) => `
+    <div style="display:flex;gap:12px;padding:9px 0;border-bottom:1px solid #f1f5f9">
+      <div style="width:150px;flex-shrink:0;font-size:12px;color:#64748b">${label}</div>
+      <div style="font-size:13px;color:#0f172a;font-weight:500;word-break:break-word">${value}</div>
+    </div>`;
+  // Mobile numbers hang off the name they belong to rather than taking their own
+  // row — three extra rows of just digits crowds the modal.
+  const withMobile = (m) => m
+    ? `<span style="color:#64748b;font-weight:400"> · ${esc(m)}</span>` : '';
+  // Relation is free text ("Other" in the form lets the candidate type their
+  // own), so it goes in the label rather than being mapped to a fixed set.
+  const guardianLabel = (n, rel) => `Guardian ${n}${rel ? ` (${esc(rel)})` : ''}`;
+  const address = [r.street, r.city, r.state, r.pincode].filter(Boolean).map(esc).join(', ') || '—';
+  // A document is either one PDF or two images (front + back). The URLs come
+  // from the candidate's form submission, so only render an anchor for a real
+  // http(s) link.
+  const fileLinks = (...urls) => {
+    const ok = urls.filter(u => /^https?:\/\//i.test(u || ''));
+    if (!ok.length) return '<span style="color:#94a3b8;font-size:12px">Not uploaded</span>';
+    return ok.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer" style="color:#4f46e5;font-size:12px;font-weight:600;text-decoration:none">${ok.length > 1 ? (i === 0 ? 'Front ↗' : 'Back ↗') : 'Open ↗'}</a>`).join('&nbsp;&nbsp;');
+  };
+
+  document.getElementById('hrmJoiningDetailsBody').innerHTML = `
+    <div class="hrm-candidate-card">
+      <div class="hrm-candidate-card-name">${esc(c ? c.name : r.full_name)}</div>
+      <div class="hrm-candidate-card-sub">${esc(c ? (c.profile_position||'') : '')}${c && c.department ? ' · ' + esc(c.department) : ''}</div>
+    </div>
+    ${row('Name', esc(r.full_name || '—') + withMobile(r.emp_mobile))}
+    ${row('Email', r.email ? `<a href="mailto:${esc(r.email)}" style="color:#4f46e5;text-decoration:none">${esc(r.email)}</a>` : '—')}
+    ${row(guardianLabel(1, r.guardian1_relation), esc(r.guardian1_name || '—') + withMobile(r.guardian1_mobile))}
+    ${row(guardianLabel(2, r.guardian2_relation), esc(r.guardian2_name || '—') + withMobile(r.guardian2_mobile))}
+    ${row('Date of Birth', dob)}
+    ${row('Address', address)}
+    ${r.aadhaar_no ? row('Aadhaar Number', esc(r.aadhaar_no)) : ''}
+    ${row('Aadhaar Card', fileLinks(r.aadhaar_file_url, r.aadhaar_file_url_2))}
+    ${r.pan_no ? row('PAN Number', esc(r.pan_no)) : ''}
+    ${row('PAN Card', fileLinks(r.pan_file_url, r.pan_file_url_2))}
+    ${at ? `<div style="font-size:11px;color:#94a3b8;margin-top:10px">Submitted ${at}</div>` : ''}`;
+  document.getElementById('hrmJoiningDetailsModal').classList.add('open');
+}
+
+async function resendJoiningForm(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  if (!confirm(`Resend the joining details form link to ${c ? c.name : 'this candidate'} on WhatsApp?`)) return;
+  const r = await api(`/api/hrm/candidates/${id}/send-joining-form`, 'POST', {});
+  if (!r || r.error) { showToast((r && r.error) || 'Send failed', 'error'); return; }
+  showToast('Form link sent on WhatsApp');
   loadHRM();
 }
 
