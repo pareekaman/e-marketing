@@ -10408,7 +10408,7 @@ Details required:
 • Two guardians — name, relation & mobile number
 • Date of birth
 • Residential address
-• Resume (PDF or Word)
+• Resume (optional) — PDF or Word
 • Aadhaar card — one PDF, or front & back photos
 • PAN card (optional) — same
 
@@ -11127,7 +11127,6 @@ app.post('/api/hrm/joining-form', async (req, res) => {
     if (!g2Name)     missing.push('Guardian 2 Name');
     if (!g2Relation) missing.push('Guardian 2 Relation');
     if (!dob)        missing.push('Date of Birth');
-    if (!resumeFile) missing.push('Resume');
     if (!aadhaarFile && !aadhaarNo) missing.push('Aadhaar Card');
     if (missing.length) return res.status(400).json({ error: `Missing or invalid: ${missing.join(', ')}` });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Email address is invalid' });
