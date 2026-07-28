@@ -584,7 +584,7 @@ function cpRenderClientTasksHtml(s){
     return `<tr${done ? ' style="opacity:.55"' : ''}>
       <td style="word-break:break-word">${dtEscape(t.description || '')}</td>
       <td style="white-space:nowrap">${dtEscape(t.assigned_by_name || '—')}</td>
-      <td style="white-space:nowrap;${overdue ? 'color:#dc2626;font-weight:700' : ''}">${due}${overdue ? ' ⚠️' : ''}</td>
+      <td style="white-space:nowrap;${overdue ? 'color:#dc2626;font-weight:700' : ''}">${due}${overdue ? ' ⚠️' : ''}${t.delegated_on ? `<div style="font-size:10px;color:#94a3b8;font-weight:500;margin-top:2px">Given ${fmtDate(t.delegated_on)}</div>` : ''}</td>
       <td style="white-space:nowrap">${done
         ? '<span style="color:#16a34a;font-weight:700;font-size:12px">✓ Done</span>'
         : (CP_IS_PREVIEW
@@ -956,6 +956,7 @@ function cpOpenTaskDetail(key){
   document.getElementById('cpTdBody').innerHTML = [
     row('Doer', dtEscape(t.doer || '—')),
     row('Priority', `<span style="font-size:11px;color:${prFg};font-weight:700;background:${prBg};padding:3px 9px;border-radius:10px;text-transform:capitalize">${dtEscape(t.priority || 'low')}</span>`),
+    row('Delegated On', fmtDate(t.created_date || '')),
     row('Due Date', fmtDate(t.due_date || '') || '<span style="color:#94a3b8">Not set yet</span>'),
     row('Status', statusHtml),
   ].filter(Boolean).join('');

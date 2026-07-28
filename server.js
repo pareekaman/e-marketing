@@ -501,6 +501,45 @@ const _startupMigrationsPromise = (async () => {
   // later final send can't overwrite the still-live preliminary PDF link).
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN prelim_offer_token VARCHAR(64) DEFAULT NULL`);
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN prelim_offer_data MEDIUMTEXT DEFAULT NULL`);
+  // Joining-details form: the token is what the candidate's form link carries,
+  // and is how the Apps Script submission is mapped back to the candidate.
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN joining_form_token VARCHAR(64) DEFAULT NULL`);
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN joining_form_sent_at TIMESTAMP NULL DEFAULT NULL`);
+
+  // One row per candidate — the basic details the candidate submits before any
+  // offer letter goes out. Filled by the public Apps Script webhook, never by
+  // hand. UNIQUE(candidate_id) makes the webhook an idempotent upsert, so a
+  // re-submission corrects the row instead of duplicating it.
+  await sa(`CREATE TABLE IF NOT EXISTS hrm_joining_details (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    candidate_id INT NOT NULL,
+    full_name VARCHAR(255) DEFAULT '',
+    emp_mobile VARCHAR(20) DEFAULT '',
+    email VARCHAR(255) DEFAULT '',
+    guardian1_name VARCHAR(255) DEFAULT '',
+    guardian1_relation VARCHAR(100) DEFAULT '',
+    guardian1_mobile VARCHAR(20) DEFAULT '',
+    guardian2_name VARCHAR(255) DEFAULT '',
+    guardian2_relation VARCHAR(100) DEFAULT '',
+    guardian2_mobile VARCHAR(20) DEFAULT '',
+    dob DATE DEFAULT NULL,
+    street VARCHAR(500) DEFAULT '',
+    city VARCHAR(255) DEFAULT '',
+    state VARCHAR(255) DEFAULT '',
+    pincode VARCHAR(20) DEFAULT '',
+    aadhaar_no VARCHAR(20) DEFAULT '',
+    pan_no VARCHAR(20) DEFAULT '',
+    resume_file_url VARCHAR(1024) DEFAULT '',
+    -- One PDF, or two images (front + back) — hence a second URL per document.
+    aadhaar_file_url VARCHAR(1024) DEFAULT '',
+    aadhaar_file_url_2 VARCHAR(1024) DEFAULT '',
+    pan_file_url VARCHAR(1024) DEFAULT '',
+    pan_file_url_2 VARCHAR(1024) DEFAULT '',
+    raw_payload LONGTEXT DEFAULT NULL,
+    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_candidate (candidate_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
   // Per-user permissions column (replaces role_permissions)
   await sa(`ALTER TABLE users ADD COLUMN user_permissions TEXT DEFAULT NULL AFTER extra_access`);
@@ -1394,11 +1433,11 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
 
     let delegationRows = [], checklistRows = [];
     if (taskType === 'delegation' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${delDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, delParams);
+      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${delDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, delParams);
       delegationRows = rows;
     }
     if (taskType === 'checklist' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${chlDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, chlParams);
+      const [rows] = await db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${chlDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, chlParams);
       checklistRows = rows;
     }
     // `todayPending` kept for backwards compatibility (regular pending load still uses it).
@@ -1460,7 +1499,7 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     const subtaskCols = isDeleg
       ? "COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='completed'),0) AS subtasks_done,COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='pending'),0) AS subtasks_pending,"
       : "0 AS subtasks_done,0 AS subtasks_pending,";
-    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_ask,DATE_FORMAT(t.client_ask_by,'%Y-%m-%d') AS client_ask_date,TIME_FORMAT(t.client_ask_by,'%H:%i') AS client_ask_time,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,NULL AS client_ask,NULL AS client_ask_date,NULL AS client_ask_time,"}${subtaskCols}t.client_id,c.name AS client_name,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
+    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_ask,DATE_FORMAT(t.client_ask_by,'%Y-%m-%d') AS client_ask_date,TIME_FORMAT(t.client_ask_by,'%H:%i') AS client_ask_time,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,NULL AS client_ask,NULL AS client_ask_date,NULL AS client_ask_time,"}${subtaskCols}t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
 
     // mine=1 mode always returns flat tasks (never grouped)
     if (isMine) {
@@ -6236,6 +6275,7 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
     const [clientTasks] = client?.portal_user_id ? await db.query(
       `SELECT t.id, 'delegation' AS type, t.description, t.status, t.priority,
               COALESCE(t.waiting_approval,0) AS waiting_approval, t.remarks,
+              DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
               TIME_FORMAT(t.due_time,'%H:%i') AS due_time,
               COALESCE(u.name,'—') AS assigned_by_name
@@ -10283,6 +10323,94 @@ const HRM_OFFER_FOLDER_ID   = process.env.HRM_OFFER_FOLDER_ID   || '1DWfwjSdkVP_
 const HRM_OFFER_TEMPLATE_ID = process.env.HRM_OFFER_TEMPLATE_ID || '11f3STYRR4Lyk2HaoBfo7Kiiw5DsEoyr0P3lZnpZR_G4';
 const HRM_OFFER_SCRIPT      = process.env.HRM_OFFER_SCRIPT      || 'https://script.google.com/macros/s/AKfycbyDG7Wqih7LW3p7ttqONoqzwy5t5Gq7B3RgTxEJcD3QL6qzALTMaC3cUvnxW2CGT3VQ/exec';
 
+// ── Joining-details form ──────────────────────────────────────────────────
+// Every selected candidate must submit their basic details (name, parents,
+// DOB, Aadhaar, optional PAN + document copies) BEFORE any offer letter is
+// generated. The form itself lives in Google Apps Script; this app only sends
+// its link on selection and receives the submission on a webhook.
+// Default '*' = all departments; set a comma-separated list to restrict it.
+const HRM_JOINING_FORM_DEPTS = (process.env.HRM_JOINING_FORM_DEPTS || '*')
+  .split(',').map(d => d.trim().toLowerCase()).filter(Boolean);
+const HRM_JOINING_FORM_URL    = process.env.HRM_JOINING_FORM_URL    || '';
+// Shared secret the Apps Script must send back on the webhook — the form is
+// public, so the submission endpoint can't be.
+const HRM_JOINING_FORM_SECRET = process.env.HRM_JOINING_FORM_SECRET || 'emk-joining-form-secret';
+
+function hrmNeedsJoiningForm(department) {
+  if (HRM_JOINING_FORM_DEPTS.includes('*')) return true;
+  return HRM_JOINING_FORM_DEPTS.includes(String(department || '').trim().toLowerCase());
+}
+
+async function hrmHasJoiningDetails(candidateId) {
+  const [[row]] = await db.query('SELECT id FROM hrm_joining_details WHERE candidate_id=? LIMIT 1', [candidateId]);
+  return !!row;
+}
+
+// Gate used by every offer-letter path. Returns an error string when the offer
+// must be blocked, or null when it may proceed. newDepartment is the department
+// being saved with this request, which may differ from the stored one — the
+// offer forms let HR change it.
+async function hrmJoiningFormBlock(c, newDepartment) {
+  const dept = newDepartment || c.department;
+  if (!hrmNeedsJoiningForm(dept)) return null;
+  if (await hrmHasJoiningDetails(c.id)) return null;
+  // Persist an HR department correction even though the request is rejected:
+  // the portal decides whether to show the "Resend Form" action from the STORED
+  // department, so without this the candidate would be blocked with no way to
+  // send them the form.
+  if (dept !== c.department) {
+    await db.query('UPDATE hrm_candidates SET department=? WHERE id=?', [dept, c.id]).catch(() => {});
+  }
+  return `${c.name} has not submitted the joining details form yet${dept ? ` (${dept})` : ''}. `
+       + `Send the form from the candidate row ("Resend Form") — the offer letter can only go out once those details are received.`;
+}
+
+// Sends (or resends) the joining-details form link on WhatsApp. The per-candidate
+// token travels in the URL so the Apps Script can post the submission back
+// against the right candidate.
+async function hrmSendJoiningForm(c) {
+  if (!HRM_JOINING_FORM_URL) {
+    console.error('HRM joining form URL not configured (HRM_JOINING_FORM_URL) — link not sent');
+    return { sent: false, error: 'Joining form URL is not configured' };
+  }
+  let token = c.joining_form_token;
+  if (!token) {
+    token = require('crypto').randomBytes(24).toString('hex');
+    await db.query('UPDATE hrm_candidates SET joining_form_token=? WHERE id=?', [token, c.id]);
+  }
+  const sep = HRM_JOINING_FORM_URL.includes('?') ? '&' : '?';
+  const formUrl = `${HRM_JOINING_FORM_URL}${sep}token=${token}`;
+
+  const r = await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+`Hello ${c.name}! 📋
+
+Before we issue your offer letter, please fill this short details form:
+
+${formUrl}
+
+Details required:
+• Your name, mobile number & email
+• Two guardians — name, relation & mobile number
+• Date of birth
+• Residential address
+• Resume (optional) — PDF or Word
+• Aadhaar card — one PDF, or front & back photos
+• PAN card (optional) — same
+
+Your offer letter will be issued once we receive these details.
+
+— ${HRM_COMPANY} HR Team`
+  }, 'text', c.id, c.name, 'Joining Details Form Sent');
+
+  // A timeout counts as sent — the provider usually delivers, it just doesn't
+  // ack in time (same reasoning as the offer-letter sends).
+  if (r.sent || r.timedOut) {
+    await db.query('UPDATE hrm_candidates SET joining_form_sent_at=NOW() WHERE id=?', [c.id]).catch(() => {});
+    return { sent: true, formUrl };
+  }
+  return { sent: false, formUrl, error: 'WhatsApp send failed — check the Messages tab' };
+}
+
 // Logo: pre-sized 185x110 PNG hardcoded as base64.
 // Google Docs renders base64 at natural pixel size (ignores HTML w/h attrs),
 // so the image must already be 185x110 before encoding — which this file is.
@@ -10903,6 +11031,150 @@ app.get('/offer-pdf-prelim/:token', async (req, res) => {
   }
 });
 
+// Accepts YYYY-MM-DD, DD/MM/YYYY and DD-MM-YYYY (what a Google Form date answer
+// or a typed Indian-format date arrives as) and returns a MySQL DATE string.
+function hrmParseDob(value) {
+  const s = String(value || '').trim();
+  if (!s) return null;
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// Public webhook — the Apps Script joining-details form posts here on submit.
+// No session: the shared secret authenticates the SCRIPT, the per-candidate
+// token (carried in the form link) identifies the CANDIDATE. Both required.
+// Receiving a valid submission is what releases the offer-letter block.
+app.post('/api/hrm/joining-form', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const secret = req.get('x-hrm-form-secret') || body.secret || '';
+    if (secret !== HRM_JOINING_FORM_SECRET) return res.status(401).json({ error: 'Invalid secret' });
+
+    // The script may post our field names or the form's question titles
+    // ("Father's Name"), so match on a stripped key: lowercase alphanumerics.
+    const norm = {};
+    for (const [k, v] of Object.entries(body)) norm[String(k).toLowerCase().replace(/[^a-z0-9]/g,'')] = v;
+    const pick = (...aliases) => {
+      for (const a of aliases) {
+        const v = norm[a];
+        if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+      }
+      return '';
+    };
+
+    const token = pick('token','candidatetoken','formtoken');
+    if (!token) return res.status(400).json({ error: 'token is required' });
+    const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE joining_form_token=? LIMIT 1', [token]);
+    if (!c) return res.status(404).json({ error: 'Unknown token — no candidate matches this form link' });
+
+    const fullName     = pick('fullname','name','empname','candidatename');
+    const empMobile    = pick('empmobile','employeemobile','mobile','phone','empmobileno','employeemobileno').replace(/\D/g,'');
+    const email        = pick('email','empemail','employeeemail','emailid','emailaddress').toLowerCase();
+    // Guardians replaced the old father/mother pair — the relation is a free
+    // string because the form's dropdown has an "Other" option the candidate
+    // types into (Uncle, Brother, …), so it is not a fixed enum.
+    const g1Name       = pick('guardian1name','guardian1','g1name');
+    const g1Relation   = pick('guardian1relation','guardian1rel','g1relation');
+    const g1Mobile     = pick('guardian1mobile','guardian1mobileno','g1mobile').replace(/\D/g,'');
+    const g2Name       = pick('guardian2name','guardian2','g2name');
+    const g2Relation   = pick('guardian2relation','guardian2rel','g2relation');
+    const g2Mobile     = pick('guardian2mobile','guardian2mobileno','g2mobile').replace(/\D/g,'');
+    const dob          = hrmParseDob(pick('dob','dateofbirth','birthdate'));
+    const street       = pick('street','address','streethouseno','houseno');
+    const city         = pick('city');
+    const state        = pick('state');
+    const pincode      = pick('pincode','pin','postalcode','zip').replace(/\D/g,'');
+    const aadhaarNo    = pick('aadhaarno','aadharno','aadhaarnumber','aadharnumber','aadhaarcardno','aadharcardno').replace(/\D/g,'');
+    const panNo        = pick('panno','pannumber','pancardno','pancardnumber').toUpperCase().replace(/\s/g,'');
+    const resumeFile   = pick('resumefileurl','resumeurl','resume','resumelink','cvurl','cv');
+    // Aadhaar/PAN are each either one PDF or two images (front + back), so a
+    // second URL may or may not be present. A resume is always a single file.
+    const aadhaarFile  = pick('aadhaarfileurl','aadharfileurl','aadhaarurl','aadharurl','aadhaarfile','aadharfile','aadhaarfront','aadharfront');
+    const aadhaarFile2 = pick('aadhaarfileurl2','aadharfileurl2','aadhaarurl2','aadharurl2','aadhaarback','aadharback');
+    const panFile      = pick('panfileurl','panurl','panfile','panfront');
+    const panFile2     = pick('panfileurl2','panurl2','panback');
+
+    // Validated here as well as in the form — this is the data the employee
+    // record is built from, and a rejected submission the candidate can
+    // immediately retry is cheaper than a bad record. Aadhaar is required as a
+    // DOCUMENT; the number is accepted but optional, since the form collects a
+    // PDF rather than the digits.
+    const missing = [];
+    if (!fullName)   missing.push('Name');
+    if (!email)      missing.push('Email');
+    if (!g1Name)     missing.push('Guardian 1 Name');
+    if (!g1Relation) missing.push('Guardian 1 Relation');
+    if (!g2Name)     missing.push('Guardian 2 Name');
+    if (!g2Relation) missing.push('Guardian 2 Relation');
+    if (!dob)        missing.push('Date of Birth');
+    if (!aadhaarFile && !aadhaarNo) missing.push('Aadhaar Card');
+    if (missing.length) return res.status(400).json({ error: `Missing or invalid: ${missing.join(', ')}` });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Email address is invalid' });
+    if (aadhaarNo && aadhaarNo.length !== 12) return res.status(400).json({ error: 'Aadhaar number must be 12 digits' });
+    if (panNo && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(panNo)) return res.status(400).json({ error: 'PAN number format is invalid (e.g. ABCDE1234F)' });
+
+    await db.query(
+      `INSERT INTO hrm_joining_details
+         (candidate_id,full_name,emp_mobile,email,
+          guardian1_name,guardian1_relation,guardian1_mobile,
+          guardian2_name,guardian2_relation,guardian2_mobile,dob,
+          street,city,state,pincode,aadhaar_no,pan_no,resume_file_url,
+          aadhaar_file_url,aadhaar_file_url_2,pan_file_url,pan_file_url_2,raw_payload)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE
+         full_name=VALUES(full_name), emp_mobile=VALUES(emp_mobile), email=VALUES(email),
+         guardian1_name=VALUES(guardian1_name), guardian1_relation=VALUES(guardian1_relation),
+         guardian1_mobile=VALUES(guardian1_mobile),
+         guardian2_name=VALUES(guardian2_name), guardian2_relation=VALUES(guardian2_relation),
+         guardian2_mobile=VALUES(guardian2_mobile), dob=VALUES(dob),
+         street=VALUES(street), city=VALUES(city), state=VALUES(state), pincode=VALUES(pincode),
+         aadhaar_no=VALUES(aadhaar_no), pan_no=VALUES(pan_no),
+         resume_file_url=VALUES(resume_file_url),
+         aadhaar_file_url=VALUES(aadhaar_file_url), aadhaar_file_url_2=VALUES(aadhaar_file_url_2),
+         pan_file_url=VALUES(pan_file_url), pan_file_url_2=VALUES(pan_file_url_2),
+         raw_payload=VALUES(raw_payload)`,
+      [c.id, fullName, empMobile, email, g1Name, g1Relation, g1Mobile, g2Name, g2Relation, g2Mobile, dob,
+       street, city, state, pincode, aadhaarNo, panNo, resumeFile,
+       aadhaarFile, aadhaarFile2, panFile, panFile2,
+       JSON.stringify(body).slice(0, 60000)]
+    );
+
+    // Tell HR the block has lifted — otherwise nobody knows to send the offer.
+    const [[creator]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [c.created_by || 0]).catch(() => [[]]);
+    if (creator?.phone) {
+      sendWhatsApp(creator.phone,
+`📋 *Joining Details Received*
+
+👤 Candidate: ${c.name}
+🏢 Department: ${c.department || '—'}
+💼 Position: ${c.profile_position || '—'}
+
+Details are now in the HR portal — the offer letter can be sent.
+
+— E-Marketing HR Portal`
+      ).catch(e => console.error('HRM joining details notify err:', e.message));
+    }
+
+    hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+`Thank you ${c.name}! ✅
+
+We have received your details. Our HR team will share your offer letter shortly.
+
+— ${HRM_COMPANY} HR Team`
+    }, 'text', c.id, c.name, 'Joining Details Received').catch(e => console.error('HRM joining details ack err:', e.message));
+
+    res.json({ ok: true, candidate: c.name });
+  } catch (err) {
+    console.error('joining-form webhook error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Dashboard stats
 app.get('/api/hrm/stats', requireAuth, async (req, res) => {
   if (!(await userCanSee(req.session, 'hrm'))) return res.status(403).json({ error: 'Forbidden' });
@@ -10925,8 +11197,41 @@ app.get('/api/hrm/stats', requireAuth, async (req, res) => {
 app.get('/api/hrm/candidates', requireAuth, async (req, res) => {
   if (!(await userCanSee(req.session, 'hrm'))) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const [rows] = await db.query('SELECT * FROM hrm_candidates ORDER BY created_at DESC');
+    // joining_details_at drives the "Details Pending / Received" chip and the
+    // offer-letter gate in the UI; joining_form_required tells the UI which
+    // candidates the gate even applies to (departments live server-side only).
+    const [rows] = await db.query(`
+      SELECT c.*, d.submitted_at AS joining_details_at
+      FROM hrm_candidates c
+      LEFT JOIN hrm_joining_details d ON d.candidate_id = c.id
+      ORDER BY c.created_at DESC`);
+    rows.forEach(r => { r.joining_form_required = hrmNeedsJoiningForm(r.department); });
     res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Submitted joining details for one candidate (HR view).
+app.get('/api/hrm/candidates/:id/joining-details', requireAuth, async (req, res) => {
+  if (!(await userCanSee(req.session, 'hrm'))) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const [[row]] = await db.query('SELECT * FROM hrm_joining_details WHERE candidate_id=? LIMIT 1', [req.params.id]);
+    if (!row) return res.status(404).json({ error: 'No details submitted yet' });
+    delete row.raw_payload;   // internal debugging copy, not for the UI
+    res.json(row);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Resend the joining-details form link (HR-triggered — e.g. the candidate lost
+// the message, or the department was corrected after selection).
+app.post('/api/hrm/candidates/:id/send-joining-form', requireAuth, async (req, res) => {
+  if (!(await userCanDo(req.session, 'hrm_update_status'))) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
+    if (!c) return res.status(404).json({ error: 'Not found' });
+    if (await hrmHasJoiningDetails(c.id)) return res.status(400).json({ error: 'Details already submitted by this candidate' });
+    const r = await hrmSendJoiningForm(c);
+    if (!r.sent) return res.status(500).json({ error: r.error || 'WhatsApp send failed — check the Messages tab' });
+    res.json({ ok: true, formUrl: r.formUrl });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -10967,6 +11272,14 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
     const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
     if (!c) return res.status(404).json({ error: 'Not found' });
 
+    // No offer letter — preliminary or final — before the joining details are in.
+    // Judged on the department being saved with this update, not the stored one,
+    // since the offer form lets HR change it in the same request.
+    if (status === 'Offer Sent' || status === 'Offer Letter Sent') {
+      const blocked = await hrmJoiningFormBlock(c, department);
+      if (blocked) return res.status(400).json({ error: blocked });
+    }
+
     const HRM_ALLOWED_COLS = new Set(['status','reschedule_date','reschedule_time','reschedule_reason','joining_date','salary','offer_sent','department']);
     const updates = { status };
     if (status === 'Rescheduled') { updates.reschedule_date = reschedule_date||null; updates.reschedule_time = reschedule_time||''; updates.reschedule_reason = reschedule_reason||''; }
@@ -10979,6 +11292,7 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
     await db.query(`UPDATE hrm_candidates SET ${fields} WHERE id=?`, [...Object.values(updates), req.params.id]);
 
     const meetLine = c.meeting_link ? `\n🔗 Meeting Link: ${c.meeting_link}` : '';
+    let joiningFormSent = false, joiningFormError = null;
 
     if (status === 'Rescheduled') {
       hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
@@ -10994,6 +11308,18 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
 `Congratulations ${c.name}! 🎉\n\nYou have been selected for ${c.profile_position}.\n\nWelcome to ${HRM_COMPANY}. Our HR team will share offer details soon.\n\nPlease keep documents ready:\n- Educational certificates\n- Experience letters\n- ID proof\n- 2 passport-size photos\n\n— ${HRM_COMPANY} HR Team`
       }, 'text', c.id, c.name, 'Selected').catch(e => console.error('HRM WA selected err:', e.message));
+
+      // Selection also triggers the joining-details form.
+      // Awaited (unlike the message above) so Vercel can't freeze the send after
+      // the response — this link is what unblocks the offer letter later.
+      if (hrmNeedsJoiningForm(c.department) && !(await hrmHasJoiningDetails(c.id))) {
+        const fr = await hrmSendJoiningForm(c).catch(e => {
+          console.error('HRM joining form send err:', e.message);
+          return { sent: false, error: e.message };
+        });
+        joiningFormSent = fr.sent;
+        joiningFormError = fr.error || null;
+      }
     }
     if (status === 'Rejected') {
       hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
@@ -11140,7 +11466,7 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       }
     }
 
-    res.json({ ok: true, pdfGenerated, pdfError });
+    res.json({ ok: true, pdfGenerated, pdfError, joiningFormSent, joiningFormError });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -11262,6 +11588,8 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
     if (!c) return res.status(404).json({ error: 'Not found' });
 
     const { offer_name, offer_position, joining_date, salary, department, probation_months, letter_date } = req.body;
+    const blocked = await hrmJoiningFormBlock(c, department);
+    if (blocked) return res.status(400).json({ error: blocked });
     const name = (offer_name || c.name || '').trim();
     const position = (offer_position || c.profile_position || '').trim();
     const finalJoining = joining_date || c.joining_date;
