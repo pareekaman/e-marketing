@@ -529,6 +529,7 @@ const _startupMigrationsPromise = (async () => {
     pincode VARCHAR(20) DEFAULT '',
     aadhaar_no VARCHAR(20) DEFAULT '',
     pan_no VARCHAR(20) DEFAULT '',
+    resume_file_url VARCHAR(1024) DEFAULT '',
     -- One PDF, or two images (front + back) — hence a second URL per document.
     aadhaar_file_url VARCHAR(1024) DEFAULT '',
     aadhaar_file_url_2 VARCHAR(1024) DEFAULT '',
@@ -10407,6 +10408,7 @@ Details required:
 • Two guardians — name, relation & mobile number
 • Date of birth
 • Residential address
+• Resume (PDF or Word)
 • Aadhaar card — one PDF, or front & back photos
 • PAN card (optional) — same
 
@@ -11104,8 +11106,9 @@ app.post('/api/hrm/joining-form', async (req, res) => {
     const pincode      = pick('pincode','pin','postalcode','zip').replace(/\D/g,'');
     const aadhaarNo    = pick('aadhaarno','aadharno','aadhaarnumber','aadharnumber','aadhaarcardno','aadharcardno').replace(/\D/g,'');
     const panNo        = pick('panno','pannumber','pancardno','pancardnumber').toUpperCase().replace(/\s/g,'');
-    // Each document is either one PDF or two images (front + back), so a second
-    // URL may or may not be present.
+    const resumeFile   = pick('resumefileurl','resumeurl','resume','resumelink','cvurl','cv');
+    // Aadhaar/PAN are each either one PDF or two images (front + back), so a
+    // second URL may or may not be present. A resume is always a single file.
     const aadhaarFile  = pick('aadhaarfileurl','aadharfileurl','aadhaarurl','aadharurl','aadhaarfile','aadharfile','aadhaarfront','aadharfront');
     const aadhaarFile2 = pick('aadhaarfileurl2','aadharfileurl2','aadhaarurl2','aadharurl2','aadhaarback','aadharback');
     const panFile      = pick('panfileurl','panurl','panfile','panfront');
@@ -11124,6 +11127,7 @@ app.post('/api/hrm/joining-form', async (req, res) => {
     if (!g2Name)     missing.push('Guardian 2 Name');
     if (!g2Relation) missing.push('Guardian 2 Relation');
     if (!dob)        missing.push('Date of Birth');
+    if (!resumeFile) missing.push('Resume');
     if (!aadhaarFile && !aadhaarNo) missing.push('Aadhaar Card');
     if (missing.length) return res.status(400).json({ error: `Missing or invalid: ${missing.join(', ')}` });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Email address is invalid' });
@@ -11135,9 +11139,9 @@ app.post('/api/hrm/joining-form', async (req, res) => {
          (candidate_id,full_name,emp_mobile,email,
           guardian1_name,guardian1_relation,guardian1_mobile,
           guardian2_name,guardian2_relation,guardian2_mobile,dob,
-          street,city,state,pincode,aadhaar_no,pan_no,
+          street,city,state,pincode,aadhaar_no,pan_no,resume_file_url,
           aadhaar_file_url,aadhaar_file_url_2,pan_file_url,pan_file_url_2,raw_payload)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          full_name=VALUES(full_name), emp_mobile=VALUES(emp_mobile), email=VALUES(email),
          guardian1_name=VALUES(guardian1_name), guardian1_relation=VALUES(guardian1_relation),
@@ -11146,11 +11150,13 @@ app.post('/api/hrm/joining-form', async (req, res) => {
          guardian2_mobile=VALUES(guardian2_mobile), dob=VALUES(dob),
          street=VALUES(street), city=VALUES(city), state=VALUES(state), pincode=VALUES(pincode),
          aadhaar_no=VALUES(aadhaar_no), pan_no=VALUES(pan_no),
+         resume_file_url=VALUES(resume_file_url),
          aadhaar_file_url=VALUES(aadhaar_file_url), aadhaar_file_url_2=VALUES(aadhaar_file_url_2),
          pan_file_url=VALUES(pan_file_url), pan_file_url_2=VALUES(pan_file_url_2),
          raw_payload=VALUES(raw_payload)`,
       [c.id, fullName, empMobile, email, g1Name, g1Relation, g1Mobile, g2Name, g2Relation, g2Mobile, dob,
-       street, city, state, pincode, aadhaarNo, panNo, aadhaarFile, aadhaarFile2, panFile, panFile2,
+       street, city, state, pincode, aadhaarNo, panNo, resumeFile,
+       aadhaarFile, aadhaarFile2, panFile, panFile2,
        JSON.stringify(body).slice(0, 60000)]
     );
 

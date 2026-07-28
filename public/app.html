@@ -6339,6 +6339,7 @@ async function viewJoiningDetails(id) {
     ${row(guardianLabel(2, r.guardian2_relation), esc(r.guardian2_name || '—') + withMobile(r.guardian2_mobile))}
     ${row('Date of Birth', dob)}
     ${row('Address', address)}
+    ${row('Resume', fileLinks(r.resume_file_url))}
     ${r.aadhaar_no ? row('Aadhaar Number', esc(r.aadhaar_no)) : ''}
     ${row('Aadhaar Card', fileLinks(r.aadhaar_file_url, r.aadhaar_file_url_2))}
     ${r.pan_no ? row('PAN Number', esc(r.pan_no)) : ''}
