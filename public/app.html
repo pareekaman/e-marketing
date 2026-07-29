@@ -11970,6 +11970,7 @@ function openFMSDoneModal(rowIdx) {
   const extraRows = (activeStep && activeStep.extraRows) ? activeStep.extraRows.filter(r => r.col_letter) : [];
   const extraSection = document.getElementById('fmsDoneExtraSection');
   const extraFieldsEl = document.getElementById('fmsDoneExtraFields');
+  _fmsExtraGates = fmsBuildExtraGates(extraRows);
   if (extraRows.length > 0) {
     const inputStyle = 'width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:\'Inter\',sans-serif;outline:none;box-sizing:border-box';
     extraFieldsEl.innerHTML = extraRows.map((r, i) => {
@@ -11990,21 +11991,20 @@ function openFMSDoneModal(rowIdx) {
           const optionsList = rawOpts.length
             ? rawOpts.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('')
             : '<option value="">-- No options configured --</option>';
-          inputHtml = `<select id="fmsExtra_${i}" style="${inputStyle};background:#fff"><option value="">-- Select --</option>${optionsList}</select>`;
+          const gateHook = _fmsExtraGates.includes(i) ? ' onchange="applyFMSExtraGates()"' : '';
+          inputHtml = `<select id="fmsExtra_${i}"${gateHook} style="${inputStyle};background:#fff"><option value="">-- Select --</option>${optionsList}</select>`;
           break;
         }
         default:
           inputHtml = `<input type="text" id="fmsExtra_${i}" placeholder="Enter value..." style="${inputStyle}"/>`;
       }
-      const isRequired = !(r.required === 0 || r.required === false || r.required === '0');
-      const requiredTag = isRequired
-        ? '<span style="color:#ef4444">*</span>'
-        : '<span style="color:#94a3b8;font-size:10px;font-weight:600">(optional)</span>';
+      const requiredTag = fmsExtraIsRequired(r, i) ? FMS_EXTRA_REQ_TAG : FMS_EXTRA_OPT_TAG;
       return `<div style="margin-bottom:12px">
-        <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px">${label} ${requiredTag} <span style="color:#94a3b8;font-weight:400">(COL ${r.col_letter})</span></label>
+        <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px">${label} <span id="fmsExtraReq_${i}">${requiredTag}</span> <span style="color:#94a3b8;font-weight:400">(COL ${r.col_letter})</span></label>
         ${inputHtml}
       </div>`;
     }).join('');
+    applyFMSExtraGates();
     extraSection.style.display = 'block';
   } else {
     extraSection.style.display = 'none';
@@ -12015,6 +12015,54 @@ function openFMSDoneModal(rowIdx) {
 }
 
 // (delay reason is now a plain text input — no dropdown listener needed)
+
+const FMS_EXTRA_REQ_TAG = '<span style="color:#ef4444">*</span>';
+const FMS_EXTRA_OPT_TAG = '<span style="color:#94a3b8;font-size:10px;font-weight:600">(optional)</span>';
+
+// A field labelled "Is <thing> Required?" gates the fields that follow it: those
+// whose label mentions the same <thing> are only mandatory while the answer is
+// Yes. Driven by the labels, so no extra per-field config is needed.
+// _fmsExtraGates[i] = index of the field gating field i, or -1.
+let _fmsExtraGates = [];
+
+function fmsBuildExtraGates(extraRows) {
+  const labelOf = (r, i) => (r.label || r.row_label || r.col_letter || `Field ${i+1}`);
+  const gates = extraRows.map(() => -1);
+  let gateIdx = -1, keyword = '';
+  extraRows.forEach((r, i) => {
+    const m = labelOf(r, i).match(/^is\s+(.+?)\s+required\s*\??$/i);
+    if (m) { gateIdx = i; keyword = m[1].trim().toLowerCase(); return; }
+    if (gateIdx >= 0 && keyword && labelOf(r, i).toLowerCase().includes(keyword)) gates[i] = gateIdx;
+  });
+  return gates;
+}
+
+// Declared-required AND not switched off by its gate. An unanswered gate keeps
+// the declared requirement, so the * only disappears once someone actually
+// answers No — and the gate's own * blocks the save until then anyway.
+function fmsExtraIsRequired(r, i) {
+  if (r.required === 0 || r.required === false || r.required === '0') return false;
+  const g = _fmsExtraGates[i];
+  if (g == null || g < 0) return true;
+  const gateEl = document.getElementById(`fmsExtra_${g}`);
+  const answer = (gateEl ? gateEl.value : '').trim().toLowerCase();
+  return answer === '' || answer === 'yes';
+}
+
+function applyFMSExtraGates() {
+  const activeStep = window._fmsActiveStepData;
+  const extraRows = (activeStep && activeStep.extraRows) ? activeStep.extraRows.filter(r => r.col_letter) : [];
+  extraRows.forEach((r, i) => {
+    if ((_fmsExtraGates[i] == null ? -1 : _fmsExtraGates[i]) < 0) return;
+    const tag = document.getElementById(`fmsExtraReq_${i}`);
+    if (!tag) return;
+    const req = fmsExtraIsRequired(r, i);
+    tag.innerHTML = req ? FMS_EXTRA_REQ_TAG : FMS_EXTRA_OPT_TAG;
+    // Drop the red outline left by an earlier failed save once the field stops being mandatory.
+    const el = document.getElementById(`fmsExtra_${i}`);
+    if (el && !req) el.style.border = '1.5px solid #e2e8f0';
+  });
+}
 
 async function saveFMSDone() {
   const fmsId = document.getElementById('fmsDoneFmsId').value;
@@ -12040,7 +12088,7 @@ async function saveFMSDone() {
   const extraRows = (activeStep && activeStep.extraRows) ? activeStep.extraRows.filter(r => r.col_letter) : [];
   for (let i = 0; i < extraRows.length; i++) {
     const r = extraRows[i];
-    const isRequired = !(r.required === 0 || r.required === false || r.required === '0');
+    const isRequired = fmsExtraIsRequired(r, i);
     const el = document.getElementById(`fmsExtra_${i}`);
     const val = el ? el.value.trim() : '';
     if (isRequired && !val) {
