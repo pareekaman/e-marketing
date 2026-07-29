@@ -5558,7 +5558,16 @@ app.get('/api/cron/meeting-reminder', async (req, res) => {
 //
 // Deliberately runs around the clock, on the user's instruction: the nudge is
 // meant to keep arriving until the handler fills the date in, night included.
-async function remindHandlersOfMissingDueDates() {
+async function remindHandlersOfMissingDueDates({ force = false } = {}) {
+  // Office hours only — 9:30 AM to 6:00 PM IST. The 4-hourly cron still fires
+  // round the clock, but the nudge is held outside these hours so handlers are
+  // not chased at night. With the current schedule that lands the reminder at
+  // ~9:30, 13:30 and 17:30 IST. ?force=1 bypasses this for manual testing.
+  const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+  const mins = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
+  if (!force && (mins < 9 * 60 + 30 || mins >= 18 * 60)) {
+    return { ok: true, skipped: 'outside office hours (09:30-18:00 IST)', sent: 0 };
+  }
   // Only tasks a CLIENT delegated. A client login is role='client'; the
   // client_id back-link is checked too, matching how assignerIsClient is
   // decided in PUT /api/tasks/:id/status.
@@ -5997,7 +6006,7 @@ app.get('/api/cron/due-date-reminder', async (req, res) => {
   }
   try {
     console.log('  ⏰ Cron triggered: due-date-reminder');
-    res.json(await remindHandlersOfMissingDueDates());
+    res.json(await remindHandlersOfMissingDueDates({ force: req.query.force === '1' }));
   } catch (err) {
     console.error('Cron due-date-reminder error:', err);
     res.status(500).json({ ok: false, error: err.message });
