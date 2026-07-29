@@ -3424,6 +3424,46 @@ app.get('/api/fms-tasks', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Dropdown options may reference live user lists instead of hard-coded names:
+//   @users          -> every non-client user
+//   @dept:Meta Ads  -> every non-client user in that department
+// Tokens expand in place, so "Priya,@dept:Meta Ads" keeps Priya first. Names
+// already present are not repeated.
+async function expandDropdownUserTokens(optionsStr) {
+  const parts = String(optionsStr || '').split(',').map(o => o.trim()).filter(Boolean);
+  if (!parts.some(o => /^@(users$|dept:)/i.test(o))) return optionsStr;
+
+  const out = [], seen = new Set();
+  const add = name => {
+    const clean = String(name || '').trim();
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) return;
+    seen.add(key);
+    out.push(clean);
+  };
+
+  for (const part of parts) {
+    const deptMatch = part.match(/^@dept:\s*(.+)$/i);
+    if (/^@users$/i.test(part)) {
+      const [users] = await db.query(
+        `SELECT name FROM users WHERE role <> 'client' AND client_id IS NULL ORDER BY name ASC`
+      );
+      users.forEach(u => add(u.name));
+    } else if (deptMatch) {
+      const [users] = await db.query(
+        `SELECT name FROM users
+         WHERE role <> 'client' AND client_id IS NULL
+           AND LOWER(TRIM(department)) = ? ORDER BY name ASC`,
+        [deptMatch[1].trim().toLowerCase()]
+      );
+      users.forEach(u => add(u.name));
+    } else {
+      add(part);
+    }
+  }
+  return out.join(',');
+}
+
 // Get FMS steps for tasks view
 app.get('/api/fms-tasks/:id', requireAuth, async (req, res) => {
   try {
@@ -3438,6 +3478,10 @@ app.get('/api/fms-tasks/:id', requireAuth, async (req, res) => {
       step.isMyStep = isAdmin || doers.some(d => d.user_id === uid);
       try { step.show_cols_parsed = JSON.parse(step.show_cols||'[]'); } catch(e) { step.show_cols_parsed = []; }
       const [extraRows] = await db.query('SELECT * FROM fms_extra_rows WHERE step_id=? ORDER BY id ASC', [step.id]);
+      for (const row of extraRows) {
+        // Only the tasks view expands tokens; the builder keeps the raw text so it round-trips on save.
+        if ((row.field_type || '') === 'dropdown') row.dropdown_options = await expandDropdownUserTokens(row.dropdown_options);
+      }
       step.extraRows = extraRows;
     }
     res.json({ sheet: sheets[0], steps });
@@ -5554,7 +5598,16 @@ app.get('/api/cron/meeting-reminder', async (req, res) => {
 //
 // Deliberately runs around the clock, on the user's instruction: the nudge is
 // meant to keep arriving until the handler fills the date in, night included.
-async function remindHandlersOfMissingDueDates() {
+async function remindHandlersOfMissingDueDates({ force = false } = {}) {
+  // Office hours only — 9:30 AM to 6:00 PM IST. The 4-hourly cron still fires
+  // round the clock, but the nudge is held outside these hours so handlers are
+  // not chased at night. With the current schedule that lands the reminder at
+  // ~9:30, 13:30 and 17:30 IST. ?force=1 bypasses this for manual testing.
+  const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+  const mins = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
+  if (!force && (mins < 9 * 60 + 30 || mins >= 18 * 60)) {
+    return { ok: true, skipped: 'outside office hours (09:30-18:00 IST)', sent: 0 };
+  }
   // Only tasks a CLIENT delegated. A client login is role='client'; the
   // client_id back-link is checked too, matching how assignerIsClient is
   // decided in PUT /api/tasks/:id/status.
@@ -5993,7 +6046,7 @@ app.get('/api/cron/due-date-reminder', async (req, res) => {
   }
   try {
     console.log('  ⏰ Cron triggered: due-date-reminder');
-    res.json(await remindHandlersOfMissingDueDates());
+    res.json(await remindHandlersOfMissingDueDates({ force: req.query.force === '1' }));
   } catch (err) {
     console.error('Cron due-date-reminder error:', err);
     res.status(500).json({ ok: false, error: err.message });
