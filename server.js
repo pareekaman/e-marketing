@@ -3428,6 +3428,46 @@ app.get('/api/fms-tasks', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Dropdown options may reference live user lists instead of hard-coded names:
+//   @users          -> every non-client user
+//   @dept:Meta Ads  -> every non-client user in that department
+// Tokens expand in place, so "Priya,@dept:Meta Ads" keeps Priya first. Names
+// already present are not repeated.
+async function expandDropdownUserTokens(optionsStr) {
+  const parts = String(optionsStr || '').split(',').map(o => o.trim()).filter(Boolean);
+  if (!parts.some(o => /^@(users$|dept:)/i.test(o))) return optionsStr;
+
+  const out = [], seen = new Set();
+  const add = name => {
+    const clean = String(name || '').trim();
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) return;
+    seen.add(key);
+    out.push(clean);
+  };
+
+  for (const part of parts) {
+    const deptMatch = part.match(/^@dept:\s*(.+)$/i);
+    if (/^@users$/i.test(part)) {
+      const [users] = await db.query(
+        `SELECT name FROM users WHERE role <> 'client' AND client_id IS NULL ORDER BY name ASC`
+      );
+      users.forEach(u => add(u.name));
+    } else if (deptMatch) {
+      const [users] = await db.query(
+        `SELECT name FROM users
+         WHERE role <> 'client' AND client_id IS NULL
+           AND LOWER(TRIM(department)) = ? ORDER BY name ASC`,
+        [deptMatch[1].trim().toLowerCase()]
+      );
+      users.forEach(u => add(u.name));
+    } else {
+      add(part);
+    }
+  }
+  return out.join(',');
+}
+
 // Get FMS steps for tasks view
 app.get('/api/fms-tasks/:id', requireAuth, async (req, res) => {
   try {
@@ -3442,6 +3482,10 @@ app.get('/api/fms-tasks/:id', requireAuth, async (req, res) => {
       step.isMyStep = isAdmin || doers.some(d => d.user_id === uid);
       try { step.show_cols_parsed = JSON.parse(step.show_cols||'[]'); } catch(e) { step.show_cols_parsed = []; }
       const [extraRows] = await db.query('SELECT * FROM fms_extra_rows WHERE step_id=? ORDER BY id ASC', [step.id]);
+      for (const row of extraRows) {
+        // Only the tasks view expands tokens; the builder keeps the raw text so it round-trips on save.
+        if ((row.field_type || '') === 'dropdown') row.dropdown_options = await expandDropdownUserTokens(row.dropdown_options);
+      }
       step.extraRows = extraRows;
     }
     res.json({ sheet: sheets[0], steps });

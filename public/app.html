@@ -11394,13 +11394,39 @@ function buildExtraRowHTML(idx, ri, headers) {
 
 function buildDropdownOptionsHTML(idx, ri, r) {
   const opts = (r.dropdown_options || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const depts = [...new Set((fmsAllUsers||[]).map(u => (u.department||'').trim()).filter(Boolean))]
+    .sort((a,b) => a.localeCompare(b));
+  const deptOpts = depts.map(d => `<option value="@dept:${esc(d)}">${esc(d)} department</option>`).join('');
   return `<div style="margin-top:4px">
     <label style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.3px">Dropdown Options <span style="color:#94a3b8;font-weight:400">(comma separated, e.g. Yes,No,N/A)</span></label>
     <input type="text" value="${opts}" placeholder="Yes,No,N/A or Option1,Option2,Option3"
       oninput="fmsSteps[${idx}].extraRows[${ri}].dropdown_options=this.value"
       id="fmsDropOpt_${idx}_${ri}"
       style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:'Inter',sans-serif;outline:none;margin-top:4px"/>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:5px">
+      <select onchange="addFMSDropdownUserToken(${idx},${ri},this)"
+        style="padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;font-family:'Inter',sans-serif;background:#fff;outline:none">
+        <option value="">+ Add a live user list…</option>
+        <option value="@users">All users</option>
+        ${deptOpts}
+      </select>
+      <span style="font-size:10px;color:#94a3b8">Live lists stay in sync when staff join or leave.</span>
+    </div>
   </div>`;
+}
+
+// Appends a live-user token (@users / @dept:X) to the dropdown options input.
+function addFMSDropdownUserToken(idx, ri, sel) {
+  const token = sel.value;
+  sel.selectedIndex = 0;
+  if (!token) return;
+  const input = document.getElementById(`fmsDropOpt_${idx}_${ri}`);
+  if (!input) return;
+  const parts = input.value.split(',').map(o => o.trim()).filter(Boolean);
+  if (parts.some(p => p.toLowerCase() === token.toLowerCase())) return;
+  parts.push(token);
+  input.value = parts.join(',');
+  fmsSteps[idx].extraRows[ri].dropdown_options = input.value;
 }
 
 function onFMSExtraColChange(idx, ri, sel) {
@@ -11962,7 +11988,7 @@ function openFMSDoneModal(rowIdx) {
         case 'dropdown': {
           const rawOpts = (r.dropdown_options || '').split(',').map(o => o.trim()).filter(Boolean);
           const optionsList = rawOpts.length
-            ? rawOpts.map(o => `<option value="${o}">${o}</option>`).join('')
+            ? rawOpts.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('')
             : '<option value="">-- No options configured --</option>';
           inputHtml = `<select id="fmsExtra_${i}" style="${inputStyle};background:#fff"><option value="">-- Select --</option>${optionsList}</select>`;
           break;
