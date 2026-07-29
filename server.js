@@ -1457,6 +1457,7 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     const isHod = role === 'hod';
     const { type, mine } = req.query;
     const isMine = (mine === '1' || mine === 'true');
+    const isClientTasks = (req.query.clients === '1');
     const table = getTable(type || 'delegation');
     const isDeleg = (type || 'delegation') === 'delegation';
     let where = 'WHERE 1=1';
@@ -1467,6 +1468,13 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
       // Self-delegated tasks (assigned_to === me) already show in the regular Delegation tab — don't duplicate here.
       where += ' AND t.assigned_by = ? AND t.assigned_to <> t.assigned_by';
       params.push(uid);
+    } else if (isClientTasks) {
+      // "Client Tasks" tab — delegation tasks whose DOER is a client login.
+      // Managers see them all; a regular handler sees only what they delegated.
+      if (!(isAdmin || isHod || role === 'pc')) {
+        where += ' AND t.assigned_by = ?';
+        params.push(uid);
+      }
     } else if (isAdmin || role === 'pc') {
       // Admin/PC — see everything
     } else if (isHod) {
@@ -1484,6 +1492,15 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
       // Regular user — only their own tasks
       where += ' AND t.assigned_to = ?';
       params.push(uid);
+    }
+
+    // A client login as the DOER is what separates the two worlds: those tasks
+    // belong ONLY to the "Client Tasks" tab and are kept out of the normal
+    // grouped Delegation / Checklist views (they used to show up as fake "doers").
+    if (!isMine) {
+      where += isClientTasks
+        ? " AND (u1.role = 'client' OR u1.client_id IS NOT NULL)"
+        : " AND u1.role <> 'client' AND u1.client_id IS NULL";
     }
 
     // Explicit from/to range (sent by admin filter) overrides defaults for BOTH types.

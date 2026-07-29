@@ -1767,6 +1767,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <div class="tab active" id="tasksTabDel" onclick="tasksTab('delegation',this)">Delegation</div>
         <div class="tab" id="tasksTabChl" onclick="tasksTab('checklist',this)">Checklist</div>
         <div class="tab" id="tasksTabDelByMe" onclick="tasksTab('delegatebyme',this)">Delegate by Me</div>
+        <div class="tab" id="tasksTabClients" onclick="tasksTab('clienttasks',this)">Client Tasks</div>
         <div class="tab" id="tasksTabFMS" onclick="tasksTab('fms',this)">FMS Tasks</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
@@ -7584,6 +7585,10 @@ async function loadAllTasks() {
   const dbmTab = document.getElementById('tasksTabDelByMe');
   if (dbmTab) dbmTab.style.display = (isAdmin || isHod || isUser) ? '' : 'none';
 
+  // Client Tasks tab — a manager-only view of every task delegated TO a client.
+  const clientsTab = document.getElementById('tasksTabClients');
+  if (clientsTab) clientsTab.style.display = (isAdmin || isHod || isPC) ? '' : 'none';
+
   // Show doer filter + date range to everyone on desktop (employee dropdown
   // stays "All Employees" for non-admin/PC since backend scopes to own tasks).
   const filtersDiv = document.getElementById('tasksUserDateFilters');
@@ -7626,8 +7631,9 @@ async function loadAllTasks() {
     return;
   }
 
-  const fetchType = tasksType === 'delegatebyme' ? 'delegation' : tasksType;
-  const mineParam = tasksType === 'delegatebyme' ? '&mine=1' : '';
+  const fetchType = (tasksType === 'delegatebyme' || tasksType === 'clienttasks') ? 'delegation' : tasksType;
+  const mineParam = tasksType === 'delegatebyme' ? '&mine=1'
+                  : tasksType === 'clienttasks' ? '&clients=1' : '';
   const dateFromVal = document.getElementById('tasksDateFrom')?.value || '';
   const dateToVal   = document.getElementById('tasksDateTo')?.value   || '';
   const rangeParam = (dateFromVal || dateToVal)
@@ -7818,10 +7824,12 @@ function _buildTaskRowHtml(t, ctx) {
   const isCompleted = t.status === 'completed';
   const isWaiting = t.waiting_approval == 1;
   const isChecklist = tasksType === 'checklist';
-  const editType = isDelegateByMe ? 'delegation' : tasksType;
+  // Client Tasks are delegation rows under the hood — edit/status calls must
+  // target the 'delegation' table, not the synthetic 'clienttasks' tab name.
+  const editType = (isDelegateByMe || tasksType === 'clienttasks') ? 'delegation' : tasksType;
   if (isClickable) window._taskDetailMap[t.id] = t;
 
-  const isMyDelegation = (tasksType === 'delegation' || isDelegateByMe) && String(t.assigned_by) === String(ME.id);
+  const isMyDelegation = (tasksType === 'delegation' || isDelegateByMe || tasksType === 'clienttasks') && String(t.assigned_by) === String(ME.id);
   const canEditThis   = (isAdmin || isDelegateByMe || isMyDelegation) && canDo('edit_task');
   const canDeleteThis = (isAdmin || isDelegateByMe || isMyDelegation) && canDo('delete_task');
   const canReopenThis = canDo('reopen_task');
@@ -7835,12 +7843,12 @@ function _buildTaskRowHtml(t, ctx) {
     ${isCompleted && canReopenThis ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${editType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
     ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
   ` : `
-    <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
+    <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px" onclick="openComments(${t.id},'${editType}')" title="Comments">💬</button>
     ${!isDelegateByMe && !isCompleted && !isWaiting ? `
-      <button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>
-      ${!isChecklist ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${tasksType}')">Revise</button>` : ''}
+      <button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${editType}')">Done</button>
+      ${!isChecklist ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${editType}')">Revise</button>` : ''}
     ` : ''}
-    ${isCompleted && canReopenThis ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${tasksType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
+    ${isCompleted && canReopenThis ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${editType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
     ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting Approval</span>` : ''}
   `;
   const clientCell = showClientCol
@@ -7931,7 +7939,8 @@ function renderTasksTable() {
   }
 
   const isDelegateByMe = tasksType === 'delegatebyme';
-  const isClickable = tasksType === 'delegation' || isDelegateByMe;
+  const isClientTasksView = tasksType === 'clienttasks';
+  const isClickable = tasksType === 'delegation' || isDelegateByMe || isClientTasksView;
   if (isClickable) window._taskDetailMap = {};
   const showClientCol = tasksType === 'delegation' || tasksType === 'delegatebyme' || tasksType === 'checklist';
   const ctx = { isAdmin, isDelegateByMe, isClickable, showClientCol };
@@ -7958,8 +7967,13 @@ function renderTasksTable() {
   if (useGroupView) {
     const groups = new Map();
     for (const t of tasks) {
-      const key = `${t.assigned_to || ''}|${t.assignedToName || '—'}`;
-      if (!groups.has(key)) groups.set(key, { key, name: t.assignedToName || '—', userId: t.assigned_to || '', tasks: [] });
+      // Client Tasks tab groups by the CLIENT the work is for; every other tab
+      // groups by the doer (the staff member the task is assigned to).
+      const key = isClientTasksView
+        ? `client|${t.client_id || ''}|${t.client_name || '—'}`
+        : `${t.assigned_to || ''}|${t.assignedToName || '—'}`;
+      const gname = isClientTasksView ? (t.client_name || '—') : (t.assignedToName || '—');
+      if (!groups.has(key)) groups.set(key, { key, name: gname, userId: isClientTasksView ? '' : (t.assigned_to || ''), tasks: [] });
       groups.get(key).tasks.push(t);
     }
     // The logged-in user's own group is pinned to the top; the rest stay A-Z.
@@ -7999,7 +8013,7 @@ function renderTasksTable() {
 
     container.innerHTML = `
       <div class="tg-toolbar">
-        <span class="tg-summary">${sortedGroups.length} ${sortedGroups.length === 1 ? 'doer' : 'doers'} · ${tasks.length} tasks</span>
+        <span class="tg-summary">${sortedGroups.length} ${isClientTasksView ? (sortedGroups.length === 1 ? 'client' : 'clients') : (sortedGroups.length === 1 ? 'doer' : 'doers')} · ${tasks.length} tasks</span>
         <button type="button" class="tg-mini-btn" onclick="tgSetAll(true)">Expand all</button>
         <button type="button" class="tg-mini-btn" onclick="tgSetAll(false)">Collapse all</button>
       </div>
