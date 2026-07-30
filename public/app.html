@@ -2133,10 +2133,6 @@ input:focus,select:focus,textarea:focus{outline:none;}
         🔒 You have already submitted for this date — entries are now locked.
       </div>
 
-      <!-- Extra Working goes to the HOD for approval, so say so up front -->
-      <div id="dtExtraHint" class="dt-locked" style="display:none;background:#f0fdf4;border-color:#bbf7d0;color:#166534">
-        ⚡ This is logged as an <b>Extra Working request</b> — it goes to <b id="dtExtraApprover">your HOD</b> for approval and does not count as your daily report.
-      </div>
 
       <!-- Rows table -->
       <div class="dt-table-wrap" id="dtTableWrap">
@@ -12569,7 +12565,6 @@ function dtApplyModeChrome(){
   document.getElementById('dtPageSub').textContent = isExtra
     ? 'Log work done outside office hours by client and department. Goes to your HOD for approval.'
     : 'Log the time you spent today by client and department.';
-  document.getElementById('dtExtraHint').style.display = isExtra ? 'flex' : 'none';
   document.getElementById('dtHistoryTitle').textContent = isExtra
     ? '⚡ My Extra Working Requests' : '📚 My Past Submissions';
   const btn = document.querySelector('.dt-btn-submit');
@@ -12590,10 +12585,6 @@ async function loadDailyForm(){
   document.getElementById('dtDoerName').value = ME.name;
   DT_MODE = 'daily';
   dtApplyModeChrome();
-  // Who will approve an Extra Working request — same resolver the Leave Tracker uses
-  api('/api/leaves/my-approvers')
-    .then(r => { if (r?.names) document.getElementById('dtExtraApprover').textContent = r.names; })
-    .catch(() => {});
 
   // Date dropdown — today + yesterday only
   const sel = document.getElementById('dtEntryDate');
