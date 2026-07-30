@@ -686,7 +686,6 @@ tbody tr:last-child td{border-bottom:none;}
 .dt-mode-btn{padding:6px 13px;border:none;border-radius:7px;background:transparent;color:#64748b;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap;}
 .dt-mode-btn:hover{color:#0f172a;}
 .dt-mode-btn.active{background:#fff;color:#0f172a;box-shadow:0 1px 3px rgba(15,23,42,.12);}
-.dt-mode-btn.dt-mode-extra.active{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;}
 
 .dt-title{font-size:30px;font-weight:800;text-align:center;background:linear-gradient(135deg,#FF9800,#F39C12);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:24px;letter-spacing:.5px;font-style:italic;}
 
@@ -2106,7 +2105,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
             <div class="dt-page-title" id="dtPageTitle">Daily Task</div>
             <div class="dt-mode-switch">
               <button type="button" class="dt-mode-btn active" id="dtModeBtnDaily" onclick="dtSetMode('daily')">📋 Daily Task</button>
-              <button type="button" class="dt-mode-btn dt-mode-extra" id="dtModeBtnExtra" onclick="dtSetMode('extra')">⚡ Extra Working</button>
+              <button type="button" class="dt-mode-btn" id="dtModeBtnExtra" onclick="dtSetMode('extra')">⚡ Extra Working</button>
             </div>
           </div>
           <div class="dt-page-sub" id="dtPageSub">Log the time you spent today by client and department.</div>
