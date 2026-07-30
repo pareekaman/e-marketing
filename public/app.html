@@ -680,6 +680,14 @@ tbody tr:last-child td{border-bottom:none;}
 .dt-welcome{color:#64748b;font-size:13px;border-left:1px solid #e2e8f0;padding-left:14px;}
 .dt-welcome b{color:#0f172a;}
 
+/* Daily Task / Extra Working switch — same form, two different records */
+.dt-title-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.dt-mode-switch{display:inline-flex;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:9px;padding:3px;gap:3px;}
+.dt-mode-btn{padding:6px 13px;border:none;border-radius:7px;background:transparent;color:#64748b;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap;}
+.dt-mode-btn:hover{color:#0f172a;}
+.dt-mode-btn.active{background:#fff;color:#0f172a;box-shadow:0 1px 3px rgba(15,23,42,.12);}
+.dt-mode-btn.dt-mode-extra.active{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;}
+
 .dt-title{font-size:30px;font-weight:800;text-align:center;background:linear-gradient(135deg,#FF9800,#F39C12);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:24px;letter-spacing:.5px;font-style:italic;}
 
 .dt-meta-row{display:flex;justify-content:flex-start;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:16px;}
@@ -2094,8 +2102,14 @@ input:focus,select:focus,textarea:focus{outline:none;}
     <div class="dt-card">
       <div class="dt-header">
         <div class="dt-header-text">
-          <div class="dt-page-title">Daily Task</div>
-          <div class="dt-page-sub">Log the time you spent today by client and department.</div>
+          <div class="dt-title-row">
+            <div class="dt-page-title" id="dtPageTitle">Daily Task</div>
+            <div class="dt-mode-switch">
+              <button type="button" class="dt-mode-btn active" id="dtModeBtnDaily" onclick="dtSetMode('daily')">📋 Daily Task</button>
+              <button type="button" class="dt-mode-btn dt-mode-extra" id="dtModeBtnExtra" onclick="dtSetMode('extra')">⚡ Extra Working</button>
+            </div>
+          </div>
+          <div class="dt-page-sub" id="dtPageSub">Log the time you spent today by client and department.</div>
         </div>
         <div class="dt-topbar">
           <div class="dt-time" id="dtNow">—</div>
@@ -2114,9 +2128,14 @@ input:focus,select:focus,textarea:focus{outline:none;}
         </div>
       </div>
 
-      <!-- Already-submitted notice -->
+      <!-- Already-submitted notice (text swaps with the active mode) -->
       <div id="dtLockedNotice" class="dt-locked" style="display:none">
         🔒 You have already submitted for this date — entries are now locked.
+      </div>
+
+      <!-- Extra Working goes to the HOD for approval, so say so up front -->
+      <div id="dtExtraHint" class="dt-locked" style="display:none;background:#f0fdf4;border-color:#bbf7d0;color:#166534">
+        ⚡ This is logged as an <b>Extra Working request</b> — it goes to <b id="dtExtraApprover">your HOD</b> for approval and does not count as your daily report.
       </div>
 
       <!-- Rows table -->
@@ -2150,7 +2169,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
 
       <!-- Past entries -->
       <div class="dt-history">
-        <div class="dt-history-title">📚 My Past Submissions</div>
+        <div class="dt-history-title" id="dtHistoryTitle">📚 My Past Submissions</div>
         <div id="dtHistoryWrap" class="dt-history-wrap"><div class="empty">No past submissions yet.</div></div>
       </div>
     </div>
@@ -12521,6 +12540,11 @@ async function handleTransfer(id, action) {
 let DT_CLIENTS = [];
 let DT_DEPARTMENTS = [];
 let DT_LOCKED = false;
+// 'daily' writes to daily_tasks; 'extra' files an Extra Working request into
+// leave_requests so it reuses the existing HOD approval flow. Same table UI for
+// both — only the submit target, the lock source and the history differ.
+let DT_MODE = 'daily';
+let DT_EXTRA_MINE = [];   // own extra_working requests, newest first
 
 function dtPad(n){ return n<10 ? '0'+n : n; }
 function dtFormatDate(d){ return `${d.getFullYear()}-${dtPad(d.getMonth()+1)}-${dtPad(d.getDate())}`; }
@@ -12535,10 +12559,41 @@ function dtTickClock(){
 if (window._clockTimer) clearInterval(window._clockTimer);
 window._clockTimer = setInterval(dtTickClock, 1000);
 
+// Labels/chrome only — callers decide when to re-fetch. Keeps dtSetMode() and
+// loadDailyForm() from rendering the table twice.
+function dtApplyModeChrome(){
+  const isExtra = DT_MODE === 'extra';
+  document.getElementById('dtModeBtnDaily').classList.toggle('active', !isExtra);
+  document.getElementById('dtModeBtnExtra').classList.toggle('active', isExtra);
+  document.getElementById('dtPageTitle').textContent = isExtra ? 'Extra Working' : 'Daily Task';
+  document.getElementById('dtPageSub').textContent = isExtra
+    ? 'Log work done outside office hours by client and department. Goes to your HOD for approval.'
+    : 'Log the time you spent today by client and department.';
+  document.getElementById('dtExtraHint').style.display = isExtra ? 'flex' : 'none';
+  document.getElementById('dtHistoryTitle').textContent = isExtra
+    ? '⚡ My Extra Working Requests' : '📚 My Past Submissions';
+  const btn = document.querySelector('.dt-btn-submit');
+  if (btn) btn.textContent = isExtra ? 'Submit for Approval →' : 'Submit All →';
+}
+
+async function dtSetMode(mode){
+  if (DT_MODE === mode) return;
+  DT_MODE = mode;
+  dtApplyModeChrome();
+  await dtCheckLockAndRender();
+  await dtLoadHistory();
+}
+
 async function loadDailyForm(){
   dtTickClock();
   document.getElementById('dtUserName').textContent = ME.name;
   document.getElementById('dtDoerName').value = ME.name;
+  DT_MODE = 'daily';
+  dtApplyModeChrome();
+  // Who will approve an Extra Working request — same resolver the Leave Tracker uses
+  api('/api/leaves/my-approvers')
+    .then(r => { if (r?.names) document.getElementById('dtExtraApprover').textContent = r.names; })
+    .catch(() => {});
 
   // Date dropdown — today + yesterday only
   const sel = document.getElementById('dtEntryDate');
@@ -12572,12 +12627,26 @@ async function loadDailyForm(){
 
 async function dtCheckLockAndRender(){
   const date = document.getElementById('dtEntryDate').value;
-  try {
-    const r = await api('/api/daily-tasks/status?date=' + date);
-    DT_LOCKED = !!r.submitted;
-  } catch(e) { DT_LOCKED = false; }
-
   const lockNotice = document.getElementById('dtLockedNotice');
+
+  if (DT_MODE === 'extra') {
+    await dtLoadExtraMine();
+    const hit = dtExtraRequestFor(date);
+    DT_LOCKED = !!hit;
+    if (hit) {
+      lockNotice.innerHTML = `🔒 Extra Working for this date is already submitted — status: <b>${dtEscape(hit.status)}</b>.` +
+        (hit.status === 'pending' ? ' Delete it from Leave Tracker if you need to change it.' : '');
+    }
+  } else {
+    try {
+      const r = await api('/api/daily-tasks/status?date=' + date);
+      DT_LOCKED = !!r.submitted;
+    } catch(e) { DT_LOCKED = false; }
+    if (DT_LOCKED) {
+      lockNotice.textContent = '🔒 You have already submitted for this date — entries are now locked.';
+    }
+  }
+
   const tableWrap = document.getElementById('dtTableWrap');
   const actions = document.getElementById('dtActions');
 
@@ -12663,10 +12732,10 @@ function dtRecalcTotal(){
   if (el) el.textContent = total;
 }
 
-async function dtSubmit(){
-  if (DT_LOCKED) { showToast('Already submitted for this date','error'); return; }
-  const date = document.getElementById('dtEntryDate').value;
-  const rows = [];
+// Reads + validates the row table. Returns null (after toasting) if anything
+// is missing, so both submit paths share one set of rules.
+function dtReadRows(){
+  const out = [];
   for (const tr of document.querySelectorAll('#dtRowsBody tr')) {
     const client = tr.querySelector('.dt-client').value.trim();
     const dept = tr.querySelector('.dt-dept').value.trim();
@@ -12674,11 +12743,23 @@ async function dtSubmit(){
     const time = parseInt(tr.querySelector('.dt-time').value) || 0;
     if (!client || !desc || time <= 0) {
       showToast('Each row needs Client, Description and Time (>0)','error');
-      return;
+      return null;
     }
-    rows.push({ client_name: client, department: dept, description: desc, duration_min: time });
+    out.push({ client, dept, desc, time });
   }
-  if (!rows.length) { showToast('Add at least 1 row','error'); return; }
+  if (!out.length) { showToast('Add at least 1 row','error'); return null; }
+  return out;
+}
+
+async function dtSubmit(){
+  if (DT_MODE === 'extra') return dtSubmitExtra();
+  if (DT_LOCKED) { showToast('Already submitted for this date','error'); return; }
+  const date = document.getElementById('dtEntryDate').value;
+  const read = dtReadRows();
+  if (!read) return;
+  const rows = read.map(r => ({
+    client_name: r.client, department: r.dept, description: r.desc, duration_min: r.time
+  }));
 
   const btn = document.querySelector('.dt-btn-submit');
   btn.disabled = true; btn.textContent = 'Submitting...';
@@ -12698,8 +12779,125 @@ async function dtSubmit(){
   }
 }
 
+// ── Extra Working (same form, filed as a leave_requests approval request) ──
+
+async function dtLoadExtraMine(){
+  try {
+    const rows = await api('/api/leaves?scope=mine');
+    DT_EXTRA_MINE = (Array.isArray(rows) ? rows : []).filter(r => r.leave_type === 'extra_working');
+  } catch(e) { DT_EXTRA_MINE = []; }
+}
+
+// A rejected request does NOT hold the date — the user can fix it and re-file.
+function dtExtraRequestFor(date){
+  return DT_EXTRA_MINE.find(r =>
+    r.status !== 'rejected' &&
+    (r.dates || []).some(d => String(d.date || '').slice(0,10) === date)
+  ) || null;
+}
+
+// Rows may carry minutes (this form) or only hours (Leave Tracker calendar).
+function dtEntryMinutes(o){
+  if (o && o.minutes) return o.minutes;
+  return Math.round(((o && o.hours) || 0) * 60);
+}
+
+// Show the unit the submitter actually typed — minutes here, hours from the
+// Leave Tracker calendar. Matches the approval email/WhatsApp wording.
+function dtFmtWorkDur(o){
+  if (o && o.minutes) return `${o.minutes} min`;
+  return `${Number(o && o.hours) || 0}h`;
+}
+
+async function dtSubmitExtra(){
+  if (DT_LOCKED) { showToast('Extra Working already submitted for this date','error'); return; }
+  const date = document.getElementById('dtEntryDate').value;
+  const read = dtReadRows();
+  if (!read) return;
+  const entries = read.map(r => ({
+    client: r.client, department: r.dept, description: r.desc, minutes: r.time
+  }));
+
+  const btn = document.querySelector('.dt-btn-submit');
+  btn.disabled = true; btn.textContent = 'Submitting...';
+  try {
+    const r = await api('/api/leaves', 'POST', {
+      leave_type: 'extra_working',
+      dates: [{ date, entries }]
+    });
+    if (r.error) { showToast(r.error, 'error'); }
+    else {
+      showToast(`⚡ Extra Working sent for approval (${entries.length} row${entries.length>1?'s':''}).`);
+      DT_LOCKED = true;
+      await dtCheckLockAndRender();
+      await dtLoadHistory();
+    }
+  } catch(e) {
+    showToast('Submit failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Submit for Approval →';
+  }
+}
+
+// One card per date (a request can cover several), newest date first.
+function dtRenderExtraHistory(){
+  const wrap = document.getElementById('dtHistoryWrap');
+  const days = [];
+  for (const r of DT_EXTRA_MINE) {
+    for (const d of (r.dates || [])) {
+      days.push({ req: r, date: String(d.date || '').slice(0,10), day: d });
+    }
+  }
+  if (!days.length) {
+    wrap.innerHTML = '<div class="empty">No extra working submitted yet.</div>';
+    return;
+  }
+  days.sort((a,b) => b.date.localeCompare(a.date));
+
+  let html = '';
+  for (const { req, date, day } of days) {
+    const rows = Array.isArray(day.entries) ? day.entries : [];
+    const totalMin = day.minutes || rows.reduce((a,e) => a + dtEntryMinutes(e), 0) || dtEntryMinutes(day);
+    html += `<div class="dt-history-day">
+      <div class="dt-history-date">
+        <span>📅 ${dtEscape(fmtDate(date) || date)}</span>
+        <span class="lv-status lv-status-${dtEscape(req.status)}">${dtEscape(req.status)}</span>
+        ${rows.length ? `<span class="dt-history-meta">${rows.length} task${rows.length>1?'s':''}</span>` : ''}
+        <span class="dt-history-meta">${totalMin} min total</span>
+      </div>`;
+    if (rows.length) {
+      for (const e of rows) {
+        html += `<div class="dt-history-row">
+          <span class="pill">${dtEscape(e.client)}</span>
+          ${e.department ? `<span class="pill" style="background:#dbeafe;color:#1e40af;border-color:#bfdbfe">${dtEscape(e.department)}</span>` : ''}
+          <span style="flex:1;min-width:160px">${dtEscape(e.description)}</span>
+          <span class="dt-history-time">${dtEntryMinutes(e)} min</span>
+        </div>`;
+      }
+    } else {
+      // Legacy request filed before per-client rows existed
+      html += `<div class="dt-history-row">
+        <span style="flex:1;min-width:160px;color:#64748b">No client breakdown recorded</span>
+        <span class="dt-history-time">${totalMin} min</span>
+      </div>`;
+    }
+    if (req.approver_note) {
+      html += `<div class="dt-history-row" style="background:#fffbeb;border-color:#fde68a">
+        <span style="flex:1;min-width:160px"><b>Approver note:</b> ${dtEscape(req.approver_note)}</span>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  wrap.innerHTML = html;
+}
+
 async function dtLoadHistory(){
   const wrap = document.getElementById('dtHistoryWrap');
+  if (DT_MODE === 'extra') {
+    // dtCheckLockAndRender() already refreshed DT_EXTRA_MINE for this render pass
+    dtRenderExtraHistory();
+    return;
+  }
   try {
     const rows = await api('/api/daily-tasks/mine');
     if (!rows || !rows.length) {
@@ -14640,9 +14838,11 @@ function lvExtraBreakdownHtml(r){
   for (const d of dates) {
     if (!Array.isArray(d.entries) || !d.entries.length) continue;
     parts.push(
-      `<div class="lv-extra-bd-date"><b>${fmtDate(d.date)}</b> (${Number(d.hours) || 0}h)</div>` +
+      `<div class="lv-extra-bd-date"><b>${fmtDate(d.date)}</b> (${dtFmtWorkDur(d)})</div>` +
       d.entries.map(e =>
-        `<div class="lv-extra-bd-line">• ${dtEscape(e.client || '')} — ${dtEscape(e.description || '')} <b>(${Number(e.hours) || 0}h)</b></div>`
+        `<div class="lv-extra-bd-line">• ${dtEscape(e.client || '')}` +
+        (e.department ? ` <span style="color:#64748b">[${dtEscape(e.department)}]</span>` : '') +
+        ` — ${dtEscape(e.description || '')} <b>(${dtFmtWorkDur(e)})</b></div>`
       ).join('')
     );
   }

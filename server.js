@@ -9225,23 +9225,41 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
       const item = { date };
       if (leave_type === 'extra_working') {
         if (Array.isArray(d && d.entries)) {
-          // Client-wise work rows: [{client, description, hours}]
+          // Client-wise work rows: [{client, department, description, hours, minutes}]
+          // Two forms feed this: the Leave Tracker calendar sends `hours`, the Daily
+          // Task page sends `minutes` (and a department). Minutes win when present,
+          // but `hours` is ALWAYS stored so every existing reader — approval emails,
+          // WhatsApp, Leave Tracker cards — keeps working untouched.
           const entries = [];
-          let total = 0;
+          let totalMin = 0;
+          let anyMin = false;
           for (const e of d.entries) {
             const client = String((e && e.client) || '').trim().slice(0, 120);
+            const department = String((e && e.department) || '').trim().slice(0, 120);
             const description = String((e && e.description) || '').trim().slice(0, 500);
-            const h = Number(e && e.hours);
+            const rawMin = e && e.minutes;
+            const hasMin = rawMin !== undefined && rawMin !== null && rawMin !== '';
+            const min = hasMin ? parseInt(rawMin, 10) : null;
             if (!client) return res.status(400).json({ error: `Client required for ${date}` });
             if (!description) return res.status(400).json({ error: `Task description required for ${client} on ${date}` });
-            if (!h || h <= 0 || h > 24) return res.status(400).json({ error: `Hours required (1-24) for ${client} on ${date}` });
-            entries.push({ client, description, hours: h });
-            total += h;
+            if (hasMin) {
+              if (!Number.isFinite(min) || min <= 0 || min > 1440)
+                return res.status(400).json({ error: `Time in minutes (1-1440) required for ${client} on ${date}` });
+            }
+            const h = hasMin ? Math.round((min / 60) * 100) / 100 : Number(e && e.hours);
+            if (!hasMin && (!h || h <= 0 || h > 24))
+              return res.status(400).json({ error: `Hours required (1-24) for ${client} on ${date}` });
+            const entry = { client, description, hours: h };
+            if (department) entry.department = department;
+            if (hasMin) { entry.minutes = min; anyMin = true; }
+            entries.push(entry);
+            totalMin += hasMin ? min : Math.round(h * 60);
           }
           if (!entries.length) return res.status(400).json({ error: `Add at least one client row for ${date}` });
-          if (total > 24) return res.status(400).json({ error: `Total hours exceed 24 for ${date}` });
+          if (totalMin > 1440) return res.status(400).json({ error: `Total hours exceed 24 for ${date}` });
           item.entries = entries;
-          item.hours = Math.round(total * 100) / 100;
+          item.hours = Math.round((totalMin / 60) * 100) / 100;
+          if (anyMin) item.minutes = totalMin;
         } else {
           // Legacy payload from a cached page: plain hours per date
           const h = Number(d && d.hours);
@@ -9256,6 +9274,28 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
     const to_date = cleanDates[cleanDates.length - 1].date;
 
     const uid = req.session.userId;
+
+    // One Extra Working request per date. A rejected request frees the date up
+    // again so the user can correct it and re-submit.
+    if (leave_type === 'extra_working') {
+      const [existing] = await db.query(
+        `SELECT dates_json FROM leave_requests
+          WHERE user_id=? AND leave_type='extra_working' AND status IN ('pending','approved')
+            AND to_date >= ? AND from_date <= ?`,
+        [uid, from_date, to_date]
+      );
+      const taken = new Set();
+      for (const row of existing) {
+        try {
+          for (const d of JSON.parse(row.dates_json || '[]')) taken.add(String(d.date).slice(0, 10));
+        } catch {}
+      }
+      const clash = cleanDates.find(d => taken.has(d.date));
+      if (clash) return res.status(400).json({
+        error: `Extra Working is already submitted for ${clash.date.split('-').reverse().join('-')}`
+      });
+    }
+
     const approverId = await resolveLeaveApprover(uid);
 
     const [r] = await db.query(
@@ -9274,15 +9314,20 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
       const hasEntries = leave_type === 'extra_working' && cleanDates.some(d => Array.isArray(d.entries) && d.entries.length);
       const totalHours = leave_type === 'extra_working'
         ? Math.round(cleanDates.reduce((s, d) => s + (d.hours || 0), 0) * 100) / 100 : 0;
+      // Rows logged from the Daily Task page carry minutes; show them in the unit
+      // the submitter actually typed and fall back to hours for calendar rows.
+      const fmtDur = (o) => (o && o.minutes) ? `${o.minutes} min` : `${(o && o.hours) || 0}h`;
 
       const target = await getNotifyTarget(approverId);
       if (target) {
         // Client-wise work breakdown rows (extra_working only)
         const breakdownHtml = hasEntries
           ? cleanDates.map(d =>
-              `<div style="margin-top:6px"><b>${d.date.split('-').reverse().join('-')} (${d.hours}h)</b></div>` +
+              `<div style="margin-top:6px"><b>${d.date.split('-').reverse().join('-')} (${fmtDur(d)})</b></div>` +
               (d.entries || []).map(e =>
-                `<div style="padding-left:12px">• ${esc(e.client)} — ${esc(e.description)} <b>(${e.hours}h)</b></div>`).join(''))
+                `<div style="padding-left:12px">• ${esc(e.client)}` +
+                (e.department ? ` <span style="color:#64748b">[${esc(e.department)}]</span>` : '') +
+                ` — ${esc(e.description)} <b>(${fmtDur(e)})</b></div>`).join(''))
               .join('')
           : '';
         const html = `
@@ -9333,8 +9378,9 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
           ? `*Total:* ${totalHours}h\n\n` +
             cleanDates.map(d => {
               const dd = d.date.split('-').reverse().join('-');
-              const lines = (d.entries || []).map(e => `  • ${e.client} — ${e.description} (${e.hours}h)`).join('\n');
-              return `*${dd} (${d.hours}h):*${lines ? '\n' + lines : ''}`;
+              const lines = (d.entries || []).map(e =>
+                `  • ${e.client}${e.department ? ` [${e.department}]` : ''} — ${e.description} (${fmtDur(e)})`).join('\n');
+              return `*${dd} (${fmtDur(d)}):*${lines ? '\n' + lines : ''}`;
             }).join('\n')
           : `*Dates:* ${datesPretty}\n` +
             `*Reason:* ${reason}`;
