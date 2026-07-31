@@ -3666,7 +3666,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
     </div>
     <div class="modal-footer" style="justify-content:space-between;align-items:center">
       <button class="btn btn-outline" onclick="closeModal('delegateModal')">Close</button>
-      <button class="btn btn-primary" onclick="saveDelegate()">Assign</button>
+      <button class="btn btn-primary" id="delegateSubmitBtn" onclick="saveDelegate()">Assign</button>
     </div>
     <!-- Bulk Upload -->
     <div class="bulk-section">
@@ -8609,8 +8609,20 @@ async function saveDelegate() {
   if (!desc) { err.textContent='Description is required'; err.style.display='block'; return; }
   if (!client_id) { err.textContent='Please select a client'; err.style.display='block'; return; }
   if (approval === 'yes' && !approver) { err.textContent='Please select an approver'; err.style.display='block'; return; }
-  const r = await api('/api/tasks','POST',{type:'delegation',desc,assignedTo:doer,date,priority,approval,approver,remarks,client_id,url,doerSetsDueDate});
+  // Lock the button for the round-trip. Without this a second tap on a slow
+  // connection created a second identical task, and the doer then saw the same
+  // task again after finishing the first one.
+  const btn = document.getElementById('delegateSubmitBtn');
+  const btnLabel = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Assigning…'; }
+  let r;
+  try {
+    r = await api('/api/tasks','POST',{type:'delegation',desc,assignedTo:doer,date,priority,approval,approver,remarks,client_id,url,doerSetsDueDate});
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
+  }
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+  if (r.duplicate) { closeModal('delegateModal'); showToast('That task was already created a moment ago — not duplicated.'); loadDashboard(true); return; }
   closeModal('delegateModal');
   if (doerSetsDueDate) {
     showToast('Task delegated! Doer will set their due date.');
@@ -9857,7 +9869,17 @@ async function api(url,method='GET',body=null) {
   const opts={method, headers:{'Content-Type':'application/json'}, credentials:'include'};
   if (token) opts.headers['Authorization'] = 'Bearer ' + token;
   if (body) opts.body=JSON.stringify(body);
-  const r=await fetch(url,opts);
+  // A dropped connection used to throw straight out of here. Callers invoked from
+  // an inline onclick never caught it, so the click silently did nothing: no error,
+  // no toast, no refresh — the row just sat there and the user assumed it saved.
+  // Returning an error object instead makes every existing `if (r.error)` branch fire.
+  let r;
+  try {
+    r = await fetch(url,opts);
+  } catch (e) {
+    console.error('API network error:', url, e);
+    return { error: 'Network problem — this was NOT saved. Check your connection and try again.' };
+  }
   if (r.status===401) {
     localStorage.removeItem('authToken');
     window.location.replace('/');

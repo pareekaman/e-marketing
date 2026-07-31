@@ -209,6 +209,25 @@ const _startupMigrationsPromise = (async () => {
     INDEX idx_task (task_id, task_type)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+  // Every status change on a task, with who did it and from where. Until this
+  // existed, a task that went back to pending left no trace at all — reopening
+  // clears completed_at — so "I marked it done and it came back" could not be
+  // answered from the data. Append-only; nothing reads it during normal use.
+  await sa(`CREATE TABLE IF NOT EXISTS task_activity (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    task_id INT NOT NULL,
+    task_type VARCHAR(20) NOT NULL,
+    old_status VARCHAR(20) DEFAULT NULL,
+    new_status VARCHAR(20) DEFAULT NULL,
+    changed_by INT DEFAULT NULL,
+    source VARCHAR(40) DEFAULT NULL,
+    note TEXT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_task (task_id, task_type),
+    INDEX idx_changed_by (changed_by),
+    INDEX idx_created (created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
   await sa(`CREATE TABLE IF NOT EXISTS task_transfers (
     id INT AUTO_INCREMENT PRIMARY KEY,
     task_id INT NOT NULL,
@@ -707,6 +726,17 @@ async function requireClientEditor(req, res, next) {
 }
 function getTable(type) {
   return type === 'delegation' ? 'delegation_tasks' : 'checklist_tasks';
+}
+
+// Append a row to task_activity. Never throws and never blocks the caller —
+// an audit write failing must not stop a user from marking their task done.
+function logTaskActivity({ taskId, taskType, oldStatus, newStatus, changedBy, source, note }) {
+  db.query(
+    `INSERT INTO task_activity (task_id, task_type, old_status, new_status, changed_by, source, note)
+     VALUES (?,?,?,?,?,?,?)`,
+    [taskId, taskType || 'delegation', oldStatus || null, newStatus || null,
+     changedBy || null, source || null, note || null]
+  ).catch(e => console.error('task_activity log err:', e.message));
 }
 
 // ══════════════════════════════════════════════════════
@@ -1646,6 +1676,21 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
           if (aprRows.length) assignedBy = aprRows[0].id;
         }
       }
+      // Same task, same doer, same assigner, seconds apart is never a real second
+      // delegation — it is a double tap or a retried request. Production had groups
+      // of 4 identical tasks created within one second, and the doer had to mark
+      // every copy done before the task left their list. Return the row that already
+      // exists instead of adding another. The button guard in the UI is the first
+      // line of defence; this one also covers refresh, back button and network retry.
+      const [[recentDup]] = await db.query(
+        `SELECT id FROM delegation_tasks
+          WHERE description=? AND assigned_to=? AND assigned_by=?
+            AND created_at >= DATE_SUB(NOW(), INTERVAL 2 MINUTE)
+          ORDER BY id DESC LIMIT 1`,
+        [desc, targetUser, assignedBy]);
+      if (recentDup) {
+        return res.json({ success: true, duplicate: true, id: recentDup.id });
+      }
       await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,due_time,status,priority,approval,remarks,client_id,url,awaiting_due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, dueTime, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0]);
       // 📧 Send delegation email + 📱 WhatsApp (non-blocking — fire and forget)
       (async () => {
@@ -1954,6 +1999,8 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
       if (assignerIsClient) {
         if (newDate) await db.query(`UPDATE ${table} SET status='revised', waiting_approval=0, due_date=? WHERE id=?`, [newDate, req.params.id]);
         else         await db.query(`UPDATE ${table} SET status='revised', waiting_approval=0 WHERE id=?`, [req.params.id]);
+        logTaskActivity({ taskId: req.params.id, taskType: tt, oldStatus: task.status, newStatus: 'revised',
+          changedBy: uid, source: 'revise-client-direct', note: newDate ? `due -> ${newDate}` : (reason || null) });
         return res.json({ success: true, applied: true });
       }
       await db.query(
@@ -2006,7 +2053,32 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
       if (tt === 'checklist') await db.query(`UPDATE ${table} SET status=? WHERE id=?`, [status, req.params.id]);
       else await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,completed_at=IF(?='completed',NOW(),NULL) WHERE id=?`, [status, status, req.params.id]);
     }
+    // Reopening (status back to 'pending') is the one change that wipes its own
+    // evidence, so it matters most that it lands here.
+    logTaskActivity({
+      taskId: req.params.id, taskType: tt, oldStatus: task.status, newStatus: status,
+      changedBy: uid,
+      source: status === 'pending' && task.status === 'completed' ? 'reopen' : 'status-direct',
+      note: newDate ? `due -> ${newDate}` : (reason || null)
+    });
     res.json({ success: true, needsApproval: false });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Full status history of one task — who changed it, from what, to what, and via
+// which action. This is the answer to "I marked it done and it came back".
+app.get('/api/tasks/:id/activity', requireAuth, async (req, res) => {
+  try {
+    const tt = (req.query.type || 'delegation') === 'checklist' ? 'checklist' : 'delegation';
+    const [rows] = await db.query(
+      `SELECT a.id, a.old_status, a.new_status, a.source, a.note,
+              DATE_FORMAT(a.created_at,'%Y-%m-%d %H:%i:%s') AS at,
+              COALESCE(u.name,'—') AS by_name
+         FROM task_activity a
+         LEFT JOIN users u ON u.id = a.changed_by
+        WHERE a.task_id=? AND a.task_type=?
+        ORDER BY a.created_at ASC, a.id ASC`, [parseInt(req.params.id, 10), tt]);
+    res.json({ activity: rows });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -2246,6 +2318,12 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
       // Rejected → drop the waiting flag; due_date and status stay unchanged.
       await db.query(`UPDATE ${table} SET waiting_approval=0 WHERE id=?`, [appr.task_id]);
     }
+    logTaskActivity({
+      taskId: appr.task_id, taskType: appr.task_type,
+      newStatus: action === 'approved' ? (appr.action_type === 'revised' ? 'pending' : appr.action_type) : null,
+      changedBy: req.session.userId, source: `approval-${action}`,
+      note: `${appr.action_type} request${appr.new_date_fmt ? ` (due -> ${appr.new_date_fmt})` : ''}`
+    });
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2260,9 +2338,22 @@ app.post('/api/approvals/approve-all-revises', requireAuth, requireAdminOrPC, as
     let approved = 0;
     for (const a of pending) {
       const table = getTable(a.task_type);
+      // A task that was completed after its revise was filed must not be dragged
+      // back to pending by this bulk sweep — that would look exactly like "my
+      // finished task came back". Clear the stale request and leave the task alone.
+      const [[cur]] = await db.query(`SELECT status FROM ${table} WHERE id=?`, [a.task_id]);
+      if (!cur) { await db.query(`UPDATE task_approvals SET status='approved' WHERE id=?`, [a.id]); continue; }
+      if (cur.status === 'completed') {
+        await db.query(`UPDATE task_approvals SET status='approved', note=CONCAT(COALESCE(note,''),' [skipped — task already completed]') WHERE id=?`, [a.id]);
+        logTaskActivity({ taskId: a.task_id, taskType: a.task_type, oldStatus: 'completed', newStatus: 'completed',
+          changedBy: req.session.userId, source: 'bulk-revise-skipped', note: 'stale revise cleared, task left completed' });
+        continue;
+      }
       if (a.nd) await db.query(`UPDATE ${table} SET status='pending', waiting_approval=0, due_date=? WHERE id=?`, [a.nd, a.task_id]);
       else      await db.query(`UPDATE ${table} SET status='pending', waiting_approval=0 WHERE id=?`, [a.task_id]);
       await db.query(`UPDATE task_approvals SET status='approved' WHERE id=?`, [a.id]);
+      logTaskActivity({ taskId: a.task_id, taskType: a.task_type, oldStatus: cur.status, newStatus: 'pending',
+        changedBy: req.session.userId, source: 'bulk-revise-approve', note: a.nd ? `due -> ${a.nd}` : null });
       approved++;
     }
     res.json({ ok: true, approved });
