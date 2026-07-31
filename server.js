@@ -11230,7 +11230,8 @@ app.post('/api/hrm/joining-form', async (req, res) => {
     if (!dob)        missing.push('Date of Birth');
     if (!aadhaarFile && !aadhaarNo) missing.push('Aadhaar Card');
     if (missing.length) return res.status(400).json({ error: `Missing or invalid: ${missing.join(', ')}` });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Email address is invalid' });
+    // Gmail only, at the user's request — the form enforces this too.
+    if (!/^[^\s@]+@gmail\.com$/.test(email)) return res.status(400).json({ error: 'Email must be a @gmail.com address' });
     if (aadhaarNo && aadhaarNo.length !== 12) return res.status(400).json({ error: 'Aadhaar number must be 12 digits' });
     if (panNo && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(panNo)) return res.status(400).json({ error: 'PAN number format is invalid (e.g. ABCDE1234F)' });
 
