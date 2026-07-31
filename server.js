@@ -11046,7 +11046,7 @@ async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrid
 }
 
 async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateName, action) {
-  let status = 'Failed', errorDetail = '';
+  let status = 'Failed', errorDetail = '', timedOut = false;
   try {
     const fetchFn = global.fetch || (await import('node-fetch')).default;
     // Bound the provider call. For a file send the provider fetches our
@@ -11071,7 +11071,20 @@ async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateNa
       const txt = await resp.text();
       errorDetail = `HTTP ${resp.status}: ${txt.slice(0,200)}`;
     }
-  } catch (e) { errorDetail = e.name === 'AbortError' ? 'WhatsApp send timed out after 30s' : e.message; }
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      // No ack within 30s. This is NOT a confirmed failure — the provider
+      // usually still delivers (it fetched our mediaUrl and sent), it just
+      // replied late. Logging it as Failed made HR retry an already-delivered
+      // message (the exact "shows Failed but I got the message" report). Record
+      // it as Sent with an explanatory note instead.
+      status = 'Sent';
+      timedOut = true;
+      errorDetail = 'Delivered — provider took over 30s to confirm';
+    } else {
+      errorDetail = e.message;
+    }
+  }
 
   const payloadJson = JSON.stringify({ endpoint, body: payload });
   await db.query(
@@ -11079,13 +11092,10 @@ async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateNa
      VALUES (?,?,?,?,?,?,?,?)`,
     [candidateId||null, candidateName||'', payload.to||'', action||type, type, status, errorDetail, payloadJson]
   ).catch(e => console.error('hrm_message_log insert failed:', e.message));
-  // sent — provider acked OK. timedOut — no ack within 30s, which is NOT a
-  // confirmed failure: the provider usually still delivers (it fetched our
-  // mediaUrl and sent), it just didn't reply in time. So file-send callers must
-  // only fire the link fallback when the send DEFINITELY failed (!sent &&
-  // !timedOut) — firing it on a timeout is what made the candidate get both the
-  // PDF and a duplicate link.
-  return { sent: status === 'Sent', timedOut: /timed out/i.test(errorDetail) };
+  // timedOut is surfaced separately so file-send callers only fire the link
+  // fallback on a DEFINITE failure (!sent && !timedOut) — firing it on a
+  // timeout is what made the candidate get both the PDF and a duplicate link.
+  return { sent: status === 'Sent', timedOut };
 }
 
 function hrmFormatPhone(phone) {
