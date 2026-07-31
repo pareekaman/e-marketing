@@ -694,6 +694,17 @@ function requireAdminOrPC(req, res, next) {
   if (req.session.role === 'admin' || req.session.role === 'pc') return next();
   res.status(403).json({ error: 'Admin or PC only' });
 }
+// Allows a manager (admin/hod/pc) OR a handler of the client named in :id to
+// act on that client's operational data (portal links, WhatsApp group, DMS).
+// Structural client edits (name/handler/active) stay manager-only — see PUT.
+async function requireClientEditor(req, res, next) {
+  try {
+    if (['admin', 'hod', 'pc'].includes(req.session.role)) return next();
+    const [[c]] = await db.query('SELECT id, handler_id FROM clients WHERE id=?', [req.params.id]);
+    if (c && await isHandlerOf(req.session.userId, c)) return next();
+    return res.status(403).json({ error: 'Forbidden' });
+  } catch (err) { return res.status(500).json({ error: err.message }); }
+}
 function getTable(type) {
   return type === 'delegation' ? 'delegation_tasks' : 'checklist_tasks';
 }
@@ -7815,21 +7826,33 @@ app.post('/api/clients', requireAuth, async (req, res) => {
 });
 
 app.put('/api/clients/:id', requireAuth, async (req, res) => {
-  if (!(await userCanDo(req.session, 'edit_clients'))) return res.status(403).json({ error: 'Forbidden' });
   try {
     const id = req.params.id;
+    // Full editors (edit_clients permission) may change anything. A handler of
+    // this client may still edit its operational fields — portal links + the
+    // WhatsApp group — but not rename or reassign it.
+    const isEditor = await userCanDo(req.session, 'edit_clients');
+    let handlerOnly = false;
+    if (!isEditor) {
+      const [[c]] = await db.query('SELECT id, handler_id FROM clients WHERE id=?', [id]);
+      if (!c || !(await isHandlerOf(req.session.userId, c))) return res.status(403).json({ error: 'Forbidden' });
+      handlerOnly = true;
+    }
     const name = req.body.name == null ? null : String(req.body.name).trim();
     const handlerRaw = req.body.handler_id;
     const handlerId = handlerRaw === undefined ? undefined
                     : (handlerRaw == null || handlerRaw === '') ? null
                     : parseInt(handlerRaw, 10);
-    if (name === '') return res.status(400).json({ error: 'Client name cannot be empty' });
+    if (!handlerOnly && name === '') return res.status(400).json({ error: 'Client name cannot be empty' });
     // Only update fields that were sent.
     const sets = [], params = [];
-    if (name !== null) { sets.push('name=?'); params.push(name); }
-    if (handlerId !== undefined) { sets.push('handler_id=?'); params.push(handlerId); }
+    // Structural fields — full editors only; a handler cannot rename/reassign.
+    if (!handlerOnly) {
+      if (name !== null) { sets.push('name=?'); params.push(name); }
+      if (handlerId !== undefined) { sets.push('handler_id=?'); params.push(handlerId); }
+      if (req.body.is_active !== undefined) { sets.push('is_active=?'); params.push(req.body.is_active ? 1 : 0); }
+    }
     if (req.body.system_links !== undefined) { sets.push('system_links=?'); params.push(sanitizeSystemLinks(req.body.system_links)); }
-    if (req.body.is_active !== undefined) { sets.push('is_active=?'); params.push(req.body.is_active ? 1 : 0); }
     if (req.body.whatsapp_group_id !== undefined) {
       const g = String(req.body.whatsapp_group_id || '').trim();
       // Blank clears it (and so switches the digest off for this client).
@@ -8081,7 +8104,7 @@ app.get('/api/google/drive-status', requireAuth, requireAdmin, async (req, res) 
 // ══════════════════════════════════════════════════════
 
 // Get DMS status for a client
-app.get('/api/clients/:id/dms', requireAuth, requireAdminOrPC, async (req, res) => {
+app.get('/api/clients/:id/dms', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const id = req.params.id;
     const [[client]] = await db.query(
@@ -8165,7 +8188,7 @@ app.get('/api/admin/dms/root-files', requireAuth, requireAdmin, async (req, res)
 });
 
 // Create the client's root Drive folder (one-time setup)
-app.post('/api/clients/:id/dms/setup', requireAuth, requireAdminOrPC, async (req, res) => {
+app.post('/api/clients/:id/dms/setup', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const rootFolderId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
     if (!rootFolderId) return res.status(400).json({ error: 'GOOGLE_DRIVE_ROOT_FOLDER_ID env var not set' });
@@ -8183,7 +8206,7 @@ app.post('/api/clients/:id/dms/setup', requireAuth, requireAdminOrPC, async (req
 });
 
 // Add a department subfolder under the client's Drive folder
-app.post('/api/clients/:id/dms/departments', requireAuth, requireAdminOrPC, async (req, res) => {
+app.post('/api/clients/:id/dms/departments', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const id = req.params.id;
     const dept = (req.body.department_name || '').trim();
@@ -8214,7 +8237,7 @@ app.post('/api/clients/:id/dms/departments', requireAuth, requireAdminOrPC, asyn
 });
 
 // Remove a department mapping (does NOT delete the Drive folder)
-app.delete('/api/clients/:id/dms/departments/:dept', requireAuth, requireAdminOrPC, async (req, res) => {
+app.delete('/api/clients/:id/dms/departments/:dept', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const id = req.params.id;
     const dept = decodeURIComponent(req.params.dept);
@@ -8264,7 +8287,7 @@ app.get('/api/clients/:id/dms/folders/:folderId/files', requireAuth, async (req,
 });
 
 // Create a Google Doc / Sheet / Slide in a folder
-app.post('/api/clients/:id/dms/folders/:folderId/files', requireAuth, requireAdminOrPC, async (req, res) => {
+app.post('/api/clients/:id/dms/folders/:folderId/files', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const { id, folderId } = req.params;
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
@@ -8279,7 +8302,7 @@ app.post('/api/clients/:id/dms/folders/:folderId/files', requireAuth, requireAdm
 });
 
 // Upload an actual file (PDF, image, doc, etc.) into a Drive folder
-app.post('/api/clients/:id/dms/folders/:folderId/upload', requireAuth, requireAdminOrPC, dmsUpload.single('file'), async (req, res) => {
+app.post('/api/clients/:id/dms/folders/:folderId/upload', requireAuth, requireClientEditor, dmsUpload.single('file'), async (req, res) => {
   try {
     const { id, folderId } = req.params;
     if (!req.file) return res.status(400).json({ error: 'file required' });
@@ -8294,7 +8317,7 @@ app.post('/api/clients/:id/dms/folders/:folderId/upload', requireAuth, requireAd
 // just a DB row we merge into the file listing. No Drive API / sharing needed,
 // unlike the (removed) Drive-shortcut approach — the user often doesn't control
 // sharing permissions on files owned by other people.
-app.post('/api/clients/:id/dms/folders/:folderId/external-link', requireAuth, requireAdminOrPC, async (req, res) => {
+app.post('/api/clients/:id/dms/folders/:folderId/external-link', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const { id, folderId } = req.params;
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
@@ -8318,7 +8341,7 @@ app.post('/api/clients/:id/dms/folders/:folderId/external-link', requireAuth, re
 // so the browser can't read the result even though the file was created.
 // The browser instead sends chunks through /upload-chunk below, which
 // proxies each one to this URL server-side (no CORS involved there).
-app.post('/api/clients/:id/dms/folders/:folderId/upload-session', requireAuth, requireAdminOrPC, async (req, res) => {
+app.post('/api/clients/:id/dms/folders/:folderId/upload-session', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const { id, folderId } = req.params;
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
@@ -8334,7 +8357,7 @@ app.post('/api/clients/:id/dms/folders/:folderId/upload-session', requireAuth, r
 // though the overall file can be far larger. Responds 308 (with the byte
 // range Drive has received so far) while more chunks are expected, or the
 // created file's metadata once Drive reports the upload complete.
-app.post('/api/clients/:id/dms/folders/:folderId/upload-chunk', requireAuth, requireAdminOrPC, express.raw({ type: () => true, limit: '6mb' }), async (req, res) => {
+app.post('/api/clients/:id/dms/folders/:folderId/upload-chunk', requireAuth, requireClientEditor, express.raw({ type: () => true, limit: '6mb' }), async (req, res) => {
   try {
     const { id, folderId } = req.params;
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
@@ -8390,7 +8413,7 @@ async function _dmsCanAccessFolder(clientId, folderId) {
 }
 
 // Rename a file/folder in a client's Drive folder
-app.patch('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, requireAdminOrPC, async (req, res) => {
+app.patch('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const { id, folderId, fileId } = req.params;
     const name = (req.body.name || '').trim();
@@ -8413,7 +8436,7 @@ app.patch('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, r
 
 // Delete (trash) a file/folder in a client's Drive folder — moves to Drive's
 // Trash rather than a permanent delete, so it stays recoverable.
-app.delete('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, requireAdminOrPC, async (req, res) => {
+app.delete('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const { id, folderId, fileId } = req.params;
     if (fileId.startsWith('ext-')) {

@@ -13259,6 +13259,12 @@ function cmBackToList() {
 
 function cmRenderDetailHtml(s, id, currentHandlers) {
   const client = s.client || {};
+  // WhatsApp group, System Links and Documents are operational data a handler of
+  // THIS client may manage too — not just full editors (edit_clients). Renaming
+  // or reassigning the client stays behind cmCanEdit().
+  const iHandleThisClient = String(client.handler_id) === String(ME.id)
+    || (Array.isArray(currentHandlers) && currentHandlers.some(h => String(h.id) === String(ME.id)));
+  const canEditClientOps = cmCanEdit() || iHandleThisClient;
   const del = s.delegation || {}, chl = s.checklist || {};
   const meet = s.meetings || {};
   const range = s.range || {};
@@ -13433,7 +13439,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>
 
-    <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
+    <div class="task-table-card" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">📱 WhatsApp Group <span style="font-weight:400;color:#94a3b8;font-size:12px">— where this client's pending-task digest is sent</span></div>
       </div>
@@ -13448,7 +13454,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>
 
-    <div class="task-table-card" id="cmLinksCard" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s">
+    <div class="task-table-card" id="cmLinksCard" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">🔗 System Links <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on this client's portal</span></div>
         <button class="btn btn-outline" style="padding:5px 11px;font-size:12px" onclick="cmAddLinkRow()">＋ Add Link</button>
@@ -13459,7 +13465,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>
 
-    <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
+    <div class="task-table-card" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">📁 Documents <span style="font-weight:400;color:#94a3b8;font-size:12px">— Google Drive</span></div>
       </div>
