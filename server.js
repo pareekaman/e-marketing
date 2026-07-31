@@ -7849,9 +7849,15 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
 });
 
 // Multi-handler support — get all handlers for a client
-app.get('/api/clients/:id/handlers', requireAuth, requireAdminOrHod, async (req, res) => {
+app.get('/api/clients/:id/handlers', requireAuth, async (req, res) => {
   if (!(await userCanSee(req.session, 'clients'))) return res.status(403).json({ error: 'Forbidden' });
   try {
+    // Managers see any client; a regular handler may open only the clients they
+    // handle — so the Client Master detail card works for them, not just admins.
+    if (!['admin', 'hod', 'pc'].includes(req.session.role)) {
+      const [[c]] = await db.query('SELECT id, handler_id FROM clients WHERE id=?', [req.params.id]);
+      if (!c || !(await isHandlerOf(req.session.userId, c))) return res.status(403).json({ error: 'Forbidden' });
+    }
     const [rows] = await db.query(
       `SELECT ch.user_id AS id, u.name, COALESCE(u.department,'') AS department
        FROM client_handlers ch JOIN users u ON u.id=ch.user_id
@@ -7921,7 +7927,7 @@ app.post('/api/clients/bulk', requireAuth, async (req, res) => {
 // Client stats — full client snapshot for the detail page. Defaults to the
 // current month (IST). Accepts ?from=YYYY-MM-DD&to=YYYY-MM-DD to widen the
 // window. Includes delegation/checklist task counts + meetings + recent rows.
-app.get('/api/clients/:id/stats', requireAuth, requireAdminOrHod, async (req, res) => {
+app.get('/api/clients/:id/stats', requireAuth, async (req, res) => {
   if (!(await userCanSee(req.session, 'clients'))) return res.status(403).json({ error: 'Forbidden' });
   try {
     const id = req.params.id;
@@ -7930,6 +7936,11 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrHod, async (req, re
               u.name AS handler_name, u.email AS handler_email
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
+    // Managers see any client; a regular handler may open only the clients they
+    // handle. Reuses the row just fetched (has id + handler_id) for the check.
+    if (!['admin', 'hod', 'pc'].includes(req.session.role) && !(await isHandlerOf(req.session.userId, client))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     client.system_links = parseSystemLinks(client.system_links);
 
     // Login user (if provisioned) — there's at most one client login per client.
