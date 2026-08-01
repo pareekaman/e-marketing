@@ -65,6 +65,12 @@ body{
   box-shadow:1px 0 0 rgba(255,255,255,.04), 6px 0 24px -6px rgba(0,0,0,.35);
 }
 .sidebar:hover{ width:232px; }
+/* The sidebar is position:fixed, so widening it on hover used to lay 172px of
+   itself over the page — the first dashboard card and the first table column
+   disappeared underneath. .main already carried a margin-left transition that
+   nothing ever drove; this is the rule it was waiting for. Sibling selector, so
+   no JS: .main follows .sidebar in the markup. */
+.sidebar:hover ~ .main{ margin-left:232px; }
 
 .dash-emp-filter-list{
   display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:190px;max-height:260px;
@@ -166,7 +172,10 @@ body{
 /* ══════════════════════════════════════
    MAIN
 ══════════════════════════════════════ */
-.main{margin-left:60px;min-height:100vh;transition:margin-left .25s ease;}
+/* Timing matches .sidebar's width transition exactly. At .25s/ease the content
+   edge finished ahead of the sidebar edge and a strip of background flashed
+   between them for the last 50ms. */
+.main{margin-left:60px;min-height:100vh;transition:margin-left .3s var(--ease);}
 .topbar{
   background:rgba(255,255,255,.78);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);
   border-bottom:1px solid rgba(15,23,42,.07);
@@ -1120,6 +1129,10 @@ tbody tr:last-child td{border-bottom:none;}
 
   /* ── Main content ── */
   .main{margin-left:0;}
+  /* Phones open the sidebar as a drawer over a backdrop, and there is no hover
+     to speak of on touch. The desktop push rule outranks a plain .main on
+     specificity, so it has to be switched off here by name. */
+  .sidebar:hover ~ .main{margin-left:0;}
   .topbar{padding:0 14px;height:54px;gap:10px;}
   .topbar-title{font-size:15px;font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .topbar-right{gap:6px;flex-shrink:0;}
