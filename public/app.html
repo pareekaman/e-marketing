@@ -7572,9 +7572,19 @@ let allTasksData = [];
 let taskStatusFilter = 'pending';
 
 let allTasksPage = 1;
+// Bumped on every loadAllTasks() call. Whichever load owns the current value is
+// the only one allowed to write allTasksData — see the guards after each await.
+let _allTasksSeq = 0;
 const ALL_TASKS_PAGE_SIZE = 50;
 
 async function loadAllTasks() {
+  // A dozen things call this — tab clicks, both date inputs, the doer filter,
+  // Done, Revise, Reopen, delete, page open. Two of them overlapping used to
+  // mean the response that arrived LAST won, even when it belonged to the
+  // request made FIRST, so the table could settle on a stale or partial list.
+  // Refreshing fixed it because a reload fires exactly one request. Claim a
+  // ticket here and drop our own result after each await if someone newer holds it.
+  const seq = ++_allTasksSeq;
   const isAdmin = ME.role==='admin';
   const isHod = ME.role==='hod';
   const isPC = ME.role==='pc';
@@ -7613,6 +7623,7 @@ async function loadAllTasks() {
     const empVal = document.getElementById('tasksUserFilter')?.value || 'all';
     const url = '/api/fms-dashboard' + (empVal !== 'all' ? `?employee=${empVal}` : '');
     const fmsData = await api(url);
+    if (seq !== _allTasksSeq) return;
     const rows = (fmsData?.rows) || [];
     allTasksData = rows.map(r => ({
       id: r.stepId || r.id || 0,
@@ -7652,6 +7663,7 @@ async function loadAllTasks() {
     ? `${dateFromVal ? `&from=${dateFromVal}` : ''}${dateToVal ? `&to=${dateToVal}` : ''}`
     : '';
   const data = await api(`/api/tasks?type=${fetchType}${mineParam}${rangeParam}`);
+  if (seq !== _allTasksSeq) return;
 
   // Flatten all tasks — admin, HOD and PC get grouped response
   let allTasks = [];
