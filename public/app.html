@@ -2519,9 +2519,10 @@ input:focus,select:focus,textarea:focus{outline:none;}
        CREDIT CARDS PAGE
   ══════════════════════════════════════ -->
   <div id="page-creditcards" class="page">
-    <!-- Top bar: title + dropdown + upload -->
+    <!-- Bank picker + upload. No heading here on purpose: the topbar already
+         says "Credit Card Statement", and this was the only page in the app
+         that repeated its own name underneath it. -->
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-      <h2 style="margin:0;font-size:20px;font-weight:700;color:#0f172a;flex:0 0 auto">💳 Credit Cards</h2>
       <select id="ccBankDropdown" onchange="ccSelectBank(this.value)"
         style="padding:8px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:600;color:#0f172a;background:#fff;outline:none;cursor:pointer;min-width:160px">
         <option value="">— Select Bank —</option>
