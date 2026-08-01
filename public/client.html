@@ -264,13 +264,28 @@ async function api(url, method='GET', body=null){
   const opts = { method, headers: {'Content-Type':'application/json'}, credentials:'include' };
   if (token) opts.headers['Authorization'] = 'Bearer ' + token;
   if (body)  opts.body = JSON.stringify(body);
-  const r = await fetch(url, opts);
+  // Same hardening as the staff app: a dropped connection or a non-JSON error page
+  // used to throw out of here and leave the click doing nothing at all.
+  let r;
+  try {
+    r = await fetch(url, opts);
+  } catch (e) {
+    console.error('API network error:', url, e);
+    return { error: 'Network problem — this was NOT saved. Check your connection and try again.' };
+  }
   if (r.status === 401) {
     localStorage.removeItem('authToken');
     window.location.replace('/');
     return {};
   }
-  return r.json();
+  try {
+    const data = await r.json();
+    if (!r.ok && !data.error) data.error = `HTTP ${r.status}`;
+    return data;
+  } catch (e) {
+    console.error('API error:', url, r.status, e);
+    return { error: `HTTP ${r.status}` };
+  }
 }
 async function logout(){
   try { await fetch('/api/logout', { method:'POST', credentials:'include' }); } catch(e){}
@@ -923,8 +938,24 @@ async function cpSaveDelegate(){
     payload.date = date;
     payload.dueTime = time;
   }
-  const r = await api('/api/tasks', 'POST', payload);
+  // Lock the button for the round-trip — a second tap on a slow phone connection
+  // used to create a second identical task for the handler.
+  const btn = document.getElementById('cpDelSubmitBtn');
+  const btnLabel = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  let r;
+  try {
+    r = await api('/api/tasks', 'POST', payload);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
+  }
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+  if (r.duplicate) {
+    closeModal('clientDelegateModal');
+    showToast('That task was already sent a moment ago — not duplicated.');
+    loadClientPortal();
+    return;
+  }
   showToast(toClient
     ? `✅ Task assigned to ${_cpMe.name || 'the client'}`
     : (CP_IS_PREVIEW ? `✅ Task created for ${_cpMe.handler_name || 'the handler'}` : '✅ Task sent to your handler'));

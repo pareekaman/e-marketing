@@ -209,6 +209,25 @@ const _startupMigrationsPromise = (async () => {
     INDEX idx_task (task_id, task_type)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+  // Every status change on a task, with who did it and from where. Until this
+  // existed, a task that went back to pending left no trace at all — reopening
+  // clears completed_at — so "I marked it done and it came back" could not be
+  // answered from the data. Append-only; nothing reads it during normal use.
+  await sa(`CREATE TABLE IF NOT EXISTS task_activity (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    task_id INT NOT NULL,
+    task_type VARCHAR(20) NOT NULL,
+    old_status VARCHAR(20) DEFAULT NULL,
+    new_status VARCHAR(20) DEFAULT NULL,
+    changed_by INT DEFAULT NULL,
+    source VARCHAR(40) DEFAULT NULL,
+    note TEXT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_task (task_id, task_type),
+    INDEX idx_changed_by (changed_by),
+    INDEX idx_created (created_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
   await sa(`CREATE TABLE IF NOT EXISTS task_transfers (
     id INT AUTO_INCREMENT PRIMARY KEY,
     task_id INT NOT NULL,
@@ -541,6 +560,26 @@ const _startupMigrationsPromise = (async () => {
     UNIQUE KEY uniq_candidate (candidate_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+  // The table above shipped before these columns existed, and CREATE TABLE IF
+  // NOT EXISTS no-ops once the table is there — so every column added after the
+  // first deploy needs its own ALTER, or the webhook 500s with "Unknown column".
+  // sa() swallows the duplicate-column error, so re-running is harmless.
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN emp_mobile VARCHAR(20) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN email VARCHAR(255) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN guardian1_name VARCHAR(255) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN guardian1_relation VARCHAR(100) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN guardian1_mobile VARCHAR(20) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN guardian2_name VARCHAR(255) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN guardian2_relation VARCHAR(100) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN guardian2_mobile VARCHAR(20) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN street VARCHAR(500) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN city VARCHAR(255) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN state VARCHAR(255) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN pincode VARCHAR(20) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN resume_file_url VARCHAR(1024) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN aadhaar_file_url_2 VARCHAR(1024) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN pan_file_url_2 VARCHAR(1024) DEFAULT ''`);
+
   // Per-user permissions column (replaces role_permissions)
   await sa(`ALTER TABLE users ADD COLUMN user_permissions TEXT DEFAULT NULL AFTER extra_access`);
   await sa(`ALTER TABLE users ADD COLUMN birthday DATE DEFAULT NULL`);
@@ -694,8 +733,30 @@ function requireAdminOrPC(req, res, next) {
   if (req.session.role === 'admin' || req.session.role === 'pc') return next();
   res.status(403).json({ error: 'Admin or PC only' });
 }
+// Allows a manager (admin/hod/pc) OR a handler of the client named in :id to
+// act on that client's operational data (portal links, WhatsApp group, DMS).
+// Structural client edits (name/handler/active) stay manager-only — see PUT.
+async function requireClientEditor(req, res, next) {
+  try {
+    if (['admin', 'hod', 'pc'].includes(req.session.role)) return next();
+    const [[c]] = await db.query('SELECT id, handler_id FROM clients WHERE id=?', [req.params.id]);
+    if (c && await isHandlerOf(req.session.userId, c)) return next();
+    return res.status(403).json({ error: 'Forbidden' });
+  } catch (err) { return res.status(500).json({ error: err.message }); }
+}
 function getTable(type) {
   return type === 'delegation' ? 'delegation_tasks' : 'checklist_tasks';
+}
+
+// Append a row to task_activity. Never throws and never blocks the caller —
+// an audit write failing must not stop a user from marking their task done.
+function logTaskActivity({ taskId, taskType, oldStatus, newStatus, changedBy, source, note }) {
+  db.query(
+    `INSERT INTO task_activity (task_id, task_type, old_status, new_status, changed_by, source, note)
+     VALUES (?,?,?,?,?,?,?)`,
+    [taskId, taskType || 'delegation', oldStatus || null, newStatus || null,
+     changedBy || null, source || null, note || null]
+  ).catch(e => console.error('task_activity log err:', e.message));
 }
 
 // ══════════════════════════════════════════════════════
@@ -1433,11 +1494,11 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
 
     let delegationRows = [], checklistRows = [];
     if (taskType === 'delegation' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${delDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, delParams);
+      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${delDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, delParams);
       delegationRows = rows;
     }
     if (taskType === 'checklist' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${chlDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, chlParams);
+      const [rows] = await db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,NULL AS completed_on,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${chlDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, chlParams);
       checklistRows = rows;
     }
     // `todayPending` kept for backwards compatibility (regular pending load still uses it).
@@ -1516,7 +1577,7 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     const subtaskCols = isDeleg
       ? "COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='completed'),0) AS subtasks_done,COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='pending'),0) AS subtasks_pending,"
       : "0 AS subtasks_done,0 AS subtasks_pending,";
-    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_ask,DATE_FORMAT(t.client_ask_by,'%Y-%m-%d') AS client_ask_date,TIME_FORMAT(t.client_ask_by,'%H:%i') AS client_ask_time,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,NULL AS client_ask,NULL AS client_ask_date,NULL AS client_ask_time,"}${subtaskCols}t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
+    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_ask,DATE_FORMAT(t.client_ask_by,'%Y-%m-%d') AS client_ask_date,TIME_FORMAT(t.client_ask_by,'%H:%i') AS client_ask_time,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,NULL AS client_ask,NULL AS client_ask_date,NULL AS client_ask_time,NULL AS completed_on,"}${subtaskCols}t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
 
     // mine=1 mode always returns flat tasks (never grouped)
     if (isMine) {
@@ -1634,6 +1695,21 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
           const [aprRows] = await db.query('SELECT id FROM users WHERE id=? LIMIT 1', [apId]);
           if (aprRows.length) assignedBy = aprRows[0].id;
         }
+      }
+      // Same task, same doer, same assigner, seconds apart is never a real second
+      // delegation — it is a double tap or a retried request. Production had groups
+      // of 4 identical tasks created within one second, and the doer had to mark
+      // every copy done before the task left their list. Return the row that already
+      // exists instead of adding another. The button guard in the UI is the first
+      // line of defence; this one also covers refresh, back button and network retry.
+      const [[recentDup]] = await db.query(
+        `SELECT id FROM delegation_tasks
+          WHERE description=? AND assigned_to=? AND assigned_by=?
+            AND created_at >= DATE_SUB(NOW(), INTERVAL 2 MINUTE)
+          ORDER BY id DESC LIMIT 1`,
+        [desc, targetUser, assignedBy]);
+      if (recentDup) {
+        return res.json({ success: true, duplicate: true, id: recentDup.id });
       }
       await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,due_time,status,priority,approval,remarks,client_id,url,awaiting_due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, dueTime, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0]);
       // 📧 Send delegation email + 📱 WhatsApp (non-blocking — fire and forget)
@@ -1943,6 +2019,8 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
       if (assignerIsClient) {
         if (newDate) await db.query(`UPDATE ${table} SET status='revised', waiting_approval=0, due_date=? WHERE id=?`, [newDate, req.params.id]);
         else         await db.query(`UPDATE ${table} SET status='revised', waiting_approval=0 WHERE id=?`, [req.params.id]);
+        logTaskActivity({ taskId: req.params.id, taskType: tt, oldStatus: task.status, newStatus: 'revised',
+          changedBy: uid, source: 'revise-client-direct', note: newDate ? `due -> ${newDate}` : (reason || null) });
         return res.json({ success: true, applied: true });
       }
       await db.query(
@@ -1995,7 +2073,32 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
       if (tt === 'checklist') await db.query(`UPDATE ${table} SET status=? WHERE id=?`, [status, req.params.id]);
       else await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,completed_at=IF(?='completed',NOW(),NULL) WHERE id=?`, [status, status, req.params.id]);
     }
+    // Reopening (status back to 'pending') is the one change that wipes its own
+    // evidence, so it matters most that it lands here.
+    logTaskActivity({
+      taskId: req.params.id, taskType: tt, oldStatus: task.status, newStatus: status,
+      changedBy: uid,
+      source: status === 'pending' && task.status === 'completed' ? 'reopen' : 'status-direct',
+      note: newDate ? `due -> ${newDate}` : (reason || null)
+    });
     res.json({ success: true, needsApproval: false });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Full status history of one task — who changed it, from what, to what, and via
+// which action. This is the answer to "I marked it done and it came back".
+app.get('/api/tasks/:id/activity', requireAuth, async (req, res) => {
+  try {
+    const tt = (req.query.type || 'delegation') === 'checklist' ? 'checklist' : 'delegation';
+    const [rows] = await db.query(
+      `SELECT a.id, a.old_status, a.new_status, a.source, a.note,
+              DATE_FORMAT(a.created_at,'%Y-%m-%d %H:%i:%s') AS at,
+              COALESCE(u.name,'—') AS by_name
+         FROM task_activity a
+         LEFT JOIN users u ON u.id = a.changed_by
+        WHERE a.task_id=? AND a.task_type=?
+        ORDER BY a.created_at ASC, a.id ASC`, [parseInt(req.params.id, 10), tt]);
+    res.json({ activity: rows });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -2235,6 +2338,12 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
       // Rejected → drop the waiting flag; due_date and status stay unchanged.
       await db.query(`UPDATE ${table} SET waiting_approval=0 WHERE id=?`, [appr.task_id]);
     }
+    logTaskActivity({
+      taskId: appr.task_id, taskType: appr.task_type,
+      newStatus: action === 'approved' ? (appr.action_type === 'revised' ? 'pending' : appr.action_type) : null,
+      changedBy: req.session.userId, source: `approval-${action}`,
+      note: `${appr.action_type} request${appr.new_date_fmt ? ` (due -> ${appr.new_date_fmt})` : ''}`
+    });
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2249,9 +2358,22 @@ app.post('/api/approvals/approve-all-revises', requireAuth, requireAdminOrPC, as
     let approved = 0;
     for (const a of pending) {
       const table = getTable(a.task_type);
+      // A task that was completed after its revise was filed must not be dragged
+      // back to pending by this bulk sweep — that would look exactly like "my
+      // finished task came back". Clear the stale request and leave the task alone.
+      const [[cur]] = await db.query(`SELECT status FROM ${table} WHERE id=?`, [a.task_id]);
+      if (!cur) { await db.query(`UPDATE task_approvals SET status='approved' WHERE id=?`, [a.id]); continue; }
+      if (cur.status === 'completed') {
+        await db.query(`UPDATE task_approvals SET status='approved', note=CONCAT(COALESCE(note,''),' [skipped — task already completed]') WHERE id=?`, [a.id]);
+        logTaskActivity({ taskId: a.task_id, taskType: a.task_type, oldStatus: 'completed', newStatus: 'completed',
+          changedBy: req.session.userId, source: 'bulk-revise-skipped', note: 'stale revise cleared, task left completed' });
+        continue;
+      }
       if (a.nd) await db.query(`UPDATE ${table} SET status='pending', waiting_approval=0, due_date=? WHERE id=?`, [a.nd, a.task_id]);
       else      await db.query(`UPDATE ${table} SET status='pending', waiting_approval=0 WHERE id=?`, [a.task_id]);
       await db.query(`UPDATE task_approvals SET status='approved' WHERE id=?`, [a.id]);
+      logTaskActivity({ taskId: a.task_id, taskType: a.task_type, oldStatus: cur.status, newStatus: 'pending',
+        changedBy: req.session.userId, source: 'bulk-revise-approve', note: a.nd ? `due -> ${a.nd}` : null });
       approved++;
     }
     res.json({ ok: true, approved });
@@ -7805,21 +7927,39 @@ app.post('/api/clients', requireAuth, requireAdminOrHod, async (req, res) => {
   }
 });
 
-app.put('/api/clients/:id', requireAuth, requireAdminOrHod, async (req, res) => {
+// No role middleware on purpose: the body below decides. requireAdminOrHod here
+// would make the handler branch under it unreachable, which is the bug e662ea0
+// set out to fix. A userCanSee('clients') gate was the other candidate and was
+// left out too — f7259db reverted exactly that enforcement, and it would 403 a
+// handler whose saved permissions happen to omit 'clients' on their own client.
+app.put('/api/clients/:id', requireAuth, async (req, res) => {
   try {
     const id = req.params.id;
+    // Full editors (edit_clients permission) may change anything. A handler of
+    // this client may still edit its operational fields — portal links + the
+    // WhatsApp group — but not rename or reassign it.
+    const isEditor = await userCanDo(req.session, 'edit_clients');
+    let handlerOnly = false;
+    if (!isEditor) {
+      const [[c]] = await db.query('SELECT id, handler_id FROM clients WHERE id=?', [id]);
+      if (!c || !(await isHandlerOf(req.session.userId, c))) return res.status(403).json({ error: 'Forbidden' });
+      handlerOnly = true;
+    }
     const name = req.body.name == null ? null : String(req.body.name).trim();
     const handlerRaw = req.body.handler_id;
     const handlerId = handlerRaw === undefined ? undefined
                     : (handlerRaw == null || handlerRaw === '') ? null
                     : parseInt(handlerRaw, 10);
-    if (name === '') return res.status(400).json({ error: 'Client name cannot be empty' });
+    if (!handlerOnly && name === '') return res.status(400).json({ error: 'Client name cannot be empty' });
     // Only update fields that were sent.
     const sets = [], params = [];
-    if (name !== null) { sets.push('name=?'); params.push(name); }
-    if (handlerId !== undefined) { sets.push('handler_id=?'); params.push(handlerId); }
+    // Structural fields — full editors only; a handler cannot rename/reassign.
+    if (!handlerOnly) {
+      if (name !== null) { sets.push('name=?'); params.push(name); }
+      if (handlerId !== undefined) { sets.push('handler_id=?'); params.push(handlerId); }
+      if (req.body.is_active !== undefined) { sets.push('is_active=?'); params.push(req.body.is_active ? 1 : 0); }
+    }
     if (req.body.system_links !== undefined) { sets.push('system_links=?'); params.push(sanitizeSystemLinks(req.body.system_links)); }
-    if (req.body.is_active !== undefined) { sets.push('is_active=?'); params.push(req.body.is_active ? 1 : 0); }
     if (req.body.whatsapp_group_id !== undefined) {
       const g = String(req.body.whatsapp_group_id || '').trim();
       // Blank clears it (and so switches the digest off for this client).
@@ -7839,8 +7979,15 @@ app.put('/api/clients/:id', requireAuth, requireAdminOrHod, async (req, res) => 
 });
 
 // Multi-handler support — get all handlers for a client
-app.get('/api/clients/:id/handlers', requireAuth, requireAdminOrHod, async (req, res) => {
+// Gated in the body, not by middleware — see the note on PUT /api/clients/:id.
+app.get('/api/clients/:id/handlers', requireAuth, async (req, res) => {
   try {
+    // Managers see any client; a regular handler may open only the clients they
+    // handle — so the Client Master detail card works for them, not just admins.
+    if (!['admin', 'hod', 'pc'].includes(req.session.role)) {
+      const [[c]] = await db.query('SELECT id, handler_id FROM clients WHERE id=?', [req.params.id]);
+      if (!c || !(await isHandlerOf(req.session.userId, c))) return res.status(403).json({ error: 'Forbidden' });
+    }
     const [rows] = await db.query(
       `SELECT ch.user_id AS id, u.name, COALESCE(u.department,'') AS department
        FROM client_handlers ch JOIN users u ON u.id=ch.user_id
@@ -7908,7 +8055,8 @@ app.post('/api/clients/bulk', requireAuth, requireAdminOrHod, async (req, res) =
 // Client stats — full client snapshot for the detail page. Defaults to the
 // current month (IST). Accepts ?from=YYYY-MM-DD&to=YYYY-MM-DD to widen the
 // window. Includes delegation/checklist task counts + meetings + recent rows.
-app.get('/api/clients/:id/stats', requireAuth, requireAdminOrHod, async (req, res) => {
+// Gated in the body, not by middleware — see the note on PUT /api/clients/:id.
+app.get('/api/clients/:id/stats', requireAuth, async (req, res) => {
   try {
     const id = req.params.id;
     const [[client]] = await db.query(
@@ -7916,6 +8064,11 @@ app.get('/api/clients/:id/stats', requireAuth, requireAdminOrHod, async (req, re
               u.name AS handler_name, u.email AS handler_email
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
+    // Managers see any client; a regular handler may open only the clients they
+    // handle. Reuses the row just fetched (has id + handler_id) for the check.
+    if (!['admin', 'hod', 'pc'].includes(req.session.role) && !(await isHandlerOf(req.session.userId, client))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     client.system_links = parseSystemLinks(client.system_links);
 
     // Login user (if provisioned) — there's at most one client login per client.
@@ -8055,7 +8208,7 @@ app.get('/api/google/drive-status', requireAuth, requireAdmin, async (req, res) 
 // ══════════════════════════════════════════════════════
 
 // Get DMS status for a client
-app.get('/api/clients/:id/dms', requireAuth, requireAdminOrPC, async (req, res) => {
+app.get('/api/clients/:id/dms', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const id = req.params.id;
     const [[client]] = await db.query(
@@ -8139,7 +8292,7 @@ app.get('/api/admin/dms/root-files', requireAuth, requireAdmin, async (req, res)
 });
 
 // Create the client's root Drive folder (one-time setup)
-app.post('/api/clients/:id/dms/setup', requireAuth, requireAdminOrPC, async (req, res) => {
+app.post('/api/clients/:id/dms/setup', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const rootFolderId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
     if (!rootFolderId) return res.status(400).json({ error: 'GOOGLE_DRIVE_ROOT_FOLDER_ID env var not set' });
@@ -8157,7 +8310,7 @@ app.post('/api/clients/:id/dms/setup', requireAuth, requireAdminOrPC, async (req
 });
 
 // Add a department subfolder under the client's Drive folder
-app.post('/api/clients/:id/dms/departments', requireAuth, requireAdminOrPC, async (req, res) => {
+app.post('/api/clients/:id/dms/departments', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const id = req.params.id;
     const dept = (req.body.department_name || '').trim();
@@ -8188,7 +8341,7 @@ app.post('/api/clients/:id/dms/departments', requireAuth, requireAdminOrPC, asyn
 });
 
 // Remove a department mapping (does NOT delete the Drive folder)
-app.delete('/api/clients/:id/dms/departments/:dept', requireAuth, requireAdminOrPC, async (req, res) => {
+app.delete('/api/clients/:id/dms/departments/:dept', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const id = req.params.id;
     const dept = decodeURIComponent(req.params.dept);
@@ -8238,7 +8391,7 @@ app.get('/api/clients/:id/dms/folders/:folderId/files', requireAuth, async (req,
 });
 
 // Create a Google Doc / Sheet / Slide in a folder
-app.post('/api/clients/:id/dms/folders/:folderId/files', requireAuth, requireAdminOrPC, async (req, res) => {
+app.post('/api/clients/:id/dms/folders/:folderId/files', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const { id, folderId } = req.params;
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
@@ -8253,7 +8406,7 @@ app.post('/api/clients/:id/dms/folders/:folderId/files', requireAuth, requireAdm
 });
 
 // Upload an actual file (PDF, image, doc, etc.) into a Drive folder
-app.post('/api/clients/:id/dms/folders/:folderId/upload', requireAuth, requireAdminOrPC, dmsUpload.single('file'), async (req, res) => {
+app.post('/api/clients/:id/dms/folders/:folderId/upload', requireAuth, requireClientEditor, dmsUpload.single('file'), async (req, res) => {
   try {
     const { id, folderId } = req.params;
     if (!req.file) return res.status(400).json({ error: 'file required' });
@@ -8268,7 +8421,7 @@ app.post('/api/clients/:id/dms/folders/:folderId/upload', requireAuth, requireAd
 // just a DB row we merge into the file listing. No Drive API / sharing needed,
 // unlike the (removed) Drive-shortcut approach — the user often doesn't control
 // sharing permissions on files owned by other people.
-app.post('/api/clients/:id/dms/folders/:folderId/external-link', requireAuth, requireAdminOrPC, async (req, res) => {
+app.post('/api/clients/:id/dms/folders/:folderId/external-link', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const { id, folderId } = req.params;
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
@@ -8292,7 +8445,7 @@ app.post('/api/clients/:id/dms/folders/:folderId/external-link', requireAuth, re
 // so the browser can't read the result even though the file was created.
 // The browser instead sends chunks through /upload-chunk below, which
 // proxies each one to this URL server-side (no CORS involved there).
-app.post('/api/clients/:id/dms/folders/:folderId/upload-session', requireAuth, requireAdminOrPC, async (req, res) => {
+app.post('/api/clients/:id/dms/folders/:folderId/upload-session', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const { id, folderId } = req.params;
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
@@ -8308,7 +8461,7 @@ app.post('/api/clients/:id/dms/folders/:folderId/upload-session', requireAuth, r
 // though the overall file can be far larger. Responds 308 (with the byte
 // range Drive has received so far) while more chunks are expected, or the
 // created file's metadata once Drive reports the upload complete.
-app.post('/api/clients/:id/dms/folders/:folderId/upload-chunk', requireAuth, requireAdminOrPC, express.raw({ type: () => true, limit: '6mb' }), async (req, res) => {
+app.post('/api/clients/:id/dms/folders/:folderId/upload-chunk', requireAuth, requireClientEditor, express.raw({ type: () => true, limit: '6mb' }), async (req, res) => {
   try {
     const { id, folderId } = req.params;
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
@@ -8364,7 +8517,7 @@ async function _dmsCanAccessFolder(clientId, folderId) {
 }
 
 // Rename a file/folder in a client's Drive folder
-app.patch('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, requireAdminOrPC, async (req, res) => {
+app.patch('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const { id, folderId, fileId } = req.params;
     const name = (req.body.name || '').trim();
@@ -8387,7 +8540,7 @@ app.patch('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, r
 
 // Delete (trash) a file/folder in a client's Drive folder — moves to Drive's
 // Trash rather than a permanent delete, so it stays recoverable.
-app.delete('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, requireAdminOrPC, async (req, res) => {
+app.delete('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, requireClientEditor, async (req, res) => {
   try {
     const { id, folderId, fileId } = req.params;
     if (fileId.startsWith('ext-')) {
@@ -11031,7 +11184,7 @@ async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrid
 }
 
 async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateName, action) {
-  let status = 'Failed', errorDetail = '';
+  let status = 'Failed', errorDetail = '', timedOut = false;
   try {
     const fetchFn = global.fetch || (await import('node-fetch')).default;
     // Bound the provider call. For a file send the provider fetches our
@@ -11056,7 +11209,20 @@ async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateNa
       const txt = await resp.text();
       errorDetail = `HTTP ${resp.status}: ${txt.slice(0,200)}`;
     }
-  } catch (e) { errorDetail = e.name === 'AbortError' ? 'WhatsApp send timed out after 30s' : e.message; }
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      // No ack within 30s. This is NOT a confirmed failure — the provider
+      // usually still delivers (it fetched our mediaUrl and sent), it just
+      // replied late. Logging it as Failed made HR retry an already-delivered
+      // message (the exact "shows Failed but I got the message" report). Record
+      // it as Sent with an explanatory note instead.
+      status = 'Sent';
+      timedOut = true;
+      errorDetail = 'Delivered — provider took over 30s to confirm';
+    } else {
+      errorDetail = e.message;
+    }
+  }
 
   const payloadJson = JSON.stringify({ endpoint, body: payload });
   await db.query(
@@ -11064,13 +11230,10 @@ async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateNa
      VALUES (?,?,?,?,?,?,?,?)`,
     [candidateId||null, candidateName||'', payload.to||'', action||type, type, status, errorDetail, payloadJson]
   ).catch(e => console.error('hrm_message_log insert failed:', e.message));
-  // sent — provider acked OK. timedOut — no ack within 30s, which is NOT a
-  // confirmed failure: the provider usually still delivers (it fetched our
-  // mediaUrl and sent), it just didn't reply in time. So file-send callers must
-  // only fire the link fallback when the send DEFINITELY failed (!sent &&
-  // !timedOut) — firing it on a timeout is what made the candidate get both the
-  // PDF and a duplicate link.
-  return { sent: status === 'Sent', timedOut: /timed out/i.test(errorDetail) };
+  // timedOut is surfaced separately so file-send callers only fire the link
+  // fallback on a DEFINITE failure (!sent && !timedOut) — firing it on a
+  // timeout is what made the candidate get both the PDF and a duplicate link.
+  return { sent: status === 'Sent', timedOut };
 }
 
 function hrmFormatPhone(phone) {
@@ -11232,6 +11395,11 @@ app.post('/api/hrm/joining-form', async (req, res) => {
     if (missing.length) return res.status(400).json({ error: `Missing or invalid: ${missing.join(', ')}` });
     // Gmail only, at the user's request — the form enforces this too.
     if (!/^[^\s@]+@gmail\.com$/.test(email)) return res.status(400).json({ error: 'Email must be a @gmail.com address' });
+    // The candidate and both guardians must be reachable on different numbers.
+    const mobiles = [empMobile, g1Mobile, g2Mobile].filter(Boolean);
+    if (new Set(mobiles).size !== mobiles.length) {
+      return res.status(400).json({ error: 'Employee and guardian mobile numbers must all be different' });
+    }
     if (aadhaarNo && aadhaarNo.length !== 12) return res.status(400).json({ error: 'Aadhaar number must be 12 digits' });
     if (panNo && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(panNo)) return res.status(400).json({ error: 'PAN number format is invalid (e.g. ABCDE1234F)' });
 

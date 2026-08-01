@@ -65,6 +65,12 @@ body{
   box-shadow:1px 0 0 rgba(255,255,255,.04), 6px 0 24px -6px rgba(0,0,0,.35);
 }
 .sidebar:hover{ width:232px; }
+/* The sidebar is position:fixed, so widening it on hover used to lay 172px of
+   itself over the page — the first dashboard card and the first table column
+   disappeared underneath. .main already carried a margin-left transition that
+   nothing ever drove; this is the rule it was waiting for. Sibling selector, so
+   no JS: .main follows .sidebar in the markup. */
+.sidebar:hover ~ .main{ margin-left:232px; }
 
 .dash-emp-filter-list{
   display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:190px;max-height:260px;
@@ -166,7 +172,10 @@ body{
 /* ══════════════════════════════════════
    MAIN
 ══════════════════════════════════════ */
-.main{margin-left:60px;min-height:100vh;transition:margin-left .25s ease;}
+/* Timing matches .sidebar's width transition exactly. At .25s/ease the content
+   edge finished ahead of the sidebar edge and a strip of background flashed
+   between them for the last 50ms. */
+.main{margin-left:60px;min-height:100vh;transition:margin-left .3s var(--ease);}
 .topbar{
   background:rgba(255,255,255,.78);backdrop-filter:blur(14px) saturate(160%);-webkit-backdrop-filter:blur(14px) saturate(160%);
   border-bottom:1px solid rgba(15,23,42,.07);
@@ -1120,6 +1129,10 @@ tbody tr:last-child td{border-bottom:none;}
 
   /* ── Main content ── */
   .main{margin-left:0;}
+  /* Phones open the sidebar as a drawer over a backdrop, and there is no hover
+     to speak of on touch. The desktop push rule outranks a plain .main on
+     specificity, so it has to be switched off here by name. */
+  .sidebar:hover ~ .main{margin-left:0;}
   .topbar{padding:0 14px;height:54px;gap:10px;}
   .topbar-title{font-size:15px;font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .topbar-right{gap:6px;flex-shrink:0;}
@@ -3666,7 +3679,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
     </div>
     <div class="modal-footer" style="justify-content:space-between;align-items:center">
       <button class="btn btn-outline" onclick="closeModal('delegateModal')">Close</button>
-      <button class="btn btn-primary" onclick="saveDelegate()">Assign</button>
+      <button class="btn btn-primary" id="delegateSubmitBtn" onclick="saveDelegate()">Assign</button>
     </div>
     <!-- Bulk Upload -->
     <div class="bulk-section">
@@ -6116,7 +6129,7 @@ function renderHrmMsgTable() {
       <td style="font-size:12px;color:#475569">${esc(m.action)}</td>
       <td><span class="${statusCls}">${m.status}</span></td>
       <td style="font-size:11px;color:#64748b">${m.retry_count>0?`${m.retry_count}×`:''}</td>
-      <td>${retryBtn}${m.error_detail?`<div style="font-size:10px;color:#dc2626;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.error_detail)}">${esc(m.error_detail.slice(0,80))}</div>`:''}</td>
+      <td>${retryBtn}${m.error_detail?`<div style="font-size:10px;color:${m.status==='Sent'?'#64748b':'#dc2626'};max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.error_detail)}">${esc(m.error_detail.slice(0,80))}</div>`:''}</td>
       <td><button class="action-btn" style="color:#dc2626;border-color:#fecaca" title="Delete entry" onclick="deleteHrmMsg(${m.id})">🗑</button></td>
     </tr>`;
   }).join('');
@@ -6867,6 +6880,16 @@ async function loadDashboard(light = false) {
   // they appear without an extra click. Re-render once they arrive.
   loadDashRevised().then(() => renderDashTable(window._lastDashTasks || [], dashType));
 
+  // Completed rows are lazy — only the stat-card click used to fetch them. That
+  // left the Completed view empty whenever anything re-ran this function while
+  // it was open (a type tab, a Done/Reopen, an employee or date change): the
+  // cache was cleared above and nothing filled it again, so the table rendered
+  // "No completed tasks in this window" over data that plainly existed. Refetch
+  // whenever the view being looked at needs them.
+  if (dashStatusFilter === 'completed' || dashStatusFilter === 'all') {
+    loadDashCompleted().then(() => renderDashTable(window._lastDashTasks || [], dashType));
+  }
+
   // Heavy widgets — the FMS section and the Performance/Activity charts (the
   // latter hits the slow /api/mis/all Google-Sheets aggregate). A single task
   // action does not change these, so a "light" refresh (passed after
@@ -7199,6 +7222,12 @@ function dashTab(type, el) {
   // Refresh stat cards + chart from cached totals; table re-renders from the same cache.
   updateDashStats(dashType);
   if (window._lastDashTasks) {
+    // Switching type tab must not lose the completed rows the user is looking
+    // at — this path renders straight from cache, so fill the cache first if the
+    // active stat-card filter reads from it.
+    if ((dashStatusFilter === 'completed' || dashStatusFilter === 'all') && !window._lastDashCompleted) {
+      loadDashCompleted().then(() => renderDashTable(window._lastDashTasks || [], dashType));
+    }
     renderDashTable(window._lastDashTasks, dashType);
   } else {
     withPageLoader(loadDashboard);
@@ -7498,6 +7527,13 @@ function renderDashTable(tasks, type) {
     const delegatedLine = t.delegated_on
       ? `<div style="font-size:10px;color:#94a3b8;font-weight:500;margin-top:2px;white-space:nowrap">Given ${fmtDate(t.delegated_on)}</div>`
       : '';
+    // Third line — when it was actually finished, next to when it was due, so
+    // "late or not" is readable without opening anything. Only delegation tasks
+    // carry completed_at; anything closed before that column existed stays blank
+    // rather than guessing a date.
+    const completedLine = (isCompleted && t.completed_on)
+      ? `<div style="font-size:10px;color:#16a34a;font-weight:600;margin-top:2px;white-space:nowrap">Done ${fmtDate(t.completed_on)}</div>`
+      : '';
     const actionCell = isCompleted
       ? `<span style="font-size:11px;color:#16a34a;font-weight:700;background:#dcfce7;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0">✅ Completed</span>
          ${(isAdmin || isPC || String(t.assigned_to)===String(ME.id)) ? `<button class="action-btn reopen" style="margin-left:6px" onclick="event.stopPropagation();reopenTask(${t.id},'dashboard','${t.type}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}`
@@ -7521,7 +7557,7 @@ function renderDashTable(tasks, type) {
       <td style="white-space:nowrap">${typeBadge(t)}</td>
       <td style="max-width:240px;word-break:break-word">${t.description||t.desc}</td>
       <td>${(isAdmin||isPC)?t.assignedToName:t.assignedByName}</td>
-      <td>${t.awaiting_due_date==1 ? `<span style="font-size:10px;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fde68a;white-space:nowrap">🗓 Awaiting date</span>` : fmtDate(t.due_date||t.date)}${delegatedLine}</td>
+      <td>${t.awaiting_due_date==1 ? `<span style="font-size:10px;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fde68a;white-space:nowrap">🗓 Awaiting date</span>` : fmtDate(t.due_date||t.date)}${delegatedLine}${completedLine}</td>
       ${clientCell}
       ${showPriority ? `<td>${isDeleg ? `<span class="priority-badge ${t.priority||'low'}">${t.priority||'low'}</span>` : '—'}</td>` : ''}
       <td onclick="event.stopPropagation()">${actionCell}</td>
@@ -7845,6 +7881,7 @@ function _buildTaskRowHtml(t, ctx) {
     <td style="white-space:nowrap">${esc(t.assignedToName||'')}</td>
     <td style="white-space:nowrap">${esc((t.assignedByName && t.assignedByName.trim() && t.assignedByName !== '—') ? t.assignedByName : 'Simran Gurnani')}</td>
     <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}${t.delegated_on ? `<div style="font-size:10px;color:#94a3b8;font-weight:500;margin-top:2px">Given ${fmtDate(t.delegated_on)}</div>` : ''}</td>
+    <td style="white-space:nowrap;color:#16a34a;font-weight:600">${(t.status === 'completed' && t.completed_on) ? fmtDate(t.completed_on) : '<span style="color:#cbd5e1;font-weight:500">—</span>'}</td>
     ${clientCell}
     <td style="color:#64748b;max-width:220px;word-break:break-word;overflow-wrap:anywhere;font-size:12px">${esc(t.remarks||'—')}</td>
     <td style="white-space:nowrap"><span class="status-badge ${['pending','completed','revised'].includes(t.status)?t.status:'pending'}">${t.status==='revised'?'Revised':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
@@ -7934,6 +7971,7 @@ function renderTasksTable() {
         <th>Doer</th>
         <th>Assignee</th>
         <th>Date</th>
+        <th style="white-space:nowrap">Completed</th>
         ${showClientCol ? '<th>Client</th>' : ''}
         <th>Remarks</th>
         <th>Status</th>
@@ -8102,6 +8140,12 @@ function openTaskDetail(t) {
     row('Assigned By', dtEscape((t.assignedByName && t.assignedByName.trim() && t.assignedByName !== '—') ? t.assignedByName : 'Simran Gurnani')),
     row('Delegated On', fmtDate(t.delegated_on||'')),
     row('Due Date', fmtDate(t.due_date||'')),
+    // Only rendered when there is something to show — row() drops a null, so a
+    // task closed before completed_at existed simply has no Completed On line
+    // instead of an empty or invented one.
+    row('Completed On', (t.status === 'completed' && t.completed_on)
+      ? `<span style="color:#16a34a;font-weight:600">${fmtDate(t.completed_on)}</span>`
+      : null),
     row('Client', t.client_name ? `<span style="background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span>` : null),
     row('Priority', priorityBadge),
     row('Status', statusBadge),
@@ -8571,8 +8615,20 @@ async function saveDelegate() {
   if (!desc) { err.textContent='Description is required'; err.style.display='block'; return; }
   if (!client_id) { err.textContent='Please select a client'; err.style.display='block'; return; }
   if (approval === 'yes' && !approver) { err.textContent='Please select an approver'; err.style.display='block'; return; }
-  const r = await api('/api/tasks','POST',{type:'delegation',desc,assignedTo:doer,date,priority,approval,approver,remarks,client_id,url,doerSetsDueDate});
+  // Lock the button for the round-trip. Without this a second tap on a slow
+  // connection created a second identical task, and the doer then saw the same
+  // task again after finishing the first one.
+  const btn = document.getElementById('delegateSubmitBtn');
+  const btnLabel = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Assigning…'; }
+  let r;
+  try {
+    r = await api('/api/tasks','POST',{type:'delegation',desc,assignedTo:doer,date,priority,approval,approver,remarks,client_id,url,doerSetsDueDate});
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
+  }
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+  if (r.duplicate) { closeModal('delegateModal'); showToast('That task was already created a moment ago — not duplicated.'); loadDashboard(true); return; }
   closeModal('delegateModal');
   if (doerSetsDueDate) {
     showToast('Task delegated! Doer will set their due date.');
@@ -9817,7 +9873,17 @@ async function api(url,method='GET',body=null) {
   const opts={method, headers:{'Content-Type':'application/json'}, credentials:'include'};
   if (token) opts.headers['Authorization'] = 'Bearer ' + token;
   if (body) opts.body=JSON.stringify(body);
-  const r=await fetch(url,opts);
+  // A dropped connection used to throw straight out of here. Callers invoked from
+  // an inline onclick never caught it, so the click silently did nothing: no error,
+  // no toast, no refresh — the row just sat there and the user assumed it saved.
+  // Returning an error object instead makes every existing `if (r.error)` branch fire.
+  let r;
+  try {
+    r = await fetch(url,opts);
+  } catch (e) {
+    console.error('API network error:', url, e);
+    return { error: 'Network problem — this was NOT saved. Check your connection and try again.' };
+  }
   if (r.status===401) {
     localStorage.removeItem('authToken');
     window.location.replace('/');
@@ -13216,6 +13282,12 @@ function cmBackToList() {
 
 function cmRenderDetailHtml(s, id, currentHandlers) {
   const client = s.client || {};
+  // WhatsApp group, System Links and Documents are operational data a handler of
+  // THIS client may manage too — not just full editors (edit_clients). Renaming
+  // or reassigning the client stays behind cmCanEdit().
+  const iHandleThisClient = String(client.handler_id) === String(ME.id)
+    || (Array.isArray(currentHandlers) && currentHandlers.some(h => String(h.id) === String(ME.id)));
+  const canEditClientOps = cmCanEdit() || iHandleThisClient;
   const del = s.delegation || {}, chl = s.checklist || {};
   const meet = s.meetings || {};
   const range = s.range || {};
@@ -13390,7 +13462,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>
 
-    <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
+    <div class="task-table-card" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">📱 WhatsApp Group <span style="font-weight:400;color:#94a3b8;font-size:12px">— where this client's pending-task digest is sent</span></div>
       </div>
@@ -13405,7 +13477,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>
 
-    <div class="task-table-card" id="cmLinksCard" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s">
+    <div class="task-table-card" id="cmLinksCard" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">🔗 System Links <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on this client's portal</span></div>
         <button class="btn btn-outline" style="padding:5px 11px;font-size:12px" onclick="cmAddLinkRow()">＋ Add Link</button>
@@ -13416,7 +13488,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>
 
-    <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
+    <div class="task-table-card" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">📁 Documents <span style="font-weight:400;color:#94a3b8;font-size:12px">— Google Drive</span></div>
       </div>
