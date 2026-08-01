@@ -7422,7 +7422,7 @@ const PEOPLE_SETTINGS = {
   cc_viewer_ids:        ['Rotan Singh'],
   wa_task_approver_ids: ['Naman Gupta'],
   mdo_reviewer_ids:     ['Purvi Saini'],
-  onboarding_owner_ids: ['Naman Gupta'],
+  onboarding_owner_ids: ['Simran Gurnani'],
 };
 const PR_APPROVER_KEY = 'payment_approver_ids';
 const PR_SETTLER_KEY  = 'payment_settler_ids';
