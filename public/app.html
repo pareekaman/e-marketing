@@ -5620,7 +5620,7 @@ function openInvDetailModal(id) {
     : '';
 
   const photo = item.photo
-    ? `<img src="${esc(item.photo)}" alt="" onclick="viewInvPhoto('${esc(item.photo)}')"
+    ? `<img src="${esc(item.photo)}" alt="" onclick="viewInvPhoto(${jsArg(item.photo)})"
          style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;margin-bottom:12px;cursor:zoom-in">`
     : `<div style="height:120px;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);display:flex;align-items:center;justify-content:center;border-radius:8px;margin-bottom:12px;font-size:44px">${invTypeEmoji(item.type)}</div>`;
 
@@ -5663,7 +5663,7 @@ function renderAssignmentsTable(el) {
     const btnHandover = a.handover_status === 'active'
       ? `<button class="action-btn revise" onclick="openInvHandoverModal(${a.id},'${esc(a.item_name||'')}','${esc(a.user_name||'')}')">Handover</button>` : '';
     const photo = a.photo
-      ? `<img src="${esc(a.photo)}" onclick="viewInvPhoto('${esc(a.photo)}')"
+      ? `<img src="${esc(a.photo)}" onclick="viewInvPhoto(${jsArg(a.photo)})"
            style="width:36px;height:36px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #e2e8f0">`
       : `<div style="width:36px;height:36px;background:#f1f5f9;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px">${invTypeEmoji(a.item_type)}</div>`;
     return `<tr>
@@ -10674,7 +10674,7 @@ function renderRaceTracker(data) {
       ? (score === 0 ? 'Finished 🏁' : 'Leader')
       : `${(leader.overallScore - score).toFixed(1)} behind`;
 
-    const safeName = emp.name.replace(/'/g,"\\'");
+    const safeName = jsArg(emp.name);
     return `
       <div class="race-lane">
         ${rankCircle}
@@ -10695,7 +10695,7 @@ function renderRaceTracker(data) {
             ${car}
           </div>
         </div>
-        <div class="race-score-cell" onclick="openAllMISDetail(${emp.userId}, '${safeName}')" title="Click for ${escapeHtml(emp.name)}'s full task breakdown">
+        <div class="race-score-cell" onclick="openAllMISDetail(${emp.userId}, ${safeName})" title="Click for ${escapeHtml(emp.name)}'s full task breakdown">
           <div class="race-score ${scoreClass}">${score > 0 ? '+' : ''}${score.toFixed(1)}%</div>
           <div class="race-gap">${gap}</div>
         </div>
@@ -10789,7 +10789,7 @@ async function showRaceMetric(metric) {
     </div>`;
 
   const cards = groups.map(g => {
-    const safeName = g.user.name.replace(/'/g,"\\'");
+    const safeName = jsArg(g.user.name);
     const rows = g.tasks.map(t => {
       const isOverdue = isPending && t.due_date && t.due_date < today;
       const typeBg = t._type === 'Delegation' ? '#dbeafe' : '#dcfce7';
@@ -10805,7 +10805,7 @@ async function showRaceMetric(metric) {
 
     return `
       <div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;cursor:pointer" onclick="closeModal('misDetailModal'); setTimeout(()=>openAllMISDetail(${g.user.userId}, '${safeName}'), 120)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;cursor:pointer" onclick="closeModal('misDetailModal'); setTimeout(()=>openAllMISDetail(${g.user.userId}, ${safeName}), 120)">
           <div>
             <div style="font-weight:700;color:#1e293b;font-size:14px">${escapeHtml(g.user.name)} <span style="font-size:11px;color:#6366f1;font-weight:600">View all →</span></div>
             <div style="font-size:11px;color:#94a3b8">${escapeHtml(g.user.department||'—')}</div>
@@ -13629,10 +13629,10 @@ function cmDmsRender() {
   var allDepts = s.departments || [];
   var tabsHtml = allDepts.map(function(d) {
     var active = d.department_name === s.activeDept;
-    var dn = d.department_name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    var dn = jsArg(d.department_name);
     return '<span style="display:inline-flex;align-items:center">' +
-      '<button onclick="cmDmsSelectDept(\'' + dn + '\')" style="padding:6px 14px;border:none;border-right:none;border-radius:6px 0 0 6px;font-size:12px;font-weight:600;cursor:pointer;' + (active ? 'background:#7c3aed;color:#fff' : 'background:#f1f5f9;color:#475569') + '">' + dtEscape(d.department_name) + '</button>' +
-      '<button onclick="cmDmsRemoveDept(\'' + dn + '\',' + s.clientId + ')" title="Remove" style="padding:6px 7px;border:none;border-radius:0 6px 6px 0;font-size:11px;cursor:pointer;' + (active ? 'background:#6d28d9;color:#ddd' : 'background:#e2e8f0;color:#94a3b8') + '">✕</button>' +
+      '<button onclick="cmDmsSelectDept(' + dn + ')" style="padding:6px 14px;border:none;border-right:none;border-radius:6px 0 0 6px;font-size:12px;font-weight:600;cursor:pointer;' + (active ? 'background:#7c3aed;color:#fff' : 'background:#f1f5f9;color:#475569') + '">' + dtEscape(d.department_name) + '</button>' +
+      '<button onclick="cmDmsRemoveDept(' + dn + ',' + s.clientId + ')" title="Remove" style="padding:6px 7px;border:none;border-radius:0 6px 6px 0;font-size:11px;cursor:pointer;' + (active ? 'background:#6d28d9;color:#ddd' : 'background:#e2e8f0;color:#94a3b8') + '">✕</button>' +
       '</span>';
   }).join('');
   box.innerHTML =
@@ -16779,10 +16779,10 @@ function ccOwnBuildPanel() {
   if (!items) return;
   const clearRow = `<div onclick="ccOwnClear()" style="padding:7px 14px;font-size:12px;color:#94a3b8;cursor:pointer;border-bottom:1px solid #f1f5f9;font-style:italic" onmouseover="this.style.background='#fef2f2';this.style.color='#ef4444'" onmouseout="this.style.background='';this.style.color='#94a3b8'">✕ &nbsp;Clear selection</div>`;
   items.innerHTML = clearRow + _CC_OWN_OPTIONS.map(opt => {
-    const safe = opt.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const safe = jsArg(opt);
     return `<div style="display:flex;align-items:center;padding:0 10px;cursor:pointer" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-      <span onclick="ccOwnSelectOption('${safe}')" style="flex:1;font-size:12px;padding:7px 4px 7px 0;color:#0f172a">${dtEscape(opt)}</span>
-      <span onclick="ccOwnDeleteOption('${safe}')" title="Remove" style="color:#cbd5e1;font-size:15px;font-weight:700;padding:2px 4px;cursor:pointer;border-radius:4px;line-height:1" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">×</span>
+      <span onclick="ccOwnSelectOption(${safe})" style="flex:1;font-size:12px;padding:7px 4px 7px 0;color:#0f172a">${dtEscape(opt)}</span>
+      <span onclick="ccOwnDeleteOption(${safe})" title="Remove" style="color:#cbd5e1;font-size:15px;font-weight:700;padding:2px 4px;cursor:pointer;border-radius:4px;line-height:1" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">×</span>
     </div>`;
   }).join('');
   document.getElementById('ccOwnOtherBtn').style.display = '';
@@ -16963,10 +16963,10 @@ function ccDeptBuildPanel() {
   if (!items) return;
   const clearRow = `<div onclick="ccDeptClear()" style="padding:7px 14px;font-size:12px;color:#94a3b8;cursor:pointer;border-bottom:1px solid #f1f5f9;font-style:italic" onmouseover="this.style.background='#fef2f2';this.style.color='#ef4444'" onmouseout="this.style.background='';this.style.color='#94a3b8'">✕ &nbsp;Clear selection</div>`;
   items.innerHTML = clearRow + _ccDepts.map(opt => {
-    const safe = opt.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const safe = jsArg(opt);
     return `<div style="display:flex;align-items:center;padding:0 10px;cursor:pointer" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-      <span onclick="ccDeptSelectOption('${safe}')" style="flex:1;font-size:12px;padding:7px 4px 7px 0;color:#0f172a">${dtEscape(opt)}</span>
-      <span onclick="ccDeptDeleteOption('${safe}')" title="Remove" style="color:#cbd5e1;font-size:15px;font-weight:700;padding:2px 4px;cursor:pointer;border-radius:4px;line-height:1" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">×</span>
+      <span onclick="ccDeptSelectOption(${safe})" style="flex:1;font-size:12px;padding:7px 4px 7px 0;color:#0f172a">${dtEscape(opt)}</span>
+      <span onclick="ccDeptDeleteOption(${safe})" title="Remove" style="color:#cbd5e1;font-size:15px;font-weight:700;padding:2px 4px;cursor:pointer;border-radius:4px;line-height:1" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">×</span>
     </div>`;
   }).join('');
   document.getElementById('ccDeptOtherBtn').style.display = '';
@@ -17313,7 +17313,7 @@ async function _ccDoUpload(password) {
 }
 
 function ccBillCellHtml(si, oi, safeBank, safeCard, txnId, driveId) {
-  const fileInput = `<input type="file" accept=".pdf" style="display:none" onchange="ccUploadBill('${safeBank}','${safeCard}',${si},${oi},${txnId},this)">`;
+  const fileInput = `<input type="file" accept=".pdf" style="display:none" onchange="ccUploadBill(${safeBank},${safeCard},${si},${oi},${txnId},this)">`;
   // Read-only viewers can open an attached bill but never upload or replace one
   if (!ccCanEdit()) {
     return driveId
@@ -17342,7 +17342,7 @@ async function ccUploadBill(bank, card, si, oi, txnId, input) {
   const file = input.files[0];
   if (!file) return;
   input.value = '';
-  const safeBank = bank.replace(/'/g,"\\'"), safeCard = card.replace(/'/g,"\\'");
+  const safeBank = jsArg(bank), safeCard = jsArg(card);
   const cell = document.getElementById(`ccBillCell-${si}-${oi}`);
   if (cell) cell.innerHTML = '<span style="font-size:11px;color:#4f46e5">⏳ Uploading…</span>';
   try {
@@ -17834,7 +17834,7 @@ function ccRenderDetail() {
         bCards++;
         stmts.forEach(s => (s.transactions||[]).forEach(t => { if(t.txn_type!=='credit'){bTxns++;bAmt+=parseFloat(t.amount)||0;} }));
       });
-      return `<div onclick="ccSelectBankFromOverview('${b.replace(/'/g,"\\'")}')" style="background:#fff;border:2px solid #e2e8f0;border-radius:14px;padding:18px 20px;cursor:pointer;transition:all .18s;min-width:0"
+      return `<div onclick="ccSelectBankFromOverview(${jsArg(b)})" style="background:#fff;border:2px solid #e2e8f0;border-radius:14px;padding:18px 20px;cursor:pointer;transition:all .18s;min-width:0"
         onmouseover="this.style.borderColor='${color}';this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)'" onmouseout="this.style.borderColor='#e2e8f0';this.style.boxShadow='none'">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
           <div style="width:36px;height:36px;border-radius:10px;background:${color};display:grid;place-items:center;font-size:17px;flex-shrink:0">🏦</div>
@@ -17907,7 +17907,7 @@ function ccRenderDetail() {
 
   // Card number tabs
   const cardTabs = cards.map(cn => `
-    <button onclick="ccSelectCard('${cn.replace(/'/g,"\\'")}')"
+    <button onclick="ccSelectCard(${jsArg(cn)})"
       style="padding:7px 16px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid ${cn===_ccActiveCard?color:'#e2e8f0'};background:${cn===_ccActiveCard?color:'#fff'};color:${cn===_ccActiveCard?'#fff':'#374151'};transition:all .15s;white-space:nowrap">
       💳 ${dtEscape(cn)}
     </button>`).join('');
@@ -18000,8 +18000,8 @@ function ccRenderStatements() {
   const cardNum = _ccActiveCard;
   const color   = CC_BANK_COLORS[bank] || '#64748b';
   const stmts   = _ccData[bank]?.[cardNum] || [];
-  const safeCard = (cardNum||'').replace(/'/g,"\\'");
-  const safeBank = (bank||'').replace(/'/g,"\\'");
+  const safeCard = jsArg(cardNum||'');
+  const safeBank = jsArg(bank||'');
   // Read-only viewers lose every write control: the select column (it only
   // feeds Bulk Apply), the owner/dept editors, upload-to-Drive and delete.
   const canEdit = ccCanEdit();
@@ -18051,7 +18051,7 @@ function ccRenderStatements() {
         <td class="ccAmtCell" style="padding:8px 14px;font-size:13px;font-weight:600;color:${t.txn_type==='credit'?'#16a34a':'#0f172a'};text-align:right;white-space:nowrap;border-right:1px solid #f1f5f9">${t.txn_type==='credit'?'+ ':''}${(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
         <td style="padding:6px 8px;border-right:1px solid #f1f5f9;text-align:center">
           ${canEdit ? `<div style="position:relative;display:inline-block">
-            <div id="ccOwnBtn-${si}-${oi}" onclick="ccOwnToggleDrop('${safeBank}','${safeCard}',${si},${oi})"
+            <div id="ccOwnBtn-${si}-${oi}" onclick="ccOwnToggleDrop(${safeBank},${safeCard},${si},${oi})"
               style="min-width:120px;padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:6px;user-select:none">
               <span id="ccOwnLabel-${si}-${oi}" style="color:#94a3b8;flex:1;text-align:left">— Owner —</span>
               <span style="color:#94a3b8;font-size:10px">▾</span>
@@ -18060,7 +18060,7 @@ function ccRenderStatements() {
         </td>
         <td style="padding:6px 8px;border-right:1px solid #f1f5f9;text-align:center">
           ${canEdit ? `<div style="position:relative;display:inline-block">
-            <div id="ccDeptBtn-${si}-${oi}" onclick="ccDeptToggleDrop('${safeBank}','${safeCard}',${si},${oi})"
+            <div id="ccDeptBtn-${si}-${oi}" onclick="ccDeptToggleDrop(${safeBank},${safeCard},${si},${oi})"
               style="min-width:130px;padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:6px;user-select:none">
               <span id="ccDeptLabel-${si}-${oi}" style="color:#94a3b8;flex:1;text-align:left">— Dept —</span>
               <span style="color:#94a3b8;font-size:10px">▾</span>
@@ -18121,7 +18121,7 @@ function ccRenderStatements() {
             onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,.6)'">×</span>
         </div>
         ${canEdit ? `<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-          <button onclick="ccOpenStatementDrive('${safeBank}','${safeCard}',${si},this)" title="Upload statement PDF to Drive"
+          <button onclick="ccOpenStatementDrive(${safeBank},${safeCard},${si},this)" title="Upload statement PDF to Drive"
             style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);border-radius:8px;padding:5px 10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center"
             onmouseover="this.style.background='rgba(255,255,255,.35)'"
             onmouseout="this.style.background='rgba(255,255,255,.15)'">
@@ -18134,7 +18134,7 @@ function ccRenderStatements() {
               <path d="M73.4 27L60.7 4.5c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25 60 54h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#fff"/>
             </svg>
           </button>
-          <button onclick="ccDeleteStatement('${safeBank}','${safeCard}',${si})"
+          <button onclick="ccDeleteStatement(${safeBank},${safeCard},${si})"
             title="Delete this statement"
             style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);color:#fff;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap"
             onmouseover="this.style.background='rgba(220,38,38,.6)'"
@@ -18200,7 +18200,7 @@ function ccRenderStatements() {
           <option value="__CLEAR__">🗑 Clear Dept</option>
           ${_ccDepts.map(d=>`<option value="${d.replace(/"/g,'&quot;')}">${dtEscape(d)}</option>`).join('')}
         </select>
-        <button onclick="ccBulkApply(${si},'${safeBank}','${safeCard}')"
+        <button onclick="ccBulkApply(${si},${safeBank},${safeCard})"
           style="padding:6px 14px;background:#4f46e5;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
           ✓ Apply
         </button>
@@ -19262,7 +19262,7 @@ function dmsRenderDepts(depts, clientId, hasDriveFolder) {
       <div style="display:flex;align-items:center;gap:8px">
         <a href="https://drive.google.com/drive/folders/${d.drive_folder_id}" target="_blank"
            style="font-size:11px;color:#4f46e5;text-decoration:none">Open ↗</a>
-        ${(ME.role==='admin'||ME.role==='pc') ? `<button onclick="dmsRemoveDept('${dtEscape(d.department_name)}')" style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:18px;padding:0 2px;line-height:1" title="Remove">×</button>` : ''}
+        ${(ME.role==='admin'||ME.role==='pc') ? `<button onclick="dmsRemoveDept(${jsArg(d.department_name)})" style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:18px;padding:0 2px;line-height:1" title="Remove">×</button>` : ''}
       </div>
     </div>
   `).join('');
