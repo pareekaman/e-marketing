@@ -7541,7 +7541,7 @@ function renderDashTable(tasks, type) {
     // carry completed_at; anything closed before that column existed stays blank
     // rather than guessing a date.
     const completedLine = (isCompleted && t.completed_on)
-      ? `<div style="font-size:10px;color:#16a34a;font-weight:600;margin-top:2px;white-space:nowrap">Done ${fmtDate(t.completed_on)}${t.completed_time ? ` · ${t.completed_time}` : ''}</div>`
+      ? `<div style="font-size:10px;color:#16a34a;font-weight:600;margin-top:2px;white-space:nowrap">Done ${fmtDate(t.completed_on)}</div>`
       : '';
     const actionCell = isCompleted
       ? `<span style="font-size:11px;color:#16a34a;font-weight:700;background:#dcfce7;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0">✅ Completed</span>
@@ -7889,7 +7889,8 @@ function _buildTaskRowHtml(t, ctx) {
     <td>${esc(t.description||'')}${subtaskBadge}</td>
     <td style="white-space:nowrap">${esc(t.assignedToName||'')}</td>
     <td style="white-space:nowrap">${esc((t.assignedByName && t.assignedByName.trim() && t.assignedByName !== '—') ? t.assignedByName : 'Simran Gurnani')}</td>
-    <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}${t.delegated_on ? `<div style="font-size:10px;color:#94a3b8;font-weight:500;margin-top:2px">Given ${fmtDate(t.delegated_on)}</div>` : ''}${(t.status === 'completed' && t.completed_on) ? `<div style="font-size:10px;color:#16a34a;font-weight:600;margin-top:2px">Done ${fmtDate(t.completed_on)}${t.completed_time ? ` · ${t.completed_time}` : ''}</div>` : ''}</td>
+    <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}${t.delegated_on ? `<div style="font-size:10px;color:#94a3b8;font-weight:500;margin-top:2px">Given ${fmtDate(t.delegated_on)}</div>` : ''}</td>
+    <td style="white-space:nowrap;color:#16a34a;font-weight:600">${(t.status === 'completed' && t.completed_on) ? fmtDate(t.completed_on) : '<span style="color:#cbd5e1;font-weight:500">—</span>'}</td>
     ${clientCell}
     <td style="color:#64748b;max-width:220px;word-break:break-word;overflow-wrap:anywhere;font-size:12px">${esc(t.remarks||'—')}</td>
     <td style="white-space:nowrap"><span class="status-badge ${['pending','completed','revised'].includes(t.status)?t.status:'pending'}">${t.status==='revised'?'Revised':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
@@ -7979,6 +7980,7 @@ function renderTasksTable() {
         <th>Doer</th>
         <th>Assignee</th>
         <th>Date</th>
+        <th style="white-space:nowrap">Completed</th>
         ${showClientCol ? '<th>Client</th>' : ''}
         <th>Remarks</th>
         <th>Status</th>
@@ -8151,7 +8153,7 @@ function openTaskDetail(t) {
     // task closed before completed_at existed simply has no Completed On line
     // instead of an empty or invented one.
     row('Completed On', (t.status === 'completed' && t.completed_on)
-      ? `<span style="color:#16a34a;font-weight:600">${fmtDate(t.completed_on)}${t.completed_time ? ` · ${t.completed_time}` : ''}</span>`
+      ? `<span style="color:#16a34a;font-weight:600">${fmtDate(t.completed_on)}</span>`
       : null),
     row('Client', t.client_name ? `<span style="background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span>` : null),
     row('Priority', priorityBadge),
