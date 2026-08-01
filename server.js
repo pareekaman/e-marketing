@@ -1332,6 +1332,12 @@ app.get('/api/me', requireAuth, async (req, res) => {
     } catch(e) { rows[0].birthday = null; rows[0].joining_date = null; }
     rows[0].extra_access = parseExtraAccess(rows[0].extra_access);
     rows[0].canViewAllLeaves = isLeaveReportViewer(rows[0]);
+    // The UI used to decide these by comparing ME.name against a copy of the
+    // approver list. It now asks the server, so the names live in one place.
+    try {
+      rows[0].canApprovePayments = await isPaymentApprover(req.session);
+      rows[0].canSettlePayments  = await isPaymentSettler(req.session);
+    } catch (e) { rows[0].canApprovePayments = false; rows[0].canSettlePayments = false; }
     // When an admin is "viewing as" this user, expose who's really behind the wheel
     // so the UI can show an exit-impersonation banner.
     rows[0].impersonatedBy = req.session.impersonatedBy || null;
@@ -4678,6 +4684,8 @@ const _clientsTableMigrationsPromise = (async () => {
     }
   } catch(e) { console.log('  ⚠️ Access Control page backfill skipped —', e.code || e.message); }
 
+  await seedPaymentRoleIds();
+
   console.log('  ✅ Daily Task + Meetings tables ready');
 })();
 
@@ -6565,8 +6573,13 @@ const dmsUpload   = multer({ storage: multer.memoryStorage(), limits: { fileSize
 
 // Credit Card Statement access. Admins get full read/write. The named users
 // below are read-only: they can open the page and see the existing data, but
-// cannot upload, edit, or delete anything. Matched on users.name (same
-// convention as PR_APPROVERS).
+// cannot upload, edit, or delete anything.
+//
+// STILL MATCHED ON users.name, and it carries the same flaw the payment
+// approver list just shed: rename this person and their access moves with the
+// string, silently. Read-only access is a smaller prize than approving money,
+// which is the only reason it was left for a separate change — it wants the
+// same app_settings treatment as PR_APPROVER_KEY.
 const CC_VIEWERS = ['Rotan Singh'];
 function canViewCreditCards(session) {
   return session.role === 'admin' || CC_VIEWERS.includes(session.name);
@@ -7386,7 +7399,60 @@ app.post('/api/credit-cards/drive-upload', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-const PR_APPROVERS = ['Naman Gupta', 'Abhishek Jain', 'Simran Gurnani'];
+// Who may approve a payment request, and who may mark one paid. Held as user
+// ids in app_settings, not as names in this file: a name is display data, and
+// keying rights to it meant a rename in the admin screen silently moved the
+// authority — lost by that person, or gained by whoever now held the string,
+// with no error and nothing logged. Two people sharing a name both passed.
+//
+// The names below are used exactly once, by the seed in seedPaymentRoleIds(),
+// to fill the settings on first boot. After that they are historical.
+const PR_APPROVER_SEED_NAMES = ['Naman Gupta', 'Abhishek Jain', 'Simran Gurnani'];
+const PR_SETTLER_SEED_NAMES  = ['Vishal Jaga'];
+const PR_APPROVER_KEY = 'payment_approver_ids';
+const PR_SETTLER_KEY  = 'payment_settler_ids';
+
+async function readIdSetting(key) {
+  try {
+    const [[row]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [key]);
+    const ids = row?.value ? JSON.parse(row.value) : [];
+    return Array.isArray(ids) ? ids.map(Number).filter(Number.isFinite) : [];
+  } catch { return []; }
+}
+
+// Admins keep blanket access, exactly as before.
+async function isPaymentApprover(session) {
+  if (session.role === 'admin') return true;
+  return (await readIdSetting(PR_APPROVER_KEY)).includes(Number(session.userId));
+}
+async function isPaymentSettler(session) {
+  return (await readIdSetting(PR_SETTLER_KEY)).includes(Number(session.userId));
+}
+
+// One-time: turn the seed names into ids. Unresolved names are logged rather
+// than dropped, so a typo or a departed employee is visible at boot instead of
+// quietly costing someone their access.
+async function seedPaymentRoleIds() {
+  // Called from the startup block, which is defined earlier in the file than
+  // the consts above. It only reaches this point after several awaits, by which
+  // time module evaluation has finished — but a seed failing must never take
+  // the boot down with it, so the whole body is guarded.
+  try {
+  for (const [key, names] of [[PR_APPROVER_KEY, PR_APPROVER_SEED_NAMES], [PR_SETTLER_KEY, PR_SETTLER_SEED_NAMES]]) {
+    try {
+      const [[existing]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [key]);
+      if (existing) continue;
+      const [rows] = await db.query(
+        `SELECT id, name FROM users WHERE name IN (${names.map(() => '?').join(',')})`, names);
+      const ids = rows.map(r => r.id);
+      const missing = names.filter(n => !rows.some(r => r.name === n));
+      await db.query('INSERT INTO app_settings (key_name, value) VALUES (?,?)', [key, JSON.stringify(ids)]);
+      console.log(`  ✅ ${key} seeded with ${ids.length} id(s)`
+        + (missing.length ? ` — NO USER MATCHED: ${missing.join(', ')}` : ''));
+    } catch (e) { console.log(`  ⚠️ ${key} seed skipped —`, e.code || e.message); }
+  }
+  } catch (e) { console.log('  ⚠️ payment role seed skipped —', e.code || e.message); }
+}
 
 // GET /api/payment-requests/cards — card list for dropdown (all logged-in users)
 app.get('/api/payment-requests/cards', requireAuth, async (req, res) => {
@@ -7503,8 +7569,7 @@ function parsePrRow(row) {
 // GET /api/payment-requests — all requests (admin + payment approvers)
 app.get('/api/payment-requests', requireAuth, async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (req.session.role !== 'admin' && (!me || !PR_APPROVERS.includes(me.name))) return res.status(403).json({ error:'Access denied' });
+    if (!(await isPaymentApprover(req.session))) return res.status(403).json({ error:'Access denied' });
     const [rows] = await db.query(
       'SELECT * FROM payment_requests ORDER BY created_at DESC'
     );
@@ -7544,8 +7609,7 @@ app.get('/api/payment-requests/my', requireAuth, async (req, res) => {
 // PATCH /api/payment-requests/:id — approve or reject (admin + payment approvers)
 app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
   try {
-    const [[me2]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (req.session.role !== 'admin' && (!me2 || !PR_APPROVERS.includes(me2.name))) return res.status(403).json({ error:'Access denied' });
+    if (!(await isPaymentApprover(req.session))) return res.status(403).json({ error:'Access denied' });
     const { status } = req.body;
     if (!['approved','rejected'].includes(status)) return res.status(400).json({ error:'Invalid status' });
     await db.query(
@@ -7694,8 +7758,7 @@ app.get('/api/payment-requests/:id/wa-debug', requireAuth, requireAdmin, async (
 // POST /api/payment-requests/:id/payment-done — mark payment as done (Vishal only)
 app.post('/api/payment-requests/:id/payment-done', requireAuth, async (req, res) => {
   try {
-    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-    if (!me || me.name !== 'Vishal Jaga') return res.status(403).json({ error:'Access denied' });
+    if (!(await isPaymentSettler(req.session))) return res.status(403).json({ error:'Access denied' });
     try {
       await db.query(
         'UPDATE payment_requests SET payment_done=1, payment_done_at=NOW() WHERE id=? AND status="approved"',

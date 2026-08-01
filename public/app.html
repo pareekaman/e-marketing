@@ -9380,9 +9380,10 @@ async function loadApprovals() {
   // if (ME.role === 'admin' || ME.name === 'Naman Gupta') {
   //   document.getElementById('apprTabWa').style.display = 'block';
   // }
-  // Payment Approvals tab — Naman Gupta, Abhishek Jain, Simran Gurnani only
-  const _PR_APPROVERS = ['Naman Gupta', 'Abhishek Jain', 'Simran Gurnani'];
-  if (_PR_APPROVERS.includes(ME.name)) {
+  // Payment Approvals tab. The server decides — this used to hold its own copy
+  // of the approver names, so a rename had to be made in two files or the tab
+  // and the API disagreed about who was allowed in.
+  if (ME.canApprovePayments) {
     document.getElementById('apprTabPayment').style.display = 'block';
     loadPaymentApprovalsBadge();
   }
