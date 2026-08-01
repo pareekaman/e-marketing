@@ -40,3 +40,6 @@ brain.md
 # startup and Vercel deploys need it, else letters lose the signature.
 # Never ignore public/ as a whole: the entire frontend lives there.
 public/signature.jpeg
+# Generated WhatsApp message reference — rebuild, do not commit.
+whatsapp-message-formats.pdf
+code-review-findings.pdf
