@@ -6905,6 +6905,16 @@ async function loadDashboard(light = false) {
   // they appear without an extra click. Re-render once they arrive.
   loadDashRevised().then(() => renderDashTable(window._lastDashTasks || [], dashType));
 
+  // Completed rows are lazy — only the stat-card click used to fetch them. That
+  // left the Completed view empty whenever anything re-ran this function while
+  // it was open (a type tab, a Done/Reopen, an employee or date change): the
+  // cache was cleared above and nothing filled it again, so the table rendered
+  // "No completed tasks in this window" over data that plainly existed. Refetch
+  // whenever the view being looked at needs them.
+  if (dashStatusFilter === 'completed' || dashStatusFilter === 'all') {
+    loadDashCompleted().then(() => renderDashTable(window._lastDashTasks || [], dashType));
+  }
+
   // Heavy widgets — the FMS section and the Performance/Activity charts (the
   // latter hits the slow /api/mis/all Google-Sheets aggregate). A single task
   // action does not change these, so a "light" refresh (passed after
@@ -7237,6 +7247,12 @@ function dashTab(type, el) {
   // Refresh stat cards + chart from cached totals; table re-renders from the same cache.
   updateDashStats(dashType);
   if (window._lastDashTasks) {
+    // Switching type tab must not lose the completed rows the user is looking
+    // at — this path renders straight from cache, so fill the cache first if the
+    // active stat-card filter reads from it.
+    if ((dashStatusFilter === 'completed' || dashStatusFilter === 'all') && !window._lastDashCompleted) {
+      loadDashCompleted().then(() => renderDashTable(window._lastDashTasks || [], dashType));
+    }
     renderDashTable(window._lastDashTasks, dashType);
   } else {
     withPageLoader(loadDashboard);
