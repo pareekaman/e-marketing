@@ -7424,7 +7424,6 @@ function renderDashTable(tasks, type) {
     <th style="max-width:240px">Description</th>
     <th id="dashDoerHead">${(isAdmin||isPC)?'Doer':'Assigned By'}</th>
     <th style="white-space:nowrap;cursor:pointer;user-select:none" onclick="toggleDashDateSort()" title="Click to sort by date">Date <span id="dashDateSortIcon" style="font-size:10px;color:#94a3b8">⇅</span></th>
-    <th style="white-space:nowrap">Completed</th>
     <th style="white-space:nowrap">Client</th>
     <th id="dashPriorityHead"${(type === 'delegation') ? '' : ' style="display:none"'}>Priority</th>
     <th>Action</th>
@@ -7475,7 +7474,7 @@ function renderDashTable(tasks, type) {
   } else if (_dashDateSortState === 2) {
     allPending = [...allPending].sort((a,b) => (b.due_date||b.date||'').localeCompare(a.due_date||a.date||''));
   }
-  const colCount = showPriority ? 8 : 7;
+  const colCount = showPriority ? 7 : 6;
   if (!allPending.length) {
     const emptyMsg = dashStatusFilter === 'completed' ? 'No completed tasks in this window'
                    : dashStatusFilter === 'all'       ? 'No tasks in this window'
@@ -7517,7 +7516,6 @@ function renderDashTable(tasks, type) {
         <td style="vertical-align:top;max-width:240px">${descCell}</td>
         <td style="vertical-align:top">${dtEscape(t.doer||t.assignedToName||'—')}</td>
         <td style="white-space:nowrap;vertical-align:top">${dateCell}</td>
-        <td style="white-space:nowrap;vertical-align:top;color:#cbd5e1">—</td>
         <td style="white-space:nowrap;vertical-align:top;color:#94a3b8">—</td>
         ${showPriority ? `<td style="vertical-align:top">—</td>` : ''}
         <td style="white-space:nowrap;vertical-align:top">${actionCell}</td>
@@ -7538,12 +7536,13 @@ function renderDashTable(tasks, type) {
     const delegatedLine = t.delegated_on
       ? `<div style="font-size:10px;color:#94a3b8;font-weight:500;margin-top:2px;white-space:nowrap">Given ${fmtDate(t.delegated_on)}</div>`
       : '';
-    // Its own column, next to the due date, so "late or not" reads at a glance.
-    // Only delegation tasks carry completed_at — checklist and FMS rows always
-    // land on the dash, as does anything closed before that column existed.
-    const completedCell = `<td style="white-space:nowrap;color:#16a34a;font-weight:600">${
-      (isCompleted && t.completed_on) ? fmtDate(t.completed_on) : '<span style="color:#cbd5e1;font-weight:500">—</span>'
-    }</td>`;
+    // Third line — when it was actually finished, next to when it was due, so
+    // "late or not" is readable without opening anything. Only delegation tasks
+    // carry completed_at; anything closed before that column existed stays blank
+    // rather than guessing a date.
+    const completedLine = (isCompleted && t.completed_on)
+      ? `<div style="font-size:10px;color:#16a34a;font-weight:600;margin-top:2px;white-space:nowrap">Done ${fmtDate(t.completed_on)}</div>`
+      : '';
     const actionCell = isCompleted
       ? `<span style="font-size:11px;color:#16a34a;font-weight:700;background:#dcfce7;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0">✅ Completed</span>
          ${(isAdmin || isPC || String(t.assigned_to)===String(ME.id)) ? `<button class="action-btn reopen" style="margin-left:6px" onclick="event.stopPropagation();reopenTask(${t.id},'dashboard','${t.type}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}`
@@ -7567,8 +7566,7 @@ function renderDashTable(tasks, type) {
       <td style="white-space:nowrap">${typeBadge(t)}</td>
       <td style="max-width:240px;word-break:break-word">${t.description||t.desc}</td>
       <td>${(isAdmin||isPC)?t.assignedToName:t.assignedByName}</td>
-      <td>${t.awaiting_due_date==1 ? `<span style="font-size:10px;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fde68a;white-space:nowrap">🗓 Awaiting date</span>` : fmtDate(t.due_date||t.date)}${delegatedLine}</td>
-      ${completedCell}
+      <td>${t.awaiting_due_date==1 ? `<span style="font-size:10px;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fde68a;white-space:nowrap">🗓 Awaiting date</span>` : fmtDate(t.due_date||t.date)}${delegatedLine}${completedLine}</td>
       ${clientCell}
       ${showPriority ? `<td>${isDeleg ? `<span class="priority-badge ${t.priority||'low'}">${t.priority||'low'}</span>` : '—'}</td>` : ''}
       <td onclick="event.stopPropagation()">${actionCell}</td>
