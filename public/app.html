@@ -9316,7 +9316,9 @@ async function loadApprovalBadge() {
   const [d, lv, pr] = await Promise.all([
     api('/api/approvals/count'),
     api('/api/leaves/pending-count'),
-    ME.name === 'Naman Gupta' ? api('/api/payment-requests?status=pending') : Promise.resolve([])
+    // Was ME.name === 'Naman Gupta'. The endpoint is approver-gated anyway, so
+    // a mismatch here only ever meant a wasted 403 or a badge that never showed.
+    ME.canApprovePayments ? api('/api/payment-requests?status=pending') : Promise.resolve([])
   ]);
   const taskCnt    = d.count  || 0;
   const leaveCnt   = lv?.count || 0;
@@ -9388,8 +9390,7 @@ async function loadApprovals() {
     loadPaymentApprovalsBadge();
   }
   // MDO Approvals tab — Purvi Saini only
-  const _MDO_APPROVERS = ['Purvi Saini'];
-  if (_MDO_APPROVERS.includes(ME.name)) {
+  if (ME.canReviewMdoTasks) {
     document.getElementById('apprTabMdo').style.display = 'block';
   }
   // Also pre-load leave approvals (so badge stays in sync)
@@ -16670,12 +16671,12 @@ let _ccDepts = [];
 let _ccFilter  = { preset:'all', dateFrom:null, dateTo:null, amtMin:'', amtMax:'' };
 let _ccCal     = { show:false, leftYear:new Date().getFullYear(), leftMonth:new Date().getMonth()-1, tempFrom:null, tempTo:null, hover:null };
 
-// Credit Cards access. Admins get full read/write; the names in _CC_VIEWERS get
-// a read-only page — no upload, no edit, no delete. Keep _CC_VIEWERS in sync
-// with CC_VIEWERS in server.js, which is what actually enforces this; every
-// ccCanEdit() check below is UI-level only.
-const _CC_VIEWERS = ['Rotan Singh'];
-function ccCanView() { return !!ME && (ME.role === 'admin' || _CC_VIEWERS.includes(ME.name)); }
+// Credit Cards access. Admins get full read/write; whoever the server puts in
+// cc_viewer_ids gets a read-only page — no upload, no edit, no delete. The list
+// used to be duplicated here as names and had to be kept in step with server.js
+// by hand; it now arrives on ME, so there is one list and it cannot drift.
+// server.js is still what enforces it — every ccCanEdit() check is UI-level.
+function ccCanView() { return !!ME && (ME.role === 'admin' || ME.canViewCreditCards === true); }
 function ccCanEdit() { return !!ME && ME.role === 'admin'; }
 
 function ccSave() {

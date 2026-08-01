@@ -1337,7 +1337,17 @@ app.get('/api/me', requireAuth, async (req, res) => {
     try {
       rows[0].canApprovePayments = await isPaymentApprover(req.session);
       rows[0].canSettlePayments  = await isPaymentSettler(req.session);
-    } catch (e) { rows[0].canApprovePayments = false; rows[0].canSettlePayments = false; }
+      // Deliberately no admin bypass: this replaces a UI check that read
+      // ME.name === 'Purvi Saini', so admins did not see the MDO tab either.
+      // Note the /api/mdo-tasks routes are admin-only, so a reviewer who is not
+      // an admin gets a tab whose every request 403s — true before this change
+      // too, and not something to fix by widening access on a guess.
+      rows[0].canReviewMdoTasks  = (await readIdSetting('mdo_reviewer_ids')).includes(Number(req.session.userId));
+      rows[0].canViewCreditCards = await canViewCreditCards(req.session);
+    } catch (e) {
+      rows[0].canApprovePayments = false; rows[0].canSettlePayments = false;
+      rows[0].canReviewMdoTasks  = false; rows[0].canViewCreditCards = false;
+    }
     // When an admin is "viewing as" this user, expose who's really behind the wheel
     // so the UI can show an exit-impersonation banner.
     rows[0].impersonatedBy = req.session.impersonatedBy || null;
@@ -4831,7 +4841,7 @@ app.post('/api/wa-bot/task', async (req, res) => {
     );
 
     // Look up Naman Gupta's phone from the users table
-    const [[naman]] = await db.query(`SELECT phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
+    const [naman] = await usersForSetting('wa_task_approver_ids', 'phone');
 
     const baseUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -5342,8 +5352,8 @@ app.post('/api/pending-summary/send', requireAuth, requireAdmin, async (_req, re
 // notified. Marks BEFORE sending so a crash mid-loop can't double-send
 // on the next run.
 async function notifyPurviOfNewMdoTasks() {
-  const [[purvi]] = await db.query(`SELECT phone FROM users WHERE name='Purvi Saini' LIMIT 1`);
-  if (!purvi?.phone) return { ok: false, reason: 'Purvi Saini has no phone on file' };
+  const [purvi] = await usersForSetting('mdo_reviewer_ids', 'phone');
+  if (!purvi?.phone) return { ok: false, reason: 'no MDO reviewer with a phone on file — check app_settings.mdo_reviewer_ids' };
 
   const [rows] = await db.query(`SELECT * FROM tasks WHERE purvi_notified = 0 OR purvi_notified IS NULL`);
   let sent = 0;
@@ -6571,18 +6581,13 @@ const ccUpload    = multer({ storage: multer.memoryStorage(), limits: { fileSize
 const ccPdfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 const dmsUpload   = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
-// Credit Card Statement access. Admins get full read/write. The named users
-// below are read-only: they can open the page and see the existing data, but
-// cannot upload, edit, or delete anything.
-//
-// STILL MATCHED ON users.name, and it carries the same flaw the payment
-// approver list just shed: rename this person and their access moves with the
-// string, silently. Read-only access is a smaller prize than approving money,
-// which is the only reason it was left for a separate change — it wants the
-// same app_settings treatment as PR_APPROVER_KEY.
-const CC_VIEWERS = ['Rotan Singh'];
-function canViewCreditCards(session) {
-  return session.role === 'admin' || CC_VIEWERS.includes(session.name);
+// Credit Card Statement access. Admins get full read/write. The users behind
+// cc_viewer_ids are read-only: they can open the page and see the existing
+// data, but cannot upload, edit, or delete anything. Ids, not names — a rename
+// used to move this access silently. Async now, since it reads app_settings.
+async function canViewCreditCards(session) {
+  if (session.role === 'admin') return true;
+  return (await readIdSetting('cc_viewer_ids')).includes(Number(session.userId));
 }
 function canEditCreditCards(session) {
   return session.role === 'admin';
@@ -7198,7 +7203,7 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
 // GET /api/credit-cards/data
 app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
   try {
-    if (!canViewCreditCards(req.session)) return res.status(403).json({ error:'Access denied' });
+    if (!(await canViewCreditCards(req.session))) return res.status(403).json({ error:'Access denied' });
     const [cards] = await db.query('SELECT * FROM cc_cards ORDER BY bank_name,card_number');
     const [stmts] = await db.query('SELECT * FROM cc_statements ORDER BY statement_date DESC');
     const [txns]  = await db.query('SELECT * FROM cc_transactions ORDER BY txn_date');
@@ -7247,7 +7252,7 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
 // GET /api/credit-cards/statement-pdf/:stmtId — redirect to Drive URL
 app.get('/api/credit-cards/statement-pdf/:stmtId', requireAuth, async (req, res) => {
   try {
-    if (!canViewCreditCards(req.session)) return res.status(403).json({ error:'Access denied' });
+    if (!(await canViewCreditCards(req.session))) return res.status(403).json({ error:'Access denied' });
     const [[stmt]] = await db.query('SELECT drive_file_id FROM cc_statements WHERE id=?', [req.params.stmtId]);
     if (!stmt?.drive_file_id) return res.status(404).json({ error:'PDF not uploaded to Drive yet' });
     res.redirect(`https://drive.google.com/file/d/${stmt.drive_file_id}/view`);
@@ -7407,8 +7412,18 @@ app.post('/api/credit-cards/drive-upload', requireAuth, async (req, res) => {
 //
 // The names below are used exactly once, by the seed in seedPaymentRoleIds(),
 // to fill the settings on first boot. After that they are historical.
-const PR_APPROVER_SEED_NAMES = ['Naman Gupta', 'Abhishek Jain', 'Simran Gurnani'];
-const PR_SETTLER_SEED_NAMES  = ['Vishal Jaga'];
+// Everywhere a person is singled out by role. Each key holds a JSON array of
+// user ids in app_settings; the names on the right are seed values, read once
+// on first boot and never again. Adding a key here is all it takes — the seeder
+// below walks this object.
+const PEOPLE_SETTINGS = {
+  payment_approver_ids: ['Naman Gupta', 'Abhishek Jain', 'Simran Gurnani'],
+  payment_settler_ids:  ['Vishal Jaga'],
+  cc_viewer_ids:        ['Rotan Singh'],
+  wa_task_approver_ids: ['Naman Gupta'],
+  mdo_reviewer_ids:     ['Purvi Saini'],
+  onboarding_owner_ids: ['Naman Gupta'],
+};
 const PR_APPROVER_KEY = 'payment_approver_ids';
 const PR_SETTLER_KEY  = 'payment_settler_ids';
 
@@ -7429,6 +7444,20 @@ async function isPaymentSettler(session) {
   return (await readIdSetting(PR_SETTLER_KEY)).includes(Number(session.userId));
 }
 
+// The users behind a key, for notification lookups. Returns [] when the setting
+// is empty or every id has since been deleted — callers already treat a missing
+// phone as "skip the send", which is the same outcome the name lookup gave when
+// it matched nothing, except this way the reason is visible in the settings row.
+async function usersForSetting(key, cols = 'id, name, phone') {
+  const ids = await readIdSetting(key);
+  if (!ids.length) return [];
+  try {
+    const [rows] = await db.query(
+      `SELECT ${cols} FROM users WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
+    return rows;
+  } catch { return []; }
+}
+
 // One-time: turn the seed names into ids. Unresolved names are logged rather
 // than dropped, so a typo or a departed employee is visible at boot instead of
 // quietly costing someone their access.
@@ -7438,7 +7467,7 @@ async function seedPaymentRoleIds() {
   // time module evaluation has finished — but a seed failing must never take
   // the boot down with it, so the whole body is guarded.
   try {
-  for (const [key, names] of [[PR_APPROVER_KEY, PR_APPROVER_SEED_NAMES], [PR_SETTLER_KEY, PR_SETTLER_SEED_NAMES]]) {
+  for (const [key, names] of Object.entries(PEOPLE_SETTINGS)) {
     try {
       const [[existing]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [key]);
       if (existing) continue;
@@ -7703,7 +7732,7 @@ app.patch('/api/mdo-tasks/:id', requireAuth, async (req, res) => {
     const taskDesc = task.task_description || task.description || '—';
 
     // Admin oversight — always notify Naman Gupta
-    const [[naman]] = await db.query(`SELECT phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
+    const [naman] = await usersForSetting('wa_task_approver_ids', 'phone');
     if (naman?.phone) {
       const emoji = status === 'Approved' ? '✅' : '❌';
       const waMsg =
@@ -11746,7 +11775,7 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
 
       // Notify the onboarding owner (Naman Gupta) so they can create the
       // official email ID before the joining date.
-      const [[onboarder]] = await db.query(`SELECT id, name, phone FROM users WHERE name='Naman Gupta' LIMIT 1`);
+      const [onboarder] = await usersForSetting('onboarding_owner_ids');
       if (onboarder?.phone) {
         hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(onboarder.phone), text:
 `🆕 *New Employee Onboarding*\n\n👤 Name: ${displayName}\n🏢 Department: ${displayDept}\n💼 Position: ${displayPos}\n📅 Joining Date: ${joiningFmt}\n\n⚠️ Please create the official email ID before the joining date.\n\n— HR Portal`
