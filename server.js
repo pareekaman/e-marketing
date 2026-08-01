@@ -560,6 +560,26 @@ const _startupMigrationsPromise = (async () => {
     UNIQUE KEY uniq_candidate (candidate_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+  // The table above shipped before these columns existed, and CREATE TABLE IF
+  // NOT EXISTS no-ops once the table is there — so every column added after the
+  // first deploy needs its own ALTER, or the webhook 500s with "Unknown column".
+  // sa() swallows the duplicate-column error, so re-running is harmless.
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN emp_mobile VARCHAR(20) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN email VARCHAR(255) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN guardian1_name VARCHAR(255) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN guardian1_relation VARCHAR(100) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN guardian1_mobile VARCHAR(20) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN guardian2_name VARCHAR(255) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN guardian2_relation VARCHAR(100) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN guardian2_mobile VARCHAR(20) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN street VARCHAR(500) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN city VARCHAR(255) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN state VARCHAR(255) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN pincode VARCHAR(20) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN resume_file_url VARCHAR(1024) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN aadhaar_file_url_2 VARCHAR(1024) DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_joining_details ADD COLUMN pan_file_url_2 VARCHAR(1024) DEFAULT ''`);
+
   // Per-user permissions column (replaces role_permissions)
   await sa(`ALTER TABLE users ADD COLUMN user_permissions TEXT DEFAULT NULL AFTER extra_access`);
   await sa(`ALTER TABLE users ADD COLUMN birthday DATE DEFAULT NULL`);
@@ -11380,7 +11400,13 @@ app.post('/api/hrm/joining-form', async (req, res) => {
     if (!dob)        missing.push('Date of Birth');
     if (!aadhaarFile && !aadhaarNo) missing.push('Aadhaar Card');
     if (missing.length) return res.status(400).json({ error: `Missing or invalid: ${missing.join(', ')}` });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Email address is invalid' });
+    // Gmail only, at the user's request — the form enforces this too.
+    if (!/^[^\s@]+@gmail\.com$/.test(email)) return res.status(400).json({ error: 'Email must be a @gmail.com address' });
+    // The candidate and both guardians must be reachable on different numbers.
+    const mobiles = [empMobile, g1Mobile, g2Mobile].filter(Boolean);
+    if (new Set(mobiles).size !== mobiles.length) {
+      return res.status(400).json({ error: 'Employee and guardian mobile numbers must all be different' });
+    }
     if (aadhaarNo && aadhaarNo.length !== 12) return res.status(400).json({ error: 'Aadhaar number must be 12 digits' });
     if (panNo && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(panNo)) return res.status(400).json({ error: 'PAN number format is invalid (e.g. ABCDE1234F)' });
 
