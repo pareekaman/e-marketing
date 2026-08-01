@@ -11773,31 +11773,17 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
         ).catch(() => {});
       }
 
-      // Notify the onboarding owner (Naman Gupta) so they can create the
-      // official email ID before the joining date.
+      // Notify the onboarding owner so they can create the official email ID
+      // before the joining date. WhatsApp only — this used to also auto-create
+      // a delegation task for them and send a second "New Task Delegated"
+      // message about it. Both are gone at the user's request: the message
+      // below already carries the instruction and the joining date, so the task
+      // was a duplicate of a reminder they had already received.
       const [onboarder] = await usersForSetting('onboarding_owner_ids');
       if (onboarder?.phone) {
         hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(onboarder.phone), text:
 `🆕 *New Employee Onboarding*\n\n👤 Name: ${displayName}\n🏢 Department: ${displayDept}\n💼 Position: ${displayPos}\n📅 Joining Date: ${joiningFmt}\n\n⚠️ Please create the official email ID before the joining date.\n\n— HR Portal`
         }, 'text', c.id, c.name, 'Offer Sent - Onboarding Notify').catch(e => console.error('HRM WA onboarding notify err:', e.message));
-      }
-
-      // Auto-delegate the email-ID task to the onboarding owner — due exactly on
-      // the joining date (no holiday/week-off shifting — the employee joins that
-      // day regardless).
-      if (onboarder?.id) {
-        const taskDesc = `Create official email ID for ${displayName} — Department: ${displayDept}, Position: ${displayPos}, Joining Date: ${joiningFmt}`;
-        db.query(
-          `INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-          [taskDesc, onboarder.id, req.session.userId, joining_date||null, 'pending', 'low', 'no', '', null, null, 0]
-        ).catch(e => console.error('HRM auto-delegate task err:', e.message));
-
-        if (onboarder.phone) {
-          const dueFmt = (joining_date||'').split('-').reverse().join('-');
-          const assignerName = req.session.name || 'HR';
-          const taskMsg = `Hello ${onboarder.name || ''},\n\n📋 *New Task Delegated*\n\n*By:* ${assignerName}\n*Due:* ${dueFmt}\n*Priority:* LOW\n\n*Task:* ${taskDesc}\n\n— E-Marketing Task Manager`;
-          sendWhatsApp(onboarder.phone, taskMsg).catch(e => console.error('HRM task delegation WA err:', e.message));
-        }
       }
     }
 
