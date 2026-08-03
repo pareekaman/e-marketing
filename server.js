@@ -3974,6 +3974,23 @@ app.put('/api/transfers/:id', requireAuth, requireAdminOrHod, async (req, res) =
     if (!rows[0]) return res.status(404).json({ error: 'Transfer not found' });
     const tr = rows[0];
 
+    // An HOD may only act on transfers touching their own department. Creating
+    // one already checks this and so does the pending count, but approving did
+    // not — requireAdminOrHod asks "an HOD?", never "which HOD?" — so any HOD
+    // could reassign a task between two people in another department. Not
+    // reachable by accident, since the list and count are both scoped, but
+    // nothing stopped it either, and transfers leave no audit row.
+    if (req.session.role === 'hod') {
+      const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [req.session.userId]);
+      const dept = me?.department || '';
+      const [parties] = await db.query(
+        'SELECT department FROM users WHERE id IN (?,?)', [tr.from_user, tr.to_user]);
+      // A blank department must not match another blank one into access.
+      if (!dept || !parties.some(p => p.department === dept)) {
+        return res.status(403).json({ error: 'You can only act on transfers in your own department' });
+      }
+    }
+
     await db.query('UPDATE task_transfers SET status=?, note=? WHERE id=?', [action, note||'', req.params.id]);
 
     if (action === 'approved') {
