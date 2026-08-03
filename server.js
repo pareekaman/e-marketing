@@ -3969,7 +3969,15 @@ app.get('/api/transfers/count', requireAuth, requireAdminOrHod, async (req, res)
 // PUT — Approve or reject transfer
 app.put('/api/transfers/:id', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
-    const { action, note } = req.body; // action: 'approved' | 'rejected'
+    const { action, note } = req.body;
+    // The comment here used to say 'approved' | 'rejected' and nothing enforced
+    // it. status is an ENUM, and non-strict MySQL turns an unexpected value into
+    // the empty string rather than erroring — leaving a transfer that is neither
+    // pending nor decided: gone from the pending list, task never moved, and the
+    // request still answered success.
+    if (!['approved', 'rejected'].includes(action)) {
+      return res.status(400).json({ error: 'action must be approved or rejected' });
+    }
     const [rows] = await db.query('SELECT * FROM task_transfers WHERE id=?', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Transfer not found' });
     const tr = rows[0];
@@ -3980,6 +3988,10 @@ app.put('/api/transfers/:id', requireAuth, requireAdminOrHod, async (req, res) =
     // could reassign a task between two people in another department. Not
     // reachable by accident, since the list and count are both scoped, but
     // nothing stopped it either, and transfers leave no audit row.
+    //
+    // Ordered before the pending check on purpose: an HOD with no business here
+    // should be turned away without being told whether the transfer is still
+    // open or how it was decided.
     if (req.session.role === 'hod') {
       const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [req.session.userId]);
       const dept = me?.department || '';
@@ -3989,6 +4001,13 @@ app.put('/api/transfers/:id', requireAuth, requireAdminOrHod, async (req, res) =
       if (!dept || !parties.some(p => p.department === dept)) {
         return res.status(403).json({ error: 'You can only act on transfers in your own department' });
       }
+    }
+
+    // Deciding a transfer is a one-time act. Without this a rejected transfer
+    // could be approved later and would move the task, so two people looking at
+    // the same stale list could overwrite each other's decision silently.
+    if (tr.status !== 'pending') {
+      return res.status(409).json({ error: `This transfer was already ${tr.status}` });
     }
 
     await db.query('UPDATE task_transfers SET status=?, note=? WHERE id=?', [action, note||'', req.params.id]);
