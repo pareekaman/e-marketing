@@ -2165,7 +2165,17 @@ app.put('/api/tasks/:id/edit', requireAuth, async (req, res) => {
       // had a clock time can be put back to a date-only deadline.
       const dueTime = parseDueTime(req.body.dueTime);
       if (dueTime === undefined) return res.status(400).json({ error: 'Due time must be HH:MM (24-hour)' });
-      await db.query(`UPDATE ${table} SET description=?,due_date=?,due_time=?,priority=?,approval=?,remarks=?,url=?,client_id=? WHERE id=?`,
+      // Writing a date here has to clear awaiting_due_date too, the way the
+      // Set-due-date route does. Without it a client task edited this way kept
+      // the flag at 1 while holding a real date: the row still showed the
+      // "Awaiting date" badge instead of the date, and the 4-hourly nudge went
+      // on firing for good, because that cron reads the flag and never looks at
+      // due_date. Only touched when a date is actually written — an edit that
+      // leaves the date blank must not silently declare it settled.
+      const setsDueDate = !!(date && String(date).trim());
+      await db.query(
+        `UPDATE ${table} SET description=?,due_date=?,due_time=?,priority=?,approval=?,remarks=?,url=?,client_id=?`
+        + (setsDueDate ? ',awaiting_due_date=0' : '') + ` WHERE id=?`,
         [desc, date, dueTime, priority||'low', approval||'no', remarks||'', url||null, cid, req.params.id]);
     }
     else await db.query(`UPDATE ${table} SET description=?,due_date=?,remarks=?,client_id=? WHERE id=?`, [desc, date, remarks||'', cid, req.params.id]);
@@ -5778,6 +5788,13 @@ async function remindHandlersOfMissingDueDates({ force = false } = {}) {
        JOIN users d ON t.assigned_to = d.id
        LEFT JOIN clients c ON t.client_id = c.id
       WHERE t.awaiting_due_date = 1
+        -- The flag alone is not proof the date is missing. Edit used to write a
+        -- date without clearing it, so rows exist right now that carry a real
+        -- deadline and a stale 1, and they have been nudged every four hours
+        -- ever since. Asking the question the message actually asks — is there
+        -- a date? — stops those immediately, with no data migration, and keeps
+        -- the cron honest if anything else ever forgets the flag again.
+        AND t.due_date IS NULL
         AND t.status <> 'completed'
         AND (a.role = 'client' OR a.client_id IS NOT NULL)
       ORDER BY t.assigned_to ASC, t.created_at ASC`);
