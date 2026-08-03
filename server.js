@@ -2006,12 +2006,31 @@ app.post('/api/tasks/bulk-checklist', requireAuth, requireAdmin, async (req, res
 app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
   try {
     const { status, type, newDate, reason } = req.body;
-    const table = getTable(type||'delegation');
+    const tt = type || 'delegation';
+    // getTable() answers "not delegation" with checklist_tasks instead of an
+    // error, so 'Delegation' with a capital D, or a stray space, would quietly
+    // update the checklist row that happens to share the id — and switch off
+    // every `tt === 'delegation'` rule below on the way past, approval and
+    // sub-task checks included — while still returning 200.
+    if (!['delegation', 'checklist'].includes(tt)) {
+      return res.status(400).json({ error: 'type must be delegation or checklist' });
+    }
+    // Per table, because the two columns do not hold the same set:
+    // delegation_tasks is ENUM('pending','completed','revised') and
+    // checklist_tasks only ENUM('pending','completed'). Anything outside the
+    // ENUM becomes the empty string in non-strict MySQL, which SQL then matches
+    // as neither pending nor completed while the frontend's !t.status test
+    // still reads it as pending. Revise is not offered on checklist rows in the
+    // UI, so this refuses a route that was reachable but never travelled.
+    const ALLOWED_STATUS = { delegation: ['pending', 'completed', 'revised'], checklist: ['pending', 'completed'] };
+    if (!ALLOWED_STATUS[tt].includes(status)) {
+      return res.status(400).json({ error: `status must be one of: ${ALLOWED_STATUS[tt].join(', ')}` });
+    }
+    const table = getTable(tt);
     const isAdmin = req.session.role === 'admin';
     const isPC = req.session.role === 'pc';
     const uid = req.session.userId;
     const isPrivileged = isAdmin || isPC;
-    const tt = type || 'delegation';
     const [rows] = await db.query(`SELECT * FROM ${table} WHERE id=?`, [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Task not found' });
     const task = rows[0];
