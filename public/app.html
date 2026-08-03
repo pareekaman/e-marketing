@@ -6803,7 +6803,19 @@ function initMobileBottomNavSync() {
 // ══════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════
+// One counter for the whole dashboard, not one per loader. A ticket stands for
+// "the view being asked for right now", and the four loaders below share it:
+// whatever loadDashboard starts inherits its ticket, and anything started on its
+// own takes a fresh one. Per-loader counters would leave a hole — loadDashboard
+// nulls _lastDashCompleted but only re-fetches it for some views, so a
+// loadDashCompleted still in flight from before could land in the cleared cache
+// with nothing newer of its own kind to invalidate it. Bumping one shared
+// counter kills every in-flight loader at once.
+let _dashSeq = 0;
+const newDashSeq = () => ++_dashSeq;
+
 async function loadDashboard(light = false) {
+  const seq = newDashSeq();
   const empFilter = document.getElementById('dashEmployeeFilter');
   const empVal = empFilter ? empFilter.value : 'all';
   const isAdmin = ME.role === 'admin';
@@ -6824,6 +6836,7 @@ async function loadDashboard(light = false) {
     api(baseUrl + 'delegation'),
     api(baseUrl + 'checklist')
   ]);
+  if (seq !== _dashSeq) return;
 
   // Error check: show error to user if DB or API fails
   if (dDel.error || dChl.error) {
@@ -6887,7 +6900,7 @@ async function loadDashboard(light = false) {
 
   // Revised rows are merged into the default Pending view — fetch eagerly so
   // they appear without an extra click. Re-render once they arrive.
-  loadDashRevised().then(() => renderDashTable(window._lastDashTasks || [], dashType));
+  loadDashRevised(seq).then(() => renderDashTable(window._lastDashTasks || [], dashType));
 
   // Completed rows are lazy — only the stat-card click used to fetch them. That
   // left the Completed view empty whenever anything re-ran this function while
@@ -6896,7 +6909,7 @@ async function loadDashboard(light = false) {
   // "No completed tasks in this window" over data that plainly existed. Refetch
   // whenever the view being looked at needs them.
   if (dashStatusFilter === 'completed' || dashStatusFilter === 'all') {
-    loadDashCompleted().then(() => renderDashTable(window._lastDashTasks || [], dashType));
+    loadDashCompleted(seq).then(() => renderDashTable(window._lastDashTasks || [], dashType));
   }
 
   // Heavy widgets — the FMS section and the Performance/Activity charts (the
@@ -6906,7 +6919,7 @@ async function loadDashboard(light = false) {
   // slowest one — on every button press.
   if (!light) {
     // Load FMS section — respects same employee filter
-    loadDashFMS();
+    loadDashFMS(seq);
 
     // Performance + Activity charts (admin / HOD only — depends on /api/mis/all)
     if (isAdmin || isHod) {
@@ -7286,7 +7299,7 @@ async function goToAllTasksFromDash(status) {
 // Fetch completed task rows for the same employee / date window the dashboard
 // is currently viewing. Stored in window._lastDashCompleted (cleared on
 // loadDashboard so it stays in sync after status changes).
-async function loadDashCompleted() {
+async function loadDashCompleted(seq = newDashSeq()) {
   const empFilter = document.getElementById('dashEmployeeFilter');
   const empVal = empFilter ? empFilter.value : 'all';
   const isAdmin = ME.role === 'admin';
@@ -7301,14 +7314,18 @@ async function loadDashCompleted() {
     : `/api/dashboard?status=completed&skipStats=1&taskType=`;
   try {
     const [dDel, dChl] = await Promise.all([api(baseUrl + 'delegation'), api(baseUrl + 'checklist')]);
+    if (seq !== _dashSeq) return;
     window._lastDashCompleted = [...(dDel.tasks || []), ...(dChl.tasks || [])];
   } catch (e) {
+    // Guarded like the success path: a stale call that fails must not
+    // blank a cache a newer call has already filled.
+    if (seq !== _dashSeq) return;
     window._lastDashCompleted = [];
   }
 }
 
 // Same pattern as loadDashCompleted but for revised rows.
-async function loadDashRevised() {
+async function loadDashRevised(seq = newDashSeq()) {
   const empFilter = document.getElementById('dashEmployeeFilter');
   const empVal = empFilter ? empFilter.value : 'all';
   const isAdmin = ME.role === 'admin';
@@ -7323,14 +7340,16 @@ async function loadDashRevised() {
     : `/api/dashboard?status=revised&skipStats=1&taskType=`;
   try {
     const [dDel, dChl] = await Promise.all([api(baseUrl + 'delegation'), api(baseUrl + 'checklist')]);
+    if (seq !== _dashSeq) return;
     window._lastDashRevised = [...(dDel.tasks || []), ...(dChl.tasks || [])];
   } catch (e) {
+    if (seq !== _dashSeq) return;
     window._lastDashRevised = [];
   }
 }
 
 // FMS Dashboard loader — fetches FMS rows used by the unified pending table
-async function loadDashFMS() {
+async function loadDashFMS(seq = newDashSeq()) {
   // Keep the separate section hidden — FMS rows now render inside the main pending table
   const isAdmin = ME.role === 'admin';
   const isHod   = ME.role === 'hod';
@@ -7341,6 +7360,7 @@ async function loadDashFMS() {
   const url = `/api/fms-dashboard${(isAdmin||isHod||isPC) ? `?employee=${empVal}` : ''}`;
 
   const data = await api(url);
+  if (seq !== _dashSeq) return;
   if (data.error) {
     window._lastDashFMS = [];
     // Re-render unified table without FMS
