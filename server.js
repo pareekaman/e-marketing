@@ -1718,12 +1718,16 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
       // every copy done before the task left their list. Return the row that already
       // exists instead of adding another. The button guard in the UI is the first
       // line of defence; this one also covers refresh, back button and network retry.
+      // Client and due date are part of the match: the same wording assigned for two
+      // different clients (or two different dates) is real work, not a double tap.
+      // <=> instead of = so a NULL client or an awaiting-due-date task still matches.
       const [[recentDup]] = await db.query(
         `SELECT id FROM delegation_tasks
           WHERE description=? AND assigned_to=? AND assigned_by=?
+            AND client_id <=> ? AND due_date <=> ?
             AND created_at >= DATE_SUB(NOW(), INTERVAL 2 MINUTE)
           ORDER BY id DESC LIMIT 1`,
-        [desc, targetUser, assignedBy]);
+        [desc, targetUser, assignedBy, enforcedClientId, effectiveDate]);
       if (recentDup) {
         return res.json({ success: true, duplicate: true, id: recentDup.id });
       }
