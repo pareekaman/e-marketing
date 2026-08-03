@@ -1516,11 +1516,11 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
 
     let delegationRows = [], checklistRows = [];
     if (taskType === 'delegation' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${delDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, delParams);
+      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${delDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, delParams);
       delegationRows = rows;
     }
     if (taskType === 'checklist' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,NULL AS completed_on,u1.name AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${chlDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, chlParams);
+      const [rows] = await db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,NULL AS completed_on,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM checklist_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${chlDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, chlParams);
       checklistRows = rows;
     }
     // `todayPending` kept for backwards compatibility (regular pending load still uses it).
@@ -1583,7 +1583,11 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     if (!isMine) {
       where += isClientTasks
         ? " AND (u1.role = 'client' OR u1.client_id IS NOT NULL)"
-        : " AND u1.role <> 'client' AND u1.client_id IS NULL";
+        // u1.id IS NULL keeps a task whose doer was deleted: without it
+        // `u1.role <> 'client'` evaluates to NULL for the orphan and drops the
+        // very row this LEFT JOIN was added to rescue. Orphans land in the
+        // normal tab, not Client Tasks, which is where they can be reassigned.
+        : " AND (u1.id IS NULL OR (u1.role <> 'client' AND u1.client_id IS NULL))";
     }
 
     // Explicit from/to range (sent by admin filter) overrides defaults for BOTH types.
@@ -1599,7 +1603,7 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     const subtaskCols = isDeleg
       ? "COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='completed'),0) AS subtasks_done,COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='pending'),0) AS subtasks_pending,"
       : "0 AS subtasks_done,0 AS subtasks_pending,";
-    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_ask,DATE_FORMAT(t.client_ask_by,'%Y-%m-%d') AS client_ask_date,TIME_FORMAT(t.client_ask_by,'%H:%i') AS client_ask_time,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,NULL AS client_ask,NULL AS client_ask_date,NULL AS client_ask_time,NULL AS completed_on,"}${subtaskCols}t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u1.name AS assignedToName,u2.name AS assignedByName FROM ${table} t JOIN users u1 ON t.assigned_to=u1.id JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
+    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_ask,DATE_FORMAT(t.client_ask_by,'%Y-%m-%d') AS client_ask_date,TIME_FORMAT(t.client_ask_by,'%H:%i') AS client_ask_time,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,NULL AS client_ask,NULL AS client_ask_date,NULL AS client_ask_time,NULL AS completed_on,"}${subtaskCols}t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'— deleted user —') AS assignedByName FROM ${table} t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
 
     // mine=1 mode always returns flat tasks (never grouped)
     if (isMine) {
@@ -6497,22 +6501,22 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
       `SELECT t.id, 'delegation' AS type, t.description, t.status, t.priority,
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
               TIME_FORMAT(t.due_time,'%H:%i') AS due_time, t.assigned_to,
-              u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created,
+              COALESCE(u1.name,'— deleted user —') AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created,
               DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created_date,
               TIME_FORMAT(t.created_at,'%H:%i') AS created_time,
               DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS done_date,
               TIME_FORMAT(t.completed_at,'%H:%i') AS done_time
-       FROM delegation_tasks t JOIN users u1 ON t.assigned_to=u1.id
+       FROM delegation_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id
        WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
        ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
     const [recentChl] = await db.query(
       `SELECT t.id, 'checklist' AS type, t.description, t.status, t.priority,
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
-              u1.name AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created,
+              COALESCE(u1.name,'— deleted user —') AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created,
               DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created_date,
               TIME_FORMAT(t.created_at,'%H:%i') AS created_time,
               NULL AS done_date, NULL AS done_time
-       FROM checklist_tasks t JOIN users u1 ON t.assigned_to=u1.id
+       FROM checklist_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id
        WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
        ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
     const recent = [...recentDel, ...recentChl]
