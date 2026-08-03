@@ -1335,9 +1335,15 @@ app.get('/api/me', requireAuth, async (req, res) => {
     // The UI used to decide these by comparing ME.name against a copy of the
     // approver list. It now asks the server, so the names live in one place.
     try {
-      rows[0].canApprovePayments = await isPaymentApprover(req.session);
+      // List membership only — NOT isPaymentApprover(), which lets any admin
+      // through. That admin bypass is right for the routes, because the old
+      // name check sat behind `role !== 'admin' &&` and admins always passed.
+      // It is wrong here: the tab was gated on the name list alone, so an admin
+      // outside that list never saw it. Sending the bypassed value put the
+      // Payment Approvals tab in front of every admin in the company.
+      rows[0].canApprovePayments = (await readIdSetting(PR_APPROVER_KEY)).includes(Number(req.session.userId));
       rows[0].canSettlePayments  = await isPaymentSettler(req.session);
-      // Deliberately no admin bypass: this replaces a UI check that read
+      // Same reasoning as above: this replaces a UI check that read
       // ME.name === 'Purvi Saini', so admins did not see the MDO tab either.
       // Note the /api/mdo-tasks routes are admin-only, so a reviewer who is not
       // an admin gets a tab whose every request 403s — true before this change
