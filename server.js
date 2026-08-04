@@ -760,6 +760,31 @@ function getTable(type) {
   return type === 'delegation' ? 'delegation_tasks' : 'checklist_tasks';
 }
 
+// The same task, for the same doer, from the same assigner, for the same client
+// and the same date, created seconds ago is never a second delegation — it is a
+// double tap or a retried request. Production held groups of four identical
+// tasks written within one second, and the doer had to close every copy before
+// the task left their list. Returns the existing row's id so the caller can
+// answer with it instead of inserting another.
+//
+// Client and date are part of the match on purpose: the same wording for two
+// different clients, or two different dates, is real work. `<=>` rather than `=`
+// so a NULL client or a task still awaiting its due date matches as well.
+//
+// Lives here, outside POST /api/tasks, because that route branches on task type
+// and the guard was written inside the delegation arm — leaving checklist
+// creation unprotected against exactly the same double tap.
+async function findRecentDuplicateTask(table, { desc, assignedTo, assignedBy, clientId, dueDate }) {
+  const [[row]] = await db.query(
+    `SELECT id FROM ${table}
+      WHERE description=? AND assigned_to=? AND assigned_by=?
+        AND client_id <=> ? AND due_date <=> ?
+        AND created_at >= DATE_SUB(NOW(), INTERVAL 2 MINUTE)
+      ORDER BY id DESC LIMIT 1`,
+    [desc, assignedTo, assignedBy, clientId, dueDate]);
+  return row ? row.id : null;
+}
+
 // Append a row to task_activity. Never throws and never blocks the caller —
 // an audit write failing must not stop a user from marking their task done.
 function logTaskActivity({ taskId, taskType, field, oldStatus, newStatus, oldValue, newValue, changedBy, source, note }) {
@@ -1741,24 +1766,11 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         }
       }
       // Same task, same doer, same assigner, seconds apart is never a real second
-      // delegation — it is a double tap or a retried request. Production had groups
-      // of 4 identical tasks created within one second, and the doer had to mark
-      // every copy done before the task left their list. Return the row that already
-      // exists instead of adding another. The button guard in the UI is the first
-      // line of defence; this one also covers refresh, back button and network retry.
-      // Client and due date are part of the match: the same wording assigned for two
-      // different clients (or two different dates) is real work, not a double tap.
-      // <=> instead of = so a NULL client or an awaiting-due-date task still matches.
-      const [[recentDup]] = await db.query(
-        `SELECT id FROM delegation_tasks
-          WHERE description=? AND assigned_to=? AND assigned_by=?
-            AND client_id <=> ? AND due_date <=> ?
-            AND created_at >= DATE_SUB(NOW(), INTERVAL 2 MINUTE)
-          ORDER BY id DESC LIMIT 1`,
-        [desc, targetUser, assignedBy, enforcedClientId, effectiveDate]);
-      if (recentDup) {
-        return res.json({ success: true, duplicate: true, id: recentDup.id });
-      }
+      // See findRecentDuplicateTask. The button guard in the UI is the first line
+      // of defence; this one also covers refresh, back button and network retry.
+      const dupId = await findRecentDuplicateTask('delegation_tasks', {
+        desc, assignedTo: targetUser, assignedBy, clientId: enforcedClientId, dueDate: effectiveDate });
+      if (dupId) return res.json({ success: true, duplicate: true, id: dupId });
       await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,due_time,status,priority,approval,remarks,client_id,url,awaiting_due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, dueTime, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0]);
       // 📧 Send delegation email + 📱 WhatsApp (non-blocking — fire and forget)
       (async () => {
@@ -1818,6 +1830,12 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         } catch (e) { console.error('WA client-task group lookup err:', e.message); }
       })();
     } else {
+      // Same guard as the delegation arm above — a double tap here used to write
+      // two checklist rows, and the doer had to close both.
+      const dupId = await findRecentDuplicateTask('checklist_tasks', {
+        desc, assignedTo: targetUser, assignedBy: req.session.userId,
+        clientId: enforcedClientId, dueDate: effectiveDate });
+      if (dupId) return res.json({ success: true, duplicate: true, id: dupId });
       await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks,client_id) VALUES (?,?,?,?,?,?,?,?)`, [desc, targetUser, req.session.userId, effectiveDate, 'pending', priority||'low', remarks||'', enforcedClientId]);
     }
     res.json({ success: true, adjusted, effectiveDate, adjustedReason });
