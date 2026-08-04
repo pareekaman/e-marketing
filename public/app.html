@@ -896,10 +896,27 @@ tbody tr:last-child td{border-bottom:none;}
 .e3-sc-avg{background:#fef3c7;color:#92400e;}
 .e3-sc-bad{background:#fee2e2;color:#991b1b;}
 .e3-sc-na{background:#f1f5f9;color:#94a3b8;}
+/* Daily entries grouped by day — one row per date, click to open. */
+.e3-day{border:1px solid #fde68a;border-radius:10px;margin-bottom:8px;overflow:hidden;background:#fff;}
+.e3-day-head{display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;background:#fffbeb;user-select:none;}
+.e3-day-head:hover{background:#fef3c7;}
+.e3-day-date{font-weight:700;color:#0f172a;font-size:13px;white-space:nowrap;}
+.e3-day-meta{margin-left:auto;font-size:11.5px;color:#92400e;font-weight:600;white-space:nowrap;}
+.e3-day-chev{font-size:10px;color:#b45309;transition:transform .18s var(--ease);}
+.e3-day.open .e3-day-chev{transform:rotate(90deg);}
+.e3-day-body{display:none;}
+.e3-day.open .e3-day-body{display:block;}
+
 @media print{
   .sidebar,.topbar,.tab-group,.cp-filter-row,.nav-item,.e3-toggle,.mobile-bottom-nav{display:none !important;}
   .cp-card{box-shadow:none;border:none;padding:0;}
   .e3-card,.e3-table{break-inside:avoid;}
+  /* Whatever is collapsed on screen still has to be in the printed copy —
+     the point of grouping is to make the page readable, not to leave entries
+     out of the PDF someone files. */
+  .e3-day-body{display:block !important;}
+  .e3-day-chev{display:none !important;}
+  .e3-day{break-inside:avoid;}
 }
 
 /* ══════════════════════════════════════════════
@@ -14130,6 +14147,19 @@ function emp360Preset(p, skipLoad){
   if (!skipLoad) loadEmp360();
 }
 
+// "150" → "2h 30m". Day headers carry a total, and raw minutes stop being
+// readable somewhere around the second hour.
+function fmtMins(n) {
+  const m = Math.max(0, Math.round(Number(n) || 0));
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60), rest = m % 60;
+  return rest ? `${h}h ${rest}m` : `${h}h`;
+}
+
+function e3ToggleDay(idx) {
+  document.getElementById('e3day' + idx)?.classList.toggle('open');
+}
+
 async function loadEmp360(){
   const id = document.getElementById('empSelect').value;
   const wrap = document.getElementById('emp360Wrap');
@@ -14307,17 +14337,42 @@ function renderEmp360(){
   if (!d.recentEntries.length) {
     html += `<div class="empty">No daily entries in this range.</div>`;
   } else {
-    html += `<table class="e3-table"><thead><tr>
-      <th>Date</th><th>Client</th><th>Task</th><th>Min</th></tr></thead><tbody>`;
+    // One collapsed row per day. The server returns the range already sorted
+    // newest-first, so walking it in order keeps the days in order without a
+    // second sort. Collapsed by default: a three-month range is a few hundred
+    // entries, and the day totals are what someone reviewing wants first.
+    const byDay = new Map();
     for (const e of d.recentEntries) {
-      html += `<tr>
-        <td style="white-space:nowrap">${e.entry_date}</td>
+      if (!byDay.has(e.entry_date)) byDay.set(e.entry_date, []);
+      byDay.get(e.entry_date).push(e);
+    }
+    const totalMin = d.recentEntries.reduce((s, e) => s + (Number(e.duration_min) || 0), 0);
+    html += `<div style="font-size:11.5px;color:#64748b;margin-bottom:10px">
+      ${d.recentEntries.length} ${d.recentEntries.length === 1 ? 'entry' : 'entries'}
+      across ${byDay.size} ${byDay.size === 1 ? 'day' : 'days'} · ${fmtMins(totalMin)}
+      <span style="color:#94a3b8">· click a day to open it — printing shows them all</span>
+    </div>`;
+    let dayIdx = 0;
+    for (const [day, list] of byDay) {
+      const mins = list.reduce((s, e) => s + (Number(e.duration_min) || 0), 0);
+      const rows = list.map(e => `<tr>
         <td>${dtEscape(e.client_name || '—')}</td>
         <td>${dtEscape(e.description || '')}</td>
-        <td>${e.duration_min || 0}</td>
-      </tr>`;
+        <td style="white-space:nowrap">${e.duration_min || 0}</td>
+      </tr>`).join('');
+      html += `<div class="e3-day" id="e3day${dayIdx}">
+        <div class="e3-day-head" onclick="e3ToggleDay(${dayIdx})">
+          <span class="e3-day-chev">▶</span>
+          <span class="e3-day-date">${dtEscape(day)}</span>
+          <span class="e3-day-meta">${list.length} ${list.length === 1 ? 'entry' : 'entries'} · ${fmtMins(mins)}</span>
+        </div>
+        <div class="e3-day-body">
+          <table class="e3-table"><thead><tr>
+            <th>Client</th><th>Task</th><th>Min</th></tr></thead><tbody>${rows}</tbody></table>
+        </div>
+      </div>`;
+      dayIdx++;
     }
-    html += `</tbody></table>`;
   }
 
   // Recent meetings

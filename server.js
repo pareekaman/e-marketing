@@ -9124,7 +9124,12 @@ app.get('/api/compliance/employee/:id', requireAuth, async (req, res) => {
       `SELECT id, DATE_FORMAT(entry_date,'%Y-%m-%d') AS entry_date,
               client_name, COALESCE(department,'') AS department, description, duration_min
        FROM daily_tasks WHERE user_id=? AND entry_date BETWEEN ? AND ?
-       ORDER BY entry_date DESC, id DESC LIMIT 20`, [id, from, to]);
+       -- No LIMIT. It used to be 20, which quietly cut a five-week range down
+       -- to about eight days with nothing on screen saying so — the range
+       -- filter looked broken when it was the cap doing it. The date range is
+       -- what bounds this query, the same as every other one on this page, and
+       -- the UI now groups by day so the length is manageable.
+       ORDER BY entry_date DESC, id DESC`, [id, from, to]);
 
     // ── Clients handled by this employee (handler) + activity in window ──
     const [clientRows] = await db.query(
