@@ -219,6 +219,13 @@ const _startupMigrationsPromise = (async () => {
     task_type VARCHAR(20) NOT NULL,
     old_status VARCHAR(20) DEFAULT NULL,
     new_status VARCHAR(20) DEFAULT NULL,
+    -- field/old_value/new_value carry the non-status changes: who the task is
+    -- assigned to, and when it is due. The default is 'status' so the rows
+    -- written before these columns existed stay correctly labelled — every one
+    -- of them was a status change.
+    field VARCHAR(20) NOT NULL DEFAULT 'status',
+    old_value VARCHAR(120) DEFAULT NULL,
+    new_value VARCHAR(120) DEFAULT NULL,
     changed_by INT DEFAULT NULL,
     source VARCHAR(40) DEFAULT NULL,
     note TEXT DEFAULT NULL,
@@ -227,6 +234,11 @@ const _startupMigrationsPromise = (async () => {
     INDEX idx_changed_by (changed_by),
     INDEX idx_created (created_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  // The table already exists in production from d6f1a98, so CREATE IF NOT
+  // EXISTS above will not add these three to it.
+  await sa(`ALTER TABLE task_activity ADD COLUMN field VARCHAR(20) NOT NULL DEFAULT 'status' AFTER new_status`);
+  await sa(`ALTER TABLE task_activity ADD COLUMN old_value VARCHAR(120) DEFAULT NULL AFTER field`);
+  await sa(`ALTER TABLE task_activity ADD COLUMN new_value VARCHAR(120) DEFAULT NULL AFTER old_value`);
 
   await sa(`CREATE TABLE IF NOT EXISTS task_transfers (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -750,11 +762,17 @@ function getTable(type) {
 
 // Append a row to task_activity. Never throws and never blocks the caller —
 // an audit write failing must not stop a user from marking their task done.
-function logTaskActivity({ taskId, taskType, oldStatus, newStatus, changedBy, source, note }) {
+function logTaskActivity({ taskId, taskType, field, oldStatus, newStatus, oldValue, newValue, changedBy, source, note }) {
+  const f = field || 'status';
+  // A status row fills old_value/new_value too, so one query can read the whole
+  // history of a task without caring which kind of change each row is.
+  const ov = oldValue !== undefined ? oldValue : (f === 'status' ? oldStatus : null);
+  const nv = newValue !== undefined ? newValue : (f === 'status' ? newStatus : null);
   db.query(
-    `INSERT INTO task_activity (task_id, task_type, old_status, new_status, changed_by, source, note)
-     VALUES (?,?,?,?,?,?,?)`,
+    `INSERT INTO task_activity (task_id, task_type, old_status, new_status, field, old_value, new_value, changed_by, source, note)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
     [taskId, taskType || 'delegation', oldStatus || null, newStatus || null,
+     f, ov == null ? null : String(ov), nv == null ? null : String(nv),
      changedBy || null, source || null, note || null]
   ).catch(e => console.error('task_activity log err:', e.message));
 }
@@ -1830,6 +1848,11 @@ app.put('/api/tasks/:id/due-date', requireAuth, async (req, res) => {
       if (doerUser && isUserOffOn(doerUser, date, holidaysSet)) effectiveDate = nextWorkingDay(doerUser, date, holidaysSet);
     } catch (e) { console.error('due-date holiday check err:', e.message); }
     await db.query('UPDATE delegation_tasks SET due_date=?, awaiting_due_date=0 WHERE id=?', [effectiveDate, task.id]);
+    logTaskActivity({
+      taskId: task.id, field: 'due_date', oldValue: null, newValue: effectiveDate,
+      changedBy: uid, source: 'due-date-set',
+      note: effectiveDate !== date ? `asked for ${date}, moved past a holiday or week-off` : null
+    });
     res.json({ success: true, effectiveDate });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2134,13 +2157,14 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Full status history of one task — who changed it, from what, to what, and via
-// which action. This is the answer to "I marked it done and it came back".
+// Full history of one task — who changed what, from what to what, and through
+// which action. Answers "I marked it done and it came back", and now also "my
+// task moved to someone else" and "my due date changed on its own".
 app.get('/api/tasks/:id/activity', requireAuth, async (req, res) => {
   try {
     const tt = (req.query.type || 'delegation') === 'checklist' ? 'checklist' : 'delegation';
     const [rows] = await db.query(
-      `SELECT a.id, a.old_status, a.new_status, a.source, a.note,
+      `SELECT a.id, a.field, a.old_value, a.new_value, a.old_status, a.new_status, a.source, a.note,
               DATE_FORMAT(a.created_at,'%Y-%m-%d %H:%i:%s') AS at,
               COALESCE(u.name,'—') AS by_name
          FROM task_activity a
@@ -2193,6 +2217,20 @@ app.put('/api/tasks/:id/edit', requireAuth, async (req, res) => {
     const table = getTable(type||'delegation');
     const cidRaw = client_id != null ? client_id : clientId;
     const cid = (() => { const n = parseInt(cidRaw, 10); return Number.isFinite(n) && n > 0 ? n : null; })();
+    // Read the old date so a change can be recorded. Edit is one of four routes
+    // that can move a deadline and, like the other three, it left no trace —
+    // "my due date changed by itself" had no answer.
+    const [[before]] = await db.query(
+      `SELECT DATE_FORMAT(due_date,'%Y-%m-%d') AS due_date FROM ${table} WHERE id=?`, [req.params.id]);
+    const logDateChange = () => {
+      const from = before?.due_date || null;
+      const to = date || null;
+      if (from === to) return;
+      logTaskActivity({
+        taskId: req.params.id, taskType: type || 'delegation', field: 'due_date',
+        oldValue: from, newValue: to, changedBy: req.session.userId, source: 'edit'
+      });
+    };
     if (type === 'delegation') {
       // due_time lives only on delegation_tasks. Blank clears it, so a task that
       // had a clock time can be put back to a date-only deadline.
@@ -2212,6 +2250,7 @@ app.put('/api/tasks/:id/edit', requireAuth, async (req, res) => {
         [desc, date, dueTime, priority||'low', approval||'no', remarks||'', url||null, cid, req.params.id]);
     }
     else await db.query(`UPDATE ${table} SET description=?,due_date=?,remarks=?,client_id=? WHERE id=?`, [desc, date, remarks||'', cid, req.params.id]);
+    logDateChange();
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2274,8 +2313,19 @@ app.put('/api/tasks/user/:userId/transfer-today', requireAuth, requireAdmin, asy
     const today = new Date().toISOString().split('T')[0];
     const { type } = req.query;
     const table = getTable(type || 'delegation');
+    // Read them first: this is one blanket UPDATE with no confirmation and no
+    // undo, so the old dates have to be captured before they are gone.
+    const [moving] = await db.query(
+      `SELECT id, DATE_FORMAT(due_date,'%Y-%m-%d') AS due_date FROM ${table}
+        WHERE assigned_to=? AND status='pending'`, [req.params.userId]);
     await db.query(`UPDATE ${table} SET due_date=? WHERE assigned_to=? AND status='pending'`,
       [today, req.params.userId]);
+    for (const t of moving) {
+      if (t.due_date === today) continue;
+      logTaskActivity({ taskId: t.id, taskType: type || 'delegation', field: 'due_date',
+        oldValue: t.due_date, newValue: today, changedBy: req.session.userId,
+        source: 'transfer-today', note: `bulk move of ${moving.length} task(s)` });
+    }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -4038,6 +4088,16 @@ app.put('/api/transfers/:id', requireAuth, requireAdminOrHod, async (req, res) =
     if (action === 'approved') {
       const table = getTable(tr.task_type);
       await db.query(`UPDATE ${table} SET assigned_to=? WHERE id=?`, [tr.to_user, tr.task_id]);
+      // The one change that moves a task to a different person, and until now
+      // it left nothing behind: "my task went to someone else" was unanswerable.
+      const [names] = await db.query('SELECT id, name FROM users WHERE id IN (?,?)', [tr.from_user, tr.to_user]);
+      const nameOf = id => names.find(n => Number(n.id) === Number(id))?.name || `#${id}`;
+      logTaskActivity({
+        taskId: tr.task_id, taskType: tr.task_type, field: 'assigned_to',
+        oldValue: tr.from_user, newValue: tr.to_user,
+        changedBy: req.session.userId, source: 'transfer-approved',
+        note: `${nameOf(tr.from_user)} -> ${nameOf(tr.to_user)}`
+      });
     }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -6219,6 +6279,8 @@ async function sendHandlerLeaveNotices({ force = false } = {}) {
     const movedPerClient = new Map();
     for (const t of due) {
       await db.query('UPDATE delegation_tasks SET due_date=? WHERE id=?', [backOn, t.id]);
+      logTaskActivity({ taskId: t.id, field: 'due_date', oldValue: today, newValue: backOn,
+        source: 'handler-leave', note: `${h.name || 'handler'} on leave` });
       moved++;
       if (t.client_id) movedPerClient.set(t.client_id, (movedPerClient.get(t.client_id) || 0) + 1);
     }
@@ -10060,6 +10122,9 @@ async function cascadeHolidayDate(dateStr, req) {
     for (const t of delegationsOnDate) {
       const newDate = nextWorkingDay(t, dateStr, holidaysSet);
       await db.query('UPDATE delegation_tasks SET due_date=? WHERE id=?', [newDate, t.id]);
+      logTaskActivity({ taskId: t.id, field: 'due_date', oldValue: dateStr, newValue: newDate,
+        changedBy: req?.session?.userId, source: 'holiday-cascade',
+        note: `${dateStr} marked a holiday` });
       pushedDelegation++;
     }
   } catch (e) { console.error('cascade delegation:', e.message); }
