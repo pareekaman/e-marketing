@@ -1855,7 +1855,7 @@ app.put('/api/tasks/:id/due-date', requireAuth, async (req, res) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
     if (!task.awaiting_due_date) return res.status(409).json({ error: 'Due date is already set on this task' });
     // Doer, assigner, or admin/PC only.
-    if (!isPrivileged && task.assigned_to !== uid && task.assigned_by !== uid) {
+    if (!isPrivileged && Number(task.assigned_to) !== Number(uid) && Number(task.assigned_by) !== Number(uid)) {
       return res.status(403).json({ error: 'Not allowed' });
     }
     // Nudge past a holiday / week-off, same as a normal delegation date.
@@ -1882,10 +1882,11 @@ async function canTouchSubtasks(req, task) {
   const role = req.session.role;
   if (role === 'client') {
     const [[me]] = await db.query('SELECT client_id FROM users WHERE id=? LIMIT 1', [req.session.userId]);
-    return !!me?.client_id && me.client_id === task.client_id;
+    return !!me?.client_id && Number(me.client_id) === Number(task.client_id);
   }
   return role === 'admin' || role === 'hod' || role === 'pc'
-    || task.assigned_to === req.session.userId || task.assigned_by === req.session.userId;
+    || Number(task.assigned_to) === Number(req.session.userId)
+    || Number(task.assigned_by) === Number(req.session.userId);
 }
 
 app.get('/api/tasks/:id/subtasks', requireAuth, async (req, res) => {
@@ -2079,7 +2080,11 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     const [rows] = await db.query(`SELECT * FROM ${table} WHERE id=?`, [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Task not found' });
     const task = rows[0];
-    if (!isPrivileged && task.assigned_to !== uid) return res.status(403).json({ error: 'Not allowed' });
+    // Number() on both sides, matching reviserIsAssigner five lines down: !==
+    // compares type as well, so the day a driver setting or a column type hands
+    // back '41' instead of 41 this starts refusing people their own tasks, and
+    // it would read as a permissions bug rather than a type one.
+    if (!isPrivileged && Number(task.assigned_to) !== Number(uid)) return res.status(403).json({ error: 'Not allowed' });
 
     // Approval workflow only exists for delegation tasks (checklist has no approval column).
     const supportsApproval = tt === 'delegation';
@@ -3463,7 +3468,7 @@ app.delete('/api/comments/:id', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query('SELECT * FROM task_comments WHERE id=?', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
-    if (rows[0].user_id !== req.session.userId && req.session.role !== 'admin') return res.status(403).json({ error: 'Not allowed' });
+    if (Number(rows[0].user_id) !== Number(req.session.userId) && req.session.role !== 'admin') return res.status(403).json({ error: 'Not allowed' });
     await archiveDeleted('task_comments', rows[0], req, { summary: r => `Comment: ${r.comment || ''}` });
     await db.query('DELETE FROM task_comments WHERE id=?', [req.params.id]);
     res.json({ success: true });
@@ -3946,7 +3951,7 @@ app.post('/api/transfers', requireAuth, async (req, res) => {
       if (!rows[0]) return res.status(404).json({ error: `Task ${t.taskId} not found` });
       const task = rows[0];
 
-      if (role === 'user' && task.assigned_to !== uid)
+      if (role === 'user' && Number(task.assigned_to) !== Number(uid))
         return res.status(403).json({ error: 'You can only transfer your own tasks' });
 
       if (role === 'hod') {
