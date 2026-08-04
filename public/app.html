@@ -2342,7 +2342,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <div class="cp-header" style="justify-content:flex-end">
           <button class="dt-btn dt-btn-add" onclick="loadCompliance()">🔄 Refresh</button>
         </div>
-        <p class="cp-sub">Last 7 days — who filled the Daily Task and when. <span class="cp-dot cp-dot-yes"></span> = filled · <span class="cp-dot cp-dot-no"></span> = missed</p>
+        <p class="cp-sub">Last 7 days — who filled the Daily Task and when. <span class="cp-dot cp-dot-yes"></span> = filled · <span class="cp-dot cp-dot-no"></span> = missed · <span style="color:#7c3aed;font-weight:700">L</span> = on leave · <span style="color:#94a3b8;font-weight:600">Off</span> = week off or holiday. Leave and off days are left out of the score.</p>
 
         <div class="cp-filter-row">
           <input type="text" id="cpSearch" placeholder="🔍 Search by name / email / department..." oninput="renderCompliance()"/>
@@ -14081,7 +14081,10 @@ function renderCompliance(){
           ? '<span class="cp-cell-holiday" title="Holiday">🎉 Off</span>'
           : '<span class="cp-cell-off" title="Week off">Off</span>';
       } else if (s.onLeave) {
-        cell = '<span style="color:#000;font-weight:700" title="On leave">A</span>';
+        // L, not A — the legend now names it, and "A" read as Absent, which is
+        // the opposite of what an approved leave means. Not counted as a working
+        // day either way (see workingDays above), so the percentage is unchanged.
+        cell = '<span style="color:#7c3aed;font-weight:700" title="On leave">L</span>';
       } else if (s.filled) {
         cell = '<span class="cp-cell-yes">✓</span>';
       } else {
