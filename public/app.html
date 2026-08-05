@@ -6140,12 +6140,20 @@ function renderHrmRows(list) {
       <td><span class="hrm-badge ${badgeClass}">${HRM_STATUS_LABELS[c.status] || c.status}</span></td>
       <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${canUpdate ? `<button class="action-btn edit" onclick="openHrmStatusModal(${c.id})">Update</button>` : '<span style="font-size:11px;color:#94a3b8">Closed</span>'}
-        ${(c.status === 'Offer Sent' || c.status === 'Offer Letter Sent') ? (c.offer_drive_id
+        ${(c.status === 'Offer Sent' || c.status === 'Offer Letter Sent') ? (
+          // Prefer our own public /offer-pdf-prelim link (renders the PDF, no
+          // Drive access needed) so anyone with the link can view it — the Drive
+          // file lives in a members-only Shared Drive. Drive link is a fallback.
+          c.prelim_offer_token
+          ? `<a href="/offer-pdf-prelim/${c.prelim_offer_token}" target="_blank" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📄 View Preliminary Offer</a>`
+          : c.offer_drive_id
           ? `<a href="https://drive.google.com/file/d/${c.offer_drive_id}/view" target="_blank" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📄 View Preliminary Offer</a>`
           : `<button class="action-btn" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="viewOfferLetter(${c.id})">📄 View Preliminary Offer</button>`)
           : ''}
-        ${c.status === 'Offer Letter Sent' && c.final_offer_drive_id
-          ? `<a href="https://drive.google.com/file/d/${c.final_offer_drive_id}/view" target="_blank" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📬 View Offer Letter</a>`
+        ${c.status === 'Offer Letter Sent' && (c.final_offer_token || c.final_offer_drive_id)
+          ? (c.final_offer_token
+            ? `<a href="/offer-pdf/${c.final_offer_token}" target="_blank" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📬 View Offer Letter</a>`
+            : `<a href="https://drive.google.com/file/d/${c.final_offer_drive_id}/view" target="_blank" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📬 View Offer Letter</a>`)
           : ''}
         ${(c.status === 'Selected' || c.status === 'Offer Sent' || c.status === 'Offer Letter Sent')
           ? `<button class="action-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="openEmailModal(${c.id})">📧 Email</button>`
