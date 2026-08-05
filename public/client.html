@@ -156,7 +156,7 @@ body.cp-preview .cp-client-only{display:none !important;}
     <div class="alert error" id="cpDelErr" style="display:none"></div>
     <div class="form-group">
       <label id="cpDelHandlerLabel">Handler (auto-assigned)</label>
-      <input type="text" id="cpDelHandler" readonly style="background:#f8fafc;color:#475569;font-weight:600"/>
+      <select id="cpDelHandler" style="color:#475569;font-weight:600"></select>
     </div>
     <!-- Staff preview only: send this to the handler, or ask the client to do it. -->
     <div class="form-group" id="cpDelDoerRow" style="display:none">
@@ -448,12 +448,18 @@ function cpRenderHtml(s){
     : `<div style="width:54px;height:54px;border-radius:14px;${avatarStyle};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:21px;box-shadow:0 4px 12px rgba(0,0,0,.12);flex-shrink:0">${initials}</div>`;
   const istHour = (new Date(Date.now() + (5.5*60*60*1000))).getUTCHours();
   const greeting = istHour < 12 ? 'Good morning' : istHour < 17 ? 'Good afternoon' : 'Good evening';
-  const handlerLine = client.handler_name
-    ? `<div style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.92);color:#0f766e;padding:8px 14px;border-radius:999px;font-weight:600;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.06)">
-         <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#14b8a6,#0d9488);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${dtEscape(cpInitials(client.handler_name))}</div>
-         <span>Handler: <strong>${dtEscape(client.handler_name)}</strong></span>
-         ${client.handler_email ? `<span style="color:#64748b;font-weight:500">· ${dtEscape(client.handler_email)}</span>` : ''}
-       </div>`
+  // A client can have several handlers — render one chip per handler so a
+  // multi-handler client sees every name, not just the primary.
+  const handlerList = (Array.isArray(client.handlers) && client.handlers.length)
+    ? client.handlers
+    : (client.handler_name ? [{ name: client.handler_name, email: client.handler_email }] : []);
+  const handlerChip = (h, showLabel) => `<div style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.92);color:#0f766e;padding:8px 14px;border-radius:999px;font-weight:600;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+         <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#14b8a6,#0d9488);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${dtEscape(cpInitials(h.name))}</div>
+         <span>${showLabel ? (handlerList.length > 1 ? 'Handlers: ' : 'Handler: ') : ''}<strong>${dtEscape(h.name)}</strong></span>
+         ${h.email ? `<span style="color:#64748b;font-weight:500">· ${dtEscape(h.email)}</span>` : ''}
+       </div>`;
+  const handlerLine = handlerList.length
+    ? `<div style="display:inline-flex;flex-wrap:wrap;align-items:center;gap:8px">${handlerList.map((h, i) => handlerChip(h, i === 0)).join('')}</div>`
     : `<div style="display:inline-flex;align-items:center;gap:6px;background:#fef2f2;color:#991b1b;padding:8px 14px;border-radius:999px;font-weight:600;font-size:13px;border:1px solid #fecaca">⚠️ No handler assigned — contact admin before delegating tasks</div>`;
 
   const priorityRank = { urgent: 4, high: 3, medium: 2, low: 1 };
@@ -746,15 +752,20 @@ function cpRenderSystemLinksHtml(links){
 // ── About Us page ────────────────────────────────────────────────────
 function cpRenderAbout(s){
   const client = (s && s.client) || {};
-  const handlerCard = client.handler_name
+  const aboutHandlers = (Array.isArray(client.handlers) && client.handlers.length)
+    ? client.handlers
+    : (client.handler_name ? [{ name: client.handler_name, email: client.handler_email }] : []);
+  const handlerCard = aboutHandlers.length
     ? `<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:12px;padding:16px 18px">
-         <div style="font-size:11px;color:#0f766e;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Your Handler</div>
-         <div style="display:flex;align-items:center;gap:10px">
-           <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#14b8a6,#0d9488);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0">${dtEscape(cpInitials(client.handler_name))}</div>
+         <div style="font-size:11px;color:#0f766e;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${aboutHandlers.length > 1 ? 'Your Handlers' : 'Your Handler'}</div>
+         <div style="display:flex;flex-direction:column;gap:12px">
+           ${aboutHandlers.map(h => `<div style="display:flex;align-items:center;gap:10px">
+           <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#14b8a6,#0d9488);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0">${dtEscape(cpInitials(h.name))}</div>
            <div style="min-width:0">
-             <div style="font-weight:700;color:#0f172a;font-size:14px">${dtEscape(client.handler_name)}</div>
-             ${client.handler_email ? `<a href="mailto:${dtEscape(client.handler_email)}" style="font-size:12px;color:#0f766e;text-decoration:none">${dtEscape(client.handler_email)}</a>` : ''}
+             <div style="font-weight:700;color:#0f172a;font-size:14px">${dtEscape(h.name)}</div>
+             ${h.email ? `<a href="mailto:${dtEscape(h.email)}" style="font-size:12px;color:#0f766e;text-decoration:none">${dtEscape(h.email)}</a>` : ''}
            </div>
+         </div>`).join('')}
          </div>
        </div>`
     : `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px 18px;color:#991b1b;font-size:13px;font-weight:600">⚠️ No handler assigned yet — please contact admin.</div>`;
@@ -860,6 +871,20 @@ function cpRenderCharts(s){
 // Toggle the client-owned-task fields. A task the client owes us needs a hard
 // date and time from the handler; a task for the handler keeps the existing
 // "doer sets their own date" behaviour.
+// Fill the handler <select> with every handler this client has, so a
+// multi-handler client can pick which one gets the task. Defaults to the
+// primary (handler_id). Falls back to the single legacy handler.
+function cpHandlerOptions(){
+  const list = (Array.isArray(_cpMe?.handlers) && _cpMe.handlers.length)
+    ? _cpMe.handlers
+    : (_cpMe?.handler_id ? [{ id: _cpMe.handler_id, name: _cpMe.handler_name, department: null }] : []);
+  const sel = document.getElementById('cpDelHandler');
+  sel.disabled = false;
+  sel.innerHTML = list.map(h =>
+    `<option value="${h.id}" ${String(h.id) === String(_cpMe.handler_id) ? 'selected' : ''}>${dtEscape(h.name || 'Handler')}${h.department ? ' · ' + dtEscape(h.department) : ''}</option>`
+  ).join('');
+}
+
 function cpDelDoerChange(){
   const toClient = document.getElementById('cpDelDoer')?.value === 'client';
   document.getElementById('cpDelDueRow').style.display  = toClient ? 'block' : 'none';
@@ -867,9 +892,14 @@ function cpDelDoerChange(){
   document.getElementById('cpDelHandlerLabel').textContent = toClient
     ? 'Doer — the client'
     : "Doer — this client's handler";
-  document.getElementById('cpDelHandler').value = toClient
-    ? (_cpMe.portal_user_name || _cpMe.name || 'Client')
-    : (_cpMe.handler_name || '');
+  const sel = document.getElementById('cpDelHandler');
+  if (toClient) {
+    // The client themselves is the doer — a single fixed name, not a choice.
+    sel.innerHTML = `<option>${dtEscape(_cpMe.portal_user_name || _cpMe.name || 'Client')}</option>`;
+    sel.disabled = true;
+  } else {
+    cpHandlerOptions();
+  }
 }
 
 function cpOpenDelegate(){
@@ -901,8 +931,9 @@ function cpOpenDelegate(){
   if (CP_IS_PREVIEW) {
     cpDelDoerChange();  // owns the doer label + name + due-date fields
   } else {
-    document.getElementById('cpDelHandlerLabel').textContent = 'Handler (auto-assigned)';
-    document.getElementById('cpDelHandler').value = _cpMe.handler_name || '';
+    document.getElementById('cpDelHandlerLabel').textContent =
+      (Array.isArray(_cpMe.handlers) && _cpMe.handlers.length > 1) ? 'Handler (pick one)' : 'Handler (auto-assigned)';
+    cpHandlerOptions();
     document.getElementById('cpDelDueRow').style.display  = 'none';
     document.getElementById('cpDelDueHint').style.display = 'block';
   }
@@ -924,9 +955,16 @@ async function cpSaveDelegate(){
   // assigned_by is whoever is logged in, so the audit trail stays honest.
   const payload = { type:'delegation', desc, priority, remarks, approval:'no', doerSetsDueDate:true };
   const toClient = CP_IS_PREVIEW && document.getElementById('cpDelDoer')?.value === 'client';
+  // Which handler the client picked. In toClient mode the select shows the
+  // client's name (no numeric value), so we ignore it and use portal_user_id.
+  const chosenHandler = parseInt(document.getElementById('cpDelHandler').value) || _cpMe.handler_id;
   if (CP_IS_PREVIEW) {
     payload.client_id  = CP_PREVIEW_ID;
-    payload.assignedTo = toClient ? _cpMe.portal_user_id : _cpMe.handler_id;
+    payload.assignedTo = toClient ? _cpMe.portal_user_id : chosenHandler;
+  } else {
+    // Client's own view: they choose which of their handlers gets the task.
+    // The server validates it against this client's handlers either way.
+    payload.assignedTo = chosenHandler;
   }
   // A client-owned task is a commitment to a moment, so the handler sets both
   // halves of it here rather than leaving the date to the doer.

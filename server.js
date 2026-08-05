@@ -6561,6 +6561,25 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
         `SELECT id, name FROM users WHERE role='client' AND client_id=? ORDER BY id LIMIT 1`, [id]);
       client.portal_user_id   = pu?.id   || null;
       client.portal_user_name = pu?.name || null;
+      // A client can have several handlers (client_handlers); c.handler_id is
+      // only the primary. The portal needs them all so a multi-handler client
+      // can pick which handler a task goes to, and see every name in the header.
+      const [handlerRows] = await db.query(
+        `SELECT u.id, u.name, u.email, u.department
+           FROM client_handlers ch JOIN users u ON ch.user_id = u.id
+          WHERE ch.client_id=? AND u.role!='client'
+          ORDER BY (u.id=?) DESC, u.name`, [id, client.handler_id || 0]);
+      let handlers = handlerRows;
+      if (!handlers.length && client.handler_id) {
+        handlers = [{ id: client.handler_id, name: client.handler_name, email: client.handler_email, department: null }];
+      }
+      client.handlers = handlers;
+      // Keep the legacy single fields pointed at the primary for older UI paths.
+      if (!client.handler_id && handlers.length) {
+        client.handler_id    = handlers[0].id;
+        client.handler_name  = handlers[0].name;
+        client.handler_email = handlers[0].email;
+      }
     }
     // Who is looking: the client themselves, or a staff member previewing.
     const viewerId = resolved.preview ? null : req.session.userId;
