@@ -6817,6 +6817,17 @@ app.post('/api/client-portal/feedback', requireAuth, async (req, res) => {
 // never reached), which shows up as a 500 on the very first save. Ensure the
 // table lazily on each call — memoized, so it's one CREATE per process, then a
 // no-op. Same self-heal pattern the Credit Cards routes use.
+// Surface the REAL cause instead of a bare "HTTP 500". The frontend only ever
+// showed "HTTP 500" because the old catch returned {error: err.message} and some
+// driver errors carry the useful text on .code/.sqlMessage, not .message. Log
+// the full error server-side (Vercel function logs) and return a readable line.
+function ccVaultErr(res, err, op){
+  console.error(`[client-credentials:${op}]`, err && (err.stack || err));
+  const detail = (err && (err.sqlMessage || err.message)) || 'Unknown error';
+  const code = err && err.code ? `${err.code}: ` : '';
+  res.status(500).json({ error: `Vault ${op} failed — ${code}${detail}` });
+}
+
 let _ccVaultReady = null;
 function ensureClientCredentialsTable(){
   if (!_ccVaultReady) {
@@ -6856,7 +6867,7 @@ app.get('/api/client-credentials', requireAdmin, async (req, res) => {
          ${where}
          ORDER BY c.name ASC, cc.system_name ASC, cc.role_label ASC, cc.id ASC`, params);
     res.json(rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { ccVaultErr(res, err, 'list'); }
 });
 
 // Add a credential entry. client_id + system_name are the only required fields;
@@ -6878,7 +6889,7 @@ app.post('/api/client-credentials', requireAdmin, async (req, res) => {
        clean(req.body.username, 500), clean(req.body.password, 500), clean(req.body.notes, 5000),
        req.session.userId, req.session.name || null]);
     res.json({ success: true, id: r.insertId });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { ccVaultErr(res, err, 'add'); }
 });
 
 // Edit a credential entry. Same field rules as add; client_id is not moved.
@@ -6897,7 +6908,7 @@ app.put('/api/client-credentials/:id', requireAdmin, async (req, res) => {
        clean(req.body.username, 500), clean(req.body.password, 500), clean(req.body.notes, 5000), id]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Credential not found' });
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { ccVaultErr(res, err, 'edit'); }
 });
 
 // Delete a credential entry. Archived to deleted_records first (same as every
@@ -6912,7 +6923,7 @@ app.delete('/api/client-credentials/:id', requireAdmin, async (req, res) => {
       summary: r => `Credential: ${r.system_name || ''}${r.role_label ? ' · ' + r.role_label : ''}` });
     await db.query('DELETE FROM client_credentials WHERE id=?', [id]);
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { ccVaultErr(res, err, 'delete'); }
 });
 
 // ══════════════════════════════════════════════════════
