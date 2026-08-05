@@ -11592,15 +11592,6 @@ app.get('/offer-pdf-prelim/:token', async (req, res) => {
   }
 });
 
-// Short redirect for the joining-details form — keeps the emailed link short
-// (our domain + a short token) instead of the long Apps Script form URL.
-// Public: the token is the capability, same as the /offer-pdf routes.
-app.get('/jf/:token', (req, res) => {
-  if (!HRM_JOINING_FORM_URL) return res.status(404).send('Joining form is not configured.');
-  const sep = HRM_JOINING_FORM_URL.includes('?') ? '&' : '?';
-  res.redirect(`${HRM_JOINING_FORM_URL}${sep}token=${encodeURIComponent(req.params.token)}`);
-});
-
 // Accepts YYYY-MM-DD, DD/MM/YYYY and DD-MM-YYYY (what a Google Form date answer
 // or a typed Indian-format date arrives as) and returns a MySQL DATE string.
 function hrmParseDob(value) {
@@ -12032,17 +12023,11 @@ app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) =>
       if (!HRM_JOINING_FORM_URL) return res.status(400).json({ error: 'Joining form URL is not configured (HRM_JOINING_FORM_URL)' });
       let token = c.joining_form_token;
       if (!token) {
-        token = require('crypto').randomBytes(9).toString('hex');   // short token → short link
+        token = require('crypto').randomBytes(24).toString('hex');
         await db.query('UPDATE hrm_candidates SET joining_form_token=? WHERE id=?', [token, c.id]);
       }
-      // Use our own short /jf/:token redirect instead of the long Apps Script
-      // URL — same public-host logic as the offer-PDF links.
-      const reqHost = req.headers['x-forwarded-host'] || req.get('host') || '';
-      const isVercelPreview = /\.vercel\.app$/i.test(reqHost);
-      const base = ((isVercelPreview || !reqHost)
-        ? (process.env.APP_URL || `https://${reqHost}`)
-        : `${req.headers['x-forwarded-proto'] || req.protocol}://${reqHost}`).replace(/\/$/, '');
-      const formUrl = `${base}/jf/${token}`;
+      const sep = HRM_JOINING_FORM_URL.includes('?') ? '&' : '?';
+      const formUrl = `${HRM_JOINING_FORM_URL}${sep}token=${token}`;
       subject = `Joining Details Form | ${HRM_COMPANY}`;
       action = 'Joining Details Form — Email';
       bodyInner = `<p>Hello ${esc(displayName)},</p>
