@@ -689,15 +689,19 @@ async function sendMail(to, subject, html, opts = {}) {
   }
 }
 
-// Helper: get user's notification email + name
+// Helper: get user's notification email + name. Falls back to the login email
+// when no separate notification_email is set — otherwise users without one
+// silently got no delegation/leave emails at all.
 async function getNotifyTarget(userId) {
   try {
     const [rows] = await db.query(
-      'SELECT name, notification_email FROM users WHERE id=? LIMIT 1',
+      'SELECT name, email, notification_email FROM users WHERE id=? LIMIT 1',
       [userId]
     );
-    if (!rows[0] || !rows[0].notification_email) return null;
-    return { name: rows[0].name, email: rows[0].notification_email };
+    const u = rows[0];
+    const email = u && (u.notification_email || u.email);
+    if (!email) return null;
+    return { name: u.name, email };
   } catch { return null; }
 }
 
