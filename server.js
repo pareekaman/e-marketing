@@ -6812,10 +6812,38 @@ app.post('/api/client-portal/feedback', requireAuth, async (req, res) => {
 // manager, a dashboard, etc.). Passwords are stored as typed so they can be
 // read back, so every route here is requireAdmin — never widen it.
 // ══════════════════════════════════════════════════════
+// The cold-start IIFE also creates this table, but a request can land on a
+// fresh serverless instance before that finishes (or on a DB the deploy's init
+// never reached), which shows up as a 500 on the very first save. Ensure the
+// table lazily on each call — memoized, so it's one CREATE per process, then a
+// no-op. Same self-heal pattern the Credit Cards routes use.
+let _ccVaultReady = null;
+function ensureClientCredentialsTable(){
+  if (!_ccVaultReady) {
+    _ccVaultReady = db.query(`CREATE TABLE IF NOT EXISTS client_credentials (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      client_id INT NOT NULL,
+      system_name VARCHAR(255) NOT NULL,
+      role_label VARCHAR(100) DEFAULT NULL,
+      url VARCHAR(1000) DEFAULT NULL,
+      username VARCHAR(500) DEFAULT NULL,
+      password VARCHAR(500) DEFAULT NULL,
+      notes TEXT DEFAULT NULL,
+      created_by INT DEFAULT NULL,
+      created_by_name VARCHAR(255) DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_cc_client (client_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(e => { _ccVaultReady = null; throw e; });
+  }
+  return _ccVaultReady;
+}
+
 // List every stored credential, newest system first, with the client name
 // joined in so the vault can group by client. Optional ?client_id= narrows it.
 app.get('/api/client-credentials', requireAdmin, async (req, res) => {
   try {
+    await ensureClientCredentialsTable();
     const clientId = parseInt(req.query.client_id);
     const where = clientId ? 'WHERE cc.client_id=?' : '';
     const params = clientId ? [clientId] : [];
@@ -6835,6 +6863,7 @@ app.get('/api/client-credentials', requireAdmin, async (req, res) => {
 // a system can have several rows (e.g. an Admin login and a User login).
 app.post('/api/client-credentials', requireAdmin, async (req, res) => {
   try {
+    await ensureClientCredentialsTable();
     const clientId = parseInt(req.body.client_id);
     const system = String(req.body.system_name || '').trim();
     if (!clientId || !system) return res.status(400).json({ error: 'Client and system name are required' });
@@ -6855,6 +6884,7 @@ app.post('/api/client-credentials', requireAdmin, async (req, res) => {
 // Edit a credential entry. Same field rules as add; client_id is not moved.
 app.put('/api/client-credentials/:id', requireAdmin, async (req, res) => {
   try {
+    await ensureClientCredentialsTable();
     const id = parseInt(req.params.id);
     const system = String(req.body.system_name || '').trim();
     if (!system) return res.status(400).json({ error: 'System name is required' });
@@ -6874,6 +6904,7 @@ app.put('/api/client-credentials/:id', requireAdmin, async (req, res) => {
 // other user-facing delete) so nothing is ever truly lost.
 app.delete('/api/client-credentials/:id', requireAdmin, async (req, res) => {
   try {
+    await ensureClientCredentialsTable();
     const id = parseInt(req.params.id);
     const [[row]] = await db.query('SELECT * FROM client_credentials WHERE id=?', [id]);
     if (!row) return res.status(404).json({ error: 'Credential not found' });
