@@ -3315,6 +3315,36 @@ input:focus,select:focus,textarea:focus{outline:none;}
     </div>
   </div>
 
+  <!-- HRM: Email a document to the candidate (onboarding form / preliminary / offer letter) -->
+  <div class="modal-overlay" id="hrmEmailModal">
+    <div class="modal" style="width:460px">
+      <button class="modal-close" onclick="closeModal('hrmEmailModal')">×</button>
+      <h3>📧 Email to Candidate</h3>
+      <div class="alert error" id="hrmEmailErr" style="display:none"></div>
+      <div id="hrmEmailWho" style="font-size:13px;color:#475569;margin:2px 0 12px"></div>
+      <div class="form-group">
+        <label>What to send *</label>
+        <select id="hrmEmailType">
+          <option value="onboarding">📋 Onboarding Form (link)</option>
+          <option value="preliminary">📄 Preliminary Offer Letter (PDF)</option>
+          <option value="offer">📬 Offer Letter (PDF)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>To *</label>
+        <input type="email" id="hrmEmailTo" placeholder="candidate@example.com">
+      </div>
+      <div class="form-group">
+        <label>CC (optional)</label>
+        <input type="text" id="hrmEmailCc" placeholder="comma-separated emails">
+      </div>
+      <div class="modal-footer" style="margin-top:14px">
+        <button class="btn btn-outline" onclick="closeModal('hrmEmailModal')">Cancel</button>
+        <button class="btn btn-primary" id="hrmEmailSendBtn" onclick="submitEmailModal()">📧 Send Email</button>
+      </div>
+    </div>
+  </div>
+
   <!-- HRM: Final Offer Letter — live preview + edit before sending on WhatsApp -->
   <div class="modal-overlay" id="hrmFinalOfferFormModal">
     <div class="modal" style="width:95vw;max-width:1150px;padding:0;overflow:hidden">
@@ -6121,8 +6151,8 @@ function renderHrmRows(list) {
         ${c.status === 'Offer Letter Sent' && c.final_offer_drive_id
           ? `<a href="https://drive.google.com/file/d/${c.final_offer_drive_id}/view" target="_blank" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📬 View Offer Letter</a>`
           : ''}
-        ${(c.status === 'Offer Sent' || c.status === 'Offer Letter Sent')
-          ? `<button class="action-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="emailOffer(${c.id})">📧 Email Offer</button>`
+        ${(c.status === 'Selected' || c.status === 'Offer Sent' || c.status === 'Offer Letter Sent')
+          ? `<button class="action-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="openEmailModal(${c.id})">📧 Email</button>`
           : ''}
         ${joiningCell}
       </td>
@@ -6428,20 +6458,35 @@ async function generateOfferDoc(id) {
   viewOfferLetter(id); // reopen with updated data
 }
 
-// Email the offer letter PDF to the candidate. Uses the email on file; if none,
-// prompts for one and sends it through (the server also persists it going
-// forward is not done here — the prompt is a one-off for this send).
-async function emailOffer(id) {
+// Email modal: pick what to send (onboarding form / preliminary / offer letter),
+// the To address (prefilled from the candidate), and an optional CC.
+function openEmailModal(id) {
   const c = _hrmCandidates.find(x => String(x.id) === String(id));
-  let email = (c && c.email || '').trim();
-  if (!email) {
-    email = (prompt('No email on file for this candidate. Enter the email to send the offer letter to:') || '').trim();
-    if (!email) return;
-  }
-  showToast('Emailing offer letter…');
-  const r = await api(`/api/hrm/candidates/${id}/email-offer`, 'POST', { email });
-  if (!r || r.error) { showToast((r && r.error) || 'Email failed', 'error'); return; }
-  showToast(`Offer letter emailed to ${r.emailedTo}`);
+  if (!c) return;
+  _hrmCurrentId = id;
+  document.getElementById('hrmEmailWho').textContent = `${c.name}${c.profile_position ? ' · ' + c.profile_position : ''}`;
+  // Default the "what to send" to the candidate's current stage.
+  document.getElementById('hrmEmailType').value =
+    c.status === 'Offer Letter Sent' ? 'offer' :
+    c.status === 'Offer Sent' ? 'preliminary' : 'onboarding';
+  document.getElementById('hrmEmailTo').value = c.email || '';
+  document.getElementById('hrmEmailCc').value = '';
+  document.getElementById('hrmEmailErr').style.display = 'none';
+  document.getElementById('hrmEmailModal').classList.add('open');
+}
+
+async function submitEmailModal() {
+  const type  = document.getElementById('hrmEmailType').value;
+  const email = document.getElementById('hrmEmailTo').value.trim();
+  const cc    = document.getElementById('hrmEmailCc').value.trim();
+  if (!email) { showErrIn('hrmEmailErr', 'Recipient email is required'); return; }
+  const btn = document.getElementById('hrmEmailSendBtn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/email-offer`, 'POST', { type, email, cc });
+  btn.disabled = false; btn.textContent = '📧 Send Email';
+  if (!r || r.error) { showErrIn('hrmEmailErr', (r && r.error) || 'Email failed'); return; }
+  closeModal('hrmEmailModal');
+  showToast(`Emailed to ${r.emailedTo}${r.cc ? ' (cc: ' + r.cc + ')' : ''}`);
   loadHRM();
 }
 

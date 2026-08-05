@@ -678,6 +678,7 @@ async function sendMail(to, subject, html, opts = {}) {
     await mailTransporter.sendMail({
       from: `"${process.env.SMTP_FROM_NAME || 'E-Marketing Task Manager'}" <${process.env.SMTP_USER}>`,
       to, subject, html,
+      ...(opts.cc ? { cc: opts.cc } : {}),
       ...(opts.attachments ? { attachments: opts.attachments } : {})
     });
     console.log(`  📧 Email sent to ${to} — ${subject}`);
@@ -12129,62 +12130,118 @@ app.post('/api/hrm/final-offer-render', requireAuth, async (req, res) => {
   }
 });
 
-// Email the offer letter PDF to the candidate (alternative to WhatsApp).
-// Renders whichever stage the candidate is at from its stored snapshot —
-// final if final_offer_data exists, else the preliminary letter — and sends it
-// as a PDF attachment via the same Gmail SMTP used for task/delegation emails.
+// Fixed HR-email signature (hardcoded per the company's template — the logo is
+// referenced as cid:emlogo and attached inline by the caller). esc() must be
+// passed in (defined per-request).
+function _hrmEmailSignatureHtml() {
+  return `<p style="margin:18px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;line-height:1.5">--<br>
+    Thanks &amp; Regards,<br>
+    Purvi Saini (Executive Assistant)<br>
+    Ph: +91-9301878061<br>
+    Website: <a href="https://www.e-marketing.io" style="color:#1155cc">www.e-marketing.io</a></p>
+    <p style="margin:6px 0 0"><img src="cid:emlogo" alt="e-Marketing" width="150" style="display:block;margin-bottom:2px"><strong>"Grow Your Business"</strong></p>`;
+}
+
+// Email an HR document to the candidate. `type` selects which:
+//   'preliminary' → preliminary offer letter PDF, subject "Preliminary Offer Letter | <position> | E-Marketing"
+//   'offer'       → final offer letter PDF,       subject "Offer Letter | <position> | E-Marketing"
+//   'onboarding'  → the joining-details form LINK (no PDF), subject "Joining Details Form | E-Marketing"
+// Body follows the company template (Purvi Saini signature). Optional `cc`.
 app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) => {
   if (!(await userCanDo(req.session, 'hrm_update_status'))) return res.status(403).json({ error: 'Forbidden' });
   try {
     const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
     if (!c) return res.status(404).json({ error: 'Not found' });
-    const to = String(req.body.email || c.email || '').trim();
-    if (!to) return res.status(400).json({ error: 'No candidate email on file — add one on the candidate first' });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ error: 'Invalid email address' });
     if (!process.env.SMTP_USER) return res.status(400).json({ error: 'Email is not configured on the server (SMTP credentials missing)' });
 
-    // Pick the stage: final letter if it has been generated, else preliminary
-    // (from its snapshot if present, otherwise built from the candidate fields).
-    let pdf, letterLabel, fileName, displayName, joiningFmt;
-    if (c.final_offer_data) {
-      const d = JSON.parse(c.final_offer_data);
-      pdf = await hrmRenderFinalOfferPdfBuffer({ name: d.name, position: d.position, joiningFmt: d.joiningFmt, salary: d.salary, today: d.today, joiningDate: d.joining_date, probationMonths: d.probation_months });
-      letterLabel = 'Offer Letter'; displayName = d.name || c.name; joiningFmt = d.joiningFmt || '';
-      fileName = `OFFER LETTER - ${displayName}.pdf`;
-    } else {
-      let d;
-      if (c.prelim_offer_data) { d = JSON.parse(c.prelim_offer_data); }
-      else {
-        const jf = c.joining_date ? new Date(c.joining_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
-        const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-        d = { name: c.name, position: c.profile_position || '', joiningFmt: jf, today };
-      }
-      pdf = await hrmRenderPrelimOfferPdfBuffer({ name: d.name, position: d.position, joiningFmt: d.joiningFmt, today: d.today });
-      letterLabel = 'Preliminary Offer Letter'; displayName = d.name || c.name; joiningFmt = d.joiningFmt || '';
-      fileName = `PRELIMINARY OFFER LETTER - ${displayName}.pdf`;
-    }
+    const type = ['preliminary', 'offer', 'onboarding'].includes(req.body.type) ? req.body.type : 'preliminary';
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const to = String(req.body.email || c.email || '').trim();
+    if (!to) return res.status(400).json({ error: 'No candidate email on file — add one on the candidate first' });
+    if (!emailRe.test(to)) return res.status(400).json({ error: 'Invalid email address' });
+    // CC: comma/semicolon-separated, each validated.
+    const ccList = String(req.body.cc || '').split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+    const badCc = ccList.find(e => !emailRe.test(e));
+    if (badCc) return res.status(400).json({ error: `Invalid CC address: ${badCc}` });
+    const cc = ccList.length ? ccList.join(', ') : undefined;
 
     const esc = s => String(s||'').replace(/[&<>]/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[ch]));
-    const subject = `${letterLabel} — ${HRM_COMPANY}`;
-    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;line-height:1.6">
-      <p>Dear ${esc(displayName)},</p>
-      <p>Congratulations! Please find your ${esc(letterLabel)} attached as a PDF.${joiningFmt ? ` Your expected joining date is <strong>${esc(joiningFmt)}</strong>.` : ''}</p>
-      <p>Kindly review it and reply to this email with your acceptance.</p>
-      <p>Welcome to the team!</p>
-      <p>— ${esc(HRM_COMPANY)} HR Team</p>
-    </div>`;
+    const position = c.profile_position || '';
+    const displayName = c.name || '';
+    const logoAttach = { filename: 'logo.png', content: _hrmLogoBuffer(), cid: 'emlogo' };
+    const attachments = [logoAttach];
+    let subject, bodyInner, action;
 
-    const ok = await sendMail(to, subject, html, {
-      attachments: [{ filename: fileName, content: pdf, contentType: 'application/pdf' }]
-    });
+    if (type === 'onboarding') {
+      if (!HRM_JOINING_FORM_URL) return res.status(400).json({ error: 'Joining form URL is not configured (HRM_JOINING_FORM_URL)' });
+      let token = c.joining_form_token;
+      if (!token) {
+        token = require('crypto').randomBytes(24).toString('hex');
+        await db.query('UPDATE hrm_candidates SET joining_form_token=? WHERE id=?', [token, c.id]);
+      }
+      const sep = HRM_JOINING_FORM_URL.includes('?') ? '&' : '?';
+      const formUrl = `${HRM_JOINING_FORM_URL}${sep}token=${token}`;
+      subject = `Joining Details Form | ${HRM_COMPANY}`;
+      action = 'Joining Details Form — Email';
+      bodyInner = `<p>Hello ${esc(displayName)},</p>
+        <p>Before we issue your offer letter, please fill this short details form:</p>
+        <p><a href="${esc(formUrl)}" style="color:#1155cc">${esc(formUrl)}</a></p>
+        <p>Details required:</p>
+        <ul>
+          <li>Your name, mobile number &amp; email</li>
+          <li>Two guardians — name, relation &amp; mobile number</li>
+          <li>Date of birth</li>
+          <li>Residential address</li>
+          <li>Resume (optional) — PDF or Word</li>
+          <li>Aadhaar card — one PDF, or front &amp; back photos</li>
+          <li>PAN card (optional) — same</li>
+        </ul>
+        <p>Your offer letter will be issued once we receive these details.</p>`;
+    } else {
+      // Offer / Preliminary letter — render the PDF and attach it.
+      let pdf, fileName;
+      const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+      if (type === 'offer') {
+        let d;
+        if (c.final_offer_data) { d = JSON.parse(c.final_offer_data); }
+        else {
+          const jf = c.joining_date ? new Date(c.joining_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
+          d = { name: c.name, position, joiningFmt: jf, salary: c.salary || '', today, joining_date: c.joining_date, probation_months: '2' };
+        }
+        pdf = await hrmRenderFinalOfferPdfBuffer({ name: d.name, position: d.position, joiningFmt: d.joiningFmt, salary: d.salary, today: d.today, joiningDate: d.joining_date, probationMonths: d.probation_months });
+        fileName = `OFFER LETTER - ${d.name || c.name}.pdf`;
+        subject = `Offer Letter | ${position} | ${HRM_COMPANY}`;
+        action = 'Offer Letter — Email';
+      } else {
+        let d;
+        if (c.prelim_offer_data) { d = JSON.parse(c.prelim_offer_data); }
+        else {
+          const jf = c.joining_date ? new Date(c.joining_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
+          d = { name: c.name, position, joiningFmt: jf, today };
+        }
+        pdf = await hrmRenderPrelimOfferPdfBuffer({ name: d.name, position: d.position, joiningFmt: d.joiningFmt, today: d.today });
+        fileName = `PRELIMINARY OFFER LETTER - ${d.name || c.name}.pdf`;
+        subject = `Preliminary Offer Letter | ${position} | ${HRM_COMPANY}`;
+        action = 'Preliminary Offer Letter — Email';
+      }
+      attachments.push({ filename: fileName, content: pdf, contentType: 'application/pdf' });
+      bodyInner = `<p>Hello ${esc(displayName)},</p>
+        <p>We are delighted to extend this offer of employment for the position of <strong>${esc(position)}</strong> with e-Marketing.</p>
+        <p>Please find a soft copy of the offer letter enclosed in this email.</p>
+        <p>Kindly go through the same and send your acceptance by replying to this email along with the list of documents mentioned in the document.</p>
+        <p>We look forward to having you on board with us.</p>`;
+    }
+
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;line-height:1.6">${bodyInner}${_hrmEmailSignatureHtml()}</div>`;
+    const ok = await sendMail(to, subject, html, { cc, attachments });
 
     await db.query(
       `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
-      [c.id, c.name, to, `${letterLabel} — Email`, 'file', ok ? 'Sent' : 'Failed', ok ? '' : 'Email send failed (check SMTP config)', '{}']
+      [c.id, c.name, to, action, type === 'onboarding' ? 'text' : 'file', ok ? 'Sent' : 'Failed', ok ? '' : 'Email send failed (check SMTP config)', '{}']
     ).catch(() => {});
 
     if (!ok) return res.status(500).json({ error: 'Email send failed — check server SMTP configuration' });
-    res.json({ ok: true, emailedTo: to });
+    res.json({ ok: true, emailedTo: to, cc: cc || '' });
   } catch (err) {
     console.error('email-offer error:', err.message);
     res.status(500).json({ error: err.message });
