@@ -2882,7 +2882,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
     <div class="tab-group" style="margin-bottom:18px;width:fit-content">
       <div class="tab active" onclick="switchHrmTab('dashboard',this)">Dashboard</div>
       <div class="tab" onclick="switchHrmTab('candidates',this)">Candidates</div>
-      <div class="tab" onclick="switchHrmTab('messages',this)">Message Status</div>
+      <div class="tab" onclick="switchHrmTab('messages',this)">Email Log</div>
     </div>
 
     <!-- HRM Dashboard -->
@@ -2960,7 +2960,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
       </div>
       <div class="hrm-card">
         <div class="card-head">
-          <div class="card-head-title">WhatsApp Message Log</div>
+          <div class="card-head-title">Email Log</div>
           <div style="display:flex;gap:8px;align-items:center">
             <button id="hrmMsgBulkDeleteBtn" onclick="deleteSelectedHrmMsgs()" style="display:none;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">🗑 Delete Selected (<span id="hrmMsgBulkCount">0</span>)</button>
             <input id="hrmMsgSearch" type="text" placeholder="Search candidate…" oninput="renderHrmMsgTable()" class="hrm-msg-search">
@@ -3141,11 +3141,11 @@ input:focus,select:focus,textarea:focus{outline:none;}
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label>Candidate WhatsApp *</label>
+          <label>Candidate Phone *</label>
           <input type="tel" id="hrmCPhone" placeholder="9876543210">
         </div>
         <div class="form-group">
-          <label>Interviewer WhatsApp</label>
+          <label>Interviewer Phone</label>
           <input type="tel" id="hrmCInterviewer" placeholder="Interviewer number">
         </div>
       </div>
@@ -3177,12 +3177,9 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <label>Notes</label>
         <textarea id="hrmCNotes" rows="2" placeholder="Any additional information…"></textarea>
       </div>
-      <div class="hrm-wa-note">
-        💬 WhatsApp will be sent to candidate &amp; interviewer automatically.
-      </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal('hrmAddModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="saveHrmCandidate()">📅 Schedule &amp; Send WA</button>
+        <button class="btn btn-primary" onclick="saveHrmCandidate()">📅 Schedule Interview</button>
       </div>
     </div>
   </div>
@@ -3238,11 +3235,11 @@ input:focus,select:focus,textarea:focus{outline:none;}
         </div>
       </div>
       <div id="hrmStatusWaNote" class="hrm-wa-note" style="display:none;margin-top:8px;margin-bottom:0">
-        💬 A WhatsApp message will be sent to the candidate.
+        ℹ️ This only updates the status. Send documents to the candidate with the 📧 Email button.
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal('hrmStatusModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="submitHrmStatus()">💾 Update &amp; Send WA</button>
+        <button class="btn btn-primary" onclick="submitHrmStatus()">💾 Update Status</button>
       </div>
     </div>
   </div>
@@ -3272,7 +3269,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
     </div>
   </div>
 
-  <!-- HRM: Offer Letter Form Modal (fill fields → preview → send PDF on WhatsApp) -->
+  <!-- HRM: Offer Letter Form Modal (fill fields → preview → save; send later via 📧 Email) -->
   <div class="modal-overlay" id="hrmOfferFormModal">
     <div class="modal" style="width:880px;max-width:96vw">
       <button class="modal-close" onclick="closeModal('hrmOfferFormModal')">×</button>
@@ -3300,7 +3297,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
             <input type="text" id="offerFSalary" oninput="updateOfferPreview()" placeholder="e.g. 6 LPA">
           </div>
           <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;font-size:12px;color:#1e40af;margin-top:4px;line-height:1.5">
-            📄 Offer letter will be saved to Drive &amp; sent as PDF on WhatsApp
+            📄 Offer letter will be saved to Drive. Send it to the candidate with the 📧 Email button.
           </div>
         </div>
         <div style="flex:1;min-width:0">
@@ -3310,7 +3307,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
       </div>
       <div class="modal-footer" style="margin-top:16px">
         <button class="btn btn-outline" onclick="closeModal('hrmOfferFormModal')">Cancel</button>
-        <button class="btn btn-primary" id="offerFormSubmitBtn" onclick="submitOfferForm()">📄 Generate &amp; Send on WhatsApp</button>
+        <button class="btn btn-primary" id="offerFormSubmitBtn" onclick="submitOfferForm()">📄 Generate &amp; Save Offer</button>
       </div>
     </div>
   </div>
@@ -3345,7 +3342,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
     </div>
   </div>
 
-  <!-- HRM: Final Offer Letter — live preview + edit before sending on WhatsApp -->
+  <!-- HRM: Final Offer Letter — live preview + edit before saving; send later via 📧 Email -->
   <div class="modal-overlay" id="hrmFinalOfferFormModal">
     <div class="modal" style="width:95vw;max-width:1150px;padding:0;overflow:hidden">
       <button class="modal-close" onclick="closeModal('hrmFinalOfferFormModal')">×</button>
@@ -3382,7 +3379,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
             <input type="number" id="finalOfferFProbation" min="0" max="24" step="1" value="2" oninput="scheduleFinalOfferPreview()">
           </div>
           <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:9px 11px;font-size:11.5px;color:#1e40af;line-height:1.5;margin-top:4px">
-            Preview live updates as you type. The candidate gets this exact PDF — letterhead on every page — on WhatsApp.
+            Preview live updates as you type. Save the offer, then send this exact PDF to the candidate with the 📧 Email button.
           </div>
         </div>
         <!-- Right: live preview -->
@@ -3397,7 +3394,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div class="modal-footer" style="margin:0;padding:12px 20px;border-top:1px solid #e2e8f0;gap:8px">
         <button class="btn btn-outline" onclick="closeModal('hrmFinalOfferFormModal')">Cancel</button>
         <button class="btn btn-outline" onclick="openFinalOfferExactPdf()">🖨️ Preview exact PDF</button>
-        <button class="btn btn-primary" id="finalOfferSendBtn" onclick="submitFinalOfferForm()">📬 Send on WhatsApp</button>
+        <button class="btn btn-primary" id="finalOfferSendBtn" onclick="submitFinalOfferForm()">📬 Save Offer Letter</button>
       </div>
     </div>
   </div>
@@ -6123,8 +6120,7 @@ function renderHrmRows(list) {
     const showJoining = c.joining_form_required && ['Selected','Offer Sent','Offer Letter Sent'].includes(c.status);
     const joiningCell = !showJoining ? '' : (c.joining_details_at
       ? `<button class="action-btn" style="background:#ecfeff;color:#0e7490;border:1px solid #a5f3fc;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="viewJoiningDetails(${c.id})">📋 View Details</button>`
-      : `<span style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;font-size:11px;padding:4px 9px;border-radius:6px;white-space:nowrap">📋 Details Pending</span>`
-        + (canUpdate ? `<button class="action-btn" style="background:#fff;color:#c2410c;border:1px solid #fed7aa;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="resendJoiningForm(${c.id})">Resend Form</button>` : ''));
+      : `<span style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;font-size:11px;padding:4px 9px;border-radius:6px;white-space:nowrap">📋 Details Pending</span>`);
     return `<tr>
       <td>
         <div style="display:flex;align-items:center;gap:10px">
@@ -6283,7 +6279,7 @@ async function saveHrmCandidate() {
   });
   if (r.error) { showErrIn('hrmAddErr',r.error); return; }
   closeModal('hrmAddModal');
-  showToast('Interview scheduled! WhatsApp queued.');
+  showToast('Interview scheduled.');
   loadHRM();
 }
 
@@ -6346,9 +6342,7 @@ async function submitHrmStatus() {
   const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/status`,'PUT',body);
   if (r.error) { showToast(r.error,'error'); return; }
   closeModal('hrmStatusModal');
-  if (r.joiningFormError)     showToast('Status updated, but the joining details form could not be sent: ' + r.joiningFormError, 'error');
-  else if (r.joiningFormSent) showToast('Status updated! Joining details form sent on WhatsApp.');
-  else                        showToast('Status updated! WhatsApp queued.');
+  showToast('Status updated.');
   loadHRM();
 }
 
@@ -6402,15 +6396,6 @@ async function viewJoiningDetails(id) {
   document.getElementById('hrmJoiningDetailsModal').classList.add('open');
 }
 
-async function resendJoiningForm(id) {
-  const c = _hrmCandidates.find(x => String(x.id) === String(id));
-  if (!confirm(`Resend the joining details form link to ${c ? c.name : 'this candidate'} on WhatsApp?`)) return;
-  const r = await api(`/api/hrm/candidates/${id}/send-joining-form`, 'POST', {});
-  if (!r || r.error) { showToast((r && r.error) || 'Send failed', 'error'); return; }
-  showToast('Form link sent on WhatsApp');
-  loadHRM();
-}
-
 function viewOfferLetter(id) {
   const c = _hrmCandidates.find(x => String(x.id) === String(id));
   if (!c) return;
@@ -6453,7 +6438,7 @@ async function generateOfferDoc(id) {
   if (btn) { btn.textContent = 'Generating…'; btn.disabled = true; }
   const r = await api(`/api/hrm/candidates/${id}/generate-offer`, 'POST', {});
   if (r.error) { showToast(r.error, 'error'); if (btn) { btn.textContent = 'Generate'; btn.disabled = false; } return; }
-  showToast(r.waSent ? 'Saved to Drive + WhatsApp PDF sent!' : 'Saved to Drive (WhatsApp failed — check the Messages tab)');
+  showToast('Offer letter saved to Drive. Use the 📧 Email button to send it.');
   await loadHRM();
   viewOfferLetter(id); // reopen with updated data
 }
@@ -6607,20 +6592,20 @@ function submitOfferForm() {
   if (!joining_date) { showToast('Joining date required', 'error'); return; }
   const candidateId = _hrmCurrentId;
 
-  // PDF generation can take a few minutes (Google Apps Script + WhatsApp
-  // send) — don't block the modal on it. Close now, show the result
-  // whenever the request actually finishes in the background.
+  // PDF generation can take a few seconds — don't block the modal on it. Close
+  // now and show the result when the request finishes in the background. The
+  // offer is only prepared here; HR sends it with the 📧 Email button.
   closeModal('hrmOfferFormModal');
-  showToast('Generating offer letter in background — you\'ll get a notification when it\'s sent.');
+  showToast('Saving offer letter…');
 
   api(`/api/hrm/candidates/${candidateId}/status`, 'PUT', {
     status: 'Offer Sent', joining_date, salary, offer_name, offer_position, department
   }).then(r => {
     if (r.error) { showToast(r.error, 'error'); return; }
     if (r.pdfGenerated === false) {
-      showToast('⚠️ WhatsApp sent, but PDF generation failed: ' + (r.pdfError || 'unknown error') + ' — open "View Offer" and click Generate to retry.', 'error');
+      showToast('⚠️ Offer letter PDF generation failed: ' + (r.pdfError || 'unknown error'), 'error');
     } else {
-      showToast('Offer letter PDF generated — sent on WhatsApp!');
+      showToast('Offer letter saved. Use the 📧 Email button to send it.');
     }
     loadHRM();
   });
@@ -6709,19 +6694,17 @@ function submitFinalOfferForm() {
   if (!joining_date) { showToast('Joining date required', 'error'); return; }
   const candidateId = _hrmCurrentId;
   const btn = document.getElementById('finalOfferSendBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
 
   const probation_months = document.getElementById('finalOfferFProbation')?.value || '2';
   const letter_date = document.getElementById('finalOfferFDate')?.value || '';
   api(`/api/hrm/candidates/${candidateId}/send-final-offer`, 'POST', {
     joining_date, salary, offer_name, offer_position, department, probation_months, letter_date
   }).then(r => {
-    if (btn) { btn.disabled = false; btn.textContent = '📬 Send on WhatsApp'; }
-    if (!r || r.error) { showToast((r && r.error) || 'Send failed', 'error'); return; }
+    if (btn) { btn.disabled = false; btn.textContent = '📬 Save Offer Letter'; }
+    if (!r || r.error) { showToast((r && r.error) || 'Save failed', 'error'); return; }
     closeModal('hrmFinalOfferFormModal');
-    showToast(r.waSent
-      ? 'Offer letter sent on WhatsApp!'
-      : 'Offer letter saved — WhatsApp not sent (no phone or send failed).');
+    showToast('Offer letter saved. Use the 📧 Email button to send it.');
     loadHRM();
   });
 }

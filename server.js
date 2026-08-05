@@ -11711,30 +11711,9 @@ app.post('/api/hrm/joining-form', async (req, res) => {
        JSON.stringify(body).slice(0, 60000)]
     );
 
-    // Tell HR the block has lifted — otherwise nobody knows to send the offer.
-    const [[creator]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [c.created_by || 0]).catch(() => [[]]);
-    if (creator?.phone) {
-      sendWhatsApp(creator.phone,
-`📋 *Joining Details Received*
-
-👤 Candidate: ${c.name}
-🏢 Department: ${c.department || '—'}
-💼 Position: ${c.profile_position || '—'}
-
-Details are now in the HR portal — the offer letter can be sent.
-
-— E-Marketing HR Portal`
-      ).catch(e => console.error('HRM joining details notify err:', e.message));
-    }
-
-    hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`Thank you ${c.name}! ✅
-
-We have received your details. Our HR team will share your offer letter shortly.
-
-— ${HRM_COMPANY} HR Team`
-    }, 'text', c.id, c.name, 'Joining Details Received').catch(e => console.error('HRM joining details ack err:', e.message));
-
+    // WhatsApp notifications removed from the HR portal — neither the HR
+    // creator nor the candidate is messaged on submission. The details land in
+    // the portal and HR sees them there.
     res.json({ ok: true, candidate: c.name });
   } catch (err) {
     console.error('joining-form webhook error:', err.message);
@@ -11790,16 +11769,12 @@ app.get('/api/hrm/candidates/:id/joining-details', requireAuth, async (req, res)
 
 // Resend the joining-details form link (HR-triggered — e.g. the candidate lost
 // the message, or the department was corrected after selection).
+// The joining-details form used to go out over WhatsApp; that has been removed
+// from the HR portal. It is now emailed instead — use the "📧 Email" button and
+// pick "Onboarding Form". This endpoint is kept only to answer clearly.
 app.post('/api/hrm/candidates/:id/send-joining-form', requireAuth, async (req, res) => {
   if (!(await userCanDo(req.session, 'hrm_update_status'))) return res.status(403).json({ error: 'Forbidden' });
-  try {
-    const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
-    if (!c) return res.status(404).json({ error: 'Not found' });
-    if (await hrmHasJoiningDetails(c.id)) return res.status(400).json({ error: 'Details already submitted by this candidate' });
-    const r = await hrmSendJoiningForm(c);
-    if (!r.sent) return res.status(500).json({ error: r.error || 'WhatsApp send failed — check the Messages tab' });
-    res.json({ ok: true, formUrl: r.formUrl });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  return res.status(400).json({ error: 'WhatsApp has been removed — email the joining form instead (📧 Email → Onboarding Form).' });
 });
 
 // Add candidate + schedule interview
@@ -11814,18 +11789,8 @@ app.post('/api/hrm/candidates', requireAuth, async (req, res) => {
        VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       [name, phone, email||'', profile_position||'', department||'', interview_date||null, interview_time||'', notes||'', meeting_link||'', interviewer_phone||'', req.session.userId]);
     const cid = r.insertId;
-
-    const meetLine = meeting_link ? `\n🔗 Meeting Link: ${meeting_link}` : '';
-    hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(phone), text:
-`Hello ${name}! 👋\n\nYour interview has been scheduled.\n\n🏢 Company: ${HRM_COMPANY}\n💼 Position: ${profile_position||''}\n📅 Date: ${interview_date||''}\n⏰ Time: ${interview_time||''}${meetLine}\n\nPlease be available on time.\n\n— ${HRM_COMPANY} HR Team`
-    }, 'text', cid, name, 'Interview Scheduled - Candidate').catch(e => console.error('HRM WA candidate err:', e.message));
-
-    if (interviewer_phone) {
-      hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(interviewer_phone), text:
-`📋 *New Interview Scheduled*\n\n👤 Candidate: ${name}\n📱 Phone: ${phone}\n💼 Position: ${profile_position||''}\n📅 Date: ${interview_date||''}\n⏰ Time: ${interview_time||''}${meetLine}\n\n— ${HRM_COMPANY} HR Portal`
-      }, 'text', cid, name, 'Interview Scheduled - Interviewer').catch(e => console.error('HRM WA interviewer err:', e.message));
-    }
-
+    // WhatsApp notifications removed from the HR portal — the candidate's phone
+    // is kept for records only; no message is sent on scheduling.
     res.json({ ok: true, id: cid });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -11859,72 +11824,31 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
     const fields = Object.keys(updates).map(k => `${k}=?`).join(',');
     await db.query(`UPDATE hrm_candidates SET ${fields} WHERE id=?`, [...Object.values(updates), req.params.id]);
 
-    const meetLine = c.meeting_link ? `\n🔗 Meeting Link: ${c.meeting_link}` : '';
+    // WhatsApp notifications removed from the HR portal. Status changes
+    // (Rescheduled / Selected / Rejected) no longer message the candidate or
+    // interviewer — HR communicates over email now (the "📧 Email" button). The
+    // joining-details form is likewise emailed on demand (Email → Onboarding
+    // Form) rather than auto-sent on Selection.
     let joiningFormSent = false, joiningFormError = null;
-
-    if (status === 'Rescheduled') {
-      hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`Hello ${c.name}! 🔄\n\nYour interview has been rescheduled.\n\n💼 Position: ${c.profile_position}\n📅 New Date: ${reschedule_date||''}\n⏰ New Time: ${reschedule_time||''}${meetLine}${reschedule_reason ? '\n\n📝 Reason: '+reschedule_reason : ''}\n\nSorry for the inconvenience.\n\n— ${HRM_COMPANY} HR Team`
-      }, 'text', c.id, c.name, 'Rescheduled - Candidate').catch(e => console.error('HRM WA resched candidate err:', e.message));
-      if (c.interviewer_phone) {
-        hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.interviewer_phone), text:
-`🔄 *Interview Rescheduled*\n\n👤 Candidate: ${c.name}\n💼 Position: ${c.profile_position}\n📅 New Date: ${reschedule_date||''}\n⏰ New Time: ${reschedule_time||''}${meetLine}\n\n— ${HRM_COMPANY} HR Portal`
-        }, 'text', c.id, c.name, 'Rescheduled - Interviewer').catch(e => console.error('HRM WA resched interviewer err:', e.message));
-      }
-    }
-    if (status === 'Selected') {
-      hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`Congratulations ${c.name}! 🎉\n\nYou have been selected for ${c.profile_position}.\n\nWelcome to ${HRM_COMPANY}. Our HR team will share offer details soon.\n\nPlease keep documents ready:\n- Educational certificates\n- Experience letters\n- ID proof\n- 2 passport-size photos\n\n— ${HRM_COMPANY} HR Team`
-      }, 'text', c.id, c.name, 'Selected').catch(e => console.error('HRM WA selected err:', e.message));
-
-      // Selection also triggers the joining-details form.
-      // Awaited (unlike the message above) so Vercel can't freeze the send after
-      // the response — this link is what unblocks the offer letter later.
-      if (hrmNeedsJoiningForm(c.department) && !(await hrmHasJoiningDetails(c.id))) {
-        const fr = await hrmSendJoiningForm(c).catch(e => {
-          console.error('HRM joining form send err:', e.message);
-          return { sent: false, error: e.message };
-        });
-        joiningFormSent = fr.sent;
-        joiningFormError = fr.error || null;
-      }
-    }
-    if (status === 'Rejected') {
-      hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`Hello ${c.name},\n\nThank you for applying for ${c.profile_position}.\n\nAfter careful review, we are unable to move forward at this time. We may consider you for future openings.\n\nBest wishes.\n\n— ${HRM_COMPANY} HR Team`
-      }, 'text', c.id, c.name, 'Rejected').catch(e => console.error('HRM WA rejected err:', e.message));
-    }
     let pdfGenerated = true, pdfError = null;
     if (status === 'Offer Sent') {
       const { offer_name, offer_position } = req.body;
       const displayName = offer_name || c.name;
       const displayPos  = offer_position || c.profile_position;
-      const displayDept = department || displayPos;
       const joiningFmt  = joining_date ? new Date(joining_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
-
-      // Generate + send via pdfkit (offer-letter-pdf.js), NOT the old Apps
-      // Script Google-Doc pipeline — that rendered fonts inconsistently (some
-      // letters came out Arial, some Times). Persist a token + snapshot and
-      // WhatsApp the public /offer-pdf-prelim/:token URL the provider fetches;
-      // same engine and pattern as the final letter, so both are identical Times.
       const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-      const caption = `Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${displayPos}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
-      // Same public-host logic as send-final-offer: the WhatsApp provider must
-      // fetch the URL anonymously, so avoid auth-gated *.vercel.app preview hosts.
-      const reqHost = req.headers['x-forwarded-host'] || req.get('host') || '';
-      const isVercelPreview = /\.vercel\.app$/i.test(reqHost);
-      const base = ((isVercelPreview || !reqHost)
-        ? (process.env.APP_URL || `https://${reqHost}`)
-        : `${req.headers['x-forwarded-proto'] || req.protocol}://${reqHost}`).replace(/\/$/, '');
+
+      // Prepare the preliminary offer PDF — persist a snapshot and best-effort
+      // save it to Drive — so the HR "📧 Email" button and "View Offer" have it
+      // ready. WhatsApp sending has been removed from the HR portal, so setting
+      // this status no longer messages the candidate; the offer goes out only
+      // when HR emails it. (The old WhatsApp onboarding-owner reminder is gone
+      // too — it was a WhatsApp message.)
       try {
         const prelimToken = require('crypto').randomBytes(24).toString('hex');
         const snapshot = { name: displayName, position: displayPos, joiningFmt, today };
         await db.query('UPDATE hrm_candidates SET prelim_offer_token=?, prelim_offer_data=? WHERE id=?', [prelimToken, JSON.stringify(snapshot), c.id]);
-        const pdfUrl = `${base}/offer-pdf-prelim/${prelimToken}`;
 
-        // Best-effort Drive save (for the HR "View Offer" button) — awaited so
-        // Vercel can't freeze it after the response; a Drive failure must not
-        // fail the send.
         try {
           const pdf = await hrmRenderPrelimOfferPdfBuffer({ name: displayName, position: displayPos, joiningFmt, today });
           const drive = await getDriveClient();
@@ -11936,89 +11860,17 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
           });
           await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [created.data.id, c.id]);
         } catch (e) { console.error('preliminary offer Drive save failed:', e.message); }
-
-        const fr = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
-          to: hrmFormatPhone(c.phone),
-          mediaUrl: pdfUrl,
-          mediaType: 'document',
-          fileName: `PRELIMINARY OFFER LETTER - ${displayName}.pdf`,
-          caption
-        }, 'file', c.id, c.name, 'Offer Sent');
-        if (!fr.sent && !fr.timedOut) {
-          // Definite failure only — the file API rejected the call. A timeout is
-          // left alone (the PDF likely went) so the candidate isn't double-sent.
-          await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`${caption}\n\n📄 *Offer Letter PDF:*\n${pdfUrl}`
-          }, 'text', c.id, c.name, 'Offer Sent - Link Fallback');
-        }
       } catch (e) {
         pdfGenerated = false;
         pdfError = e.message;
         console.error('HRM preliminary offer generation failed:', e.message);
-        await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of ${displayPos}.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
-        }, 'text', c.id, c.name, 'Offer Sent').catch(() => {});
-        await db.query(
-          `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
-          [c.id, c.name, hrmFormatPhone(c.phone), 'Offer Letter PDF', 'file', 'Failed', `PDF error: ${e.message}`, '{}']
-        ).catch(() => {});
-      }
-
-      // Notify the onboarding owner so they can create the official email ID
-      // before the joining date. WhatsApp only — this used to also auto-create
-      // a delegation task for them and send a second "New Task Delegated"
-      // message about it. Both are gone at the user's request: the message
-      // below already carries the instruction and the joining date, so the task
-      // was a duplicate of a reminder they had already received.
-      const [onboarder] = await usersForSetting('onboarding_owner_ids');
-      if (onboarder?.phone) {
-        hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(onboarder.phone), text:
-`🆕 *New Employee Onboarding*\n\n👤 Name: ${displayName}\n🏢 Department: ${displayDept}\n💼 Position: ${displayPos}\n📅 Joining Date: ${joiningFmt}\n\n⚠️ Please create the official email ID before the joining date.\n\n— HR Portal`
-        }, 'text', c.id, c.name, 'Offer Sent - Onboarding Notify').catch(e => console.error('HRM WA onboarding notify err:', e.message));
       }
     }
 
-    // Final "Offer Letter Sent" stage — reuses whatever position/department/
-    // joining-date/salary is already stored on the candidate from the
-    // preliminary stage; no new form fields, same as Selected/Rejected.
-    if (status === 'Offer Letter Sent') {
-      const { offer_name, offer_position } = req.body;
-      const displayName = offer_name || c.name;
-      const displayPos  = offer_position || c.profile_position;
-      const finalJoiningDate = joining_date || c.joining_date;
-      const finalSalary = salary || c.salary;
-      const finalJoiningFmt = finalJoiningDate ? new Date(finalJoiningDate).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
-
-      try {
-        const { fileId, pdfUrl } = await hrmGenerateFinalOfferDoc(c, finalJoiningDate, finalSalary, offer_name, offer_position);
-        await db.query('UPDATE hrm_candidates SET final_offer_drive_id=? WHERE id=?', [fileId, c.id]);
-        const caption = `Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! Please find attached your official Offer Letter for the position of *${displayPos}*.\n\n📅 Joining Date: ${finalJoiningFmt}\n💰 CTC: ${finalSalary||'To be discussed'}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
-        const fr = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
-          to: hrmFormatPhone(c.phone),
-          mediaUrl: pdfUrl,
-          mediaType: 'document',
-          fileName: `OFFER LETTER - ${displayName}.pdf`,
-          caption
-        }, 'file', c.id, c.name, 'Offer Letter Sent');
-        if (!fr.sent && !fr.timedOut) {
-          const driveLink = `https://drive.google.com/file/d/${fileId}/view`;
-          await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`${caption}\n\n📄 *Offer Letter PDF:*\n${driveLink}`
-          }, 'text', c.id, c.name, 'Offer Letter Sent - Link Fallback');
-        }
-      } catch (e) {
-        pdfGenerated = false;
-        pdfError = e.message;
-        console.error('HRM final offer doc generation failed:', e.message);
-        await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`Hello ${displayName}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been issued your official Offer Letter for the position of ${displayPos}.\n\n📅 Joining Date: ${finalJoiningFmt}\n💰 CTC: ${finalSalary||'To be discussed'}\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`
-        }, 'text', c.id, c.name, 'Offer Letter Sent').catch(() => {});
-        await db.query(
-          `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
-          [c.id, c.name, hrmFormatPhone(c.phone), 'Offer Letter PDF (Final)', 'file', 'Failed', `Drive error: ${e.message}`, '{}']
-        ).catch(() => {});
-      }
-    }
+    // Final "Offer Letter Sent" stage — WhatsApp sending removed. Setting this
+    // status only marks the candidate; the final offer letter is generated and
+    // sent from the dedicated final-offer flow (send-final-offer endpoint /
+    // "📧 Email" button), not from here.
 
     res.json({ ok: true, pdfGenerated, pdfError, joiningFormSent, joiningFormError });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -12062,21 +11914,10 @@ app.post('/api/hrm/candidates/:id/generate-offer', requireAuth, async (req, res)
       await db.query('UPDATE hrm_candidates SET offer_drive_id=? WHERE id=?', [created.data.id, c.id]);
     } catch (e) { console.error('preliminary offer Drive save failed:', e.message); }
 
-    const caption = `Hello ${name}! 🎉\n\n*OFFER LETTER - ${HRM_COMPANY}*\n\nCongratulations! You have been offered the position of *${position}*.\n\n📅 Joining Date: ${joiningFmt}\n💰 CTC: ${c.salary||'To be discussed'}\n\nPlease confirm acceptance within 3 working days.\n\nWelcome to the team!\n\n— ${HRM_COMPANY} HR Team`;
-    const fr = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
-      to: hrmFormatPhone(c.phone),
-      mediaUrl: pdfUrl,
-      mediaType: 'document',
-      fileName: `PRELIMINARY OFFER LETTER - ${name}.pdf`,
-      caption
-    }, 'file', c.id, c.name, 'Offer Letter PDF');
-    let waSent = fr.sent || fr.timedOut;   // a timeout still counts as delivered for reporting
-    if (!fr.sent && !fr.timedOut) {
-      waSent = (await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
-`${caption}\n\n📄 *Offer Letter PDF:*\n${pdfUrl}`
-      }, 'text', c.id, c.name, 'Offer Letter PDF - Link Fallback')).sent;
-    }
-    res.json({ ok: true, pdfUrl, waSent });
+    // WhatsApp sending removed — this endpoint now just (re)generates the
+    // preliminary PDF, stores the snapshot and saves it to Drive. HR sends it
+    // via the "📧 Email" button.
+    res.json({ ok: true, pdfUrl });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -12331,21 +12172,9 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
       }
     })();
 
-    let waSent = false;
-    if (c.phone) {
-      const fr = await hrmSendWhatsApp(HRM_FILE_ENDPOINT, {
-        to: hrmFormatPhone(c.phone),
-        mediaUrl: pdfUrl,
-        mediaType: 'document',
-        fileName: `OFFER LETTER - ${name}.pdf`,
-        caption
-      }, 'file', c.id, c.name, 'Offer Letter Sent');
-      waSent = fr.sent || fr.timedOut;   // timeout ≠ failure; don't double-send a link
-      if (!fr.sent && !fr.timedOut) {
-        await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text: `${caption}\n\n📄 *Offer Letter PDF:*\n${pdfUrl}` }, 'text', c.id, c.name, 'Offer Letter Sent - Link Fallback');
-      }
-    }
-
+    // WhatsApp sending removed from the HR portal — the final offer letter is
+    // prepared (snapshot + Drive save) and then sent by HR via the "📧 Email"
+    // button. Setting the status no longer messages the candidate.
     let driveSaved = false, driveError = null;
     try {
       ({ driveSaved, driveError } = await drivePromise);
@@ -12354,7 +12183,7 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
       console.error('final offer Drive save failed:', e.message);
     }
 
-    res.json({ ok: true, pdfUrl, waSent, driveSaved, driveError });
+    res.json({ ok: true, pdfUrl, waSent: false, driveSaved, driveError });
   } catch (err) {
     console.error('send-final-offer error:', err.message);
     res.status(500).json({ error: err.message });
