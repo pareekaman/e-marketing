@@ -10898,9 +10898,12 @@ const HRM_TEXT_ENDPOINT   = 'https://api.aumpfy.com/api/apis/trigger/emk-dbde65'
 const HRM_FILE_ENDPOINT   = 'https://api.aumpfy.com/api/apis/trigger/hrm-file-6b7116';
 const HRM_COMPANY         = process.env.HRM_COMPANY || 'E-Marketing';
 const HRM_OFFER_FOLDER_ID   = process.env.HRM_OFFER_FOLDER_ID   || '1DWfwjSdkVP_sDEe62mM50Mc1mV52f6rA';
-// Final (probationary) offer letters save here — a SEPARATE Drive folder from
-// the preliminary ones (user-provided 2026-08-05). Env override wins.
-const HRM_FINAL_OFFER_FOLDER_ID = process.env.HRM_FINAL_OFFER_FOLDER_ID || '1QKk_OR9CizOYzn3slKjiIDG1-TTAysK4';
+// Final (probationary) offer letters save here — the "final offer letter"
+// SHARED DRIVE (id 0A…, user-provided 2026-08-05). A Shared Drive (not a
+// My-Drive folder) is required: the service account has no personal storage
+// quota, so it can only create files in a Shared Drive it's a member of.
+// supportsAllDrives:true on the create call makes the Shared-Drive write work.
+const HRM_FINAL_OFFER_FOLDER_ID = process.env.HRM_FINAL_OFFER_FOLDER_ID || '0AKfDOGk9SLadUk9PVA';
 const HRM_OFFER_TEMPLATE_ID = process.env.HRM_OFFER_TEMPLATE_ID || '11f3STYRR4Lyk2HaoBfo7Kiiw5DsEoyr0P3lZnpZR_G4';
 const HRM_OFFER_SCRIPT      = process.env.HRM_OFFER_SCRIPT      || 'https://script.google.com/macros/s/AKfycbyDG7Wqih7LW3p7ttqONoqzwy5t5Gq7B3RgTxEJcD3QL6qzALTMaC3cUvnxW2CGT3VQ/exec';
 
