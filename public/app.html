@@ -6310,11 +6310,13 @@ function onHrmStatusChange() {
     }
   }
   if (s === 'Offer Sent') {
+    _offerEmailCtx = null;   // save-only when reached via the status dropdown
     closeModal('hrmStatusModal');
     openOfferFormModal(_hrmCurrentId);
     return;
   }
   if (s === 'Offer Letter Sent') {
+    _offerEmailCtx = null;
     closeModal('hrmStatusModal');
     openFinalOfferFormModal(_hrmCurrentId);
     return;
@@ -6460,11 +6462,28 @@ function openEmailModal(id) {
   document.getElementById('hrmEmailModal').classList.add('open');
 }
 
+// Set to { to, cc } while an offer form modal is being used to EMAIL the offer
+// (opened from the Email modal). null means the modal is in save-only mode
+// (opened from the status dropdown). See submitOfferForm / submitFinalOfferForm.
+let _offerEmailCtx = null;
+
 async function submitEmailModal() {
   const type  = document.getElementById('hrmEmailType').value;
   const email = document.getElementById('hrmEmailTo').value.trim();
   const cc    = document.getElementById('hrmEmailCc').value.trim();
   if (!email) { showErrIn('hrmEmailErr', 'Recipient email is required'); return; }
+
+  // Offer letters go through the offer form (salary / probation / live preview)
+  // before sending — open that modal in "email mode" and send from there.
+  if (type === 'preliminary' || type === 'offer') {
+    _offerEmailCtx = { to: email, cc };
+    closeModal('hrmEmailModal');
+    if (type === 'preliminary') openOfferFormModal(_hrmCurrentId);
+    else openFinalOfferFormModal(_hrmCurrentId);
+    return;
+  }
+
+  // Onboarding form — just a link, send directly.
   const btn = document.getElementById('hrmEmailSendBtn');
   btn.disabled = true; btn.textContent = 'Sending…';
   const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/email-offer`, 'POST', { type, email, cc });
@@ -6554,6 +6573,8 @@ async function openOfferFormModal(id) {
   document.getElementById('offerFJoining').value  = c.joining_date ? String(c.joining_date).slice(0,10) : '';
   document.getElementById('offerFSalary').value   = c.salary || '';
   await loadHrmDepartmentOptions('offerFDepartment', c.department || '');
+  const sb = document.getElementById('offerFormSubmitBtn');
+  if (sb) sb.innerHTML = _offerEmailCtx ? '📧 Send by Email' : '📄 Generate &amp; Save Offer';
   document.getElementById('hrmOfferFormModal').classList.add('open');
   updateOfferPreview();
 }
@@ -6591,19 +6612,25 @@ function submitOfferForm() {
   if (!offer_name)   { showToast('Candidate name required', 'error'); return; }
   if (!joining_date) { showToast('Joining date required', 'error'); return; }
   const candidateId = _hrmCurrentId;
+  const ctx = _offerEmailCtx; _offerEmailCtx = null;   // capture + reset the email context
 
-  // PDF generation can take a few seconds — don't block the modal on it. Close
-  // now and show the result when the request finishes in the background. The
-  // offer is only prepared here; HR sends it with the 📧 Email button.
   closeModal('hrmOfferFormModal');
-  showToast('Saving offer letter…');
+  showToast(ctx ? 'Preparing & emailing offer…' : 'Saving offer letter…');
 
   api(`/api/hrm/candidates/${candidateId}/status`, 'PUT', {
     status: 'Offer Sent', joining_date, salary, offer_name, offer_position, department
-  }).then(r => {
+  }).then(async r => {
     if (r.error) { showToast(r.error, 'error'); return; }
     if (r.pdfGenerated === false) {
       showToast('⚠️ Offer letter PDF generation failed: ' + (r.pdfError || 'unknown error'), 'error');
+      loadHRM();
+      return;
+    }
+    if (ctx) {
+      // Save done — now email the preliminary letter (renders the snapshot just saved).
+      const er = await api(`/api/hrm/candidates/${candidateId}/email-offer`, 'POST', { type: 'preliminary', email: ctx.to, cc: ctx.cc });
+      if (!er || er.error) { showToast((er && er.error) || 'Email failed', 'error'); loadHRM(); return; }
+      showToast(`Offer emailed to ${er.emailedTo}${er.cc ? ' (cc: ' + er.cc + ')' : ''}`);
     } else {
       showToast('Offer letter saved. Use the 📧 Email button to send it.');
     }
@@ -6628,6 +6655,8 @@ async function openFinalOfferFormModal(id) {
     dateEl.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   }
   await loadHrmDepartmentOptions('finalOfferFDepartment', c.department || '');
+  const sb = document.getElementById('finalOfferSendBtn');
+  if (sb) sb.textContent = _offerEmailCtx ? '📧 Send by Email' : '📬 Save Offer Letter';
   document.getElementById('hrmFinalOfferFormModal').classList.add('open');
   renderFinalOfferPreview();
 }
@@ -6693,18 +6722,26 @@ function submitFinalOfferForm() {
   if (!offer_name)   { showToast('Candidate name required', 'error'); return; }
   if (!joining_date) { showToast('Joining date required', 'error'); return; }
   const candidateId = _hrmCurrentId;
+  const ctx = _offerEmailCtx; _offerEmailCtx = null;   // capture + reset the email context
   const btn = document.getElementById('finalOfferSendBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  if (btn) { btn.disabled = true; btn.textContent = ctx ? 'Sending…' : 'Saving…'; }
 
   const probation_months = document.getElementById('finalOfferFProbation')?.value || '2';
   const letter_date = document.getElementById('finalOfferFDate')?.value || '';
   api(`/api/hrm/candidates/${candidateId}/send-final-offer`, 'POST', {
     joining_date, salary, offer_name, offer_position, department, probation_months, letter_date
-  }).then(r => {
-    if (btn) { btn.disabled = false; btn.textContent = '📬 Save Offer Letter'; }
+  }).then(async r => {
+    if (btn) { btn.disabled = false; btn.textContent = ctx ? '📧 Send by Email' : '📬 Save Offer Letter'; }
     if (!r || r.error) { showToast((r && r.error) || 'Save failed', 'error'); return; }
     closeModal('hrmFinalOfferFormModal');
-    showToast('Offer letter saved. Use the 📧 Email button to send it.');
+    if (ctx) {
+      // Save done — now email the final offer letter (renders the snapshot just saved).
+      const er = await api(`/api/hrm/candidates/${candidateId}/email-offer`, 'POST', { type: 'offer', email: ctx.to, cc: ctx.cc });
+      if (!er || er.error) { showToast((er && er.error) || 'Email failed', 'error'); loadHRM(); return; }
+      showToast(`Offer letter emailed to ${er.emailedTo}${er.cc ? ' (cc: ' + er.cc + ')' : ''}`);
+    } else {
+      showToast('Offer letter saved. Use the 📧 Email button to send it.');
+    }
     loadHRM();
   });
 }
