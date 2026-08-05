@@ -6741,6 +6741,10 @@ function submitFinalOfferForm() {
     if (btn) { btn.disabled = false; btn.textContent = ctx ? '📧 Send by Email' : '📬 Save Offer Letter'; }
     if (!r || r.error) { showToast((r && r.error) || 'Save failed', 'error'); return; }
     closeModal('hrmFinalOfferFormModal');
+    // Surface a Drive-save failure so it isn't silent (the send/email still works).
+    if (r.driveSaved === false && r.driveError) {
+      showToast('⚠️ Not saved to Drive: ' + r.driveError, 'error');
+    }
     if (ctx) {
       // Save done — now email the final offer letter (renders the snapshot just saved).
       const er = await api(`/api/hrm/candidates/${candidateId}/email-offer`, 'POST', { type: 'offer', email: ctx.to, cc: ctx.cc });
