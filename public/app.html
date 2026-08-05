@@ -3406,8 +3406,8 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <h3>＋ Assign Task to Your Handler</h3>
       <div class="alert error" id="cpDelErr" style="display:none"></div>
       <div class="form-group">
-        <label>Handler (auto-assigned)</label>
-        <input type="text" id="cpDelHandler" readonly style="background:#f8fafc;color:#475569;font-weight:600"/>
+        <label>Handler *</label>
+        <select id="cpDelHandler" style="font-weight:600"></select>
       </div>
       <div class="form-group">
         <label>Description *</label>
@@ -15904,19 +15904,33 @@ function cpRenderUpcomingHtml(upcoming) {
   </div>`;
 }
 
-function cpOpenDelegate() {
+async function cpOpenDelegate() {
   if (!_cpMe?.handler_id) {
     showToast('No handler assigned — contact admin', 'error');
     return;
   }
   document.getElementById('cpDelErr').style.display = 'none';
-  document.getElementById('cpDelHandler').value = _cpMe.handler_name || '';
   document.getElementById('cpDelDesc').value = '';
   document.getElementById('cpDelRemarks').value = '';
   document.getElementById('cpDelPriority').value = 'low';
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('cpDelDate').value = today;
   document.getElementById('cpDelDate').min = today;
+
+  // Populate the handler dropdown with ALL of this client's handlers, so the
+  // client can pick which one to send the task to. Defaults to the primary.
+  const sel = document.getElementById('cpDelHandler');
+  sel.innerHTML = `<option value="${_cpMe.handler_id}">${(_cpMe.handler_name || 'Handler')}</option>`;
+  try {
+    const r = await api('/api/client-portal/handlers');
+    const handlers = (r && Array.isArray(r.handlers)) ? r.handlers : [];
+    if (handlers.length) {
+      sel.innerHTML = handlers.map(h =>
+        `<option value="${h.id}" ${String(h.id) === String(_cpMe.handler_id) ? 'selected' : ''}>${esc(h.name)}${h.department ? ' · ' + esc(h.department) : ''}</option>`
+      ).join('');
+    }
+  } catch (e) { /* keep the single default option */ }
+
   document.getElementById('clientDelegateModal').classList.add('open');
 }
 
@@ -15929,9 +15943,11 @@ async function cpSaveDelegate() {
   const remarks = document.getElementById('cpDelRemarks').value.trim();
   if (!desc) { err.textContent = 'Description required'; err.style.display = 'block'; return; }
   if (!date) { err.textContent = 'Due date required'; err.style.display = 'block'; return; }
-  // Server forces assignedTo=handler and client_id=our client; we just send the rest.
+  // The chosen handler; the server validates it belongs to this client and
+  // forces client_id = our client.
+  const assignedTo = document.getElementById('cpDelHandler').value || undefined;
   const r = await api('/api/tasks', 'POST', {
-    type: 'delegation', desc, date, priority, remarks, approval: 'no'
+    type: 'delegation', desc, date, priority, remarks, approval: 'no', assignedTo
   });
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
   showToast('✅ Task sent to your handler');

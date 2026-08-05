@@ -1702,8 +1702,15 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
       const [[me]] = await db.query('SELECT client_id FROM users WHERE id=? LIMIT 1', [req.session.userId]);
       if (!me?.client_id) return res.status(403).json({ error: 'Client portal: no linked client' });
       const [[c]] = await db.query('SELECT handler_id FROM clients WHERE id=? LIMIT 1', [me.client_id]);
-      if (!c?.handler_id) return res.status(400).json({ error: 'Your client does not have a handler assigned yet — contact admin' });
-      targetUser = c.handler_id;
+      // A client may have MULTIPLE handlers (client_handlers) — let them pick one.
+      // Only their own handlers are valid targets; anything else falls back to
+      // the primary handler_id. The legacy single handler_id is always valid.
+      const [handlerRows] = await db.query('SELECT user_id FROM client_handlers WHERE client_id=?', [me.client_id]);
+      const validHandlers = new Set(handlerRows.map(r => r.user_id));
+      if (c?.handler_id) validHandlers.add(c.handler_id);
+      const chosen = assignedTo ? parseInt(assignedTo) : null;
+      targetUser = (chosen && validHandlers.has(chosen)) ? chosen : (c?.handler_id || [...validHandlers][0]);
+      if (!targetUser) return res.status(400).json({ error: 'Your client does not have a handler assigned yet — contact admin' });
       enforcedClientId = me.client_id; // force tag the task to client's own id
       // Clients don't set a due date — the handler fills it in after assignment.
       if (!doerWillSet) {
