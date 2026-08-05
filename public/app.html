@@ -6476,6 +6476,13 @@ async function submitEmailModal() {
   // Offer letters go through the offer form (salary / probation / live preview)
   // before sending — open that modal in "email mode" and send from there.
   if (type === 'preliminary' || type === 'offer') {
+    // No offer until the joining-details form is submitted (server enforces this
+    // too; checked here so HR gets the message before filling the whole form).
+    const c = _hrmCandidates.find(x => String(x.id) === String(_hrmCurrentId));
+    if (c && c.joining_form_required && !c.joining_details_at) {
+      showErrIn('hrmEmailErr', 'Joining details form not submitted yet. Send it first (choose "Onboarding Form"), then send the offer once the candidate has filled it.');
+      return;
+    }
     _offerEmailCtx = { to: email, cc };
     closeModal('hrmEmailModal');
     if (type === 'preliminary') openOfferFormModal(_hrmCurrentId);

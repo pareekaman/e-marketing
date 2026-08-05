@@ -10913,7 +10913,7 @@ async function hrmJoiningFormBlock(c, newDepartment) {
     await db.query('UPDATE hrm_candidates SET department=? WHERE id=?', [dept, c.id]).catch(() => {});
   }
   return `${c.name} has not submitted the joining details form yet${dept ? ` (${dept})` : ''}. `
-       + `Send the form from the candidate row ("Resend Form") — the offer letter can only go out once those details are received.`;
+       + `Email it first (📧 Email → Onboarding Form) — the offer letter can only go out once those details are received.`;
 }
 
 // Sends (or resends) the joining-details form link on WhatsApp. The per-candidate
@@ -11592,6 +11592,15 @@ app.get('/offer-pdf-prelim/:token', async (req, res) => {
   }
 });
 
+// Short redirect for the joining-details form — keeps the emailed link short
+// (our domain + a short token) instead of the long Apps Script form URL.
+// Public: the token is the capability, same as the /offer-pdf routes.
+app.get('/jf/:token', (req, res) => {
+  if (!HRM_JOINING_FORM_URL) return res.status(404).send('Joining form is not configured.');
+  const sep = HRM_JOINING_FORM_URL.includes('?') ? '&' : '?';
+  res.redirect(`${HRM_JOINING_FORM_URL}${sep}token=${encodeURIComponent(req.params.token)}`);
+});
+
 // Accepts YYYY-MM-DD, DD/MM/YYYY and DD-MM-YYYY (what a Google Form date answer
 // or a typed Indian-format date arrives as) and returns a MySQL DATE string.
 function hrmParseDob(value) {
@@ -12006,6 +12015,12 @@ app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) =>
     if (badCc) return res.status(400).json({ error: `Invalid CC address: ${badCc}` });
     const cc = ccList.length ? ccList.join(', ') : undefined;
 
+    // No offer letter (preliminary or final) until the joining-details form is in.
+    if (type === 'preliminary' || type === 'offer') {
+      const blocked = await hrmJoiningFormBlock(c);
+      if (blocked) return res.status(400).json({ error: blocked });
+    }
+
     const esc = s => String(s||'').replace(/[&<>]/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[ch]));
     const position = c.profile_position || '';
     const displayName = c.name || '';
@@ -12017,11 +12032,17 @@ app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) =>
       if (!HRM_JOINING_FORM_URL) return res.status(400).json({ error: 'Joining form URL is not configured (HRM_JOINING_FORM_URL)' });
       let token = c.joining_form_token;
       if (!token) {
-        token = require('crypto').randomBytes(24).toString('hex');
+        token = require('crypto').randomBytes(9).toString('hex');   // short token → short link
         await db.query('UPDATE hrm_candidates SET joining_form_token=? WHERE id=?', [token, c.id]);
       }
-      const sep = HRM_JOINING_FORM_URL.includes('?') ? '&' : '?';
-      const formUrl = `${HRM_JOINING_FORM_URL}${sep}token=${token}`;
+      // Use our own short /jf/:token redirect instead of the long Apps Script
+      // URL — same public-host logic as the offer-PDF links.
+      const reqHost = req.headers['x-forwarded-host'] || req.get('host') || '';
+      const isVercelPreview = /\.vercel\.app$/i.test(reqHost);
+      const base = ((isVercelPreview || !reqHost)
+        ? (process.env.APP_URL || `https://${reqHost}`)
+        : `${req.headers['x-forwarded-proto'] || req.protocol}://${reqHost}`).replace(/\/$/, '');
+      const formUrl = `${base}/jf/${token}`;
       subject = `Joining Details Form | ${HRM_COMPANY}`;
       action = 'Joining Details Form — Email';
       bodyInner = `<p>Hello ${esc(displayName)},</p>
