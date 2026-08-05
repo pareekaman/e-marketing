@@ -12949,7 +12949,7 @@ async function dtSubmit(){
     const r = await api('/api/daily-tasks', 'POST', { entry_date: date, rows });
     if (r.error) { showToast(r.error, 'error'); }
     else {
-      showToast(`✅ ${r.count} entries submitted! WhatsApp confirmation sent.`);
+      showToast(`✅ ${r.count} entries submitted! Confirmation sent on WhatsApp & email.`);
       DT_LOCKED = true;
       await dtCheckLockAndRender();
       await dtLoadHistory();

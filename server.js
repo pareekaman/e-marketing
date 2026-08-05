@@ -8939,13 +8939,36 @@ app.post('/api/daily-tasks', requireAuth, async (req, res) => {
       [cleanRows]
     );
 
-    // Get user's name + phone for WhatsApp
+    // Get user's name + phone for the confirmation
     const [[user]] = await db.query('SELECT name, phone FROM users WHERE id=?', [req.session.userId]);
 
     // Fire WhatsApp (don't await — don't block response)
     if (user && user.phone) {
       const msg = `✨ Hello ${user.name},\nThank you for submitting your daily task ✔️\nYour response for the date ${entry_date} has been successfully recorded in the database 📄✨`;
       sendWhatsApp(user.phone, msg).catch(e => console.error('WA send err:', e.message));
+    }
+
+    // Email confirmation too (to the submitter's notification/login email).
+    const target = await getNotifyTarget(req.session.userId);
+    if (target) {
+      const esc = s => String(s||'').replace(/[&<>]/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[ch]));
+      const rowsHtml = cleanRows.map(r =>
+        `<tr><td style="padding:5px 9px;border:1px solid #e2e8f0">${esc(r[2])}</td><td style="padding:5px 9px;border:1px solid #e2e8f0">${esc(r[4])}</td><td style="padding:5px 9px;border:1px solid #e2e8f0;text-align:right;white-space:nowrap">${r[5]} min</td></tr>`
+      ).join('');
+      const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;line-height:1.6">
+        <p>Hello ${esc(user?.name || '')},</p>
+        <p>Thank you for submitting your daily report for <strong>${esc(entry_date)}</strong> — ${cleanRows.length} ${cleanRows.length === 1 ? 'entry' : 'entries'} recorded.</p>
+        <table style="border-collapse:collapse;font-size:13px;margin-top:4px">
+          <thead><tr>
+            <th style="padding:5px 9px;border:1px solid #e2e8f0;text-align:left;background:#f8fafc">Client</th>
+            <th style="padding:5px 9px;border:1px solid #e2e8f0;text-align:left;background:#f8fafc">Task</th>
+            <th style="padding:5px 9px;border:1px solid #e2e8f0;background:#f8fafc">Duration</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        <p style="margin-top:14px">— E-Marketing Task Manager</p>
+      </div>`;
+      sendMail(target.email, `Daily Report Submitted — ${entry_date}`, html).catch(e => console.error('daily report email err:', e.message));
     }
 
     res.json({ success: true, count: cleanRows.length });
