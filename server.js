@@ -4837,6 +4837,26 @@ const _clientsTableMigrationsPromise = (async () => {
     INDEX idx_del_folder (folder_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+  // Admin-only credential vault: the logins for whatever the team builds for a
+  // client (a bespoke task manager, a dashboard, etc.). These are the client's
+  // OWN external systems, not our portal login — passwords are stored as typed
+  // because the whole point is to read them back, so the routes are admin-only.
+  await sa(`CREATE TABLE IF NOT EXISTS client_credentials (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    client_id INT NOT NULL,
+    system_name VARCHAR(255) NOT NULL,
+    role_label VARCHAR(100) DEFAULT NULL,
+    url VARCHAR(1000) DEFAULT NULL,
+    username VARCHAR(500) DEFAULT NULL,
+    password VARCHAR(500) DEFAULT NULL,
+    notes TEXT DEFAULT NULL,
+    created_by INT DEFAULT NULL,
+    created_by_name VARCHAR(255) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_cc_client (client_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
   // ── One-time data migration: Access Control page keys ─────────────────
   // These pages were added to the Access Control feature list after some users
   // already had a saved user_permissions row. canSee() trusts
@@ -6782,6 +6802,84 @@ app.post('/api/client-portal/feedback', requireAuth, async (req, res) => {
     await db.query(
       'INSERT INTO client_feedback (client_id, employee_id, rating, description, recipients) VALUES (?, ?, ?, ?, ?)',
       [u.client_id, parseInt(employee_id), r, (description || '').trim(), recipientsStr]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// CLIENT CREDENTIALS VAULT — admin-only
+// Stores the logins for whatever the team builds for a client (a bespoke task
+// manager, a dashboard, etc.). Passwords are stored as typed so they can be
+// read back, so every route here is requireAdmin — never widen it.
+// ══════════════════════════════════════════════════════
+// List every stored credential, newest system first, with the client name
+// joined in so the vault can group by client. Optional ?client_id= narrows it.
+app.get('/api/client-credentials', requireAdmin, async (req, res) => {
+  try {
+    const clientId = parseInt(req.query.client_id);
+    const where = clientId ? 'WHERE cc.client_id=?' : '';
+    const params = clientId ? [clientId] : [];
+    const [rows] = await db.query(
+      `SELECT cc.id, cc.client_id, c.name AS client_name, cc.system_name, cc.role_label,
+              cc.url, cc.username, cc.password, cc.notes, cc.created_by_name,
+              DATE_FORMAT(cc.updated_at,'%Y-%m-%d %H:%i') AS updated_at
+         FROM client_credentials cc
+         LEFT JOIN clients c ON cc.client_id = c.id
+         ${where}
+         ORDER BY c.name ASC, cc.system_name ASC, cc.role_label ASC, cc.id ASC`, params);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Add a credential entry. client_id + system_name are the only required fields;
+// a system can have several rows (e.g. an Admin login and a User login).
+app.post('/api/client-credentials', requireAdmin, async (req, res) => {
+  try {
+    const clientId = parseInt(req.body.client_id);
+    const system = String(req.body.system_name || '').trim();
+    if (!clientId || !system) return res.status(400).json({ error: 'Client and system name are required' });
+    const [[c]] = await db.query('SELECT id FROM clients WHERE id=?', [clientId]);
+    if (!c) return res.status(404).json({ error: 'Client not found' });
+    const clean = (v, n) => { const s = (v == null ? '' : String(v)).trim(); return s ? s.slice(0, n) : null; };
+    const [r] = await db.query(
+      `INSERT INTO client_credentials
+         (client_id, system_name, role_label, url, username, password, notes, created_by, created_by_name)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      [clientId, system.slice(0, 255), clean(req.body.role_label, 100), clean(req.body.url, 1000),
+       clean(req.body.username, 500), clean(req.body.password, 500), clean(req.body.notes, 5000),
+       req.session.userId, req.session.name || null]);
+    res.json({ success: true, id: r.insertId });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Edit a credential entry. Same field rules as add; client_id is not moved.
+app.put('/api/client-credentials/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const system = String(req.body.system_name || '').trim();
+    if (!system) return res.status(400).json({ error: 'System name is required' });
+    const clean = (v, n) => { const s = (v == null ? '' : String(v)).trim(); return s ? s.slice(0, n) : null; };
+    const [r] = await db.query(
+      `UPDATE client_credentials
+          SET system_name=?, role_label=?, url=?, username=?, password=?, notes=?
+        WHERE id=?`,
+      [system.slice(0, 255), clean(req.body.role_label, 100), clean(req.body.url, 1000),
+       clean(req.body.username, 500), clean(req.body.password, 500), clean(req.body.notes, 5000), id]);
+    if (!r.affectedRows) return res.status(404).json({ error: 'Credential not found' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Delete a credential entry. Archived to deleted_records first (same as every
+// other user-facing delete) so nothing is ever truly lost.
+app.delete('/api/client-credentials/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [[row]] = await db.query('SELECT * FROM client_credentials WHERE id=?', [id]);
+    if (!row) return res.status(404).json({ error: 'Credential not found' });
+    await archiveDeleted('client_credentials', row, req, {
+      summary: r => `Credential: ${r.system_name || ''}${r.role_label ? ' · ' + r.role_label : ''}` });
+    await db.query('DELETE FROM client_credentials WHERE id=?', [id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

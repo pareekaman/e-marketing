@@ -2208,6 +2208,12 @@ input:focus,select:focus,textarea:focus{outline:none;}
     <div id="cmDetailView" style="display:none"></div>
     <!-- List view (default) -->
     <div id="cmListView">
+    <div class="tab-group" style="margin-bottom:18px">
+      <div class="tab active" id="cmTabClientsBtn" onclick="cmTab('clients',this)">🏢 Clients</div>
+      <div class="tab" id="cmTabVaultBtn" onclick="cmTab('vault',this)" style="display:none">🔑 Credentials Vault</div>
+    </div>
+
+    <div id="cmTab-clients">
     <div class="cm-card">
       <div class="cm-header">
         <div class="cm-header-text">
@@ -2251,6 +2257,68 @@ input:focus,select:focus,textarea:focus{outline:none;}
 
       <div id="cmListWrap" class="cm-list-wrap"><div class="empty">Loading clients…</div></div>
     </div>
+    </div><!-- /cmTab-clients -->
+
+    <!-- ── Credentials Vault (admin only) ── -->
+    <div id="cmTab-vault" style="display:none">
+      <div class="cm-card">
+        <div class="cm-header">
+          <div class="cm-header-text">
+            <div class="cm-sub">Logins for whatever we build for each client — task managers, dashboards, and the like. Admin only; passwords are stored so they can be read back here.</div>
+          </div>
+        </div>
+        <div class="cm-toolbar">
+          <input class="cm-search" type="text" id="cvSearch" placeholder="🔍 Search by client / system / id..." oninput="cvRender()"/>
+          <div class="cm-add-row">
+            <button class="cm-btn-primary" onclick="cvOpenModal()">+ Add Credential</button>
+          </div>
+        </div>
+        <div id="cvListWrap" class="cm-list-wrap"><div class="empty">Loading…</div></div>
+      </div>
+    </div><!-- /cmTab-vault -->
+    </div>
+  </div>
+
+  <!-- Add / edit credential modal -->
+  <div class="modal-overlay" id="cvModal">
+    <div class="modal" style="width:520px">
+      <button class="modal-close" onclick="closeModal('cvModal')">×</button>
+      <h3 id="cvModalTitle">＋ Add Credential</h3>
+      <div class="alert error" id="cvErr" style="display:none"></div>
+      <input type="hidden" id="cvId" value=""/>
+      <div class="form-group">
+        <label>Client *</label>
+        <select id="cvClient"></select>
+      </div>
+      <div class="form-group">
+        <label>System / What is it *</label>
+        <input type="text" id="cvSystem" placeholder="e.g. Task Manager, Dashboard" autocomplete="off"/>
+      </div>
+      <div class="form-group">
+        <label>Role (optional)</label>
+        <input type="text" id="cvRole" placeholder="e.g. Admin, User" autocomplete="off"/>
+        <div style="font-size:11px;color:#64748b;margin-top:4px">Same system ke Admin aur User login alag entry — role yahan likh do.</div>
+      </div>
+      <div class="form-group">
+        <label>Link / URL</label>
+        <input type="text" id="cvUrl" placeholder="e.g. bunai.mis.in" autocomplete="off"/>
+      </div>
+      <div class="form-group">
+        <label>ID / Username</label>
+        <input type="text" id="cvUser" placeholder="e.g. bunai@mis.com" autocomplete="off"/>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="text" id="cvPass" placeholder="e.g. pass123" autocomplete="off"/>
+      </div>
+      <div class="form-group">
+        <label>Notes (optional)</label>
+        <textarea id="cvNotes" rows="2" placeholder="Anything else worth remembering"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('cvModal')">Cancel</button>
+        <button class="btn btn-primary" id="cvSaveBtn" onclick="cvSave()">Save</button>
+      </div>
     </div>
   </div>
 
@@ -13160,6 +13228,9 @@ function cmApplyRoleControls(){
   if (addBtn) addBtn.style.display = show;
   const bulkBtn = document.getElementById('cmBulkBtn');
   if (bulkBtn) bulkBtn.style.display = show;
+  // The Credentials Vault holds plaintext passwords, so the tab is admin-only.
+  const vaultBtn = document.getElementById('cmTabVaultBtn');
+  if (vaultBtn) vaultBtn.style.display = (ME.role === 'admin') ? '' : 'none';
 }
 
 let CM_USERS = [];
@@ -13182,6 +13253,156 @@ async function loadClients(){
     document.getElementById('cmStatTotal').textContent = '0';
     document.getElementById('cmStatVisible').textContent = '0';
   }
+}
+
+// ── Client Master tabs: Clients list ⇄ Credentials Vault ─────────────
+function cmTab(which, el){
+  if (which === 'vault' && ME.role !== 'admin') return;  // admin-only
+  document.querySelectorAll('#cmTabClientsBtn,#cmTabVaultBtn').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('cmTab-clients').style.display = which === 'clients' ? 'block' : 'none';
+  document.getElementById('cmTab-vault').style.display   = which === 'vault'   ? 'block' : 'none';
+  if (which === 'vault') cvLoad();
+}
+
+// ── Credentials Vault ────────────────────────────────────────────────
+// A per-client store of the logins for whatever we build for a client (a
+// bespoke task manager, a dashboard, etc.). Admin-only, plaintext passwords —
+// the point is to read them back, so this is not a secrets manager.
+let CV_DATA = [];
+async function cvLoad(){
+  const wrap = document.getElementById('cvListWrap');
+  wrap.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const rows = await api('/api/client-credentials');
+    CV_DATA = Array.isArray(rows) ? rows : [];
+    cvRender();
+  } catch(e){ wrap.innerHTML = '<div class="empty">Failed to load credentials</div>'; }
+}
+
+function cvRender(){
+  const wrap = document.getElementById('cvListWrap');
+  const q = (document.getElementById('cvSearch')?.value || '').toLowerCase().trim();
+  const match = c => !q || [c.client_name, c.system_name, c.role_label, c.url, c.username, c.notes]
+    .some(v => String(v || '').toLowerCase().includes(q));
+  const list = CV_DATA.filter(match);
+  if (!list.length){
+    wrap.innerHTML = `<div class="empty">${CV_DATA.length ? 'No matches' : 'No credentials stored yet — click “+ Add Credential”.'}</div>`;
+    return;
+  }
+  // Group by client so each client's systems sit together.
+  const groups = {};
+  list.forEach(c => { (groups[c.client_name || '— Unknown client —'] ||= []).push(c); });
+  const field = (label, value, copyable) => value ? `
+    <div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:13px">
+      <span style="min-width:70px;color:#64748b;font-weight:600">${label}</span>
+      <span style="flex:1;word-break:break-all;color:#0f172a">${dtEscape(value)}</span>
+      ${copyable ? `<button class="cm-btn-ghost" style="padding:2px 8px;font-size:11px" onclick="cvCopy(${JSON.stringify(value).replace(/"/g,'&quot;')},'${label}')">📋</button>` : ''}
+    </div>` : '';
+  const card = c => `
+    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-weight:700;color:#0f172a">${dtEscape(c.system_name)}</span>
+        ${c.role_label ? `<span style="font-size:11px;font-weight:700;color:#7c3aed;background:#f3e8ff;padding:2px 8px;border-radius:999px">${dtEscape(c.role_label)}</span>` : ''}
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <button class="cm-btn-ghost" style="padding:4px 10px;font-size:12px" onclick="cvOpenModal(${c.id})">✏️ Edit</button>
+          <button class="cm-btn-ghost" style="padding:4px 10px;font-size:12px;color:#dc2626" onclick="cvDelete(${c.id})">🗑 Delete</button>
+        </div>
+      </div>
+      ${field('Link', c.url, true)}
+      ${field('ID', c.username, true)}
+      ${c.password ? `
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:13px">
+          <span style="min-width:70px;color:#64748b;font-weight:600">Password</span>
+          <span id="cvPw${c.id}" data-shown="0" data-pw="${dtEscape(c.password)}" style="flex:1;word-break:break-all;color:#0f172a;font-family:monospace">••••••••</span>
+          <button class="cm-btn-ghost" style="padding:2px 8px;font-size:11px" onclick="cvTogglePw(${c.id})" id="cvPwBtn${c.id}">👁 Show</button>
+          <button class="cm-btn-ghost" style="padding:2px 8px;font-size:11px" onclick="cvCopy(${JSON.stringify(c.password).replace(/"/g,'&quot;')},'Password')">📋</button>
+        </div>` : ''}
+      ${c.notes ? `<div style="margin-top:6px;font-size:12px;color:#64748b;white-space:pre-wrap">${dtEscape(c.notes)}</div>` : ''}
+    </div>`;
+  wrap.innerHTML = Object.keys(groups).sort().map(name => `
+    <div style="margin-bottom:16px">
+      <div style="font-weight:700;color:#0f766e;font-size:14px;margin-bottom:8px;display:flex;align-items:center;gap:8px">
+        🏢 ${dtEscape(name)}
+        <span style="font-size:11px;color:#94a3b8;font-weight:500">${groups[name].length} login${groups[name].length===1?'':'s'}</span>
+      </div>
+      ${groups[name].map(card).join('')}
+    </div>`).join('');
+}
+
+function cvTogglePw(id){
+  const el = document.getElementById('cvPw'+id);
+  const btn = document.getElementById('cvPwBtn'+id);
+  if (!el) return;
+  const shown = el.getAttribute('data-shown') === '1';
+  el.textContent = shown ? '••••••••' : el.getAttribute('data-pw');
+  el.setAttribute('data-shown', shown ? '0' : '1');
+  if (btn) btn.textContent = shown ? '👁 Show' : '🙈 Hide';
+}
+
+function cvCopy(text, label){
+  navigator.clipboard?.writeText(text).then(
+    () => showToast(`${label || 'Value'} copied`),
+    () => showToast('Copy failed', 'error'));
+}
+
+function cvOpenModal(id){
+  if (ME.role !== 'admin') return;
+  document.getElementById('cvErr').style.display = 'none';
+  const sel = document.getElementById('cvClient');
+  // Reuse the Client Master list (already role-scoped by the server).
+  sel.innerHTML = '<option value="">— Select client —</option>' +
+    (CM_ALL || []).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''))
+      .map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+  const c = id ? CV_DATA.find(x => x.id === id) : null;
+  document.getElementById('cvModalTitle').textContent = c ? '✏️ Edit Credential' : '＋ Add Credential';
+  document.getElementById('cvId').value     = c ? c.id : '';
+  document.getElementById('cvClient').value = c ? c.client_id : '';
+  document.getElementById('cvClient').disabled = !!c;  // don't move an entry between clients
+  document.getElementById('cvSystem').value = c ? (c.system_name || '') : '';
+  document.getElementById('cvRole').value   = c ? (c.role_label || '') : '';
+  document.getElementById('cvUrl').value    = c ? (c.url || '') : '';
+  document.getElementById('cvUser').value   = c ? (c.username || '') : '';
+  document.getElementById('cvPass').value   = c ? (c.password || '') : '';
+  document.getElementById('cvNotes').value  = c ? (c.notes || '') : '';
+  document.getElementById('cvModal').classList.add('open');
+}
+
+async function cvSave(){
+  const err = document.getElementById('cvErr');
+  err.style.display = 'none';
+  const id = document.getElementById('cvId').value;
+  const payload = {
+    client_id:   document.getElementById('cvClient').value,
+    system_name: document.getElementById('cvSystem').value.trim(),
+    role_label:  document.getElementById('cvRole').value.trim(),
+    url:         document.getElementById('cvUrl').value.trim(),
+    username:    document.getElementById('cvUser').value.trim(),
+    password:    document.getElementById('cvPass').value,
+    notes:       document.getElementById('cvNotes').value.trim(),
+  };
+  if (!payload.client_id) { err.textContent = 'Pick a client'; err.style.display = 'block'; return; }
+  if (!payload.system_name) { err.textContent = 'System name is required'; err.style.display = 'block'; return; }
+  const btn = document.getElementById('cvSaveBtn');
+  const label = btn.textContent; btn.disabled = true; btn.textContent = 'Saving…';
+  let r;
+  try {
+    r = id ? await api(`/api/client-credentials/${id}`, 'PUT', payload)
+           : await api('/api/client-credentials', 'POST', payload);
+  } finally { btn.disabled = false; btn.textContent = label; }
+  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+  closeModal('cvModal');
+  showToast(id ? '✅ Credential updated' : '✅ Credential saved');
+  cvLoad();
+}
+
+async function cvDelete(id){
+  const c = CV_DATA.find(x => x.id === id);
+  if (!confirm(`Delete "${c?.system_name || 'this'}"${c?.role_label ? ' ('+c.role_label+')' : ''} credential? It will be archived, not lost.`)) return;
+  const r = await api(`/api/client-credentials/${id}`, 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast('🗑 Credential deleted');
+  cvLoad();
 }
 
 function cmExportExcel() {
