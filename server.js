@@ -6854,7 +6854,7 @@ function ensureClientCredentialsTable(){
 // running the latest code and whether the table is reachable on the deploy's
 // actual DB. Just visit <site>/api/client-credentials/_ping while logged in as
 // admin. Remove once the vault is confirmed working.
-app.get('/api/client-credentials/_ping', requireAdmin, async (req, res) => {
+app.get('/api/client-credentials/_ping', requireAuth, requireAdmin, async (req, res) => {
   const info = { build: 'ping-1', role: req.session.role };
   try {
     await ensureClientCredentialsTable();
@@ -6870,7 +6870,7 @@ app.get('/api/client-credentials/_ping', requireAdmin, async (req, res) => {
 
 // List every stored credential, newest system first, with the client name
 // joined in so the vault can group by client. Optional ?client_id= narrows it.
-app.get('/api/client-credentials', requireAdmin, async (req, res) => {
+app.get('/api/client-credentials', requireAuth, requireAdmin, async (req, res) => {
   try {
     await ensureClientCredentialsTable();
     const clientId = parseInt(req.query.client_id);
@@ -6890,7 +6890,7 @@ app.get('/api/client-credentials', requireAdmin, async (req, res) => {
 
 // Add a credential entry. client_id + system_name are the only required fields;
 // a system can have several rows (e.g. an Admin login and a User login).
-app.post('/api/client-credentials', requireAdmin, async (req, res) => {
+app.post('/api/client-credentials', requireAuth, requireAdmin, async (req, res) => {
   try {
     await ensureClientCredentialsTable();
     const clientId = parseInt(req.body.client_id);
@@ -6911,7 +6911,7 @@ app.post('/api/client-credentials', requireAdmin, async (req, res) => {
 });
 
 // Edit a credential entry. Same field rules as add; client_id is not moved.
-app.put('/api/client-credentials/:id', requireAdmin, async (req, res) => {
+app.put('/api/client-credentials/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await ensureClientCredentialsTable();
     const id = parseInt(req.params.id);
@@ -6931,7 +6931,7 @@ app.put('/api/client-credentials/:id', requireAdmin, async (req, res) => {
 
 // Delete a credential entry. Archived to deleted_records first (same as every
 // other user-facing delete) so nothing is ever truly lost.
-app.delete('/api/client-credentials/:id', requireAdmin, async (req, res) => {
+app.delete('/api/client-credentials/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await ensureClientCredentialsTable();
     const id = parseInt(req.params.id);
