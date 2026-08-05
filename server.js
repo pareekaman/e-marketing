@@ -532,6 +532,9 @@ const _startupMigrationsPromise = (async () => {
   // later final send can't overwrite the still-live preliminary PDF link).
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN prelim_offer_token VARCHAR(64) DEFAULT NULL`);
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN prelim_offer_data MEDIUMTEXT DEFAULT NULL`);
+  // Candidate email — captured on the Schedule Interview form, used to email
+  // the offer letter PDF (optional; WhatsApp remains the default channel).
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN email VARCHAR(255) DEFAULT ''`);
   // Joining-details form: the token is what the candidate's form link carries,
   // and is how the Apps Script submission is mapped back to the candidate.
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN joining_form_token VARCHAR(64) DEFAULT NULL`);
@@ -665,16 +668,23 @@ const mailTransporter = nodemailer.createTransport({
 })();
 
 // Reusable email sender — never throws (failures are logged only)
-async function sendMail(to, subject, html) {
-  if (!to || !process.env.SMTP_USER) return;
+// opts.attachments (optional) is passed straight to nodemailer, e.g.
+// [{ filename: 'x.pdf', content: <Buffer>, contentType: 'application/pdf' }].
+// Returns true on success so callers that care (e.g. the offer-email endpoint)
+// can report/throw; existing fire-and-forget callers can ignore it.
+async function sendMail(to, subject, html, opts = {}) {
+  if (!to || !process.env.SMTP_USER) return false;
   try {
     await mailTransporter.sendMail({
       from: `"${process.env.SMTP_FROM_NAME || 'E-Marketing Task Manager'}" <${process.env.SMTP_USER}>`,
-      to, subject, html
+      to, subject, html,
+      ...(opts.attachments ? { attachments: opts.attachments } : {})
     });
     console.log(`  📧 Email sent to ${to} — ${subject}`);
+    return true;
   } catch (err) {
     console.error(`  ❌ Email failed (${to}):`, err.message);
+    return false;
   }
 }
 
@@ -11795,12 +11805,13 @@ app.post('/api/hrm/candidates/:id/send-joining-form', requireAuth, async (req, r
 app.post('/api/hrm/candidates', requireAuth, async (req, res) => {
   if (!(await userCanDo(req.session, 'hrm_schedule'))) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const { name, phone, profile_position, department, interview_date, interview_time, notes, meeting_link, interviewer_phone } = req.body;
+    const { name, phone, email, profile_position, department, interview_date, interview_time, notes, meeting_link, interviewer_phone } = req.body;
     if (!name || !phone) return res.status(400).json({ error: 'name and phone required' });
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Invalid email address' });
     const [r] = await db.query(
-      `INSERT INTO hrm_candidates (name,phone,profile_position,department,interview_date,interview_time,notes,meeting_link,interviewer_phone,created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      [name, phone, profile_position||'', department||'', interview_date||null, interview_time||'', notes||'', meeting_link||'', interviewer_phone||'', req.session.userId]);
+      `INSERT INTO hrm_candidates (name,phone,email,profile_position,department,interview_date,interview_time,notes,meeting_link,interviewer_phone,created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [name, phone, email||'', profile_position||'', department||'', interview_date||null, interview_time||'', notes||'', meeting_link||'', interviewer_phone||'', req.session.userId]);
     const cid = r.insertId;
 
     const meetLine = meeting_link ? `\n🔗 Meeting Link: ${meeting_link}` : '';
@@ -12114,6 +12125,68 @@ app.post('/api/hrm/final-offer-render', requireAuth, async (req, res) => {
     res.send(pdf);
   } catch (err) {
     console.error('final-offer-render error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Email the offer letter PDF to the candidate (alternative to WhatsApp).
+// Renders whichever stage the candidate is at from its stored snapshot —
+// final if final_offer_data exists, else the preliminary letter — and sends it
+// as a PDF attachment via the same Gmail SMTP used for task/delegation emails.
+app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) => {
+  if (!(await userCanDo(req.session, 'hrm_update_status'))) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const [[c]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [req.params.id]);
+    if (!c) return res.status(404).json({ error: 'Not found' });
+    const to = String(req.body.email || c.email || '').trim();
+    if (!to) return res.status(400).json({ error: 'No candidate email on file — add one on the candidate first' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ error: 'Invalid email address' });
+    if (!process.env.SMTP_USER) return res.status(400).json({ error: 'Email is not configured on the server (SMTP credentials missing)' });
+
+    // Pick the stage: final letter if it has been generated, else preliminary
+    // (from its snapshot if present, otherwise built from the candidate fields).
+    let pdf, letterLabel, fileName, displayName, joiningFmt;
+    if (c.final_offer_data) {
+      const d = JSON.parse(c.final_offer_data);
+      pdf = await hrmRenderFinalOfferPdfBuffer({ name: d.name, position: d.position, joiningFmt: d.joiningFmt, salary: d.salary, today: d.today, joiningDate: d.joining_date, probationMonths: d.probation_months });
+      letterLabel = 'Offer Letter'; displayName = d.name || c.name; joiningFmt = d.joiningFmt || '';
+      fileName = `OFFER LETTER - ${displayName}.pdf`;
+    } else {
+      let d;
+      if (c.prelim_offer_data) { d = JSON.parse(c.prelim_offer_data); }
+      else {
+        const jf = c.joining_date ? new Date(c.joining_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '';
+        const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+        d = { name: c.name, position: c.profile_position || '', joiningFmt: jf, today };
+      }
+      pdf = await hrmRenderPrelimOfferPdfBuffer({ name: d.name, position: d.position, joiningFmt: d.joiningFmt, today: d.today });
+      letterLabel = 'Preliminary Offer Letter'; displayName = d.name || c.name; joiningFmt = d.joiningFmt || '';
+      fileName = `PRELIMINARY OFFER LETTER - ${displayName}.pdf`;
+    }
+
+    const esc = s => String(s||'').replace(/[&<>]/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[ch]));
+    const subject = `${letterLabel} — ${HRM_COMPANY}`;
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;line-height:1.6">
+      <p>Dear ${esc(displayName)},</p>
+      <p>Congratulations! Please find your ${esc(letterLabel)} attached as a PDF.${joiningFmt ? ` Your expected joining date is <strong>${esc(joiningFmt)}</strong>.` : ''}</p>
+      <p>Kindly review it and reply to this email with your acceptance.</p>
+      <p>Welcome to the team!</p>
+      <p>— ${esc(HRM_COMPANY)} HR Team</p>
+    </div>`;
+
+    const ok = await sendMail(to, subject, html, {
+      attachments: [{ filename: fileName, content: pdf, contentType: 'application/pdf' }]
+    });
+
+    await db.query(
+      `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
+      [c.id, c.name, to, `${letterLabel} — Email`, 'file', ok ? 'Sent' : 'Failed', ok ? '' : 'Email send failed (check SMTP config)', '{}']
+    ).catch(() => {});
+
+    if (!ok) return res.status(500).json({ error: 'Email send failed — check server SMTP configuration' });
+    res.json({ ok: true, emailedTo: to });
+  } catch (err) {
+    console.error('email-offer error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

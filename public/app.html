@@ -3154,6 +3154,10 @@ input:focus,select:focus,textarea:focus{outline:none;}
           <label>Department</label>
           <select id="hrmCDepartment"><option value="">--select--</option></select>
         </div>
+        <div class="form-group">
+          <label>Candidate Email</label>
+          <input type="email" id="hrmCEmail" placeholder="name@example.com (for emailing the offer)">
+        </div>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -6117,6 +6121,9 @@ function renderHrmRows(list) {
         ${c.status === 'Offer Letter Sent' && c.final_offer_drive_id
           ? `<a href="https://drive.google.com/file/d/${c.final_offer_drive_id}/view" target="_blank" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📬 View Offer Letter</a>`
           : ''}
+        ${(c.status === 'Offer Sent' || c.status === 'Offer Letter Sent')
+          ? `<button class="action-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="emailOffer(${c.id})">📧 Email Offer</button>`
+          : ''}
         ${joiningCell}
       </td>
     </tr>`;
@@ -6219,7 +6226,7 @@ async function deleteHrmMsg(id) {
 
 async function openHrmAddModal() {
   if (!canDo('hrm_schedule')) return;
-  ['hrmCName','hrmCProfile','hrmCPhone','hrmCInterviewer','hrmCLink','hrmCNotes'].forEach(id=>document.getElementById(id).value='');
+  ['hrmCName','hrmCProfile','hrmCPhone','hrmCEmail','hrmCInterviewer','hrmCLink','hrmCNotes'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('hrmCDate').value = '';
   document.getElementById('hrmCTime').value = '';
   document.getElementById('hrmAddErr').style.display = 'none';
@@ -6236,6 +6243,7 @@ async function saveHrmCandidate() {
   if (!date||!time) { showErrIn('hrmAddErr','Interview date and time are required'); return; }
   const r = await api('/api/hrm/candidates','POST',{
     name, phone,
+    email: document.getElementById('hrmCEmail').value.trim(),
     profile_position: document.getElementById('hrmCProfile').value.trim(),
     department: document.getElementById('hrmCDepartment').value,
     interview_date: date, interview_time: time,
@@ -6418,6 +6426,23 @@ async function generateOfferDoc(id) {
   showToast(r.waSent ? 'Saved to Drive + WhatsApp PDF sent!' : 'Saved to Drive (WhatsApp failed — check the Messages tab)');
   await loadHRM();
   viewOfferLetter(id); // reopen with updated data
+}
+
+// Email the offer letter PDF to the candidate. Uses the email on file; if none,
+// prompts for one and sends it through (the server also persists it going
+// forward is not done here — the prompt is a one-off for this send).
+async function emailOffer(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  let email = (c && c.email || '').trim();
+  if (!email) {
+    email = (prompt('No email on file for this candidate. Enter the email to send the offer letter to:') || '').trim();
+    if (!email) return;
+  }
+  showToast('Emailing offer letter…');
+  const r = await api(`/api/hrm/candidates/${id}/email-offer`, 'POST', { email });
+  if (!r || r.error) { showToast((r && r.error) || 'Email failed', 'error'); return; }
+  showToast(`Offer letter emailed to ${r.emailedTo}`);
+  loadHRM();
 }
 
 function printOfferLetter() {
