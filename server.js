@@ -6850,24 +6850,6 @@ function ensureClientCredentialsTable(){
   return _ccVaultReady;
 }
 
-// Open-in-browser diagnostic. Tells us in one glance whether THIS deploy is
-// running the latest code and whether the table is reachable on the deploy's
-// actual DB. Just visit <site>/api/client-credentials/_ping while logged in as
-// admin. Remove once the vault is confirmed working.
-app.get('/api/client-credentials/_ping', requireAuth, requireAdmin, async (req, res) => {
-  const info = { build: 'ping-1', role: req.session.role };
-  try {
-    await ensureClientCredentialsTable();
-    const [[d]]   = await db.query('SELECT DATABASE() AS d, CURRENT_USER() AS u');
-    const [[cnt]] = await db.query('SELECT COUNT(*) AS n FROM client_credentials');
-    info.db = d.d; info.dbUser = d.u; info.tableRows = cnt.n; info.ok = true;
-  } catch (e) {
-    info.ok = false;
-    info.error = `${e.code || ''}: ${e.sqlMessage || e.message || e}`;
-  }
-  res.json(info);
-});
-
 // List every stored credential, newest system first, with the client name
 // joined in so the vault can group by client. Optional ?client_id= narrows it.
 app.get('/api/client-credentials', requireAuth, requireAdmin, async (req, res) => {

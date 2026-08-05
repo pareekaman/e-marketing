@@ -2296,8 +2296,14 @@ input:focus,select:focus,textarea:focus{outline:none;}
       </div>
       <div class="form-group">
         <label>Role (optional)</label>
-        <input type="text" id="cvRole" placeholder="e.g. Admin, User" autocomplete="off"/>
-        <div style="font-size:11px;color:#64748b;margin-top:4px">Same system ke Admin aur User login alag entry — role yahan likh do.</div>
+        <select id="cvRoleSelect" onchange="cvRoleChange()">
+          <option value="">— None —</option>
+          <option value="Admin">Admin</option>
+          <option value="User">User</option>
+          <option value="Other">Other (type your own)</option>
+        </select>
+        <input type="text" id="cvRoleOther" placeholder="Type the role" autocomplete="off" style="display:none;margin-top:8px"/>
+        <div style="font-size:11px;color:#64748b;margin-top:4px">Same system ke Admin aur User login alag entry — role yahan chuno.</div>
       </div>
       <div class="form-group">
         <label>Link / URL</label>
@@ -2318,6 +2324,18 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal('cvModal')">Cancel</button>
         <button class="btn btn-primary" id="cvSaveBtn" onclick="cvSave()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- In-app confirm (replaces the browser's native confirm popup) -->
+  <div class="modal-overlay" id="cvConfirmModal">
+    <div class="modal" style="width:420px">
+      <h3 id="cvConfirmTitle">Please confirm</h3>
+      <div id="cvConfirmMsg" style="color:#475569;font-size:14px;margin:8px 0 20px;line-height:1.5"></div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="cvConfirmResolve(false)">Cancel</button>
+        <button class="btn btn-primary" id="cvConfirmOk" style="background:#dc2626;border-color:#dc2626" onclick="cvConfirmResolve(true)">Delete</button>
       </div>
     </div>
   </div>
@@ -13270,6 +13288,11 @@ function cmTab(which, el){
 // bespoke task manager, a dashboard, etc.). Admin-only, plaintext passwords —
 // the point is to read them back, so this is not a secrets manager.
 let CV_DATA = [];
+let _cvExpanded = new Set();  // which client groups are open (by client name)
+function cvToggleGroup(name){
+  if (_cvExpanded.has(name)) _cvExpanded.delete(name); else _cvExpanded.add(name);
+  cvRender();
+}
 async function cvLoad(){
   const wrap = document.getElementById('cvListWrap');
   wrap.innerHTML = '<div class="empty">Loading…</div>';
@@ -13320,14 +13343,24 @@ function cvRender(){
         </div>` : ''}
       ${c.notes ? `<div style="margin-top:6px;font-size:12px;color:#64748b;white-space:pre-wrap">${dtEscape(c.notes)}</div>` : ''}
     </div>`;
-  wrap.innerHTML = Object.keys(groups).sort().map(name => `
-    <div style="margin-bottom:16px">
-      <div style="font-weight:700;color:#0f766e;font-size:14px;margin-bottom:8px;display:flex;align-items:center;gap:8px">
+  // Collapsible per-client groups: click the header to open/close. While
+  // searching, every matching group is forced open so results are visible.
+  const searching = !!q;
+  wrap.innerHTML = Object.keys(groups).sort().map(name => {
+    const open = searching || _cvExpanded.has(name);
+    const nameArg = JSON.stringify(name).replace(/"/g,'&quot;');
+    return `
+    <div style="margin-bottom:12px;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div onclick="cvToggleGroup(${nameArg})" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;padding:12px 14px;background:#f8fafc;font-weight:700;color:#0f766e;font-size:14px">
+        <span style="display:inline-block;transition:transform .15s;transform:rotate(${open?90:0}deg);color:#94a3b8;font-size:11px">▶</span>
         🏢 ${dtEscape(name)}
         <span style="font-size:11px;color:#94a3b8;font-weight:500">${groups[name].length} login${groups[name].length===1?'':'s'}</span>
       </div>
-      ${groups[name].map(card).join('')}
-    </div>`).join('');
+      <div style="display:${open?'block':'none'};padding:${open?'12px 14px':'0'}">
+        ${groups[name].map(card).join('')}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function cvTogglePw(id){
@@ -13346,6 +13379,42 @@ function cvCopy(text, label){
     () => showToast('Copy failed', 'error'));
 }
 
+// Role field: a dropdown (Admin / User / Other). "Other" reveals a free-text
+// box so any role can still be typed. On edit, an existing custom role that
+// isn't Admin/User lands in "Other" with its text pre-filled.
+function cvRoleChange(){
+  const isOther = document.getElementById('cvRoleSelect').value === 'Other';
+  document.getElementById('cvRoleOther').style.display = isOther ? 'block' : 'none';
+}
+function cvSetRole(role){
+  const sel = document.getElementById('cvRoleSelect');
+  const other = document.getElementById('cvRoleOther');
+  if (!role) { sel.value = ''; other.value = ''; }
+  else if (role === 'Admin' || role === 'User') { sel.value = role; other.value = ''; }
+  else { sel.value = 'Other'; other.value = role; }
+  cvRoleChange();
+}
+function cvGetRole(){
+  const v = document.getElementById('cvRoleSelect').value;
+  return v === 'Other' ? document.getElementById('cvRoleOther').value.trim() : v;
+}
+
+// In-app confirm — a promise that resolves true/false, so no browser popup.
+let _cvConfirmCb = null;
+function cvConfirm(msg, okLabel = 'Delete'){
+  return new Promise(resolve => {
+    _cvConfirmCb = resolve;
+    document.getElementById('cvConfirmMsg').textContent = msg;
+    document.getElementById('cvConfirmOk').textContent = okLabel;
+    document.getElementById('cvConfirmModal').classList.add('open');
+  });
+}
+function cvConfirmResolve(val){
+  document.getElementById('cvConfirmModal').classList.remove('open');
+  const cb = _cvConfirmCb; _cvConfirmCb = null;
+  if (cb) cb(val);
+}
+
 function cvOpenModal(id){
   if (ME.role !== 'admin') return;
   document.getElementById('cvErr').style.display = 'none';
@@ -13360,7 +13429,7 @@ function cvOpenModal(id){
   document.getElementById('cvClient').value = c ? c.client_id : '';
   document.getElementById('cvClient').disabled = !!c;  // don't move an entry between clients
   document.getElementById('cvSystem').value = c ? (c.system_name || '') : '';
-  document.getElementById('cvRole').value   = c ? (c.role_label || '') : '';
+  cvSetRole(c ? (c.role_label || '') : '');
   document.getElementById('cvUrl').value    = c ? (c.url || '') : '';
   document.getElementById('cvUser').value   = c ? (c.username || '') : '';
   document.getElementById('cvPass').value   = c ? (c.password || '') : '';
@@ -13375,7 +13444,7 @@ async function cvSave(){
   const payload = {
     client_id:   document.getElementById('cvClient').value,
     system_name: document.getElementById('cvSystem').value.trim(),
-    role_label:  document.getElementById('cvRole').value.trim(),
+    role_label:  cvGetRole(),
     url:         document.getElementById('cvUrl').value.trim(),
     username:    document.getElementById('cvUser').value.trim(),
     password:    document.getElementById('cvPass').value,
@@ -13398,7 +13467,8 @@ async function cvSave(){
 
 async function cvDelete(id){
   const c = CV_DATA.find(x => x.id === id);
-  if (!confirm(`Delete "${c?.system_name || 'this'}"${c?.role_label ? ' ('+c.role_label+')' : ''} credential? It will be archived, not lost.`)) return;
+  const ok = await cvConfirm(`Delete "${c?.system_name || 'this'}"${c?.role_label ? ' ('+c.role_label+')' : ''} credential? It will be archived, not lost.`);
+  if (!ok) return;
   const r = await api(`/api/client-credentials/${id}`, 'DELETE');
   if (r.error) { showToast(r.error, 'error'); return; }
   showToast('🗑 Credential deleted');
