@@ -9235,8 +9235,9 @@ app.post('/api/daily-tasks', requireAuth, async (req, res) => {
         `<tr><td style="padding:5px 9px;border:1px solid #e2e8f0">${esc(r[2])}</td><td style="padding:5px 9px;border:1px solid #e2e8f0">${esc(r[4])}</td><td style="padding:5px 9px;border:1px solid #e2e8f0;text-align:right;white-space:nowrap">${r[5]} min</td></tr>`
       ).join('');
       const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;line-height:1.6">
-        <p>Hello ${esc(target.name || '')},</p>
-        <p>Thank you for submitting your daily report for <strong>${esc(entry_date)}</strong> — ${cleanRows.length} ${cleanRows.length === 1 ? 'entry' : 'entries'} recorded.</p>
+        <p>✨ Hello ${esc(target.name || '')},<br>
+        Thank you for submitting your daily task ✔️<br>
+        Your response for the date <strong>${esc(entry_date)}</strong> has been successfully recorded 📄✨ — ${cleanRows.length} ${cleanRows.length === 1 ? 'entry' : 'entries'}.</p>
         <table style="border-collapse:collapse;font-size:13px;margin-top:4px">
           <thead><tr>
             <th style="padding:5px 9px;border:1px solid #e2e8f0;text-align:left;background:#f8fafc">Client</th>
