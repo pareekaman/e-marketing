@@ -273,7 +273,10 @@
   <p class="sub">Sign in to your account</p>
 
   <div class="error" id="err"></div>
+  <div class="error" id="okmsg" style="display:none;background:#f0fdf4;color:#166534;border-color:#bbf7d0"></div>
 
+  <!-- ── Sign-in view ── -->
+  <div id="loginView">
   <div class="form-group">
     <label>Email Address</label>
     <div class="input-wrap">
@@ -295,6 +298,50 @@
   </div>
 
   <button class="btn-login" onclick="login()">Sign In →</button>
+  <div style="text-align:center;margin-top:14px">
+    <a href="#" onclick="showReset();return false" style="color:#4f46e5;font-size:13px;font-weight:600;text-decoration:none">Forgot password?</a>
+  </div>
+  </div>
+
+  <!-- ── Reset-password view (team accounts only) ── -->
+  <div id="resetView" style="display:none">
+    <!-- Step 1: request a code -->
+    <div id="resetStep1">
+      <p class="sub" style="margin-top:0">Enter your account email — we'll send a 6-digit code to it.</p>
+      <div class="form-group">
+        <label>Email Address</label>
+        <div class="input-wrap">
+          <span class="icon">✉</span>
+          <input type="email" id="resetEmail" placeholder="Enter your email"
+                 onkeydown="if(event.key==='Enter')sendResetCode()"/>
+        </div>
+      </div>
+      <button class="btn-login" id="sendCodeBtn" onclick="sendResetCode()">Send Code →</button>
+    </div>
+    <!-- Step 2: enter code + new password -->
+    <div id="resetStep2" style="display:none">
+      <p class="sub" style="margin-top:0">Enter the 6-digit code sent to your email, and choose a new password.</p>
+      <div class="form-group">
+        <label>Verification Code</label>
+        <div class="input-wrap">
+          <span class="icon">🔢</span>
+          <input type="text" id="resetOtp" inputmode="numeric" maxlength="6" placeholder="6-digit code"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>New Password</label>
+        <div class="input-wrap">
+          <span class="icon">🔒</span>
+          <input type="password" id="resetNewPass" placeholder="At least 6 characters"
+                 onkeydown="if(event.key==='Enter')doResetPassword()"/>
+        </div>
+      </div>
+      <button class="btn-login" id="resetBtn" onclick="doResetPassword()">Reset Password →</button>
+    </div>
+    <div style="text-align:center;margin-top:14px">
+      <a href="#" onclick="showLogin();return false" style="color:#4f46e5;font-size:13px;font-weight:600;text-decoration:none">← Back to Sign In</a>
+    </div>
+  </div>
 
   <div class="footer-text">
     <strong>E-Marketing Task Manager</strong> &nbsp;·&nbsp; Grow Your Business
@@ -351,6 +398,75 @@ async function login(){
     // (or whatever deep link brought them here).
     window.location.replace(d.role === 'client' ? '/client' : nextTarget());
   }catch(e){err.textContent='Server error. Try again.';err.style.display='block';}
+}
+
+// ── Forgot-password flow (team accounts only) ──
+function _clearMsgs(){
+  document.getElementById('err').style.display='none';
+  document.getElementById('okmsg').style.display='none';
+}
+function _showOk(msg){
+  const el=document.getElementById('okmsg'); el.textContent=msg; el.style.display='block';
+  document.getElementById('err').style.display='none';
+}
+function _showErr(msg){
+  const el=document.getElementById('err'); el.textContent=msg; el.style.display='block';
+  document.getElementById('okmsg').style.display='none';
+}
+function showReset(){
+  _clearMsgs();
+  document.getElementById('loginView').style.display='none';
+  document.getElementById('resetView').style.display='block';
+  document.getElementById('resetStep1').style.display='block';
+  document.getElementById('resetStep2').style.display='none';
+  // Carry over whatever was typed on the login form.
+  document.getElementById('resetEmail').value=document.getElementById('email').value.trim();
+  document.getElementById('resetEmail').focus();
+}
+function showLogin(){
+  _clearMsgs();
+  document.getElementById('resetView').style.display='none';
+  document.getElementById('loginView').style.display='block';
+}
+async function sendResetCode(){
+  _clearMsgs();
+  const email=document.getElementById('resetEmail').value.trim();
+  if(!email){_showErr('Please enter your email');return;}
+  const btn=document.getElementById('sendCodeBtn');
+  const label=btn.textContent; btn.disabled=true; btn.textContent='Sending…';
+  try{
+    const r=await fetch('/api/forgot-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
+    const d=await r.json();
+    if(!r.ok){_showErr(d.error||'Something went wrong');return;}
+    // Always the same generic message — move to step 2 so the code can be entered.
+    _showOk(d.message||'If that email belongs to a team account, a code has been sent.');
+    document.getElementById('resetStep1').style.display='none';
+    document.getElementById('resetStep2').style.display='block';
+    document.getElementById('resetOtp').focus();
+  }catch(e){_showErr('Server error. Try again.');}
+  finally{btn.disabled=false; btn.textContent=label;}
+}
+async function doResetPassword(){
+  _clearMsgs();
+  const email=document.getElementById('resetEmail').value.trim();
+  const otp=document.getElementById('resetOtp').value.trim();
+  const newPassword=document.getElementById('resetNewPass').value;
+  if(!otp||!newPassword){_showErr('Enter the code and a new password');return;}
+  if(newPassword.length<6){_showErr('New password must be at least 6 characters');return;}
+  const btn=document.getElementById('resetBtn');
+  const label=btn.textContent; btn.disabled=true; btn.textContent='Resetting…';
+  try{
+    const r=await fetch('/api/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,otp,newPassword})});
+    const d=await r.json();
+    if(!r.ok){_showErr(d.error||'Reset failed');return;}
+    // Success — back to login with the new password.
+    showLogin();
+    document.getElementById('email').value=email;
+    document.getElementById('password').value='';
+    _showOk(d.message||'Password updated — sign in with your new password.');
+    document.getElementById('password').focus();
+  }catch(e){_showErr('Server error. Try again.');}
+  finally{btn.disabled=false; btn.textContent=label;}
 }
 </script>
 </body>

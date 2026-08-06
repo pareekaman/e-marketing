@@ -1211,6 +1211,11 @@ app.get('/api/setup', async (req, res) => {
     await sa(`ALTER TABLE users ADD COLUMN extra_off TEXT DEFAULT '' AFTER week_off`, 'users.extra_off');
     await sa(`ALTER TABLE users ADD COLUMN exclude_from_reminder TINYINT(1) DEFAULT 0 AFTER extra_off`, 'users.exclude_from_reminder');
     await sa(`ALTER TABLE users ADD COLUMN extra_access TEXT DEFAULT NULL AFTER exclude_from_reminder`, 'users.extra_access');
+    // Forgot-password OTP (team members only). Hash of the 6-digit code, its
+    // expiry, and a failed-attempt counter so a code can't be brute-forced.
+    await sa(`ALTER TABLE users ADD COLUMN reset_otp_hash VARCHAR(255) DEFAULT NULL`, 'users.reset_otp_hash');
+    await sa(`ALTER TABLE users ADD COLUMN reset_otp_expires DATETIME DEFAULT NULL`, 'users.reset_otp_expires');
+    await sa(`ALTER TABLE users ADD COLUMN reset_otp_attempts INT DEFAULT 0`, 'users.reset_otp_attempts');
     await sa(`UPDATE users SET user_role=role WHERE user_role IS NULL`, 'backfill user_role from role');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`, 'delegation_tasks.client_id');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN url VARCHAR(2048) DEFAULT NULL AFTER client_id`, 'delegation_tasks.url');
@@ -1396,6 +1401,80 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/logout', (req, res) => {
   res.clearCookie('token');
   res.json({ success: true });
+});
+
+// ── Forgot password (team members only) ──────────────────────────────
+// A user who forgets their password gets a 6-digit code emailed to their login
+// address, then sets a new password with it. Client logins (role='client') are
+// deliberately excluded — this is for internal team accounts only.
+//
+// Security posture: the response is always the same generic success whether or
+// not the email exists, so the endpoint can't be used to discover which emails
+// are registered. The code is stored only as a bcrypt hash, expires in 10
+// minutes, is single-use, and is locked after 5 wrong tries.
+const RESET_OTP_TTL_MIN = 10;
+const RESET_OTP_MAX_ATTEMPTS = 5;
+
+app.post('/api/forgot-password', async (req, res) => {
+  try {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const generic = { ok: true, message: 'If that email belongs to a team account, a code has been sent to it.' };
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+    // Team members only — never client logins.
+    const [rows] = await db.query(
+      `SELECT id, name, email FROM users WHERE LOWER(email)=? AND role<>'client' LIMIT 1`, [email]);
+    const user = rows[0];
+    if (!user) return res.json(generic);  // same response — don't reveal existence
+
+    const otp = String(require('crypto').randomInt(0, 1000000)).padStart(6, '0');
+    const hash = bcrypt.hashSync(otp, 10);
+    const expires = new Date(Date.now() + RESET_OTP_TTL_MIN * 60 * 1000);
+    await db.query(
+      'UPDATE users SET reset_otp_hash=?, reset_otp_expires=?, reset_otp_attempts=0 WHERE id=?',
+      [hash, expires, user.id]);
+
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;line-height:1.6">
+      <p>Hi ${user.name || 'there'},</p>
+      <p>Use this code to reset your E-Marketing Task Manager password:</p>
+      <p style="font-size:26px;font-weight:800;letter-spacing:4px;color:#4f46e5;margin:16px 0">${otp}</p>
+      <p>This code expires in ${RESET_OTP_TTL_MIN} minutes and can be used once. If you didn't request this, you can ignore this email — your password stays unchanged.</p>
+      <p style="color:#777;font-size:12px;margin-top:20px">E-Marketing Task Manager</p>
+    </div>`;
+    await sendMail(user.email, 'Your password reset code', html);
+    res.json(generic);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/reset-password', async (req, res) => {
+  try {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const otp = String(req.body.otp || '').trim();
+    const newPassword = String(req.body.newPassword || '');
+    if (!email || !otp || !newPassword) return res.status(400).json({ error: 'Email, code and new password are all required' });
+    if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+
+    const [rows] = await db.query(
+      `SELECT id, reset_otp_hash, reset_otp_expires, reset_otp_attempts FROM users WHERE LOWER(email)=? AND role<>'client' LIMIT 1`, [email]);
+    const user = rows[0];
+    if (!user || !user.reset_otp_hash) return res.status(400).json({ error: 'No reset in progress — request a new code' });
+    if (new Date(user.reset_otp_expires).getTime() < Date.now()) {
+      await db.query('UPDATE users SET reset_otp_hash=NULL, reset_otp_expires=NULL, reset_otp_attempts=0 WHERE id=?', [user.id]);
+      return res.status(400).json({ error: 'That code has expired — request a new one' });
+    }
+    if ((user.reset_otp_attempts || 0) >= RESET_OTP_MAX_ATTEMPTS) {
+      await db.query('UPDATE users SET reset_otp_hash=NULL, reset_otp_expires=NULL, reset_otp_attempts=0 WHERE id=?', [user.id]);
+      return res.status(400).json({ error: 'Too many wrong attempts — request a new code' });
+    }
+    if (!bcrypt.compareSync(otp, user.reset_otp_hash)) {
+      await db.query('UPDATE users SET reset_otp_attempts=reset_otp_attempts+1 WHERE id=?', [user.id]);
+      return res.status(400).json({ error: 'Incorrect code' });
+    }
+    // Success — set the new password and clear the OTP so it can't be reused.
+    await db.query(
+      'UPDATE users SET password=?, reset_otp_hash=NULL, reset_otp_expires=NULL, reset_otp_attempts=0 WHERE id=?',
+      [bcrypt.hashSync(newPassword, 10), user.id]);
+    res.json({ ok: true, message: 'Password updated — you can now sign in with your new password.' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Leave-report viewing is now driven by per-user extra_access (granted via the
