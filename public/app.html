@@ -2512,7 +2512,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <div class="dr-reminder-info">
           <div class="dr-reminder-title">📊 Pending Task Summary</div>
           <div class="dr-reminder-sub">
-            Auto-runs <b>10:00 AM</b> &amp; <b>4:00 PM IST</b> daily · 3 separate WhatsApps (Delegation / Checklist / FMS) sent to the configured personal number, plus DMs to anyone ticked as a Pending Summary Recipient.
+            Auto-runs <b>10:00 AM</b> &amp; <b>4:00 PM IST</b> daily · 3 separate messages (Delegation / Checklist / FMS) sent to the configured personal number on WhatsApp &amp; email, plus email to anyone ticked as a Pending Summary Recipient.
           </div>
         </div>
         <div class="dr-reminder-actions">
@@ -9811,8 +9811,8 @@ async function loadWaDelegations() {
 async function handleWaDelegation(id, action) {
   const confirmed = await appConfirm(
     action === 'approved'
-      ? 'Approve this task? It will be added to delegation_tasks and the sender will get a WhatsApp notification.'
-      : 'Deny this task? The sender will get a WhatsApp notification.'
+      ? 'Approve this task? It will be added to delegation_tasks and the sender will be notified (WhatsApp / email).'
+      : 'Deny this task? The sender will be notified (WhatsApp / email).'
   );
   if (!confirmed) return;
   const r = await api(`/api/wa-delegation/${id}`, 'PUT', { action });
@@ -13109,7 +13109,7 @@ async function dtSubmit(){
     const r = await api('/api/daily-tasks', 'POST', { entry_date: date, rows });
     if (r.error) { showToast(r.error, 'error'); }
     else {
-      showToast(`✅ ${r.count} entries submitted! Confirmation sent on WhatsApp & email.`);
+      showToast(`✅ ${r.count} entries submitted! Confirmation sent on email.`);
       DT_LOCKED = true;
       await dtCheckLockAndRender();
       await dtLoadHistory();
@@ -15295,7 +15295,7 @@ async function reminderSendNow(){
 // 📊 PENDING TASK SUMMARY — send 3 group WhatsApp messages (auto-cron at 10/16 IST)
 // ══════════════════════════════════════════════════════
 async function pendingSummarySendNow(){
-  if (!await appConfirm('Send 3 pending-task-summary WhatsApp messages to the management group?', 'Send Pending Summary')) return;
+  if (!await appConfirm('Send the 3 pending-task-summary messages now (WhatsApp + email)?', 'Send Pending Summary')) return;
   const box = document.getElementById('pendingSummaryResult');
   box.style.display = 'block';
   box.className = 'dr-reminder-result';
@@ -15319,7 +15319,7 @@ async function pendingSummarySendNow(){
       </div>
       <div style="margin-top:6px"><b>Group</b></div>
       <ul>${fmtRow('Delegation', groupBlock.delegation)}${fmtRow('Checklist', groupBlock.checklist)}${fmtRow('FMS', groupBlock.fms)}</ul>
-      ${dmBlocks || '<div style="font-size:12px;color:#94a3b8">No personal DMs configured (tick "Receive Pending Task Summary on WhatsApp" on any user in the Users page).</div>'}`;
+      ${dmBlocks || '<div style="font-size:12px;color:#94a3b8">No email recipients configured (tick "Pending Task Summary Recipient" on any user in the Users page).</div>'}`;
     showToast('📱 Pending summary sent!');
   } catch(e) {
     box.className = 'dr-reminder-result error';
@@ -19604,8 +19604,8 @@ async function saveMeeting() {
       : await api('/api/meetings', 'POST', payload);
     if (r?.error) { showToast(r.error); return; }
     showToast(id
-      ? 'Meeting updated · WhatsApp sent'
-      : (r?.count > 1 ? `${r.count} meetings scheduled · WhatsApp sent` : 'Meeting scheduled · WhatsApp sent'));
+      ? 'Meeting updated · email sent'
+      : (r?.count > 1 ? `${r.count} meetings scheduled · email sent` : 'Meeting scheduled · email sent'));
     closeModal('meetingModal');
     _mtgDayAnchor = _mtgParseIso(payload.meeting_date);
     _mtgMonthAnchor = new Date(_mtgDayAnchor.getFullYear(), _mtgDayAnchor.getMonth(), 1);
@@ -19631,11 +19631,11 @@ async function markMeetingDone(id) {
 async function deleteMeeting() {
   const id = document.getElementById('mtgEditId').value;
   if (!id) return;
-  if (!await appConfirm('Cancel this meeting? WhatsApp notification will go out.', 'Cancel Meeting?')) return;
+  if (!await appConfirm('Cancel this meeting? An email notification will go out.', 'Cancel Meeting?')) return;
   try {
     const r = await api(`/api/meetings/${id}`, 'DELETE');
     if (r?.error) { showToast(r.error); return; }
-    showToast('Meeting cancelled · WhatsApp sent');
+    showToast('Meeting cancelled · email sent');
     closeModal('meetingModal');
     _mtgMonthCache = {};
     _mtgTaskCache = {};
