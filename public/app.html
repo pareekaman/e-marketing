@@ -81,6 +81,12 @@ body{
 .dash-emp-filter-opt{padding:7px 10px;border-radius:6px;font-size:13px;color:#1e293b;cursor:pointer;white-space:nowrap;}
 .dash-emp-filter-opt:hover{background:#f1f5f9;}
 .dash-emp-filter-opt.selected{background:#eef2ff;color:#4f46e5;font-weight:600;}
+/* Trigger button for any native <select> upgraded via initCustomSelect() — its
+   list uses .dash-emp-filter-list so it renders as page content, never a native
+   popup painting over the sidebar. */
+.cselect-btn{padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;color:#1e293b;background:#fff;cursor:pointer;outline:none;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
+.cselect-btn:hover{border-color:#cbd5e1;}
+.cselect-btn .cselect-caret{opacity:.45;font-size:11px;}
 
 .sidebar-logo{
   padding:16px 13px;border-bottom:1px solid rgba(255,255,255,.07);
@@ -6908,6 +6914,66 @@ document.addEventListener('DOMContentLoaded', () => {
     closeDashEmpDropdown();
   });
 });
+
+// ── Reusable custom dropdown ─────────────────────────────────────────
+// Upgrade ANY native <select> into an in-page custom dropdown, for the same
+// reason the dashboard employee filter uses one: a native <select> popup always
+// paints above everything (including the sidebar) and can't be closed when the
+// sidebar slides over it. The <select> stays as the value store and still fires
+// 'change'; a styled button shows the current label and a div renders the list.
+// Idempotent — safe to call again after the <select>'s options are rebuilt.
+function initCustomSelect(selectId){
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  // Already upgraded → just refresh the button label (options may have changed).
+  if (sel.dataset.cselect) { sel._cselectSync && sel._cselectSync(); return; }
+  sel.dataset.cselect = '1';
+  const fullWidth = /width\s*:\s*100%/.test(sel.getAttribute('style') || '');
+
+  const wrap = document.createElement('span');
+  wrap.style.cssText = fullWidth ? 'position:relative;display:block' : 'position:relative;display:inline-block';
+  sel.parentNode.insertBefore(wrap, sel);
+  wrap.appendChild(sel);
+  sel.style.display = 'none';
+  sel.tabIndex = -1;
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'cselect-btn';
+  if (fullWidth) { btn.style.width = '100%'; btn.style.justifyContent = 'space-between'; }
+  const list = document.createElement('div');
+  list.className = 'dash-emp-filter-list';
+  wrap.appendChild(btn);
+  wrap.appendChild(list);
+
+  const labelOf = () => { const o = sel.options[sel.selectedIndex]; return o ? o.textContent : ''; };
+  const sync = () => { btn.innerHTML = `<span>${dtEscape(labelOf())}</span><span class="cselect-caret">▾</span>`; };
+  sel._cselectSync = sync;
+  sync();
+
+  const outside = (e) => { if (!wrap.contains(e.target)) close(); };
+  function close(){ list.classList.remove('open'); document.removeEventListener('mousedown', outside); }
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (list.classList.contains('open')) { close(); return; }
+    list.innerHTML = Array.from(sel.options).map(o =>
+      `<div class="dash-emp-filter-opt${o.value === sel.value ? ' selected' : ''}" data-val="${dtEscape(o.value)}">${dtEscape(o.textContent)}</div>`
+    ).join('');
+    list.classList.add('open');
+    if (typeof closeSidebar === 'function') closeSidebar();
+    document.addEventListener('mousedown', outside);
+  });
+  list.addEventListener('click', (e) => {
+    const opt = e.target.closest('.dash-emp-filter-opt');
+    if (!opt) return;
+    sel.value = opt.dataset.val;
+    sync();
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    close();
+  });
+  // Keep the label right if something sets sel.value + dispatches change directly.
+  sel.addEventListener('change', sync);
+}
 
 // Close sidebar when user taps anywhere in main content area (mobile)
 document.addEventListener('DOMContentLoaded', () => {
@@ -15344,12 +15410,14 @@ function lvSyncTeamFilters() {
         sel.appendChild(opt);
       });
       if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+      // Custom in-page dropdown so the list never paints over the sidebar.
+      initCustomSelect('lvUserFilter');
     }
   }
 }
 
 function lvClearFilters() {
-  const sel = document.getElementById('lvUserFilter'); if (sel) sel.value = 'all';
+  const sel = document.getElementById('lvUserFilter'); if (sel) { sel.value = 'all'; sel._cselectSync && sel._cselectSync(); }
   const f = document.getElementById('lvDateFrom'); if (f) f.value = '';
   const t = document.getElementById('lvDateTo'); if (t) t.value = '';
   renderLeaves();
@@ -16757,6 +16825,7 @@ function paApplyFilters() {
 function paResetFilters() {
   const ids = ['paFilterEmployee','paFilterDateFrom','paFilterDateTo','paFilterAmtMin','paFilterAmtMax'];
   ids.forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('paFilterEmployee')?._cselectSync?.();
   paRenderApprovalRows(_paAllRows);
 }
 
@@ -16882,6 +16951,7 @@ async function loadPaymentApprovals() {
       const names = [...new Set(rows.map(r => r.name).filter(Boolean))].sort();
       const curVal = empSel.value;
       empSel.innerHTML = '<option value="">All Employees</option>' + names.map(n => `<option value="${dtEscape(n)}"${n===curVal?'selected':''}>${dtEscape(n)}</option>`).join('');
+      initCustomSelect('paFilterEmployee');  // custom dropdown — no native popup over the sidebar
     }
     paApplyFilters();
   } catch(e) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
