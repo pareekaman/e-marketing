@@ -749,33 +749,8 @@ async function notifyBotSender(phone, subject, text) {
   return sendWhatsApp(phone, text).catch(() => {});
 }
 
-// Email template for delegation task
-function delegationEmailHtml({ assigneeName, assignerName, desc, dueDate, priority, approval, remarks, clientName, url }) {
-  const appUrl = process.env.APP_URL || '#';
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-  const urlCell = url
-    ? (/^https?:\/\//i.test(url) ? `<a href="${esc(url)}" style="color:#4f46e5">${esc(url)}</a>` : esc(url))
-    : '';
-  return `
-  <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f6f9fc;padding:20px;">
-    <div style="background:#fff;border-radius:8px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-      <h2 style="color:#F39C12;margin-top:0;">📋 New Task Assigned to You</h2>
-      <p>Hi <b>${assigneeName || 'there'}</b>,</p>
-      <p><b>${assignerName || 'Someone'}</b> has assigned you a new delegation task:</p>
-      <table style="width:100%;border-collapse:collapse;margin:20px 0;">
-        <tr><td style="padding:8px;background:#f0f4f8;width:140px;"><b>Task</b></td><td style="padding:8px;">${desc}</td></tr>
-        ${clientName ? `<tr><td style="padding:8px;background:#f0f4f8;"><b>Client</b></td><td style="padding:8px;">${esc(clientName)}</td></tr>` : ''}
-        <tr><td style="padding:8px;background:#f0f4f8;"><b>Due Date</b></td><td style="padding:8px;">${dueDate}</td></tr>
-        <tr><td style="padding:8px;background:#f0f4f8;"><b>Priority</b></td><td style="padding:8px;text-transform:capitalize;">${priority}</td></tr>
-        <tr><td style="padding:8px;background:#f0f4f8;"><b>Approval Required</b></td><td style="padding:8px;text-transform:capitalize;">${approval}</td></tr>
-        ${url ? `<tr><td style="padding:8px;background:#f0f4f8;"><b>URL</b></td><td style="padding:8px;word-break:break-all;">${urlCell}</td></tr>` : ''}
-        ${remarks ? `<tr><td style="padding:8px;background:#f0f4f8;"><b>Remarks</b></td><td style="padding:8px;">${remarks}</td></tr>` : ''}
-      </table>
-      <a href="${appUrl}" style="display:inline-block;background:#F39C12;color:#fff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;">Open E-Marketing Task Manager</a>
-      <p style="color:#777;font-size:12px;margin-top:30px;">This is an automated email from E-Marketing Task Manager.</p>
-    </div>
-  </div>`;
-}
+// (delegationEmailHtml removed — the delegation email now uses the plain
+// WhatsApp-style text via waTextToEmailHtml, with no "Open Task Manager" button.)
 
 // ══════════════════════════════════════════════════════
 // MIDDLEWARE
@@ -1954,20 +1929,20 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
           clientName = cli?.name || '';
         }
         if (target) {
-          await sendMail(
-            target.email,
-            `📋 New Task Assigned: ${(desc||'').slice(0,60)}`,
-            delegationEmailHtml({
-              assigneeName: target.name,
-              assignerName,
-              desc, dueDate: doerWillSet ? 'Please add the due date in the task' : effectiveDate,
-              priority: priority||'low',
-              approval: approval||'no',
-              remarks: remarks||'',
-              clientName,
-              url: url || ''
-            })
-          );
+          // Same wording as the old WhatsApp delegation message — no HTML card,
+          // no "Open Task Manager" button — just the plain text as an email.
+          const dueFmt = doerWillSet ? 'Please add the due date in the task' : effectiveDate;
+          const msg = `Hello ${target.name || ''},\n\n📋 *New Task Delegated*\n\n` +
+            `*By:* ${assignerName}\n` +
+            (clientName ? `*Client:* ${clientName}\n` : '') +
+            `*Due Date:* ${dueFmt}\n` +
+            `*Priority:* ${(priority||'low').toUpperCase()}\n` +
+            (approval === 'yes' ? `*Approval Required:* Yes\n` : '') +
+            `\n*Task:* ${desc}` +
+            (url ? `\n\n*URL:* ${url}` : '') +
+            (remarks ? `\n\n*Remarks:* ${remarks}` : '') +
+            `\n\n— E-Marketing Task Manager`;
+          await sendMail(target.email, `📋 New Task Assigned: ${(desc||'').slice(0,60)}`, waTextToEmailHtml(msg));
         }
         // Doer notification now goes by EMAIL only (sent just above via
         // getNotifyTarget) — the personal WhatsApp DM has been retired.
