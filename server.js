@@ -740,13 +740,13 @@ async function emailForPhone(phone) {
     return u ? (u.notification_email || u.email) : null;
   } catch { return null; }
 }
-// Notify a WhatsApp-bot sender: email them if their phone matches a registered
-// user, otherwise fall back to WhatsApp (a truly external sender has no email).
+// Notify a WhatsApp-bot sender on BOTH channels: always WhatsApp, plus email if
+// their phone matches a registered user (a truly external sender has no email).
 async function notifyBotSender(phone, subject, text) {
   if (!phone) return;
+  await sendWhatsApp(phone, text).catch(() => {});
   const email = await emailForPhone(phone);
-  if (email) return sendMail(email, subject, waTextToEmailHtml(text)).catch(() => {});
-  return sendWhatsApp(phone, text).catch(() => {});
+  if (email) await sendMail(email, subject, waTextToEmailHtml(text)).catch(() => {});
 }
 
 // (delegationEmailHtml removed — the delegation email now uses the plain
@@ -5625,10 +5625,15 @@ async function sendPendingSummaryMessages() {
   // Pending summary goes to the configured PERSONAL WhatsApp number, NOT the
   // daily-reminder group. The group only receives the "report not filled" message.
   const groupResults = {};
+  // The fixed recipient now gets the summary on BOTH WhatsApp and email. Its
+  // email is PENDING_SUMMARY_EMAIL if set, else resolved from the phone number.
+  const summaryEmail = process.env.PENDING_SUMMARY_EMAIL || await emailForPhone(PENDING_SUMMARY_PHONE);
+  const summaryTypeLabel = { delegation: 'Delegation', checklist: 'Checklist', fms: 'FMS' };
   for (const type of ['delegation','checklist','fms']) {
     if (!msgs[type]) { groupResults[type] = { skipped: 'no pending tasks' }; continue; }
     const r = await sendWhatsApp(PENDING_SUMMARY_PHONE, msgs[type]);
     groupResults[type] = r;
+    if (summaryEmail) await sendMail(summaryEmail, `${summaryTypeLabel[type]} Pending Task Summary`, waTextToEmailHtml(msgs[type])).catch(e => console.error('pending summary email err:', e.message));
     await new Promise(r => setTimeout(r, 1500)); // small spacing so messages stay readable
   }
   // Also EMAIL each user who has the "pending_summary_recipient" access ticked
@@ -12144,7 +12149,7 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
       // hiccup must never fail the status update.
       (async () => {
         try {
-          const owners = await usersForSetting('onboarding_owner_ids');  // id, name, phone
+          const owners = await usersForSetting('onboarding_owner_ids', 'id, name, phone, email, notification_email');
           const dept = (department || c.department || '—');
           const onboardMsg =
             `🆕 *New Employee Onboarding*\n\n` +
@@ -12154,8 +12159,11 @@ app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
             `📅 Joining Date: ${joiningFmt}\n\n` +
             `⚠️ Please create the official email ID before the joining date.\n\n` +
             `— HR Portal`;
+          // Goes to the onboarding owner on BOTH WhatsApp and email.
           for (const o of owners) {
-            if (o.phone) await sendWhatsApp(o.phone, onboardMsg).catch(e => console.error('HRM onboarding notify err:', e.message));
+            if (o.phone) await sendWhatsApp(o.phone, onboardMsg).catch(e => console.error('HRM onboarding WA err:', e.message));
+            const oEmail = o.notification_email || o.email;
+            if (oEmail) await sendMail(oEmail, 'New Employee Onboarding — create email ID', waTextToEmailHtml(onboardMsg)).catch(e => console.error('HRM onboarding email err:', e.message));
           }
         } catch (e) { console.error('HRM onboarding notify lookup err:', e.message); }
       })();
