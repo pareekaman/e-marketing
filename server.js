@@ -10041,39 +10041,8 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
       // the submitter actually typed and fall back to hours for calendar rows.
       const fmtDur = (o) => (o && o.minutes) ? `${o.minutes} min` : `${(o && o.hours) || 0}h`;
 
-      const target = await getNotifyTarget(approverId);
-      if (target) {
-        // Client-wise work breakdown rows (extra_working only)
-        const breakdownHtml = hasEntries
-          ? cleanDates.map(d =>
-              `<div style="margin-top:6px"><b>${d.date.split('-').reverse().join('-')} (${fmtDur(d)})</b></div>` +
-              (d.entries || []).map(e =>
-                `<div style="padding-left:12px">• ${esc(e.client)}` +
-                (e.department ? ` <span style="color:#64748b">[${esc(e.department)}]</span>` : '') +
-                ` — ${esc(e.description)} <b>(${fmtDur(e)})</b></div>`).join(''))
-              .join('')
-          : '';
-        const html = `
-          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f6f9fc;padding:20px;">
-            <div style="background:#fff;border-radius:8px;padding:30px;">
-              <h2 style="color:#F39C12;margin-top:0;">🗓 ${hasEntries ? 'New Extra Working Request' : 'New Leave Request'}</h2>
-              <p>Hi <b>${target.name||'there'}</b>,</p>
-              <p><b>${me?.name || 'An employee'}</b> has submitted ${hasEntries ? 'an extra working' : 'a leave'} request for your approval.</p>
-              <table style="width:100%;border-collapse:collapse;margin:14px 0;">
-                <tr><td style="padding:8px;background:#f0f4f8;width:140px"><b>Type</b></td><td style="padding:8px;">${typeLabel}</td></tr>
-                <tr><td style="padding:8px;background:#f0f4f8;"><b>Dates</b></td><td style="padding:8px;">${datesLine}</td></tr>
-                ${hasEntries
-                  ? `<tr><td style="padding:8px;background:#f0f4f8;"><b>Work done</b></td><td style="padding:8px;">${breakdownHtml}</td></tr>`
-                  : `<tr><td style="padding:8px;background:#f0f4f8;"><b>Reason</b></td><td style="padding:8px;">${esc(reason)}</td></tr>`}
-              </table>
-              <p style="color:#777;font-size:12px;margin-top:20px;">E-Marketing Task Manager · Leave Tracker</p>
-            </div>
-          </div>`;
-        sendMail(target.email, `${hasEntries ? 'Extra Working' : 'Leave'} Request — ${me?.name || ''}`, html).catch(()=>{});
-      }
-      // Email the OTHER department HODs too, so every HOD sees the request — not
-      // just the assigned approver who already got the email above. Personal
-      // WhatsApp has been retired.
+      // Notify the assigned approver AND every other same-dept HOD — all the
+      // same plain WhatsApp-style email (no HTML card). Personal WhatsApp retired.
       try {
         const daysWord = cleanDates.length === 1 ? '1 day' : `${cleanDates.length} days`;
         const datesPretty = cleanDates.map(d => {
@@ -10081,17 +10050,17 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
           return leave_type === 'extra_working' ? `${dd} (${d.hours}h)` : dd;
         }).join(', ');
         const [[submitter]] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
-        let hodRecipients = [];
+        let recipients = [];
         if (submitter?.department) {
           const [allHods] = await db.query(
             `SELECT id, name, email, notification_email FROM users WHERE COALESCE(user_role, role)='hod' AND department=?`,
             [submitter.department]);
-          hodRecipients = allHods;
+          recipients = allHods;
         }
-        if (!hodRecipients.length) {
-          // fallback to single assigned approver
+        // Always include the assigned approver, even if not a dept HOD.
+        if (approverId && !recipients.some(r => r.id === approverId)) {
           const [[apRow]] = await db.query('SELECT id, name, email, notification_email FROM users WHERE id=?', [approverId]);
-          if (apRow) hodRecipients = [apRow];
+          if (apRow) recipients.push(apRow);
         }
         const waHeading = ({
           extra_working: 'New Extra Working Request',
@@ -10109,8 +10078,7 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
             }).join('\n')
           : `*Dates:* ${datesPretty}\n` +
             `*Reason:* ${reason}`;
-        for (const hod of hodRecipients) {
-          if (hod.id === approverId) continue;  // assigned approver already emailed above
+        for (const hod of recipients) {
           const hodEmail = hod.notification_email || hod.email;
           if (!hodEmail) continue;
           const msg = `Hello ${hod.name || ''},\n\n🗓 *${waHeading}*\n\n` +
@@ -10177,18 +10145,18 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
 
     const target = await getNotifyTarget(lr.user_id);
     if (target) {
-      const color = newStatus === 'approved' ? '#16a34a' : '#dc2626';
-      const html = `
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f6f9fc;padding:20px;">
-          <div style="background:#fff;border-radius:8px;padding:30px;">
-            <h2 style="color:${color};margin-top:0;">Leave ${newStatus === 'approved' ? 'Approved ✅' : 'Rejected ❌'}</h2>
-            <p>Hi <b>${target.name || 'there'}</b>,</p>
-            <p>Your leave request <b>${typeLabel}</b> (${datesLine}) has been <b style="color:${color}">${newStatus}</b>.</p>
-            ${note ? `<p><b>Note:</b> ${(note||'').replace(/</g,'&lt;')}</p>` : ''}
-            <p style="color:#777;font-size:12px;margin-top:20px;">E-Marketing Task Manager · Leave Tracker</p>
-          </div>
-        </div>`;
-      sendMail(target.email, `Leave ${newStatus} — ${typeLabel}`, html).catch(()=>{});
+      // Same plain WhatsApp-style wording as every other notification email.
+      const statusIcon = newStatus === 'approved' ? '✅' : '❌';
+      const statusWord = newStatus === 'approved' ? 'APPROVED' : 'REJECTED';
+      const subjectWord = lr.leave_type === 'extra_working' ? 'Extra Working' : 'Leave';
+      const [[apRow]] = await db.query('SELECT name FROM users WHERE id=? LIMIT 1', [uid]);
+      const msg = `Hello ${target.name || ''},\n\n${statusIcon} *${subjectWord} ${statusWord}*\n\n` +
+        `*Type:* ${typeLabel}\n` +
+        `*Dates:* ${datesLine}\n` +
+        `*Decided by:* ${apRow?.name || 'Approver'}\n` +
+        (note ? `*Note:* ${note}\n` : '') +
+        `\n— E-Marketing Task Manager`;
+      sendMail(target.email, `${subjectWord} ${newStatus} — ${typeLabel}`, waTextToEmailHtml(msg)).catch(()=>{});
     }
     // Requester is notified by EMAIL only now (sent just above via
     // getNotifyTarget) — the personal WhatsApp DM has been retired.
