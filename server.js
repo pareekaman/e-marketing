@@ -11216,7 +11216,7 @@ Details required:
 • Residential address
 • Resume (optional) — PDF or Word
 • Aadhaar card — one PDF, or front & back photos
-• PAN card (optional) — same
+• PAN card (optional) — one PDF, or front & back photos
 
 Your offer letter will be issued once we receive these details.
 
@@ -12334,7 +12334,7 @@ app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) =>
           <li>Residential address</li>
           <li>Resume (optional) — PDF or Word</li>
           <li>Aadhaar card — one PDF, or front &amp; back photos</li>
-          <li>PAN card (optional) — same</li>
+          <li>PAN card (optional) — one PDF, or front &amp; back photos</li>
         </ul>
         <p>Your offer letter will be issued once we receive these details.</p>`;
     } else {
