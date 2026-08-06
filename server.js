@@ -705,6 +705,50 @@ async function getNotifyTarget(userId) {
   } catch { return null; }
 }
 
+// ── WhatsApp → Email migration helpers ───────────────────────────────
+// The team asked for every personal-number notification to arrive by email
+// instead of WhatsApp (only the HR onboarding email-ID notice and the client/
+// team GROUP messages stay on WhatsApp). Rather than hand-write an HTML
+// template per message, these turn the existing WhatsApp text into a simple
+// email so the wording stays identical.
+function waTextToEmailHtml(text) {
+  const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));
+  const body = esc(text)
+    .replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>')  // *bold* → <strong>
+    .replace(/\n/g, '<br>');
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;line-height:1.6">${body}</div>`;
+}
+// Email a WhatsApp-style message to a user resolved by id. Best-effort; returns
+// true if it went out. Safe to call fire-and-forget.
+async function emailUserWaText(userId, subject, text) {
+  const t = await getNotifyTarget(userId);
+  if (!t?.email) return false;
+  return sendMail(t.email, subject, waTextToEmailHtml(text));
+}
+// Resolve a notification email from a phone number (bot senders are known only
+// by phone). Tries the number as stored and without a leading 91. Null if no
+// matching user — the caller then falls back to WhatsApp.
+async function emailForPhone(phone) {
+  if (!phone) return null;
+  const p = String(phone).trim();
+  const alt = p.replace(/^\+?91/, '');
+  try {
+    const [rows] = await db.query(
+      'SELECT email, notification_email FROM users WHERE phone=? OR phone=? OR phone=? LIMIT 1',
+      [p, alt, '91' + alt]);
+    const u = rows[0];
+    return u ? (u.notification_email || u.email) : null;
+  } catch { return null; }
+}
+// Notify a WhatsApp-bot sender: email them if their phone matches a registered
+// user, otherwise fall back to WhatsApp (a truly external sender has no email).
+async function notifyBotSender(phone, subject, text) {
+  if (!phone) return;
+  const email = await emailForPhone(phone);
+  if (email) return sendMail(email, subject, waTextToEmailHtml(text)).catch(() => {});
+  return sendWhatsApp(phone, text).catch(() => {});
+}
+
 // Email template for delegation task
 function delegationEmailHtml({ assigneeName, assignerName, desc, dueDate, priority, approval, remarks }) {
   const appUrl = process.env.APP_URL || '#';
@@ -1813,24 +1857,8 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
             })
           );
         }
-        // WhatsApp to doer
-        try {
-          const [[doerRow]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [targetUser]);
-          if (doerRow && doerRow.phone) {
-            const dueFmt = doerWillSet
-              ? 'Please add the due date in the task'
-              : (effectiveDate||'').split('-').reverse().join('-') + (dueTime ? ` at ${dueTime.slice(0,5)}` : '');
-            const msg = `Hello ${doerRow.name || ''},\n\n📋 *New Task Delegated*\n\n` +
-              `*By:* ${assignerName}\n` +
-              `*Due Date:* ${dueFmt}\n` +
-              `*Priority:* ${(priority||'low').toUpperCase()}\n` +
-              (approval==='yes' ? `*Approval Required:* Yes\n` : '') +
-              `\n*Task:* ${desc}` +
-              (remarks ? `\n\n*Remarks:* ${remarks}` : '') +
-              `\n\n— E-Marketing Task Manager`;
-            sendWhatsApp(doerRow.phone, msg).catch(e => console.error('WA delegation err:', e.message));
-          }
-        } catch (e) { console.error('WA delegation lookup err:', e.message); }
+        // Doer notification now goes by EMAIL only (sent just above via
+        // getNotifyTarget) — the personal WhatsApp DM has been retired.
 
         // Handler → client task: announce it in the client's own WhatsApp group
         // right away (the doer is a client login with no phone, so the message
@@ -1941,19 +1969,17 @@ app.post('/api/tasks/:id/subtasks', requireAuth, async (req, res) => {
     if (!(await canTouchSubtasks(req, task))) return res.status(403).json({ error: 'Not allowed' });
     await db.query('INSERT INTO task_subtasks (task_id, description, priority, created_by) VALUES (?,?,?,?)', [taskId, desc, priority, req.session.userId]);
 
-    // 📱 WhatsApp to the handler — non-blocking (fire and forget).
+    // 📧 Email the handler — non-blocking (fire and forget). Was WhatsApp.
     (async () => {
       const [[client]] = await db.query('SELECT name FROM users WHERE id=? LIMIT 1', [req.session.userId]);
-      const [[handler]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [task.assigned_to]);
-      if (handler?.phone) {
-        const msg = `Hello ${handler.name || ''},\n\n🧩 *New Sub-task Added*\n\n` +
-          `*By:* ${client?.name || 'Client'} (Client)\n` +
-          `*Under Task:* ${task.description}\n\n` +
-          `*Sub-task:* ${desc}\n\n` +
-          `— E-Marketing Task Manager`;
-        sendWhatsApp(handler.phone, msg).catch(e => console.error('WA subtask err:', e.message));
-      }
-    })().catch(e => console.error('WA subtask lookup err:', e.message));
+      const [[handler]] = await db.query('SELECT name FROM users WHERE id=? LIMIT 1', [task.assigned_to]);
+      const msg = `Hello ${handler?.name || ''},\n\n🧩 *New Sub-task Added*\n\n` +
+        `*By:* ${client?.name || 'Client'} (Client)\n` +
+        `*Under Task:* ${task.description}\n\n` +
+        `*Sub-task:* ${desc}\n\n` +
+        `— E-Marketing Task Manager`;
+      await emailUserWaText(task.assigned_to, `New Sub-task: ${desc.slice(0,60)}`, msg);
+    })().catch(e => console.error('subtask email err:', e.message));
 
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -3212,8 +3238,10 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
     const accessJson = JSON.stringify(sanitizeExtraAccess(extra_access));
     await db.query('INSERT INTO users (name,email,notification_email,password,role,user_role,phone,department,week_off,extra_off,exclude_from_reminder,extra_access,birthday,joining_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       [name, email, notification_email||'', bcrypt.hashSync(password,10), appRole, userRole, phone||null, department||'', week_off||'', extra_off||'', exclude_from_reminder?1:0, accessJson, birthday||null, joining_date||null]);
-    const waMsg = `Hi ${name},\nWelcome to e-marketing. We are granting you access to the our task manager.🌸\n\nhttps://taskmanager.e-marketing.io/app\nid : ${email}\npass : ${password}`;
-    if (phone) sendWhatsApp(phone, waMsg).catch(e => console.error('WA new user err:', e.message));
+    // Credentials now go by EMAIL to the new user (was WhatsApp).
+    const credMsg = `Hi ${name},\nWelcome to e-marketing. We are granting you access to the our task manager.🌸\n\nhttps://taskmanager.e-marketing.io/app\nid : ${email}\npass : ${password}`;
+    const credTo = notification_email || email;
+    if (credTo) sendMail(credTo, 'Welcome to E-Marketing — Your Task Manager Login', waTextToEmailHtml(credMsg)).catch(e => console.error('new user email err:', e.message));
     // Team welcome announcement
     const welcomeMsg = `Hello Team,\nPlease join me in welcoming ${name} our new team member who has joined us as a ${department || 'team member'}.\nWe are excited to have them on board and look forward to working together.\nWelcome to the team, ${name}! 🌸`;
     sendWhatsAppRaw('919602694444-1618492040@g.us', welcomeMsg).catch(e => console.error('WA team welcome err:', e.message));
@@ -5045,7 +5073,7 @@ app.post('/api/wa-bot/task', async (req, res) => {
     );
 
     // Look up Naman Gupta's phone from the users table
-    const [naman] = await usersForSetting('wa_task_approver_ids', 'phone');
+    const [naman] = await usersForSetting('wa_task_approver_ids', 'id, name, email, notification_email');
 
     const baseUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -5058,8 +5086,10 @@ app.post('/api/wa-bot/task', async (req, res) => {
       (remarks     ? `*Remarks:* ${remarks}\n`    : '') +
       `\n📲 *E-Marketing App* → Approvals → WhatsApp Tasks\n${baseUrl}/app`;
 
-    if (naman?.phone) {
-      sendWhatsApp(naman.phone, waMsg).catch(e => console.error('WA approval notify err:', e.message));
+    // Approver notified by email now (was WhatsApp).
+    const namanEmail = naman && (naman.notification_email || naman.email);
+    if (namanEmail) {
+      sendMail(namanEmail, 'New WhatsApp Task — Approval Required', waTextToEmailHtml(waMsg)).catch(e => console.error('approval notify email err:', e.message));
     }
 
     res.json({ ok: true, id: result.insertId, pending: true });
@@ -5100,7 +5130,7 @@ app.get('/api/wa-delegation/approve/:token', async (req, res) => {
     if (row.sender_phone) {
       const msg = `✅ *Task Approved!*\n\nYour task has been approved and added to the system.\n\n📋 *Task:* ${row.description}` +
         (row.due_date ? `\n📅 *Due Date:* ${row.due_date}` : '');
-      sendWhatsApp(row.sender_phone, msg).catch(() => {});
+      notifyBotSender(row.sender_phone, 'Task Approved', msg);
     }
 
     return res.send(waDelegationPage('Task Approved ✅',
@@ -5128,7 +5158,7 @@ app.get('/api/wa-delegation/deny/:token', async (req, res) => {
     // Notify the sender via WhatsApp
     if (row.sender_phone) {
       const msg = `❌ *Task Not Approved*\n\nYour task was reviewed and was not approved.\n\n📋 *Task:* ${row.description}`;
-      sendWhatsApp(row.sender_phone, msg).catch(() => {});
+      notifyBotSender(row.sender_phone, 'Task Not Approved', msg);
     }
 
     return res.send(waDelegationPage('Task Denied ❌',
@@ -5219,13 +5249,13 @@ app.put('/api/wa-delegation/:id', requireAuth, async (req, res) => {
       if (row.sender_phone) {
         const msg = `✅ *Task Approved!*\n\nYour task has been approved and added to the system.\n\n📋 *Task:* ${row.description}` +
           (row.due_date ? `\n📅 *Due Date:* ${row.due_date}` : '');
-        sendWhatsApp(row.sender_phone, msg).catch(() => {});
+        notifyBotSender(row.sender_phone, 'Task Approved', msg);
       }
     } else {
       await db.query(`UPDATE tasks SET status='denied' WHERE id=?`, [row.id]);
       if (row.sender_phone) {
         const msg = `❌ *Task Not Approved*\n\nYour task was reviewed and was not approved.\n\n📋 *Task:* ${row.description}`;
-        sendWhatsApp(row.sender_phone, msg).catch(() => {});
+        notifyBotSender(row.sender_phone, 'Task Not Approved', msg);
       }
     }
 
@@ -5511,25 +5541,23 @@ async function sendPendingSummaryMessages() {
     groupResults[type] = r;
     await new Promise(r => setTimeout(r, 1500)); // small spacing so messages stay readable
   }
-  // Also DM each user who has the "pending_summary_recipient" access ticked.
-  // Recipients are messaged in parallel — each recipient's own 3 messages stay
-  // sequential/spaced (for readability), but different recipients no longer
-  // wait on each other. With sends done one recipient at a time, total time
-  // grew with recipient count and started exceeding Vercel's 60s function
-  // limit / GitHub Actions' 2-min job timeout once a few recipients were
-  // configured, causing the whole cron run to get cancelled mid-request.
+  // Also EMAIL each user who has the "pending_summary_recipient" access ticked
+  // (was a personal WhatsApp DM). The fixed PENDING_SUMMARY_PHONE above stays on
+  // WhatsApp; only these opted-in recipients moved to email.
   const [recipients] = await db.query(
-    `SELECT id, name, phone, extra_access FROM users WHERE phone IS NOT NULL AND phone <> '' AND extra_access IS NOT NULL`
+    `SELECT id, name, email, notification_email, extra_access FROM users WHERE extra_access IS NOT NULL`
   );
   const targets = recipients.filter(u => parseExtraAccess(u.extra_access).includes('pending_summary_recipient'));
+  const typeLabel = { delegation: 'Delegation', checklist: 'Checklist', fms: 'FMS' };
   const dmResults = await Promise.all(targets.map(async u => {
+    const email = u.notification_email || u.email;
     const perType = {};
     for (const type of ['delegation','checklist','fms']) {
       if (!msgs[type]) { perType[type] = { skipped: 'no pending tasks' }; continue; }
-      perType[type] = await sendWhatsApp(u.phone, msgs[type]);
-      await new Promise(r => setTimeout(r, 1200));
+      if (!email) { perType[type] = { skipped: 'no email' }; continue; }
+      perType[type] = await sendMail(email, `${typeLabel[type]} Pending Task Summary`, waTextToEmailHtml(msgs[type]));
     }
-    return { userId: u.id, name: u.name, phone: u.phone, perType };
+    return { userId: u.id, name: u.name, email, perType };
   }));
   return { ok: true, counts: msgs.counts, group: groupResults, dms: dmResults };
 }
@@ -5556,8 +5584,9 @@ app.post('/api/pending-summary/send', requireAuth, requireAdmin, async (_req, re
 // notified. Marks BEFORE sending so a crash mid-loop can't double-send
 // on the next run.
 async function notifyPurviOfNewMdoTasks() {
-  const [purvi] = await usersForSetting('mdo_reviewer_ids', 'phone');
-  if (!purvi?.phone) return { ok: false, reason: 'no MDO reviewer with a phone on file — check app_settings.mdo_reviewer_ids' };
+  const [purvi] = await usersForSetting('mdo_reviewer_ids', 'id, name, email, notification_email');
+  const purviEmail = purvi && (purvi.notification_email || purvi.email);
+  if (!purviEmail) return { ok: false, reason: 'no MDO reviewer with an email on file — check app_settings.mdo_reviewer_ids' };
 
   const [rows] = await db.query(`SELECT * FROM tasks WHERE purvi_notified = 0 OR purvi_notified IS NULL`);
   let sent = 0;
@@ -5574,7 +5603,7 @@ async function notifyPurviOfNewMdoTasks() {
       `📅 *Due Date:* ${dueDate ? new Date(dueDate).toLocaleDateString('en-IN') : '—'}\n` +
       `🏢 *Client:* ${task.client_name || '—'}\n\n` +
       `Please review and approve/reject this task in the MDO Approvals dashboard.`;
-    await sendWhatsApp(purvi.phone, waMsg).catch(e => console.error('WA new-mdo-task notify err:', e.message));
+    await sendMail(purviEmail, 'New WhatsApp Task — Needs Your Approval', waTextToEmailHtml(waMsg)).catch(e => console.error('MDO new-task email err:', e.message));
     sent++;
   }
   return { ok: true, sent };
@@ -5802,7 +5831,7 @@ async function buildAndSendPendingTasksReminder() {
 
   // Fetch user details (name + phone + off info)
   const [users] = await db.query(
-    `SELECT id, name, phone, COALESCE(department,'') AS department,
+    `SELECT id, name, phone, email, notification_email, COALESCE(department,'') AS department,
             COALESCE(week_off,'') AS week_off, COALESCE(extra_off,'') AS extra_off,
             COALESCE(exclude_from_reminder,0) AS exclude_from_reminder
        FROM users WHERE id IN (${userIds.map(()=>'?').join(',')})`, userIds);
@@ -5821,7 +5850,8 @@ async function buildAndSendPendingTasksReminder() {
     const u = userMap[uid];
     if (!u) { skipped++; skippedDetails.push({ id: uid, reason: 'user not found' }); continue; }
     if (u.exclude_from_reminder) { skipped++; skippedDetails.push({ name: u.name, reason: 'manually excluded' }); continue; }
-    if (!u.phone) { skipped++; skippedDetails.push({ name: u.name, reason: 'no phone' }); continue; }
+    const uEmail = u.notification_email || u.email;
+    if (!uEmail) { skipped++; skippedDetails.push({ name: u.name, reason: 'no email' }); continue; }
     if (onLeave.has(uid)) { skipped++; skippedDetails.push({ name: u.name, reason: 'on approved leave' }); continue; }
     // Skip CXO department
     if (EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase())) {
@@ -5849,8 +5879,8 @@ async function buildAndSendPendingTasksReminder() {
     const taskWord = tasks.length === 1 ? 'task' : 'tasks';
     const msg = `Hello ${u.name || ''},\n\n📋 *You have ${tasks.length} pending ${taskWord}*\n\n${lines}\n\nPlease update status by EOD.\n\n— E-Marketing Task Manager`;
 
-    const r = await sendWhatsApp(u.phone, msg);
-    if (r.ok) sent++; else { skipped++; skippedDetails.push({ name: u.name, reason: r.error || r.reason || 'send failed' }); }
+    const ok = await sendMail(uEmail, `You have ${tasks.length} pending ${taskWord}`, waTextToEmailHtml(msg));
+    if (ok) sent++; else { skipped++; skippedDetails.push({ name: u.name, reason: 'email send failed' }); }
   }
 
   return { ok: true, date: today, total: userIds.length, sent, skipped, skippedDetails };
@@ -5999,15 +6029,15 @@ async function remindHandlersOfMissingDueDates({ force = false } = {}) {
     byHandler.get(r.assigned_to).push(r);
   }
 
-  let sent = 0, noPhone = 0;
+  let sent = 0, noEmail = 0;
   for (const tasks of byHandler.values()) {
     const h = tasks[0];
-    if (!h.handler_phone) { noPhone++; continue; }
-    await sendWhatsApp(h.handler_phone, dueDateNudgeMessage(h.handler_name, tasks))
-      .catch(e => console.error('WA due-date nudge err:', e.message));
-    sent++;
+    // Now emails the handler (was WhatsApp) — resolved by their user id.
+    const ok = await emailUserWaText(h.assigned_to, 'Due date pending on client tasks', dueDateNudgeMessage(h.handler_name, tasks))
+      .catch(e => { console.error('due-date nudge email err:', e.message); return false; });
+    if (ok) sent++; else noEmail++;
   }
-  return { ok: true, sent, handlers: byHandler.size, tasks: rows.length, noPhone };
+  return { ok: true, sent, handlers: byHandler.size, tasks: rows.length, noEmail };
 }
 
 // Kept separate so the wording can be reviewed without reading the query.
@@ -8005,8 +8035,8 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
       try {
         const [[pr]] = await db.query('SELECT submitted_by, reason FROM payment_requests WHERE id=?', [req.params.id]);
         if (pr && pr.submitted_by) {
-          const [[submitter]] = await db.query('SELECT name, phone FROM users WHERE id=?', [pr.submitted_by]);
-          if (submitter && submitter.phone) {
+          const [[submitter]] = await db.query('SELECT name FROM users WHERE id=?', [pr.submitted_by]);
+          if (submitter) {
             const emoji = status === 'approved' ? '✅' : '❌';
             const statusText = status === 'approved' ? 'Approved' : 'Rejected';
             let amtStr = '', cleanReason = pr.reason || '';
@@ -8025,10 +8055,10 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
               }
             }
             const msg = `${emoji} *Payment Request ${statusText}*\n\nHi ${submitter.name},\n\nYour payment request has been *${statusText.toLowerCase()}*.${amtStr}\n*Reason:* ${cleanReason}\n\n— E-Marketing`;
-            await sendWhatsApp(submitter.phone, msg);
+            await emailUserWaText(pr.submitted_by, `Payment Request ${statusText}`, msg);
           }
         }
-      } catch(waErr) { console.error('WA payment notify err:', waErr.message); }
+      } catch(waErr) { console.error('payment notify email err:', waErr.message); }
     })();
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -8083,9 +8113,10 @@ app.patch('/api/mdo-tasks/:id', requireAuth, async (req, res) => {
     const dueDateStr = dueDate ? new Date(dueDate).toLocaleDateString('en-IN') : '—';
     const taskDesc = task.task_description || task.description || '—';
 
-    // Admin oversight — always notify Naman Gupta
-    const [naman] = await usersForSetting('wa_task_approver_ids', 'phone');
-    if (naman?.phone) {
+    // Admin oversight — always email Naman Gupta (was WhatsApp)
+    const [naman] = await usersForSetting('wa_task_approver_ids', 'id, name, email, notification_email');
+    const namanEmail = naman && (naman.notification_email || naman.email);
+    if (namanEmail) {
       const emoji = status === 'Approved' ? '✅' : '❌';
       const waMsg =
         `${emoji} *Task ${status} by ${approverName}*\n\n` +
@@ -8096,23 +8127,23 @@ app.patch('/api/mdo-tasks/:id', requireAuth, async (req, res) => {
         `📅 *Due Date:* ${dueDateStr}\n` +
         `🏢 *Client:* ${task.client_name || '—'}\n\n` +
         `Status updated to *${status}*.`;
-      sendWhatsApp(naman.phone, waMsg).catch(e => console.error('WA mdo-task notify err:', e.message));
+      sendMail(namanEmail, `Task ${status} by ${approverName}`, waTextToEmailHtml(waMsg)).catch(e => console.error('mdo-task email err:', e.message));
     }
 
-    // Notify Assigned To
-    if (assignedToUser?.phone) {
+    // Notify Assigned To by email (was WhatsApp)
+    if (assignedToUser?.id) {
       const waMsg = status === 'Approved'
         ? `✅ *Task Approved & Assigned to ${task.assigned_to || '—'}*\n\n📋 *Task:* ${taskDesc}\n🆔 *Task ID:* ${task.task_id || '—'}\n🙋 *Assigned By:* ${assignedByName || '—'}\n📅 *Due Date:* ${dueDateStr}\n🏢 *Client:* ${task.client_name || '—'}\n\nThis task has been approved by *${approverName}* and assigned to you.`
         : `❌ *Task Rejected*\n\n📋 *Task:* ${taskDesc}\n🆔 *Task ID:* ${task.task_id || '—'}\n🙋 *Assigned By:* ${assignedByName || '—'}\n\nThis task was reviewed and rejected by *${approverName}*. No action needed from you.`;
-      sendWhatsApp(assignedToUser.phone, waMsg).catch(e => console.error('WA mdo-task assignedTo notify err:', e.message));
+      emailUserWaText(assignedToUser.id, `Task ${status}`, waMsg).catch(e => console.error('mdo-task assignedTo email err:', e.message));
     }
 
-    // Notify Assigned By
-    if (assignedByUser?.phone) {
+    // Notify Assigned By by email (was WhatsApp)
+    if (assignedByUser?.id) {
       const waMsg = status === 'Approved'
         ? `✅ *Task Delegated Successfully*\n\n📋 *Task:* ${taskDesc}\n🆔 *Task ID:* ${task.task_id || '—'}\n👤 *Assigned To:* ${task.assigned_to || '—'}\n📅 *Due Date:* ${dueDateStr}\n\nYour task has been approved by *${approverName}* and delegated to *${task.assigned_to}*.`
         : `❌ *Task Request Rejected*\n\n📋 *Task:* ${taskDesc}\n🆔 *Task ID:* ${task.task_id || '—'}\n👤 *Assigned To:* ${task.assigned_to || '—'}\n\nYour task request was reviewed and rejected by *${approverName}*.`;
-      sendWhatsApp(assignedByUser.phone, waMsg).catch(e => console.error('WA mdo-task assignedBy notify err:', e.message));
+      emailUserWaText(assignedByUser.id, `Task ${status}`, waMsg).catch(e => console.error('mdo-task assignedBy email err:', e.message));
     }
 
     res.json({ success: true, delegationTaskId });
@@ -9105,16 +9136,8 @@ app.post('/api/daily-tasks', requireAuth, async (req, res) => {
       [cleanRows]
     );
 
-    // Get user's name + phone for the confirmation
-    const [[user]] = await db.query('SELECT name, phone FROM users WHERE id=?', [req.session.userId]);
-
-    // Fire WhatsApp (don't await — don't block response)
-    if (user && user.phone) {
-      const msg = `✨ Hello ${user.name},\nThank you for submitting your daily task ✔️\nYour response for the date ${entry_date} has been successfully recorded in the database 📄✨`;
-      sendWhatsApp(user.phone, msg).catch(e => console.error('WA send err:', e.message));
-    }
-
-    // Email confirmation too (to the submitter's notification/login email).
+    // Confirmation now goes by EMAIL only — the WhatsApp DM has been retired.
+    // Email confirmation (to the submitter's notification/login email).
     const target = await getNotifyTarget(req.session.userId);
     if (target) {
       const esc = s => String(s||'').replace(/[&<>]/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[ch]));
@@ -9958,7 +9981,9 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
           </div>`;
         sendMail(target.email, `${hasEntries ? 'Extra Working' : 'Leave'} Request — ${me?.name || ''}`, html).catch(()=>{});
       }
-      // WhatsApp to ALL HODs in same department (so both HODs get notified)
+      // Email the OTHER department HODs too, so every HOD sees the request — not
+      // just the assigned approver who already got the email above. Personal
+      // WhatsApp has been retired.
       try {
         const daysWord = cleanDates.length === 1 ? '1 day' : `${cleanDates.length} days`;
         const datesPretty = cleanDates.map(d => {
@@ -9966,17 +9991,17 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
           return leave_type === 'extra_working' ? `${dd} (${d.hours}h)` : dd;
         }).join(', ');
         const [[submitter]] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
-        let waRecipients = [];
+        let hodRecipients = [];
         if (submitter?.department) {
           const [allHods] = await db.query(
-            `SELECT name, phone FROM users WHERE COALESCE(user_role, role)='hod' AND department=? AND phone IS NOT NULL AND phone<>''`,
+            `SELECT id, name, email, notification_email FROM users WHERE COALESCE(user_role, role)='hod' AND department=?`,
             [submitter.department]);
-          waRecipients = allHods;
+          hodRecipients = allHods;
         }
-        if (!waRecipients.length) {
+        if (!hodRecipients.length) {
           // fallback to single assigned approver
-          const [[apRow]] = await db.query('SELECT name, phone FROM users WHERE id=?', [approverId]);
-          if (apRow?.phone) waRecipients = [apRow];
+          const [[apRow]] = await db.query('SELECT id, name, email, notification_email FROM users WHERE id=?', [approverId]);
+          if (apRow) hodRecipients = [apRow];
         }
         const waHeading = ({
           extra_working: 'New Extra Working Request',
@@ -9994,16 +10019,19 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
             }).join('\n')
           : `*Dates:* ${datesPretty}\n` +
             `*Reason:* ${reason}`;
-        for (const hod of waRecipients) {
+        for (const hod of hodRecipients) {
+          if (hod.id === approverId) continue;  // assigned approver already emailed above
+          const hodEmail = hod.notification_email || hod.email;
+          if (!hodEmail) continue;
           const msg = `Hello ${hod.name || ''},\n\n🗓 *${waHeading}*\n\n` +
             `*Employee:* ${me?.name || ''}\n` +
             `*Type:* ${typeLabel}\n` +
             `*Duration:* ${daysWord}\n` +
             waDetail + `\n\n` +
             `Please approve / reject from the Approvals tab.\n\n— E-Marketing Task Manager`;
-          sendWhatsApp(hod.phone, msg).catch(e => console.error('WA leave req err:', e.message));
+          sendMail(hodEmail, `${waHeading} — ${me?.name || ''}`, waTextToEmailHtml(msg)).catch(e => console.error('leave req email err:', e.message));
         }
-      } catch (e) { console.error('WA leave req lookup err:', e.message); }
+      } catch (e) { console.error('leave req email lookup err:', e.message); }
     }
 
     res.json({ id: r.insertId, status: 'pending', approver_id: approverId });
@@ -10072,23 +10100,8 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
         </div>`;
       sendMail(target.email, `Leave ${newStatus} — ${typeLabel}`, html).catch(()=>{});
     }
-    // WhatsApp to requester
-    try {
-      const [[reqRow]] = await db.query('SELECT name, phone FROM users WHERE id=? LIMIT 1', [lr.user_id]);
-      if (reqRow && reqRow.phone) {
-        const statusIcon = newStatus === 'approved' ? '✅' : '❌';
-        const statusWord = newStatus === 'approved' ? 'APPROVED' : 'REJECTED';
-        const subjectWord = lr.leave_type === 'extra_working' ? 'Extra Working' : 'Leave';
-        const [[apRow]] = await db.query('SELECT name FROM users WHERE id=? LIMIT 1', [uid]);
-        const msg = `Hello ${reqRow.name || ''},\n\n${statusIcon} *${subjectWord} ${statusWord}*\n\n` +
-          `*Type:* ${typeLabel}\n` +
-          `*Dates:* ${datesLine}\n` +
-          `*Decided by:* ${apRow?.name || 'Approver'}\n` +
-          (note ? `*Note:* ${note}\n` : '') +
-          `\n— E-Marketing Task Manager`;
-        sendWhatsApp(reqRow.phone, msg).catch(e => console.error('WA leave decide err:', e.message));
-      }
-    } catch (e) { console.error('WA leave decide lookup err:', e.message); }
+    // Requester is notified by EMAIL only now (sent just above via
+    // getNotifyTarget) — the personal WhatsApp DM has been retired.
 
     res.json({ success: true, status: newStatus });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -10535,17 +10548,17 @@ async function sendMeetingNotification(meetingId, action) {
       `SELECT u.id, u.name, u.phone FROM meeting_attendees ma
        JOIN users u ON ma.user_id = u.id WHERE ma.meeting_id = ?`, [meetingId]);
     const internalBody = _meetingMsgBody(action, m, m.client_name, m.organizer_name, atts.map(a => a.name), false);
-    // Notify only the host (organizer) + attendees — no client-group fanout.
-    const dmTargets = new Set();
-    const [[org]] = await db.query('SELECT phone FROM users WHERE id=?', [m.organizer_id]);
-    if (org?.phone) dmTargets.add(org.phone);
-    for (const a of atts) if (a.phone) dmTargets.add(a.phone);
+    // Notify only the host (organizer) + attendees by EMAIL now (was WhatsApp) —
+    // no client-group fanout. Resolved by user id.
+    const targetIds = new Set(atts.map(a => a.id));
+    if (m.organizer_id) targetIds.add(m.organizer_id);
+    const subjectMap = { created: 'New Meeting Scheduled', rescheduled: 'Meeting Rescheduled', cancelled: 'Meeting Cancelled', reminder: 'Meeting Reminder' };
+    const subject = `${subjectMap[action] || 'Meeting Update'} — ${m.title || ''}`;
     const dmResults = [];
-    for (const phone of dmTargets) {
-      dmResults.push(await sendWhatsApp(phone, internalBody));
-      await new Promise(r => setTimeout(r, 600));
+    for (const uid of targetIds) {
+      dmResults.push(await emailUserWaText(uid, subject, internalBody));
     }
-    return { ok: true, dms: dmResults.length };
+    return { ok: true, dms: dmResults.filter(Boolean).length };
   } catch (err) {
     console.error('  ⚠️ Meeting notification failed:', err.message);
     return { ok: false, error: err.message };
