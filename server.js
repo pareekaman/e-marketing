@@ -3531,7 +3531,10 @@ app.delete('/api/comments/:id', requireAuth, async (req, res) => {
 
 app.get('/api/fms', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const [sheets] = await db.query(`SELECT f.*,u.name AS createdByName FROM fms_sheets f JOIN users u ON f.created_by=u.id ORDER BY f.created_at DESC`);
+    // LEFT JOIN, not INNER: an FMS whose creator was later deleted must still
+    // show here (an INNER JOIN silently dropped it — e.g. "Google Ads FMS"
+    // appeared in FMS Tasks but vanished from FMS Admin).
+    const [sheets] = await db.query(`SELECT f.*, COALESCE(u.name,'—') AS createdByName FROM fms_sheets f LEFT JOIN users u ON f.created_by=u.id ORDER BY f.created_at DESC`);
     res.json(sheets);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
