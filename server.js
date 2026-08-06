@@ -1415,8 +1415,27 @@ app.post('/api/logout', (req, res) => {
 const RESET_OTP_TTL_MIN = 10;
 const RESET_OTP_MAX_ATTEMPTS = 5;
 
+// The reset columns are also added by the cold-start migration, but a request
+// can hit a fresh serverless instance (or a DB the migration never reached)
+// before that runs — which surfaced as "Unknown column 'reset_otp_hash'".
+// Ensure them lazily on first use: one ALTER per process, then a no-op. Same
+// self-heal pattern the client-credentials table uses.
+let _resetColsReady = null;
+function ensureResetColumns() {
+  if (!_resetColsReady) {
+    _resetColsReady = (async () => {
+      const add = async sql => { try { await db.query(sql); } catch (e) { /* duplicate column — already there */ } };
+      await add('ALTER TABLE users ADD COLUMN reset_otp_hash VARCHAR(255) DEFAULT NULL');
+      await add('ALTER TABLE users ADD COLUMN reset_otp_expires DATETIME DEFAULT NULL');
+      await add('ALTER TABLE users ADD COLUMN reset_otp_attempts INT DEFAULT 0');
+    })().catch(e => { _resetColsReady = null; throw e; });
+  }
+  return _resetColsReady;
+}
+
 app.post('/api/forgot-password', async (req, res) => {
   try {
+    await ensureResetColumns();
     const email = String(req.body.email || '').trim().toLowerCase();
     const generic = { ok: true, message: 'If that email belongs to a team account, a code has been sent to it.' };
     if (!email) return res.status(400).json({ error: 'Email is required' });
@@ -1447,6 +1466,7 @@ app.post('/api/forgot-password', async (req, res) => {
 
 app.post('/api/reset-password', async (req, res) => {
   try {
+    await ensureResetColumns();
     const email = String(req.body.email || '').trim().toLowerCase();
     const otp = String(req.body.otp || '').trim();
     const newPassword = String(req.body.newPassword || '');
