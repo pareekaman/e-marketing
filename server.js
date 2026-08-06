@@ -11693,7 +11693,9 @@ async function hrmRenderFinalOfferPdfBuffer({ name, position, joiningFmt, salary
 async function hrmRenderPrelimOfferPdfBuffer({ name, position, joiningFmt, today }) {
   const { renderOfferPdfFromHtml } = require('./offer-letter-pdf');
   const html = hrmBuildPrelimOfferHtmlPdfkit(name || '', position || '', joiningFmt || '', today || '');
-  return renderOfferPdfFromHtml(html, { logoBuffer: _hrmLogoBuffer() });
+  // The preliminary letter is short — spread it down the page so it doesn't sit
+  // cramped at the top with a big empty bottom. Final letter keeps default spacing.
+  return renderOfferPdfFromHtml(html, { logoBuffer: _hrmLogoBuffer(), spacing: 2.0 });
 }
 
 // Final "Offer Letter Sent" stage — sends the exact contract transcribed in

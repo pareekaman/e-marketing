@@ -114,6 +114,11 @@ function drawHeader(doc, logoBuffer) {
 }
 
 const LINE_GAP = 1.45;
+// Extra vertical breathing room applied ONLY to the short single-page
+// preliminary letter (via renderOfferPdfFromHtml's `spacing` option). The
+// multi-page final letter keeps 1 so its hand-placed page breaks don't shift.
+let _gapScale = 1;
+const _lg = () => LINE_GAP * _gapScale;
 
 function _setFont(doc, w) { doc.font(w.bold ? 'Times-Bold' : 'Times-Roman').fontSize(BODY_SIZE); }
 
@@ -143,10 +148,10 @@ function writeJustifiedLine(doc, runs) {
     });
     prevEndsWithSpace = / $/.test(r.t) || !parts.length;
   }
-  if (!words.length) { doc.moveDown(0.6); return; }
+  if (!words.length) { doc.moveDown(0.6 * _gapScale); return; }
   doc.font('Times-Roman').fontSize(BODY_SIZE);
   const spW = doc.widthOfString(' ');
-  const lineH = doc.currentLineHeight() + LINE_GAP;
+  const lineH = doc.currentLineHeight() + _lg();
   for (const w of words) {
     w.w = 0;
     for (const f of w.frags) { _setFont(doc, f); f.w = doc.widthOfString(f.t); w.w += f.w; }
@@ -206,14 +211,14 @@ function writeJustifiedLine(doc, runs) {
 function writePara(doc, block) {
   let wrote = false;
   for (const runs of block.lines) {
-    if (!runs.length) { doc.moveDown(0.6); continue; }
+    if (!runs.length) { doc.moveDown(0.6 * _gapScale); continue; }
     if (block.center || block.right) {
       // centered/right-aligned lines are single-style here; one text call keeps
       // it simple (justify's manual word layout isn't needed off the left edge).
       const align = block.center ? 'center' : 'right';
       runs.forEach((r, i) => {
         doc.font(r.bold ? 'Times-Bold' : 'Times-Roman').fontSize(BODY_SIZE);
-        const opts = { width: CW, align, underline: !!r.under, continued: i < runs.length - 1, lineGap: LINE_GAP };
+        const opts = { width: CW, align, underline: !!r.under, continued: i < runs.length - 1, lineGap: _lg() };
         if (i === 0) doc.text(r.t, M.left, doc.y, opts);
         else doc.text(r.t, opts);
       });
@@ -222,7 +227,7 @@ function writePara(doc, block) {
     }
     wrote = true;
   }
-  if (wrote) doc.moveDown(0.6);
+  if (wrote) doc.moveDown(0.6 * _gapScale);
 }
 
 // A list with a template-style blank gap between items. Unordered → "•"
@@ -234,15 +239,15 @@ function drawList(doc, block) {
   // unchanged); ordered needs a touch more room for a two-digit "10." marker.
   const gutter = block.ordered ? 22 : 18;
   const tx = M.left + gutter, tw = CW - gutter;
-  const lineH = doc.currentLineHeight() + LINE_GAP;
+  const lineH = doc.currentLineHeight() + _lg();
   block.items.forEach((item, idx) => {
     if (doc.y + lineH > PAGE.height - M.bottom) doc.addPage();
     const y0 = doc.y;
     const marker = block.ordered ? `${idx + 1}.` : '•';
     doc.text(marker, M.left + 4, y0, { lineBreak: false });
-    doc.text(item, tx, y0, { width: tw, align: 'left', lineGap: LINE_GAP });
+    doc.text(item, tx, y0, { width: tw, align: 'left', lineGap: _lg() });
     doc.x = M.left;
-    doc.moveDown(0.65); // the gap between items, per the user's old template
+    doc.moveDown(0.65 * _gapScale); // the gap between items, per the user's old template
   });
   doc.moveDown(0.1);
 }
@@ -269,9 +274,12 @@ function drawRule(doc) {
 }
 
 // html -> PDF Buffer. logoBuffer/signBuffer are the decoded PNGs from server.js.
-function renderOfferPdfFromHtml(html, { logoBuffer, signBuffer } = {}) {
+function renderOfferPdfFromHtml(html, { logoBuffer, signBuffer, spacing } = {}) {
   return new Promise((resolve, reject) => {
     try {
+      // spacing > 1 spreads the short preliminary letter down the page; the
+      // final letter omits it (spacing = 1) so its page breaks stay put.
+      _gapScale = (typeof spacing === 'number' && spacing > 0) ? spacing : 1;
       const blocks = parseBlocks(html);
       const doc = new PDFDocument({ size: 'A4', margins: { ...M } });
       const chunks = [];
