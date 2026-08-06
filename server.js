@@ -750,8 +750,12 @@ async function notifyBotSender(phone, subject, text) {
 }
 
 // Email template for delegation task
-function delegationEmailHtml({ assigneeName, assignerName, desc, dueDate, priority, approval, remarks }) {
+function delegationEmailHtml({ assigneeName, assignerName, desc, dueDate, priority, approval, remarks, clientName, url }) {
   const appUrl = process.env.APP_URL || '#';
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+  const urlCell = url
+    ? (/^https?:\/\//i.test(url) ? `<a href="${esc(url)}" style="color:#4f46e5">${esc(url)}</a>` : esc(url))
+    : '';
   return `
   <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f6f9fc;padding:20px;">
     <div style="background:#fff;border-radius:8px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
@@ -760,9 +764,11 @@ function delegationEmailHtml({ assigneeName, assignerName, desc, dueDate, priori
       <p><b>${assignerName || 'Someone'}</b> has assigned you a new delegation task:</p>
       <table style="width:100%;border-collapse:collapse;margin:20px 0;">
         <tr><td style="padding:8px;background:#f0f4f8;width:140px;"><b>Task</b></td><td style="padding:8px;">${desc}</td></tr>
+        ${clientName ? `<tr><td style="padding:8px;background:#f0f4f8;"><b>Client</b></td><td style="padding:8px;">${esc(clientName)}</td></tr>` : ''}
         <tr><td style="padding:8px;background:#f0f4f8;"><b>Due Date</b></td><td style="padding:8px;">${dueDate}</td></tr>
         <tr><td style="padding:8px;background:#f0f4f8;"><b>Priority</b></td><td style="padding:8px;text-transform:capitalize;">${priority}</td></tr>
         <tr><td style="padding:8px;background:#f0f4f8;"><b>Approval Required</b></td><td style="padding:8px;text-transform:capitalize;">${approval}</td></tr>
+        ${url ? `<tr><td style="padding:8px;background:#f0f4f8;"><b>URL</b></td><td style="padding:8px;word-break:break-all;">${urlCell}</td></tr>` : ''}
         ${remarks ? `<tr><td style="padding:8px;background:#f0f4f8;"><b>Remarks</b></td><td style="padding:8px;">${remarks}</td></tr>` : ''}
       </table>
       <a href="${appUrl}" style="display:inline-block;background:#F39C12;color:#fff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;">Open E-Marketing Task Manager</a>
@@ -1942,6 +1948,11 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         const target = await getNotifyTarget(targetUser);
         const [aprRows] = await db.query('SELECT name FROM users WHERE id=? LIMIT 1', [assignedBy]);
         const assignerName = aprRows[0]?.name || 'Admin';
+        let clientName = '';
+        if (enforcedClientId) {
+          const [[cli]] = await db.query('SELECT name FROM clients WHERE id=? LIMIT 1', [enforcedClientId]);
+          clientName = cli?.name || '';
+        }
         if (target) {
           await sendMail(
             target.email,
@@ -1952,7 +1963,9 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
               desc, dueDate: doerWillSet ? 'Please add the due date in the task' : effectiveDate,
               priority: priority||'low',
               approval: approval||'no',
-              remarks: remarks||''
+              remarks: remarks||'',
+              clientName,
+              url: url || ''
             })
           );
         }
