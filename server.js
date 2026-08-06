@@ -12330,6 +12330,29 @@ app.post('/api/hrm/candidates/:id/send-final-offer', requireAuth, async (req, re
       [finalJoining, finalSalary || null, department || null, token, JSON.stringify(snapshot), c.id]
     );
 
+    // The ONE WhatsApp the HR portal still sends: once the offer letter goes
+    // out, tell the onboarding owner to create the new hire's official email ID
+    // before the joining date. Recipient = whoever is set in the
+    // onboarding_owner_ids setting. Best-effort and fire-and-forget — a WhatsApp
+    // hiccup must never fail the offer send.
+    (async () => {
+      try {
+        const owners = await usersForSetting('onboarding_owner_ids');  // id, name, phone
+        const dept = (department || c.department || '—');
+        const onboardMsg =
+          `🆕 *New Employee Onboarding*\n\n` +
+          `👤 Name: ${name}\n` +
+          `🏢 Department: ${dept}\n` +
+          `💼 Position: ${position || '—'}\n` +
+          `📅 Joining Date: ${joiningFmt}\n\n` +
+          `⚠️ Please create the official email ID before the joining date.\n\n` +
+          `— HR Portal`;
+        for (const o of owners) {
+          if (o.phone) await sendWhatsApp(o.phone, onboardMsg).catch(e => console.error('HRM onboarding notify err:', e.message));
+        }
+      } catch (e) { console.error('HRM onboarding notify lookup err:', e.message); }
+    })();
+
     // Pick the host for the public PDF URL carefully — the WhatsApp provider
     // must be able to fetch it anonymously:
     // - *.vercel.app preview/deployment URLs (hash or branch subdomains) sit
