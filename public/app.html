@@ -8493,10 +8493,14 @@ function renderTasksTable() {
       if (!groups.has(key)) groups.set(key, { key, name: gname, userId: isClientTasksView ? '' : (t.assigned_to || ''), tasks: [] });
       groups.get(key).tasks.push(t);
     }
-    // The logged-in user's own group is pinned to the top; the rest stay A-Z.
+    // The logged-in user's own group is pinned to the top; deleted-user groups
+    // (tasks whose doer no longer exists) sink to the bottom; the rest stay A-Z.
     const _isMe = (g) => String(g.userId) === String(ME.id);
+    const _isDeleted = (g) => (g.name || '').includes('deleted user');
     const sortedGroups = [...groups.values()].sort((a,b) =>
-      (_isMe(b) - _isMe(a)) || a.name.localeCompare(b.name));
+      (_isMe(b) - _isMe(a)) ||
+      (_isDeleted(a) - _isDeleted(b)) ||
+      a.name.localeCompare(b.name));
     // If a doer filter is active, auto-expand that single group.
     const autoOpen = sortedGroups.length === 1;
 
