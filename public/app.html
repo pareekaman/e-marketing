@@ -3262,7 +3262,18 @@ input:focus,select:focus,textarea:focus{outline:none;}
         </div>
         <div class="form-group">
           <label>Interview Time *</label>
-          <input type="time" id="hrmCTime">
+          <div style="display:flex;gap:6px;align-items:center">
+            <div style="position:relative;flex:1">
+              <input type="text" id="hrmCTimeDisplay" placeholder="e.g. 10:00" autocomplete="off" style="width:100%"
+                oninput="hrmOnTimeInput()" onfocus="hrmOpenTimeDropdown()" onkeydown="hrmTimeKeydown(event)"/>
+              <div id="hrmCTimeDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;max-height:220px;overflow:auto;z-index:20;box-shadow:0 8px 24px rgba(15,23,42,.12)"></div>
+            </div>
+            <select id="hrmCTimePeriod" onchange="hrmTimePeriodChanged()" style="width:76px;flex-shrink:0">
+              <option value="AM">AM</option>
+              <option value="PM">PM</option>
+            </select>
+            <input type="hidden" id="hrmCTime"/>
+          </div>
         </div>
       </div>
       <div class="form-group">
@@ -6242,8 +6253,8 @@ function renderHrmRows(list) {
       <td class="hrm-date-cell">${esc(c.profile_position||'—')}</td>
       <td class="hrm-date-cell">${esc(c.department||'—')}</td>
       <td>
-        <div class="hrm-date-cell">${dateStr}${c.interview_time ? ' ' + esc(c.interview_time) : ''}</div>
-        ${reDateStr ? `<div class="hrm-redate">→ Rescheduled: ${reDateStr}${c.reschedule_time?' '+esc(c.reschedule_time):''}</div>` : ''}
+        <div class="hrm-date-cell">${dateStr}${c.interview_time ? ' ' + esc(_mtgFmtTime12(c.interview_time)) : ''}</div>
+        ${reDateStr ? `<div class="hrm-redate">→ Rescheduled: ${reDateStr}${c.reschedule_time?' '+esc(_mtgFmtTime12(c.reschedule_time)):''}</div>` : ''}
       </td>
       <td><span class="hrm-badge ${badgeClass}">${HRM_STATUS_LABELS[c.status] || c.status}</span></td>
       <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -6267,9 +6278,9 @@ function renderHrmRows(list) {
           ? `<button class="action-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="openEmailModal(${c.id})">📧 Email</button>`
           : ''}
         ${joiningCell}
-        <button class="action-btn" style="background:#f8fafc;color:#475569;border:1px solid #e2e8f0;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="openHrmDetailsModal(${c.id})">👁 Details</button>
-        ${canDo('hrm_schedule') ? `<button class="action-btn" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="openHrmEditModal(${c.id})">✏️ Edit</button>` : ''}
-        ${ME.role === 'admin' ? `<button class="action-btn" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="hrmDeleteCandidate(${c.id})">🗑 Delete</button>` : ''}
+        <button class="action-btn" title="View details" style="background:#f8fafc;color:#475569;border:1px solid #e2e8f0;font-size:13px;padding:4px 8px;border-radius:6px;cursor:pointer;line-height:1" onclick="openHrmDetailsModal(${c.id})">👁️</button>
+        ${canDo('hrm_schedule') ? `<button class="action-btn" title="Edit candidate" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;font-size:13px;padding:4px 8px;border-radius:6px;cursor:pointer;line-height:1" onclick="openHrmEditModal(${c.id})">✏️</button>` : ''}
+        ${ME.role === 'admin' ? `<button class="action-btn" title="Delete candidate" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-size:13px;padding:4px 8px;border-radius:6px;cursor:pointer;line-height:1" onclick="hrmDeleteCandidate(${c.id})">🗑️</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -6381,7 +6392,8 @@ async function openHrmAddModal() {
   _hrmEditId = null;
   ['hrmCName','hrmCProfile','hrmCPhone','hrmCEmail','hrmCInterviewer','hrmCLink','hrmCNotes'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('hrmCDate').value = '';
-  document.getElementById('hrmCTime').value = '';
+  hrmSetTime('');
+  document.getElementById('hrmCTimeDropdown').style.display = 'none';
   document.getElementById('hrmAddErr').style.display = 'none';
   document.getElementById('hrmAddTitle').textContent = '📅 Schedule Interview';
   document.getElementById('hrmAddSubmitBtn').textContent = '📅 Schedule Interview';
@@ -6406,7 +6418,7 @@ async function openHrmEditModal(id) {
   document.getElementById('hrmCLink').value        = c.meeting_link || '';
   document.getElementById('hrmCNotes').value       = c.notes || '';
   document.getElementById('hrmCDate').value        = c.interview_date ? String(c.interview_date).slice(0,10) : '';
-  document.getElementById('hrmCTime').value        = c.interview_time || '';
+  hrmSetTime(c.interview_time || '');
   document.getElementById('hrmAddTitle').textContent = '✏️ Edit Candidate';
   document.getElementById('hrmAddSubmitBtn').textContent = '💾 Save Changes';
   await loadHrmDepartmentOptions('hrmCDepartment', c.department || '');
@@ -6430,6 +6442,65 @@ function hrmDeptChange() {
   // One HOD → auto-select; two+ → make HR choose.
   sel.innerHTML = hods.length === 1 ? opts : `<option value="">— Select HOD —</option>${opts}`;
 }
+
+// ── Interview time: same Zoom-style picker as the meeting scheduler ──
+// "H:MM" text + AM/PM select, backed by the hidden hrmCTime (24h). Reuses
+// MTG_TIME_OPTIONS for the dropdown; free-typed times still commit via parse.
+function hrmParse12(text, period) {
+  const m = String(text || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return '';
+  let h = parseInt(m[1], 10); const min = parseInt(m[2], 10);
+  if (h < 1 || h > 12 || min < 0 || min > 59) return '';
+  if (period === 'PM' && h !== 12) h += 12;
+  if (period === 'AM' && h === 12) h = 0;
+  return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+}
+function hrmSetTime(value24raw) {
+  const value24 = (value24raw || '').slice(0, 5);
+  document.getElementById('hrmCTime').value = value24 || '';
+  const disp = document.getElementById('hrmCTimeDisplay');
+  if (!value24) { disp.value = ''; document.getElementById('hrmCTimePeriod').value = 'AM'; return; }
+  const [h, mm] = value24.split(':').map(Number);
+  document.getElementById('hrmCTimePeriod').value = h < 12 ? 'AM' : 'PM';
+  disp.value = `${h % 12 === 0 ? 12 : h % 12}:${String(mm).padStart(2,'0')}`;
+}
+function hrmRenderTimeDropdown(filterText) {
+  const dd = document.getElementById('hrmCTimeDropdown');
+  const q = (filterText || '').trim().toLowerCase().replace(/\s+/g, '');
+  const matches = q ? MTG_TIME_OPTIONS.filter(o => o.label.toLowerCase().replace(/\s+/g, '').includes(q)) : MTG_TIME_OPTIONS;
+  dd.innerHTML = matches.length
+    ? matches.map(o => `<div data-time-opt="${o.value}" onclick="hrmPickTime('${o.value}')" style="padding:8px 12px;font-size:13px;cursor:pointer;color:#1e293b" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">${o.label}</div>`).join('')
+    : `<div style="padding:10px 12px;font-size:12px;color:#94a3b8">No matching time</div>`;
+  dd.style.display = 'block';
+}
+function hrmOpenTimeDropdown() { hrmRenderTimeDropdown(document.getElementById('hrmCTimeDisplay').value); }
+function hrmOnTimeInput() {
+  hrmRenderTimeDropdown(document.getElementById('hrmCTimeDisplay').value);
+  // Live-commit a valid free-typed time so it saves even without picking a row.
+  document.getElementById('hrmCTime').value = hrmParse12(document.getElementById('hrmCTimeDisplay').value, document.getElementById('hrmCTimePeriod').value) || '';
+}
+function hrmPickTime(value24) { hrmSetTime(value24); document.getElementById('hrmCTimeDropdown').style.display = 'none'; }
+function hrmTimeKeydown(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const typed = hrmParse12(document.getElementById('hrmCTimeDisplay').value, document.getElementById('hrmCTimePeriod').value);
+    if (typed) { hrmPickTime(typed); return; }
+    const first = document.getElementById('hrmCTimeDropdown').querySelector('[data-time-opt]');
+    if (first) hrmPickTime(first.getAttribute('data-time-opt'));
+  } else if (e.key === 'Escape') { document.getElementById('hrmCTimeDropdown').style.display = 'none'; }
+}
+function hrmTimePeriodChanged() {
+  const v = hrmParse12(document.getElementById('hrmCTimeDisplay').value, document.getElementById('hrmCTimePeriod').value);
+  document.getElementById('hrmCTime').value = v || '';
+}
+// Close the interview-time dropdown on outside click.
+document.addEventListener('click', (e) => {
+  const dd = document.getElementById('hrmCTimeDropdown');
+  const input = document.getElementById('hrmCTimeDisplay');
+  if (!dd || !input || dd.style.display === 'none') return;
+  if (dd.contains(e.target) || input.contains(e.target)) return;
+  dd.style.display = 'none';
+});
 
 async function saveHrmCandidate() {
   const name  = document.getElementById('hrmCName').value.trim();
