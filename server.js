@@ -12690,6 +12690,7 @@ const RESTORABLE_TABLES = new Set([
   'dms_external_links', 'leave_requests', 'holidays', 'day_plan_items',
   'inventory_items', 'fms_sheets', 'cc_cards', 'cc_statements',
   'cc_transactions', 'cc_departments', 'pr_cards', 'payment_requests',
+  'hrm_candidates', 'client_credentials',
 ]);
 
 // GET /api/deleted-records — 150 most recent deletes.
