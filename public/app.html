@@ -3244,12 +3244,17 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div class="form-row">
         <div class="form-group">
           <label>Department</label>
-          <select id="hrmCDepartment"><option value="">--select--</option></select>
+          <select id="hrmCDepartment" onchange="hrmDeptChange()"><option value="">--select--</option></select>
         </div>
         <div class="form-group">
           <label>Candidate Email</label>
           <input type="email" id="hrmCEmail" placeholder="name@example.com (for emailing the offer)">
         </div>
+      </div>
+      <div class="form-group">
+        <label>Interviewer (HOD)</label>
+        <select id="hrmCInterviewerHod"><option value="">Select a department first</option></select>
+        <div style="font-size:11px;color:#64748b;margin-top:4px">Department chunte hi us dept ke HOD aa jaate hain. 2 HOD hon to yahan se chuno — usi ko interview email jayega.</div>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -6350,6 +6355,9 @@ async function deleteHrmMsg(id) {
   if (r.ok) { showToast('Entry deleted'); loadHRM(); } else { showToast(r.message||r.error||'Delete failed','error'); }
 }
 
+// All department HODs (id, name, department, email), loaded when the Schedule
+// Interview modal opens so the interviewer can be auto-filled from department.
+let _hrmHods = [];
 async function openHrmAddModal() {
   if (!canDo('hrm_schedule')) return;
   ['hrmCName','hrmCProfile','hrmCPhone','hrmCEmail','hrmCInterviewer','hrmCLink','hrmCNotes'].forEach(id=>document.getElementById(id).value='');
@@ -6357,7 +6365,22 @@ async function openHrmAddModal() {
   document.getElementById('hrmCTime').value = '';
   document.getElementById('hrmAddErr').style.display = 'none';
   await loadHrmDepartmentOptions('hrmCDepartment', '');
+  try { const h = await api('/api/hrm/hods'); _hrmHods = Array.isArray(h) ? h : []; } catch { _hrmHods = []; }
+  hrmDeptChange();  // reset the interviewer dropdown to its empty state
   document.getElementById('hrmAddModal').classList.add('open');
+}
+
+// When the department changes, fill the Interviewer (HOD) dropdown: one HOD is
+// auto-selected, two or more are offered so HR picks who gets the interview email.
+function hrmDeptChange() {
+  const dept = document.getElementById('hrmCDepartment').value;
+  const sel = document.getElementById('hrmCInterviewerHod');
+  if (!dept) { sel.innerHTML = '<option value="">Select a department first</option>'; return; }
+  const hods = _hrmHods.filter(h => (h.department || '') === dept);
+  if (!hods.length) { sel.innerHTML = '<option value="">No HOD set for this department</option>'; return; }
+  const opts = hods.map(h => `<option value="${dtEscape(h.email)}">${dtEscape(h.name)} — ${dtEscape(h.email)}</option>`).join('');
+  // One HOD → auto-select; two+ → make HR choose.
+  sel.innerHTML = hods.length === 1 ? opts : `<option value="">— Select HOD —</option>${opts}`;
 }
 
 async function saveHrmCandidate() {
@@ -6375,7 +6398,8 @@ async function saveHrmCandidate() {
     interview_date: date, interview_time: time,
     notes: document.getElementById('hrmCNotes').value.trim(),
     meeting_link: document.getElementById('hrmCLink').value.trim(),
-    interviewer_phone: document.getElementById('hrmCInterviewer').value.trim()
+    interviewer_phone: document.getElementById('hrmCInterviewer').value.trim(),
+    interviewer_email: document.getElementById('hrmCInterviewerHod').value
   });
   if (r.error) { showErrIn('hrmAddErr',r.error); return; }
   closeModal('hrmAddModal');

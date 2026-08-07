@@ -532,6 +532,9 @@ const _startupMigrationsPromise = (async () => {
   // later final send can't overwrite the still-live preliminary PDF link).
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN prelim_offer_token VARCHAR(64) DEFAULT NULL`);
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN prelim_offer_data MEDIUMTEXT DEFAULT NULL`);
+  // Interviewer's email — the department HOD chosen on the Schedule Interview
+  // form. The interview-scheduled notification email goes here.
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN interviewer_email VARCHAR(255) DEFAULT ''`);
   // Candidate email — captured on the Schedule Interview form, used to email
   // the offer letter PDF (optional; WhatsApp remains the default channel).
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN email VARCHAR(255) DEFAULT ''`);
@@ -12055,20 +12058,66 @@ app.post('/api/hrm/candidates/:id/send-joining-form', requireAuth, async (req, r
   return res.status(400).json({ error: 'WhatsApp has been removed — email the joining form instead (📧 Email → Onboarding Form).' });
 });
 
+// Department HODs — used by the Schedule Interview form to auto-fill / offer a
+// choice of interviewer (the HOD of the chosen department). Returns email =
+// notification_email || email so it lines up with how we send everywhere else.
+let _hrmIntvColReady = null;
+function ensureInterviewerEmailCol() {
+  if (!_hrmIntvColReady) {
+    _hrmIntvColReady = db.query(`ALTER TABLE hrm_candidates ADD COLUMN interviewer_email VARCHAR(255) DEFAULT ''`)
+      .catch(() => {}); // duplicate column — already there
+  }
+  return _hrmIntvColReady;
+}
+
+app.get('/api/hrm/hods', requireAuth, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT id, name, email, notification_email, department
+         FROM users
+        WHERE (user_role='hod' OR role='hod') AND role<>'client'
+          AND department IS NOT NULL AND department<>''
+        ORDER BY department, name`);
+    const hods = rows
+      .map(u => ({ id: u.id, name: u.name, department: u.department, email: u.notification_email || u.email || '' }))
+      .filter(h => h.email);
+    res.json(hods);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Add candidate + schedule interview
 app.post('/api/hrm/candidates', requireAuth, async (req, res) => {
   if (!(await userCanDo(req.session, 'hrm_schedule'))) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const { name, phone, email, profile_position, department, interview_date, interview_time, notes, meeting_link, interviewer_phone } = req.body;
+    await ensureInterviewerEmailCol();
+    const { name, phone, email, profile_position, department, interview_date, interview_time, notes, meeting_link, interviewer_phone, interviewer_email } = req.body;
     if (!name || !phone) return res.status(400).json({ error: 'name and phone required' });
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Invalid email address' });
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (email && !emailRe.test(email)) return res.status(400).json({ error: 'Invalid email address' });
+    const intvEmail = String(interviewer_email || '').trim();
+    if (intvEmail && !emailRe.test(intvEmail)) return res.status(400).json({ error: 'Invalid interviewer email' });
     const [r] = await db.query(
-      `INSERT INTO hrm_candidates (name,phone,email,profile_position,department,interview_date,interview_time,notes,meeting_link,interviewer_phone,created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [name, phone, email||'', profile_position||'', department||'', interview_date||null, interview_time||'', notes||'', meeting_link||'', interviewer_phone||'', req.session.userId]);
+      `INSERT INTO hrm_candidates (name,phone,email,profile_position,department,interview_date,interview_time,notes,meeting_link,interviewer_phone,interviewer_email,created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [name, phone, email||'', profile_position||'', department||'', interview_date||null, interview_time||'', notes||'', meeting_link||'', interviewer_phone||'', intvEmail, req.session.userId]);
     const cid = r.insertId;
-    // WhatsApp notifications removed from the HR portal — the candidate's phone
-    // is kept for records only; no message is sent on scheduling.
+    // Notify the interviewer (the chosen department HOD) by email that an
+    // interview has been scheduled. Best-effort — never fails the schedule.
+    if (intvEmail) {
+      const dateFmt = interview_date ? String(interview_date).split('-').reverse().join('-') : '—';
+      const msg = `🗓 *Interview Scheduled*\n\n` +
+        `*Candidate:* ${name}\n` +
+        (profile_position ? `*Position:* ${profile_position}\n` : '') +
+        (department ? `*Department:* ${department}\n` : '') +
+        `*Date:* ${dateFmt}\n` +
+        `*Time:* ${interview_time || '—'}\n` +
+        `*Candidate Phone:* ${phone}\n` +
+        (meeting_link ? `*Meeting Link:* ${meeting_link}\n` : '') +
+        (notes ? `\n*Notes:* ${notes}\n` : '') +
+        `\n— E-Marketing HR Portal`;
+      sendMail(intvEmail, `Interview Scheduled — ${name}${profile_position ? ' (' + profile_position + ')' : ''}`, waTextToEmailHtml(msg))
+        .catch(e => console.error('interview notify email err:', e.message));
+    }
     res.json({ ok: true, id: cid });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
