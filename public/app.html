@@ -3219,7 +3219,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
   <div class="modal-overlay" id="hrmAddModal">
     <div class="modal" style="width:540px">
       <button class="modal-close" onclick="closeModal('hrmAddModal')">×</button>
-      <h3>📅 Schedule Interview</h3>
+      <h3 id="hrmAddTitle">📅 Schedule Interview</h3>
       <div class="alert error" id="hrmAddErr" style="display:none"></div>
       <div class="form-row">
         <div class="form-group">
@@ -3275,7 +3275,19 @@ input:focus,select:focus,textarea:focus{outline:none;}
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal('hrmAddModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="saveHrmCandidate()">📅 Schedule Interview</button>
+        <button class="btn btn-primary" id="hrmAddSubmitBtn" onclick="saveHrmCandidate()">📅 Schedule Interview</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HRM: Candidate Details (read-only) -->
+  <div class="modal-overlay" id="hrmDetailsModal">
+    <div class="modal" style="width:480px">
+      <button class="modal-close" onclick="closeModal('hrmDetailsModal')">×</button>
+      <h3>👤 <span id="hrmDetailsTitle">Candidate</span></h3>
+      <div id="hrmDetailsBody" style="margin-top:8px"></div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="closeModal('hrmDetailsModal')">Close</button>
       </div>
     </div>
   </div>
@@ -6255,6 +6267,9 @@ function renderHrmRows(list) {
           ? `<button class="action-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="openEmailModal(${c.id})">📧 Email</button>`
           : ''}
         ${joiningCell}
+        <button class="action-btn" style="background:#f8fafc;color:#475569;border:1px solid #e2e8f0;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="openHrmDetailsModal(${c.id})">👁 Details</button>
+        ${canDo('hrm_schedule') ? `<button class="action-btn" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="openHrmEditModal(${c.id})">✏️ Edit</button>` : ''}
+        ${ME.role === 'admin' ? `<button class="action-btn" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="hrmDeleteCandidate(${c.id})">🗑 Delete</button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -6357,15 +6372,49 @@ async function deleteHrmMsg(id) {
 // All department HODs (id, name, department, email), loaded when the Schedule
 // Interview modal opens so the interviewer can be auto-filled from department.
 let _hrmHods = [];
+let _hrmEditId = null;  // non-null when the Schedule modal is reused to EDIT a candidate
+async function _hrmLoadHods() {
+  try { const h = await api('/api/hrm/hods'); _hrmHods = Array.isArray(h) ? h : []; } catch { _hrmHods = []; }
+}
 async function openHrmAddModal() {
   if (!canDo('hrm_schedule')) return;
+  _hrmEditId = null;
   ['hrmCName','hrmCProfile','hrmCPhone','hrmCEmail','hrmCInterviewer','hrmCLink','hrmCNotes'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('hrmCDate').value = '';
   document.getElementById('hrmCTime').value = '';
   document.getElementById('hrmAddErr').style.display = 'none';
+  document.getElementById('hrmAddTitle').textContent = '📅 Schedule Interview';
+  document.getElementById('hrmAddSubmitBtn').textContent = '📅 Schedule Interview';
   await loadHrmDepartmentOptions('hrmCDepartment', '');
-  try { const h = await api('/api/hrm/hods'); _hrmHods = Array.isArray(h) ? h : []; } catch { _hrmHods = []; }
+  await _hrmLoadHods();
   hrmDeptChange();  // reset the interviewer dropdown to its empty state
+  document.getElementById('hrmAddModal').classList.add('open');
+}
+
+// Reuse the Schedule Interview modal to EDIT a candidate's details.
+async function openHrmEditModal(id) {
+  if (!canDo('hrm_schedule')) return;
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  if (!c) return;
+  _hrmEditId = id;
+  document.getElementById('hrmAddErr').style.display = 'none';
+  document.getElementById('hrmCName').value        = c.name || '';
+  document.getElementById('hrmCProfile').value     = c.profile_position || '';
+  document.getElementById('hrmCPhone').value       = c.phone || '';
+  document.getElementById('hrmCInterviewer').value = c.interviewer_phone || '';
+  document.getElementById('hrmCEmail').value       = c.email || '';
+  document.getElementById('hrmCLink').value        = c.meeting_link || '';
+  document.getElementById('hrmCNotes').value       = c.notes || '';
+  document.getElementById('hrmCDate').value        = c.interview_date ? String(c.interview_date).slice(0,10) : '';
+  document.getElementById('hrmCTime').value        = c.interview_time || '';
+  document.getElementById('hrmAddTitle').textContent = '✏️ Edit Candidate';
+  document.getElementById('hrmAddSubmitBtn').textContent = '💾 Save Changes';
+  await loadHrmDepartmentOptions('hrmCDepartment', c.department || '');
+  await _hrmLoadHods();
+  hrmDeptChange();  // populate interviewer dropdown for this department
+  // Preselect the stored interviewer email if it's in the list.
+  const isel = document.getElementById('hrmCInterviewerHod');
+  if (c.interviewer_email && [...isel.options].some(o => o.value === c.interviewer_email)) isel.value = c.interviewer_email;
   document.getElementById('hrmAddModal').classList.add('open');
 }
 
@@ -6389,7 +6438,7 @@ async function saveHrmCandidate() {
   const time  = document.getElementById('hrmCTime').value;
   if (!name||!phone) { showErrIn('hrmAddErr','Name and phone are required'); return; }
   if (!date||!time) { showErrIn('hrmAddErr','Interview date and time are required'); return; }
-  const r = await api('/api/hrm/candidates','POST',{
+  const payload = {
     name, phone,
     email: document.getElementById('hrmCEmail').value.trim(),
     profile_position: document.getElementById('hrmCProfile').value.trim(),
@@ -6399,10 +6448,46 @@ async function saveHrmCandidate() {
     meeting_link: document.getElementById('hrmCLink').value.trim(),
     interviewer_phone: document.getElementById('hrmCInterviewer').value.trim(),
     interviewer_email: document.getElementById('hrmCInterviewerHod').value
-  });
+  };
+  const r = _hrmEditId
+    ? await api(`/api/hrm/candidates/${_hrmEditId}`, 'PUT', payload)
+    : await api('/api/hrm/candidates', 'POST', payload);
   if (r.error) { showErrIn('hrmAddErr',r.error); return; }
+  const wasEdit = !!_hrmEditId;
+  _hrmEditId = null;
   closeModal('hrmAddModal');
-  showToast('Interview scheduled.');
+  showToast(wasEdit ? 'Candidate updated.' : 'Interview scheduled.');
+  loadHRM();
+}
+
+// View a candidate's full details (read-only) — everything entered at schedule.
+function openHrmDetailsModal(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  if (!c) return;
+  const dateStr = c.interview_date ? new Date(c.interview_date).toLocaleDateString('en-IN') : '—';
+  const row = (label, val) => `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9">
+      <span style="min-width:130px;color:#64748b;font-size:12px;font-weight:600">${label}</span>
+      <span style="flex:1;word-break:break-word;font-size:13px;color:#0f172a">${val ? esc(String(val)) : '—'}</span></div>`;
+  const linkRow = c.meeting_link
+    ? `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9"><span style="min-width:130px;color:#64748b;font-size:12px;font-weight:600">Meeting Link</span><span style="flex:1;word-break:break-all;font-size:13px"><a href="${esc(c.meeting_link)}" target="_blank" style="color:#4f46e5">${esc(c.meeting_link)}</a></span></div>`
+    : row('Meeting Link', '');
+  document.getElementById('hrmDetailsBody').innerHTML =
+    row('Name', c.name) + row('Phone', c.phone) + row('Position', c.profile_position) +
+    row('Department', c.department) + row('Candidate Email', c.email) +
+    row('Interviewer Phone', c.interviewer_phone) + row('Interviewer (HOD)', c.interviewer_email) +
+    row('Interview', `${dateStr}${c.interview_time ? ' ' + c.interview_time : ''}`) +
+    row('Status', HRM_STATUS_LABELS[c.status] || c.status) + linkRow + row('Notes', c.notes);
+  document.getElementById('hrmDetailsTitle').textContent = c.name || 'Candidate';
+  document.getElementById('hrmDetailsModal').classList.add('open');
+}
+
+async function hrmDeleteCandidate(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  const ok = await appConfirm(`Delete "${c?.name || 'this candidate'}"? The entry will be archived (recoverable), not permanently lost.`, 'Delete Candidate?');
+  if (!ok) return;
+  const r = await api(`/api/hrm/candidates/${id}`, 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast('🗑 Candidate deleted.');
   loadHRM();
 }
 

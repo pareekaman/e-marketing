@@ -12135,6 +12135,44 @@ app.post('/api/hrm/candidates', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Edit a candidate's basic details (fix a wrong meeting link, phone, etc.).
+// Separate from the status PUT below — this touches the scheduling fields, not
+// the pipeline stage. Same permission as scheduling (hrm_schedule).
+app.put('/api/hrm/candidates/:id', requireAuth, async (req, res) => {
+  if (!(await userCanDo(req.session, 'hrm_schedule'))) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await ensureInterviewerEmailCol();
+    const id = parseInt(req.params.id, 10);
+    const { name, phone, email, profile_position, department, interview_date, interview_time, notes, meeting_link, interviewer_phone, interviewer_email } = req.body;
+    if (!name || !phone) return res.status(400).json({ error: 'name and phone required' });
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (email && !emailRe.test(email)) return res.status(400).json({ error: 'Invalid email address' });
+    const intvEmail = String(interviewer_email || '').trim();
+    if (intvEmail && !emailRe.test(intvEmail)) return res.status(400).json({ error: 'Invalid interviewer email' });
+    const [r] = await db.query(
+      `UPDATE hrm_candidates SET name=?, phone=?, email=?, profile_position=?, department=?,
+              interview_date=?, interview_time=?, notes=?, meeting_link=?, interviewer_phone=?, interviewer_email=?
+       WHERE id=?`,
+      [name, phone, email||'', profile_position||'', department||'', interview_date||null, interview_time||'',
+       notes||'', meeting_link||'', interviewer_phone||'', intvEmail, id]);
+    if (!r.affectedRows) return res.status(404).json({ error: 'Candidate not found' });
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Delete a candidate. Archived to deleted_records first (recoverable), never a
+// bare hard delete. Admin only.
+app.delete('/api/hrm/candidates/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const [[row]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [id]);
+    if (!row) return res.status(404).json({ error: 'Candidate not found' });
+    await archiveDeleted('hrm_candidates', row, req, { summary: r => `Candidate: ${r.name || ''}` });
+    await db.query('DELETE FROM hrm_candidates WHERE id=?', [id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Update candidate status
 app.put('/api/hrm/candidates/:id/status', requireAuth, async (req, res) => {
   if (!(await userCanDo(req.session, 'hrm_update_status'))) return res.status(403).json({ error: 'Forbidden' });
