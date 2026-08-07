@@ -12118,6 +12118,19 @@ app.post('/api/hrm/candidates', requireAuth, async (req, res) => {
       sendMail(intvEmail, `Interview Scheduled — ${name}${profile_position ? ' (' + profile_position + ')' : ''}`, waTextToEmailHtml(msg))
         .catch(e => console.error('interview notify email err:', e.message));
     }
+    // Also let the CANDIDATE know their interview is scheduled (friendlier wording).
+    if (email) {
+      const dateFmt2 = interview_date ? String(interview_date).split('-').reverse().join('-') : '—';
+      const cmsg = `Hello ${name},\n\n🗓 *Interview Scheduled*\n\n` +
+        `Your interview with e-Marketing has been scheduled.\n\n` +
+        (profile_position ? `*Position:* ${profile_position}\n` : '') +
+        `*Date:* ${dateFmt2}\n` +
+        `*Time:* ${interview_time || '—'}\n` +
+        (meeting_link ? `*Meeting Link:* ${meeting_link}\n` : '') +
+        `\nPlease be available on time. All the best!\n\n— E-Marketing HR Team`;
+      sendMail(email, `Interview Scheduled — ${HRM_COMPANY}`, waTextToEmailHtml(cmsg))
+        .catch(e => console.error('candidate interview email err:', e.message));
+    }
     res.json({ ok: true, id: cid });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
