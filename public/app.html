@@ -1657,10 +1657,6 @@ input:focus,select:focus,textarea:focus{outline:none;}
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10a2 2 0 002 2h12a2 2 0 002-2V7M4 7l1.5-3h13L20 7M4 7h16M10 11h4"/></svg>
           <span class="nav-label-text">Logs</span>
         </div>
-        <div class="nav-item" id="nav-emaillogs" style="display:none" onclick="navigate('emaillogs',this)">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l9 6 9-6M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/></svg>
-          <span class="nav-label-text">Email Logs</span>
-        </div>
       </div>
     </div>
 
@@ -2955,41 +2951,6 @@ input:focus,select:focus,textarea:focus{outline:none;}
       Showing the 150 most recent deletions across the whole task manager. Every delete is archived here automatically.
     </div>
     <div id="logsContent"><div class="empty">Loading…</div></div>
-  </div>
-
-  <!-- ── EMAIL LOGS (admin) ── -->
-  <div id="page-emaillogs" class="page">
-    <div class="page-header">
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto">
-        <input id="elSearch" type="text" placeholder="🔍 Search to / subject…" oninput="elOnSearch()"
-          style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;min-width:200px">
-        <select id="elStatus" onchange="loadEmailLogs(1)" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none">
-          <option value="Sent">Sent only</option>
-          <option value="">All</option>
-          <option value="Failed">Failed</option>
-        </select>
-        <input type="date" id="elFrom" onchange="loadEmailLogs(1)" style="padding:6px 8px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none" title="From date">
-        <input type="date" id="elTo" onchange="loadEmailLogs(1)" style="padding:6px 8px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none" title="To date">
-        <button id="elDeleteBtn" class="btn btn-outline" style="display:none;color:#dc2626;border-color:#fecaca" onclick="elDeleteSelected()">🗑 Delete selected</button>
-        <button class="btn btn-outline" onclick="elExportCsv()">⬇ CSV</button>
-        <button class="btn btn-outline" onclick="loadEmailLogs(_elPage)">⟳ Refresh</button>
-      </div>
-    </div>
-    <div style="font-size:12px;color:#64748b;margin-bottom:12px">
-      Every email the system actually sends is recorded here — who, subject, time, and status. Password / OTP emails show a redacted body.
-    </div>
-    <div id="elContent"><div class="empty">Loading…</div></div>
-    <div id="elPager" style="display:flex;justify-content:center;align-items:center;gap:14px;margin-top:14px"></div>
-  </div>
-
-  <!-- EMAIL LOGS: detail modal -->
-  <div class="modal-overlay" id="elDetailModal">
-    <div class="modal" style="width:600px">
-      <button class="modal-close" onclick="closeModal('elDetailModal')">×</button>
-      <h3>📧 <span id="elDetailTitle">Email</span></h3>
-      <div id="elDetailBody" style="margin-top:8px"></div>
-      <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal('elDetailModal')">Close</button></div>
-    </div>
   </div>
 
   <!-- LOGS: Record detail modal -->
@@ -5076,8 +5037,6 @@ async function init() {
     // user_permissions: the archive exposes every deleted row app-wide.
     const logsNav = document.getElementById('nav-logs');
     if (logsNav) logsNav.style.display = (ME.role === 'admin' && canSee('logs')) ? 'flex' : 'none';
-    const emailLogsNav = document.getElementById('nav-emaillogs');
-    if (emailLogsNav) emailLogsNav.style.display = (ME.role === 'admin') ? 'flex' : 'none';
     // Payment Request nav — every role has it by default (ROLE_DEFAULTS), but
     // it is revocable per user from Access Control.
     const prNav = document.getElementById('nav-paymentreq');
@@ -5251,7 +5210,7 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Scheduler','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⚠️ Client Escalations',paymentreq:'💳 Payment Request',creditcards:'💳 Credit Card Statement',logs:'🗑 Logs',emaillogs:'📧 Email Logs'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Scheduler','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⚠️ Client Escalations',paymentreq:'💳 Payment Request',creditcards:'💳 Credit Card Statement',logs:'🗑 Logs'};
 
 // ══════════════════════════════════════════════════════
 // USERS PAGE — TAB SWITCHER + ACCESS CONTROL
@@ -6093,104 +6052,6 @@ const LOG_TABLE_LABELS = {
   cc_departments: 'CC Department', pr_cards: 'PR Card', payment_requests: 'Payment Request',
 };
 const logTableLabel = t => LOG_TABLE_LABELS[t] || t;
-
-// ── Email Logs (admin) ──────────────────────────────────────────────
-let _elPage = 1, _elData = [], _elSearchTimer = null, _elSelected = new Set();
-async function loadEmailLogs(page) {
-  _elPage = page || 1;
-  _elSelected.clear();
-  const wrap = document.getElementById('elContent');
-  wrap.innerHTML = '<div class="empty">Loading…</div>';
-  const params = new URLSearchParams({ page: _elPage });
-  const status = document.getElementById('elStatus').value;
-  const q = document.getElementById('elSearch').value.trim();
-  const from = document.getElementById('elFrom').value;
-  const to = document.getElementById('elTo').value;
-  if (status) params.set('status', status);
-  if (q) params.set('q', q);
-  if (from) params.set('from', from);
-  if (to) params.set('to', to);
-  const r = await api('/api/email-logs?' + params.toString());
-  if (r.error) { wrap.innerHTML = `<div class="empty">⚠️ ${dtEscape(r.error)}</div>`; return; }
-  _elData = r.rows || [];
-  renderEmailLogs(r);
-}
-function renderEmailLogs(r) {
-  const wrap = document.getElementById('elContent');
-  const pager = document.getElementById('elPager');
-  if (!_elData.length) { wrap.innerHTML = '<div class="empty">No emails found.</div>'; pager.innerHTML = ''; return; }
-  const badge = s => s === 'Sent'
-    ? '<span style="background:#dcfce7;color:#15803d;font-size:11px;font-weight:700;padding:2px 9px;border-radius:10px">Sent</span>'
-    : '<span style="background:#fee2e2;color:#b91c1c;font-size:11px;font-weight:700;padding:2px 9px;border-radius:10px">Failed</span>';
-  const th = t => `<th style="padding:8px;font-size:11px;color:#64748b;white-space:nowrap">${t}</th>`;
-  const rows = _elData.map(m => `<tr title="Click a cell for detail">
-    <td style="padding:9px 8px;border-bottom:1px solid #f1f5f9"><input type="checkbox" onclick="event.stopPropagation();elToggleRow(${m.id},this)" ${_elSelected.has(m.id)?'checked':''} style="width:15px;height:15px;accent-color:#dc2626;cursor:pointer"></td>
-    <td onclick="elOpenDetail(${m.id})" style="cursor:pointer;padding:9px 8px;border-bottom:1px solid #f1f5f9;white-space:nowrap;color:#64748b;font-size:12px">${dtEscape(m.sent_at)}</td>
-    <td onclick="elOpenDetail(${m.id})" style="cursor:pointer;padding:9px 8px;border-bottom:1px solid #f1f5f9;font-size:13px;white-space:nowrap">${dtEscape(m.sent_by||'System')}</td>
-    <td onclick="elOpenDetail(${m.id})" style="cursor:pointer;padding:9px 8px;border-bottom:1px solid #f1f5f9;font-size:13px;word-break:break-all">${dtEscape(m.recipient||'—')}</td>
-    <td onclick="elOpenDetail(${m.id})" style="cursor:pointer;padding:9px 8px;border-bottom:1px solid #f1f5f9;font-size:13px">${dtEscape(m.subject||'—')}</td>
-    <td onclick="elOpenDetail(${m.id})" style="cursor:pointer;padding:9px 8px;border-bottom:1px solid #f1f5f9">${badge(m.status)}</td></tr>`).join('');
-  wrap.innerHTML = `<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;border-bottom:1px solid #e2e8f0">
-    <th style="padding:8px"><input type="checkbox" id="elSelectAll" onclick="elToggleAll(this)" style="width:15px;height:15px;accent-color:#dc2626;cursor:pointer"></th>
-    ${th('TIME')}${th('SENT BY')}${th('TO')}${th('SUBJECT')}${th('STATUS')}</tr></thead><tbody>${rows}</tbody></table>`;
-  elUpdateDeleteBtn();
-  pager.innerHTML = `<button class="btn btn-outline" ${r.page<=1?'disabled':''} onclick="loadEmailLogs(${r.page-1})">←</button>
-    <span style="font-size:13px;color:#64748b">${r.page} / ${r.pages} · ${r.total} emails</span>
-    <button class="btn btn-outline" ${r.page>=r.pages?'disabled':''} onclick="loadEmailLogs(${r.page+1})">→</button>`;
-}
-function elToggleRow(id, cb) { cb.checked ? _elSelected.add(id) : _elSelected.delete(id); elUpdateDeleteBtn(); syncElSelectAll(); }
-function elToggleAll(cb) {
-  _elData.forEach(m => cb.checked ? _elSelected.add(m.id) : _elSelected.delete(m.id));
-  document.querySelectorAll('#elContent tbody input[type=checkbox]').forEach(x => x.checked = cb.checked);
-  elUpdateDeleteBtn();
-}
-function syncElSelectAll() {
-  const all = document.getElementById('elSelectAll');
-  if (all) all.checked = _elData.length > 0 && _elData.every(m => _elSelected.has(m.id));
-}
-function elUpdateDeleteBtn() {
-  const btn = document.getElementById('elDeleteBtn');
-  if (!btn) return;
-  btn.style.display = _elSelected.size ? 'inline-flex' : 'none';
-  btn.textContent = `🗑 Delete selected (${_elSelected.size})`;
-}
-async function elDeleteSelected() {
-  const ids = [..._elSelected];
-  if (!ids.length) return;
-  const ok = await appConfirm(`Delete ${ids.length} selected email log${ids.length===1?'':'s'}? They will be hidden (archived, not sent-again).`, 'Delete email logs?');
-  if (!ok) return;
-  const r = await api('/api/email-logs/delete', 'POST', { ids });
-  if (r.error) { showToast(r.error, 'error'); return; }
-  showToast(`🗑 Deleted ${r.deleted} log${r.deleted===1?'':'s'}`);
-  loadEmailLogs(_elPage);
-}
-function elOnSearch() { clearTimeout(_elSearchTimer); _elSearchTimer = setTimeout(() => loadEmailLogs(1), 350); }
-function elOpenDetail(id) {
-  const m = _elData.find(x => x.id === id);
-  if (!m) return;
-  const row = (l,v) => `<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9"><span style="min-width:80px;color:#64748b;font-size:12px;font-weight:600">${l}</span><span style="flex:1;word-break:break-word;font-size:13px">${v}</span></div>`;
-  document.getElementById('elDetailTitle').textContent = m.subject || 'Email';
-  document.getElementById('elDetailBody').innerHTML =
-    row('Time', dtEscape(m.sent_at)) + row('Sent by', dtEscape(m.sent_by||'System')) + row('To', dtEscape(m.recipient||'—')) +
-    (m.cc ? row('CC', dtEscape(m.cc)) : '') + row('Subject', dtEscape(m.subject||'—')) +
-    row('Status', badge2(m.status)) + (m.error_detail ? row('Error', dtEscape(m.error_detail)) : '') +
-    `<div style="margin-top:10px;color:#64748b;font-size:12px;font-weight:600">Message</div>
-     <div style="margin-top:4px;white-space:pre-wrap;font-size:13px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;max-height:280px;overflow:auto">${dtEscape(m.body||'—')}</div>`;
-  document.getElementById('elDetailModal').classList.add('open');
-}
-function badge2(s) { return s === 'Sent' ? '<span style="color:#15803d;font-weight:700">Sent</span>' : '<span style="color:#b91c1c;font-weight:700">Failed</span>'; }
-function elExportCsv() {
-  if (!_elData.length) { showToast('Nothing to export on this page', 'error'); return; }
-  const cell = v => `"${String(v==null?'':v).replace(/"/g,'""')}"`;
-  const header = ['Time','Sent By','To','CC','Subject','Status','Error'];
-  const rows = _elData.map(m => [m.sent_at, m.sent_by, m.recipient, m.cc, m.subject, m.status, m.error_detail]);
-  const csv = '﻿' + [header, ...rows].map(r => r.map(cell).join(',')).join('\r\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob); const a = document.createElement('a');
-  a.href = url; a.download = `email-logs-${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-  showToast('⬇ Exported this page');
-}
 
 async function loadLogs() {
   const el = document.getElementById('logsContent');
@@ -7337,8 +7198,6 @@ function navigate(page, el) {
   if (page === 'race' && ME.role !== 'admin') return;
   // Logs (deleted-records archive) — admin only
   if (page === 'logs' && ME.role !== 'admin') return;
-  // Email Logs — admin only
-  if (page === 'emaillogs' && ME.role !== 'admin') return;
   // Credit Cards — server-side viewer list decides, Access Control can revoke
   if (page === 'creditcards' && !(ccCanView() && canSee('creditcards'))) return;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -7364,8 +7223,7 @@ function navigate(page, el) {
     feedback: loadFeedbackAdmin,
     creditcards: loadCreditCards,
     paymentreq: initPaymentReqPage,
-    logs: loadLogs,
-    emaillogs: () => loadEmailLogs(1)
+    logs: loadLogs
   };
   const loaderFn = pageLoaders[page];
   if (typeof loaderFn === 'function') withPageLoader(loaderFn);
