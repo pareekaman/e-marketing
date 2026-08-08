@@ -685,11 +685,56 @@ async function sendMail(to, subject, html, opts = {}) {
       ...(opts.attachments ? { attachments: opts.attachments } : {})
     });
     console.log(`  📧 Email sent to ${to} — ${subject}`);
+    _logEmail(to, opts.cc, subject, html, 'Sent', null, opts.sensitive);  // fire-and-forget
     return true;
   } catch (err) {
     console.error(`  ❌ Email failed (${to}):`, err.message);
+    _logEmail(to, opts.cc, subject, html, 'Failed', err.message, opts.sensitive);
     return false;
   }
+}
+
+// ── Email log (viewer under the Email Logs page) ─────────────────────
+// Every real send attempt is recorded so admins can see who got what and when.
+// Bodies are stored as plain text; emails flagged opts.sensitive (new-user
+// credentials, password-reset OTP) store a redacted placeholder instead — never
+// the password/code itself.
+let _emailLogReady = null;
+function ensureEmailLogTable() {
+  if (!_emailLogReady) {
+    _emailLogReady = db.query(`CREATE TABLE IF NOT EXISTS email_log (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      recipient VARCHAR(1000) DEFAULT NULL,
+      cc VARCHAR(1000) DEFAULT NULL,
+      subject VARCHAR(500) DEFAULT NULL,
+      body MEDIUMTEXT DEFAULT NULL,
+      status ENUM('Sent','Failed') DEFAULT 'Sent',
+      error_detail TEXT DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_email_log_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(e => { _emailLogReady = null; throw e; });
+  }
+  return _emailLogReady;
+}
+function _emailBodyToText(html) {
+  return String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|h[1-6]|li)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+async function _logEmail(to, cc, subject, html, status, error, sensitive) {
+  try {
+    await ensureEmailLogTable();
+    const body = sensitive
+      ? '[Redacted — this email contained a password or one-time code]'
+      : _emailBodyToText(html).slice(0, 20000);
+    await db.query(
+      'INSERT INTO email_log (recipient, cc, subject, body, status, error_detail) VALUES (?,?,?,?,?,?)',
+      [String(to || '').slice(0, 1000), cc ? String(cc).slice(0, 1000) : null,
+       String(subject || '').slice(0, 500), body, status, error ? String(error).slice(0, 1000) : null]);
+  } catch (e) { console.error('email_log write err:', e.message); }
 }
 
 // Helper: get user's notification email + name. Falls back to the login email
@@ -1443,7 +1488,7 @@ app.post('/api/forgot-password', async (req, res) => {
       <p>This code expires in ${RESET_OTP_TTL_MIN} minutes and can be used once. If you didn't request this, you can ignore this email — your password stays unchanged.</p>
       <p style="color:#777;font-size:12px;margin-top:20px">E-Marketing Task Manager</p>
     </div>`;
-    await sendMail(user.email, 'Your password reset code', html);
+    await sendMail(user.email, 'Your password reset code', html, { sensitive: true });
     res.json(generic);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3331,7 +3376,7 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
     // Credentials now go by EMAIL to the new user (was WhatsApp).
     const credMsg = `Hi ${name},\nWelcome to e-marketing. We are granting you access to the our task manager.🌸\n\nhttps://taskmanager.e-marketing.io/app\nid : ${email}\npass : ${password}`;
     const credTo = notification_email || email;
-    if (credTo) sendMail(credTo, 'Welcome to E-Marketing — Your Task Manager Login', waTextToEmailHtml(credMsg)).catch(e => console.error('new user email err:', e.message));
+    if (credTo) sendMail(credTo, 'Welcome to E-Marketing — Your Task Manager Login', waTextToEmailHtml(credMsg), { sensitive: true }).catch(e => console.error('new user email err:', e.message));
     // Team welcome announcement
     const welcomeMsg = `Hello Team,\nPlease join me in welcoming ${name} our new team member who has joined us as a ${department || 'team member'}.\nWe are excited to have them on board and look forward to working together.\nWelcome to the team, ${name}! 🌸`;
     sendWhatsAppRaw('919602694444-1618492040@g.us', welcomeMsg).catch(e => console.error('WA team welcome err:', e.message));
@@ -12672,6 +12717,32 @@ app.post('/api/hrm/messages/:id/retry', requireAuth, async (req, res) => {
       `UPDATE hrm_message_log SET status=?, error_detail=?, retry_count=retry_count+1, last_retry_at=NOW() WHERE id=?`,
       [status, errorDetail, req.params.id]);
     res.json({ ok: status === 'Sent', status, message: status === 'Sent' ? 'Resent successfully' : 'Retry failed: '+errorDetail });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// EMAIL LOGS — every real send attempt, admin only, paginated
+// ══════════════════════════════════════════════════════
+app.get('/api/email-logs', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await ensureEmailLogTable();
+    const perPage = 50;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const offset = (page - 1) * perPage;
+    const where = [], params = [];
+    if (req.query.status === 'Sent' || req.query.status === 'Failed') { where.push('status=?'); params.push(req.query.status); }
+    const q = String(req.query.q || '').trim();
+    if (q) { where.push('(recipient LIKE ? OR subject LIKE ? OR cc LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(req.query.from || '')) { where.push('created_at >= ?'); params.push(req.query.from + ' 00:00:00'); }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(req.query.to   || '')) { where.push('created_at <= ?'); params.push(req.query.to   + ' 23:59:59'); }
+    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const [[cnt]] = await db.query(`SELECT COUNT(*) AS n FROM email_log ${whereSql}`, params);
+    const [rows] = await db.query(
+      `SELECT id, recipient, cc, subject, body, status, error_detail,
+              DATE_FORMAT(created_at, '%b %e, %Y, %l:%i %p') AS sent_at
+         FROM email_log ${whereSql} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+      [...params, perPage, offset]);
+    res.json({ rows, total: cnt.n, page, perPage, pages: Math.max(1, Math.ceil(cnt.n / perPage)) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
