@@ -15781,61 +15781,85 @@ function renderLeaves(){
     return;
   }
 
-  // Group by user_name
+  // Nested accordion: Name → Month-Year → entries. Both levels start collapsed;
+  // clicking a name reveals its months, clicking a month reveals its leaves.
   const groups = {};
   for (const r of rows) {
-    const key = r.user_id + '|' + r.user_name;
-    if (!groups[key]) groups[key] = { name: r.user_name, dept: r.user_department, items: [] };
-    groups[key].items.push(r);
+    const nkey = r.user_id + '|' + r.user_name;
+    if (!groups[nkey]) groups[nkey] = { key: nkey, name: r.user_name, dept: r.user_department, months: {} };
+    const ym = String(r.from_date || (Array.isArray(r.dates) && r.dates[0] && r.dates[0].date) || '').slice(0, 7); // YYYY-MM
+    (groups[nkey].months[ym] ||= []).push(r);
   }
+  const LV_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const monthLabel = ym => { const [y,m] = ym.split('-'); return m ? `${LV_MONTHS[+m-1]} ${y}` : 'Undated'; };
+  const arg = s => JSON.stringify(s).replace(/"/g, '&quot;');
 
   let html = '';
-  for (const key of Object.keys(groups)) {
-    const g = groups[key];
+  for (const nkey of Object.keys(groups)) {
+    const g = groups[nkey];
+    const nameOpen = _lvOpenNames.has(nkey);
+    const total = Object.values(g.months).reduce((s,a)=>s+a.length,0);
     html += `<div class="lv-user-group">
-      <div class="lv-user-head">
-        <span>${dtEscape(g.name)}</span>
-        ${g.dept ? `<small>${dtEscape(g.dept)}</small>` : ''}
-      </div>`;
-    for (const r of g.items) {
-      const dates = Array.isArray(r.dates) && r.dates.length
-        ? r.dates : [{ date: r.from_date }];
-      const dateLine = dates.map(d => {
-        const dStr = fmtDate(d.date);
-        return r.leave_type === 'extra_working' && d.hours
-          ? `${dStr}<span class="lv-hours-pill">${d.hours}h</span>`
-          : dStr;
-      }).join(' · ');
-      const countLabel = dates.length > 1
-        ? `<span style="color:#94a3b8;font-weight:500"> · ${dates.length} day${dates.length===1?'':'s'}</span>`
-        : '';
-      const canDelete = (r.user_id === ME.id && r.status === 'pending') || ME.role === 'admin';
-      html += `<div class="lv-item">
-        <div class="lv-item-main">
-          <div class="lv-item-row1">
-            <span class="lv-type-pill lv-type-${r.leave_type}">${LEAVE_TYPE_ICON[r.leave_type]||''} ${LEAVE_TYPE_LABEL[r.leave_type]||r.leave_type}</span>
-            <span class="lv-status lv-status-${r.status}">${r.status}</span>
-          </div>
-          ${(() => { const bd = lvExtraBreakdownHtml(r); return bd || `<div class="lv-item-reason">${dtEscape(r.reason)}</div>`; })()}
-          <div class="lv-item-meta">
-            <b>Applied:</b> ${dtEscape((r.created_at||'').slice(0,16))}
-            ${r.status === 'pending'
-              ? (r.dept_hod_names ? ` · <b>Approver:</b> ${dtEscape(r.dept_hod_names)}` : (r.approver_name ? ` · <b>Approver:</b> ${dtEscape(r.approver_name)}` : ''))
-              : (r.approver_name ? ` · <b>Decided by:</b> ${dtEscape(r.approver_name)}` : '')}
-            ${r.decided_at ? ` · <b>Decided:</b> ${dtEscape(r.decided_at.slice(0,16))}` : ''}
-            ${r.approver_note ? ` · <b>Note:</b> ${dtEscape(r.approver_note)}` : ''}
-          </div>
+      <div class="lv-user-head" onclick="lvToggleName(${arg(nkey)})" style="cursor:pointer;user-select:none">
+        <span><span class="lv-caret" style="display:inline-block;transition:transform .15s;transform:rotate(${nameOpen?90:0}deg);color:#94a3b8;font-size:11px;margin-right:4px">▶</span>${dtEscape(g.name)}</span>
+        <span style="display:flex;align-items:center;gap:10px">${g.dept ? `<small>${dtEscape(g.dept)}</small>` : ''}<small style="color:#94a3b8">${total}</small></span>
+      </div>
+      <div style="display:${nameOpen?'block':'none'}">`;
+    for (const ym of Object.keys(g.months).sort((a,b)=>b.localeCompare(a))) {
+      const mkey = nkey + '||' + ym;
+      const monthOpen = _lvOpenMonths.has(mkey);
+      const items = g.months[ym];
+      html += `<div class="lv-month-group">
+        <div class="lv-month-head" onclick="lvToggleMonth(${arg(mkey)})" style="cursor:pointer;user-select:none;padding:9px 16px;background:#f8fafc;border-bottom:1px solid #eef2f7;font-weight:600;font-size:13px;color:#0f766e;display:flex;align-items:center;gap:8px">
+          <span class="lv-caret" style="display:inline-block;transition:transform .15s;transform:rotate(${monthOpen?90:0}deg);color:#94a3b8;font-size:10px">▶</span>
+          ${monthLabel(ym)}
+          <span style="margin-left:auto;color:#94a3b8;font-weight:500;font-size:11px">${items.length} ${items.length===1?'entry':'entries'}</span>
         </div>
-        <div class="lv-item-actions">
-          <div class="lv-item-date">${dateLine}${countLabel}</div>
-          ${canDelete ? `<div class="lv-item-btns"><button class="lv-btn-delete" onclick="deleteLeave(${r.id})">🗑 Delete</button></div>` : ''}
-        </div>
+        <div style="display:${monthOpen?'block':'none'}">${items.map(lvItemHtml).join('')}</div>
       </div>`;
     }
-    html += `</div>`;
+    html += `</div></div>`;
   }
   wrap.innerHTML = html;
 }
+
+// One leave / extra-working row (used inside the month accordion body).
+function lvItemHtml(r) {
+  const dates = Array.isArray(r.dates) && r.dates.length ? r.dates : [{ date: r.from_date }];
+  const dateLine = dates.map(d => {
+    const dStr = fmtDate(d.date);
+    return r.leave_type === 'extra_working' && d.hours
+      ? `${dStr}<span class="lv-hours-pill">${d.hours}h</span>` : dStr;
+  }).join(' · ');
+  const countLabel = dates.length > 1
+    ? `<span style="color:#94a3b8;font-weight:500"> · ${dates.length} day${dates.length===1?'':'s'}</span>` : '';
+  const canDelete = (r.user_id === ME.id && r.status === 'pending') || ME.role === 'admin';
+  return `<div class="lv-item">
+    <div class="lv-item-main">
+      <div class="lv-item-row1">
+        <span class="lv-type-pill lv-type-${r.leave_type}">${LEAVE_TYPE_ICON[r.leave_type]||''} ${LEAVE_TYPE_LABEL[r.leave_type]||r.leave_type}</span>
+        <span class="lv-status lv-status-${r.status}">${r.status}</span>
+      </div>
+      ${(() => { const bd = lvExtraBreakdownHtml(r); return bd || `<div class="lv-item-reason">${dtEscape(r.reason)}</div>`; })()}
+      <div class="lv-item-meta">
+        <b>Applied:</b> ${dtEscape((r.created_at||'').slice(0,16))}
+        ${r.status === 'pending'
+          ? (r.dept_hod_names ? ` · <b>Approver:</b> ${dtEscape(r.dept_hod_names)}` : (r.approver_name ? ` · <b>Approver:</b> ${dtEscape(r.approver_name)}` : ''))
+          : (r.approver_name ? ` · <b>Decided by:</b> ${dtEscape(r.approver_name)}` : '')}
+        ${r.decided_at ? ` · <b>Decided:</b> ${dtEscape(r.decided_at.slice(0,16))}` : ''}
+        ${r.approver_note ? ` · <b>Note:</b> ${dtEscape(r.approver_note)}` : ''}
+      </div>
+    </div>
+    <div class="lv-item-actions">
+      <div class="lv-item-date">${dateLine}${countLabel}</div>
+      ${canDelete ? `<div class="lv-item-btns"><button class="lv-btn-delete" onclick="deleteLeave(${r.id})">🗑 Delete</button></div>` : ''}
+    </div>
+  </div>`;
+}
+
+let _lvOpenNames = new Set(), _lvOpenMonths = new Set();
+function lvToggleName(k){ _lvOpenNames.has(k) ? _lvOpenNames.delete(k) : _lvOpenNames.add(k); renderLeaves(); }
+function lvToggleMonth(k){ _lvOpenMonths.has(k) ? _lvOpenMonths.delete(k) : _lvOpenMonths.add(k); renderLeaves(); }
 
 function lvSwitchTab(tab, el){
   LEAVE_TAB = tab;
