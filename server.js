@@ -685,11 +685,11 @@ async function sendMail(to, subject, html, opts = {}) {
       ...(opts.attachments ? { attachments: opts.attachments } : {})
     });
     console.log(`  📧 Email sent to ${to} — ${subject}`);
-    _logEmail(to, opts.cc, subject, html, 'Sent', null, opts.sensitive);  // fire-and-forget
+    _logEmail(to, opts.cc, subject, html, 'Sent', null, opts.sensitive, opts.sentBy);  // fire-and-forget
     return true;
   } catch (err) {
     console.error(`  ❌ Email failed (${to}):`, err.message);
-    _logEmail(to, opts.cc, subject, html, 'Failed', err.message, opts.sensitive);
+    _logEmail(to, opts.cc, subject, html, 'Failed', err.message, opts.sensitive, opts.sentBy);
     return false;
   }
 }
@@ -702,17 +702,25 @@ async function sendMail(to, subject, html, opts = {}) {
 let _emailLogReady = null;
 function ensureEmailLogTable() {
   if (!_emailLogReady) {
-    _emailLogReady = db.query(`CREATE TABLE IF NOT EXISTS email_log (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      recipient VARCHAR(1000) DEFAULT NULL,
-      cc VARCHAR(1000) DEFAULT NULL,
-      subject VARCHAR(500) DEFAULT NULL,
-      body MEDIUMTEXT DEFAULT NULL,
-      status ENUM('Sent','Failed') DEFAULT 'Sent',
-      error_detail TEXT DEFAULT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_email_log_created (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(e => { _emailLogReady = null; throw e; });
+    _emailLogReady = (async () => {
+      await db.query(`CREATE TABLE IF NOT EXISTS email_log (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        recipient VARCHAR(1000) DEFAULT NULL,
+        cc VARCHAR(1000) DEFAULT NULL,
+        subject VARCHAR(500) DEFAULT NULL,
+        body MEDIUMTEXT DEFAULT NULL,
+        sent_by VARCHAR(255) DEFAULT NULL,
+        status ENUM('Sent','Failed') DEFAULT 'Sent',
+        error_detail TEXT DEFAULT NULL,
+        deleted_at TIMESTAMP NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_email_log_created (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+      // Add the columns on any pre-existing table (CREATE IF NOT EXISTS won't).
+      const add = async sql => { try { await db.query(sql); } catch (e) { /* duplicate col */ } };
+      await add(`ALTER TABLE email_log ADD COLUMN sent_by VARCHAR(255) DEFAULT NULL`);
+      await add(`ALTER TABLE email_log ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL`);
+    })().catch(e => { _emailLogReady = null; throw e; });
   }
   return _emailLogReady;
 }
@@ -724,16 +732,17 @@ function _emailBodyToText(html) {
     .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
     .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
-async function _logEmail(to, cc, subject, html, status, error, sensitive) {
+async function _logEmail(to, cc, subject, html, status, error, sensitive, sentBy) {
   try {
     await ensureEmailLogTable();
     const body = sensitive
       ? '[Redacted — this email contained a password or one-time code]'
       : _emailBodyToText(html).slice(0, 20000);
     await db.query(
-      'INSERT INTO email_log (recipient, cc, subject, body, status, error_detail) VALUES (?,?,?,?,?,?)',
+      'INSERT INTO email_log (recipient, cc, subject, body, sent_by, status, error_detail) VALUES (?,?,?,?,?,?,?)',
       [String(to || '').slice(0, 1000), cc ? String(cc).slice(0, 1000) : null,
-       String(subject || '').slice(0, 500), body, status, error ? String(error).slice(0, 1000) : null]);
+       String(subject || '').slice(0, 500), body, sentBy ? String(sentBy).slice(0, 255) : null,
+       status, error ? String(error).slice(0, 1000) : null]);
   } catch (e) { console.error('email_log write err:', e.message); }
 }
 
@@ -768,10 +777,10 @@ function waTextToEmailHtml(text) {
 }
 // Email a WhatsApp-style message to a user resolved by id. Best-effort; returns
 // true if it went out. Safe to call fire-and-forget.
-async function emailUserWaText(userId, subject, text) {
+async function emailUserWaText(userId, subject, text, sentBy) {
   const t = await getNotifyTarget(userId);
   if (!t?.email) return false;
-  return sendMail(t.email, subject, waTextToEmailHtml(text));
+  return sendMail(t.email, subject, waTextToEmailHtml(text), { sentBy });
 }
 // Resolve a notification email from a phone number (bot senders are known only
 // by phone). Tries the number as stored and without a leading 91. Null if no
@@ -1990,7 +1999,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
             (url ? `\n\n*URL:* ${url}` : '') +
             (remarks ? `\n\n*Remarks:* ${remarks}` : '') +
             `\n\n— E-Marketing Task Manager`;
-          await sendMail(target.email, `📋 New Task Assigned: ${(desc||'').slice(0,60)}`, waTextToEmailHtml(msg));
+          await sendMail(target.email, `📋 New Task Assigned: ${(desc||'').slice(0,60)}`, waTextToEmailHtml(msg), { sentBy: assignerName });
         }
         // Doer notification now goes by EMAIL only (sent just above via
         // getNotifyTarget) — the personal WhatsApp DM has been retired.
@@ -2113,7 +2122,7 @@ app.post('/api/tasks/:id/subtasks', requireAuth, async (req, res) => {
         `*Under Task:* ${task.description}\n\n` +
         `*Sub-task:* ${desc}\n\n` +
         `— E-Marketing Task Manager`;
-      await emailUserWaText(task.assigned_to, `New Sub-task: ${desc.slice(0,60)}`, msg);
+      await emailUserWaText(task.assigned_to, `New Sub-task: ${desc.slice(0,60)}`, msg, client?.name || 'Client');
     })().catch(e => console.error('subtask email err:', e.message));
 
     res.json({ success: true });
@@ -3376,7 +3385,7 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
     // Credentials now go by EMAIL to the new user (was WhatsApp).
     const credMsg = `Hi ${name},\nWelcome to e-marketing. We are granting you access to the our task manager.🌸\n\nhttps://taskmanager.e-marketing.io/app\nid : ${email}\npass : ${password}`;
     const credTo = notification_email || email;
-    if (credTo) sendMail(credTo, 'Welcome to E-Marketing — Your Task Manager Login', waTextToEmailHtml(credMsg), { sensitive: true }).catch(e => console.error('new user email err:', e.message));
+    if (credTo) sendMail(credTo, 'Welcome to E-Marketing — Your Task Manager Login', waTextToEmailHtml(credMsg), { sensitive: true, sentBy: req.session.name }).catch(e => console.error('new user email err:', e.message));
     // Team welcome announcement
     const welcomeMsg = `Hello Team,\nPlease join me in welcoming ${name} our new team member who has joined us as a ${department || 'team member'}.\nWe are excited to have them on board and look forward to working together.\nWelcome to the team, ${name}! 🌸`;
     sendWhatsAppRaw('919602694444-1618492040@g.us', welcomeMsg).catch(e => console.error('WA team welcome err:', e.message));
@@ -5227,7 +5236,7 @@ app.post('/api/wa-bot/task', async (req, res) => {
     // Approver notified by email now (was WhatsApp).
     const namanEmail = naman && (naman.notification_email || naman.email);
     if (namanEmail) {
-      sendMail(namanEmail, 'New WhatsApp Task — Approval Required', waTextToEmailHtml(waMsg)).catch(e => console.error('approval notify email err:', e.message));
+      sendMail(namanEmail, 'New WhatsApp Task — Approval Required', waTextToEmailHtml(waMsg), { sentBy: sender_name || 'WhatsApp bot' }).catch(e => console.error('approval notify email err:', e.message));
     }
 
     res.json({ ok: true, id: result.insertId, pending: true });
@@ -8198,7 +8207,7 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
               }
             }
             const msg = `${emoji} *Payment Request ${statusText}*\n\nHi ${submitter.name},\n\nYour payment request has been *${statusText.toLowerCase()}*.${amtStr}\n*Reason:* ${cleanReason}\n\n— E-Marketing`;
-            await emailUserWaText(pr.submitted_by, `Payment Request ${statusText}`, msg);
+            await emailUserWaText(pr.submitted_by, `Payment Request ${statusText}`, msg, req.session.name);
           }
         }
       } catch(waErr) { console.error('payment notify email err:', waErr.message); }
@@ -8270,7 +8279,7 @@ app.patch('/api/mdo-tasks/:id', requireAuth, async (req, res) => {
         `📅 *Due Date:* ${dueDateStr}\n` +
         `🏢 *Client:* ${task.client_name || '—'}\n\n` +
         `Status updated to *${status}*.`;
-      sendMail(namanEmail, `Task ${status} by ${approverName}`, waTextToEmailHtml(waMsg)).catch(e => console.error('mdo-task email err:', e.message));
+      sendMail(namanEmail, `Task ${status} by ${approverName}`, waTextToEmailHtml(waMsg), { sentBy: approverName }).catch(e => console.error('mdo-task email err:', e.message));
     }
 
     // Notify Assigned To by email (was WhatsApp)
@@ -8278,7 +8287,7 @@ app.patch('/api/mdo-tasks/:id', requireAuth, async (req, res) => {
       const waMsg = status === 'Approved'
         ? `✅ *Task Approved & Assigned to ${task.assigned_to || '—'}*\n\n📋 *Task:* ${taskDesc}\n🆔 *Task ID:* ${task.task_id || '—'}\n🙋 *Assigned By:* ${assignedByName || '—'}\n📅 *Due Date:* ${dueDateStr}\n🏢 *Client:* ${task.client_name || '—'}\n\nThis task has been approved by *${approverName}* and assigned to you.`
         : `❌ *Task Rejected*\n\n📋 *Task:* ${taskDesc}\n🆔 *Task ID:* ${task.task_id || '—'}\n🙋 *Assigned By:* ${assignedByName || '—'}\n\nThis task was reviewed and rejected by *${approverName}*. No action needed from you.`;
-      emailUserWaText(assignedToUser.id, `Task ${status}`, waMsg).catch(e => console.error('mdo-task assignedTo email err:', e.message));
+      emailUserWaText(assignedToUser.id, `Task ${status}`, waMsg, approverName).catch(e => console.error('mdo-task assignedTo email err:', e.message));
     }
 
     // Notify Assigned By by email (was WhatsApp)
@@ -8286,7 +8295,7 @@ app.patch('/api/mdo-tasks/:id', requireAuth, async (req, res) => {
       const waMsg = status === 'Approved'
         ? `✅ *Task Delegated Successfully*\n\n📋 *Task:* ${taskDesc}\n🆔 *Task ID:* ${task.task_id || '—'}\n👤 *Assigned To:* ${task.assigned_to || '—'}\n📅 *Due Date:* ${dueDateStr}\n\nYour task has been approved by *${approverName}* and delegated to *${task.assigned_to}*.`
         : `❌ *Task Request Rejected*\n\n📋 *Task:* ${taskDesc}\n🆔 *Task ID:* ${task.task_id || '—'}\n👤 *Assigned To:* ${task.assigned_to || '—'}\n\nYour task request was reviewed and rejected by *${approverName}*.`;
-      emailUserWaText(assignedByUser.id, `Task ${status}`, waMsg).catch(e => console.error('mdo-task assignedBy email err:', e.message));
+      emailUserWaText(assignedByUser.id, `Task ${status}`, waMsg, approverName).catch(e => console.error('mdo-task assignedBy email err:', e.message));
     }
 
     res.json({ success: true, delegationTaskId });
@@ -10141,7 +10150,7 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
             `*Duration:* ${daysWord}\n` +
             waDetail + `\n\n` +
             `Please approve / reject from the Approvals tab.\n\n— E-Marketing Task Manager`;
-          sendMail(hodEmail, `${waHeading} — ${me?.name || ''}`, waTextToEmailHtml(msg)).catch(e => console.error('leave req email err:', e.message));
+          sendMail(hodEmail, `${waHeading} — ${me?.name || ''}`, waTextToEmailHtml(msg), { sentBy: me?.name }).catch(e => console.error('leave req email err:', e.message));
         }
       } catch (e) { console.error('leave req email lookup err:', e.message); }
     }
@@ -10210,7 +10219,7 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
         `*Decided by:* ${apRow?.name || 'Approver'}\n` +
         (note ? `*Note:* ${note}\n` : '') +
         `\n— E-Marketing Task Manager`;
-      sendMail(target.email, `${subjectWord} ${newStatus} — ${typeLabel}`, waTextToEmailHtml(msg)).catch(()=>{});
+      sendMail(target.email, `${subjectWord} ${newStatus} — ${typeLabel}`, waTextToEmailHtml(msg), { sentBy: apRow?.name || req.session.name }).catch(()=>{});
     }
     // Requester is notified by EMAIL only now (sent just above via
     // getNotifyTarget) — the personal WhatsApp DM has been retired.
@@ -12160,7 +12169,7 @@ app.post('/api/hrm/candidates', requireAuth, async (req, res) => {
         (meeting_link ? `*Meeting Link:* ${meeting_link}\n` : '') +
         (notes ? `\n*Notes:* ${notes}\n` : '') +
         `\n— E-Marketing HR Portal`;
-      sendMail(intvEmail, `Interview Scheduled — ${name}${profile_position ? ' (' + profile_position + ')' : ''}`, waTextToEmailHtml(msg))
+      sendMail(intvEmail, `Interview Scheduled — ${name}${profile_position ? ' (' + profile_position + ')' : ''}`, waTextToEmailHtml(msg), { sentBy: req.session.name })
         .catch(e => console.error('interview notify email err:', e.message));
     }
     // Also let the CANDIDATE know their interview is scheduled (friendlier wording).
@@ -12173,7 +12182,7 @@ app.post('/api/hrm/candidates', requireAuth, async (req, res) => {
         `*Time:* ${interview_time || '—'}\n` +
         (meeting_link ? `*Meeting Link:* ${meeting_link}\n` : '') +
         `\nPlease be available on time. All the best!\n\n— E-Marketing HR Team`;
-      sendMail(email, `Interview Scheduled — ${HRM_COMPANY}`, waTextToEmailHtml(cmsg))
+      sendMail(email, `Interview Scheduled — ${HRM_COMPANY}`, waTextToEmailHtml(cmsg), { sentBy: req.session.name })
         .catch(e => console.error('candidate interview email err:', e.message));
     }
     res.json({ ok: true, id: cid });
@@ -12529,7 +12538,7 @@ app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) =>
     }
 
     const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;line-height:1.6">${bodyInner}${_hrmEmailSignatureHtml()}</div>`;
-    const ok = await sendMail(to, subject, html, { cc, attachments });
+    const ok = await sendMail(to, subject, html, { cc, attachments, sentBy: req.session.name });
 
     await db.query(
       `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
@@ -12729,20 +12738,33 @@ app.get('/api/email-logs', requireAuth, requireAdmin, async (req, res) => {
     const perPage = 50;
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const offset = (page - 1) * perPage;
-    const where = [], params = [];
+    const where = ['deleted_at IS NULL'], params = [];
     if (req.query.status === 'Sent' || req.query.status === 'Failed') { where.push('status=?'); params.push(req.query.status); }
     const q = String(req.query.q || '').trim();
-    if (q) { where.push('(recipient LIKE ? OR subject LIKE ? OR cc LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+    if (q) { where.push('(recipient LIKE ? OR subject LIKE ? OR cc LIKE ? OR sent_by LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`); }
     if (/^\d{4}-\d{2}-\d{2}$/.test(req.query.from || '')) { where.push('created_at >= ?'); params.push(req.query.from + ' 00:00:00'); }
     if (/^\d{4}-\d{2}-\d{2}$/.test(req.query.to   || '')) { where.push('created_at <= ?'); params.push(req.query.to   + ' 23:59:59'); }
-    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const whereSql = 'WHERE ' + where.join(' AND ');
     const [[cnt]] = await db.query(`SELECT COUNT(*) AS n FROM email_log ${whereSql}`, params);
     const [rows] = await db.query(
-      `SELECT id, recipient, cc, subject, body, status, error_detail,
+      `SELECT id, recipient, cc, subject, body, COALESCE(sent_by,'System') AS sent_by, status, error_detail,
               DATE_FORMAT(created_at, '%b %e, %Y, %l:%i %p') AS sent_at
          FROM email_log ${whereSql} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
       [...params, perPage, offset]);
     res.json({ rows, total: cnt.n, page, perPage, pages: Math.max(1, Math.ceil(cnt.n / perPage)) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Bulk soft-delete email-log rows (admin). Soft — sets deleted_at so it drops
+// out of the viewer but the row survives; never a hard delete.
+app.post('/api/email-logs/delete', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await ensureEmailLogTable();
+    const ids = Array.isArray(req.body.ids) ? req.body.ids.map(x => parseInt(x, 10)).filter(Boolean) : [];
+    if (!ids.length) return res.status(400).json({ error: 'No rows selected' });
+    const [r] = await db.query(
+      `UPDATE email_log SET deleted_at=NOW() WHERE deleted_at IS NULL AND id IN (${ids.map(() => '?').join(',')})`, ids);
+    res.json({ ok: true, deleted: r.affectedRows });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
