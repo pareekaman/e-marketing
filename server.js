@@ -790,7 +790,7 @@ function requireAdminOrPC(req, res, next) {
 }
 // Allows a manager (admin/hod/pc) OR a handler of the client named in :id to
 // act on that client's operational data (portal links, WhatsApp group, DMS).
-// Structural client edits (name/handler/active) stay manager-only — see PUT.
+// Structural client edits (name/handler) stay manager-only — see PUT.
 async function requireClientEditor(req, res, next) {
   try {
     if (['admin', 'hod', 'pc'].includes(req.session.role)) return next();
@@ -8509,8 +8509,8 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
   try {
     const id = req.params.id;
     // Full editors (edit_clients permission) may change anything. A handler of
-    // this client may still edit its operational fields — portal links + the
-    // WhatsApp group — but not rename or reassign it.
+    // this client may still edit its operational fields — portal links, the
+    // WhatsApp group, and the active flag — but not rename or reassign it.
     const isEditor = await userCanDo(req.session, 'edit_clients');
     let handlerOnly = false;
     if (!isEditor) {
@@ -8530,8 +8530,13 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
     if (!handlerOnly) {
       if (name !== null) { sets.push('name=?'); params.push(name); }
       if (handlerId !== undefined) { sets.push('handler_id=?'); params.push(handlerId); }
-      if (req.body.is_active !== undefined) { sets.push('is_active=?'); params.push(req.body.is_active ? 1 : 0); }
     }
+    // Active flag — a handler may retire their own client. Not structural: it
+    // records whether the client is still live, not who owns it. Deliberately
+    // outside the !handlerOnly block — inside it, a handler's toggle was dropped
+    // and the request still returned {noop:true}, so the UI flipped the switch
+    // on a write that never happened and the row came back Active on refresh.
+    if (req.body.is_active !== undefined) { sets.push('is_active=?'); params.push(req.body.is_active ? 1 : 0); }
     if (req.body.system_links !== undefined) { sets.push('system_links=?'); params.push(sanitizeSystemLinks(req.body.system_links)); }
     if (req.body.whatsapp_group_id !== undefined) {
       const g = String(req.body.whatsapp_group_id || '').trim();

@@ -13846,6 +13846,10 @@ async function cmToggleActive(id, makeActive){
   try {
     const r = await api('/api/clients/' + id, 'PUT', { is_active: makeActive });
     if (r && r.error) throw new Error(r.error);
+    // noop:true is a 200 where the server wrote nothing — every field sent was
+    // one this role may not change. Without this check the switch flipped on a
+    // write that never landed, and the row reverted on the next refresh.
+    if (r && r.noop) throw new Error('You do not have permission to change this client');
     const client = CM_ALL.find(c => String(c.id) === String(id));
     if (client) client.is_active = makeActive;
     if (sw) {
@@ -15051,6 +15055,7 @@ async function emp360ToggleClient(clientId, makeActive){
   try {
     const r = await api('/api/clients/' + clientId, 'PUT', { is_active: makeActive });
     if (r.error) throw new Error(r.error);
+    if (r.noop) throw new Error('You do not have permission to change this client');
     showToast(makeActive ? 'Client marked active' : 'Client marked inactive');
     loadEmp360(); // refresh counts + badges
   } catch(e) {
