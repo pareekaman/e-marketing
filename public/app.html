@@ -5012,7 +5012,6 @@ async function init() {
       'nav-fms':          'fms',
       'nav-clients':      'clients',
       'nav-compliance':   'compliance',
-      'nav-dailyreports': 'dailyreports',
       'nav-hrm':          'hrm',
       'nav-meetings':     'meetings',
       'nav-inventory':    'inventory',
@@ -5037,6 +5036,13 @@ async function init() {
     // user_permissions: the archive exposes every deleted row app-wide.
     const logsNav = document.getElementById('nav-logs');
     if (logsNav) logsNav.style.display = (ME.role === 'admin' && canSee('logs')) ? 'flex' : 'none';
+    // Daily Reports nav — admin only, same shape as Logs. It sat in NAV_MAP on
+    // canSee() alone, which let a stale extra_access tick from the Users tab
+    // show the page to a plain user whose Access Control row still read
+    // "No Access" — the two panels disagreed and the sidebar believed the
+    // wrong one. Every endpoint behind this page is requireAdmin anyway.
+    const drNav = document.getElementById('nav-dailyreports');
+    if (drNav) drNav.style.display = (ME.role === 'admin' && canSee('dailyreports')) ? 'flex' : 'none';
     // Payment Request nav — every role has it by default (ROLE_DEFAULTS), but
     // it is revocable per user from Access Control.
     const prNav = document.getElementById('nav-paymentreq');
@@ -5287,9 +5293,9 @@ const PERM_TREE = [
   { page: 'compliance',   label: 'Compliance',     icon: '✅', enforced: false, actions: [
     { key: 'edit_compliance', label: 'Edit' },
   ]},
-  { page: 'dailyreports', label: 'Daily Reports',  icon: '📈', enforced: false, actions: [
-    { key: 'edit_dailyreports', label: 'Edit' },
-  ]},
+  { page: 'dailyreports', label: 'Daily Reports',  icon: '📈', enforced: false, grantable: false, locked: true,
+    note: 'Admin only by design (every endpoint behind it is admin-gated) — not grantable here',
+    actions: [{ key: 'edit_dailyreports', label: 'Edit' }] },
   { page: 'leaves',       label: 'Leave Tracker',  icon: '🏖️', enforced: false, actions: [
     { key: 'delete_leave', label: 'Delete' },
   ]},
@@ -7198,6 +7204,8 @@ function navigate(page, el) {
   if (page === 'race' && ME.role !== 'admin') return;
   // Logs (deleted-records archive) — admin only
   if (page === 'logs' && ME.role !== 'admin') return;
+  // Daily Reports — admin only; every endpoint behind it is requireAdmin
+  if (page === 'dailyreports' && ME.role !== 'admin') return;
   // Credit Cards — server-side viewer list decides, Access Control can revoke
   if (page === 'creditcards' && !(ccCanView() && canSee('creditcards'))) return;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));

@@ -3249,7 +3249,12 @@ app.get('/api/users/with-pending-tasks', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════
 // Page keys an admin can grant to non-admin users via the user-edit checkboxes.
 // Single source of truth for both the dropdown and server-side validation.
-const EXTRA_ACCESS_KEYS = ['race','mis','fms','users','clients','compliance','dailyreports','leaves_all','pending_summary_recipient'];
+// 'dailyreports' is deliberately absent. Every Daily Reports endpoint is
+// requireAdmin — the report itself, both reminder previews, both sends — so
+// granting the page here only ever produced a page that answered "Admin only"
+// to each of its own calls, while the Access Control panel (which never reads
+// extra_access) went on showing No Access for the same user.
+const EXTRA_ACCESS_KEYS = ['race','mis','fms','users','clients','compliance','leaves_all','pending_summary_recipient'];
 function sanitizeExtraAccess(input) {
   let arr = input;
   if (typeof input === 'string') {
@@ -3274,7 +3279,6 @@ app.get('/api/access/pages', requireAuth, requireAdmin, (_req, res) => {
     { key: 'users',                     label: 'Users' },
     { key: 'clients',                   label: 'Clients' },
     { key: 'compliance',                label: 'Compliance Tracker' },
-    { key: 'dailyreports',              label: 'Daily Reports' },
     { key: 'leaves_all',                label: 'Leaves — Full Team Report' },
     { key: 'pending_summary_recipient', label: 'Receive Pending Task Summary on WhatsApp' }
   ]);
