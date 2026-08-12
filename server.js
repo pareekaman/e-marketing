@@ -790,6 +790,13 @@ function requireAdminOrHodOnly(req, res, next) {
   if (req.session.role === 'admin' || req.session.role === 'hod') return next();
   res.status(403).json({ error: 'Admin or HOD (App Role) only' });
 }
+// Middleware form of userCanDo('edit_clients'), so the Client Master write
+// routes read the same as the ones that still use requireAdmin — a name in the
+// signature rather than a check buried three lines into the body.
+async function requireClientsEditor(req, res, next) {
+  if (await userCanDo(req.session, 'edit_clients')) return next();
+  res.status(403).json({ error: 'You do not have edit access to Client Master' });
+}
 function requireAdminOrPC(req, res, next) {
   if (req.session.role === 'admin' || req.session.role === 'pc') return next();
   res.status(403).json({ error: 'Admin or PC only' });
@@ -1859,6 +1866,20 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
     const isHod   = req.session.role === 'hod';
     const isUser  = req.session.role === 'user';
     const isClient = req.session.role === 'client';
+    // The panel's Editor toggle for Daily Task decides who may create work. The
+    // frontend already hides "+ Delegate" / "+ Checklist" behind these same two
+    // keys; the route accepted the call from anyone regardless, so the buttons
+    // were the only thing stopping it. Clients are exempt — delegating to their
+    // own handler is the point of the client portal, and that path carries its
+    // own checks below.
+    if (!isClient) {
+      const key = (type || 'checklist') === 'checklist' ? 'create_checklist' : 'create_task';
+      if (!(await userCanDo(req.session, key))) {
+        return res.status(403).json({ error: key === 'create_checklist'
+          ? 'You do not have access to create checklist tasks'
+          : 'You do not have access to delegate tasks' });
+      }
+    }
     // Clients can only assign to their handler. Resolve from clients table.
     let targetUser;
     let enforcedClientId = clientIdInt;
@@ -2332,6 +2353,17 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Set a due date before marking this task done.' });
     }
 
+    // Reopening is a different permission from finishing, and only the reopen
+    // half is gated. Marking your own work done has to stay open to everyone —
+    // this is the route every employee uses all day, and a page-level gate here
+    // would stop the company. Putting a finished task BACK to pending is the
+    // separate act the frontend already hides behind canDo('reopen_task'); the
+    // route never asked, so the button was the only thing enforcing it.
+    if (status === 'pending' && task.status === 'completed'
+        && !(await userCanDo(req.session, 'reopen_task'))) {
+      return res.status(403).json({ error: 'You do not have access to reopen tasks' });
+    }
+
     // REVISE (date push) ALWAYS needs the assigner's approval — for every role,
     // including admin and self-assigned tasks (the request just routes back to the
     // assigner, who approves it on the Approvals screen). The requested new date is
@@ -2467,7 +2499,12 @@ async function canModifyTask(req, taskId, type) {
 app.put('/api/tasks/:id/edit', requireAuth, async (req, res) => {
   try {
     const { type, desc, date, priority, approval, remarks, url, client_id, clientId } = req.body;
+    // Two questions, both must pass: is this task yours to touch (canModifyTask),
+    // and are you allowed to edit tasks at all. The frontend already asks both —
+    // `(isAdmin || isDelegateByMe || isMyDelegation) && canDo('edit_task')` — the
+    // route only ever asked the first.
     if (!await canModifyTask(req, req.params.id, type)) return res.status(403).json({ error: 'Not allowed to edit this task' });
+    if (!(await userCanDo(req.session, 'edit_task'))) return res.status(403).json({ error: 'You do not have edit access to tasks' });
     const table = getTable(type||'delegation');
     const cidRaw = client_id != null ? client_id : clientId;
     const cid = (() => { const n = parseInt(cidRaw, 10); return Number.isFinite(n) && n > 0 ? n : null; })();
@@ -2513,6 +2550,7 @@ app.delete('/api/tasks/:id', requireAuth, async (req, res) => {
   try {
     const { type } = req.query;
     if (!await canModifyTask(req, req.params.id, type)) return res.status(403).json({ error: 'Not allowed to delete this task' });
+    if (!(await userCanDo(req.session, 'delete_task'))) return res.status(403).json({ error: 'You do not have delete access to tasks' });
     const tbl = getTable(type||'delegation');
     const [rows] = await db.query(`SELECT * FROM ${tbl} WHERE id=?`, [req.params.id]);
     await archiveDeleted(tbl, rows, req, { summary: r => `Task: ${r.description || ''}` });
@@ -3693,7 +3731,18 @@ const SERVER_ROLE_DEFAULTS = {
   // only the page away would have hidden the tab while leaving a hod able to
   // create candidates, change status and send offer letters through the API.
   hod:  { pages: ['dashboard','alltasks','approvals','mis','clients','leaves','meetings','daily','fms-tasks','inventory','compliance','paymentreq','feedback','creditcards'],
-          actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','delete_leave'] },
+          // edit_inventory and edit_clients are here so those pages' routes could
+          // start asking for a permission instead of a hardcoded role list
+          // without taking anything away from a hod. Seed the default to match
+          // what the role can already do, THEN gate on it — otherwise the first
+          // person to deploy the gate discovers it by losing access.
+          //
+          // ⚠ edit_clients is a small, deliberate widening, named rather than
+          // buried: a hod could already create clients, reassign handlers, upload
+          // logos, bulk-import and mint portal logins, but NOT rename one,
+          // because PUT /api/clients/:id asked for edit_clients while every
+          // neighbouring route asked for admin-or-hod. That split was arbitrary.
+          actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','delete_leave','edit_inventory','edit_clients'] },
   pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance','paymentreq','feedback','creditcards'],
           actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task'] },
   user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance','clients','paymentreq','feedback','creditcards'],
@@ -4313,6 +4362,11 @@ app.post('/api/transfers', requireAuth, async (req, res) => {
     // tasks = [{taskId, taskType}]
     if (!tasks || !tasks.length || !toUserId)
       return res.status(400).json({ error: 'Tasks and target user required' });
+    // The "🔀 Transfer" button already hides behind this key; the route did not
+    // ask for it, so the ownership rules below were the only limit.
+    if (!(await userCanDo(req.session, 'transfer_task'))) {
+      return res.status(403).json({ error: 'You do not have access to transfer tasks' });
+    }
 
     const uid = req.session.userId;
     const role = req.session.role;
@@ -4521,7 +4575,15 @@ app.get('/api/transfers/my', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════
 // WEEK PLAN
 // ══════════════════════════════════════════════════════
-app.post('/api/week-plan', requireAuth, requireAdminOrHod, async (req, res) => {
+// The "📅 Set Plan" button hides behind canDo('set_plan'); this route asked for
+// admin-or-hod instead. Same people either way — hod carries set_plan in its
+// default and admin passes everything — but now the panel decides rather than a
+// hardcoded pair of roles. The GET stays on requireAdminOrHod: reading the plan
+// is not the act the key describes.
+app.post('/api/week-plan', requireAuth, async (req, res) => {
+  if (!(await userCanDo(req.session, 'set_plan'))) {
+    return res.status(403).json({ error: 'You do not have access to set the weekly plan' });
+  }
   try {
     const { employeeId, startDate, targetCount, hodId, improvementPct } = req.body;
     if (!employeeId || !startDate) {
@@ -8740,7 +8802,13 @@ app.get('/api/clients', requireAuth, async (req, res) => {
 
 // Update / clear client logo. Body: { logo: <data-URL string> | null }.
 // 1.5 MB cap on payload — base64 expansion + headroom for a 256x256 JPEG.
-app.put('/api/clients/:id/logo', requireAuth, requireAdminOrHod, async (req, res) => {
+// The five Client Master write routes below moved off requireAdminOrHod onto
+// edit_clients, so that row in Access Control finally decides something. Same
+// people pass today — hod carries the key by default, admin passes everything —
+// and PC, which the middleware already refused, still cannot. DELETE stays
+// admin-only: routing it through edit_clients would hand every hod a Remove
+// button they have never had.
+app.put('/api/clients/:id/logo', requireAuth, requireClientsEditor, async (req, res) => {
   try {
     const id = req.params.id;
     let { logo } = req.body;
@@ -8760,7 +8828,7 @@ app.put('/api/clients/:id/logo', requireAuth, requireAdminOrHod, async (req, res
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/clients', requireAuth, requireAdminOrHod, async (req, res) => {
+app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => {
   try {
     const name = (req.body.name || '').trim();
     const handlerRaw = req.body.handler_id;
@@ -8880,7 +8948,7 @@ app.get('/api/clients/:id/handlers', requireAuth, async (req, res) => {
 });
 
 // Multi-handler support — replace all handlers for a client
-app.put('/api/clients/:id/handlers', requireAuth, requireAdminOrHod, async (req, res) => {
+app.put('/api/clients/:id/handlers', requireAuth, requireClientsEditor, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const userIds = Array.isArray(req.body.user_ids)
@@ -8908,7 +8976,7 @@ app.delete('/api/clients/:id', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // Bulk add clients via CSV
-app.post('/api/clients/bulk', requireAuth, requireAdminOrHod, async (req, res) => {
+app.post('/api/clients/bulk', requireAuth, requireClientsEditor, async (req, res) => {
   try {
     const { names } = req.body;
     if (!Array.isArray(names) || !names.length) {
@@ -9043,7 +9111,7 @@ app.get('/api/clients/:id/stats', requireAuth, async (req, res) => {
 
 // Provision or update client login. Creates the users row if missing, or
 // updates email/password on the existing one. Admin/HOD/PC only.
-app.post('/api/clients/:id/login', requireAuth, requireAdminOrHod, async (req, res) => {
+app.post('/api/clients/:id/login', requireAuth, requireClientsEditor, async (req, res) => {
   try {
     const id = req.params.id;
     const email = (req.body.email || '').trim().toLowerCase();
@@ -11261,6 +11329,11 @@ const INV_HOLDER_REASONS = new Set(['offboarding', 'damaged']);
 // Get all items (admin/hod see all; others see only assigned to them)
 app.get('/api/inventory/items', requireAuth, async (req, res) => {
   try {
+    // The read side of the same page. Every role default carries 'inventory', so
+    // this refuses nobody who could reach the page yesterday — it exists so that
+    // setting Inventory to No Access in the panel closes the API too, not just
+    // the sidebar entry.
+    if (!(await userCanSee(req.session, 'inventory'))) return res.status(403).json({ error: 'No access to Inventory' });
     const isAdmin = ['admin','hod'].includes(req.session.role);
     let rows;
     if (isAdmin) {
@@ -11290,7 +11363,12 @@ app.get('/api/inventory/items', requireAuth, async (req, res) => {
 
 // Add new item (admin only)
 app.post('/api/inventory/items', requireAuth, async (req, res) => {
-  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
+  // Inventory's writes moved off a hardcoded ['admin','hod'] list onto the
+  // panel's Editor toggle. hod carries edit_inventory in its role default, so
+  // the set of people who pass is unchanged today — what changed is that an
+  // admin can now widen or narrow it from Access Control instead of needing a
+  // code edit.
+  if (!(await userCanDo(req.session, 'edit_inventory'))) return res.status(403).json({ error: 'You do not have edit access to Inventory' });
   try {
     const { name, type, brand, model, serial_number, photo, item_condition, notes } = req.body;
     if (!name || !type) return res.status(400).json({ error: 'name and type required' });
@@ -11333,7 +11411,12 @@ app.post('/api/inventory/self-add', requireAuth, async (req, res) => {
 
 // Update item (admin only)
 app.put('/api/inventory/items/:id', requireAuth, async (req, res) => {
-  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
+  // Inventory's writes moved off a hardcoded ['admin','hod'] list onto the
+  // panel's Editor toggle. hod carries edit_inventory in its role default, so
+  // the set of people who pass is unchanged today — what changed is that an
+  // admin can now widen or narrow it from Access Control instead of needing a
+  // code edit.
+  if (!(await userCanDo(req.session, 'edit_inventory'))) return res.status(403).json({ error: 'You do not have edit access to Inventory' });
   try {
     const { name, brand, model, serial_number, photo, item_condition, status, notes } = req.body;
     await db.query(
@@ -11363,7 +11446,12 @@ app.delete('/api/inventory/items/:id', requireAuth, async (req, res) => {
 
 // Assign item to user (admin only)
 app.post('/api/inventory/assign', requireAuth, async (req, res) => {
-  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
+  // Inventory's writes moved off a hardcoded ['admin','hod'] list onto the
+  // panel's Editor toggle. hod carries edit_inventory in its role default, so
+  // the set of people who pass is unchanged today — what changed is that an
+  // admin can now widen or narrow it from Access Control instead of needing a
+  // code edit.
+  if (!(await userCanDo(req.session, 'edit_inventory'))) return res.status(403).json({ error: 'You do not have edit access to Inventory' });
   try {
     const { item_id, user_id } = req.body;
     if (!item_id || !user_id) return res.status(400).json({ error: 'item_id and user_id required' });
@@ -11380,7 +11468,12 @@ app.post('/api/inventory/assign', requireAuth, async (req, res) => {
 
 // Get all assignments (admin/hod)
 app.get('/api/inventory/assignments', requireAuth, async (req, res) => {
-  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
+  // Inventory's writes moved off a hardcoded ['admin','hod'] list onto the
+  // panel's Editor toggle. hod carries edit_inventory in its role default, so
+  // the set of people who pass is unchanged today — what changed is that an
+  // admin can now widen or narrow it from Access Control instead of needing a
+  // code edit.
+  if (!(await userCanDo(req.session, 'edit_inventory'))) return res.status(403).json({ error: 'You do not have edit access to Inventory' });
   try {
     const [rows] = await db.query(`
       SELECT a.*, i.name AS item_name, i.type AS item_type, i.brand, i.model, i.serial_number, i.photo,
@@ -11431,7 +11524,12 @@ app.post('/api/inventory/handover/:assignment_id', requireAuth, async (req, res)
 // damaged/retired take it out of circulation so it can't be assigned again,
 // offboarding puts it back in available stock.
 app.post('/api/inventory/return/:assignment_id', requireAuth, async (req, res) => {
-  if (!['admin','hod'].includes(req.session.role)) return res.status(403).json({ error: 'Admin only' });
+  // Inventory's writes moved off a hardcoded ['admin','hod'] list onto the
+  // panel's Editor toggle. hod carries edit_inventory in its role default, so
+  // the set of people who pass is unchanged today — what changed is that an
+  // admin can now widen or narrow it from Access Control instead of needing a
+  // code edit.
+  if (!(await userCanDo(req.session, 'edit_inventory'))) return res.status(403).json({ error: 'You do not have edit access to Inventory' });
   try {
     const { reason } = req.body;
     const mapped = invReturnReason(reason);

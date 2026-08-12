@@ -5366,7 +5366,10 @@ const PERM_TREE = [
     { key: 'transfer_task',    label: 'Transfer' },
     { key: 'set_plan',         label: 'Set Plan' },
   ]},
-  { page: 'clients',      label: 'Client Master',  icon: '🏢', enforced: false, actions: [
+  // enforced:true — Client Master's five write routes ask for edit_clients via
+  // requireClientsEditor, and cmCanEdit() in the UI asks the same key. Deleting
+  // a client stays admin-only and is gated where its button is rendered.
+  { page: 'clients',      label: 'Client Master',  icon: '🏢', enforced: true, actions: [
     { key: 'edit_clients', label: 'Edit' },
   ]},
   { page: 'compliance',   label: 'Compliance',     icon: '✅', enforced: false, actions: [
@@ -5381,7 +5384,11 @@ const PERM_TREE = [
   { page: 'meetings',     label: 'Scheduler',      icon: '📆', enforced: false, actions: [
     { key: 'edit_meetings', label: 'Edit' },
   ]},
-  { page: 'inventory',    label: 'Inventory',      icon: '📦', enforced: false, actions: [
+  // enforced:true — the server really asks for these now. Reads check
+  // userCanSee('inventory'), writes userCanDo('edit_inventory'). Deleting an
+  // item stays admin-only on purpose: it was admin-only before, and routing it
+  // through edit_inventory would have handed every hod the delete button.
+  { page: 'inventory',    label: 'Inventory',      icon: '📦', enforced: true, actions: [
     { key: 'edit_inventory', label: 'Edit' },
   ]},
   { page: 'hrm',          label: 'HR Portal',      icon: '👥', enforced: true, actions: [
@@ -5742,7 +5749,13 @@ const invReasonOptions = (allowed) => '<option value="">--select--</option>' +
 const INV_STATUS_COLORS = {available:'#10b981',assigned:'#f59e0b',damaged:'#ef4444',retired:'#94a3b8'};
 
 async function loadInventory() {
-  const isAdmin = ME.role === 'admin' || ME.role === 'hod';
+  // Name kept for the call sites below, but this is no longer "is this person an
+  // admin" — it is "may this person edit Inventory", which the panel now decides.
+  // It was a hardcoded role list, so setting a hod to View hid nothing: the
+  // server refused the write (see userCanDo('edit_inventory') on those routes)
+  // while the buttons stayed on screen and failed on click. hod carries
+  // edit_inventory by default, so nobody's buttons move today.
+  const isAdmin = canDo('edit_inventory');
   if (isAdmin) {
     document.getElementById('invTabAll').style.display = 'inline-flex';
     document.getElementById('invTabAssign').style.display = 'inline-flex';
@@ -5773,7 +5786,13 @@ function switchInvTab(tab, el) {
 
 function renderInventory() {
   const el = document.getElementById('invContent');
-  const isAdmin = ME.role === 'admin' || ME.role === 'hod';
+  // Name kept for the call sites below, but this is no longer "is this person an
+  // admin" — it is "may this person edit Inventory", which the panel now decides.
+  // It was a hardcoded role list, so setting a hod to View hid nothing: the
+  // server refused the write (see userCanDo('edit_inventory') on those routes)
+  // while the buttons stayed on screen and failed on click. hod carries
+  // edit_inventory by default, so nobody's buttons move today.
+  const isAdmin = canDo('edit_inventory');
 
   // Add Item is contextual to the open tab — it adds to whatever the tab
   // shows. Assignments is a read-only history view, so nothing to add there.
@@ -13781,7 +13800,12 @@ function cmInitials(name){
 // only to see the clients they handle. The write routes already refuse them
 // (requireAdminOrHod), so this just stops the app from offering buttons that
 // would 403.
-function cmCanEdit(){ return ME && ['admin','hod','pc'].includes(ME.role); }
+// Was ['admin','hod','pc'] — which never matched the routes. Every Client Master
+// write asked for admin-or-hod, so PC saw Add / Bulk / Logo and got a 403 on
+// click; Remove is admin-only, so a hod saw that one and got a 403 too. Both
+// sides now ask the same question, and the Remove button is gated separately
+// where it is rendered.
+function cmCanEdit(){ return canDo('edit_clients'); }
 
 function cmApplyRoleControls(){
   const show = cmCanEdit() ? '' : 'none';
@@ -14122,7 +14146,7 @@ function cmRenderList(){
             <span class="cm-switch-track"></span>
             <span class="cm-switch-label">${isOn ? 'Active' : 'Inactive'}</span>
           </span>
-          ${cmCanEdit() ? `<button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>` : ''}
+          ${ME.role === 'admin' ? `<button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>` : ''}
           <span class="cm-client-arrow">›</span>
         </div>
       </div>`;
