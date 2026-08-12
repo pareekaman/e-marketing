@@ -89,6 +89,34 @@ body{
 }
 .dash-emp-filter-search::placeholder{color:#94a3b8;}
 .dash-emp-filter-empty{padding:10px;font-size:12px;color:#94a3b8;text-align:center;}
+/* ── HRM candidate row actions ──────────────────────────────────────────────
+   Every row used to be a wrapping pile of differently-sized buttons, and since
+   each status shows a different subset, no two rows lined up. Two zones now:
+   the verbs on the left, everything else as same-size icon buttons pinned to
+   the right edge, so the icon column reads straight down the table. Nothing
+   wraps — a row is one line, always.
+   The document buttons lost their labels on purpose: the Status column already
+   says "Preliminary Offer Letter Sent", so repeating it in the button was the
+   single biggest source of width. Each keeps a title tooltip. */
+.hrm-act{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;white-space:nowrap;}
+.hrm-act-verbs{display:flex;align-items:center;gap:6px;}
+.hrm-act-icons{display:flex;align-items:center;gap:4px;margin-left:auto;padding-left:10px;}
+.hrm-btn{font-size:11px;font-weight:600;padding:5px 11px;border-radius:7px;cursor:pointer;border:1px solid transparent;font-family:inherit;line-height:1.4;text-decoration:none;display:inline-flex;align-items:center;gap:5px;transition:filter .12s;}
+.hrm-btn:hover{filter:brightness(.96);}
+.hrm-btn-update{background:#eef2ff;color:#4338ca;border-color:#c7d2fe;}
+.hrm-btn-email{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;}
+.hrm-closed{font-size:11px;color:#94a3b8;font-weight:600;padding:5px 2px;}
+.hrm-ico{width:29px;height:29px;display:inline-flex;align-items:center;justify-content:center;
+  font-size:13px;line-height:1;border-radius:7px;cursor:pointer;border:1px solid #e2e8f0;
+  background:#f8fafc;color:#475569;text-decoration:none;flex-shrink:0;transition:filter .12s;}
+.hrm-ico:hover{filter:brightness(.94);}
+.hrm-ico-doc{background:#f5f3ff;color:#7c3aed;border-color:#ddd8fe;}
+.hrm-ico-offer{background:#ecfdf5;color:#047857;border-color:#a7f3d0;}
+.hrm-ico-join{background:#ecfeff;color:#0e7490;border-color:#a5f3fc;}
+.hrm-ico-wait{background:#fff7ed;color:#c2410c;border-color:#fed7aa;cursor:default;}
+.hrm-ico-edit{background:#fffbeb;color:#b45309;border-color:#fde68a;}
+.hrm-ico-del{background:#fef2f2;color:#dc2626;border-color:#fecaca;}
+
 /* ── Awaiting Date tab: department > employee > tasks ── */
 .awd-head{font-size:13px;color:#475569;padding:2px 2px 12px;}
 .awd-head b{color:#0f172a;font-size:15px;}
@@ -6307,8 +6335,8 @@ function renderHrmRows(list) {
     // form link goes out; before that it would just be noise on every row.
     const showJoining = c.joining_form_required && ['Selected','Offer Sent','Offer Letter Sent'].includes(c.status);
     const joiningCell = !showJoining ? '' : (c.joining_details_at
-      ? `<button class="action-btn" style="background:#ecfeff;color:#0e7490;border:1px solid #a5f3fc;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="viewJoiningDetails(${c.id})">📋 View Details</button>`
-      : `<span style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;font-size:11px;padding:4px 9px;border-radius:6px;white-space:nowrap">📋 Details Pending</span>`);
+      ? `<button class="hrm-ico hrm-ico-join" title="View joining details" onclick="viewJoiningDetails(${c.id})">📋</button>`
+      : `<span class="hrm-ico hrm-ico-wait" title="Joining details not submitted yet">⏳</span>`);
     return `<tr>
       <td>
         <div style="display:flex;align-items:center;gap:10px">
@@ -6326,30 +6354,36 @@ function renderHrmRows(list) {
         ${reDateStr ? `<div class="hrm-redate">→ Rescheduled: ${reDateStr}${c.reschedule_time?' '+esc(_mtgFmtTime12(c.reschedule_time)):''}</div>` : ''}
       </td>
       <td><span class="hrm-badge ${badgeClass}">${HRM_STATUS_LABELS[c.status] || c.status}</span></td>
-      <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        ${canUpdate ? `<button class="action-btn edit" onclick="openHrmStatusModal(${c.id})">Update</button>` : '<span style="font-size:11px;color:#94a3b8">Closed</span>'}
-        ${(c.status === 'Offer Sent' || c.status === 'Offer Letter Sent') ? (
-          // Prefer our own public /offer-pdf-prelim link (renders the PDF, no
-          // Drive access needed) so anyone with the link can view it — the Drive
-          // file lives in a members-only Shared Drive. Drive link is a fallback.
-          c.prelim_offer_token
-          ? `<a href="/offer-pdf-prelim/${c.prelim_offer_token}" target="_blank" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📄 View Preliminary Offer</a>`
-          : c.offer_drive_id
-          ? `<a href="https://drive.google.com/file/d/${c.offer_drive_id}/view" target="_blank" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📄 View Preliminary Offer</a>`
-          : `<button class="action-btn" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd8fe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="viewOfferLetter(${c.id})">📄 View Preliminary Offer</button>`)
-          : ''}
-        ${c.status === 'Offer Letter Sent' && (c.final_offer_token || c.final_offer_drive_id)
-          ? (c.final_offer_token
-            ? `<a href="/offer-pdf/${c.final_offer_token}" target="_blank" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📬 View Offer Letter</a>`
-            : `<a href="https://drive.google.com/file/d/${c.final_offer_drive_id}/view" target="_blank" style="background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap;text-decoration:none">📬 View Offer Letter</a>`)
-          : ''}
-        ${(c.status === 'Selected' || c.status === 'Offer Sent' || c.status === 'Offer Letter Sent')
-          ? `<button class="action-btn" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-size:11px;padding:4px 9px;border-radius:6px;cursor:pointer;white-space:nowrap" onclick="openEmailModal(${c.id})">📧 Email</button>`
-          : ''}
-        ${joiningCell}
-        <button class="action-btn" title="View details" style="background:#f8fafc;color:#475569;border:1px solid #e2e8f0;font-size:13px;padding:4px 8px;border-radius:6px;cursor:pointer;line-height:1" onclick="openHrmDetailsModal(${c.id})">👁️</button>
-        ${canDo('hrm_schedule') ? `<button class="action-btn" title="Edit candidate" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a;font-size:13px;padding:4px 8px;border-radius:6px;cursor:pointer;line-height:1" onclick="openHrmEditModal(${c.id})">✏️</button>` : ''}
-        ${ME.role === 'admin' ? `<button class="action-btn" title="Delete candidate" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;font-size:13px;padding:4px 8px;border-radius:6px;cursor:pointer;line-height:1" onclick="hrmDeleteCandidate(${c.id})">🗑️</button>` : ''}
+      <td>
+        <div class="hrm-act">
+          <div class="hrm-act-verbs">
+            ${canUpdate ? `<button class="hrm-btn hrm-btn-update" onclick="openHrmStatusModal(${c.id})">Update</button>` : '<span class="hrm-closed">Closed</span>'}
+            ${(c.status === 'Selected' || c.status === 'Offer Sent' || c.status === 'Offer Letter Sent')
+              ? `<button class="hrm-btn hrm-btn-email" onclick="openEmailModal(${c.id})">📧 Email</button>`
+              : ''}
+          </div>
+          <div class="hrm-act-icons">
+            ${(c.status === 'Offer Sent' || c.status === 'Offer Letter Sent') ? (
+              // Prefer our own public /offer-pdf-prelim link (renders the PDF, no
+              // Drive access needed) so anyone with the link can view it — the Drive
+              // file lives in a members-only Shared Drive. Drive link is a fallback.
+              c.prelim_offer_token
+              ? `<a class="hrm-ico hrm-ico-doc" title="View preliminary offer letter" href="/offer-pdf-prelim/${c.prelim_offer_token}" target="_blank">📄</a>`
+              : c.offer_drive_id
+              ? `<a class="hrm-ico hrm-ico-doc" title="View preliminary offer letter" href="https://drive.google.com/file/d/${c.offer_drive_id}/view" target="_blank">📄</a>`
+              : `<button class="hrm-ico hrm-ico-doc" title="View preliminary offer letter" onclick="viewOfferLetter(${c.id})">📄</button>`)
+              : ''}
+            ${c.status === 'Offer Letter Sent' && (c.final_offer_token || c.final_offer_drive_id)
+              ? (c.final_offer_token
+                ? `<a class="hrm-ico hrm-ico-offer" title="View offer letter" href="/offer-pdf/${c.final_offer_token}" target="_blank">📬</a>`
+                : `<a class="hrm-ico hrm-ico-offer" title="View offer letter" href="https://drive.google.com/file/d/${c.final_offer_drive_id}/view" target="_blank">📬</a>`)
+              : ''}
+            ${joiningCell}
+            <button class="hrm-ico" title="View details" onclick="openHrmDetailsModal(${c.id})">👁️</button>
+            ${canDo('hrm_schedule') ? `<button class="hrm-ico hrm-ico-edit" title="Edit candidate" onclick="openHrmEditModal(${c.id})">✏️</button>` : ''}
+            ${ME.role === 'admin' ? `<button class="hrm-ico hrm-ico-del" title="Delete candidate" onclick="hrmDeleteCandidate(${c.id})">🗑️</button>` : ''}
+          </div>
+        </div>
       </td>
     </tr>`;
   }).join('');
