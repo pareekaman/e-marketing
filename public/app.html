@@ -78,6 +78,17 @@ body{
   box-shadow:0 8px 24px -4px rgba(0,0,0,.15);z-index:120;padding:4px;
 }
 .dash-emp-filter-list.open{display:block;}
+/* Sticky, because the list itself is the scroll container — a plain input would
+   scroll out of sight the moment you started looking down a 37-name list. The
+   negative margins + padding let it sit flush against the panel's own 4px pad. */
+.dash-emp-filter-search{
+  position:sticky;top:0;z-index:1;box-sizing:border-box;
+  width:calc(100% + 8px);margin:-4px -4px 4px;padding:8px 10px;
+  border:0;border-bottom:1px solid #e2e8f0;border-radius:8px 8px 0 0;
+  font-size:13px;font-family:inherit;color:#1e293b;background:#fff;outline:none;
+}
+.dash-emp-filter-search::placeholder{color:#94a3b8;}
+.dash-emp-filter-empty{padding:10px;font-size:12px;color:#94a3b8;text-align:center;}
 .dash-emp-filter-opt{padding:7px 10px;border-radius:6px;font-size:13px;color:#1e293b;cursor:pointer;white-space:nowrap;}
 .dash-emp-filter-opt:hover{background:#f1f5f9;}
 .dash-emp-filter-opt.selected{background:#eef2ff;color:#4f46e5;font-weight:600;}
@@ -7090,13 +7101,48 @@ function openDashEmpDropdown(e) {
   const list = document.getElementById('dashEmpFilterList');
   if (!sel || !list) return false;
   if (list.classList.contains('open')) { closeDashEmpDropdown(); return false; }
-  list.innerHTML = Array.from(sel.options).map(o =>
-    `<div class="dash-emp-filter-opt${o.value === sel.value ? ' selected' : ''}" data-val="${dtEscape(o.value)}">${dtEscape(o.textContent)}</div>`
-  ).join('');
+  // Search box first, then the options. The whole company is in this list, so
+  // scrolling to a name is slower than typing three letters of it.
+  list.innerHTML =
+    `<input type="text" id="dashEmpSearch" class="dash-emp-filter-search" placeholder="Search employee…"
+            autocomplete="off" spellcheck="false"
+            oninput="dashEmpFilterSearch()" onkeydown="dashEmpSearchKey(event)">`
+    + Array.from(sel.options).map(o =>
+        `<div class="dash-emp-filter-opt${o.value === sel.value ? ' selected' : ''}" data-val="${dtEscape(o.value)}">${dtEscape(o.textContent)}</div>`
+      ).join('')
+    + `<div class="dash-emp-filter-empty" id="dashEmpNoMatch" style="display:none">No employee found</div>`;
   list.classList.add('open');
   closeSidebar();
   document.addEventListener('mousedown', dashEmpFilterOutsideClick);
+  // Focus after the panel is on screen so you can type straight away.
+  document.getElementById('dashEmpSearch')?.focus();
   return false;
+}
+
+// Filter the already-rendered rows rather than re-rendering, so the selected
+// highlight and data-val survive and the click handler needs no changes.
+function dashEmpFilterSearch() {
+  const q = (document.getElementById('dashEmpSearch')?.value || '').trim().toLowerCase();
+  const opts = document.querySelectorAll('#dashEmpFilterList .dash-emp-filter-opt');
+  let shown = 0;
+  opts.forEach(o => {
+    const hit = !q || o.textContent.toLowerCase().includes(q);
+    o.style.display = hit ? '' : 'none';
+    if (hit) shown++;
+  });
+  const none = document.getElementById('dashEmpNoMatch');
+  if (none) none.style.display = shown ? 'none' : 'block';
+}
+
+// Enter picks the top match — the common case is typing a few letters and
+// wanting the one name left. Escape closes without changing the selection.
+function dashEmpSearchKey(e) {
+  if (e.key === 'Escape') { closeDashEmpDropdown(); return; }
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const first = Array.from(document.querySelectorAll('#dashEmpFilterList .dash-emp-filter-opt'))
+    .find(o => o.style.display !== 'none');
+  if (first) first.click();
 }
 function closeDashEmpDropdown() {
   document.getElementById('dashEmpFilterList')?.classList.remove('open');
