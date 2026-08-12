@@ -17293,16 +17293,9 @@ async function mdoReviewTask(id, status) {
   }
 }
 
-async function prMarkPaymentDone(id) {
-  try {
-    const s = await api('/api/payment-requests', 'POST', {
-      bank_name: '__system__', card_number: '__paid__', reason: '__paid__:' + id
-    });
-    if (s && s.error) { showToast('Error: ' + s.error, 'error'); return; }
-    showToast('✅ Payment marked as done!');
-    loadMyPaymentRequests();
-  } catch(e) { showToast('Error: ' + e.message, 'error'); }
-}
+// prMarkPaymentDone() used to sit here — a second way to post the __paid__
+// sentinel, never wired to any button. The ✅ control opens prOpenBillModal
+// instead, so marking paid and attaching the bill stay one step.
 
 let _prBillPendingId = null;
 let _prBillFile = null;

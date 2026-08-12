@@ -1527,7 +1527,9 @@ app.get('/api/me', requireAuth, async (req, res) => {
       // outside that list never saw it. Sending the bypassed value put the
       // Payment Approvals tab in front of every admin in the company.
       rows[0].canApprovePayments = (await readIdSetting(PR_APPROVER_KEY)).includes(Number(req.session.userId));
-      rows[0].canSettlePayments  = await isPaymentSettler(req.session);
+      // canSettlePayments used to be sent from here. Nothing in the client ever
+      // read it, and the route it described was never called — see the note on
+      // the removed settler machinery near PEOPLE_SETTINGS.
       // Same reasoning as above: this replaces a UI check that read
       // ME.name === 'Purvi Saini', so admins did not see the MDO tab either.
       // Note the /api/mdo-tasks routes are admin-only, so a reviewer who is not
@@ -1536,7 +1538,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
       rows[0].canReviewMdoTasks  = (await readIdSetting('mdo_reviewer_ids')).includes(Number(req.session.userId));
       rows[0].canViewCreditCards = await canViewCreditCards(req.session);
     } catch (e) {
-      rows[0].canApprovePayments = false; rows[0].canSettlePayments = false;
+      rows[0].canApprovePayments = false;
       rows[0].canReviewMdoTasks  = false; rows[0].canViewCreditCards = false;
     }
     // When an admin is "viewing as" this user, expose who's really behind the wheel
@@ -7901,15 +7903,20 @@ app.post('/api/credit-cards/drive-upload', requireAuth, async (req, res) => {
 // on first boot and never again. Adding a key here is all it takes — the seeder
 // below walks this object.
 const PEOPLE_SETTINGS = {
+  // payment_settler_ids is deliberately absent. It named one person (Vishal
+  // Jaga) as the only one who could mark a payment paid, but the single route
+  // that consulted it had no caller anywhere in the repo, its frontend twin
+  // prMarkPaymentDone() was never wired to a button, and the canSettlePayments
+  // flag it fed was read by nothing. In the live flow the requester marks their
+  // own request paid — a deliberate design, see the note above payStatusCell in
+  // app.html. The app_settings row may still exist; nothing reads it.
   payment_approver_ids: ['Naman Gupta', 'Abhishek Jain', 'Simran Gurnani'],
-  payment_settler_ids:  ['Vishal Jaga'],
   cc_viewer_ids:        ['Rotan Singh'],
   wa_task_approver_ids: ['Naman Gupta'],
   mdo_reviewer_ids:     ['Purvi Saini'],
   onboarding_owner_ids: ['Simran Gurnani'],
 };
 const PR_APPROVER_KEY = 'payment_approver_ids';
-const PR_SETTLER_KEY  = 'payment_settler_ids';
 
 async function readIdSetting(key) {
   try {
@@ -7924,10 +7931,6 @@ async function isPaymentApprover(session) {
   if (session.role === 'admin') return true;
   return (await readIdSetting(PR_APPROVER_KEY)).includes(Number(session.userId));
 }
-async function isPaymentSettler(session) {
-  return (await readIdSetting(PR_SETTLER_KEY)).includes(Number(session.userId));
-}
-
 // The users behind a key, for notification lookups. Returns [] when the setting
 // is empty or every id has since been deleted — callers already treat a missing
 // phone as "skip the send", which is the same outcome the name lookup gave when
@@ -8052,6 +8055,28 @@ app.post('/api/payment-requests', requireAuth, async (req, res) => {
     if (!me) return res.status(403).json({ error:'Access denied' });
     const { bank_name, card_number, amount, reason } = req.body;
     if (!bank_name || !card_number || !reason) return res.status(400).json({ error:'All fields required' });
+    // Paid / cancelled / bill markers ride in on this same route as "__system__"
+    // sentinel rows carrying the target request id in their reason. Marking a
+    // request paid is the requester's own record-keeping step by design (see the
+    // note above payStatusCell in app.html), and the UI only ever offers the
+    // buttons on rows the caller already owns — but that scoping lived purely in
+    // the client. Nothing here stopped any logged-in user from posting a sentinel
+    // against somebody else's request. Re-check ownership server-side: the
+    // submitter may mark their own, and a payment approver (admins included, via
+    // the bypass in isPaymentApprover) may mark anyone's, which is what actually
+    // happens today for most rows.
+    if (bank_name === '__system__') {
+      const m = /^__(paid|cancelled|bill)__:(\d+)(?::|$)/.exec(String(reason));
+      if (!m || card_number !== `__${m[1]}__`) {
+        return res.status(400).json({ error: 'Malformed payment marker' });
+      }
+      const [[target]] = await db.query('SELECT submitted_by FROM payment_requests WHERE id=?', [m[2]]);
+      if (!target) return res.status(404).json({ error: 'Payment request not found' });
+      if (Number(target.submitted_by) !== Number(req.session.userId)
+          && !(await isPaymentApprover(req.session))) {
+        return res.status(403).json({ error: 'You can only update your own payment requests' });
+      }
+    }
     try {
       await db.query(
         'INSERT INTO payment_requests (submitted_by, name, bank_name, card_number, amount, reason) VALUES (?,?,?,?,?,?)',
@@ -8269,25 +8294,15 @@ app.get('/api/payment-requests/:id/wa-debug', requireAuth, requireAdmin, async (
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/payment-requests/:id/payment-done — mark payment as done (Vishal only)
-app.post('/api/payment-requests/:id/payment-done', requireAuth, async (req, res) => {
-  try {
-    if (!(await isPaymentSettler(req.session))) return res.status(403).json({ error:'Access denied' });
-    try {
-      await db.query(
-        'UPDATE payment_requests SET payment_done=1, payment_done_at=NOW() WHERE id=? AND status="approved"',
-        [req.params.id]
-      );
-    } catch(e) {
-      // Fallback if payment_done column not yet migrated
-      await db.query(
-        'UPDATE payment_requests SET status="approved" WHERE id=?',
-        [req.params.id]
-      );
-    }
-    res.json({ success: true });
-  } catch(err) { res.status(500).json({ error: err.message }); }
-});
+// POST /api/payment-requests/:id/payment-done used to live here — the only
+// route gated on payment_settler_ids. It had no caller in this repo, and its
+// UPDATE was the sole writer of payment_requests.payment_done, so that column
+// has never held anything but 0. "Paid" is carried entirely by the __paid__
+// sentinel rows read in app.html. It also shipped a catch() that fell back to
+// `SET status="approved"`, which would have approved a pending or rejected
+// request on any transient error. Removed with the rest of the settler
+// machinery. The payment_done / payment_done_at columns are left in place —
+// they are the right home if the sentinel scheme is ever replaced.
 
 // Check if logged-in user can access the feedback page.
 app.get('/api/feedback/access', requireAuth, async (req, res) => {
