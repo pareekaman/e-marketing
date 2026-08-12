@@ -361,6 +361,12 @@ const _startupMigrationsPromise = (async () => {
   // Delegation where the doer sets their own due date (assigner doesn't know occupancy).
   // due_date stays NULL until the doer (or assigner) picks one; then this flips to 0.
   await sa(`ALTER TABLE delegation_tasks ADD COLUMN awaiting_due_date TINYINT(1) DEFAULT 0 AFTER waiting_approval`);
+  // Why this task still has no due date. The doer either picks a date or says
+  // why they cannot yet — the Set Due Date modal asks for one or the other, and
+  // the answer rides on the task row so it is visible to anyone who can see it.
+  // A reason never substitutes for a date: completion still requires one.
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN no_due_date_reason TEXT DEFAULT NULL AFTER awaiting_due_date`);
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN no_due_date_reason_at TIMESTAMP NULL DEFAULT NULL AFTER no_due_date_reason`);
   // Optional clock time on the deadline. Only the handler→client flow sets it
   // (they commit the client to a date AND time); every internal task leaves it
   // NULL and keeps behaving as a date-only deadline.
@@ -1204,6 +1210,8 @@ app.get('/api/setup', async (req, res) => {
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_id INT DEFAULT NULL AFTER remarks`, 'delegation_tasks.client_id');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN url VARCHAR(2048) DEFAULT NULL AFTER client_id`, 'delegation_tasks.url');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN awaiting_due_date TINYINT(1) DEFAULT 0 AFTER waiting_approval`, 'delegation_tasks.awaiting_due_date');
+    await sa(`ALTER TABLE delegation_tasks ADD COLUMN no_due_date_reason TEXT DEFAULT NULL AFTER awaiting_due_date`, 'delegation_tasks.no_due_date_reason');
+    await sa(`ALTER TABLE delegation_tasks ADD COLUMN no_due_date_reason_at TIMESTAMP NULL DEFAULT NULL AFTER no_due_date_reason`, 'delegation_tasks.no_due_date_reason_at');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN due_time TIME DEFAULT NULL AFTER due_date`, 'delegation_tasks.due_time');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN completed_at DATETIME DEFAULT NULL AFTER status`, 'delegation_tasks.completed_at');
     await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_ask TEXT DEFAULT NULL AFTER remarks`, 'delegation_tasks.client_ask');
@@ -1703,7 +1711,7 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
 
     let delegationRows = [], checklistRows = [];
     if (taskType === 'delegation' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${delDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, delParams);
+      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.no_due_date_reason,t.remarks,t.url,t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${delDateClause} ${userFilter} ORDER BY t.due_date ASC LIMIT 500`, delParams);
       delegationRows = rows;
     }
     if (taskType === 'checklist' || taskType === 'both') {
@@ -1790,7 +1798,7 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     const subtaskCols = isDeleg
       ? "COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='completed'),0) AS subtasks_done,COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='pending'),0) AS subtasks_pending,"
       : "0 AS subtasks_done,0 AS subtasks_pending,";
-    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.remarks,t.url,t.client_ask,DATE_FORMAT(t.client_ask_by,'%Y-%m-%d') AS client_ask_date,TIME_FORMAT(t.client_ask_by,'%H:%i') AS client_ask_time,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,NULL AS client_ask,NULL AS client_ask_date,NULL AS client_ask_time,NULL AS completed_on,"}${subtaskCols}t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'— deleted user —') AS assignedByName FROM ${table} t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
+    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.no_due_date_reason,t.remarks,t.url,t.client_ask,DATE_FORMAT(t.client_ask_by,'%Y-%m-%d') AS client_ask_date,TIME_FORMAT(t.client_ask_by,'%H:%i') AS client_ask_time,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,NULL AS client_ask,NULL AS client_ask_date,NULL AS client_ask_time,NULL AS completed_on,"}${subtaskCols}t.client_id,c.name AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'— deleted user —') AS assignedByName FROM ${table} t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
 
     // mine=1 mode always returns flat tasks (never grouped)
     if (isMine) {
@@ -1988,8 +1996,19 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
 // no approval). Assigner/admin can also set it as a fallback if the doer delays.
 app.put('/api/tasks/:id/due-date', requireAuth, async (req, res) => {
   try {
-    const { date } = req.body;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return res.status(400).json({ error: 'Valid date (YYYY-MM-DD) required' });
+    // Two ways to answer this route: give the date, or say why you cannot yet.
+    // The doer is the one who knows, and a task sitting date-less with no
+    // explanation is invisible to every deadline mechanism in the app, so one
+    // of the two is required. A reason is NOT a substitute for a date — the
+    // task still cannot be completed until a real date exists (see the guard in
+    // PUT /api/tasks/:id/status); it only records why the gap is there and
+    // shows it on the row, so it stops being silent.
+    const { date, reason } = req.body;
+    const hasDate = /^\d{4}-\d{2}-\d{2}$/.test(date || '');
+    const cleanReason = String(reason || '').trim().slice(0, 500);
+    if (!hasDate && !cleanReason) {
+      return res.status(400).json({ error: 'Pick a due date, or say why one cannot be set yet.' });
+    }
     const uid = req.session.userId;
     const isPrivileged = req.session.role === 'admin' || req.session.role === 'pc';
     const [rows] = await db.query('SELECT * FROM delegation_tasks WHERE id=?', [parseInt(req.params.id, 10)]);
@@ -2000,6 +2019,18 @@ app.put('/api/tasks/:id/due-date', requireAuth, async (req, res) => {
     if (!isPrivileged && Number(task.assigned_to) !== Number(uid) && Number(task.assigned_by) !== Number(uid)) {
       return res.status(403).json({ error: 'Not allowed' });
     }
+    // Reason only: the task stays awaiting_due_date, so the "Set due date"
+    // button and this route both remain available for the real answer later.
+    if (!hasDate) {
+      await db.query(
+        'UPDATE delegation_tasks SET no_due_date_reason=?, no_due_date_reason_at=NOW() WHERE id=?',
+        [cleanReason, task.id]);
+      logTaskActivity({
+        taskId: task.id, field: 'no_due_date_reason', oldValue: task.no_due_date_reason || null,
+        newValue: cleanReason, changedBy: uid, source: 'due-date-deferred'
+      });
+      return res.json({ success: true, reasonSaved: true });
+    }
     // Nudge past a holiday / week-off, same as a normal delegation date.
     let effectiveDate = date;
     try {
@@ -2007,7 +2038,11 @@ app.put('/api/tasks/:id/due-date', requireAuth, async (req, res) => {
       const [[doerUser]] = await db.query('SELECT week_off, extra_off FROM users WHERE id=? LIMIT 1', [task.assigned_to]);
       if (doerUser && isUserOffOn(doerUser, date, holidaysSet)) effectiveDate = nextWorkingDay(doerUser, date, holidaysSet);
     } catch (e) { console.error('due-date holiday check err:', e.message); }
-    await db.query('UPDATE delegation_tasks SET due_date=?, awaiting_due_date=0 WHERE id=?', [effectiveDate, task.id]);
+    // A real date arrived, so any earlier "cannot set one yet" note is stale —
+    // clear it rather than leave the row explaining a gap that no longer exists.
+    await db.query(
+      'UPDATE delegation_tasks SET due_date=?, awaiting_due_date=0, no_due_date_reason=NULL, no_due_date_reason_at=NULL WHERE id=?',
+      [effectiveDate, task.id]);
     logTaskActivity({
       taskId: task.id, field: 'due_date', oldValue: null, newValue: effectiveDate,
       changedBy: uid, source: 'due-date-set',
@@ -2242,6 +2277,19 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     // Privileged users (admin/PC) act directly; the assigner decides via the Approvals screen.
     if (supportsApproval && task.waiting_approval && !isPrivileged) {
       return res.status(409).json({ error: 'Approval is pending — you cannot revise or mark done until it is approved.' });
+    }
+
+    // A delegation task can legitimately start with no due date — the assigner
+    // hands that choice to the doer (doerSetsDueDate on POST /api/tasks), who
+    // sets it from their own occupancy. Until they do, the row has no date to be
+    // measured against: it can never go overdue, never reaches Upcoming, and sits
+    // in Pending indefinitely without ever chasing anyone. Closing it in that
+    // state would mean the task lived and died without a date, so completion
+    // waits for one. Revise is deliberately still allowed — that path carries
+    // newDate and is one of the ways a date arrives. Applies to every role,
+    // including admin and PC: the point is the record, not the permission.
+    if (status === 'completed' && !task.due_date) {
+      return res.status(400).json({ error: 'Set a due date before marking this task done.' });
     }
 
     // REVISE (date push) ALWAYS needs the assigner's approval — for every role,

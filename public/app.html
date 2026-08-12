@@ -3876,6 +3876,20 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <label>Due Date</label>
       <input type="date" id="setDueInput"/>
     </div>
+    <!-- Either a date or a reason leaves this modal. A date-less task chases
+         nobody, so the gap has to at least be explained on the row. -->
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#334155;cursor:pointer;margin:2px 0 10px">
+      <input type="checkbox" id="setDueNoDate" onchange="onSetDueNoDateChange()" style="width:15px;height:15px;cursor:pointer"/>
+      Abhi due date nahi de sakta
+    </label>
+    <div class="form-group" id="setDueReasonGroup" style="display:none">
+      <label>Reason</label>
+      <textarea id="setDueReason" rows="3" maxlength="500"
+                placeholder="Kyun abhi date tay nahi ho sakti?"></textarea>
+      <div style="font-size:11px;color:#94a3b8;margin-top:4px">
+        Ye task row par dikhega. Task tab bhi Done nahi hoga jab tak date na daali jaye.
+      </div>
+    </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
       <button class="btn btn-outline" onclick="closeModal('setDueDateModal')">Cancel</button>
       <button class="btn btn-primary" onclick="submitSetDueDate()">Save</button>
@@ -8058,7 +8072,7 @@ function renderDashTable(tasks, type) {
           ${revisedBadge}
           <span style="display:inline-flex;gap:6px;align-items:center">
           ${canSetDue
-            ? `<button class="action-btn" style="background:#fef9c3;color:#854d0e;border:1px solid #fde68a" onclick="openSetDueDate(${t.id})">🗓 Set due date</button>`
+            ? `<button class="action-btn" style="background:#fef9c3;color:#854d0e;border:1px solid #fde68a" onclick="openSetDueDate(${t.id},${JSON.stringify(t.no_due_date_reason || '')})">🗓 ${t.no_due_date_reason ? 'Set date' : 'Set due date'}</button>`
             : `<span style="font-size:11px;color:#854d0e;font-weight:600">🗓 Awaiting doer's date</span>`}
           ${(!isPC || t.type==='checklist') ? `<button class="action-btn done" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>` : ''}
           </span>
@@ -8074,7 +8088,14 @@ function renderDashTable(tasks, type) {
       <td style="white-space:nowrap">${typeBadge(t)}</td>
       <td style="max-width:240px;word-break:break-word">${esc(t.description||t.desc)}</td>
       <td>${(isAdmin||isPC)?t.assignedToName:t.assignedByName}</td>
-      <td>${awaitingDate ? `<span style="font-size:10px;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fde68a;white-space:nowrap">🗓 Awaiting date</span>` : fmtDate(t.due_date||t.date)}${delegatedLine}${completedLine}</td>
+      <td>${awaitingDate
+            ? `<span style="font-size:10px;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fde68a;white-space:nowrap">🗓 Awaiting date</span>`
+              // The doer's answer to "why not yet" belongs in the column that is
+              // missing the date, not next to the buttons.
+              + (t.no_due_date_reason
+                  ? `<div style="font-size:10px;color:#854d0e;margin-top:3px;max-width:230px;line-height:1.4;white-space:normal" title="${dtEscape(t.no_due_date_reason)}">💬 ${dtEscape(t.no_due_date_reason)}</div>`
+                  : '')
+            : fmtDate(t.due_date||t.date)}${delegatedLine}${completedLine}</td>
       ${clientCell}
       ${showPriority ? `<td>${isDeleg ? `<span class="priority-badge ${t.priority||'low'}">${t.priority||'low'}</span>` : '—'}</td>` : ''}
       <td onclick="event.stopPropagation()">${actionCell}</td>
@@ -9076,22 +9097,42 @@ async function openDelegate(prefill = {}) {
 
 // Doer (or assigner/admin) sets the due date on a "doer-defines-date" task.
 let _setDueTaskId = null;
-function openSetDueDate(id) {
+function openSetDueDate(id, existingReason) {
   _setDueTaskId = id;
   document.getElementById('setDueErr').style.display = 'none';
   const inp = document.getElementById('setDueInput');
   inp.value = '';
   inp.min = new Date().toISOString().split('T')[0];
+  // Reopening a task that already carries a reason shows it, so the doer edits
+  // what they said last time instead of writing it out again from scratch.
+  const box = document.getElementById('setDueNoDate');
+  box.checked = !!existingReason;
+  document.getElementById('setDueReason').value = existingReason || '';
+  onSetDueNoDateChange();
   document.getElementById('setDueDateModal').classList.add('open');
+}
+// Ticking "no date yet" swaps the date field for the reason field — the two are
+// alternatives, and leaving both live invites sending a date AND an excuse.
+function onSetDueNoDateChange() {
+  const on = document.getElementById('setDueNoDate').checked;
+  document.getElementById('setDueInput').disabled = on;
+  if (on) document.getElementById('setDueInput').value = '';
+  document.getElementById('setDueReasonGroup').style.display = on ? '' : 'none';
 }
 async function submitSetDueDate() {
   const err = document.getElementById('setDueErr'); err.style.display = 'none';
-  const date = document.getElementById('setDueInput').value;
-  if (!date) { err.textContent = 'Please pick a date'; err.style.display = 'block'; return; }
-  const r = await api(`/api/tasks/${_setDueTaskId}/due-date`, 'PUT', { date });
+  const noDate = document.getElementById('setDueNoDate').checked;
+  const date   = document.getElementById('setDueInput').value;
+  const reason = document.getElementById('setDueReason').value.trim();
+  if (!noDate && !date)   { err.textContent = 'Please pick a date';   err.style.display = 'block'; return; }
+  if (noDate  && !reason) { err.textContent = 'Please write a reason'; err.style.display = 'block'; return; }
+  const r = await api(`/api/tasks/${_setDueTaskId}/due-date`, 'PUT',
+    noDate ? { reason } : { date });
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
   closeModal('setDueDateModal');
-  showToast(r.effectiveDate ? `Due date set: ${fmtDate(r.effectiveDate)}` : 'Due date set');
+  showToast(r.reasonSaved
+    ? 'Reason saved — task still needs a due date before it can be marked done'
+    : (r.effectiveDate ? `Due date set: ${fmtDate(r.effectiveDate)}` : 'Due date set'));
   loadDashboard(true);
 }
 
