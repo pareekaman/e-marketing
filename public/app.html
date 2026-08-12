@@ -5010,36 +5010,24 @@ let ME = null;
 // gated on canSee(), so they must be present by default or every non-admin
 // would lose a page they can reach today. See also the perm_pages_backfill_v1
 // migration in server.js, which does the same for already-saved overrides.
-const ROLE_DEFAULTS = {
-  // HR Portal is admin-only by decision (2026-08-11) — mirrors SERVER_ROLE_DEFAULTS,
-  // including dropping hrm_schedule / hrm_update_status alongside the page. See the
-  // note there for why the actions had to go too.
-  hod:  { pages: ['dashboard','alltasks','approvals','mis','clients','leaves','meetings','daily','fms-tasks','inventory','compliance','paymentreq','feedback','creditcards'],
-           actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','delete_leave'] },
-  pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance','paymentreq','feedback','creditcards'],
-           actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task'] },
-  // 'clients' here is the Client Master tab. A user only ever sees the clients
-  // they handle (the list is scoped server-side) and cannot edit anything.
-  user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance','clients','paymentreq','feedback','creditcards'],
-           actions: ['create_task','edit_task','delete_task'] }
-};
-
+// ROLE_DEFAULTS used to live here — a second copy of SERVER_ROLE_DEFAULTS that
+// had to be edited in step with it by hand, with only a comment in server.js
+// holding the two together. It is gone. The server resolves the cascade once
+// and /api/me returns the answer as ME.can; the panel fetches role defaults
+// from /api/access/role-defaults. One definition, one file.
+//
+// Both checks fail closed when ME.can is missing. That is the point: an absent
+// answer must not become a guess, or the browser starts deciding again.
 function canSee(page) {
-  if (!ME) return false;
-  if (ME.role === 'admin') return true;
-  if (ME.role === 'client') return page === 'client-portal';
-  if (ME.user_permissions && Array.isArray(ME.user_permissions.pages))
-    return ME.user_permissions.pages.includes(page);
-  if (Array.isArray(ME.extra_access) && ME.extra_access.includes(page)) return true;
-  return (ROLE_DEFAULTS[ME.role]?.pages || []).includes(page);
+  if (!ME || !ME.can) return false;
+  if (ME.can.all) return true;
+  return ME.can.pages.includes(page);
 }
 
 function canDo(action) {
-  if (!ME) return false;
-  if (ME.role === 'admin') return true;
-  if (ME.user_permissions && Array.isArray(ME.user_permissions.actions))
-    return ME.user_permissions.actions.includes(action);
-  return (ROLE_DEFAULTS[ME.role]?.actions || []).includes(action);
+  if (!ME || !ME.can) return false;
+  if (ME.can.all) return true;
+  return ME.can.actions.includes(action);
 }
 
 let dashType = 'all';
@@ -5134,7 +5122,7 @@ async function init() {
     // wrong one. Every endpoint behind this page is requireAdmin anyway.
     const drNav = document.getElementById('nav-dailyreports');
     if (drNav) drNav.style.display = (ME.role === 'admin' && canSee('dailyreports')) ? 'flex' : 'none';
-    // Payment Request nav — every role has it by default (ROLE_DEFAULTS), but
+    // Payment Request nav — every role has it in its server-side default, but
     // it is revocable per user from Access Control.
     const prNav = document.getElementById('nav-paymentreq');
     if (prNav) prNav.style.display = canSee('paymentreq') ? 'flex' : 'none';
@@ -5455,8 +5443,20 @@ let _accSavedRoles = {};
 let _accUsers = [];
 let _accSelUser = null;
 
+// Role defaults for OTHER roles, which /api/me cannot answer — it only ever
+// describes the caller. Fetched once per panel open and cached; renderAccessMatrix
+// awaits it before any row is drawn, and the role dropdown cannot be touched
+// before that, so the synchronous readers below always find it loaded.
+let _roleDefaults = null;
+async function ensureRoleDefaults() {
+  if (_roleDefaults) return _roleDefaults;
+  const r = await api('/api/access/role-defaults');
+  _roleDefaults = (r && !r.error) ? r : {};
+  return _roleDefaults;
+}
+
 function accDefaultsFor(role) {
-  const def = ROLE_DEFAULTS[role] || { pages: [], actions: [] };
+  const def = (_roleDefaults && _roleDefaults[role]) || { pages: [], actions: [] };
   return {
     pages:   def.pages   === 'all' ? PERM_TREE.map(p => p.page) : [...(def.pages || [])],
     actions: def.actions === 'all' ? PERM_TREE.flatMap(p => p.actions.map(a => a.key)) : [...(def.actions || [])]
@@ -5477,7 +5477,10 @@ async function renderAccessMatrix() {
   box.innerHTML = '<div class="empty">Loading…</div>';
 
   try {
-    const data = await api('/api/users');
+    // Role defaults come with the users, so accDefaultsFor() is ready before the
+    // first row renders. Fetched together rather than in sequence — neither
+    // needs the other.
+    const [data] = await Promise.all([api('/api/users'), ensureRoleDefaults()]);
     if (data.error) throw new Error(data.error);
     _accUsers = Array.isArray(data) ? data.filter(u => u.role !== 'client') : [];
     allUsersData = _accUsers;

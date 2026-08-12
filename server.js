@@ -1518,6 +1518,33 @@ app.get('/api/me', requireAuth, async (req, res) => {
       const raw = up[0]?.user_permissions;
       rows[0].user_permissions = raw ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : null;
     } catch(e) { rows[0].user_permissions = null; }
+    // The resolved answer to "what can this person reach", worked out once, here.
+    // canSee() / canDo() in app.html used to re-run the whole cascade in the
+    // browser off a second copy of the role defaults — two implementations of
+    // one rule, in two files, kept in step by hand. Every drift between them
+    // surfaced as the UI offering something the API then refused, which is the
+    // shape of most of the bugs found on 2026-08-11. The client no longer
+    // decides; it asks.
+    //
+    // `all` is admin, kept as a flag rather than an expanded list so it keeps
+    // meaning "everything, including pages nobody has enumerated yet" — exactly
+    // what the old `role === 'admin'` short-circuit meant. Clients never reach
+    // getEffectivePerms (no role defaults exist for them), so their one page is
+    // named here; without it the client portal would resolve to an empty set.
+    try {
+      if (rows[0].role === 'client') {
+        rows[0].can = { all: false, pages: ['client-portal'], actions: [] };
+      } else {
+        const eff = await getEffectivePerms(req.session);
+        rows[0].can = eff === 'all'
+          ? { all: true,  pages: [], actions: [] }
+          : { all: false, pages: eff.pages || [], actions: eff.actions || [] };
+      }
+    } catch (e) {
+      // Fail closed. A missing `can` leaves canSee()/canDo() returning false
+      // rather than falling back to a guess the server never made.
+      rows[0].can = null;
+    }
     try {
       const [bd] = await db.query('SELECT birthday, joining_date FROM users WHERE id=?', [req.session.userId]);
       rows[0].birthday = bd[0]?.birthday || null;
@@ -3664,6 +3691,18 @@ async function getEffectivePerms(session) {
     actions: (stored && Array.isArray(stored.actions)) ? stored.actions : [...def.actions]
   };
 }
+// The role defaults, served so app.html can stop carrying its own copy. Only
+// the Access Control panel needs these — it renders what OTHER roles get, which
+// /api/me cannot answer since that only describes the caller. Admin-only for the
+// same reason: nobody else opens that panel.
+//
+// This is what finally makes SERVER_ROLE_DEFAULTS the single definition. The
+// warning above it — "must stay identical to ROLE_DEFAULTS in public/app.html"
+// — describes a hazard that no longer exists, because the second copy is gone.
+app.get('/api/access/role-defaults', requireAuth, requireAdmin, (_req, res) => {
+  res.json(SERVER_ROLE_DEFAULTS);
+});
+
 async function userCanSee(session, page) {
   const p = await getEffectivePerms(session);
   return p === 'all' || p.pages.includes(page);
