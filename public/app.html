@@ -7641,29 +7641,44 @@ async function refreshPCEmployeeDropdown() {
   }
 }
 
-// Recompute the three overview cards + the pie chart based on the current type tab.
+// Recompute the four overview cards + the pie chart based on the current type tab.
 function updateDashStats(type) {
   const t = window._dashTotals || { del:{}, chl:{}, fmsPending:0, fmsCompleted:0 };
   const del = t.del || {}, chl = t.chl || {};
-  let pending = 0, completed = 0, revised = 0;
+  let pending = 0, completed = 0, revised = 0, upcoming = 0;
   if (type === 'delegation') {
     pending   = del.pending || 0;
     completed = del.completed || 0;
     revised   = del.revised || 0;
+    upcoming  = del.upcoming || 0;
   } else if (type === 'checklist') {
     pending   = chl.pending || 0;
     completed = chl.completed || 0;
     revised   = 0;
+    upcoming  = chl.upcoming || 0;
   } else if (type === 'fms') {
     pending   = t.fmsPending   || 0;
     completed = t.fmsCompleted || 0;
     revised   = 0;
+    upcoming  = 0;
   } else {
     pending   = (del.pending||0)   + (chl.pending||0)   + (t.fmsPending||0);
     completed = (del.completed||0) + (chl.completed||0) + (t.fmsCompleted||0);
     revised   = del.revised || 0;
+    upcoming  = (del.upcoming||0)  + (chl.upcoming||0);
   }
-  const total = pending + completed + revised;
+  // Upcoming belongs in Total. The server counts it as due_date > today while
+  // pending/revised are due_date <= today, so the two can never hold the same
+  // row and this adds without double counting. Leaving it out made Total read
+  // as less than the cards sitting beside it obviously summed to.
+  //
+  // Upcoming is also read per type here rather than from t.upcoming, which is
+  // always del+chl combined — on the Delegation tab that would have folded
+  // checklist rows into a delegation-only Total.
+  //
+  // Note Upcoming stays capped to the current month, on purpose. Anything open
+  // and due in a later month is therefore still in none of these four numbers.
+  const total = pending + completed + revised + upcoming;
   // Pending card shows the strict pending count; revised is surfaced as a
   // separate subtitle within the same card so the two numbers stay distinct.
   const totalEl = document.getElementById('dTotal');
@@ -7677,8 +7692,8 @@ function updateDashStats(type) {
     if (revised > 0) { pBreak.textContent = `+ ${revised} revised`; pBreak.style.display = 'block'; }
     else             { pBreak.style.display = 'none'; }
   }
-  // Upcoming — use server-side count from _dashTotals (loads instantly with stats)
-  const upcomingCount = t.upcoming || 0;
+  // Upcoming — server-side count, already resolved for the current type above.
+  const upcomingCount = upcoming;
   const upEl = document.getElementById('dUpcoming');
   if (upEl) upEl.textContent = upcomingCount;
 
