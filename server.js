@@ -2655,6 +2655,25 @@ app.post('/api/approvals/approve-all-revises', requireAuth, requireAdminOrPC, as
 // ══════════════════════════════════════════════════════
 // MIS
 // ══════════════════════════════════════════════════════
+
+// May this session pull MIS figures for one named employee? A hod's MIS is
+// scoped to their own department; admin sees everyone. The list routes below
+// enforce that with an `AND u.department=?` on their aggregate query, but the
+// two drill-down routes take a userId off the query string and had no check of
+// their own, so this exists to give them the same answer. Deliberately fails
+// closed: a hod with no department on their own row matches nobody.
+async function misHodMaySee(session, targetUserId) {
+  if (session.role !== 'hod') return true;
+  const id = parseInt(targetUserId, 10);
+  if (!Number.isFinite(id)) return false;
+  const [[me]]     = await db.query('SELECT department FROM users WHERE id=?', [session.userId]);
+  const [[target]] = await db.query('SELECT department FROM users WHERE id=?', [id]);
+  if (!me || !target) return false;
+  const dept = (me.department || '').trim();
+  if (!dept) return false;
+  return (target.department || '').trim() === dept;
+}
+
 app.get('/api/mis', requireAuth, requireAdminOrHodOnly, async (req, res) => {
   try {
     const { start, end } = req.query;
@@ -2859,6 +2878,15 @@ app.get('/api/mis/detail', requireAuth, requireAdminOrHodOnly, async (req, res) 
   try {
     const { userId, type, start, end } = req.query;
     if (!userId || !start || !end) return res.status(400).json({ error: 'Missing params' });
+    // A hod's MIS is scoped to their own department — but that scoping lived in
+    // /api/mis and /api/mis/all, the two routes that build the LIST. This is the
+    // drill-down, and it took userId straight off the query string, so editing
+    // that number handed back another department's task detail. The list never
+    // offers those rows, which is why nothing surfaced; the endpoint had no lock
+    // of its own. Admins are unaffected and still see everyone.
+    if (!(await misHodMaySee(req.session, userId))) {
+      return res.status(403).json({ error: 'That employee is not in your department' });
+    }
     const table = type === 'delegation' ? 'delegation_tasks' : 'checklist_tasks';
     const [tasks] = await db.query(`SELECT t.id,t.description,t.status,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,u2.name AS assigned_by_name FROM ${table} t JOIN users u2 ON t.assigned_by=u2.id WHERE t.assigned_to=? AND t.due_date BETWEEN ? AND ? ORDER BY t.due_date ASC`, [userId, start, end]);
     res.json({ tasks });
@@ -3494,8 +3522,13 @@ const VALID_UP_ACTIONS = new Set(['edit_task','delete_task','create_task','creat
 // — the two are the same fallback, and drift between them shows up as the UI
 // offering a page the API then rejects.
 const SERVER_ROLE_DEFAULTS = {
-  hod:  { pages: ['dashboard','alltasks','approvals','mis','hrm','clients','leaves','meetings','daily','fms-tasks','inventory','compliance','paymentreq','feedback','creditcards'],
-          actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','hrm_schedule','hrm_update_status','delete_leave'] },
+  // HR Portal is admin-only by decision (2026-08-11). 'hrm' leaves the page list
+  // AND hrm_schedule / hrm_update_status leave the action list, because the HRM
+  // write routes gate on the action alone — see POST /api/hrm/candidates. Taking
+  // only the page away would have hidden the tab while leaving a hod able to
+  // create candidates, change status and send offer letters through the API.
+  hod:  { pages: ['dashboard','alltasks','approvals','mis','clients','leaves','meetings','daily','fms-tasks','inventory','compliance','paymentreq','feedback','creditcards'],
+          actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','delete_leave'] },
   pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance','paymentreq','feedback','creditcards'],
           actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task'] },
   user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance','clients','paymentreq','feedback','creditcards'],
@@ -4743,6 +4776,11 @@ app.get('/api/mis/fms-detail', requireAuth, requireAdminOrHodOnly, async (req, r
     if (!userId || !start || !end || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
       return res.status(400).json({ error: 'userId, start, end (YYYY-MM-DD) required' });
     }
+    // Same gap as /api/mis/detail — the FMS drill-down trusted the query string
+    // while /api/mis/fms scoped the list it came from. See the note there.
+    if (!(await misHodMaySee(req.session, userId))) {
+      return res.status(403).json({ error: 'That employee is not in your department' });
+    }
     // Date filter ON so the drill-down rows match the aggregate counts shown
     // on the Race Tracker / MIS card (both filter by plan-date in [start, end]).
     const tasks = await fmsTasksForUserInRange(parseInt(userId), start, end, { applyDateFilter: true });
@@ -5024,6 +5062,63 @@ const _clientsTableMigrationsPromise = (async () => {
       console.log(`  ✅ Access Control page backfill — ${patched} user_permissions rows updated`);
     }
   } catch(e) { console.log('  ⚠️ Access Control page backfill skipped —', e.code || e.message); }
+
+  // ── One-time: make the role the single source of truth for access ──
+  //
+  // Eighteen users carried a saved user_permissions row, and a stored row wins
+  // OUTRIGHT over the role default in both canSee() and getEffectivePerms() —
+  // so those eighteen had quietly drifted away from their own role. A live audit
+  // on 2026-08-11 found six hods missing MIS Report while a seventh kept it,
+  // Taaran Jain holding HR Portal, Vishal Jaga holding DMS, and Pranaya Pareek
+  // holding Daily Reports. Same role, different sidebars, and nothing in the
+  // panel showed why. Clearing the rows drops everyone back onto their role,
+  // which is what the user asked for: role decides, and a new employee is
+  // correct the moment they are created.
+  //
+  // What this costs the nine users who also held approve_revision /
+  // bulk_approve / delete_leave / edit_creditcards: nothing. None of those four
+  // is read by canDo() in app.html or by userCanDo() here — the panel's own
+  // "Editor not enforced yet" label has been telling the truth. The actions that
+  // ARE checked (create_task, create_checklist, transfer_task, set_plan,
+  // reopen_task, edit_task, delete_task, hrm_schedule, hrm_update_status) all
+  // sit in the role defaults these rows are being replaced by.
+  //
+  // Why this is safe against the backfill above: that block exists because
+  // feedback and creditcards are ANDed with canSee(), so a missing key would
+  // fail the AND. Every role default carries both keys, so falling back to a
+  // default cannot lose them — Rotan Singh already runs on defaults today and
+  // keeps his Credit Card Statement view.
+  //
+  // The rows are copied verbatim into app_settings first, so this is reversible
+  // without a database backup — which matters here because the user has no
+  // phpMyAdmin access and could not take one. To undo:
+  //   SELECT value FROM app_settings WHERE key_name='user_permissions_backup_20260811';
+  // then write each id's user_permissions back.
+  try {
+    const [[resetMarker]] = await db.query(`SELECT value FROM app_settings WHERE key_name='user_permissions_reset_v1'`);
+    if (!resetMarker) {
+      const [rows] = await db.query(
+        `SELECT id, name, role, user_permissions FROM users
+         WHERE user_permissions IS NOT NULL AND user_permissions <> ''`);
+      if (!rows.length) {
+        console.log('  ✅ Access Control reset — no saved rows, everyone already on role defaults');
+      } else {
+        // Written before the wipe, and only if absent, so a retry after a failed
+        // UPDATE cannot overwrite a good backup with half-cleared state.
+        const [[haveBackup]] = await db.query(
+          `SELECT key_name FROM app_settings WHERE key_name='user_permissions_backup_20260811'`);
+        if (!haveBackup) {
+          await db.query(`INSERT INTO app_settings (key_name, value) VALUES ('user_permissions_backup_20260811', ?)`,
+            [JSON.stringify(rows)]);
+        }
+        await db.query(`UPDATE users SET user_permissions=NULL WHERE user_permissions IS NOT NULL AND user_permissions <> ''`);
+        console.log(`  ✅ Access Control reset — ${rows.length} rows cleared to role defaults: `
+          + rows.map(r => `${r.name} (${r.role})`).join(', '));
+      }
+      await db.query(`INSERT INTO app_settings (key_name, value) VALUES ('user_permissions_reset_v1', ?)`,
+        [`cleared ${rows.length} rows on first boot after the 2026-08-11 Access Control rebuild`]);
+    }
+  } catch(e) { console.log('  ⚠️ Access Control reset skipped —', e.code || e.message); }
 
   await seedPaymentRoleIds();
 

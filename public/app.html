@@ -4923,8 +4923,11 @@ let ME = null;
 // would lose a page they can reach today. See also the perm_pages_backfill_v1
 // migration in server.js, which does the same for already-saved overrides.
 const ROLE_DEFAULTS = {
-  hod:  { pages: ['dashboard','alltasks','approvals','mis','hrm','clients','leaves','meetings','daily','fms-tasks','inventory','compliance','paymentreq','feedback','creditcards'],
-           actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','hrm_schedule','hrm_update_status','delete_leave'] },
+  // HR Portal is admin-only by decision (2026-08-11) — mirrors SERVER_ROLE_DEFAULTS,
+  // including dropping hrm_schedule / hrm_update_status alongside the page. See the
+  // note there for why the actions had to go too.
+  hod:  { pages: ['dashboard','alltasks','approvals','mis','clients','leaves','meetings','daily','fms-tasks','inventory','compliance','paymentreq','feedback','creditcards'],
+           actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','delete_leave'] },
   pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance','paymentreq','feedback','creditcards'],
            actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task'] },
   // 'clients' here is the Client Master tab. A user only ever sees the clients
