@@ -2093,6 +2093,19 @@ async function canTouchSubtasks(req, task) {
     || Number(task.assigned_by) === Number(req.session.userId);
 }
 
+// May this session read one task's side data — its comments, its activity log?
+// Same rule sub-tasks already use: managers, the doer, the assigner, or the
+// client the task belongs to. Both routes below took an id off the URL and
+// answered, so changing the number in it read somebody else's task.
+async function canSeeTask(req, taskId, taskType) {
+  const tt = taskType === 'checklist' ? 'checklist' : 'delegation';
+  const id = parseInt(taskId, 10);
+  if (!Number.isFinite(id)) return false;
+  const [[task]] = await db.query(
+    `SELECT id, assigned_to, assigned_by, client_id FROM ${getTable(tt)} WHERE id=?`, [id]);
+  return canTouchSubtasks(req, task);
+}
+
 app.get('/api/tasks/:id/subtasks', requireAuth, async (req, res) => {
   try {
     const taskId = parseInt(req.params.id, 10);
@@ -2401,6 +2414,9 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
 app.get('/api/tasks/:id/activity', requireAuth, async (req, res) => {
   try {
     const tt = (req.query.type || 'delegation') === 'checklist' ? 'checklist' : 'delegation';
+    // The id comes off the URL, so without this any employee could read the full
+    // change history of any task by editing the number.
+    if (!(await canSeeTask(req, req.params.id, tt))) return res.status(403).json({ error: 'Not allowed' });
     const [rows] = await db.query(
       `SELECT a.id, a.field, a.old_value, a.new_value, a.old_status, a.new_status, a.source, a.note,
               DATE_FORMAT(a.created_at,'%Y-%m-%d %H:%i:%s') AS at,
@@ -3464,7 +3480,16 @@ app.get('/api/users', requireAuth, async (req, res) => {
               extra_access
        FROM users WHERE role <> 'client' AND client_id IS NULL ORDER BY name ASC`
     );
-    for (const r of rows) r.extra_access = parseExtraAccess(r.extra_access);
+    // extra_access is permission data, and this list is the company directory —
+    // every dropdown in the app fills from it, so it cannot be locked down. It
+    // can stop carrying who has been granted what: only the Users tab reads this
+    // field, and that page is admin-only. Everyone else gets the directory
+    // without the permissions.
+    const seesPerms = req.session.role === 'admin';
+    for (const r of rows) {
+      if (seesPerms) r.extra_access = parseExtraAccess(r.extra_access);
+      else delete r.extra_access;
+    }
     // birthday/joining_date fetched separately — safe before migration runs
     try {
       const ids = rows.map(r=>r.id);
@@ -3781,6 +3806,12 @@ app.post('/api/profile/image', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════
 app.get('/api/comments/:type/:taskId', requireAuth, async (req, res) => {
   try {
+    // Comments are a conversation about one task, so seeing them follows seeing
+    // the task. Both ids arrive in the URL; without this, walking the number
+    // read every discussion in the company.
+    if (!(await canSeeTask(req, req.params.taskId, req.params.type))) {
+      return res.status(403).json({ error: 'Not allowed' });
+    }
     const [rows] = await db.query(`SELECT tc.id,tc.comment,tc.created_at,u.name AS userName FROM task_comments tc JOIN users u ON tc.user_id=u.id WHERE tc.task_id=? AND tc.task_type=? ORDER BY tc.created_at ASC`, [req.params.taskId, req.params.type]);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -3790,6 +3821,9 @@ app.post('/api/comments', requireAuth, async (req, res) => {
   try {
     const { taskId, taskType, comment } = req.body;
     if (!comment || !taskId || !taskType) return res.status(400).json({ error: 'All fields required' });
+    // Writing followed the same open path as reading — the comment was stored
+    // under the caller's own name, but against whatever task id they sent.
+    if (!(await canSeeTask(req, taskId, taskType))) return res.status(403).json({ error: 'Not allowed' });
     await db.query('INSERT INTO task_comments (task_id,task_type,user_id,comment) VALUES (?,?,?,?)', [taskId, taskType, req.session.userId, comment]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -3952,7 +3986,12 @@ app.delete('/api/fms/:id', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // ── Fetch headers ONLY (fast — just one row from sheet) ──
-app.post('/api/fms/fetch-headers', requireAuth, async (req, res) => {
+// requireAdmin because this reads an arbitrary spreadsheet through the server's
+// own service account: pass any sheetId and it returns that sheet's header row.
+// It is a setup tool for FMS Admin, which is an admin-only page — the route just
+// never said so, leaving every logged-in employee able to probe any sheet the
+// service account can open.
+app.post('/api/fms/fetch-headers', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { sheetId, sheetName, headerRow } = req.body;
     if (!sheetId) return res.status(400).json({ error: 'sheetId required' });
