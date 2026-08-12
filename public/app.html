@@ -3476,10 +3476,21 @@ input:focus,select:focus,textarea:focus{outline:none;}
       <div class="form-group">
         <label>What to send *</label>
         <select id="hrmEmailType">
-          <option value="onboarding">📋 Onboarding Form (link)</option>
-          <option value="preliminary">📄 Preliminary Offer Letter (PDF)</option>
-          <option value="offer">📬 Offer Letter (PDF)</option>
+          <optgroup label="Status update">
+            <option value="scheduled">📅 Interview Scheduled</option>
+            <option value="rescheduled">🔄 Interview Rescheduled</option>
+            <option value="selected">✅ Selected</option>
+            <option value="rejected">❌ Rejected</option>
+          </optgroup>
+          <optgroup label="Document">
+            <option value="onboarding">📋 Onboarding Form (link)</option>
+            <option value="preliminary">📄 Preliminary Offer Letter (PDF)</option>
+            <option value="offer">📬 Offer Letter (PDF)</option>
+          </optgroup>
         </select>
+        <div style="font-size:11px;color:#94a3b8;margin-top:5px">
+          Sending an email does not change the candidate's status — use Update Status for that.
+        </div>
       </div>
       <div class="form-group">
         <label>To *</label>
@@ -6789,10 +6800,19 @@ function openEmailModal(id) {
   if (!c) return;
   _hrmCurrentId = id;
   document.getElementById('hrmEmailWho').textContent = `${c.name}${c.profile_position ? ' · ' + c.profile_position : ''}`;
-  // Default the "what to send" to the candidate's current stage.
-  document.getElementById('hrmEmailType').value =
-    c.status === 'Offer Letter Sent' ? 'offer' :
-    c.status === 'Offer Sent' ? 'preliminary' : 'onboarding';
+  // Default the "what to send" to the candidate's current stage, so the modal
+  // opens on the message that actually matches the record. Every status now has
+  // a match, which also means a mis-send takes a deliberate change of the
+  // dropdown rather than missing one.
+  const BY_STATUS = {
+    'Scheduled':          'scheduled',
+    'Rescheduled':        'rescheduled',
+    'Selected':           'selected',
+    'Rejected':           'rejected',
+    'Offer Sent':         'preliminary',
+    'Offer Letter Sent':  'offer',
+  };
+  document.getElementById('hrmEmailType').value = BY_STATUS[c.status] || 'onboarding';
   document.getElementById('hrmEmailTo').value = c.email || '';
   document.getElementById('hrmEmailCc').value = '';
   document.getElementById('hrmEmailErr').style.display = 'none';
@@ -6827,7 +6847,8 @@ async function submitEmailModal() {
     return;
   }
 
-  // Onboarding form — just a link, send directly.
+  // Everything else — the onboarding link and the four status notifications —
+  // carries no attachment and needs no form, so it sends straight from here.
   const btn = document.getElementById('hrmEmailSendBtn');
   btn.disabled = true; btn.textContent = 'Sending…';
   const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/email-offer`, 'POST', { type, email, cc });

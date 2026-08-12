@@ -12631,7 +12631,16 @@ app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) =>
     if (!c) return res.status(404).json({ error: 'Not found' });
     if (!process.env.SMTP_USER) return res.status(400).json({ error: 'Email is not configured on the server (SMTP credentials missing)' });
 
-    const type = ['preliminary', 'offer', 'onboarding'].includes(req.body.type) ? req.body.type : 'preliminary';
+    // 'scheduled' / 'rescheduled' / 'selected' / 'rejected' are the status
+    // notifications. ee10331 removed these from the HR portal as WhatsApp
+    // messages and never replaced them, so a candidate could be selected or
+    // rejected and simply never hear — the status changed in the app and
+    // nowhere else. They come back here, on email, and deliberately as a manual
+    // send: this button decides who gets told and when, the Update Status
+    // control decides what the record says. Neither one moves the other.
+    const NOTIFY_TYPES = ['scheduled', 'rescheduled', 'selected', 'rejected'];
+    const type = ['preliminary', 'offer', 'onboarding', ...NOTIFY_TYPES].includes(req.body.type)
+      ? req.body.type : 'preliminary';
     const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const to = String(req.body.email || c.email || '').trim();
     if (!to) return res.status(400).json({ error: 'No candidate email on file — add one on the candidate first' });
@@ -12655,7 +12664,69 @@ app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) =>
     const attachments = [logoAttach];
     let subject, bodyInner, action;
 
-    if (type === 'onboarding') {
+    if (NOTIFY_TYPES.includes(type)) {
+      // Wording carried over from the WhatsApp templates ee10331 deleted, so a
+      // candidate who was told once still recognises the message.
+      const fmtDay = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
+      const meetLine = c.meeting_link
+        ? `<p>Meeting link: <a href="${esc(c.meeting_link)}" style="color:#1155cc">${esc(c.meeting_link)}</a></p>` : '';
+
+      if (type === 'scheduled' || type === 'rescheduled') {
+        // A half-filled interview note is worse than none — refuse rather than
+        // email a candidate a date that says "undefined".
+        const when = type === 'rescheduled'
+          ? { date: c.reschedule_date, time: c.reschedule_time, label: 'rescheduled' }
+          : { date: c.interview_date,  time: c.interview_time,  label: 'scheduled' };
+        if (!when.date || !when.time) {
+          return res.status(400).json({
+            error: `No ${when.label} interview date and time on this candidate — set them first.`
+          });
+        }
+        if (type === 'rescheduled') {
+          subject = `Interview Rescheduled | ${HRM_COMPANY}`;
+          action  = 'Rescheduled — Email';
+          bodyInner = `<p>Hello ${esc(displayName)},</p>
+            <p>Your interview has been rescheduled.</p>
+            <p><b>Position:</b> ${esc(position)}<br>
+               <b>New date:</b> ${esc(fmtDay(when.date))}<br>
+               <b>New time:</b> ${esc(when.time)}</p>
+            ${meetLine}
+            ${c.reschedule_reason ? `<p><b>Reason:</b> ${esc(c.reschedule_reason)}</p>` : ''}
+            <p>Sorry for the inconvenience.</p>`;
+        } else {
+          subject = `Interview Scheduled | ${HRM_COMPANY}`;
+          action  = 'Scheduled — Email';
+          bodyInner = `<p>Hello ${esc(displayName)},</p>
+            <p>Your interview has been scheduled.</p>
+            <p><b>Position:</b> ${esc(position)}<br>
+               <b>Date:</b> ${esc(fmtDay(when.date))}<br>
+               <b>Time:</b> ${esc(when.time)}</p>
+            ${meetLine}
+            <p>Please be available on time.</p>`;
+        }
+      } else if (type === 'selected') {
+        subject = `You have been selected | ${HRM_COMPANY}`;
+        action  = 'Selected — Email';
+        bodyInner = `<p>Congratulations ${esc(displayName)},</p>
+          <p>You have been selected for <b>${esc(position)}</b>.</p>
+          <p>Welcome to ${esc(HRM_COMPANY)}. Our HR team will share the offer details soon.</p>
+          <p>Please keep these documents ready:</p>
+          <ul>
+            <li>Educational certificates</li>
+            <li>Experience letters</li>
+            <li>ID proof</li>
+            <li>2 passport-size photos</li>
+          </ul>`;
+      } else {
+        subject = `Update on your application | ${HRM_COMPANY}`;
+        action  = 'Rejected — Email';
+        bodyInner = `<p>Hello ${esc(displayName)},</p>
+          <p>Thank you for applying for <b>${esc(position)}</b>.</p>
+          <p>After careful review, we are unable to move forward at this time.
+             We may consider you for future openings.</p>
+          <p>Best wishes.</p>`;
+      }
+    } else if (type === 'onboarding') {
       if (!HRM_JOINING_FORM_URL) return res.status(400).json({ error: 'Joining form URL is not configured (HRM_JOINING_FORM_URL)' });
       let token = c.joining_form_token;
       if (!token) {
@@ -12720,7 +12791,10 @@ app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) =>
 
     await db.query(
       `INSERT INTO hrm_message_log (candidate_id,candidate_name,phone,action,type,status,error_detail,payload_json) VALUES (?,?,?,?,?,?,?,?)`,
-      [c.id, c.name, to, action, type === 'onboarding' ? 'text' : 'file', ok ? 'Sent' : 'Failed', ok ? '' : 'Email send failed (check SMTP config)', '{}']
+      // Status notifications carry no PDF, so they log as text alongside the
+      // onboarding link — otherwise the log claims a document that never existed.
+      [c.id, c.name, to, action, (type === 'onboarding' || NOTIFY_TYPES.includes(type)) ? 'text' : 'file',
+       ok ? 'Sent' : 'Failed', ok ? '' : 'Email send failed (check SMTP config)', '{}']
     ).catch(() => {});
 
     if (!ok) return res.status(500).json({ error: 'Email send failed — check server SMTP configuration' });
