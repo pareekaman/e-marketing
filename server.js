@@ -2555,6 +2555,71 @@ app.delete('/api/tasks/delete-by-date', requireAuth, requireAdmin, async (req, r
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Every open task still carrying no due date, grouped for the "Awaiting Date"
+// tab. Delegation only: checklist rows are generated per date and always carry
+// one, and no_due_date_reason exists on delegation_tasks alone.
+//
+// The filter is `due_date IS NULL`, not `awaiting_due_date=1`. The flag marks
+// the doer-sets-date mode specifically, but a task can arrive dateless without
+// it — client-delegated tasks do, and the handler fills the date in later. The
+// question this tab answers is "what has no deadline", so it asks that directly.
+//
+// Read-only by decision: no Set-due-date control here. The date is the doer's
+// call, made from their own board; this is the view that stops the gap being
+// invisible, not a place to overrule them.
+app.get('/api/tasks/awaiting-date', requireAuth, async (req, res) => {
+  try {
+    const role = req.session.role;
+    if (role !== 'admin' && role !== 'hod') return res.status(403).json({ error: 'Admin or HOD only' });
+    const params = [];
+    let deptClause = '';
+    if (role === 'hod') {
+      // Same scoping rule as MIS: a hod sees their own department and nothing
+      // else. Fails closed — a hod with no department on their row sees none.
+      const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [req.session.userId]);
+      const dept = (me?.department || '').trim();
+      if (!dept) return res.json({ departments: [], total: 0 });
+      deptClause = 'AND TRIM(u.department) = ?';
+      params.push(dept);
+    }
+    const [rows] = await db.query(
+      `SELECT t.id, t.description,
+              DATE_FORMAT(t.created_at,'%Y-%m-%d') AS given_on,
+              t.no_due_date_reason,
+              u.id AS doer_id, u.name AS doer_name,
+              TRIM(COALESCE(u.department,'')) AS department
+         FROM delegation_tasks t
+         JOIN users u ON t.assigned_to = u.id
+        WHERE t.due_date IS NULL
+          AND t.status IN ('pending','revised')
+          AND u.role <> 'client' AND u.client_id IS NULL
+          ${deptClause}
+        ORDER BY department ASC, u.name ASC, t.created_at ASC`, params);
+
+    // Shape it the way the tab reads it — department, then doer, then tasks —
+    // so the client renders instead of regrouping.
+    const byDept = new Map();
+    for (const r of rows) {
+      const dept = r.department || 'No department';
+      if (!byDept.has(dept)) byDept.set(dept, new Map());
+      const doers = byDept.get(dept);
+      if (!doers.has(r.doer_id)) doers.set(r.doer_id, { id: r.doer_id, name: r.doer_name, tasks: [] });
+      doers.get(r.doer_id).tasks.push({
+        id: r.id, type: 'Delegation', description: r.description,
+        given_on: r.given_on, reason: r.no_due_date_reason || ''
+      });
+    }
+    res.json({
+      total: rows.length,
+      departments: [...byDept.entries()].map(([name, doers]) => ({
+        name,
+        count: [...doers.values()].reduce((n, d) => n + d.tasks.length, 0),
+        doers: [...doers.values()]
+      }))
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Count checklist tasks for a user (all time or by year)
 app.get('/api/tasks/checklist-year-count', requireAuth, requireAdmin, async (req, res) => {
   try {

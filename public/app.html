@@ -89,6 +89,29 @@ body{
 }
 .dash-emp-filter-search::placeholder{color:#94a3b8;}
 .dash-emp-filter-empty{padding:10px;font-size:12px;color:#94a3b8;text-align:center;}
+/* ── Awaiting Date tab: department > employee > tasks ── */
+.awd-head{font-size:13px;color:#475569;padding:2px 2px 12px;}
+.awd-head b{color:#0f172a;font-size:15px;}
+.awd-dept{border:1px solid #e2e8f0;border-radius:10px;margin-bottom:10px;overflow:hidden;background:#fff;}
+.awd-dept-head{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;background:#f8fafc;user-select:none;}
+.awd-dept-head:hover{background:#f1f5f9;}
+.awd-dept-name{font-weight:700;font-size:14px;color:#0f172a;flex:1;}
+.awd-caret{color:#94a3b8;font-size:11px;width:10px;flex-shrink:0;}
+.awd-count{font-size:11px;font-weight:700;color:#854d0e;background:#fef9c3;border:1px solid #fde68a;border-radius:10px;padding:2px 9px;}
+.awd-dept-body,.awd-doer-body{display:none;}
+.awd-dept-body.open,.awd-doer-body.open{display:block;}
+.awd-doer{border-top:1px solid #f1f5f9;}
+.awd-doer-head{display:flex;align-items:center;gap:10px;padding:10px 14px 10px 28px;cursor:pointer;user-select:none;}
+.awd-doer-head:hover{background:#f8fafc;}
+.awd-doer-name{font-weight:600;font-size:13px;color:#334155;flex:1;}
+.awd-table{width:100%;border-collapse:collapse;}
+.awd-table th{text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;font-weight:700;padding:8px 14px;background:#fcfcfd;border-top:1px solid #f1f5f9;}
+.awd-table td{padding:9px 14px;font-size:13px;color:#334155;border-top:1px solid #f8fafc;vertical-align:top;}
+.awd-table tr:hover td{background:#fcfcfd;}
+.awd-type{font-size:10px;font-weight:700;color:#4f46e5;background:#eef2ff;border:1px solid #e0e7ff;border-radius:5px;padding:2px 7px;white-space:nowrap;}
+.awd-date{color:#64748b;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.awd-reason{color:#854d0e;}
+.awd-noreason{color:#cbd5e1;}
 .dash-emp-filter-opt{padding:7px 10px;border-radius:6px;font-size:13px;color:#1e293b;cursor:pointer;white-space:nowrap;}
 .dash-emp-filter-opt:hover{background:#f1f5f9;}
 .dash-emp-filter-opt.selected{background:#eef2ff;color:#4f46e5;font-weight:600;}
@@ -1823,6 +1846,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
         <div class="tab" id="tasksTabDelByMe" onclick="tasksTab('delegatebyme',this)">Delegate by Me</div>
         <div class="tab" id="tasksTabClients" onclick="tasksTab('clienttasks',this)">Client Tasks</div>
         <div class="tab" id="tasksTabFMS" onclick="tasksTab('fms',this)">FMS Tasks</div>
+        <div class="tab" id="tasksTabAwaiting" onclick="tasksTab('awaitingdate',this)" style="display:none">Awaiting Date</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
         <!-- User filter + date range (desktop only, all roles) -->
@@ -1851,7 +1875,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
       </div>
     </div>
     <!-- Status filter tabs -->
-    <div style="display:flex;gap:8px;margin-bottom:16px;">
+    <div style="display:flex;gap:8px;margin-bottom:16px;" id="tasksStatusTabRow">
       <div class="tab-group">
         <div class="tab" id="statusTabAll" onclick="filterTaskStatus('all',this)">All</div>
         <div class="tab active" id="statusTabPending" onclick="filterTaskStatus('pending',this)">Pending</div>
@@ -8199,12 +8223,35 @@ async function loadAllTasks() {
   const clientsTab = document.getElementById('tasksTabClients');
   if (clientsTab) clientsTab.style.display = (isAdmin || isHod || isPC) ? '' : 'none';
 
+  // Awaiting Date tab — open work carrying no deadline at all. Admin sees every
+  // department, a hod only their own (the route enforces both); PC and plain
+  // users do not get it, so the tab stays hidden for them.
+  const awaitingTab = document.getElementById('tasksTabAwaiting');
+  if (awaitingTab) awaitingTab.style.display = (isAdmin || isHod) ? '' : 'none';
+
   // Show doer filter + date range to everyone on desktop (employee dropdown
   // stays "All Employees" for non-admin/PC since backend scopes to own tasks).
   const filtersDiv = document.getElementById('tasksUserDateFilters');
   if (filtersDiv) {
     filtersDiv.style.display = isDesktop ? 'flex' : 'none';
   }
+
+  // Awaiting Date tab — its own shape (department > doer > tasks) and its own
+  // fixed scope, so it returns before the shared table path runs. The status
+  // tabs and the search/date filters are hidden while it is open: this list is
+  // already "open work with no date", and those controls would offer filters
+  // that either mean nothing here or quietly contradict it.
+  const statusRow = document.getElementById('tasksStatusTabRow');
+  if (tasksType === 'awaitingdate') {
+    if (statusRow) statusRow.style.display = 'none';
+    if (filtersDiv) filtersDiv.style.display = 'none';
+    if (assignBtn) assignBtn.style.display = 'none';
+    const data = await api('/api/tasks/awaiting-date');
+    if (seq !== _allTasksSeq) return;
+    renderAwaitingDate(data);
+    return;
+  }
+  if (statusRow) statusRow.style.display = '';
 
   // FMS Tasks tab — fetch from the FMS dashboard endpoint and normalize into the same shape
   if (tasksType === 'fms') {
@@ -8667,6 +8714,78 @@ function renderTasksTable() {
       </div>
       ${paginationHtml}
     </div>`;
+}
+
+// ── Awaiting Date tab ────────────────────────────────────────────────────────
+// Department > employee > tasks, both levels collapsed on open so the shape of
+// the problem reads before the detail does. Rows leave this list on their own:
+// the query asks for due_date IS NULL, so the moment a date is set the task is
+// simply not returned any more — nothing here has to remove it.
+function renderAwaitingDate(data) {
+  const el = document.getElementById('tasksContent');
+  if (!el) return;
+  const depts = (data && data.departments) || [];
+  if (data && data.error) {
+    el.innerHTML = `<div class="empty" style="color:#dc2626">${esc(data.error)}</div>`;
+    return;
+  }
+  if (!depts.length) {
+    el.innerHTML = `<div class="empty">Every open task has a due date. Nothing is waiting.</div>`;
+    return;
+  }
+  const total = data.total || 0;
+  el.innerHTML = `
+    <div class="awd-head">
+      <b>${total}</b> open task${total === 1 ? '' : 's'} with no due date
+      · across ${depts.length} department${depts.length === 1 ? '' : 's'}
+    </div>
+    ${depts.map((d, di) => `
+      <div class="awd-dept">
+        <div class="awd-dept-head" onclick="awdToggle('awd-d-${di}',this)">
+          <span class="awd-caret">▸</span>
+          <span class="awd-dept-name">${dtEscape(d.name)}</span>
+          <span class="awd-count">${d.count}</span>
+        </div>
+        <div class="awd-dept-body" id="awd-d-${di}">
+          ${d.doers.map((u, ui) => `
+            <div class="awd-doer">
+              <div class="awd-doer-head" onclick="awdToggle('awd-u-${di}-${ui}',this)">
+                <span class="awd-caret">▸</span>
+                <span class="awd-doer-name">${dtEscape(u.name)}</span>
+                <span class="awd-count">${u.tasks.length}</span>
+              </div>
+              <div class="awd-doer-body" id="awd-u-${di}-${ui}">
+                <table class="awd-table">
+                  <thead><tr>
+                    <th style="width:110px">Type</th>
+                    <th>Description</th>
+                    <th style="width:110px">Given</th>
+                    <th style="width:34%">Reason</th>
+                  </tr></thead>
+                  <tbody>
+                    ${u.tasks.map(t => `
+                      <tr>
+                        <td><span class="awd-type">${dtEscape(t.type)}</span></td>
+                        <td>${dtEscape(t.description)}</td>
+                        <td class="awd-date">${t.given_on ? fmtDate(t.given_on) : '—'}</td>
+                        <td>${t.reason
+                              ? `<span class="awd-reason">${dtEscape(t.reason)}</span>`
+                              : `<span class="awd-noreason">—</span>`}</td>
+                      </tr>`).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>`).join('')}`;
+}
+
+function awdToggle(id, head) {
+  const body = document.getElementById(id);
+  if (!body) return;
+  const open = body.classList.toggle('open');
+  const caret = head?.querySelector('.awd-caret');
+  if (caret) caret.textContent = open ? '▾' : '▸';
 }
 
 function tasksTab(type, el) {
