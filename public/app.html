@@ -5506,6 +5506,20 @@ async function renderAccessMatrix() {
     const perms = (u.user_permissions && Array.isArray(u.user_permissions.pages))
       ? { pages: [...u.user_permissions.pages], actions: [...(u.user_permissions.actions || [])] }
       : accDefaultsFor(u.role);
+    // Fold in anything granted from the Users tab's Extra Access grid. Without
+    // this the panel shows No Access on a page the person can actually reach,
+    // and — worse — saving ANY row writes a full stored row, which beats
+    // extra_access outright server-side (getEffectivePerms). So one unrelated
+    // revoke silently stripped every extra_access grant that user had, and for
+    // pages in no role default (fms, race) the page vanished entirely.
+    // Merging here means the first save preserves what they had instead of
+    // narrowing them by accident. extra_access itself is never written.
+    if (Array.isArray(u.extra_access)) {
+      const known = new Set(PERM_TREE.map(p => p.page));
+      for (const key of u.extra_access) {
+        if (known.has(key) && !perms.pages.includes(key)) perms.pages.push(key);
+      }
+    }
     _accPerms[u.id] = perms;
     _accSaved[u.id] = { pages: [...perms.pages], actions: [...perms.actions] };
     _accRoles[u.id] = u.role;

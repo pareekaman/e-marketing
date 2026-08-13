@@ -4308,6 +4308,24 @@ app.post('/api/fms-tasks/:fmsId/steps/:stepId/done', requireAuth, async (req, re
     if (!steps[0]) return res.status(404).json({ error: 'Step not found' });
     const step = steps[0];
 
+    // The client already refuses this — "This FMS step is not assigned to you",
+    // app.html:8545, `step.isMyStep || ME.role === 'admin'` — but the route
+    // asked nobody, so any authenticated user could stamp any row of any FMS
+    // sheet by guessing two ids, and extraInputs below is written to the sheet
+    // verbatim. This mirrors the client rule rather than inventing a new one.
+    //
+    // A step with NO doer rows stays open to everyone, exactly as today. Closing
+    // that case would silently make such steps admin-only, and steps are
+    // configured in the FMS Admin screen where leaving doers empty is allowed.
+    if (req.session.role !== 'admin') {
+      const [[doers]] = await db.query(
+        'SELECT COUNT(*) AS total, SUM(user_id = ?) AS mine FROM fms_step_doers WHERE step_id = ?',
+        [req.session.userId, step.id]);
+      if (Number(doers?.total || 0) > 0 && !Number(doers?.mine || 0)) {
+        return res.status(403).json({ error: 'This FMS step is not assigned to you' });
+      }
+    }
+
     const actualCol = (step.actual_col||'').toUpperCase();
     if (!actualCol) return res.status(400).json({ error: 'Actual column not configured for this step' });
 
@@ -10194,7 +10212,16 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
   try {
     const uid = req.session.userId;
     const role = req.session.role;
-    const scope = req.query.scope || 'mine';
+    // Anything that is not one of the three known scopes falls back to 'mine'.
+    // The branches below are an if / else-if / else-if chain with NO final else,
+    // so an unrecognised value — ?scope=all, a typo, a repeated query param that
+    // arrives as an array — left `where` at '1=1' and the SELECT returned every
+    // leave request in the company: name, email, department and the free-text
+    // reason, to any authenticated session, client logins included. Every real
+    // caller sends one of these three literals (app.html 13643 / 15895 / 16487),
+    // so narrowing costs nothing.
+    const SCOPES = ['mine', 'approvals', 'team'];
+    const scope = SCOPES.includes(req.query.scope) ? req.query.scope : 'mine';
     const status = req.query.status || '';
 
     let where = '1=1', params = [];
