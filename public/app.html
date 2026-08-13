@@ -400,6 +400,16 @@ tbody tr:last-child td{border-bottom:none;}
 .acc-user-item:hover{background:#f8fafc}
 .acc-user-item.active{background:#eff6ff;border-left-color:#6366f1}
 .acc-user-item-name{font-size:13px;font-weight:600;color:#1e293b}
+/* The per-row "Editor not enforced yet" caption used to be a full amber line
+   under every label, which made each row two lines tall and turned the whole
+   panel amber. It is the same fact either way, so it is a badge next to the
+   label now — the eye can skim the list and the warning still stops anyone
+   setting a level under a false assurance. */
+.acc-warn{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;
+  border-radius:50%;background:#fef3c7;color:#b45309;border:1px solid #fde68a;
+  font-size:10px;font-weight:700;cursor:help;flex-shrink:0;line-height:1;}
+.acc-ro{font-size:10px;font-weight:600;color:#0e7490;background:#ecfeff;border:1px solid #a5f3fc;
+  border-radius:4px;padding:1px 6px;white-space:nowrap;}
 .acc-page-row{border-bottom:1px solid #f1f5f9;padding:12px 18px;transition:background .12s}
 .acc-page-row:hover{background:#fafbff}
 .acc-page-row-main{display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -5660,14 +5670,22 @@ function loadUserPerms(userId) {
     const opts = levels.map(l =>
       `<option value="${l.key}" ${l.key===lvl?'selected':''}>${l.label}</option>`).join('');
     const dim = lvl === 'none';
+    // Warn only where the warning is true AND the choice is actually offered.
+    // It used to appear on Dashboard, which is locked and always on, and on
+    // read-only pages, which have no Editor option at all — noise in both cases,
+    // and it made the whole panel look broken when most of it is not.
+    const showWarn = !pg.enforced && pg.grantable !== false && !pg.locked && !pg.readOnly;
     return `<div class="acc-page-row">
       <div class="acc-page-row-main">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
           <span style="font-size:20px;width:28px;text-align:center;flex-shrink:0">${pg.icon}</span>
           <div style="min-width:0">
-            <div style="font-size:13px;font-weight:600;color:${dim?'#94a3b8':'#1e293b'}">${pg.label}</div>
-            ${pg.note ? `<div style="font-size:11px;color:#64748b;margin-top:1px">🔒 ${esc(pg.note)}</div>` : ''}
-            ${!pg.enforced && pg.grantable !== false ? `<div style="font-size:11px;color:#d97706;margin-top:1px" title="The Editor choice is saved, but this page's buttons are not wired to the permission check yet — View and Editor behave the same here for now.">⚠ Editor not enforced yet</div>` : ''}
+            <div style="display:flex;align-items:center;gap:7px;min-width:0">
+              <span style="font-size:13px;font-weight:600;color:${dim?'#94a3b8':'#1e293b'}">${pg.label}</span>
+              ${showWarn ? `<span class="acc-warn" title="Editor is saved on this page but the API does not check it yet — View and Editor behave the same here for now.">!</span>` : ''}
+              ${pg.readOnly ? `<span class="acc-ro" title="This page has no editable data — there is nothing for Editor to grant.">read-only</span>` : ''}
+            </div>
+            ${pg.note ? `<div style="font-size:11px;color:#64748b;margin-top:2px">🔒 ${esc(pg.note)}</div>` : ''}
           </div>
         </div>
         <select onchange="onAccLevelChange(${userId},'${pg.page}',this.value)" ${pg.locked?'disabled':''}
@@ -5677,9 +5695,14 @@ function loadUserPerms(userId) {
   }).join('');
 
   panel.innerHTML = accPanelHeaderHtml(u) + `
-    <div style="padding:8px 20px;border-bottom:1px solid #f1f5f9;background:#fffbeb;font-size:11px;color:#92400e">
-      <strong>No Access</strong> hides the feature · <strong>View</strong> shows it read-only · <strong>Editor</strong> allows changes.
-      Nothing here is enforced by the server yet — it controls what the app shows, not what the API accepts.
+    <div style="padding:9px 20px;border-bottom:1px solid #e2e8f0;background:#f8fafc;font-size:11px;color:#475569;line-height:1.6">
+      <strong style="color:#0f172a">No Access</strong> hides the feature ·
+      <strong style="color:#0f172a">View</strong> shows it read-only ·
+      <strong style="color:#0f172a">Editor</strong> allows changes.
+      <span style="display:inline-flex;align-items:center;gap:5px;margin-left:2px">
+        <span class="acc-warn" style="cursor:default">!</span>
+        marks a page where the choice is saved but the API does not check it yet.
+      </span>
     </div>
     <div style="overflow-y:auto;max-height:calc(100vh - 320px)">${rows}</div>`;
   accSyncDirty(userId);
