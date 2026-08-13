@@ -5194,7 +5194,11 @@ async function init() {
       const lastPage = wanted || localStorage.getItem('lastPage');
       // Mirror navigate()'s own role guards so a disallowed saved page doesn't
       // silently no-op and leave the (still-default) dashboard without its data loaded.
-      const blocked = (lastPage === 'mis' && ME.role !== 'admin' && ME.role !== 'hod') ||
+      // MIS also has to fail the remembered-tab restore when the page is
+      // revoked, not just when the role is wrong — otherwise a revoked hod is
+      // restored onto MIS, every request 403s, and `restored` stays true so
+      // loadDashboard() below never runs. Same condition as requireMisViewer.
+      const blocked = (lastPage === 'mis' && !(canSee('mis') && (ME.role === 'admin' || ME.role === 'hod'))) ||
                       (lastPage === 'race' && ME.role !== 'admin') ||
                       (lastPage === 'logs' && ME.role !== 'admin');
       // canSee() too: a deep link is public, so it must not hand someone a page
@@ -5349,12 +5353,23 @@ const PERM_TREE = [
     { key: 'approve_revision', label: 'Approve' },
     { key: 'bulk_approve',     label: 'Bulk' },
   ]},
-  { page: 'mis',          label: 'MIS Report',     icon: '📊', enforced: false, actions: [
+  // readOnly — every /api/mis route is a GET, so there is nothing here to edit.
+  // enforced because the five reads now go through requireMisViewer, which keeps
+  // the admin/hod floor and ANDs canSee('mis') onto it: a revoke bites, a grant
+  // cannot widen. See the note on requireMisViewer for why the floor stays.
+  { page: 'mis',          label: 'MIS Report',     icon: '📊', enforced: true, readOnly: true, actions: [
     { key: 'edit_mis', label: 'Edit' },
   ]},
-  { page: 'race',         label: 'Race Tracker',   icon: '🏁', enforced: false, actions: [
-    { key: 'edit_race', label: 'Edit' },
-  ]},
+  // Race Tracker has NO routes of its own — 'race' appears only in
+  // EXTRA_ACCESS_KEYS, its label, and VALID_UP_PAGES. navigate() has refused
+  // every non-admin since long before this work, so the grant this row offered
+  // could never do anything. Marked the way Logs and Daily Reports are: the
+  // dropdown can revoke, never grant. Whether Race should become grantable is a
+  // product decision nobody has taken; this states today's truth rather than
+  // pre-empting it.
+  { page: 'race',         label: 'Race Tracker',   icon: '🏁', enforced: false, grantable: false, locked: true,
+    note: 'Admin only — this page has no API of its own and the sidebar refuses every non-admin',
+    actions: [{ key: 'edit_race', label: 'Edit' }] },
   { page: 'fms',          label: 'FMS Admin',      icon: '📋', enforced: false, actions: [
     { key: 'edit_fms', label: 'Edit' },
   ]},
@@ -5433,6 +5448,12 @@ const ACC_LEVELS = [
 // Current level of one feature for one permission set.
 function accLevelOf(perms, pg) {
   if (!perms.pages.includes(pg.page)) return 'none';
+  // A read-only page has no Editor option in the dropdown, so returning 'edit'
+  // here left nothing marked selected and the browser fell back to the first
+  // option — the panel showed "No Access" for somebody who actually has the
+  // page. Clamp to View. Nothing was ever written wrongly (accIsDirty compares
+  // the working copy), but the display lied.
+  if (pg.readOnly) return 'view';
   return pg.actions.some(a => perms.actions.includes(a.key)) ? 'edit' : 'view';
 }
 
@@ -7387,7 +7408,9 @@ function refreshNavGroupVisibility() {
 
 function navigate(page, el) {
   // MIS page — admin and HOD (App Role) only
-  if (page === 'mis' && ME.role !== 'admin' && ME.role !== 'hod') return;
+  // Mirrors requireMisViewer: the admin/hod floor AND the page key, so a
+  // revoked hod cannot open a tab whose every request would 403.
+  if (page === 'mis' && !(canSee('mis') && (ME.role === 'admin' || ME.role === 'hod'))) return;
   // Race Tracker — admin only
   if (page === 'race' && ME.role !== 'admin') return;
   // Logs (deleted-records archive) — admin only

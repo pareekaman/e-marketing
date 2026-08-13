@@ -794,6 +794,25 @@ function requireAdminOrHodOnly(req, res, next) {
 // rather than three copies of the same check. There is no matching editor
 // guard because Compliance has no write routes at all — see the readOnly flag
 // on its PERM_TREE entry.
+// MIS is narrow-only ON PURPOSE: it keeps the admin/hod floor and ANDs the page
+// key onto it, so an admin's revoke finally reaches the API while a grant can
+// never widen the audience. Three hazards make the bare canSee() form wrong
+// here, and all three are closed by keeping the floor:
+//   - a stale extra_access 'mis' tick would go live the moment the key alone
+//     decided access;
+//   - department scoping keys on ROLE, not permission — misHodMaySee returns
+//     true for any non-hod and the list routes filter only when role==='hod' —
+//     so the first pc or user ever granted 'mis' would see EVERY department,
+//     strictly wider than any hod;
+//   - /api/dashboard/activity feeds the same section and stays admin/hod, so a
+//     matching audience keeps the dashboard coherent.
+// Whether Race Tracker / MIS should become grantable at all is a product
+// decision that has not been taken; this shape leaves it open either way.
+async function requireMisViewer(req, res, next) {
+  const role = req.session.role;
+  if ((role === 'admin' || role === 'hod') && await userCanSee(req.session, 'mis')) return next();
+  res.status(403).json({ error: 'No access to MIS Report' });
+}
 async function requireComplianceViewer(req, res, next) {
   if (await userCanSee(req.session, 'compliance')) return next();
   res.status(403).json({ error: 'No access to Compliance' });
@@ -2876,7 +2895,7 @@ async function misHodMaySee(session, targetUserId) {
   return (target.department || '').trim() === dept;
 }
 
-app.get('/api/mis', requireAuth, requireAdminOrHodOnly, async (req, res) => {
+app.get('/api/mis', requireAuth, requireMisViewer, async (req, res) => {
   try {
     const { start, end } = req.query;
     if (!start || !end) return res.status(400).json({ error: 'Dates required' });
@@ -3076,7 +3095,7 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/mis/detail', requireAuth, requireAdminOrHodOnly, async (req, res) => {
+app.get('/api/mis/detail', requireAuth, requireMisViewer, async (req, res) => {
   try {
     const { userId, type, start, end } = req.query;
     if (!userId || !start || !end) return res.status(400).json({ error: 'Missing params' });
@@ -3096,7 +3115,7 @@ app.get('/api/mis/detail', requireAuth, requireAdminOrHodOnly, async (req, res) 
 });
 
 // ── All MIS — per employee combined score ──
-app.get('/api/mis/all', requireAuth, requireAdminOrHodOnly, async (req, res) => {
+app.get('/api/mis/all', requireAuth, requireMisViewer, async (req, res) => {
   try {
     const { start, end } = req.query;
     if (!start || !end) return res.status(400).json({ error: 'Dates required' });
@@ -3346,7 +3365,7 @@ app.get('/api/dashboard/activity', requireAuth, requireAdminOrHodOnly, async (re
 });
 
 // ── FMS MIS ──
-app.get('/api/mis/fms', requireAuth, requireAdminOrHodOnly, async (req, res) => {
+app.get('/api/mis/fms', requireAuth, requireMisViewer, async (req, res) => {
   try {
     const { start, end } = req.query;
     if (!start || !end) return res.status(400).json({ error: 'Dates required' });
@@ -5057,7 +5076,7 @@ app.get('/api/calendar/tasks', requireAuth, async (req, res) => {
 
 // Admin / HOD endpoint — FMS rows for ANY user in a date range (used by Race
 // Tracker / MIS detail drill-down).
-app.get('/api/mis/fms-detail', requireAuth, requireAdminOrHodOnly, async (req, res) => {
+app.get('/api/mis/fms-detail', requireAuth, requireMisViewer, async (req, res) => {
   try {
     const { userId, start, end } = req.query;
     if (!userId || !start || !end || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
