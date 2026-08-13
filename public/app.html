@@ -5373,7 +5373,11 @@ const PERM_TREE = [
   { page: 'clients',      label: 'Client Master',  icon: '🏢', enforced: true, actions: [
     { key: 'edit_clients', label: 'Edit' },
   ]},
-  { page: 'compliance',   label: 'Compliance',     icon: '✅', enforced: false, actions: [
+  // readOnly — every /api/compliance route is a GET. There is nothing on this
+  // page to edit, so the dropdown offers No Access / View only. enforced:true
+  // because the reads do ask userCanSee('compliance') now; the Editor level it
+  // used to offer was unreachable rather than unenforced.
+  { page: 'compliance',   label: 'Compliance',     icon: '✅', enforced: true, readOnly: true, actions: [
     { key: 'edit_compliance', label: 'Edit' },
   ]},
   { page: 'dailyreports', label: 'Daily Reports',  icon: '📈', enforced: false, grantable: false, locked: true,
@@ -5613,7 +5617,12 @@ function loadUserPerms(userId) {
 
   const rows = PERM_TREE.map(pg => {
     const lvl = accLevelOf(perms, pg);
-    const opts = ACC_LEVELS.map(l =>
+    // A page with nothing to edit should not offer Editor. Compliance, for one,
+    // is three GET routes and no writes at all — the synthetic edit_<page> key
+    // exists only so a level is storable, and offering the choice invited an
+    // admin to pick something that could never mean anything.
+    const levels = pg.readOnly ? ACC_LEVELS.filter(l => l.key !== 'edit') : ACC_LEVELS;
+    const opts = levels.map(l =>
       `<option value="${l.key}" ${l.key===lvl?'selected':''}>${l.label}</option>`).join('');
     const dim = lvl === 'none';
     return `<div class="acc-page-row">

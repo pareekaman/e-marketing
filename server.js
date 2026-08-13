@@ -790,6 +790,14 @@ function requireAdminOrHodOnly(req, res, next) {
   if (req.session.role === 'admin' || req.session.role === 'hod') return next();
   res.status(403).json({ error: 'Admin or HOD (App Role) only' });
 }
+// Named so Compliance's three read routes carry their gate in the signature
+// rather than three copies of the same check. There is no matching editor
+// guard because Compliance has no write routes at all — see the readOnly flag
+// on its PERM_TREE entry.
+async function requireComplianceViewer(req, res, next) {
+  if (await userCanSee(req.session, 'compliance')) return next();
+  res.status(403).json({ error: 'No access to Compliance' });
+}
 // Middleware form of userCanDo('edit_clients'), so the Client Master write
 // routes read the same as the ones that still use requireAdmin — a name in the
 // signature rather than a check buried three lines into the body.
@@ -9664,7 +9672,7 @@ async function getComplianceScope(req) {
   return { clause: 'AND id=?', params: [uid] };
 }
 
-app.get('/api/compliance/last7', requireAuth, async (req, res) => {
+app.get('/api/compliance/last7', requireAuth, requireComplianceViewer, async (req, res) => {
   try {
     // Last 7 days inclusive of today
     const dates = [];
@@ -9765,7 +9773,7 @@ async function canViewComplianceEmployee(req, targetId) {
 // delegation + checklist task stats, daily-report compliance, handled clients
 // (active/inactive + activity in window), and meetings. Window defaults to the
 // current month (IST); ?from=YYYY-MM-DD&to=YYYY-MM-DD widens it.
-app.get('/api/compliance/employee/:id', requireAuth, async (req, res) => {
+app.get('/api/compliance/employee/:id', requireAuth, requireComplianceViewer, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid employee id' });
@@ -10001,7 +10009,7 @@ app.get('/api/compliance/employee/:id', requireAuth, async (req, res) => {
 });
 
 // Week-level task detail for Employee 360 weekly table drill-down
-app.get('/api/compliance/employee/:id/week-tasks', requireAuth, async (req, res) => {
+app.get('/api/compliance/employee/:id/week-tasks', requireAuth, requireComplianceViewer, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid employee id' });
