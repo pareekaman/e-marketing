@@ -3555,7 +3555,9 @@ app.get('/api/users', requireAuth, async (req, res) => {
 
 app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, email, notification_email, password, role, user_role, phone, department, week_off, extra_off, exclude_from_reminder, extra_access, birthday, joining_date } = req.body;
+    // `position` is not a users column — it is sent by the Add User form for the
+    // team welcome announcement below and nothing else.
+    const { name, email, notification_email, password, role, user_role, phone, department, position, week_off, extra_off, exclude_from_reminder, extra_access, birthday, joining_date } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
     const [ex] = await db.query('SELECT id FROM users WHERE email=?', [email]);
     if (ex[0]) return res.status(400).json({ error: 'Email already exists' });
@@ -3569,8 +3571,14 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
     const credMsg = `Hi ${name},\nWelcome to e-marketing. We are granting you access to the our task manager.🌸\n\nhttps://taskmanager.e-marketing.io/app\nid : ${email}\npass : ${password}`;
     const credTo = notification_email || email;
     if (credTo) sendMail(credTo, 'Welcome to E-Marketing — Your Task Manager Login', waTextToEmailHtml(credMsg)).catch(e => console.error('new user email err:', e.message));
-    // Team welcome announcement
-    const welcomeMsg = `Hello Team,\nPlease join me in welcoming ${name} our new team member who has joined us as a ${department || 'team member'}.\nWe are excited to have them on board and look forward to working together.\nWelcome to the team, ${name}! 🌸`;
+    // Team welcome announcement — the position they are appointed to, falling
+    // back to the department and then to a plain "team member" when blank.
+    const joinedAs = String(position || '').trim() || department || 'team member';
+    // "a"/"an" by pronunciation, the same rule the offer letter uses: acronyms
+    // go by the first letter's NAME (SEO = "es" -> "an SEO Executive").
+    const _jaFirst = joinedAs.split(/\s+/)[0] || '';
+    const joinedArticle = (/^[A-Z]{2,}$/.test(_jaFirst) ? /^[AEFHILMNORSX]/.test(_jaFirst) : /^[aeiouAEIOU]/.test(_jaFirst)) ? 'an' : 'a';
+    const welcomeMsg = `Hello Team,\nPlease join me in welcoming ${name} our new team member who has joined us as ${joinedArticle} ${joinedAs}.\nWe are excited to have them on board and look forward to working together.\nWelcome to the team, ${name}! 🌸`;
     sendWhatsAppRaw('919602694444-1618492040@g.us', welcomeMsg).catch(e => console.error('WA team welcome err:', e.message));
     // Append new user to Google Sheet
     const SHEET_ID = '1k8GTp731LMNE6E1_FwNO8yvGJu7ogo-4PX6c7JP4emM';

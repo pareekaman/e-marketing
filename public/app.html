@@ -4407,6 +4407,7 @@ input:focus,select:focus,textarea:focus{outline:none;}
     </div>
     <div class="form-row">
       <div class="form-group"><label>Department</label><input type="text" id="uDepartment" placeholder="e.g. Sales, Production"/></div>
+      <div class="form-group" id="uPositionGroup"><label>Position <span style="color:#94a3b8;font-weight:400;font-size:11px">(only for the team welcome message)</span></label><input type="text" id="uPosition" placeholder="e.g. Video Editor, SEO Executive"/></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label>Birthday <span id="uBirthdayReq" style="color:#e53e3e;font-size:11px">*</span></label><input type="date" id="uBirthday"/></div>
@@ -10009,7 +10010,10 @@ function readExtraAccessFromForm() {
 
 function openAddUser() {
   document.getElementById('userModalTitle').textContent='Add User';
-  ['editUserId','uName','uEmail','uNotifEmail','uPhone','uDepartment','uPassword','uBirthday','uJoiningDate'].forEach(id=>document.getElementById(id).value='');
+  ['editUserId','uName','uEmail','uNotifEmail','uPhone','uDepartment','uPosition','uPassword','uBirthday','uJoiningDate'].forEach(id=>document.getElementById(id).value='');
+  // Position is not stored on the user — it only feeds the WhatsApp welcome
+  // announcement, so it shows on Add and stays hidden on Edit.
+  document.getElementById('uPositionGroup').style.display='';
   document.getElementById('uRole').value='user';
   document.getElementById('uUserRole').value='user';
   document.getElementById('pwdOptional').style.display='none';
@@ -10032,6 +10036,8 @@ function openEditUser(id) {
   document.getElementById('uNotifEmail').value=u.notification_email||'';
   document.getElementById('uPhone').value=u.phone||'';
   document.getElementById('uDepartment').value=u.department||'';
+  document.getElementById('uPosition').value='';
+  document.getElementById('uPositionGroup').style.display='none';
   // The API returns these as full ISO timestamps, which a date input cannot
   // parse — without the split the field renders blank even when a date is
   // stored, and saving would then wipe it. Same trim the Profile page does.
@@ -10059,6 +10065,7 @@ async function saveUser() {
   const notification_email=document.getElementById('uNotifEmail').value.trim();
   const phone=document.getElementById('uPhone').value.trim();
   const department=document.getElementById('uDepartment').value.trim();
+  const position=document.getElementById('uPosition').value.trim();
   const birthday=document.getElementById('uBirthday').value;
   const joining_date=document.getElementById('uJoiningDate').value;
   const password=document.getElementById('uPassword').value;
@@ -10073,6 +10080,9 @@ async function saveUser() {
   if (!id&&!password) { err.textContent='Password required for new user'; err.style.display='block'; return; }
   const extra_access = readExtraAccessFromForm();
   const body={name,email,notification_email,role,user_role,phone,department,birthday,joining_date,exclude_from_reminder,extra_access};
+  // Send-only on create: nothing stores it, the POST just puts it in the
+  // welcome message. On edit there is no welcome message to write.
+  if (!id) body.position=position;
   if (password) body.password=password;
   const r = id ? await api(`/api/users/${id}`,'PUT',body) : await api('/api/users','POST',body);
   if (r.error) { err.textContent=r.error; err.style.display='block'; return; }
