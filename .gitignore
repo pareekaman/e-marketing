@@ -43,3 +43,8 @@ public/signature.jpeg
 # Generated WhatsApp message reference — rebuild, do not commit.
 whatsapp-message-formats.pdf
 code-review-findings.pdf
+
+# Python bytecode. db.py (a standalone Flask DB browser, no part of this app)
+# is run locally from time to time and leaves these behind.
+__pycache__/
+*.pyc
