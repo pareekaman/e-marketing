@@ -317,7 +317,7 @@ const _startupMigrationsPromise = (async () => {
     to_user INT NOT NULL,
     requested_by INT NOT NULL,
     status ENUM('pending','approved','rejected') DEFAULT 'pending',
-    note TEXT DEFAULT '',
+    note TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
@@ -409,12 +409,12 @@ const _startupMigrationsPromise = (async () => {
 
   // ── Column additions (safe ALTERs from previous versions) ─────
   await sa(`ALTER TABLE fms_sheets ADD COLUMN fms_name VARCHAR(255) DEFAULT '' AFTER id`);
-  await sa(`ALTER TABLE fms_steps ADD COLUMN show_cols TEXT DEFAULT '' AFTER extra_col`);
+  await sa(`ALTER TABLE fms_steps ADD COLUMN show_cols TEXT AFTER extra_col`);
   await sa(`ALTER TABLE fms_steps ADD COLUMN delay_reason_col VARCHAR(10) DEFAULT '' AFTER show_cols`);
   await sa(`ALTER TABLE fms_steps ADD COLUMN doer_name_col VARCHAR(10) DEFAULT '' AFTER delay_reason_col`);
   await sa(`ALTER TABLE users ADD COLUMN department VARCHAR(255) DEFAULT '' AFTER phone`);
   await sa(`ALTER TABLE users ADD COLUMN week_off VARCHAR(50) DEFAULT '' AFTER department`);
-  await sa(`ALTER TABLE users ADD COLUMN extra_off TEXT DEFAULT '' AFTER week_off`);
+  await sa(`ALTER TABLE users ADD COLUMN extra_off TEXT AFTER week_off`);
   await sa(`ALTER TABLE users ADD COLUMN notification_email VARCHAR(255) DEFAULT '' AFTER email`);
   await sa(`ALTER TABLE users ADD COLUMN exclude_from_reminder TINYINT(1) DEFAULT 0 AFTER extra_off`);
   await sa(`ALTER TABLE users ADD COLUMN extra_access TEXT DEFAULT NULL AFTER exclude_from_reminder`);
@@ -477,7 +477,7 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE checklist_tasks ADD INDEX idx_client (client_id)`);
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN col_letter VARCHAR(10) DEFAULT '' AFTER row_label`);
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN field_type VARCHAR(20) DEFAULT 'text' AFTER col_letter`);
-  await sa(`ALTER TABLE fms_extra_rows ADD COLUMN dropdown_options TEXT DEFAULT '' AFTER field_type`);
+  await sa(`ALTER TABLE fms_extra_rows ADD COLUMN dropdown_options TEXT AFTER field_type`);
   // Required flag — default 1 so existing rows continue to be mandatory (backward compat)
   await sa(`ALTER TABLE fms_extra_rows ADD COLUMN required TINYINT(1) DEFAULT 1 AFTER dropdown_options`);
   // Add new handlers to Pre-Order FMS "Handle by Doer Name" dropdown
@@ -494,7 +494,7 @@ const _startupMigrationsPromise = (async () => {
     photo LONGTEXT DEFAULT NULL,
     item_condition ENUM('new','good','fair','poor') DEFAULT 'good',
     status ENUM('available','assigned','damaged','retired') DEFAULT 'available',
-    notes TEXT DEFAULT '',
+    notes TEXT,
     created_by INT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -510,7 +510,7 @@ const _startupMigrationsPromise = (async () => {
     assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     returned_at TIMESTAMP NULL DEFAULT NULL,
     handover_status ENUM('active','pending_handover','returned') DEFAULT 'active',
-    handover_notes TEXT DEFAULT '',
+    handover_notes TEXT,
     INDEX idx_item (item_id),
     INDEX idx_user (user_id),
     INDEX idx_handover (handover_status)
@@ -557,11 +557,11 @@ const _startupMigrationsPromise = (async () => {
     status ENUM('Scheduled','Rescheduled','Selected','Rejected','Offer Sent') DEFAULT 'Scheduled',
     reschedule_date DATE DEFAULT NULL,
     reschedule_time VARCHAR(20) DEFAULT '',
-    reschedule_reason TEXT DEFAULT '',
+    reschedule_reason TEXT,
     joining_date DATE DEFAULT NULL,
     offer_sent TINYINT(1) DEFAULT 0,
     salary VARCHAR(100) DEFAULT '',
-    notes TEXT DEFAULT '',
+    notes TEXT,
     meeting_link VARCHAR(1024) DEFAULT '',
     interviewer_phone VARCHAR(50) DEFAULT '',
     created_by INT DEFAULT NULL,
@@ -579,8 +579,8 @@ const _startupMigrationsPromise = (async () => {
     action VARCHAR(255) DEFAULT '',
     type ENUM('text','image','file') DEFAULT 'text',
     status ENUM('Sent','Failed') DEFAULT 'Failed',
-    error_detail TEXT DEFAULT '',
-    payload_json LONGTEXT DEFAULT '',
+    error_detail TEXT,
+    payload_json LONGTEXT,
     retry_count INT DEFAULT 0,
     last_retry_at TIMESTAMP NULL DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -591,7 +591,7 @@ const _startupMigrationsPromise = (async () => {
   // Add columns to existing installs (no "IF NOT EXISTS" — invalid syntax on
   // MySQL 5.7, which silently no-ops the whole ALTER via sa()'s catch-all;
   // sa() already makes these idempotent, so plain ADD COLUMN is correct here)
-  await sa(`ALTER TABLE hrm_candidates ADD COLUMN reschedule_reason TEXT DEFAULT ''`);
+  await sa(`ALTER TABLE hrm_candidates ADD COLUMN reschedule_reason TEXT`);
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN offer_drive_id VARCHAR(500) DEFAULT NULL`);
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN offer_token VARCHAR(64) DEFAULT NULL`);
   await sa(`ALTER TABLE hrm_candidates ADD COLUMN offer_html MEDIUMTEXT DEFAULT NULL`);
@@ -696,7 +696,7 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE tasks ADD COLUMN sender_name VARCHAR(255) DEFAULT NULL`);
   await sa(`ALTER TABLE tasks ADD COLUMN due_date DATE DEFAULT NULL`);
   await sa(`ALTER TABLE tasks ADD COLUMN priority ENUM('low','medium','high') DEFAULT 'low'`);
-  await sa(`ALTER TABLE tasks ADD COLUMN remarks TEXT DEFAULT ''`);
+  await sa(`ALTER TABLE tasks ADD COLUMN remarks TEXT`);
   await sa(`ALTER TABLE tasks ADD COLUMN client_id INT DEFAULT NULL`);
   await sa(`ALTER TABLE tasks ADD COLUMN url VARCHAR(2048) DEFAULT NULL`);
   await sa(`ALTER TABLE tasks ADD COLUMN approved_task_id INT DEFAULT NULL`);
@@ -1301,7 +1301,7 @@ app.get('/api/setup', async (req, res) => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, 'users table');
     await sa(`ALTER TABLE users ADD COLUMN user_role ENUM('admin','hod','pc','user') DEFAULT NULL AFTER role`, 'users.user_role');
-    await sa(`ALTER TABLE users ADD COLUMN extra_off TEXT DEFAULT '' AFTER week_off`, 'users.extra_off');
+    await sa(`ALTER TABLE users ADD COLUMN extra_off TEXT AFTER week_off`, 'users.extra_off');
     await sa(`ALTER TABLE users ADD COLUMN exclude_from_reminder TINYINT(1) DEFAULT 0 AFTER extra_off`, 'users.exclude_from_reminder');
     await sa(`ALTER TABLE users ADD COLUMN extra_access TEXT DEFAULT NULL AFTER exclude_from_reminder`, 'users.extra_access');
     // Forgot-password OTP (team members only). Hash of the 6-digit code, its
@@ -5334,12 +5334,12 @@ const _clientsTableMigrationsPromise = (async () => {
     client_id INT NOT NULL,
     employee_id INT NOT NULL,
     rating TINYINT NOT NULL,
-    description TEXT DEFAULT '',
+    description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     KEY idx_cfb_client (client_id),
     KEY idx_cfb_employee (employee_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
-  await sa(`ALTER TABLE client_feedback ADD COLUMN recipients TEXT DEFAULT ''`);
+  await sa(`ALTER TABLE client_feedback ADD COLUMN recipients TEXT`);
   // Allow "client" as a login role + back-link users to clients so the client
   // portal can resolve "my client" from the session.
   await sa(`ALTER TABLE users MODIFY COLUMN role ENUM('admin','hod','pc','user','client') DEFAULT 'user'`);
