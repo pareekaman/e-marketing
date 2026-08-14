@@ -118,6 +118,74 @@ const db = {
   end: (...args) => _rawPool.end(...args),
 };
 
+// ══════════════════════════════════════════════════════
+// COLD-START MIGRATION GUARD
+// ══════════════════════════════════════════════════════
+// The two migration blocks below issue ~155 statements one at a time, and the
+// /api middleware awaits both before serving ANY request. On Vercel that toll
+// was paid in full on every cold start — which is why a plain refresh stayed
+// slow long after the deploy had finished, not just right after it.
+//
+// The marker is a HASH OF THIS FILE, not a hand-bumped version number and not
+// a deployment id. Every migration statement lives in this file, so the hash
+// changes precisely when the schema can have changed: edit server.js and the
+// migrations replay once, then every later cold start skips them. There is
+// nothing to remember when adding a table or a column — which is the whole
+// point of not using a version constant. A Vercel deployment id was the other
+// candidate and was rejected: it needs "expose System Environment Variables"
+// switched on to exist at all, and any env var that turned out to be stable
+// across deploys would skip a real migration. The file hash cannot be stale.
+//
+// It fails OPEN wherever it is unsure — file unreadable, no marker row, a
+// marker that does not match, or any error whatsoever — and then behaves
+// exactly as it did before. The worst case is the old speed, never a migration
+// that quietly did not run.
+//
+// To force a full replay (e.g. after changing the schema by hand):
+//   DELETE FROM app_settings WHERE key_name='schema_deploy_marker';
+const _DEPLOY_ID = (() => {
+  try {
+    return require('crypto').createHash('sha1')
+      .update(require('fs').readFileSync(__filename)).digest('hex');
+  } catch (e) {
+    return ''; // cannot read own source → never skip, migrate as before
+  }
+})();
+
+// Byte-identical to the app_settings table created in the clients migration
+// block, so this is a no-op once that has ever run. It has to be repeated here
+// because the marker must be readable BEFORE either block may skip itself.
+const _APP_SETTINGS_DDL = `CREATE TABLE IF NOT EXISTS app_settings (
+    key_name  VARCHAR(100) PRIMARY KEY,
+    value     TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`;
+
+let _migrationsSkipped = false;
+let _migrationGuardPromise = null;
+
+// Memoised: both migration blocks ask, but this costs 2 queries per cold start,
+// not 2 per caller.
+function _migrationsAlreadyApplied() {
+  if (!_migrationGuardPromise) _migrationGuardPromise = (async () => {
+    if (!_DEPLOY_ID) return false;
+    try {
+      await db.query(_APP_SETTINGS_DDL);
+      const [rows] = await db.query(
+        `SELECT value FROM app_settings WHERE key_name='schema_deploy_marker'`);
+      const applied = rows.length > 0 && rows[0].value === _DEPLOY_ID;
+      if (applied) {
+        _migrationsSkipped = true;
+        console.log('  ⏩ Schema already migrated for this deploy — skipping ~155 statements');
+      }
+      return applied;
+    } catch (e) {
+      return false; // any doubt at all → migrate, exactly as before
+    }
+  })();
+  return _migrationGuardPromise;
+}
+
 (async () => {
   try {
     await db.query('SELECT 1');
@@ -137,6 +205,7 @@ const db = {
 // otherwise begin handling requests while ALTERs are still in flight — which
 // causes "Unknown column" errors for newly-added columns.
 const _startupMigrationsPromise = (async () => {
+  if (await _migrationsAlreadyApplied()) return;
   const sa = async (sql) => { try { await db.query(sql); } catch(e) { /* silent — column/table may already exist */ } };
 
   // ── Base tables (CREATE IF NOT EXISTS) ────────────────
@@ -5140,6 +5209,7 @@ app.get('/api/debug', requireAuth, requireAdmin, async (req, res) => {
 
 // Auto-create new tables on startup (safe, runs once per cold start)
 const _clientsTableMigrationsPromise = (async () => {
+  if (await _migrationsAlreadyApplied()) return;
   const sa = async (sql) => { try { await db.query(sql); } catch(e){} };
   await sa(`CREATE TABLE IF NOT EXISTS clients (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -5429,6 +5499,28 @@ const _clientsTableMigrationsPromise = (async () => {
   await seedPaymentRoleIds();
 
   console.log('  ✅ Daily Task + Meetings tables ready');
+})();
+
+// Stamp the marker only once BOTH migration blocks have finished, so a cold
+// start that dies halfway leaves no marker and the next one replays in full.
+// Two instances racing here is harmless — the DDL is idempotent and the write
+// is an upsert. This sits below both promises on purpose: they are `const`, so
+// naming _clientsTableMigrationsPromise any earlier would hit the temporal
+// dead zone. See the cold-start migration guard near the top of this file.
+const _migrationMarkerPromise = (async () => {
+  if (!_DEPLOY_ID) return;
+  try {
+    await _startupMigrationsPromise;
+    await _clientsTableMigrationsPromise;
+    if (_migrationsSkipped) return; // marker already matches — nothing to write
+    await db.query(
+      `INSERT INTO app_settings (key_name, value) VALUES ('schema_deploy_marker', ?)
+       ON DUPLICATE KEY UPDATE value = VALUES(value)`, [_DEPLOY_ID]);
+    console.log('  ✅ Schema marker stamped — later cold starts will skip migrations');
+  } catch (e) {
+    // No marker written → the next cold start simply migrates again, as before.
+    console.warn('  ⚠️ Schema marker not stamped:', e.message);
+  }
 })();
 
 // ── WhatsApp helper (Aumpfy API) ──────────────────────
