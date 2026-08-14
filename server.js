@@ -2990,6 +2990,95 @@ app.get('/api/mis', requireAuth, requireMisViewer, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ══════════════════════════════════════════════════════
+// FMS BATCH LOADERS
+// ══════════════════════════════════════════════════════
+// The three FMS reports below (/api/fms-dashboard, /api/mis/all, /api/mis/fms)
+// each used to walk sheet-by-sheet and then step-by-step, issuing one query per
+// sheet for its steps and one per step for its doers. With connectionLimit: 1
+// those run strictly one after another, so a report over S sheets averaging M
+// steps cost 1 + S + S×M serialized round trips — 141 of them at S=20, M=6.
+// These two helpers fetch the same rows in one query each; the callers group in
+// memory and map the result into whatever shape they used before.
+//
+// Both take an id list and return a Map, and both short-circuit on an empty
+// list: `IN ()` is a MySQL syntax error, not an empty result set.
+
+// fms_id -> steps[]. ORDER BY mirrors the per-sheet query's `step_order ASC`
+// exactly; ties stay as arbitrary as they already were.
+async function fmsStepsBySheet(sheetIds) {
+  const out = new Map();
+  if (!sheetIds.length) return out;
+  const [rows] = await db.query(
+    `SELECT * FROM fms_steps WHERE fms_id IN (${sheetIds.map(() => '?').join(',')})
+     ORDER BY fms_id ASC, step_order ASC`, sheetIds);
+  for (const r of rows) {
+    if (!out.has(r.fms_id)) out.set(r.fms_id, []);
+    out.get(r.fms_id).push(r);
+  }
+  return out;
+}
+
+// Same, for the doer-filtered variant /api/fms-dashboard uses for non-admins.
+async function fmsStepsBySheetForUsers(sheetIds, userIds) {
+  const out = new Map();
+  if (!sheetIds.length || !userIds.length) return out;
+  const [rows] = await db.query(
+    `SELECT DISTINCT fst.* FROM fms_steps fst
+     JOIN fms_step_doers fsd ON fsd.step_id=fst.id
+     WHERE fst.fms_id IN (${sheetIds.map(() => '?').join(',')})
+       AND fsd.user_id IN (${userIds.map(() => '?').join(',')})
+     ORDER BY fst.fms_id ASC, fst.step_order ASC`, [...sheetIds, ...userIds]);
+  for (const r of rows) {
+    if (!out.has(r.fms_id)) out.set(r.fms_id, []);
+    out.get(r.fms_id).push(r);
+  }
+  return out;
+}
+
+// step_id -> doer rows, with `cols` naming the same user columns the caller
+// asked for before. The per-step queries carried no ORDER BY and read through
+// idx_step, so rows arrived ordered by (step_id, fsd.id); that is stated
+// explicitly here so the batched read cannot reorder anyone — /api/fms-dashboard
+// joins these names into a display string.
+//
+// step_id is selected only to group by, then deleted: the callers' own queries
+// never returned that column, and one of them hands these rows straight to the
+// client.
+async function fmsDoersByStep(stepIds, cols) {
+  const out = new Map();
+  if (!stepIds.length) return out;
+  const [rows] = await db.query(
+    `SELECT fsd.step_id, ${cols} FROM fms_step_doers fsd
+     JOIN users u ON fsd.user_id=u.id
+     WHERE fsd.step_id IN (${stepIds.map(() => '?').join(',')})
+     ORDER BY fsd.step_id ASC, fsd.id ASC`, stepIds);
+  for (const r of rows) {
+    const k = r.step_id;
+    delete r.step_id;
+    if (!out.has(k)) out.set(k, []);
+    out.get(k).push(r);
+  }
+  return out;
+}
+
+// step_id -> user ids. Deliberately does NOT join users, because the caller it
+// replaces (/api/mis/all) did not either: a doer row whose user has since been
+// deleted still counts there, and a join would silently drop it.
+async function fmsDoerIdsByStep(stepIds) {
+  const out = new Map();
+  if (!stepIds.length) return out;
+  const [rows] = await db.query(
+    `SELECT step_id, user_id FROM fms_step_doers
+     WHERE step_id IN (${stepIds.map(() => '?').join(',')})
+     ORDER BY step_id ASC, id ASC`, stepIds);
+  for (const r of rows) {
+    if (!out.has(r.step_id)) out.set(r.step_id, []);
+    out.get(r.step_id).push(r.user_id);
+  }
+  return out;
+}
+
 // ── FMS Dashboard — row-level pending tasks (like delegation/checklist) ──
 app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
   try {
@@ -3038,26 +3127,23 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
 
     const allRows = [];
 
+    // Steps for every sheet, then doers for every step — two queries, hoisted
+    // out of the loop below. The admin/non-admin split is the same one the
+    // per-sheet query made; it just gets decided once now.
+    const stepsBySheet = (isAdmin && (!filterEmployee || filterEmployee === 'all'))
+      ? await fmsStepsBySheet(fmsList.map(s => s.id))
+      : await fmsStepsBySheetForUsers(fmsList.map(s => s.id), targetUserIds);
+    const doersByStep = await fmsDoersByStep(
+      [...stepsBySheet.values()].flat().map(s => s.id), 'u.id, u.name');
+
     for (const sheet of fmsList) {
       const fmsName = sheet.fms_name || sheet.sheet_name;
 
-      // Get steps for this FMS that are assigned to targetUserIds
-      let steps;
-      if (isAdmin && (!filterEmployee || filterEmployee === 'all')) {
-        [steps] = await db.query('SELECT * FROM fms_steps WHERE fms_id=? ORDER BY step_order ASC', [sheet.id]);
-      } else {
-        [steps] = await db.query(
-          `SELECT DISTINCT fst.* FROM fms_steps fst
-           JOIN fms_step_doers fsd ON fsd.step_id=fst.id
-           WHERE fst.fms_id=? AND fsd.user_id IN (${targetUserIds.map(()=>'?').join(',')})
-           ORDER BY fst.step_order ASC`, [sheet.id, ...targetUserIds]);
-      }
+      const steps = stepsBySheet.get(sheet.id) || [];
       if (!steps.length) continue;
 
-      // Get doer names for each step
       for (const step of steps) {
-        const [doers] = await db.query(
-          `SELECT u.id, u.name FROM fms_step_doers fsd JOIN users u ON fsd.user_id=u.id WHERE fsd.step_id=?`, [step.id]);
+        const doers = doersByStep.get(step.id) || [];
         step.doerNames = doers.map(d => d.name).join(', ');
         step.doerIds = doers.map(d => d.id);
       }
@@ -3271,14 +3357,16 @@ app.get('/api/mis/all', requireAuth, requireMisViewer, async (req, res) => {
       if (allSheets.length) {
         const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']).catch(()=>null);
         if (sheetsApi) {
+          const stepsBySheet = await fmsStepsBySheet(allSheets.map(s => s.id));
+          const doerIdsByStep = await fmsDoerIdsByStep(
+            [...stepsBySheet.values()].flat().map(s => s.id));
+
           for (const sheet of allSheets) {
-            const [steps] = await db.query('SELECT * FROM fms_steps WHERE fms_id=? ORDER BY step_order ASC', [sheet.id]);
+            const steps = stepsBySheet.get(sheet.id) || [];
             if (!steps.length) continue;
             // Doers per step
             for (const step of steps) {
-              const [doers] = await db.query(
-                `SELECT fsd.user_id FROM fms_step_doers fsd WHERE fsd.step_id=?`, [step.id]);
-              step.doerIds = doers.map(d => d.user_id);
+              step.doerIds = doerIdsByStep.get(step.id) || [];
             }
             try {
               const spreadsheetId = extractSpreadsheetId(sheet.sheet_id);
@@ -3454,14 +3542,16 @@ app.get('/api/mis/fms', requireAuth, requireMisViewer, async (req, res) => {
 
     const results = [];
 
+    const stepsBySheet = await fmsStepsBySheet(sheets.map(s => s.id));
+    const doersByStep = await fmsDoersByStep(
+      [...stepsBySheet.values()].flat().map(s => s.id),
+      'fsd.user_id, u.name, u.department');
+
     for (const sheet of sheets) {
       // Get all steps with doers
-      const [steps] = await db.query('SELECT * FROM fms_steps WHERE fms_id=? ORDER BY step_order ASC', [sheet.id]);
+      const steps = stepsBySheet.get(sheet.id) || [];
       for (const step of steps) {
-        const [doers] = await db.query(
-          `SELECT fsd.user_id, u.name, u.department FROM fms_step_doers fsd
-           JOIN users u ON fsd.user_id=u.id WHERE fsd.step_id=?`, [step.id]);
-        step.doers = doers;
+        step.doers = doersByStep.get(step.id) || [];
       }
 
       // HOD: only the steps that have doers from their department
