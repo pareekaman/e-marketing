@@ -5041,6 +5041,36 @@ function canDo(action) {
   return ME.can.actions.includes(action);
 }
 
+// ── Ads Dashboard ────────────────────────────────────────────────────────
+// The campaign dashboard is a separate app on its own domain with its own
+// login. It answers with X-Frame-Options: DENY and frame-ancestors 'none',
+// so it cannot be embedded as a page here — the button opens a new tab.
+//
+// Gated on name, the same way the server already singles these two out for
+// feedback recipients and payment approvals. Presentation only: the URL is
+// public and the other app authenticates its own visitors, so hiding the
+// button is tidiness, not a permission boundary — which is also why it is
+// not in PERM_TREE and not revocable from Access Control.
+const ADS_DASHBOARD_URL   = 'https://emk-ads.vercel.app/';
+const ADS_DASHBOARD_NAMES = ['abhishek jain', 'simran gurnani'];
+
+function canSeeAdsDashboard() {
+  return !!ME && ADS_DASHBOARD_NAMES.includes((ME.name || '').trim().toLowerCase());
+}
+
+// loadDashboard() rewrites #dashBtns wholesale, and returns early when the
+// stats API fails — so both call this, and it re-adds the button only when
+// it is genuinely missing rather than stacking duplicates.
+function renderAdsDashboardBtn() {
+  const wrap = document.getElementById('dashBtns');
+  if (!wrap || !canSeeAdsDashboard()) return;
+  if (document.getElementById('adsDashboardBtn')) return;
+  wrap.insertAdjacentHTML('afterbegin',
+    `<button id="adsDashboardBtn" class="btn" style="background:#0ea5e9;color:#fff"
+       title="Opens the ads dashboard in a new tab"
+       onclick="window.open('${ADS_DASHBOARD_URL}','_blank','noopener')">📊 Ads Dashboard</button>`);
+}
+
 let dashType = 'all';
 let tasksType = 'delegation';
 let dashChartInst = null;
@@ -5154,6 +5184,10 @@ async function init() {
         refreshNavGroupVisibility();
       }).catch(() => {});
     }
+
+    // Ads Dashboard button — painted here so it is on screen before the
+    // dashboard stats finish loading, and still there if that call fails.
+    renderAdsDashboardBtn();
 
     // Action buttons driven by canDo()
     if (canDo('delete_task')) {
@@ -7587,6 +7621,9 @@ async function loadDashboard(light = false) {
       if (db2) db2.innerHTML = btns.join('');
     }
   }
+  // Outside the role gate above: the two names it is shown to are matched by
+  // name, not by role, and the innerHTML assignment just wiped the button.
+  renderAdsDashboardBtn();
 
   // Combine both types for the unified pending table
   const allTodayPending = [...(dDel.todayPending||[]), ...(dChl.todayPending||[])];
