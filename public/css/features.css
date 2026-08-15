@@ -286,6 +286,13 @@
 
 /* Hours pill in list view */
 .lv-hours-pill{background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:6px;font-size:10px;font-weight:700;margin-left:4px;}
+/* People paste numbered lists into a task description, so the line breaks they
+   typed have to survive. HTML collapses newlines into spaces by default, which
+   turned every pasted list into one paragraph. pre-wrap keeps the breaks and
+   still wraps long lines; inline-block so the wrapper does not swallow the
+   spacing around the client name and the duration beside it. */
+.lv-desc{ white-space:pre-wrap; display:inline; }
+
 /* "Read more" on a long Extra Working task description. Styled as a link, not
    a button, because it reveals text in place rather than performing an action. */
 .lv-desc-more{

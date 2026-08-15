@@ -103,12 +103,23 @@ let _lvDescSeq = 0;
 
 function lvDescHtml(text){
   const full = String(text || '');
-  const words = full.trim().split(/\s+/);
-  if (words.length <= LV_DESC_PREVIEW_WORDS) return dtEscape(full);
-  const short = words.slice(0, LV_DESC_PREVIEW_WORDS).join(' ');
+  // Walk the words to find where the 50th one ENDS, then slice the original
+  // string there. Splitting on whitespace and rejoining with spaces would be
+  // simpler and would flatten the writer's line breaks — people paste numbered
+  // lists into this field, and a list that arrives as one paragraph is not the
+  // thing they wrote. The .lv-desc wrapper renders those breaks (pre-wrap);
+  // the text itself is still escaped, never injected as markup.
+  const re = /\S+/g;
+  let m, words = 0, cutAt = -1;
+  while ((m = re.exec(full)) !== null) {
+    words++;
+    if (words === LV_DESC_PREVIEW_WORDS) cutAt = m.index + m[0].length;
+  }
+  if (words <= LV_DESC_PREVIEW_WORDS) return `<span class="lv-desc">${dtEscape(full)}</span>`;
+  const short = full.slice(0, cutAt);
   const id = 'lvd' + (++_lvDescSeq);
-  return `<span id="${id}-s">${dtEscape(short)}… </span>` +
-         `<span id="${id}-f" style="display:none">${dtEscape(full)} </span>` +
+  return `<span class="lv-desc" id="${id}-s">${dtEscape(short)}… </span>` +
+         `<span class="lv-desc" id="${id}-f" style="display:none">${dtEscape(full)} </span>` +
          `<button type="button" class="lv-desc-more" onclick="lvToggleDesc('${id}',this)">Read more</button>`;
 }
 
