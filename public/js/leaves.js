@@ -555,7 +555,15 @@ function lvExtraDelRow(key, idx){
 async function saveLeave(){
   const errBox = document.getElementById('leaveErr');
   errBox.style.display = 'none';
-  const showErr = (m) => { errBox.textContent = m; errBox.style.display = 'block'; };
+  // Scroll the message into view. The error box sits at the top of the modal
+  // and the Save button is at the bottom, so by the time someone presses Save
+  // the message appears off-screen — the form looks like it did nothing.
+  const showErr = (m) => {
+    errBox.textContent = m;
+    errBox.style.display = 'block';
+    try { errBox.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    catch (e) { errBox.scrollIntoView(); }   // older browsers: no options object
+  };
 
   if (!LEAVE_PICKED_TYPE) return showErr('Please pick a Leave Type');
   if (!LEAVE_SELECTED.size) return showErr('Select at least one date');
