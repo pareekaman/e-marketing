@@ -1,0 +1,16113 @@
+// ══════════════════════════════════════════════════════
+// DELEGATE BY ME — shows all tasks delegated by the current logged-in user to others
+// ══════════════════════════════════════════════════════
+let _dbmTasks = [];
+let _dbmStatusFilter = 'pending';
+
+async function openDelegateByMeModal() {
+  _dbmStatusFilter = 'pending';
+  document.querySelectorAll('#delegateByMeModal .tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('dbmTabPending').classList.add('active');
+  const searchEl = document.getElementById('dbmSearch');
+  if (searchEl) searchEl.value = '';
+  document.getElementById('delegateByMeModal').classList.add('open');
+  document.getElementById('dbmContent').innerHTML = '<div class="empty">Loading…</div>';
+
+  // Fetch delegation tasks only (checklist tasks are mostly self-assigned)
+  const data = await api('/api/tasks?type=delegation&mine=1');
+  let tasks = [];
+  if (data.grouped) {
+    data.grouped.forEach(g => g.tasks.forEach(t => tasks.push(t)));
+  } else {
+    tasks = data.tasks || [];
+  }
+  // Only tasks assigned by me (assigned_by === ME.id) — server also filters but double-checking client-side
+  _dbmTasks = tasks.filter(t => String(t.assigned_by) === String(ME.id));
+  renderDbmTable();
+}
+
+function filterDbmStatus(status, el) {
+  _dbmStatusFilter = status;
+  document.querySelectorAll('#delegateByMeModal .tab-group .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderDbmTable();
+}
+
+function renderDbmTable() {
+  const search = (document.getElementById('dbmSearch')?.value || '').toLowerCase();
+  const filtered = _dbmTasks.filter(t => {
+    const matchStatus = _dbmStatusFilter === 'all' || t.status === _dbmStatusFilter;
+    const matchSearch = !search ||
+      (t.description||'').toLowerCase().includes(search) ||
+      (t.assignedToName||'').toLowerCase().includes(search) ||
+      (t.due_date||'').includes(search) ||
+      (t.delegated_on||'').includes(search) ||
+      (t.remarks||'').toLowerCase().includes(search);
+    return matchStatus && matchSearch;
+  });
+
+  if (!filtered.length) {
+    document.getElementById('dbmContent').innerHTML =
+      `<div class="empty" style="padding:30px;text-align:center;color:#94a3b8">
+        ${_dbmStatusFilter === 'pending' ? 'You have not delegated any pending tasks yet' : 'None of your delegated tasks are completed yet'}
+      </div>`;
+    return;
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+  const canEdit = canDo('edit_task');
+  const canDelete = canDo('delete_task');
+  const rows = filtered.map(t => {
+    const isOverdue = t.status === 'pending' && t.due_date && t.due_date < today;
+    return `<tr>
+      <td style="font-size:13px">${esc(t.description||'—')}</td>
+      <td style="white-space:nowrap;font-size:13px">${esc(t.assignedToName||'—')}</td>
+      <td style="white-space:nowrap;font-size:12px;color:#64748b">${fmtDate(t.delegated_on||'')||'—'}</td>
+      <td style="white-space:nowrap;font-size:12px">${fmtDate(t.due_date||'')||'—'}${isOverdue?' <span style="color:#dc2626;font-weight:600;font-size:10px">⏰ Overdue</span>':''}</td>
+      <td style="font-size:12px;color:#64748b">${esc(t.remarks||'—')}</td>
+      <td><span class="status-badge ${['pending','completed','revised'].includes(t.status)?t.status:'pending'}">${t.status==='revised'?'Revision':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
+      <td style="white-space:nowrap">
+        ${canEdit  ? `<button class="action-btn edit" style="padding:4px 7px" onclick="openEditTask(${t.id},'delegation')" title="Edit">✏️</button>` : ''}
+        ${canDelete? `<button class="action-btn delete" style="padding:4px 7px;margin-left:3px" onclick="deleteTask(${t.id},'delegation')" title="Delete">🗑</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('dbmContent').innerHTML = `
+    <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#fff">
+      <div style="overflow-x:auto">
+        <table style="width:100%;min-width:600px">
+          <thead>
+            <tr>
+              <th>Task</th><th>Assigned To</th><th>Delegated On</th><th>Due Date</th><th>Remarks</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div style="padding:8px 12px;background:#f8fafc;border-top:1px solid #f1f5f9;font-size:12px;color:#64748b">
+        Total: <strong>${filtered.length}</strong> task(s) delegated by you
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════
+let ME = null;
+// 'paymentreq' and 'feedback' are in every role's defaults on purpose: the
+// Payment Request nav used to be shown to everyone unconditionally, and the
+// Feedback nav is granted by /api/feedback/access. Both are now additionally
+// gated on canSee(), so they must be present by default or every non-admin
+// would lose a page they can reach today. See also the perm_pages_backfill_v1
+// migration in server.js, which does the same for already-saved overrides.
+// ROLE_DEFAULTS used to live here — a second copy of SERVER_ROLE_DEFAULTS that
+// had to be edited in step with it by hand, with only a comment in server.js
+// holding the two together. It is gone. The server resolves the cascade once
+// and /api/me returns the answer as ME.can; the panel fetches role defaults
+// from /api/access/role-defaults. One definition, one file.
+//
+// Both checks fail closed when ME.can is missing. That is the point: an absent
+// answer must not become a guess, or the browser starts deciding again.
+function canSee(page) {
+  if (!ME || !ME.can) return false;
+  if (ME.can.all) return true;
+  return ME.can.pages.includes(page);
+}
+
+function canDo(action) {
+  if (!ME || !ME.can) return false;
+  if (ME.can.all) return true;
+  return ME.can.actions.includes(action);
+}
+
+// ── Manpur Task Manager ──────────────────────────────────────────────────
+// "Manpur Patrol Pump — Task Manager" is a separate app on its own domain,
+// not a page in this one, so the button opens a new tab instead of routing
+// through navigate(). Unlike most of our deploys it does NOT send
+// X-Frame-Options, so an in-app iframe page is possible if this is ever
+// wanted as a real tab rather than a link out.
+//
+// Gated on name alone. This is presentation only: the URL is public — a
+// plain request returns the whole page with no login redirect — so hiding
+// the button keeps a dashboard uncluttered for the 36 people it means
+// nothing to, and is not a permission boundary. That is why it is not in
+// PERM_TREE and not revocable from Access Control; listing it there would
+// advertise an enforcement that does not exist.
+const MANPUR_TASKS_URL   = 'https://manpur-patrol-pump-task-manager.vercel.app/';
+const MANPUR_TASKS_NAMES = ['abhishek jain'];
+
+function canSeeManpurTasks() {
+  return !!ME && MANPUR_TASKS_NAMES.includes((ME.name || '').trim().toLowerCase());
+}
+
+// loadDashboard() rewrites #dashBtns wholesale, and returns early when the
+// stats API fails — so both call this, and it re-adds the button only when
+// it is genuinely missing rather than stacking duplicates.
+function renderManpurTasksBtn() {
+  const wrap = document.getElementById('dashBtns');
+  if (!wrap || !canSeeManpurTasks()) return;
+  if (document.getElementById('manpurTasksBtn')) return;
+  wrap.insertAdjacentHTML('afterbegin',
+    `<button id="manpurTasksBtn" class="btn" style="background:#0ea5e9;color:#fff"
+       title="Opens the Manpur Patrol Pump task manager in a new tab"
+       onclick="window.open('${MANPUR_TASKS_URL}','_blank','noopener')">⛽ Manpur Tasks</button>`);
+}
+
+let dashType = 'all';
+let tasksType = 'delegation';
+let dashChartInst = null;
+let dashPerfCharts = { top: null, bottom: null, active: null };
+// Holidays now server-backed — loaded fresh each time the holiday modal opens
+let holidays = [];
+let transferMode = false;
+let pendingTransferTaskIds = []; // task IDs that already have pending transfer
+// Dashboard date sort: 0=default(API order), 1=asc(oldest first), 2=desc(newest first)
+let _dashDateSortState = 0;
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+async function init() {
+  try {
+    const token = localStorage.getItem('authToken');
+    const headers = {'Content-Type': 'application/json'};
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const r = await fetch('/api/me', { credentials: 'include', headers });
+    if (!r.ok) {
+      localStorage.removeItem('authToken');
+      // Carry a ?page= deep link across the login round-trip, so a shared link
+      // still lands on the right tab for someone who wasn't signed in.
+      const next = location.pathname + location.search;
+      window.location.replace(location.search ? '/?next=' + encodeURIComponent(next) : '/');
+      return;
+    }
+    ME = await r.json();
+    if (!ME || !ME.id) { window.location.replace('/'); return; }
+    // Client logins belong on the dedicated /client page, not the team app.
+    if (ME.role === 'client') { window.location.replace('/client'); return; }
+    const initials = ME.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+    document.getElementById('sidebarName').textContent = ME.name;
+    const roleLabel = ME.role==='admin' ? '👑 Admin' : ME.role==='hod' ? '🏢 HOD' : ME.role==='pc' ? '🖥️ PC' : ME.role==='client' ? '🏢 Client' : '👤 Employee';
+    document.getElementById('sidebarRole').textContent = roleLabel;
+    document.getElementById('pName').value = ME.name;
+    document.getElementById('pEmail').value = ME.email;
+    document.getElementById('pNotifEmail').value = ME.notification_email || '';
+    document.getElementById('pPhone').value = ME.phone || '';
+    document.getElementById('pBirthday').value = ME.birthday ? ME.birthday.split('T')[0] : '';
+    document.getElementById('pJoiningDate').value = ME.joining_date ? ME.joining_date.split('T')[0] : '';
+    document.getElementById('profileNameDisplay').textContent = ME.name;
+    document.getElementById('profileRoleDisplay').textContent = roleLabel;
+
+    setAvatarDisplay(ME.profile_image, initials);
+
+    // Dashboard user-switcher (top-right) — admins, or while impersonating, can
+    // jump straight into any user's dashboard from here.
+    if (ME.role === 'admin' || ME.impersonatedBy) buildDashUserSwitcher();
+
+    restoreNavGroupState();
+
+    // Apply nav visibility via canSee() — driven by per-user permissions
+    const NAV_MAP = {
+      'nav-users':        'users',
+      'nav-mis':          'mis',
+      'nav-race':         'race',
+      'nav-fms':          'fms',
+      'nav-clients':      'clients',
+      'nav-compliance':   'compliance',
+      'nav-hrm':          'hrm',
+      'nav-meetings':     'meetings',
+      'nav-inventory':    'inventory',
+      'nav-dms':          'dms',
+      // These five were previously ungated — their sidebar entry was always
+      // visible, so a "No Access" grant in the panel silently did nothing.
+      // All of them are in every role's defaults, so adding them here changes
+      // nothing until an admin actually revokes one.
+      'nav-alltasks':     'alltasks',
+      'nav-approvals':    'approvals',
+      'nav-daily':        'daily',
+      'nav-leaves':       'leaves',
+    };
+    for (const [navId, page] of Object.entries(NAV_MAP)) {
+      const el = document.getElementById(navId);
+      if (el) el.style.display = canSee(page) ? 'flex' : 'none';
+    }
+    // Credit Cards nav — all admins (full access), plus CC_VIEWERS (read-only)
+    const ccNav = document.getElementById('nav-creditcards');
+    if (ccNav) ccNav.style.display = (ccCanView() && canSee('creditcards')) ? 'flex' : 'none';
+    // Logs nav — admin only, and deliberately not grantable via extra_access /
+    // user_permissions: the archive exposes every deleted row app-wide.
+    const logsNav = document.getElementById('nav-logs');
+    if (logsNav) logsNav.style.display = (ME.role === 'admin' && canSee('logs')) ? 'flex' : 'none';
+    // Daily Reports nav — admin only, same shape as Logs. It sat in NAV_MAP on
+    // canSee() alone, which let a stale extra_access tick from the Users tab
+    // show the page to a plain user whose Access Control row still read
+    // "No Access" — the two panels disagreed and the sidebar believed the
+    // wrong one. Every endpoint behind this page is requireAdmin anyway.
+    const drNav = document.getElementById('nav-dailyreports');
+    if (drNav) drNav.style.display = (ME.role === 'admin' && canSee('dailyreports')) ? 'flex' : 'none';
+    // Payment Request nav — every role has it in its server-side default, but
+    // it is revocable per user from Access Control.
+    const prNav = document.getElementById('nav-paymentreq');
+    if (prNav) prNav.style.display = canSee('paymentreq') ? 'flex' : 'none';
+    refreshNavGroupVisibility();
+
+    // Mirror the sidebar into the mobile bottom tab bar, and keep it in sync
+    // as later async permission checks (feedback, fms-tasks) toggle nav items.
+    initMobileBottomNavSync();
+
+    // Feedback nav — the server decides who is a valid recipient (HOD / fixed
+    // recipients); Access Control can only take that away, never grant it, so
+    // both checks must pass.
+    const fbNav = document.getElementById('nav-feedback');
+    if (fbNav) {
+      fbNav.style.display = 'none'; // hidden until access confirmed
+      api('/api/feedback/access').then(r => {
+        if (r && r.canAccess && canSee('feedback')) fbNav.style.display = 'flex';
+        refreshNavGroupVisibility();
+      }).catch(() => {});
+    }
+
+    // Manpur Tasks button — painted here so it is on screen before the
+    // dashboard stats finish loading, and still there if that call fails.
+    renderManpurTasksBtn();
+
+    // Action buttons driven by canDo()
+    if (canDo('delete_task')) {
+      const bb = document.getElementById('bulkDeleteBtn');
+      if (bb) bb.style.display = ME.role === 'admin' ? 'inline-flex' : 'none';
+    }
+    if (canDo('set_plan')) {
+      const sp = document.getElementById('setPlanBtn');
+      if (sp) sp.style.display = 'inline-flex';
+    }
+
+    // Leave Tracker — team tab for roles with leave oversight
+    if (canSee('leaves') && (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc' || ME.canViewAllLeaves)) {
+      const tTeam = document.getElementById('lvTabTeam');
+      if (tTeam) tTeam.style.display = 'flex';
+    }
+
+    // FMS Tasks — show if user has fms-tasks permission OR is assigned as a doer
+    (async () => {
+      const fmsNav = document.getElementById('nav-fms-tasks');
+      if (!fmsNav) return;
+      if (canSee('fms-tasks')) { fmsNav.style.display = 'flex'; return; }
+      try {
+        const list = await api('/api/fms-tasks');
+        fmsNav.style.display = (Array.isArray(list) && list.length > 0) ? 'flex' : 'none';
+      } catch { fmsNav.style.display = 'none'; }
+    })();
+    setMinDates();
+    // Client role: hide everything except the client portal nav + auto-route there.
+    // No badges, no Monday check-in, no dashboard loaders for clients.
+    if (ME.role === 'client') {
+      document.querySelectorAll('.sidebar .nav-item').forEach(n => { n.style.display = 'none'; });
+      const cpNav = document.getElementById('nav-client-portal');
+      if (cpNav) cpNav.style.display = 'flex';
+      // Hide the profile nav too — clients don't need profile management here.
+      navigate('client-portal', cpNav);
+      return;
+    }
+    // Restore whichever tab was open before the last refresh, if it's still
+    // valid and visible for this user's permissions — else the dashboard
+    // (already the default "active" page in the markup) stays put.
+    let restored = false;
+    try {
+      // ?page=inventory makes a shareable deep link (there is no router — the
+      // app is one document and navigate() just swaps .page divs). An explicit
+      // link beats the remembered tab, so it is checked first.
+      const wanted = new URLSearchParams(location.search).get('page');
+      const lastPage = wanted || localStorage.getItem('lastPage');
+      // Mirror navigate()'s own role guards so a disallowed saved page doesn't
+      // silently no-op and leave the (still-default) dashboard without its data loaded.
+      // MIS also has to fail the remembered-tab restore when the page is
+      // revoked, not just when the role is wrong — otherwise a revoked hod is
+      // restored onto MIS, every request 403s, and `restored` stays true so
+      // loadDashboard() below never runs. Same condition as requireMisViewer.
+      const blocked = (lastPage === 'mis' && !(canSee('mis') && (ME.role === 'admin' || ME.role === 'hod'))) ||
+                      (lastPage === 'race' && ME.role !== 'admin') ||
+                      (lastPage === 'logs' && ME.role !== 'admin');
+      // canSee() too: a deep link is public, so it must not hand someone a page
+      // their role would never show them in the nav.
+      if (lastPage && lastPage !== 'dashboard' && !blocked
+          && (!wanted || canSee(lastPage) || lastPage === 'profile')
+          && document.getElementById('page-' + lastPage)) {
+        navigate(lastPage);
+        restored = true;
+      }
+    } catch {}
+    if (!restored) loadDashboard();
+    loadApprovalBadge();
+    loadTransferBadge();
+    // Refresh badges every 30 seconds — guard against duplicate intervals on re-init
+    if (window._badgeTimer1) clearInterval(window._badgeTimer1);
+    if (window._badgeTimer2) clearInterval(window._badgeTimer2);
+    window._badgeTimer1 = setInterval(loadApprovalBadge, 30000);
+    window._badgeTimer2 = setInterval(loadTransferBadge, 30000);
+    // Monday weekly check-in — fire-and-forget; modal opens if needed.
+    mwMaybeOpen();
+  } catch(e) { console.error('Init error:', e); window.location.replace('/'); }
+}
+
+// Set avatar in sidebar + profile page
+function setAvatarDisplay(imageData, initials) {
+  const sidebar = document.getElementById('sidebarAvatar');
+  const profile = document.getElementById('profileAvatar');
+
+  if (imageData) {
+    // Sidebar
+    sidebar.style.backgroundImage = `url(${imageData})`;
+    sidebar.style.backgroundSize = 'cover';
+    sidebar.style.backgroundPosition = 'center';
+    sidebar.textContent = '';
+    // Profile
+    profile.style.backgroundImage = `url(${imageData})`;
+    profile.style.backgroundSize = 'cover';
+    profile.style.backgroundPosition = 'center';
+    profile.textContent = '';
+  } else {
+    sidebar.style.backgroundImage = '';
+    sidebar.textContent = initials || '?';
+    profile.style.backgroundImage = '';
+    profile.textContent = initials || '?';
+  }
+}
+
+// View profile photo full-size. No photo set → fall back to the file picker so
+// the click still does something useful.
+function viewProfileImage() {
+  if (!ME || !ME.profile_image) { document.getElementById('profileImgInput').click(); return; }
+  document.getElementById('profileImgViewerImg').src = ME.profile_image;
+  document.getElementById('profileImgViewer').style.display = 'flex';
+}
+function closeProfileImage() {
+  document.getElementById('profileImgViewer').style.display = 'none';
+  document.getElementById('profileImgViewerImg').src = '';
+}
+
+// Handle image file selection
+function handleProfileImage(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { showToast('Image size must be under 2MB','error'); return; }
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const imageData = e.target.result; // base64
+    // Save to DB immediately
+    const r = await api('/api/profile/image','POST',{image: imageData});
+    if (r.error) { showToast(r.error,'error'); return; }
+    ME.profile_image = imageData;
+    const initials = ME.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+    setAvatarDisplay(imageData, initials);
+    showToast('Profile photo updated!');
+  };
+  reader.readAsDataURL(file);
+}
+
+// Remove profile image
+async function removeProfileImage() {
+  if (!await appConfirm('Remove profile photo?')) return;
+  await api('/api/profile/image','POST',{image: null});
+  ME.profile_image = null;
+  const initials = ME.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+  setAvatarDisplay(null, initials);
+  showToast('Profile photo removed!');
+}
+
+function setMinDates() {
+  const today = new Date().toISOString().split('T')[0];
+  ['dDate','cDate','hDate'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.min = today;
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════════
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Scheduler','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⚠️ Client Escalations',paymentreq:'💳 Payment Request',creditcards:'💳 Credit Card Statement',logs:'🗑 Logs'};
+
+// ══════════════════════════════════════════════════════
+// USERS PAGE — TAB SWITCHER + ACCESS CONTROL
+// ══════════════════════════════════════════════════════
+// Global alias — the only escape fn in scope is escapeHtml (defined below init).
+// All my render functions use esc() for brevity.
+const esc = s => escapeHtml(String(s == null ? '' : s));
+// For a value going inside an inline handler, e.g. onclick="fn(${jsArg(name)})".
+// The browser HTML-decodes the attribute and only then parses it as JavaScript,
+// so the value has to survive both passes: JSON.stringify makes it a valid JS
+// string literal (quotes, backslashes, newlines), then escapeHtml keeps it from
+// closing the attribute. Escaping once, either way, is not enough — and hand
+// -rolled apostrophe replacement, which this file used in two places, catches
+// none of the other characters.
+const jsArg = v => escapeHtml(JSON.stringify(String(v == null ? '' : v)));
+
+function switchUsersTab(tab, el) {
+  document.querySelectorAll('#page-users .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('usersSubPanel-users').style.display  = tab === 'users'  ? 'block' : 'none';
+  document.getElementById('usersSubPanel-access').style.display = tab === 'access' ? 'block' : 'none';
+  document.getElementById('usersTabActions').style.display      = tab === 'users'  ? 'flex'  : 'none';
+  if (tab === 'access') renderAccessMatrix();
+}
+
+// Access Control feature list. Each feature gets three levels — No Access /
+// View / Editor — stored on top of the existing {pages,actions} shape so
+// canSee()/canDo() keep working unchanged:
+//   No Access → page absent from perms.pages
+//   View      → page present, none of its action keys granted
+//   Editor    → page present, all of its action keys granted
+//
+// Every feature therefore needs at least one action key or "Editor" would be
+// unstorable; pages with no real gated buttons get a synthetic `edit_<page>`
+// key. `enforced` says whether the app ACTUALLY checks those keys today (i.e.
+// there is a canDo() call site behind them). Where it is false the choice is
+// saved and will start working the moment that page's buttons are wired to
+// canDo(), but right now View and Editor behave the same there — the panel
+// labels those rows rather than pretending otherwise.
+const PERM_TREE = [
+  { page: 'dashboard',    label: 'Dashboard',      icon: '🏠', enforced: false, locked: true,
+    note: 'Always on — this is the landing page every user falls back to',
+    actions: [{ key: 'edit_dashboard', label: 'Edit' }] },
+  { page: 'alltasks',     label: 'All Tasks',      icon: '✅', enforced: true, actions: [
+    { key: 'edit_task',    label: 'Edit' },
+    { key: 'delete_task',  label: 'Delete' },
+    { key: 'reopen_task',  label: 'Reopen' },
+  ]},
+  { page: 'approvals',    label: 'Approvals',      icon: '☑️', enforced: false, actions: [
+    { key: 'approve_revision', label: 'Approve' },
+    { key: 'bulk_approve',     label: 'Bulk' },
+  ]},
+  // readOnly — every /api/mis route is a GET, so there is nothing here to edit.
+  // enforced because the five reads now go through requireMisViewer, which keeps
+  // the admin/hod floor and ANDs canSee('mis') onto it: a revoke bites, a grant
+  // cannot widen. See the note on requireMisViewer for why the floor stays.
+  { page: 'mis',          label: 'MIS Report',     icon: '📊', enforced: true, readOnly: true, actions: [
+    { key: 'edit_mis', label: 'Edit' },
+  ]},
+  // Race Tracker has NO routes of its own — 'race' appears only in
+  // EXTRA_ACCESS_KEYS, its label, and VALID_UP_PAGES. navigate() has refused
+  // every non-admin since long before this work, so the grant this row offered
+  // could never do anything. Marked the way Logs and Daily Reports are: the
+  // dropdown can revoke, never grant. Whether Race should become grantable is a
+  // product decision nobody has taken; this states today's truth rather than
+  // pre-empting it.
+  { page: 'race',         label: 'Race Tracker',   icon: '🏁', enforced: false, grantable: false, locked: true,
+    note: 'Admin only — this page has no API of its own and the sidebar refuses every non-admin',
+    actions: [{ key: 'edit_race', label: 'Edit' }] },
+  { page: 'fms',          label: 'FMS Admin',      icon: '📋', enforced: false, actions: [
+    { key: 'edit_fms', label: 'Edit' },
+  ]},
+  { page: 'fms-tasks',    label: 'FMS Tasks',      icon: '📝', enforced: false,
+    note: 'Also shows automatically for anyone assigned as an FMS doer, even on No Access',
+    actions: [{ key: 'edit_fms_tasks', label: 'Edit' }] },
+  { page: 'daily',        label: 'Daily Task',     icon: '📅', enforced: true, actions: [
+    { key: 'create_task',      label: 'Delegate' },
+    { key: 'create_checklist', label: 'Checklist' },
+    { key: 'transfer_task',    label: 'Transfer' },
+    { key: 'set_plan',         label: 'Set Plan' },
+  ]},
+  // enforced:true — Client Master's five write routes ask for edit_clients via
+  // requireClientsEditor, and cmCanEdit() in the UI asks the same key. Deleting
+  // a client stays admin-only and is gated where its button is rendered.
+  { page: 'clients',      label: 'Client Master',  icon: '🏢', enforced: true, actions: [
+    { key: 'edit_clients', label: 'Edit' },
+  ]},
+  // readOnly — every /api/compliance route is a GET. There is nothing on this
+  // page to edit, so the dropdown offers No Access / View only. enforced:true
+  // because the reads do ask userCanSee('compliance') now; the Editor level it
+  // used to offer was unreachable rather than unenforced.
+  { page: 'compliance',   label: 'Compliance',     icon: '✅', enforced: true, readOnly: true, actions: [
+    { key: 'edit_compliance', label: 'Edit' },
+  ]},
+  { page: 'dailyreports', label: 'Daily Reports',  icon: '📈', enforced: false, grantable: false, locked: true,
+    note: 'Admin only by design (every endpoint behind it is admin-gated) — not grantable here',
+    actions: [{ key: 'edit_dailyreports', label: 'Edit' }] },
+  { page: 'leaves',       label: 'Leave Tracker',  icon: '🏖️', enforced: false, actions: [
+    { key: 'delete_leave', label: 'Delete' },
+  ]},
+  { page: 'meetings',     label: 'Scheduler',      icon: '📆', enforced: false, actions: [
+    { key: 'edit_meetings', label: 'Edit' },
+  ]},
+  // enforced:true — the server really asks for these now. Reads check
+  // userCanSee('inventory'), writes userCanDo('edit_inventory'). Deleting an
+  // item stays admin-only on purpose: it was admin-only before, and routing it
+  // through edit_inventory would have handed every hod the delete button.
+  { page: 'inventory',    label: 'Inventory',      icon: '📦', enforced: true, actions: [
+    { key: 'edit_inventory', label: 'Edit' },
+  ]},
+  { page: 'hrm',          label: 'HR Portal',      icon: '👥', enforced: true, actions: [
+    { key: 'hrm_schedule',      label: 'Schedule' },
+    { key: 'hrm_update_status', label: 'Status' },
+  ]},
+  { page: 'dms',          label: 'DMS',            icon: '🗂️', enforced: false, actions: [
+    { key: 'edit_dms', label: 'Edit' },
+  ]},
+  { page: 'paymentreq',   label: 'Payment Request', icon: '💰', enforced: false, actions: [
+    { key: 'edit_paymentreq', label: 'Edit' },
+  ]},
+  { page: 'feedback',     label: 'Escalation',     icon: '💬', enforced: false, actions: [
+    { key: 'edit_feedback', label: 'Edit' },
+  ]},
+  { page: 'users',        label: 'Users',          icon: '👤', enforced: false, actions: [
+    { key: 'edit_users', label: 'Edit' },
+  ]},
+  // The last two are `grantable:false` — their real gate lives outside this
+  // panel, so the dropdown can only take access AWAY, never hand it out. They
+  // are listed anyway so the feature list matches the sidebar; leaving them
+  // out just makes the panel look broken.
+  { page: 'creditcards',  label: 'Credit Card Statement', icon: '💳', enforced: false, grantable: false,
+    note: 'Granted by admin role + the CC_VIEWERS list in code — this can only revoke',
+    actions: [{ key: 'edit_creditcards', label: 'Edit' }] },
+  { page: 'logs',         label: 'Logs',           icon: '🗒️', enforced: false, grantable: false, locked: true,
+    note: 'Admin only by design (exposes every deleted row app-wide) — not grantable here',
+    actions: [{ key: 'edit_logs', label: 'Edit' }] },
+];
+
+const ACC_LEVELS = [
+  { key: 'none', label: 'No Access' },
+  { key: 'view', label: 'View' },
+  { key: 'edit', label: 'Editor' },
+];
+
+// Current level of one feature for one permission set.
+function accLevelOf(perms, pg) {
+  if (!perms.pages.includes(pg.page)) return 'none';
+  // A read-only page has no Editor option in the dropdown, so returning 'edit'
+  // here left nothing marked selected and the browser fell back to the first
+  // option — the panel showed "No Access" for somebody who actually has the
+  // page. Clamp to View. Nothing was ever written wrongly (accIsDirty compares
+  // the working copy), but the display lied.
+  if (pg.readOnly) return 'view';
+  return pg.actions.some(a => perms.actions.includes(a.key)) ? 'edit' : 'view';
+}
+
+// Apply a level, normalising the stored arrays. A pre-existing partial action
+// set (e.g. edit_task but not delete_task, possible from the old checkbox UI)
+// reads back as "Editor" and is levelled up to the full set on the next save.
+function accSetLevel(perms, pg, level) {
+  perms.pages   = perms.pages.filter(p => p !== pg.page);
+  perms.actions = perms.actions.filter(k => !pg.actions.some(a => a.key === k));
+  if (level === 'none') return perms;
+  perms.pages.push(pg.page);
+  if (level === 'edit') perms.actions.push(...pg.actions.map(a => a.key));
+  return perms;
+}
+
+let _accPerms = {};        // working copy, keyed by user id — {pages, actions}
+let _accSaved = {};        // last-saved copy, for the dirty check
+let _accRoles = {};        // working copy of each user's role
+let _accSavedRoles = {};
+let _accUsers = [];
+let _accSelUser = null;
+
+// Role defaults for OTHER roles, which /api/me cannot answer — it only ever
+// describes the caller. Fetched once per panel open and cached; renderAccessMatrix
+// awaits it before any row is drawn, and the role dropdown cannot be touched
+// before that, so the synchronous readers below always find it loaded.
+let _roleDefaults = null;
+async function ensureRoleDefaults() {
+  if (_roleDefaults) return _roleDefaults;
+  const r = await api('/api/access/role-defaults');
+  _roleDefaults = (r && !r.error) ? r : {};
+  return _roleDefaults;
+}
+
+function accDefaultsFor(role) {
+  const def = (_roleDefaults && _roleDefaults[role]) || { pages: [], actions: [] };
+  return {
+    pages:   def.pages   === 'all' ? PERM_TREE.map(p => p.page) : [...(def.pages || [])],
+    actions: def.actions === 'all' ? PERM_TREE.flatMap(p => p.actions.map(a => a.key)) : [...(def.actions || [])]
+  };
+}
+
+function accIsDirty(userId) {
+  if (_accRoles[userId] !== _accSavedRoles[userId]) return true;
+  const a = _accPerms[userId], b = _accSaved[userId];
+  if (!a || !b) return false;
+  const same = (x, y) => x.length === y.length && [...x].sort().join('|') === [...y].sort().join('|');
+  return !(same(a.pages, b.pages) && same(a.actions, b.actions));
+}
+
+async function renderAccessMatrix() {
+  const box = document.getElementById('accessMatrix');
+  if (!box) return;
+  box.innerHTML = '<div class="empty">Loading…</div>';
+
+  try {
+    // Role defaults come with the users, so accDefaultsFor() is ready before the
+    // first row renders. Fetched together rather than in sequence — neither
+    // needs the other.
+    const [data] = await Promise.all([api('/api/users'), ensureRoleDefaults()]);
+    if (data.error) throw new Error(data.error);
+    _accUsers = Array.isArray(data) ? data.filter(u => u.role !== 'client') : [];
+    allUsersData = _accUsers;
+  } catch(e) {
+    box.innerHTML = `<div class="empty" style="color:#ef4444">Failed to load: ${esc(e.message)}</div>`;
+    return;
+  }
+
+  _accPerms = {}; _accSaved = {}; _accRoles = {}; _accSavedRoles = {};
+  for (const u of _accUsers) {
+    const perms = (u.user_permissions && Array.isArray(u.user_permissions.pages))
+      ? { pages: [...u.user_permissions.pages], actions: [...(u.user_permissions.actions || [])] }
+      : accDefaultsFor(u.role);
+    // Fold in anything granted from the Users tab's Extra Access grid. Without
+    // this the panel shows No Access on a page the person can actually reach,
+    // and — worse — saving ANY row writes a full stored row, which beats
+    // extra_access outright server-side (getEffectivePerms). So one unrelated
+    // revoke silently stripped every extra_access grant that user had, and for
+    // pages in no role default (fms, race) the page vanished entirely.
+    // Merging here means the first save preserves what they had instead of
+    // narrowing them by accident. extra_access itself is never written.
+    if (Array.isArray(u.extra_access)) {
+      const known = new Set(PERM_TREE.map(p => p.page));
+      for (const key of u.extra_access) {
+        if (known.has(key) && !perms.pages.includes(key)) perms.pages.push(key);
+      }
+    }
+    _accPerms[u.id] = perms;
+    _accSaved[u.id] = { pages: [...perms.pages], actions: [...perms.actions] };
+    _accRoles[u.id] = u.role;
+    _accSavedRoles[u.id] = u.role;
+  }
+
+  const userItems = _accUsers.map(u => `
+    <div class="acc-user-item" id="acc-li-${u.id}" onclick="selectAccUser(${u.id})">
+      <div class="acc-user-item-name">${esc(u.name)}</div>
+      <div style="display:flex;align-items:center;gap:5px;margin-top:3px;flex-wrap:wrap">
+        <span class="role-badge ${u.role}" id="acc-badge-${u.id}" style="font-size:10px;padding:1px 6px">${accRoleLabel(u.role)}</span>
+        ${u.department?`<span style="font-size:11px;color:#94a3b8">${esc(u.department)}</span>`:''}
+      </div>
+    </div>`).join('');
+
+  box.innerHTML = `
+    <div class="acc-matrix-grid" style="display:grid;grid-template-columns:250px 1fr;gap:0;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;min-height:480px">
+      <div style="border-right:1px solid #e2e8f0;display:flex;flex-direction:column">
+        <div style="padding:12px 14px;border-bottom:1px solid #e2e8f0;background:#f8fafc">
+          <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:8px">👥 Users (${_accUsers.length})</div>
+          <input id="accSearch" type="text" placeholder="🔍 Search…" oninput="filterAccMatrix(this.value)"
+            style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;font-size:12px;outline:none">
+        </div>
+        <div id="accUserList" style="overflow-y:auto;flex:1;max-height:520px">${userItems}</div>
+      </div>
+      <div id="accPermPanel" style="background:#fff">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;padding:40px;text-align:center">
+          <div style="font-size:36px;margin-bottom:12px">🔐</div>
+          <div style="font-size:14px;font-weight:600;color:#64748b;margin-bottom:6px">Select a user</div>
+          <div style="font-size:13px">Click a user on the left to set their role and per-feature access.</div>
+        </div>
+      </div>
+    </div>`;
+
+  if (_accSelUser) loadUserPerms(_accSelUser);
+}
+
+function accRoleLabel(r) {
+  return r === 'admin' ? '👑 Admin' : r === 'hod' ? '🏢 HOD' : r === 'pc' ? '🖥️ PC' : '👤 User';
+}
+
+function accRoleSelectHtml(userId) {
+  const cur = _accRoles[userId];
+  const isMe = ME && String(ME.id) === String(userId);
+  const opts = ['admin','hod','pc','user'].map(r =>
+    `<option value="${r}" ${r===cur?'selected':''}>${accRoleLabel(r)}</option>`).join('');
+  return `<select id="acc-role-${userId}" onchange="onAccRoleChange(${userId},this.value)" ${isMe?'disabled':''}
+    title="${isMe?'You cannot change your own role':'Application role'}"
+    style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:600;background:${isMe?'#f1f5f9':'#fff'};color:#0f172a;outline:none;font-family:inherit;cursor:${isMe?'not-allowed':'pointer'}">${opts}</select>`;
+}
+
+function accPanelHeaderHtml(u) {
+  return `
+    <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:15px;font-weight:700;color:#1e293b">${esc(u.name)}</div>
+        ${u.department?`<div style="font-size:12px;color:#94a3b8;margin-top:2px">${esc(u.department)}</div>`:''}
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:600;color:#64748b">Role</span>
+        ${accRoleSelectHtml(u.id)}
+        <span id="acc-st-${u.id}" style="font-size:12px;opacity:0;transition:opacity .3s"></span>
+        <button class="btn btn-outline" style="font-size:12px;padding:5px 12px" onclick="resetUserPerms(${u.id})">↺ Defaults</button>
+        <button id="acc-save-${u.id}" class="btn btn-primary" style="font-size:12px;padding:5px 16px" onclick="saveUserPerms(${u.id})">✓ Done</button>
+      </div>
+    </div>`;
+}
+
+// Switching users from the left list. Changes are only written on Done now,
+// so warn before walking away from an unsaved edit rather than dropping it.
+async function selectAccUser(userId) {
+  const prev = _accSelUser;
+  if (prev && prev !== userId && accIsDirty(prev)) {
+    const u = _accUsers.find(x => x.id === prev);
+    const ok = await appConfirm(
+      `${u ? u.name : 'This user'} has unsaved access changes. Leaving now discards them.`,
+      'Discard unsaved changes?');
+    if (!ok) return;
+    _accPerms[prev] = { pages: [..._accSaved[prev].pages], actions: [..._accSaved[prev].actions] };
+    _accRoles[prev] = _accSavedRoles[prev];
+  }
+  loadUserPerms(userId);
+}
+
+function loadUserPerms(userId) {
+  _accSelUser = userId;
+  document.querySelectorAll('.acc-user-item').forEach(el => el.classList.remove('active'));
+  const li = document.getElementById(`acc-li-${userId}`);
+  if (li) { li.classList.add('active'); li.scrollIntoView({ block:'nearest' }); }
+
+  const u = _accUsers.find(x => x.id === userId);
+  const panel = document.getElementById('accPermPanel');
+  if (!u || !panel) return;
+
+  // Admin bypasses canSee()/canDo() entirely, so per-feature rows would be a
+  // lie. The role dropdown still shows, so an admin can be demoted from here.
+  if (_accRoles[userId] === 'admin') {
+    panel.innerHTML = accPanelHeaderHtml(u) + `
+      <div style="padding:48px;text-align:center;color:#64748b">
+        <div style="font-size:48px;margin-bottom:14px">🔓</div>
+        <div style="font-size:15px;font-weight:600;color:#1e293b;margin-bottom:8px">Full Access</div>
+        <div style="font-size:13px">Admin can reach every feature. Change the role above to set per-feature access.</div>
+      </div>`;
+    accSyncDirty(userId);
+    return;
+  }
+
+  const perms = _accPerms[userId] || { pages: [], actions: [] };
+
+  const rows = PERM_TREE.map(pg => {
+    const lvl = accLevelOf(perms, pg);
+    // A page with nothing to edit should not offer Editor. Compliance, for one,
+    // is three GET routes and no writes at all — the synthetic edit_<page> key
+    // exists only so a level is storable, and offering the choice invited an
+    // admin to pick something that could never mean anything.
+    const levels = pg.readOnly ? ACC_LEVELS.filter(l => l.key !== 'edit') : ACC_LEVELS;
+    const opts = levels.map(l =>
+      `<option value="${l.key}" ${l.key===lvl?'selected':''}>${l.label}</option>`).join('');
+    const dim = lvl === 'none';
+    // Warn only where the warning is true AND the choice is actually offered.
+    // It used to appear on Dashboard, which is locked and always on, and on
+    // read-only pages, which have no Editor option at all — noise in both cases,
+    // and it made the whole panel look broken when most of it is not.
+    const showWarn = !pg.enforced && pg.grantable !== false && !pg.locked && !pg.readOnly;
+    return `<div class="acc-page-row">
+      <div class="acc-page-row-main">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0">
+          <span style="font-size:20px;width:28px;text-align:center;flex-shrink:0">${pg.icon}</span>
+          <div style="min-width:0">
+            <div style="display:flex;align-items:center;gap:7px;min-width:0">
+              <span style="font-size:13px;font-weight:600;color:${dim?'#94a3b8':'#1e293b'}">${pg.label}</span>
+              ${showWarn ? `<span class="acc-warn" title="Editor is saved on this page but the API does not check it yet — View and Editor behave the same here for now.">!</span>` : ''}
+              ${pg.readOnly ? `<span class="acc-ro" title="This page has no editable data — there is nothing for Editor to grant.">read-only</span>` : ''}
+            </div>
+            ${pg.note ? `<div style="font-size:11px;color:#64748b;margin-top:2px">🔒 ${esc(pg.note)}</div>` : ''}
+          </div>
+        </div>
+        <select onchange="onAccLevelChange(${userId},'${pg.page}',this.value)" ${pg.locked?'disabled':''}
+          style="flex-shrink:0;min-width:120px;padding:6px 10px;border:1.5px solid ${lvl==='edit'?'#4f46e5':'#e2e8f0'};border-radius:8px;font-size:12px;font-weight:600;font-family:inherit;outline:none;cursor:${pg.locked?'not-allowed':'pointer'};background:${pg.locked?'#f1f5f9':'#fff'};color:${dim?'#94a3b8':'#0f172a'}">${opts}</select>
+      </div>
+    </div>`;
+  }).join('');
+
+  panel.innerHTML = accPanelHeaderHtml(u) + `
+    <div style="padding:9px 20px;border-bottom:1px solid #e2e8f0;background:#f8fafc;font-size:11px;color:#475569;line-height:1.6">
+      <strong style="color:#0f172a">No Access</strong> hides the feature ·
+      <strong style="color:#0f172a">View</strong> shows it read-only ·
+      <strong style="color:#0f172a">Editor</strong> allows changes.
+      <span style="display:inline-flex;align-items:center;gap:5px;margin-left:2px">
+        <span class="acc-warn" style="cursor:default">!</span>
+        marks a page where the choice is saved but the API does not check it yet.
+      </span>
+    </div>
+    <div style="overflow-y:auto;max-height:calc(100vh - 320px)">${rows}</div>`;
+  accSyncDirty(userId);
+}
+
+function onAccLevelChange(userId, page, level) {
+  const pg = PERM_TREE.find(p => p.page === page);
+  if (!pg) return;
+  _accPerms[userId] = accSetLevel(_accPerms[userId] || { pages: [], actions: [] }, pg, level);
+  loadUserPerms(userId);
+}
+
+function onAccRoleChange(userId, role) {
+  _accRoles[userId] = role;
+  // Switching role changes what "defaults" means, so reload the row set. The
+  // permission override is left alone — an admin who wants the new role's
+  // defaults can hit ↺ Defaults.
+  loadUserPerms(userId);
+}
+
+// Reflect unsaved state on the Done button so it is obvious a save is pending.
+function accSyncDirty(userId) {
+  const btn = document.getElementById(`acc-save-${userId}`);
+  if (!btn) return;
+  const dirty = accIsDirty(userId);
+  btn.textContent = dirty ? '✓ Done — save changes' : '✓ Done';
+  btn.style.opacity = dirty ? '1' : '.55';
+}
+
+async function saveUserPerms(userId) {
+  const btn = document.getElementById(`acc-save-${userId}`);
+  const st  = document.getElementById(`acc-st-${userId}`);
+  const setStatus = (text, color) => {
+    if (!st) return;
+    st.textContent = text; st.style.color = color; st.style.opacity = '1';
+  };
+  if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
+  setStatus('⏳ Saving…', '#f59e0b');
+
+  try {
+    // Role first: it decides which defaults apply, and a failure here (e.g.
+    // demoting yourself) must not leave the permissions half-written.
+    if (_accRoles[userId] !== _accSavedRoles[userId]) {
+      const rr = await api(`/api/users/${userId}/role`, 'PATCH', { role: _accRoles[userId] });
+      if (rr?.error) throw new Error(rr.error);
+      _accSavedRoles[userId] = _accRoles[userId];
+      const u = _accUsers.find(x => x.id === userId);
+      if (u) u.role = _accRoles[userId];
+      const badge = document.getElementById(`acc-badge-${userId}`);
+      if (badge) { badge.className = `role-badge ${_accRoles[userId]}`; badge.textContent = accRoleLabel(_accRoles[userId]); }
+    }
+
+    const perms = _accPerms[userId] || { pages: [], actions: [] };
+    const r = await api(`/api/user-permissions/${userId}`, 'PUT', { pages: perms.pages, actions: perms.actions });
+    if (r?.error) throw new Error(r.error);
+    _accSaved[userId] = { pages: [...perms.pages], actions: [...perms.actions] };
+
+    setStatus('✓ Saved', '#10b981');
+    setTimeout(() => { if (st) st.style.opacity = '0'; }, 2000);
+    showToast('Access saved', 'success');
+  } catch(e) {
+    setStatus('❌ Error', '#ef4444');
+    showToast(e.message || 'Failed to save', 'error');
+    // Put the role dropdown back to what the server still has
+    _accRoles[userId] = _accSavedRoles[userId];
+  }
+  if (btn) btn.disabled = false;
+  loadUserPerms(userId);
+}
+
+function resetUserPerms(userId) {
+  const role = _accRoles[userId];
+  _accPerms[userId] = accDefaultsFor(role);
+  loadUserPerms(userId);
+  showToast('Reset to ' + accRoleLabel(role).replace(/^\S+\s/, '') + ' defaults — press Done to save');
+}
+
+function filterAccMatrix(q) {
+  const s = (q||'').toLowerCase();
+  document.querySelectorAll('#accUserList .acc-user-item').forEach(el => {
+    const name = el.querySelector('.acc-user-item-name')?.textContent?.toLowerCase() || '';
+    el.style.display = !s || name.includes(s) ? '' : 'none';
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// INVENTORY JS
+// ══════════════════════════════════════════════════════
+let _invItems = [], _invAssignments = [], _invTab = 'mine', _invAssignItemId = null, _invHandoverAssignId = null, _invReturnAssignId = null;
+let _invPhotoBase64 = null;
+let _invSelfAddMode = false;
+
+const INV_TYPE_LABELS = {laptop:'💻 Laptop',keyboard:'⌨️ Keyboard',mouse:'🖱️ Mouse',mobile:'📱 Mobile',sim:'📶 SIM',charger:'🔌 Charger',other:'📦 Other'};
+// Same labels without the emoji — used as the item's stored name, since the
+// form has no free-text name field (an 'other' item is named by its typed-in
+// custom type instead).
+const INV_TYPE_PLAIN = {laptop:'Laptop',keyboard:'Keyboard',mouse:'Mouse',mobile:'Mobile',sim:'SIM',charger:'Charger',other:'Other'};
+const INV_CONDITION_LABELS = {new:'New',good:'Good',fair:'Fair',poor:'Poor'};
+// Mirrors INV_RETURN_REASONS in server.js — keep the two in step.
+const INV_RETURN_REASON_LABELS = {damaged:'💥 Damaged',retired:'🗄 Retired',offboarding:'🚪 Offboarding'};
+const INV_RETURN_REASON_OPTS = {
+  offboarding: '🚪 Offboarding — leaving the company',
+  damaged:     '💥 Damaged',
+  retired:     '🗄 Retired — end of life',
+};
+// Retiring an item is a judgement about the asset's life, so it's the
+// custodian's call — the holder can only say why they're handing it back.
+// The server enforces this too; this just keeps the option out of their reach.
+const INV_HOLDER_REASONS = ['offboarding', 'damaged'];
+const invReasonOptions = (allowed) => '<option value="">--select--</option>' +
+  allowed.map(k => `<option value="${k}">${INV_RETURN_REASON_OPTS[k]}</option>`).join('');
+const INV_STATUS_COLORS = {available:'#10b981',assigned:'#f59e0b',damaged:'#ef4444',retired:'#94a3b8'};
+
+async function loadInventory() {
+  // Name kept for the call sites below, but this is no longer "is this person an
+  // admin" — it is "may this person edit Inventory", which the panel now decides.
+  // It was a hardcoded role list, so setting a hod to View hid nothing: the
+  // server refused the write (see userCanDo('edit_inventory') on those routes)
+  // while the buttons stayed on screen and failed on click. hod carries
+  // edit_inventory by default, so nobody's buttons move today.
+  const isAdmin = canDo('edit_inventory');
+  if (isAdmin) {
+    document.getElementById('invTabAll').style.display = 'inline-flex';
+    document.getElementById('invTabAssign').style.display = 'inline-flex';
+    document.getElementById('invStats').style.display = 'grid';
+  }
+  const [items, assignments] = await Promise.all([
+    api('/api/inventory/items'),
+    isAdmin ? api('/api/inventory/assignments') : Promise.resolve([])
+  ]);
+  _invItems = Array.isArray(items) ? items : [];
+  _invAssignments = Array.isArray(assignments) ? assignments : [];
+
+  if (isAdmin) {
+    document.getElementById('invStatTotal').textContent = _invItems.length;
+    document.getElementById('invStatAssigned').textContent = _invItems.filter(i=>i.status==='assigned').length;
+    document.getElementById('invStatAvailable').textContent = _invItems.filter(i=>i.status==='available').length;
+    document.getElementById('invStatHandover').textContent = _invItems.filter(i=>i.handover_status==='pending_handover').length;
+  }
+  renderInventory();
+}
+
+function switchInvTab(tab, el) {
+  _invTab = tab;
+  document.querySelectorAll('#invTabs .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  renderInventory();
+}
+
+function renderInventory() {
+  const el = document.getElementById('invContent');
+  // Name kept for the call sites below, but this is no longer "is this person an
+  // admin" — it is "may this person edit Inventory", which the panel now decides.
+  // It was a hardcoded role list, so setting a hod to View hid nothing: the
+  // server refused the write (see userCanDo('edit_inventory') on those routes)
+  // while the buttons stayed on screen and failed on click. hod carries
+  // edit_inventory by default, so nobody's buttons move today.
+  const isAdmin = canDo('edit_inventory');
+
+  // Add Item is contextual to the open tab — it adds to whatever the tab
+  // shows. Assignments is a read-only history view, so nothing to add there.
+  document.getElementById('invAddBtn').style.display = _invTab === 'assignments' ? 'none' : 'inline-flex';
+
+  // Status only varies across the shared pool; everything in My Equipment is
+  // by definition assigned, so the filter is noise there. Clear it on the way
+  // out, or a status picked on All Equipment would keep silently filtering a
+  // control the user can no longer see.
+  const statusSel = document.getElementById('invFilterStatus');
+  const showStatus = _invTab === 'all';
+  statusSel.style.display = showStatus ? 'block' : 'none';
+  if (!showStatus) statusSel.value = '';
+
+  const typeFilter = document.getElementById('invFilterType').value;
+  const statusFilter = statusSel.value;
+
+  if (_invTab === 'assignments' && isAdmin) {
+    renderAssignmentsTable(el);
+    return;
+  }
+
+  let items = _invTab === 'mine'
+    ? _invItems.filter(i => i.assigned_to_id && String(i.assigned_to_id) === String(ME.id))
+    : _invItems;
+  if (typeFilter) items = items.filter(i=>i.type===typeFilter);
+  if (statusFilter) items = items.filter(i=>i.status===statusFilter);
+
+  if (!items.length) { el.innerHTML = '<div class="empty">No equipment found.</div>'; return; }
+
+  // My Equipment is a read-only view of your own kit — even for an admin. The
+  // lifecycle actions (Assign / Handover / Mark Returned / Delete) are the
+  // custodian's job and live on All Equipment, so an admin can't return their
+  // own item to stock from the tab that is meant to show what they hold. Once
+  // it is returned there, it drops out of My Equipment on its own.
+  const showActions = isAdmin && _invTab !== 'mine';
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;padding:20px">${items.map(item=>invCard(item, showActions)).join('')}</div>`;
+}
+
+function invCard(item, isAdmin) {
+  const statusColor = INV_STATUS_COLORS[item.status] || '#94a3b8';
+  // Photo click is NOT wired to the zoom viewer here — the whole card opens the
+  // detail modal, and zooming lives in there instead.
+  const photoHtml = item.photo
+    ? `<img src="${esc(item.photo)}" alt=""
+        style="width:100%;height:140px;object-fit:cover;border-radius:8px 8px 0 0">`
+    : `<div style="width:100%;height:140px;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);display:flex;align-items:center;justify-content:center;border-radius:8px 8px 0 0;font-size:36px">${invTypeEmoji(item.type)}</div>`;
+  const assignedBadge = item.assigned_to_name
+    ? `<div style="font-size:11px;color:#f59e0b;margin-top:4px">👤 ${esc(item.assigned_to_name)}</div>` : '';
+  // The card carries only the essentials — brand and condition. Model, serial,
+  // notes and photo are one click away in the detail modal, so the grid stays
+  // scannable. The title is already the type, so it is not repeated here.
+  const specParts = [item.brand, INV_CONDITION_LABELS[item.item_condition]].filter(Boolean).map(esc);
+  const specLine = specParts.length
+    ? `<div style="font-size:12px;color:#64748b">${specParts.join(' · ')}</div>`
+    : '';
+  // Who put this in the register — only when that isn't already obvious. On a
+  // self-added item the filer IS the holder, so the assignee badge right below
+  // would just repeat this name. Compare ids, not names: two people can share
+  // a name, and that would hide a line that actually carries information.
+  const addedBySomeoneElse = item.created_by && String(item.created_by) !== String(item.assigned_to_id);
+  const addedByLine = (_invTab === 'all' && item.created_by_name && addedBySomeoneElse)
+    ? `<div style="font-size:11px;color:#94a3b8;margin-top:3px">✎ Added by ${esc(item.created_by_name)}</div>`
+    : '';
+
+  let actions = '';
+  if (isAdmin) {
+    if (item.status === 'available') {
+      actions += `<button class="action-btn edit" onclick="openInvAssignModal(${item.id},'${esc(item.name)}')">Assign</button>`;
+    }
+    if (item.handover_status === 'active' && item.assignment_id) {
+      actions += `<button class="action-btn revise" onclick="openInvHandoverModal(${item.assignment_id},'${esc(item.name)}','${esc(item.assigned_to_name||'')}')">Handover</button>`;
+    }
+    if (item.handover_status === 'pending_handover' && item.assignment_id) {
+      actions += `<button class="action-btn done" onclick="openInvReturnModal(${item.assignment_id},'${esc(item.name)}','${esc(item.return_reason||'')}')">Mark Returned</button>`;
+    }
+    actions += `<button class="action-btn delete" onclick="deleteInvItem(${item.id})">Delete</button>`;
+  } else if (_invTab === 'mine' && item.handover_status === 'active' && item.assignment_id) {
+    // The holder can only raise the intent to give it back — confirming actual
+    // receipt stays with the custodian, so no Mark Returned here. Once it is
+    // pending, the card shows the badge and no button.
+    actions += `<button class="action-btn revise" onclick="requestInvReturn(${item.assignment_id},'${esc(item.name)}')">Return</button>`;
+  }
+
+  return `<div onclick="openInvDetailModal(${item.id})" title="Click for full details"
+      style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);cursor:pointer">
+    ${photoHtml}
+    <div style="padding:12px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+        <div style="font-weight:700;font-size:14px;color:#0f172a">${esc(item.name)}</div>
+        <div style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:${statusColor}1a;color:${statusColor}">${item.status}</div>
+      </div>
+      ${specLine}
+      ${addedByLine}
+      ${assignedBadge}
+      ${item.handover_status==='pending_handover'?`<div style="font-size:11px;color:#ef4444;font-weight:600;margin-top:4px">⚠️ Handover Pending${item.return_reason?` · ${esc(INV_RETURN_REASON_LABELS[item.return_reason]||item.return_reason)}`:''}</div>`:''}
+      ${actions?`<div onclick="event.stopPropagation()" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${actions}</div>`:''}
+    </div>
+  </div>`;
+}
+
+function openInvDetailModal(id) {
+  const item = _invItems.find(i => String(i.id) === String(id));
+  if (!item) return;
+
+  const statusColor = INV_STATUS_COLORS[item.status] || '#94a3b8';
+  const row = (label, value, mono) => value
+    ? `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9">
+         <div style="width:110px;flex-shrink:0;font-size:12px;color:#94a3b8;font-weight:600">${label}</div>
+         <div style="font-size:13px;color:#1e293b${mono ? ";font-family:monospace" : ""}">${esc(value)}</div>
+       </div>`
+    : '';
+
+  const photo = item.photo
+    ? `<img src="${esc(item.photo)}" alt="" onclick="viewInvPhoto(${jsArg(item.photo)})"
+         style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;margin-bottom:12px;cursor:zoom-in">`
+    : `<div style="height:120px;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);display:flex;align-items:center;justify-content:center;border-radius:8px;margin-bottom:12px;font-size:44px">${invTypeEmoji(item.type)}</div>`;
+
+  document.getElementById('invDetailTitle').innerHTML =
+    `${invTypeEmoji(item.type)} ${esc(item.name)}
+     <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:${statusColor}1a;color:${statusColor};margin-left:6px">${esc(item.status)}</span>`;
+
+  document.getElementById('invDetailBody').innerHTML = photo +
+    row('Type', INV_TYPE_PLAIN[item.type] || item.type) +
+    row('Brand', item.brand) +
+    row('Model', item.model) +
+    row('Serial No.', item.serial_number, true) +
+    row('Condition', INV_CONDITION_LABELS[item.item_condition] || item.item_condition) +
+    row('Assigned to', item.assigned_to_name) +
+    row('Added by', item.created_by_name) +
+    row('Notes', item.notes) +
+    row('Return reason', INV_RETURN_REASON_LABELS[item.return_reason] || item.return_reason) +
+    (item.handover_status === 'pending_handover'
+      ? `<div style="margin-top:10px;font-size:12px;color:#ef4444;font-weight:600">⚠️ Handover Pending</div>` : '');
+
+  document.getElementById('invDetailModal').classList.add('open');
+}
+
+function invTypeEmoji(type) {
+  return {laptop:'💻',keyboard:'⌨️',mouse:'🖱️',mobile:'📱',sim:'📶',charger:'🔌',other:'📦'}[type]||'📦';
+}
+
+function renderAssignmentsTable(el) {
+  if (!_invAssignments.length) { el.innerHTML = '<div class="empty">No assignments found.</div>'; return; }
+  const rows = _invAssignments.map(a=>{
+    const reasonTag = a.return_reason
+      ? `<div style="font-size:11px;color:#64748b;margin-top:2px">${esc(INV_RETURN_REASON_LABELS[a.return_reason]||a.return_reason)}</div>` : '';
+    const hsBadge = (a.handover_status === 'pending_handover'
+      ? '<span style="color:#ef4444;font-weight:600">⚠️ Pending Return</span>'
+      : a.handover_status === 'returned'
+        ? '<span style="color:#94a3b8">Returned</span>'
+        : '<span style="color:#10b981">Active</span>') + reasonTag;
+    const btnReturn = a.handover_status === 'pending_handover'
+      ? `<button class="action-btn done" onclick="openInvReturnModal(${a.id},'${esc(a.item_name||'')}','${esc(a.return_reason||'')}')">Mark Returned</button>` : '';
+    const btnHandover = a.handover_status === 'active'
+      ? `<button class="action-btn revise" onclick="openInvHandoverModal(${a.id},'${esc(a.item_name||'')}','${esc(a.user_name||'')}')">Handover</button>` : '';
+    const photo = a.photo
+      ? `<img src="${esc(a.photo)}" onclick="viewInvPhoto(${jsArg(a.photo)})"
+           style="width:36px;height:36px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #e2e8f0">`
+      : `<div style="width:36px;height:36px;background:#f1f5f9;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px">${invTypeEmoji(a.item_type)}</div>`;
+    return `<tr>
+      <td>${photo}</td>
+      <td><div style="font-weight:600">${esc(a.item_name||'')}</div><div style="font-size:11px;color:#64748b">${INV_TYPE_LABELS[a.item_type]||a.item_type}${a.serial_number?' · SN:'+esc(a.serial_number):''}</div></td>
+      <td><div style="font-weight:600">${esc(a.user_name||'')}</div><div style="font-size:11px;color:#64748b">${esc(a.department||'')}</div></td>
+      <td>${new Date(a.assigned_at).toLocaleDateString('en-IN')}</td>
+      <td>${hsBadge}</td>
+      <td><div style="display:flex;gap:6px">${btnHandover}${btnReturn}</div></td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<table><thead><tr><th></th><th>Item</th><th>Assigned To</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function previewInvPhoto(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (file.size > 3 * 1024 * 1024) { showToast('Image must be under 3MB', 'error'); event.target.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    _invPhotoBase64 = e.target.result;
+    const preview = document.getElementById('invPhotoPreview');
+    preview.src = _invPhotoBase64;
+    preview.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function viewInvPhoto(src) {
+  document.getElementById('invPhotoViewerImg').src = src;
+  document.getElementById('invPhotoViewer').style.display = 'flex';
+  document.getElementById('invPhotoViewer').classList.add('open');
+}
+
+// Adding is contextual to the open tab: from My Equipment the item lands in
+// the adder's own equipment (self-assigned); from All Equipment an admin/HOD
+// adds it to the shared pool as unassigned stock.
+function openInvAddModal() {
+  _invSelfAddMode = _invTab === 'mine';
+  document.getElementById('invAddModalTitle').textContent = _invSelfAddMode ? '＋ Add to My Equipment' : '＋ Add Equipment';
+  document.getElementById('invAddModalSaveBtn').textContent = _invSelfAddMode ? 'Add to My Equipment' : 'Save Item';
+  document.getElementById('invType').value = 'laptop';
+  document.getElementById('invTypeOther').value = '';
+  invTypeChanged();
+  document.getElementById('invBrand').value = '';
+  document.getElementById('invModel').value = '';
+  document.getElementById('invSerial').value = '';
+  // Condition is an admin's assessment of stock; someone logging kit they
+  // already hold doesn't grade it, so it stays hidden (and defaults to 'good')
+  // in self-add mode.
+  document.getElementById('invCondition').value = 'good';
+  document.getElementById('invConditionWrap').style.display = _invSelfAddMode ? 'none' : 'block';
+  document.getElementById('invNotes').value = '';
+  document.getElementById('invPhotoFile').value = '';
+  document.getElementById('invPhotoPreview').style.display = 'none';
+  document.getElementById('invAddErr').style.display = 'none';
+  _invPhotoBase64 = null;
+  document.getElementById('invAddModal').classList.add('open');
+}
+
+function invTypeChanged() {
+  const isOther = document.getElementById('invType').value === 'other';
+  document.getElementById('invTypeOtherWrap').style.display = isOther ? 'block' : 'none';
+}
+
+async function saveInventoryItem() {
+  const type = document.getElementById('invType').value;
+  const otherType = document.getElementById('invTypeOther').value.trim();
+  if (type === 'other' && !otherType) { showInvErr('invAddErr','Please specify the type'); return; }
+  // Brand and model are what actually tell two items of the same type apart on
+  // the card, since there is no free-text name field.
+  const brand = document.getElementById('invBrand').value.trim();
+  const model = document.getElementById('invModel').value.trim();
+  if (!brand) { showInvErr('invAddErr','Brand is required'); return; }
+  if (!model) { showInvErr('invAddErr','Model is required'); return; }
+  // No name field on the form — the type names the item, except for 'other',
+  // which is named by whatever type the user typed in.
+  const name = type === 'other' ? otherType : INV_TYPE_PLAIN[type];
+  const body = {
+    name, type, brand, model,
+    serial_number: document.getElementById('invSerial').value.trim(),
+    item_condition: document.getElementById('invCondition').value,
+    notes: document.getElementById('invNotes').value.trim(),
+    photo: _invPhotoBase64 || null
+  };
+  const r = await api(_invSelfAddMode ? '/api/inventory/self-add' : '/api/inventory/items', 'POST', body);
+  if (r.error) { showInvErr('invAddErr', r.error); return; }
+  closeModal('invAddModal');
+  showToast(_invSelfAddMode ? 'Added to your equipment!' : 'Equipment added!');
+  loadInventory();
+}
+
+async function deleteInvItem(id) {
+  if (!await appConfirm('This item will be permanently deleted.', 'Delete Item?')) return;
+  const r = await api(`/api/inventory/items/${id}`, 'DELETE');
+  if (r.error) { showToast(r.error,'error'); return; }
+  showToast('Item deleted');
+  loadInventory();
+}
+
+async function openInvAssignModal(itemId, itemName) {
+  _invAssignItemId = itemId;
+  document.getElementById('invAssignItemName').textContent = `Item: ${itemName}`;
+  document.getElementById('invAssignErr').style.display = 'none';
+  const users = await api('/api/users');
+  const sel = document.getElementById('invAssignUser');
+  sel.innerHTML = '<option value="">Select employee…</option>' +
+    (users||[]).filter(u=>u.role!=='client').map(u=>`<option value="${u.id}">${esc(u.name)} (${esc(u.department||'')})</option>`).join('');
+  document.getElementById('invAssignModal').classList.add('open');
+}
+
+async function doAssign() {
+  const userId = document.getElementById('invAssignUser').value;
+  if (!userId) { showInvErr('invAssignErr','Select an employee'); return; }
+  const r = await api('/api/inventory/assign','POST',{item_id:_invAssignItemId, user_id:userId});
+  if (r.error) { showInvErr('invAssignErr',r.error); return; }
+  closeModal('invAssignModal');
+  showToast('Equipment assigned!');
+  loadInventory();
+}
+
+// Step 1, admin-initiated: the custodian starts a handover (e.g. someone is
+// leaving). Shares its modal with the holder-initiated path below.
+function openInvHandoverModal(assignmentId, itemName, userName) {
+  _invHandoverAssignId = assignmentId;
+  document.getElementById('invHandoverTitle').textContent = 'Initiate Handover';
+  document.getElementById('invHandoverSubmitBtn').textContent = 'Mark as Handover Pending';
+  document.getElementById('invHandoverDesc').textContent = `Item: ${itemName} — currently with ${userName}`;
+  document.getElementById('invHandoverReason').innerHTML = invReasonOptions(Object.keys(INV_RETURN_REASON_OPTS));
+  document.getElementById('invHandoverReason').value = '';
+  document.getElementById('invHandoverNotes').value = '';
+  document.getElementById('invHandoverErr').style.display = 'none';
+  document.getElementById('invHandoverModal').classList.add('open');
+}
+
+// Step 1, holder-initiated from My Equipment. Same endpoint and same modal —
+// only the wording differs, since it's the same act: flag it pending and let
+// an admin confirm receipt.
+function requestInvReturn(assignmentId, itemName) {
+  _invHandoverAssignId = assignmentId;
+  document.getElementById('invHandoverTitle').textContent = 'Return Equipment';
+  document.getElementById('invHandoverSubmitBtn').textContent = 'Request Return';
+  document.getElementById('invHandoverDesc').textContent =
+    `${itemName} — it stays listed as yours until an admin confirms they've received it.`;
+  document.getElementById('invHandoverReason').innerHTML = invReasonOptions(INV_HOLDER_REASONS);
+  document.getElementById('invHandoverReason').value = '';
+  document.getElementById('invHandoverNotes').value = '';
+  document.getElementById('invHandoverErr').style.display = 'none';
+  document.getElementById('invHandoverModal').classList.add('open');
+}
+
+async function doHandover() {
+  const reason = document.getElementById('invHandoverReason').value;
+  if (!reason) { showInvErr('invHandoverErr','Please select a reason'); return; }
+  const notes = document.getElementById('invHandoverNotes').value.trim();
+  const r = await api(`/api/inventory/handover/${_invHandoverAssignId}`,'POST',{notes, reason});
+  if (r.error) { showInvErr('invHandoverErr',r.error); return; }
+  closeModal('invHandoverModal');
+  showToast('Marked as handover pending — admin will confirm receipt.');
+  loadInventory();
+}
+
+// Step 2, admin only: confirm the item is physically back. The reason picked
+// here is the final call and decides where the item lands, so it is prefilled
+// with whatever was claimed at step 1 but stays editable.
+function openInvReturnModal(assignmentId, itemName, claimedReason) {
+  _invReturnAssignId = assignmentId;
+  document.getElementById('invReturnDesc').textContent = `${itemName} — confirm you've received it back.`;
+  document.getElementById('invReturnReason').innerHTML = invReasonOptions(Object.keys(INV_RETURN_REASON_OPTS));
+  document.getElementById('invReturnReason').value = claimedReason || '';
+  document.getElementById('invReturnErr').style.display = 'none';
+  invReturnReasonChanged();
+  document.getElementById('invReturnModal').classList.add('open');
+}
+
+function invReturnReasonChanged() {
+  const reason = document.getElementById('invReturnReason').value;
+  const effect = {
+    offboarding: '→ Item goes back to <b>available</b> stock and can be reassigned.',
+    damaged:     '→ Item is marked <b>damaged</b> and cannot be assigned to anyone.',
+    retired:     '→ Item is marked <b>retired</b> and cannot be assigned to anyone.',
+  }[reason] || '';
+  document.getElementById('invReturnEffect').innerHTML = effect;
+}
+
+async function doReturn() {
+  const reason = document.getElementById('invReturnReason').value;
+  if (!reason) { showInvErr('invReturnErr','Please select a reason'); return; }
+  const r = await api(`/api/inventory/return/${_invReturnAssignId}`,'POST',{reason});
+  if (r.error) { showInvErr('invReturnErr', r.error); return; }
+  closeModal('invReturnModal');
+  showToast(r.itemStatus === 'available'
+    ? 'Item returned to available stock!'
+    : `Item returned and marked ${r.itemStatus}.`);
+  loadInventory();
+}
+
+function showInvErr(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ══════════════════════════════════════════════════════
+// LOGS JS — deleted-records archive (admin only)
+// ══════════════════════════════════════════════════════
+let _logsRows = [], _logsRestorable = {};
+
+// Table name -> what a row of it actually is, in the user's terms.
+const LOG_TABLE_LABELS = {
+  delegation_tasks: 'Delegation Task', checklist_tasks: 'Checklist Task',
+  task_subtasks: 'Sub-task', task_comments: 'Comment', users: 'User',
+  clients: 'Client', client_feedback: 'Feedback',
+  client_department_folders: 'DMS Dept Folder', dms_external_links: 'DMS Link',
+  leave_requests: 'Leave Request', holidays: 'Holiday', day_plan_items: 'Day Plan',
+  inventory_items: 'Equipment', fms_sheets: 'FMS Sheet', cc_cards: 'Credit Card',
+  cc_statements: 'CC Statement', cc_transactions: 'CC Transaction',
+  cc_departments: 'CC Department', pr_cards: 'PR Card', payment_requests: 'Payment Request',
+};
+const logTableLabel = t => LOG_TABLE_LABELS[t] || t;
+
+async function loadLogs() {
+  const el = document.getElementById('logsContent');
+  const r = await api('/api/deleted-records');
+  if (r.error) { el.innerHTML = `<div class="empty">⚠️ ${dtEscape(r.error)}</div>`; return; }
+  _logsRows = Array.isArray(r.rows) ? r.rows : [];
+  _logsRestorable = r.restorable || {};
+
+  const sel = document.getElementById('logsFilterTable');
+  const cur = sel.value;
+  const types = [...new Set(_logsRows.map(x => x.source_table))].sort();
+  sel.innerHTML = '<option value="">All Types</option>' +
+    types.map(t => `<option value="${dtEscape(t)}">${dtEscape(logTableLabel(t))}</option>`).join('');
+  if (types.includes(cur)) sel.value = cur;
+
+  renderLogs();
+}
+
+function renderLogs() {
+  const el = document.getElementById('logsContent');
+  const q = document.getElementById('logsSearch').value.trim().toLowerCase();
+  const tbl = document.getElementById('logsFilterTable').value;
+
+  let rows = _logsRows;
+  if (tbl) rows = rows.filter(r => r.source_table === tbl);
+  if (q) rows = rows.filter(r =>
+    (r.summary || '').toLowerCase().includes(q) ||
+    (r.deleted_by_name || '').toLowerCase().includes(q) ||
+    logTableLabel(r.source_table).toLowerCase().includes(q));
+
+  if (!rows.length) { el.innerHTML = '<div class="empty">No deleted records found.</div>'; return; }
+
+  el.innerHTML = `<table>
+    <thead><tr>
+      <th>What</th><th>Type</th><th>Deleted By</th><th>When</th><th>Status</th><th>Action</th>
+    </tr></thead>
+    <tbody>${rows.map(r => {
+      // Pre-formatted by the DB — see the query. Never re-parse it as a Date
+      // here: that reintroduces the timezone double-shift.
+      const when = r.deleted_at_fmt || '—';
+      const who = r.deleted_by_name
+        ? `${dtEscape(r.deleted_by_name)}${r.deleted_by_role ? ` <span style="font-size:10px;color:#94a3b8">(${dtEscape(r.deleted_by_role)})</span>` : ''}`
+        : '<span style="color:#94a3b8">system</span>';
+      const status = r.restored_at
+        ? `<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:#10b9811a;color:#10b981">Restored</span>`
+        : `<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:#ef44441a;color:#ef4444">Deleted</span>`;
+      let action;
+      if (r.restored_at) {
+        action = `<span style="font-size:11px;color:#64748b">by ${dtEscape(r.restored_by_name || '—')}</span>`;
+      } else if (_logsRestorable[r.id]) {
+        action = `<button class="action-btn done" onclick="restoreLogRecord(${r.id})">Restore</button>`;
+      } else {
+        action = `<span style="font-size:11px;color:#94a3b8" title="This record type cannot be restored from here">—</span>`;
+      }
+      return `<tr>
+        <td>
+          <div style="font-weight:600;cursor:pointer;color:#4f46e5" onclick="viewLogRecord(${r.id})" title="View full record">
+            ${dtEscape(r.summary || '(no summary)')}
+          </div>
+          ${r.delete_reason ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${dtEscape(r.delete_reason)}</div>` : ''}
+        </td>
+        <td><div style="font-size:12px">${dtEscape(logTableLabel(r.source_table))}</div>
+            <div style="font-size:10px;color:#94a3b8">#${r.record_id ?? '—'}</div></td>
+        <td style="font-size:12px">${who}</td>
+        <td style="font-size:12px;color:#64748b">${dtEscape(when)}</td>
+        <td>${status}</td>
+        <td>${action}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+async function viewLogRecord(id) {
+  const r = await api(`/api/deleted-records/${id}`);
+  if (r.error) { showToast(r.error, 'error'); return; }
+  const when = r.deleted_at_fmt || '—';
+  document.getElementById('logsDetailMeta').innerHTML =
+    `<b>${dtEscape(logTableLabel(r.source_table))}</b> #${r.record_id ?? '—'} · deleted by ` +
+    `<b>${dtEscape(r.deleted_by_name || 'system')}</b> on ${dtEscape(when)}` +
+    (r.deleted_via ? `<br>via <code>${dtEscape(r.deleted_via)}</code>` : '') +
+    (r.delete_reason ? `<br>${dtEscape(r.delete_reason)}` : '');
+  const body = r.record_data != null ? r.record_data : r.record_data_raw;
+  document.getElementById('logsDetailJson').textContent =
+    typeof body === 'string' ? body : JSON.stringify(body, null, 2);
+  document.getElementById('logsDetailModal').classList.add('open');
+}
+
+async function restoreLogRecord(id) {
+  if (!await appConfirm('Restore this record back into the app?', 'Restore?')) return;
+  const r = await api(`/api/deleted-records/${id}/restore`, 'POST', {});
+  if (r.error) { appAlert(r.error, 'Cannot restore'); return; }
+  showToast(r.droppedColumns?.length
+    ? `Restored — ${r.droppedColumns.length} obsolete column(s) skipped.`
+    : 'Record restored!');
+  loadLogs();
+}
+
+// ══════════════════════════════════════════════════════
+// HRM JS
+// ══════════════════════════════════════════════════════
+let _hrmCandidates = [], _hrmMessages = [], _hrmCurrentId = null, _hrmDepartments = [];
+
+const HRM_STATUS_COLORS = {'Scheduled':'#4f46e5','Rescheduled':'#f59e0b','Selected':'#10b981','Rejected':'#ef4444','Offer Sent':'#7c3aed','Offer Letter Sent':'#047857'};
+const HRM_STATUS_BG = {'Scheduled':'#eff6ff','Rescheduled':'#fffbeb','Selected':'#f0fdf4','Rejected':'#fef2f2','Offer Sent':'#f5f3ff','Offer Letter Sent':'#ecfdf5'};
+// Internal status values stay unchanged (many `status === 'Offer Sent'`
+// comparisons rely on them) — this only controls what's shown to the user.
+const HRM_STATUS_LABELS = {'Offer Sent':'PRELIMINARY OFFER LETTER SENT','Offer Letter Sent':'OFFER LETTER SENT'};
+
+async function loadHRM() {
+  const [stats, candidates, messages] = await Promise.all([
+    api('/api/hrm/stats'),
+    api('/api/hrm/candidates'),
+    api('/api/hrm/messages')
+  ]);
+  _hrmCandidates = Array.isArray(candidates) ? candidates : [];
+  _hrmMessages   = Array.isArray(messages)   ? messages   : [];
+
+  // View-level access gets the page read-only: no scheduling, no status edits.
+  const canSchedule = canDo('hrm_schedule');
+  ['hrmScheduleBtnTop','hrmScheduleBtnList'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.style.display = canSchedule ? '' : 'none';
+  });
+
+  if (stats && !stats.error) {
+    document.getElementById('hrm-stat-total').textContent    = stats.total || 0;
+    document.getElementById('hrm-stat-today').textContent    = stats.today_interviews || 0;
+    document.getElementById('hrm-stat-selected').textContent = stats.selected || 0;
+    document.getElementById('hrm-stat-offers').textContent   = stats.offer_sent || 0;
+  }
+  const sent   = _hrmMessages.filter(m=>m.status==='Sent').length;
+  const failed = _hrmMessages.filter(m=>m.status==='Failed').length;
+  document.getElementById('hrm-msg-sent').textContent   = sent;
+  document.getElementById('hrm-msg-failed').textContent = failed;
+  document.getElementById('hrm-msg-total').textContent  = _hrmMessages.length;
+  // Populate position filter
+  const positions = [...new Set(_hrmCandidates.map(c=>c.profile_position).filter(Boolean))].sort();
+  const posEl = document.getElementById('hrmFilterPosition');
+  if (posEl) {
+    const cur = posEl.value;
+    posEl.innerHTML = '<option value="">All Positions</option>' + positions.map(p=>`<option${p===cur?' selected':''}>${esc(p)}</option>`).join('');
+  }
+  renderHrmRecent();
+  renderHrmTable();
+  renderHrmMsgTable();
+}
+
+function switchHrmTab(tab, el) {
+  document.querySelectorAll('#page-hrm .tab-group .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  ['dashboard','candidates','messages'].forEach(s => {
+    document.getElementById('hrm-'+s).style.display = s===tab ? 'block' : 'none';
+  });
+  if (tab==='messages') renderHrmMsgTable();
+}
+
+function renderHrmRecent() {
+  const recent = _hrmCandidates.slice(0,8);
+  document.getElementById('hrm-recent-table').innerHTML = renderHrmRows(recent);
+}
+
+function renderHrmTable() {
+  const search   = (document.getElementById('hrmSearch')?.value||'').toLowerCase();
+  const status   = document.getElementById('hrmFilterStatus')?.value||'';
+  const position = document.getElementById('hrmFilterPosition')?.value||'';
+  let list = _hrmCandidates;
+  if (status)   list = list.filter(c=>c.status===status);
+  if (position) list = list.filter(c=>c.profile_position===position);
+  if (search)   list = list.filter(c=>(c.name||'').toLowerCase().includes(search)||(c.phone||'').includes(search));
+  document.getElementById('hrm-candidates-table').innerHTML = renderHrmRows(list);
+}
+
+function renderHrmRows(list) {
+  if (!list.length) return '<div class="empty">No candidates found.</div>';
+  const rows = list.map(c=>{
+    const badgeClass = c.status === 'Offer Sent' ? 'offer' : c.status === 'Offer Letter Sent' ? 'offer-final' : c.status;
+    const color = HRM_STATUS_COLORS[c.status]||'#64748b';
+    const bg    = HRM_STATUS_BG[c.status]||'#f8fafc';
+    const initials = (c.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const dateStr = c.interview_date ? new Date(c.interview_date).toLocaleDateString('en-IN') : '—';
+    const reDateStr = c.reschedule_date ? new Date(c.reschedule_date).toLocaleDateString('en-IN') : '';
+    const canUpdate = c.status !== 'Rejected' && canDo('hrm_update_status');
+    // Joining-details chip — only from selection onwards, since that is when the
+    // form link goes out; before that it would just be noise on every row.
+    const showJoining = c.joining_form_required && ['Selected','Offer Sent','Offer Letter Sent'].includes(c.status);
+    const joiningCell = !showJoining ? '' : (c.joining_details_at
+      ? `<button class="hrm-ico hrm-ico-join" title="View joining details" onclick="viewJoiningDetails(${c.id})">📋</button>`
+      : `<span class="hrm-ico hrm-ico-wait" title="Joining details not submitted yet">⏳</span>`);
+    return `<tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="hrm-avatar" style="background:${bg};color:${color}">${initials}</div>
+          <div>
+            <div class="hrm-candidate-name">${esc(c.name)}</div>
+            <div class="hrm-candidate-sub">${esc(c.phone)}</div>
+          </div>
+        </div>
+      </td>
+      <td class="hrm-date-cell">${esc(c.profile_position||'—')}</td>
+      <td class="hrm-date-cell">${esc(c.department||'—')}</td>
+      <td>
+        <div class="hrm-date-cell">${dateStr}${c.interview_time ? ' ' + esc(_mtgFmtTime12(c.interview_time)) : ''}</div>
+        ${reDateStr ? `<div class="hrm-redate">→ Rescheduled: ${reDateStr}${c.reschedule_time?' '+esc(_mtgFmtTime12(c.reschedule_time)):''}</div>` : ''}
+      </td>
+      <td><span class="hrm-badge ${badgeClass}">${HRM_STATUS_LABELS[c.status] || c.status}</span></td>
+      <td>
+        <div class="hrm-act">
+          <div class="hrm-act-verbs">
+            ${canUpdate ? `<button class="hrm-btn hrm-btn-update" onclick="openHrmStatusModal(${c.id})">Update</button>` : '<span class="hrm-closed">Closed</span>'}
+            ${(c.status === 'Selected' || c.status === 'Offer Sent' || c.status === 'Offer Letter Sent')
+              ? `<button class="hrm-btn hrm-btn-email" onclick="openEmailModal(${c.id})">📧 Email</button>`
+              : ''}
+          </div>
+          <div class="hrm-act-icons">
+            ${(c.status === 'Offer Sent' || c.status === 'Offer Letter Sent') ? (
+              // Prefer our own public /offer-pdf-prelim link (renders the PDF, no
+              // Drive access needed) so anyone with the link can view it — the Drive
+              // file lives in a members-only Shared Drive. Drive link is a fallback.
+              c.prelim_offer_token
+              ? `<a class="hrm-ico hrm-ico-doc" title="View preliminary offer letter" href="/offer-pdf-prelim/${c.prelim_offer_token}" target="_blank">📄</a>`
+              : c.offer_drive_id
+              ? `<a class="hrm-ico hrm-ico-doc" title="View preliminary offer letter" href="https://drive.google.com/file/d/${c.offer_drive_id}/view" target="_blank">📄</a>`
+              : `<button class="hrm-ico hrm-ico-doc" title="View preliminary offer letter" onclick="viewOfferLetter(${c.id})">📄</button>`)
+              : ''}
+            ${c.status === 'Offer Letter Sent' && (c.final_offer_token || c.final_offer_drive_id)
+              ? (c.final_offer_token
+                ? `<a class="hrm-ico hrm-ico-offer" title="View offer letter" href="/offer-pdf/${c.final_offer_token}" target="_blank">📬</a>`
+                : `<a class="hrm-ico hrm-ico-offer" title="View offer letter" href="https://drive.google.com/file/d/${c.final_offer_drive_id}/view" target="_blank">📬</a>`)
+              : ''}
+            ${joiningCell}
+            <button class="hrm-ico" title="View details" onclick="openHrmDetailsModal(${c.id})">👁️</button>
+            ${canDo('hrm_schedule') ? `<button class="hrm-ico hrm-ico-edit" title="Edit candidate" onclick="openHrmEditModal(${c.id})">✏️</button>` : ''}
+            ${ME.role === 'admin' ? `<button class="hrm-ico hrm-ico-del" title="Delete candidate" onclick="hrmDeleteCandidate(${c.id})">🗑️</button>` : ''}
+          </div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  return `<table><thead><tr><th>Candidate</th><th>Position</th><th>Department</th><th>Interview</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// Selected message-log ids for bulk delete. Survives re-renders (filter/search)
+// but is pruned to currently loaded messages on each render.
+let _hrmMsgSelected = new Set();
+
+function renderHrmMsgTable() {
+  const filter = document.getElementById('hrmMsgFilter')?.value||'';
+  const search = (document.getElementById('hrmMsgSearch')?.value||'').toLowerCase();
+  let list = _hrmMessages;
+  if (filter) list = list.filter(m=>m.status===filter);
+  if (search) list = list.filter(m=>(m.candidate_name||'').toLowerCase().includes(search)||(m.phone||'').includes(search));
+  const el = document.getElementById('hrm-msg-table');
+  const loadedIds = new Set(_hrmMessages.map(m=>m.id));
+  _hrmMsgSelected = new Set([..._hrmMsgSelected].filter(id=>loadedIds.has(id)));
+  if (!list.length) { el.innerHTML = '<div class="empty">No messages found.</div>'; updateHrmMsgBulkBtn(); return; }
+  const allVisibleSelected = list.every(m=>_hrmMsgSelected.has(m.id));
+  const rows = list.map(m=>{
+    const statusCls = m.status==='Sent' ? 'hrm-msg-status-sent' : 'hrm-msg-status-failed';
+    const retryBtn = m.status==='Failed'
+      ? `<button class="action-btn edit" onclick="retryHrmMsg(${m.id})">Retry</button>` : '';
+    // created_at_fmt is SQL-formatted IST wall time (see the /api/hrm/messages
+    // route). Fallback formats the raw value in UTC — the stored wall time IS
+    // IST, so rendering it as Asia/Kolkata double-shifted +5:30 (brain.md §16).
+    const _d = m.created_at instanceof Date ? m.created_at : new Date(m.created_at);
+    const ts = m.created_at_fmt || (m.created_at && !isNaN(_d) ? _d.toLocaleString('en-IN',{timeZone:'UTC'}) : '');
+    return `<tr>
+      <td style="width:30px;text-align:center"><input type="checkbox" ${_hrmMsgSelected.has(m.id)?'checked':''} onchange="toggleHrmMsgSelect(${m.id}, this.checked)" style="cursor:pointer"></td>
+      <td style="font-size:12px;color:#64748b;white-space:nowrap">${ts}</td>
+      <td><div class="hrm-candidate-name">${esc(m.candidate_name)}</div><div class="hrm-candidate-sub">${esc(m.phone)}</div></td>
+      <td style="font-size:12px;color:#475569">${esc(m.action)}</td>
+      <td><span class="${statusCls}">${m.status}</span></td>
+      <td style="font-size:11px;color:#64748b">${m.retry_count>0?`${m.retry_count}×`:''}</td>
+      <td>${retryBtn}${m.error_detail?`<div style="font-size:10px;color:${m.status==='Sent'?'#64748b':'#dc2626'};max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.error_detail)}">${esc(m.error_detail.slice(0,80))}</div>`:''}</td>
+      <td><button class="action-btn" style="color:#dc2626;border-color:#fecaca" title="Delete entry" onclick="deleteHrmMsg(${m.id})">🗑</button></td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<table><thead><tr>
+    <th style="width:30px;text-align:center"><input type="checkbox" ${allVisibleSelected?'checked':''} onchange="toggleHrmMsgSelectAll(this.checked)" title="Select all visible" style="cursor:pointer"></th>
+    <th>Time</th><th>Candidate</th><th>Action</th><th>Status</th><th>Retries</th><th>Detail</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  updateHrmMsgBulkBtn();
+}
+
+function toggleHrmMsgSelect(id, checked) {
+  if (checked) _hrmMsgSelected.add(id); else _hrmMsgSelected.delete(id);
+  updateHrmMsgBulkBtn();
+}
+
+// Select-all applies to the currently visible (filtered/searched) rows only.
+function toggleHrmMsgSelectAll(checked) {
+  const filter = document.getElementById('hrmMsgFilter')?.value||'';
+  const search = (document.getElementById('hrmMsgSearch')?.value||'').toLowerCase();
+  let list = _hrmMessages;
+  if (filter) list = list.filter(m=>m.status===filter);
+  if (search) list = list.filter(m=>(m.candidate_name||'').toLowerCase().includes(search)||(m.phone||'').includes(search));
+  list.forEach(m => { if (checked) _hrmMsgSelected.add(m.id); else _hrmMsgSelected.delete(m.id); });
+  renderHrmMsgTable();
+}
+
+function updateHrmMsgBulkBtn() {
+  const btn = document.getElementById('hrmMsgBulkDeleteBtn');
+  const cnt = document.getElementById('hrmMsgBulkCount');
+  if (!btn) return;
+  btn.style.display = _hrmMsgSelected.size ? 'inline-block' : 'none';
+  if (cnt) cnt.textContent = _hrmMsgSelected.size;
+}
+
+// Bulk delete = the existing per-id soft-delete fired once per selected id
+// (same pattern as the DMS bulk delete) — no new endpoint.
+async function deleteSelectedHrmMsgs() {
+  const ids = [..._hrmMsgSelected];
+  if (!ids.length) return;
+  if (!confirm(`Delete ${ids.length} selected message log entr${ids.length===1?'y':'ies'}?`)) return;
+  const btn = document.getElementById('hrmMsgBulkDeleteBtn');
+  if (btn) btn.disabled = true;
+  const results = await Promise.all(ids.map(id => api(`/api/hrm/messages/${id}`,'DELETE',{}).catch(()=>({error:true}))));
+  const failed = results.filter(r => !r || !r.ok).length;
+  if (btn) btn.disabled = false;
+  _hrmMsgSelected.clear();
+  showToast(failed ? `Deleted ${ids.length-failed}, ${failed} failed` : `${ids.length} entr${ids.length===1?'y':'ies'} deleted`, failed?'error':undefined);
+  loadHRM();
+}
+
+async function retryHrmMsg(id) {
+  const r = await api(`/api/hrm/messages/${id}/retry`,'POST',{});
+  if (r.ok) { showToast('Message resent!'); } else { showToast(r.message||'Retry failed','error'); }
+  loadHRM();
+}
+
+async function deleteHrmMsg(id) {
+  if (!confirm('Delete this message log entry?')) return;
+  const r = await api(`/api/hrm/messages/${id}`,'DELETE',{});
+  if (r.ok) { showToast('Entry deleted'); loadHRM(); } else { showToast(r.message||r.error||'Delete failed','error'); }
+}
+
+// All department HODs (id, name, department, email), loaded when the Schedule
+// Interview modal opens so the interviewer can be auto-filled from department.
+let _hrmHods = [];
+let _hrmEditId = null;  // non-null when the Schedule modal is reused to EDIT a candidate
+async function _hrmLoadHods() {
+  try { const h = await api('/api/hrm/hods'); _hrmHods = Array.isArray(h) ? h : []; } catch { _hrmHods = []; }
+}
+async function openHrmAddModal() {
+  if (!canDo('hrm_schedule')) return;
+  _hrmEditId = null;
+  ['hrmCName','hrmCProfile','hrmCPhone','hrmCEmail','hrmCInterviewer','hrmCLink','hrmCNotes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('hrmCDate').value = '';
+  hrmSetTime('');
+  document.getElementById('hrmCTimeDropdown').style.display = 'none';
+  document.getElementById('hrmAddErr').style.display = 'none';
+  document.getElementById('hrmAddTitle').textContent = '📅 Schedule Interview';
+  document.getElementById('hrmAddSubmitBtn').textContent = '📅 Schedule Interview';
+  await loadHrmDepartmentOptions('hrmCDepartment', '');
+  await _hrmLoadHods();
+  hrmDeptChange();  // reset the interviewer dropdown to its empty state
+  document.getElementById('hrmAddModal').classList.add('open');
+}
+
+// Reuse the Schedule Interview modal to EDIT a candidate's details.
+async function openHrmEditModal(id) {
+  if (!canDo('hrm_schedule')) return;
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  if (!c) return;
+  _hrmEditId = id;
+  document.getElementById('hrmAddErr').style.display = 'none';
+  document.getElementById('hrmCName').value        = c.name || '';
+  document.getElementById('hrmCProfile').value     = c.profile_position || '';
+  document.getElementById('hrmCPhone').value       = c.phone || '';
+  document.getElementById('hrmCInterviewer').value = c.interviewer_phone || '';
+  document.getElementById('hrmCEmail').value       = c.email || '';
+  document.getElementById('hrmCLink').value        = c.meeting_link || '';
+  document.getElementById('hrmCNotes').value       = c.notes || '';
+  document.getElementById('hrmCDate').value        = c.interview_date ? String(c.interview_date).slice(0,10) : '';
+  hrmSetTime(c.interview_time || '');
+  document.getElementById('hrmAddTitle').textContent = '✏️ Edit Candidate';
+  document.getElementById('hrmAddSubmitBtn').textContent = '💾 Save Changes';
+  await loadHrmDepartmentOptions('hrmCDepartment', c.department || '');
+  await _hrmLoadHods();
+  hrmDeptChange();  // populate interviewer dropdown for this department
+  // Preselect the stored interviewer email if it's in the list.
+  const isel = document.getElementById('hrmCInterviewerHod');
+  if (c.interviewer_email && [...isel.options].some(o => o.value === c.interviewer_email)) isel.value = c.interviewer_email;
+  document.getElementById('hrmAddModal').classList.add('open');
+}
+
+// When the department changes, fill the Interviewer (HOD) dropdown: one HOD is
+// auto-selected, two or more are offered so HR picks who gets the interview email.
+function hrmDeptChange() {
+  const dept = document.getElementById('hrmCDepartment').value;
+  const sel = document.getElementById('hrmCInterviewerHod');
+  if (!dept) { sel.innerHTML = '<option value="">Select a department first</option>'; return; }
+  const hods = _hrmHods.filter(h => (h.department || '') === dept);
+  if (!hods.length) { sel.innerHTML = '<option value="">No HOD set for this department</option>'; return; }
+  const opts = hods.map(h => `<option value="${dtEscape(h.email)}">${dtEscape(h.name)} — ${dtEscape(h.email)}</option>`).join('');
+  // One HOD → auto-select; two+ → make HR choose.
+  sel.innerHTML = hods.length === 1 ? opts : `<option value="">— Select HOD —</option>${opts}`;
+}
+
+// ── Interview time: same Zoom-style picker as the meeting scheduler ──
+// "H:MM" text + AM/PM select, backed by the hidden hrmCTime (24h). Reuses
+// MTG_TIME_OPTIONS for the dropdown; free-typed times still commit via parse.
+function hrmParse12(text, period) {
+  const m = String(text || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return '';
+  let h = parseInt(m[1], 10); const min = parseInt(m[2], 10);
+  if (h < 1 || h > 12 || min < 0 || min > 59) return '';
+  if (period === 'PM' && h !== 12) h += 12;
+  if (period === 'AM' && h === 12) h = 0;
+  return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+}
+function hrmSetTime(value24raw) {
+  const value24 = (value24raw || '').slice(0, 5);
+  document.getElementById('hrmCTime').value = value24 || '';
+  const disp = document.getElementById('hrmCTimeDisplay');
+  if (!value24) { disp.value = ''; document.getElementById('hrmCTimePeriod').value = 'AM'; return; }
+  const [h, mm] = value24.split(':').map(Number);
+  document.getElementById('hrmCTimePeriod').value = h < 12 ? 'AM' : 'PM';
+  disp.value = `${h % 12 === 0 ? 12 : h % 12}:${String(mm).padStart(2,'0')}`;
+}
+function hrmRenderTimeDropdown(filterText) {
+  const dd = document.getElementById('hrmCTimeDropdown');
+  const q = (filterText || '').trim().toLowerCase().replace(/\s+/g, '');
+  const matches = q ? MTG_TIME_OPTIONS.filter(o => o.label.toLowerCase().replace(/\s+/g, '').includes(q)) : MTG_TIME_OPTIONS;
+  dd.innerHTML = matches.length
+    ? matches.map(o => `<div data-time-opt="${o.value}" onclick="hrmPickTime('${o.value}')" style="padding:8px 12px;font-size:13px;cursor:pointer;color:#1e293b" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">${o.label}</div>`).join('')
+    : `<div style="padding:10px 12px;font-size:12px;color:#94a3b8">No matching time</div>`;
+  dd.style.display = 'block';
+}
+function hrmOpenTimeDropdown() { hrmRenderTimeDropdown(document.getElementById('hrmCTimeDisplay').value); }
+function hrmOnTimeInput() {
+  hrmRenderTimeDropdown(document.getElementById('hrmCTimeDisplay').value);
+  // Live-commit a valid free-typed time so it saves even without picking a row.
+  document.getElementById('hrmCTime').value = hrmParse12(document.getElementById('hrmCTimeDisplay').value, document.getElementById('hrmCTimePeriod').value) || '';
+}
+function hrmPickTime(value24) { hrmSetTime(value24); document.getElementById('hrmCTimeDropdown').style.display = 'none'; }
+function hrmTimeKeydown(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const typed = hrmParse12(document.getElementById('hrmCTimeDisplay').value, document.getElementById('hrmCTimePeriod').value);
+    if (typed) { hrmPickTime(typed); return; }
+    const first = document.getElementById('hrmCTimeDropdown').querySelector('[data-time-opt]');
+    if (first) hrmPickTime(first.getAttribute('data-time-opt'));
+  } else if (e.key === 'Escape') { document.getElementById('hrmCTimeDropdown').style.display = 'none'; }
+}
+function hrmTimePeriodChanged() {
+  const v = hrmParse12(document.getElementById('hrmCTimeDisplay').value, document.getElementById('hrmCTimePeriod').value);
+  document.getElementById('hrmCTime').value = v || '';
+}
+// Close the interview-time dropdown on outside click.
+document.addEventListener('click', (e) => {
+  const dd = document.getElementById('hrmCTimeDropdown');
+  const input = document.getElementById('hrmCTimeDisplay');
+  if (!dd || !input || dd.style.display === 'none') return;
+  if (dd.contains(e.target) || input.contains(e.target)) return;
+  dd.style.display = 'none';
+});
+
+async function saveHrmCandidate() {
+  const name  = document.getElementById('hrmCName').value.trim();
+  const phone = document.getElementById('hrmCPhone').value.trim();
+  const date  = document.getElementById('hrmCDate').value;
+  const time  = document.getElementById('hrmCTime').value;
+  if (!name||!phone) { showErrIn('hrmAddErr','Name and phone are required'); return; }
+  if (!date||!time) { showErrIn('hrmAddErr','Interview date and time are required'); return; }
+  const payload = {
+    name, phone,
+    email: document.getElementById('hrmCEmail').value.trim(),
+    profile_position: document.getElementById('hrmCProfile').value.trim(),
+    department: document.getElementById('hrmCDepartment').value,
+    interview_date: date, interview_time: time,
+    notes: document.getElementById('hrmCNotes').value.trim(),
+    meeting_link: document.getElementById('hrmCLink').value.trim(),
+    interviewer_phone: document.getElementById('hrmCInterviewer').value.trim(),
+    interviewer_email: document.getElementById('hrmCInterviewerHod').value
+  };
+  const r = _hrmEditId
+    ? await api(`/api/hrm/candidates/${_hrmEditId}`, 'PUT', payload)
+    : await api('/api/hrm/candidates', 'POST', payload);
+  if (r.error) { showErrIn('hrmAddErr',r.error); return; }
+  const wasEdit = !!_hrmEditId;
+  _hrmEditId = null;
+  closeModal('hrmAddModal');
+  showToast(wasEdit ? 'Candidate updated.' : 'Interview scheduled.');
+  loadHRM();
+}
+
+// View a candidate's full details (read-only) — everything entered at schedule.
+function openHrmDetailsModal(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  if (!c) return;
+  const dateStr = c.interview_date ? new Date(c.interview_date).toLocaleDateString('en-IN') : '—';
+  const row = (label, val) => `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9">
+      <span style="min-width:130px;color:#64748b;font-size:12px;font-weight:600">${label}</span>
+      <span style="flex:1;word-break:break-word;font-size:13px;color:#0f172a">${val ? esc(String(val)) : '—'}</span></div>`;
+  const linkRow = c.meeting_link
+    ? `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9"><span style="min-width:130px;color:#64748b;font-size:12px;font-weight:600">Meeting Link</span><span style="flex:1;word-break:break-all;font-size:13px"><a href="${esc(c.meeting_link)}" target="_blank" style="color:#4f46e5">${esc(c.meeting_link)}</a></span></div>`
+    : row('Meeting Link', '');
+  document.getElementById('hrmDetailsBody').innerHTML =
+    row('Name', c.name) + row('Phone', c.phone) + row('Position', c.profile_position) +
+    row('Department', c.department) + row('Candidate Email', c.email) +
+    row('Interviewer Phone', c.interviewer_phone) + row('Interviewer (HOD)', c.interviewer_email) +
+    row('Interview', `${dateStr}${c.interview_time ? ' ' + c.interview_time : ''}`) +
+    row('Status', HRM_STATUS_LABELS[c.status] || c.status) + linkRow + row('Notes', c.notes);
+  document.getElementById('hrmDetailsTitle').textContent = c.name || 'Candidate';
+  document.getElementById('hrmDetailsModal').classList.add('open');
+}
+
+async function hrmDeleteCandidate(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  const ok = await appConfirm(`Delete "${c?.name || 'this candidate'}"? The entry will be archived (recoverable), not permanently lost.`, 'Delete Candidate?');
+  if (!ok) return;
+  const r = await api(`/api/hrm/candidates/${id}`, 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast('🗑 Candidate deleted.');
+  loadHRM();
+}
+
+function openHrmStatusModal(id) {
+  _hrmCurrentId = id;
+  const c = _hrmCandidates.find(x=>String(x.id)===String(id));
+  if (!c) return;
+  document.getElementById('hrm-modal-name').textContent    = c.name;
+  document.getElementById('hrm-modal-profile').textContent = c.profile_position||'';
+  document.getElementById('hrm-modal-phone').textContent   = c.phone;
+  document.getElementById('hrmNewStatus').value = '';
+  document.getElementById('hrmReschedFields').style.display  = 'none';
+  document.getElementById('hrmOfferFields').style.display    = 'none';
+  document.getElementById('hrmStatusWaNote').style.display   = 'none';
+  document.getElementById('hrmStatusModal').classList.add('open');
+}
+
+function onHrmStatusChange() {
+  const s = document.getElementById('hrmNewStatus').value;
+  // Departments that require the joining-details form can't reach either offer
+  // stage until the candidate has submitted it (the server enforces this too).
+  if (s === 'Offer Sent' || s === 'Offer Letter Sent') {
+    const c = _hrmCandidates.find(x => String(x.id) === String(_hrmCurrentId));
+    if (c && c.joining_form_required && !c.joining_details_at) {
+      document.getElementById('hrmNewStatus').value = '';
+      showToast('Joining details pending — the offer letter can only be sent after the candidate submits the form.', 'error');
+      return;
+    }
+  }
+  if (s === 'Offer Sent') {
+    _offerEmailCtx = null;   // save-only when reached via the status dropdown
+    closeModal('hrmStatusModal');
+    openOfferFormModal(_hrmCurrentId);
+    return;
+  }
+  if (s === 'Offer Letter Sent') {
+    _offerEmailCtx = null;
+    closeModal('hrmStatusModal');
+    openFinalOfferFormModal(_hrmCurrentId);
+    return;
+  }
+  document.getElementById('hrmReschedFields').style.display = s==='Rescheduled' ? 'block' : 'none';
+  document.getElementById('hrmOfferFields').style.display   = 'none';
+  document.getElementById('hrmStatusWaNote').style.display  = s ? 'block' : 'none';
+}
+
+async function submitHrmStatus() {
+  const status = document.getElementById('hrmNewStatus').value;
+  if (!status) { showToast('Select a status','error'); return; }
+  const body = { status };
+  if (status==='Rescheduled') {
+    body.reschedule_date   = document.getElementById('hrmRDate').value;
+    body.reschedule_time   = document.getElementById('hrmRTime').value;
+    body.reschedule_reason = document.getElementById('hrmRReason').value.trim();
+    if (!body.reschedule_date||!body.reschedule_time) { showToast('New date and time required','error'); return; }
+  }
+  if (status==='Offer Sent') {
+    body.joining_date = document.getElementById('hrmOJoining').value;
+    body.salary       = document.getElementById('hrmOSalary').value.trim();
+    if (!body.joining_date) { showToast('Joining date required','error'); return; }
+  }
+  const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/status`,'PUT',body);
+  if (r.error) { showToast(r.error,'error'); return; }
+  closeModal('hrmStatusModal');
+  showToast('Status updated.');
+  loadHRM();
+}
+
+async function viewJoiningDetails(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  const r = await api(`/api/hrm/candidates/${id}/joining-details`, 'GET');
+  if (!r || r.error) { showToast((r && r.error) || 'Could not load details', 'error'); return; }
+  const dob = r.dob ? new Date(r.dob).toLocaleDateString('en-IN') : '—';
+  // submitted_at is stored as IST wall time — render it as UTC so it isn't
+  // shifted a second time (brain.md §16).
+  const at = r.submitted_at ? new Date(r.submitted_at).toLocaleString('en-IN', { timeZone: 'UTC' }) : '';
+  const row = (label, value) => `
+    <div style="display:flex;gap:12px;padding:9px 0;border-bottom:1px solid #f1f5f9">
+      <div style="width:150px;flex-shrink:0;font-size:12px;color:#64748b">${label}</div>
+      <div style="font-size:13px;color:#0f172a;font-weight:500;word-break:break-word">${value}</div>
+    </div>`;
+  // Mobile numbers hang off the name they belong to rather than taking their own
+  // row — three extra rows of just digits crowds the modal.
+  const withMobile = (m) => m
+    ? `<span style="color:#64748b;font-weight:400"> · ${esc(m)}</span>` : '';
+  // Relation is free text ("Other" in the form lets the candidate type their
+  // own), so it goes in the label rather than being mapped to a fixed set.
+  const guardianLabel = (n, rel) => `Guardian ${n}${rel ? ` (${esc(rel)})` : ''}`;
+  const address = [r.street, r.city, r.state, r.pincode].filter(Boolean).map(esc).join(', ') || '—';
+  // A document is either one PDF or two images (front + back). The URLs come
+  // from the candidate's form submission, so only render an anchor for a real
+  // http(s) link.
+  const fileLinks = (...urls) => {
+    const ok = urls.filter(u => /^https?:\/\//i.test(u || ''));
+    if (!ok.length) return '<span style="color:#94a3b8;font-size:12px">Not uploaded</span>';
+    return ok.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer" style="color:#4f46e5;font-size:12px;font-weight:600;text-decoration:none">${ok.length > 1 ? (i === 0 ? 'Front ↗' : 'Back ↗') : 'Open ↗'}</a>`).join('&nbsp;&nbsp;');
+  };
+
+  document.getElementById('hrmJoiningDetailsBody').innerHTML = `
+    <div class="hrm-candidate-card">
+      <div class="hrm-candidate-card-name">${esc(c ? c.name : r.full_name)}</div>
+      <div class="hrm-candidate-card-sub">${esc(c ? (c.profile_position||'') : '')}${c && c.department ? ' · ' + esc(c.department) : ''}</div>
+    </div>
+    ${row('Name', esc(r.full_name || '—') + withMobile(r.emp_mobile))}
+    ${row('Email', r.email ? `<a href="mailto:${esc(r.email)}" style="color:#4f46e5;text-decoration:none">${esc(r.email)}</a>` : '—')}
+    ${row(guardianLabel(1, r.guardian1_relation), esc(r.guardian1_name || '—') + withMobile(r.guardian1_mobile))}
+    ${row(guardianLabel(2, r.guardian2_relation), esc(r.guardian2_name || '—') + withMobile(r.guardian2_mobile))}
+    ${row('Date of Birth', dob)}
+    ${row('Address', address)}
+    ${row('Resume', fileLinks(r.resume_file_url))}
+    ${r.aadhaar_no ? row('Aadhaar Number', esc(r.aadhaar_no)) : ''}
+    ${row('Aadhaar Card', fileLinks(r.aadhaar_file_url, r.aadhaar_file_url_2))}
+    ${r.pan_no ? row('PAN Number', esc(r.pan_no)) : ''}
+    ${row('PAN Card', fileLinks(r.pan_file_url, r.pan_file_url_2))}
+    ${at ? `<div style="font-size:11px;color:#94a3b8;margin-top:10px">Submitted ${at}</div>` : ''}`;
+  document.getElementById('hrmJoiningDetailsModal').classList.add('open');
+}
+
+function viewOfferLetter(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  if (!c) return;
+  const driveUrl = c.offer_drive_id ? `https://drive.google.com/file/d/${c.offer_drive_id}/view` : null;
+  const isPdf = !!c.offer_drive_id;
+
+  const iframeAttrs = isPdf
+    ? `src="https://drive.google.com/file/d/${c.offer_drive_id}/preview" allow="autoplay"`
+    : `sandbox="allow-same-origin allow-scripts allow-modals"`;
+  const banner = isPdf
+    ? `<div style="margin-top:12px;padding:12px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;display:flex;align-items:center;gap:10px">
+         <span style="font-size:20px">📂</span>
+         <div style="flex:1">
+           <div style="font-size:12px;font-weight:600;color:#15803d">Saved in Google Drive</div>
+           <div style="font-size:11px;color:#64748b">HR Offer Letters folder</div>
+         </div>
+         <a href="${driveUrl}" target="_blank" style="background:#16a34a;color:#fff;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none">Open in Drive →</a>
+       </div>`
+    : `<div style="margin-top:12px;padding:12px 14px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;display:flex;align-items:center;gap:10px">
+         <span style="font-size:18px">⚠️</span>
+         <div style="flex:1;font-size:12px;color:#92400e">Drive PDF hasn't been generated yet — this is a draft preview. Generate it?</div>
+         <button onclick="generateOfferDoc(${c.id})" style="background:#d97706;color:#fff;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;border:none;cursor:pointer" id="genOfferBtn-${c.id}">Generate</button>
+       </div>`;
+
+  document.getElementById('hrmOfferViewBody').innerHTML = `
+    <iframe id="offerViewFrame" data-pdf="${isPdf ? '1' : '0'}" data-drive-url="${driveUrl||''}" ${iframeAttrs} style="width:100%;height:480px;border:1px solid #e2e8f0;border-radius:8px;display:block"></iframe>
+    ${banner}`;
+
+  if (!isPdf) {
+    // Not generated yet — fill in a draft approximation so HR can sanity-check before generating.
+    const joining = c.joining_date ? new Date(c.joining_date).toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'}) : 'To be communicated';
+    const issuedDate = c.updated_at ? new Date(c.updated_at).toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'}) : new Date().toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'});
+    document.getElementById('offerViewFrame').srcdoc = _hrmOfferHtml(c.name, c.profile_position, joining, issuedDate);
+  }
+  document.getElementById('hrmOfferViewModal').classList.add('open');
+}
+
+async function generateOfferDoc(id) {
+  const btn = document.getElementById(`genOfferBtn-${id}`);
+  if (btn) { btn.textContent = 'Generating…'; btn.disabled = true; }
+  const r = await api(`/api/hrm/candidates/${id}/generate-offer`, 'POST', {});
+  if (r.error) { showToast(r.error, 'error'); if (btn) { btn.textContent = 'Generate'; btn.disabled = false; } return; }
+  showToast('Offer letter saved to Drive. Use the 📧 Email button to send it.');
+  await loadHRM();
+  viewOfferLetter(id); // reopen with updated data
+}
+
+// Email modal: pick what to send (onboarding form / preliminary / offer letter),
+// the To address (prefilled from the candidate), and an optional CC.
+function openEmailModal(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  if (!c) return;
+  _hrmCurrentId = id;
+  document.getElementById('hrmEmailWho').textContent = `${c.name}${c.profile_position ? ' · ' + c.profile_position : ''}`;
+  // Default the "what to send" to the candidate's current stage, so the modal
+  // opens on the message that actually matches the record. Every status now has
+  // a match, which also means a mis-send takes a deliberate change of the
+  // dropdown rather than missing one.
+  const BY_STATUS = {
+    'Scheduled':          'scheduled',
+    'Rescheduled':        'rescheduled',
+    'Selected':           'selected',
+    'Rejected':           'rejected',
+    'Offer Sent':         'preliminary',
+    'Offer Letter Sent':  'offer',
+  };
+  document.getElementById('hrmEmailType').value = BY_STATUS[c.status] || 'onboarding';
+  document.getElementById('hrmEmailTo').value = c.email || '';
+  document.getElementById('hrmEmailCc').value = '';
+  document.getElementById('hrmEmailErr').style.display = 'none';
+  document.getElementById('hrmEmailModal').classList.add('open');
+}
+
+// Set to { to, cc } while an offer form modal is being used to EMAIL the offer
+// (opened from the Email modal). null means the modal is in save-only mode
+// (opened from the status dropdown). See submitOfferForm / submitFinalOfferForm.
+let _offerEmailCtx = null;
+
+async function submitEmailModal() {
+  const type  = document.getElementById('hrmEmailType').value;
+  const email = document.getElementById('hrmEmailTo').value.trim();
+  const cc    = document.getElementById('hrmEmailCc').value.trim();
+  if (!email) { showErrIn('hrmEmailErr', 'Recipient email is required'); return; }
+
+  // Offer letters go through the offer form (salary / probation / live preview)
+  // before sending — open that modal in "email mode" and send from there.
+  if (type === 'preliminary' || type === 'offer') {
+    // No offer until the joining-details form is submitted (server enforces this
+    // too; checked here so HR gets the message before filling the whole form).
+    const c = _hrmCandidates.find(x => String(x.id) === String(_hrmCurrentId));
+    if (c && c.joining_form_required && !c.joining_details_at) {
+      showErrIn('hrmEmailErr', 'Joining details form not submitted yet. Send it first (choose "Onboarding Form"), then send the offer once the candidate has filled it.');
+      return;
+    }
+    _offerEmailCtx = { to: email, cc };
+    closeModal('hrmEmailModal');
+    if (type === 'preliminary') openOfferFormModal(_hrmCurrentId);
+    else openFinalOfferFormModal(_hrmCurrentId);
+    return;
+  }
+
+  // Everything else — the onboarding link and the four status notifications —
+  // carries no attachment and needs no form, so it sends straight from here.
+  const btn = document.getElementById('hrmEmailSendBtn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/email-offer`, 'POST', { type, email, cc });
+  btn.disabled = false; btn.textContent = '📧 Send Email';
+  if (!r || r.error) { showErrIn('hrmEmailErr', (r && r.error) || 'Email failed'); return; }
+  closeModal('hrmEmailModal');
+  showToast(`Emailed to ${r.emailedTo}${r.cc ? ' (cc: ' + r.cc + ')' : ''}`);
+  loadHRM();
+}
+
+function printOfferLetter() {
+  const frame = document.getElementById('offerViewFrame');
+  if (!frame) return;
+  if (frame.dataset.pdf === '1') {
+    // Real PDF embed — Drive's own viewer has print/download built in.
+    window.open(frame.dataset.driveUrl, '_blank');
+    return;
+  }
+  let html = frame.srcdoc;
+  if (!html) return;
+  const noHeaderCss = `<style>@page{margin:0;size:A4 portrait}body{margin:18mm 15mm!important}</style>`;
+  html = html.replace('</head>', noHeaderCss + '</head>');
+  const win = window.open('', '_blank', 'width=900,height=700');
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); }, 600);
+}
+
+function _hrmOfferHtml(name, position, joining, today) {
+  const logoUrl = window.location.origin + '/emarketing%20offer%20letter%20logo.png';
+  const n = name     || '______';
+  const p = position || '______';
+  const j = joining  || '______';
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    body{margin:0;padding:30px 40px;font-family:'Times New Roman',Times,serif;font-size:13px;color:#000;line-height:1.6}
+    .hdr{display:table;width:100%;padding-bottom:12px;margin-bottom:20px}
+    .hdr-l{display:table-cell;vertical-align:top;width:45%}
+    .hdr-l img{max-height:75px;width:auto}
+    .hdr-r{display:table-cell;vertical-align:top;text-align:right;font-size:11px;line-height:1.5}
+    .hdr-r .co{font-weight:bold;font-size:11.5px}
+    h2{text-align:center;text-decoration:underline;font-size:14px;letter-spacing:.5px;margin:16px 0}
+    .pc{text-align:right;margin-bottom:18px;font-size:12px}
+    p{margin:0 0 10px;text-align:justify}ol{margin:4px 0 12px 18px}ol li{margin-bottom:3px}
+    .footer{margin-top:28px}a{color:#00f}
+  </style></head><body>
+  <div class="hdr">
+    <div class="hdr-l"><img src="${logoUrl}" alt="e-Marketing"></div>
+    <div class="hdr-r">
+      <div class="co">e-Marketing.io (A Unit of Jai Marketing)</div>
+      <div>Address: 8/10, Shaheed Amit Bhardwaj Marg, Sector 8,</div>
+      <div>Malviya Nagar, Jaipur, Rajasthan – 307017 (India)</div>
+      <div>&nbsp;</div>
+      <div>Phone: +91-9602694444</div>
+      <div>Email: <a href="mailto:abhishek@e-marketing.io">abhishek@e-marketing.io</a></div>
+      <div>Website: www.e-marketing.io</div>
+    </div>
+  </div>
+  <h2>PRELIMINARY OFFER LETTER</h2>
+  <div class="pc">Private &amp; Confidential<br>Date :-${today}</div>
+  <p><strong>Dear ${n},</strong></p>
+  <p>With reference to your application and the subsequent interview you had with us, we are pleased to offer you an appointment as <strong>${p}</strong> with <strong>e-Marketing (a unit of Jai Marketing)</strong>, Jaipur.</p>
+  <p>You are required to join us on <strong>${j}</strong>. Your place of work will be <strong>Jaipur</strong> (8/10 shaheed amit bhardwaj marg, malviya nagar Jaipur 302017)</p>
+  <p>The detailed terms and conditions of your appointment and the salary details, as discussed, shall be issued to you at the time of joining. We expect you to maintain the confidentiality of the salary offer to you.</p>
+  <p>Please submit the following documents on your Joining Day:</p>
+  <ol>
+    <li>Educational/Professional/Technical Qualification certificates</li>
+    <li>Copy of Resignation Acceptance letter or relieving letter from last employer, if applicable.</li>
+    <li>Salary Certificate from last employer, if applicable.</li>
+    <li>One (1) passport size color photograph</li>
+    <li>Copy of Present and Permanent Address Proof.</li>
+    <li>ID Proof (Aadhar Card, PAN Card).</li>
+  </ol>
+  <p>If you fail to join on the aforesaid date and in the absence of any written communication to this effect from you, the said Preliminary Offer Letter shall automatically be treated as withdrawn.</p>
+  <p>Please send a <strong>token of your acceptance</strong> of this Preliminary Offer Letter.</p>
+  <p>Again, we are excited about the growth trajectory that e-Marketing Consulting is on, and we look forward to having you on board as a team member.</p>
+  <div class="footer"><p>For</p><p>e-Marketing (a unit of Jai Marketing)</p></div>
+  </body></html>`;
+}
+
+async function openOfferFormModal(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  if (!c) return;
+  _hrmCurrentId = id;
+  document.getElementById('offerFName').value     = c.name || '';
+  document.getElementById('offerFPosition').value = c.profile_position || '';
+  document.getElementById('offerFJoining').value  = c.joining_date ? String(c.joining_date).slice(0,10) : '';
+  document.getElementById('offerFSalary').value   = c.salary || '';
+  await loadHrmDepartmentOptions('offerFDepartment', c.department || '');
+  const sb = document.getElementById('offerFormSubmitBtn');
+  if (sb) sb.innerHTML = _offerEmailCtx ? '📧 Send by Email' : '📄 Generate &amp; Save Offer';
+  document.getElementById('hrmOfferFormModal').classList.add('open');
+  updateOfferPreview();
+}
+
+async function loadHrmDepartmentOptions(selectId, selected) {
+  if (!_hrmDepartments.length) {
+    const departments = await api('/api/departments');
+    _hrmDepartments = Array.isArray(departments) ? departments : [];
+  }
+  const sel = document.getElementById(selectId);
+  sel.innerHTML = '<option value="">--select--</option>' +
+    _hrmDepartments.map(d => `<option value="${esc(d)}" ${d===selected?'selected':''}>${esc(d)}</option>`).join('');
+}
+
+function updateOfferPreview() {
+  const name       = document.getElementById('offerFName').value     || '';
+  const position   = document.getElementById('offerFPosition').value || '';
+  const joiningRaw = document.getElementById('offerFJoining').value;
+  const joining    = joiningRaw
+    ? new Date(joiningRaw).toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'})
+    : '';
+  const today  = new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'});
+  const html   = _hrmOfferHtml(name, position, joining, today);
+  const cont   = document.getElementById('offerFormPreview');
+  cont.innerHTML = '<iframe id="offerPreviewFrame" style="width:100%;height:420px;border:none;display:block" sandbox="allow-same-origin"></iframe>';
+  document.getElementById('offerPreviewFrame').srcdoc = html;
+}
+
+function submitOfferForm() {
+  const offer_name     = document.getElementById('offerFName').value.trim();
+  const offer_position = document.getElementById('offerFPosition').value.trim();
+  const department     = document.getElementById('offerFDepartment').value;
+  const joining_date   = document.getElementById('offerFJoining').value;
+  const salary         = document.getElementById('offerFSalary').value.trim();
+  if (!offer_name)   { showToast('Candidate name required', 'error'); return; }
+  if (!joining_date) { showToast('Joining date required', 'error'); return; }
+  const candidateId = _hrmCurrentId;
+  const ctx = _offerEmailCtx; _offerEmailCtx = null;   // capture + reset the email context
+
+  closeModal('hrmOfferFormModal');
+  showToast(ctx ? 'Preparing & emailing offer…' : 'Saving offer letter…');
+
+  api(`/api/hrm/candidates/${candidateId}/status`, 'PUT', {
+    status: 'Offer Sent', joining_date, salary, offer_name, offer_position, department
+  }).then(async r => {
+    if (r.error) { showToast(r.error, 'error'); return; }
+    if (r.pdfGenerated === false) {
+      showToast('⚠️ Offer letter PDF generation failed: ' + (r.pdfError || 'unknown error'), 'error');
+      loadHRM();
+      return;
+    }
+    if (ctx) {
+      // Save done — now email the preliminary letter (renders the snapshot just saved).
+      const er = await api(`/api/hrm/candidates/${candidateId}/email-offer`, 'POST', { type: 'preliminary', email: ctx.to, cc: ctx.cc });
+      if (!er || er.error) { showToast((er && er.error) || 'Email failed', 'error'); loadHRM(); return; }
+      showToast(`Offer emailed to ${er.emailedTo}${er.cc ? ' (cc: ' + er.cc + ')' : ''}`);
+    } else {
+      showToast('Offer letter saved. Use the 📧 Email button to send it.');
+    }
+    loadHRM();
+  });
+}
+
+async function openFinalOfferFormModal(id) {
+  const c = _hrmCandidates.find(x => String(x.id) === String(id));
+  if (!c) return;
+  _hrmCurrentId = id;
+  document.getElementById('finalOfferFName').value     = c.name || '';
+  document.getElementById('finalOfferFPosition').value = c.profile_position || '';
+  document.getElementById('finalOfferFJoining').value  = c.joining_date ? String(c.joining_date).slice(0,10) : '';
+  document.getElementById('finalOfferFSalary').value   = c.salary || '';
+  const probEl = document.getElementById('finalOfferFProbation');
+  if (probEl) probEl.value = '2';
+  // Letter date defaults to today (local), editable by HR before sending.
+  const dateEl = document.getElementById('finalOfferFDate');
+  if (dateEl) {
+    const now = new Date();
+    dateEl.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  }
+  await loadHrmDepartmentOptions('finalOfferFDepartment', c.department || '');
+  const sb = document.getElementById('finalOfferSendBtn');
+  if (sb) sb.textContent = _offerEmailCtx ? '📧 Send by Email' : '📬 Save Offer Letter';
+  document.getElementById('hrmFinalOfferFormModal').classList.add('open');
+  renderFinalOfferPreview();
+}
+
+function _finalOfferFields() {
+  return {
+    name:         document.getElementById('finalOfferFName').value.trim(),
+    position:     document.getElementById('finalOfferFPosition').value.trim(),
+    joining_date: document.getElementById('finalOfferFJoining').value,
+    salary:       document.getElementById('finalOfferFSalary').value.trim(),
+    probation_months: document.getElementById('finalOfferFProbation')?.value || '2',
+    letter_date:  document.getElementById('finalOfferFDate')?.value || '',
+  };
+}
+
+let _finalOfferPreviewTimer = null;
+function scheduleFinalOfferPreview() {
+  clearTimeout(_finalOfferPreviewTimer);
+  const st = document.getElementById('finalOfferPreviewStatus');
+  if (st) st.textContent = 'typing…';
+  _finalOfferPreviewTimer = setTimeout(renderFinalOfferPreview, 450);
+}
+
+async function renderFinalOfferPreview() {
+  const frame = document.getElementById('finalOfferPreviewFrame');
+  const st = document.getElementById('finalOfferPreviewStatus');
+  if (!frame) return;
+  if (st) st.textContent = 'updating…';
+  try {
+    const params = new URLSearchParams(_finalOfferFields());
+    const r = await api('/api/hrm/final-offer-preview-html?' + params.toString(), 'GET');
+    if (r && r.html) { frame.srcdoc = r.html; if (st) st.textContent = ''; }
+    else if (st) st.textContent = 'preview error';
+  } catch (e) { if (st) st.textContent = 'preview error'; }
+}
+
+// Render + open the exact PDF (as sent to the candidate) in a new tab.
+async function openFinalOfferExactPdf() {
+  const f = _finalOfferFields();
+  if (!f.name || !f.joining_date) { showToast('Name and joining date required', 'error'); return; }
+  showToast('Rendering exact PDF…');
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = localStorage.getItem('authToken');
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const resp = await fetch('/api/hrm/final-offer-render', {
+      method: 'POST', headers, credentials: 'include',
+      body: JSON.stringify(f)
+    });
+    if (!resp.ok) { const e = await resp.json().catch(() => ({})); showToast('PDF render failed: ' + (e.error || resp.status), 'error'); return; }
+    const url = URL.createObjectURL(await resp.blob());
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { showToast('PDF render failed: ' + e.message, 'error'); }
+}
+
+function submitFinalOfferForm() {
+  const offer_name     = document.getElementById('finalOfferFName').value.trim();
+  const offer_position = document.getElementById('finalOfferFPosition').value.trim();
+  const department     = document.getElementById('finalOfferFDepartment').value;
+  const joining_date   = document.getElementById('finalOfferFJoining').value;
+  const salary         = document.getElementById('finalOfferFSalary').value.trim();
+  if (!offer_name)   { showToast('Candidate name required', 'error'); return; }
+  if (!joining_date) { showToast('Joining date required', 'error'); return; }
+  const candidateId = _hrmCurrentId;
+  const ctx = _offerEmailCtx; _offerEmailCtx = null;   // capture + reset the email context
+  const btn = document.getElementById('finalOfferSendBtn');
+  if (btn) { btn.disabled = true; btn.textContent = ctx ? 'Sending…' : 'Saving…'; }
+
+  const probation_months = document.getElementById('finalOfferFProbation')?.value || '2';
+  const letter_date = document.getElementById('finalOfferFDate')?.value || '';
+  api(`/api/hrm/candidates/${candidateId}/send-final-offer`, 'POST', {
+    joining_date, salary, offer_name, offer_position, department, probation_months, letter_date
+  }).then(async r => {
+    if (btn) { btn.disabled = false; btn.textContent = ctx ? '📧 Send by Email' : '📬 Save Offer Letter'; }
+    if (!r || r.error) { showToast((r && r.error) || 'Save failed', 'error'); return; }
+    closeModal('hrmFinalOfferFormModal');
+    // Surface a Drive-save failure so it isn't silent (the send/email still works).
+    if (r.driveSaved === false && r.driveError) {
+      showToast('⚠️ Not saved to Drive: ' + r.driveError, 'error');
+    }
+    if (ctx) {
+      // Save done — now email the final offer letter (renders the snapshot just saved).
+      const er = await api(`/api/hrm/candidates/${candidateId}/email-offer`, 'POST', { type: 'offer', email: ctx.to, cc: ctx.cc });
+      if (!er || er.error) { showToast((er && er.error) || 'Email failed', 'error'); loadHRM(); return; }
+      showToast(`Offer letter emailed to ${er.emailedTo}${er.cc ? ' (cc: ' + er.cc + ')' : ''}`);
+    } else {
+      showToast('Offer letter saved. Use the 📧 Email button to send it.');
+    }
+    loadHRM();
+  });
+}
+
+function showErrIn(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const bd = document.getElementById('sidebarBackdrop');
+  const opening = !sb.classList.contains('open');
+  sb.classList.toggle('open', opening);
+  bd.classList.toggle('open', opening);
+  document.body.style.overflow = opening ? 'hidden' : '';
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarBackdrop').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// Dashboard employee filter — a custom (non-native) dropdown so it renders as
+// normal page content instead of a browser-native <select> popup, which
+// always paints above everything (including the sidebar) and can't be
+// closed reliably when the sidebar opens/expands over it.
+function openDashEmpDropdown(e) {
+  e.preventDefault();
+  const sel = document.getElementById('dashEmployeeFilter');
+  const list = document.getElementById('dashEmpFilterList');
+  if (!sel || !list) return false;
+  if (list.classList.contains('open')) { closeDashEmpDropdown(); return false; }
+  // Search box first, then the options. The whole company is in this list, so
+  // scrolling to a name is slower than typing three letters of it.
+  list.innerHTML =
+    `<input type="text" id="dashEmpSearch" class="dash-emp-filter-search" placeholder="Search employee…"
+            autocomplete="off" spellcheck="false"
+            oninput="dashEmpFilterSearch()" onkeydown="dashEmpSearchKey(event)">`
+    + Array.from(sel.options).map(o =>
+        `<div class="dash-emp-filter-opt${o.value === sel.value ? ' selected' : ''}" data-val="${dtEscape(o.value)}">${dtEscape(o.textContent)}</div>`
+      ).join('')
+    + `<div class="dash-emp-filter-empty" id="dashEmpNoMatch" style="display:none">No employee found</div>`;
+  list.classList.add('open');
+  closeSidebar();
+  document.addEventListener('mousedown', dashEmpFilterOutsideClick);
+  // Focus after the panel is on screen so you can type straight away.
+  document.getElementById('dashEmpSearch')?.focus();
+  return false;
+}
+
+// Filter the already-rendered rows rather than re-rendering, so the selected
+// highlight and data-val survive and the click handler needs no changes.
+function dashEmpFilterSearch() {
+  const q = (document.getElementById('dashEmpSearch')?.value || '').trim().toLowerCase();
+  const opts = document.querySelectorAll('#dashEmpFilterList .dash-emp-filter-opt');
+  let shown = 0;
+  opts.forEach(o => {
+    const hit = !q || o.textContent.toLowerCase().includes(q);
+    o.style.display = hit ? '' : 'none';
+    if (hit) shown++;
+  });
+  const none = document.getElementById('dashEmpNoMatch');
+  if (none) none.style.display = shown ? 'none' : 'block';
+}
+
+// Enter picks the top match — the common case is typing a few letters and
+// wanting the one name left. Escape closes without changing the selection.
+function dashEmpSearchKey(e) {
+  if (e.key === 'Escape') { closeDashEmpDropdown(); return; }
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const first = Array.from(document.querySelectorAll('#dashEmpFilterList .dash-emp-filter-opt'))
+    .find(o => o.style.display !== 'none');
+  if (first) first.click();
+}
+function closeDashEmpDropdown() {
+  document.getElementById('dashEmpFilterList')?.classList.remove('open');
+  document.removeEventListener('mousedown', dashEmpFilterOutsideClick);
+}
+function dashEmpFilterOutsideClick(e) {
+  const wrap = document.getElementById('dashEmpFilterWrap');
+  if (wrap && !wrap.contains(e.target)) closeDashEmpDropdown();
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('dashEmpFilterList')?.addEventListener('click', (e) => {
+    const opt = e.target.closest('.dash-emp-filter-opt');
+    if (!opt) return;
+    const sel = document.getElementById('dashEmployeeFilter');
+    sel.value = opt.dataset.val;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    closeDashEmpDropdown();
+  });
+});
+
+// ── Reusable custom dropdown ─────────────────────────────────────────
+// Upgrade ANY native <select> into an in-page custom dropdown, for the same
+// reason the dashboard employee filter uses one: a native <select> popup always
+// paints above everything (including the sidebar) and can't be closed when the
+// sidebar slides over it. The <select> stays as the value store and still fires
+// 'change'; a styled button shows the current label and a div renders the list.
+// Idempotent — safe to call again after the <select>'s options are rebuilt.
+function initCustomSelect(selectId){
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  // Already upgraded → just refresh the button label (options may have changed).
+  if (sel.dataset.cselect) { sel._cselectSync && sel._cselectSync(); return; }
+  sel.dataset.cselect = '1';
+  const fullWidth = /width\s*:\s*100%/.test(sel.getAttribute('style') || '');
+
+  const wrap = document.createElement('span');
+  wrap.style.cssText = fullWidth ? 'position:relative;display:block' : 'position:relative;display:inline-block';
+  sel.parentNode.insertBefore(wrap, sel);
+  wrap.appendChild(sel);
+  sel.style.display = 'none';
+  sel.tabIndex = -1;
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'cselect-btn';
+  if (fullWidth) { btn.style.width = '100%'; btn.style.justifyContent = 'space-between'; }
+  const list = document.createElement('div');
+  list.className = 'dash-emp-filter-list';
+  wrap.appendChild(btn);
+  wrap.appendChild(list);
+
+  const labelOf = () => { const o = sel.options[sel.selectedIndex]; return o ? o.textContent : ''; };
+  const sync = () => { btn.innerHTML = `<span>${dtEscape(labelOf())}</span><span class="cselect-caret">▾</span>`; };
+  sel._cselectSync = sync;
+  sync();
+
+  const outside = (e) => { if (!wrap.contains(e.target)) close(); };
+  function close(){ list.classList.remove('open'); document.removeEventListener('mousedown', outside); }
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (list.classList.contains('open')) { close(); return; }
+    list.innerHTML = Array.from(sel.options).map(o =>
+      `<div class="dash-emp-filter-opt${o.value === sel.value ? ' selected' : ''}" data-val="${dtEscape(o.value)}">${dtEscape(o.textContent)}</div>`
+    ).join('');
+    list.classList.add('open');
+    if (typeof closeSidebar === 'function') closeSidebar();
+    document.addEventListener('mousedown', outside);
+  });
+  list.addEventListener('click', (e) => {
+    const opt = e.target.closest('.dash-emp-filter-opt');
+    if (!opt) return;
+    sel.value = opt.dataset.val;
+    sync();
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    close();
+  });
+  // Keep the label right if something sets sel.value + dispatches change directly.
+  sel.addEventListener('change', sync);
+}
+
+// Close sidebar when user taps anywhere in main content area (mobile)
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelector('.main')?.addEventListener('mousedown', () => {
+    if (document.getElementById('sidebar')?.classList.contains('open')) closeSidebar();
+  }, { capture: true });
+  document.querySelector('.main')?.addEventListener('touchstart', () => {
+    if (document.getElementById('sidebar')?.classList.contains('open')) closeSidebar();
+  }, { capture: true, passive: true });
+});
+
+function toggleNavGroup(headerEl) {
+  const group = headerEl.closest('.nav-group');
+  if (!group) return;
+  const key = group.dataset.group;
+  const collapsed = group.classList.toggle('collapsed');
+  try { localStorage.setItem('navGroupCollapsed:' + key, collapsed ? '1' : '0'); } catch {}
+}
+
+function restoreNavGroupState() {
+  document.querySelectorAll('.nav-group').forEach(group => {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem('navGroupCollapsed:' + group.dataset.group) === '1'; } catch {}
+    group.classList.toggle('collapsed', collapsed);
+  });
+}
+
+// A group header hides itself when none of its items are visible for the
+// current user's permissions, so role-based filtering never leaves an
+// empty labeled section in the sidebar.
+function refreshNavGroupVisibility() {
+  document.querySelectorAll('.nav-group').forEach(group => {
+    const anyVisible = Array.from(group.querySelectorAll('.nav-group-items > .nav-item'))
+      .some(item => item.style.display !== 'none');
+    group.style.display = anyVisible ? '' : 'none';
+  });
+}
+
+function navigate(page, el) {
+  // MIS page — admin and HOD (App Role) only
+  // Mirrors requireMisViewer: the admin/hod floor AND the page key, so a
+  // revoked hod cannot open a tab whose every request would 403.
+  if (page === 'mis' && !(canSee('mis') && (ME.role === 'admin' || ME.role === 'hod'))) return;
+  // Race Tracker — admin only
+  if (page === 'race' && ME.role !== 'admin') return;
+  // Logs (deleted-records archive) — admin only
+  if (page === 'logs' && ME.role !== 'admin') return;
+  // Daily Reports — admin only; every endpoint behind it is requireAdmin
+  if (page === 'dailyreports' && ME.role !== 'admin') return;
+  // Credit Cards — server-side viewer list decides, Access Control can revoke
+  if (page === 'creditcards' && !(ccCanView() && canSee('creditcards'))) return;
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  if (el) el.classList.add('active');
+  // Keep the sidebar item AND its mobile-bottom-nav clone in sync, whichever one was tapped
+  document.querySelectorAll(`.nav-item[onclick*="navigate('${page}',"]`).forEach(n=>n.classList.add('active'));
+  // The bar carries four pages; More stands in for every other one, so it
+  // lights up whenever none of the four is the page being shown.
+  const moreTab = document.getElementById('mbnMoreTab');
+  if (moreTab) moreTab.classList.toggle('active', !document.querySelector('.mobile-bottom-nav .nav-item.active'));
+  try { localStorage.setItem('lastPage', page); } catch {}
+  document.getElementById('topbarTitle').textContent = pageTitles[page] || page;
+  // Dashboard user-switcher lives on the dashboard header only.
+  const ta = document.getElementById('topbarActions');
+  if (ta) ta.style.display = (page === 'dashboard' && (ME.role === 'admin' || ME.impersonatedBy)) ? 'flex' : 'none';
+  // Auto-close mobile drawer after navigation
+  if (window.innerWidth <= 768) closeSidebar();
+  const pageLoaders = {
+    dashboard: loadDashboard, alltasks: loadAllTasks, users: loadUsers,
+    approvals: loadApprovals, fms: loadFMSAdmin, 'fms-tasks': loadFMSTasks,
+    daily: loadDailyForm, clients: loadClients, compliance: loadCompliance,
+    dailyreports: loadDailyReports, leaves: loadLeaves, race: loadRaceTracker,
+    meetings: loadMeetings, 'client-portal': loadClientPortal,
+    inventory: loadInventory, hrm: loadHRM, dms: loadDMS,
+    feedback: loadFeedbackAdmin,
+    creditcards: loadCreditCards,
+    paymentreq: initPaymentReqPage,
+    logs: loadLogs
+  };
+  const loaderFn = pageLoaders[page];
+  if (typeof loaderFn === 'function') withPageLoader(loaderFn);
+  window.scrollTo(0,0);
+}
+
+// ══════════════════════════════════════════════════════
+// MOBILE BOTTOM TAB BAR — the sidebar's first four visible pages, then More
+// (clones, not the same nodes, since a fixed bottom bar can't reuse a
+// hidden-off-canvas sidebar element). Re-rendered whenever the sidebar's
+// nav items change (role-based show/hide happens async in a few places).
+// An admin sees 23 nav items; all 23 in one bar was a horizontally scrolling
+// strip with no hint that anything lay off-screen. Four fit the width at a
+// readable size, and More opens the rest as a sheet.
+// ══════════════════════════════════════════════════════
+const MBN_PRIMARY_COUNT = 4;
+
+// Computed display is per-element — an ancestor being display:none (which the
+// whole sidebar is, on a phone) doesn't change what a child computes. So this
+// reads the role-based show/hide the sidebar items carry, at any width.
+function mbnVisibleNavItems() {
+  const navRoot = document.querySelector('.sidebar .nav');
+  if (!navRoot) return [];
+  return [...navRoot.querySelectorAll('.nav-item')]
+    .filter(n => getComputedStyle(n).display !== 'none');
+}
+
+function renderMobileBottomNav() {
+  const bar = document.getElementById('mobileBottomNav');
+  if (!bar) return;
+  const items = mbnVisibleNavItems();
+  if (!items.length) return;
+  bar.innerHTML = '';
+  items.slice(0, MBN_PRIMARY_COUNT).forEach(n => bar.appendChild(n.cloneNode(true)));
+  const more = document.createElement('div');
+  more.className = 'nav-item';
+  more.id = 'mbnMoreTab';
+  more.innerHTML = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/></svg><span class="nav-label-text">More</span>`;
+  more.onclick = openMoreSheet;
+  bar.appendChild(more);
+}
+
+// Built on every open, not on nav changes: the source items carry the current
+// .active page and the current badge counts, and copying them at open time is
+// what keeps both honest without a second sync path.
+function renderMoreSheet() {
+  const body = document.getElementById('mbnSheetBody');
+  if (!body) return;
+  const groups = [];
+  mbnVisibleNavItems().slice(MBN_PRIMARY_COUNT).forEach(n => {
+    const g = n.closest('.nav-group');
+    const label = g ? (g.querySelector('.nav-group-label-text')?.textContent.trim() || 'More') : 'General';
+    let bucket = groups.find(x => x.label === label);
+    if (!bucket) groups.push(bucket = { label, items: [] });
+    bucket.items.push(n);
+  });
+  body.innerHTML = '';
+  groups.forEach(g => {
+    const sec = document.createElement('div');
+    sec.className = 'mbn-group';
+    const lab = document.createElement('div');
+    lab.className = 'mbn-group-label';
+    lab.textContent = g.label;
+    const grid = document.createElement('div');
+    grid.className = 'mbn-links';
+    g.items.forEach(n => {
+      const page = (String(n.getAttribute('onclick') || '').match(/navigate\('([^']+)'/) || [])[1];
+      if (!page) return;
+      const link = document.createElement('div');
+      link.className = 'mbn-link' + (n.classList.contains('active') ? ' active' : '');
+      link.innerHTML = n.innerHTML;   // icon + label + any badges, as they stand now
+      link.onclick = () => { closeMoreSheet(); navigate(page, null); };
+      grid.appendChild(link);
+    });
+    sec.appendChild(lab);
+    sec.appendChild(grid);
+    body.appendChild(sec);
+  });
+}
+
+// Name, role and photo are loaded async into the sidebar card; read them at
+// open time rather than caching a "Loading…" from startup.
+function syncMoreSheetUser() {
+  const av = document.getElementById('sidebarAvatar');
+  const nm = document.getElementById('sidebarName');
+  const rl = document.getElementById('sidebarRole');
+  if (av) document.getElementById('mbnUserAvatar').innerHTML = av.innerHTML;
+  if (nm) document.getElementById('mbnUserName').textContent = nm.textContent;
+  if (rl) document.getElementById('mbnUserRole').textContent = rl.textContent;
+}
+
+function openMoreSheet() {
+  renderMoreSheet();
+  syncMoreSheetUser();
+  const sheet = document.getElementById('mbnSheet');
+  sheet.classList.add('open');
+  // Parked off-screen it is still display:block, so a screen reader would read
+  // straight through it unless it is hidden by name.
+  sheet.setAttribute('aria-hidden','false');
+  document.getElementById('mbnSheetBackdrop').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeMoreSheet() {
+  const sheet = document.getElementById('mbnSheet');
+  sheet.classList.remove('open');
+  sheet.setAttribute('aria-hidden','true');
+  document.getElementById('mbnSheetBackdrop').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function mbnOpenProfile() {
+  closeMoreSheet();
+  navigate('profile', null);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('mbnSheet')?.classList.contains('open')) closeMoreSheet();
+});
+
+let _mbnObserver = null;
+function initMobileBottomNavSync() {
+  renderMobileBottomNav();
+  if (_mbnObserver) return;
+  const navRoot = document.querySelector('.sidebar .nav');
+  if (!navRoot) return;
+  _mbnObserver = new MutationObserver(() => renderMobileBottomNav());
+  _mbnObserver.observe(navRoot, { attributes:true, attributeFilter:['style'], subtree:true, childList:true });
+}
+
+// ══════════════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════════════
+// One counter for the whole dashboard, not one per loader. A ticket stands for
+// "the view being asked for right now", and the four loaders below share it:
+// whatever loadDashboard starts inherits its ticket, and anything started on its
+// own takes a fresh one. Per-loader counters would leave a hole — loadDashboard
+// nulls _lastDashCompleted but only re-fetches it for some views, so a
+// loadDashCompleted still in flight from before could land in the cleared cache
+// with nothing newer of its own kind to invalidate it. Bumping one shared
+// counter kills every in-flight loader at once.
+let _dashSeq = 0;
+const newDashSeq = () => ++_dashSeq;
+
+async function loadDashboard(light = false) {
+  const seq = newDashSeq();
+  const empFilter = document.getElementById('dashEmployeeFilter');
+  const empVal = empFilter ? empFilter.value : 'all';
+  const isAdmin = ME.role === 'admin';
+  const isHod = ME.role === 'hod';
+  const isPC = ME.role === 'pc';
+  // ME.department may be blank — server will resolve from DB
+  const hodParam = isHod ? '&hodDept='+encodeURIComponent(ME.department||'') : '';
+
+  // PC date range params
+  const dateFrom = isPC ? (document.getElementById('pcDateFrom')?.value || '') : '';
+  const dateTo   = isPC ? (document.getElementById('pcDateTo')?.value || '') : '';
+  const dateParams = (isPC && dateFrom && dateTo) ? `&dateFrom=${dateFrom}&dateTo=${dateTo}` : '';
+
+  const baseUrl = (isAdmin || isHod || isPC)
+    ? `/api/dashboard?employee=${empVal}${hodParam}${dateParams}&taskType=`
+    : `/api/dashboard?taskType=`;
+  const [dDel, dChl] = await Promise.all([
+    api(baseUrl + 'delegation'),
+    api(baseUrl + 'checklist')
+  ]);
+  if (seq !== _dashSeq) return;
+
+  // Error check: show error to user if DB or API fails
+  if (dDel.error || dChl.error) {
+    const errMsg = dDel.error || dChl.error;
+    console.error('Dashboard API error:', errMsg);
+    document.getElementById('dTotal').textContent = 'Err';
+    document.getElementById('dCompleted').textContent = 'Err';
+    document.getElementById('dPending').textContent = 'Err';
+    document.getElementById('dashTbody').innerHTML = `<tr><td colspan="6" style="color:red;padding:16px;text-align:center">⚠️ Data load failed: ${dtEscape(errMsg)}<br><small>Please refresh, or contact your administrator if this persists.</small></td></tr>`;
+    return;
+  }
+
+  // Cache totals so the type-tab can re-derive cards + chart without re-fetching.
+  window._dashTotals = { del: dDel, chl: dChl, fmsPending: 0, fmsCompleted: 0, upcoming: (dDel.upcoming||0) + (dChl.upcoming||0) };
+  // Show upcoming count immediately from server stats (no need to wait for full task list)
+  const upElEarly = document.getElementById('dUpcoming');
+  if (upElEarly) upElEarly.textContent = window._dashTotals.upcoming;
+  updateDashStats(dashType);
+
+  if (isAdmin || isHod || isPC) {
+    // Only admin (and PC) may switch the dashboard to another employee's view.
+    // HOD sees their department's aggregate but cannot drill into individuals.
+    empFilter.style.display = (isAdmin || isPC) ? 'block' : 'none';
+    const empFilterCatcher = document.getElementById('dashEmpFilterClickCatcher');
+    if (empFilterCatcher) empFilterCatcher.style.display = (isAdmin || isPC) ? 'block' : 'none';
+
+    if (isPC) {
+      // Show date range filter for PC
+      const drFilter = document.getElementById('pcDateRangeFilter');
+      if (drFilter) drFilter.style.display = 'flex';
+      // Smart dropdown: show only users with pending tasks
+      await refreshPCEmployeeDropdown();
+    } else if (isAdmin && empFilter.options.length <= 1) {
+      const users = await api('/api/users');
+      if (Array.isArray(users)) users.forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = u.id; opt.textContent = u.name;
+        empFilter.appendChild(opt);
+      });
+    }
+
+    {
+      const btns = [];
+      if (ME.role === 'admin') btns.push(`<button class="btn btn-yellow" onclick="openHoliday()">🗓 Holidays</button>`);
+      if (canDo('create_checklist')) btns.push(`<button class="btn btn-green" onclick="openChecklist()">+ Checklist</button>`);
+      if (canDo('create_task'))      btns.push(`<button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>`);
+      if (canDo('transfer_task'))    btns.push(`<button class="btn" style="background:#7c3aed;color:#fff" onclick="openNewTransferModal()">🔀 Transfer</button>`);
+      const db2 = document.getElementById('dashBtns');
+      if (db2) db2.innerHTML = btns.join('');
+    }
+  }
+  // Outside the role gate above: the one person it is shown to is matched by
+  // name, not by role, and the innerHTML assignment just wiped the button.
+  renderManpurTasksBtn();
+
+  // Combine both types for the unified pending table
+  const allTodayPending = [...(dDel.todayPending||[]), ...(dChl.todayPending||[])];
+  window._lastDashTasks = allTodayPending;
+  // Invalidate completed/revised caches — must re-fetch since the employee/date window may have changed.
+  window._lastDashCompleted = null;
+  window._lastDashRevised   = null;
+  // Keep sort state across reloads (don't reset)
+  renderDashTable(allTodayPending, dashType);
+
+  // Revised rows are merged into the default Pending view — fetch eagerly so
+  // they appear without an extra click. Re-render once they arrive.
+  loadDashRevised(seq).then(() => renderDashTable(window._lastDashTasks || [], dashType));
+
+  // Completed rows are lazy — only the stat-card click used to fetch them. That
+  // left the Completed view empty whenever anything re-ran this function while
+  // it was open (a type tab, a Done/Reopen, an employee or date change): the
+  // cache was cleared above and nothing filled it again, so the table rendered
+  // "No completed tasks in this window" over data that plainly existed. Refetch
+  // whenever the view being looked at needs them.
+  if (dashStatusFilter === 'completed' || dashStatusFilter === 'all') {
+    loadDashCompleted(seq).then(() => renderDashTable(window._lastDashTasks || [], dashType));
+  }
+
+  // Heavy widgets — the FMS section and the Performance/Activity charts (the
+  // latter hits the slow /api/mis/all Google-Sheets aggregate). A single task
+  // action does not change these, so a "light" refresh (passed after
+  // Done/Reopen/Revise/etc.) skips them, saving ~4 API calls — including the
+  // slowest one — on every button press.
+  if (!light) {
+    // Load FMS section — respects same employee filter
+    loadDashFMS(seq);
+
+    // Performance + Activity charts (admin / HOD only — depends on /api/mis/all)
+    if (isAdmin || isHod) {
+      const perfSec = document.getElementById('dashPerfSection');
+      if (perfSec) perfSec.style.display = 'block';
+      loadDashboardPerfCharts();
+    }
+  }
+}
+
+async function loadDashboardPerfCharts(){
+  const isAdmin = ME && ME.role === 'admin';
+  const isHod   = ME && ME.role === 'hod';
+  if (!isAdmin && !isHod) return;
+  const fromEl = document.getElementById('dashPerfFrom');
+  const toEl   = document.getElementById('dashPerfTo');
+  if (!fromEl || !toEl) return;
+  if (!fromEl.value || !toEl.value) {
+    const today = new Date();
+    const thirty = new Date(); thirty.setDate(today.getDate() - 29);
+    const fmt = d => d.toISOString().split('T')[0];
+    fromEl.value = fmt(thirty);
+    toEl.value   = fmt(today);
+  }
+  if (fromEl.value > toEl.value) { showToast('From date must be before To date', 'error'); return; }
+
+  // Show loading skeleton while heavy queries run
+  const perfGrid = document.querySelector('.dash-perf-grid');
+  if (perfGrid) perfGrid.style.opacity = '0.4';
+
+  const [scoreData, activityData] = await Promise.all([
+    api(`/api/mis/all?start=${fromEl.value}&end=${toEl.value}`),
+    api(`/api/dashboard/activity?start=${fromEl.value}&end=${toEl.value}`)
+  ]);
+
+  if (perfGrid) perfGrid.style.opacity = '1';
+
+  // Exclude internal owner / admin names from both leaderboards so the
+  // ranking reflects regular doers only.
+  const PERF_EXCLUDE = ['abhishek jain', 'simran gurnani'];
+  const isExcluded = r => PERF_EXCLUDE.includes(String(r.name || '').trim().toLowerCase());
+  const racers = Array.isArray(scoreData)
+    ? scoreData.filter(r => !isExcluded(r))
+    : [];
+  // Top Performers — sorted by tasks COMPLETED in this window (most → least).
+  // Bottom Performers — kept as overall-score-based to flag who's lagging.
+  const completables = racers.filter(r => Number.isFinite(parseInt(r.completedAll)));
+  const top    = [...completables].sort((a, b) => (parseInt(b.completedAll)||0) - (parseInt(a.completedAll)||0)).slice(0, 5);
+  const bottomPool = racers.filter(r => r.overallScore !== null && r.overallScore !== undefined);
+  const bottom = [...bottomPool].sort((a, b) => a.overallScore - b.overallScore).slice(0, 5);
+  renderDashPerfChart('dashTopChart',    'top',    top.map(r => r.name),    top.map(r => parseInt(r.completedAll)||0), '#16a34a', 'Tasks completed', null, top.map(r => r.profileImage));
+  renderDashPerfChart('dashBottomChart', 'bottom', bottom.map(r => r.name), bottom.map(r => r.overallScore),           '#dc2626', 'Score', null, bottom.map(r => r.profileImage));
+
+  // Most Active — composite engagement: active tasks + tasks delegated to others + revises triggered + leaves submitted.
+  const active = (Array.isArray(activityData) ? activityData : [])
+    .filter(r => !isExcluded(r)).slice(0, 5);
+  renderDashPerfChart(
+    'dashActiveChart', 'active',
+    active.map(r => r.name),
+    active.map(r => r.activityScore || 0),
+    '#4f46e5',
+    'Activity points',
+    active.map(r => `Active tasks: ${r.active_tasks} · Delegated to others: ${r.delegated_to_others} · Revises: ${r.revises_triggered} · Leaves: ${r.leaves_submitted}`),
+    active.map(r => r.profileImage)
+  );
+}
+
+// Chart.js plugin — draws a circular profile photo (or initials fallback) plus the
+// name in the left gutter of a horizontal bar chart, replacing the native y labels.
+const perfAvatarPlugin = {
+  id: 'perfAvatars',
+  afterDraw(chart, _args, opts) {
+    const y = chart.scales.y;
+    if (!y) return;
+    const ctx = chart.ctx;
+    const labels = chart.data.labels || [];
+    const images = (opts && opts.images) || [];
+    const size = 24, ax = 6, textX = ax + size + 7;
+    const maxTextW = Math.max(20, chart.chartArea.left - textX - 4);
+    if (!chart._perfImgs) chart._perfImgs = {};
+    ctx.save();
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < labels.length; i++) {
+      const yPos = y.getPixelForTick(i);
+      const name = String(labels[i] || '');
+      const initials = name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+      const url = images[i];
+      const cx = ax + size / 2;
+      const drawInitials = () => {
+        ctx.save();
+        ctx.fillStyle = '#e2e8f0';
+        ctx.beginPath(); ctx.arc(cx, yPos, size / 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#475569'; ctx.font = "700 9px Inter, sans-serif"; ctx.textAlign = 'center';
+        ctx.fillText(initials, cx, yPos);
+        ctx.restore();
+      };
+      if (url) {
+        let img = chart._perfImgs[url];
+        if (!img) {
+          img = new Image();
+          img.onload = () => { try { chart.draw(); } catch (e) {} };
+          img.src = url;
+          chart._perfImgs[url] = img;
+        }
+        if (img.complete && img.naturalWidth) {
+          ctx.save();
+          ctx.beginPath(); ctx.arc(cx, yPos, size / 2, 0, Math.PI * 2); ctx.closePath(); ctx.clip();
+          ctx.drawImage(img, ax, yPos - size / 2, size, size);
+          ctx.restore();
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(cx, yPos, size / 2, 0, Math.PI * 2); ctx.stroke();
+        } else { drawInitials(); }
+      } else { drawInitials(); }
+      // Name (truncate to fit the gutter)
+      ctx.fillStyle = '#0f172a'; ctx.font = "600 11px Inter, sans-serif"; ctx.textAlign = 'left';
+      let txt = name;
+      if (ctx.measureText(txt).width > maxTextW) {
+        while (txt.length > 1 && ctx.measureText(txt + '…').width > maxTextW) txt = txt.slice(0, -1);
+        txt += '…';
+      }
+      ctx.fillText(txt, textX, yPos);
+    }
+    ctx.restore();
+  }
+};
+
+function renderDashPerfChart(canvasId, key, labels, values, color, axisLabel, breakdown, images){
+  let wrap = document.getElementById(canvasId)?.parentElement;
+  if (!wrap) wrap = document.querySelector(`#${canvasId}`)?.parentElement;
+  if (!wrap) return;
+  if (!labels.length) {
+    wrap.innerHTML = '<div class="perf-empty">No data in this date range</div>';
+    if (dashPerfCharts[key]) { dashPerfCharts[key].destroy(); dashPerfCharts[key] = null; }
+    return;
+  }
+  if (!wrap.querySelector('canvas')) {
+    wrap.innerHTML = `<canvas id="${canvasId}"></canvas>`;
+  }
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  if (dashPerfCharts[key]) dashPerfCharts[key].destroy();
+  const hasImages = Array.isArray(images);
+  dashPerfCharts[key] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: axisLabel, data: values, backgroundColor: color, borderRadius: 6, maxBarThickness: 22 }]
+    },
+    plugins: hasImages ? [perfAvatarPlugin] : [],
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: hasImages ? { padding: { left: 150 } } : {},
+      plugins: {
+        legend: { display: false },
+        perfAvatars: { images: images || [] },
+        tooltip: {
+          callbacks: {
+            label: c => ` ${axisLabel}: ${typeof c.raw === 'number' ? c.raw.toFixed(1) : c.raw}`,
+            afterLabel: c => (breakdown && breakdown[c.dataIndex]) ? breakdown[c.dataIndex] : ''
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, color: '#64748b' } },
+        y: { grid: { display: false }, ticks: { display: !hasImages, font: { size: 11, weight: '600' }, color: '#0f172a' } }
+      }
+    }
+  });
+}
+
+// PC: date range change → refresh dropdown then dashboard
+async function onPCFilterChange() {
+  if (ME.role === 'pc') {
+    await refreshPCEmployeeDropdown();
+  }
+  loadDashboard();
+}
+
+function clearPCDateFilter() {
+  const df = document.getElementById('pcDateFrom');
+  const dt = document.getElementById('pcDateTo');
+  if (df) df.value = '';
+  if (dt) dt.value = '';
+  onPCFilterChange();
+}
+
+// ── Dashboard user-switcher — the top-right dropdown that shows whose dashboard
+// is open and lets an admin jump into any other user's dashboard (real
+// impersonation: a fresh user-scoped token, so the whole app renders as them). ──
+let _dashSwitchUsers = null;
+async function buildDashUserSwitcher(){
+  if (!(ME.role === 'admin' || ME.impersonatedBy)) return;
+  const sel = document.getElementById('dashUserSwitcher');
+  const bar = document.getElementById('topbarActions');
+  if (!sel || !bar) return;
+  if (!_dashSwitchUsers) {
+    try { const u = await api('/api/users'); _dashSwitchUsers = (Array.isArray(u) ? u : []).filter(x => x.role !== 'client'); }
+    catch { _dashSwitchUsers = []; }
+  }
+  // While impersonating, offer a clear way back to the admin's own dashboard.
+  let opts = ME.impersonatedBy ? `<option value="__self__">⤺ Back to my dashboard</option>` : '';
+  opts += _dashSwitchUsers.map(u => `<option value="${u.id}">${dtEscape(u.name)}${u.department ? ' · ' + dtEscape(u.department) : ''}</option>`).join('');
+  sel.innerHTML = opts;
+  sel.value = String(ME.id);   // currently-open dashboard owner
+  bar.style.display = 'flex';
+}
+
+async function onDashUserSwitch(val){
+  if (val === '__self__') {
+    try { await api('/api/admin/stop-impersonate', 'POST', {}); } catch (e) {}
+    window.location.href = '/app';
+    return;
+  }
+  const id = parseInt(val, 10);
+  if (!id || id === ME.id) return;
+  try {
+    const r = await api('/api/admin/impersonate', 'POST', { userId: id });
+    if (r && r.error) {
+      showToast(r.error, 'error');
+      const sel = document.getElementById('dashUserSwitcher'); if (sel) sel.value = String(ME.id);
+      return;
+    }
+    // Fresh token is set as a cookie — reload so the app renders entirely as that
+    // user (their tabs, buttons, tasks — exactly what they see).
+    window.location.href = '/app';
+  } catch (e) { showToast(e.message || 'Failed to open dashboard', 'error'); }
+}
+
+// Refresh PC employee dropdown — show only users with pending tasks
+async function refreshPCEmployeeDropdown() {
+  const empFilter = document.getElementById('dashEmployeeFilter');
+  if (!empFilter) return;
+  const dateFrom = document.getElementById('pcDateFrom')?.value || '';
+  const dateTo   = document.getElementById('pcDateTo')?.value   || '';
+  const dateQ    = (dateFrom && dateTo) ? `?dateFrom=${dateFrom}&dateTo=${dateTo}` : '';
+  const pendingUsers = await api(`/api/users/with-pending-tasks${dateQ}`);
+  // Save current dropdown value
+  const currentVal = empFilter.value;
+  empFilter.innerHTML = '<option value="all">All Employees</option>';
+  (pendingUsers || []).forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u.id; opt.textContent = u.name;
+    empFilter.appendChild(opt);
+  });
+  // Restore previous selection if still valid
+  if (currentVal && [...empFilter.options].some(o => o.value === currentVal)) {
+    empFilter.value = currentVal;
+  } else {
+    empFilter.value = 'all';
+  }
+}
+
+// Recompute the four overview cards + the pie chart based on the current type tab.
+function updateDashStats(type) {
+  const t = window._dashTotals || { del:{}, chl:{}, fmsPending:0, fmsCompleted:0 };
+  const del = t.del || {}, chl = t.chl || {};
+  let pending = 0, completed = 0, revised = 0, upcoming = 0;
+  if (type === 'delegation') {
+    pending   = del.pending || 0;
+    completed = del.completed || 0;
+    revised   = del.revised || 0;
+    upcoming  = del.upcoming || 0;
+  } else if (type === 'checklist') {
+    pending   = chl.pending || 0;
+    completed = chl.completed || 0;
+    revised   = 0;
+    upcoming  = chl.upcoming || 0;
+  } else if (type === 'fms') {
+    pending   = t.fmsPending   || 0;
+    completed = t.fmsCompleted || 0;
+    revised   = 0;
+    upcoming  = 0;
+  } else {
+    pending   = (del.pending||0)   + (chl.pending||0)   + (t.fmsPending||0);
+    completed = (del.completed||0) + (chl.completed||0) + (t.fmsCompleted||0);
+    revised   = del.revised || 0;
+    upcoming  = (del.upcoming||0)  + (chl.upcoming||0);
+  }
+  // Upcoming belongs in Total. The server counts it as due_date > today while
+  // pending/revised are due_date <= today, so the two can never hold the same
+  // row and this adds without double counting. Leaving it out made Total read
+  // as less than the cards sitting beside it obviously summed to.
+  //
+  // Upcoming is also read per type here rather than from t.upcoming, which is
+  // always del+chl combined — on the Delegation tab that would have folded
+  // checklist rows into a delegation-only Total.
+  //
+  // Note Upcoming stays capped to the current month, on purpose. Anything open
+  // and due in a later month is therefore still in none of these four numbers.
+  const total = pending + completed + revised + upcoming;
+  // Pending card shows the strict pending count; revised is surfaced as a
+  // separate subtitle within the same card so the two numbers stay distinct.
+  const totalEl = document.getElementById('dTotal');
+  const cEl     = document.getElementById('dCompleted');
+  const pEl     = document.getElementById('dPending');
+  const pBreak  = document.getElementById('dPendingBreakdown');
+  if (totalEl) totalEl.textContent = total;
+  if (cEl)     cEl.textContent     = completed;
+  if (pEl)     pEl.textContent     = pending;
+  if (pBreak) {
+    if (revised > 0) { pBreak.textContent = `+ ${revised} revised`; pBreak.style.display = 'block'; }
+    else             { pBreak.style.display = 'none'; }
+  }
+  // Upcoming — server-side count, already resolved for the current type above.
+  const upcomingCount = upcoming;
+  const upEl = document.getElementById('dUpcoming');
+  if (upEl) upEl.textContent = upcomingCount;
+
+  if (dashChartInst) dashChartInst.destroy();
+  const canvas = document.getElementById('dashChart');
+  if (!canvas) return;
+  if (!total) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    dashChartInst = null;
+    return;
+  }
+  const labels = ['Completed','Pending']; const data = [completed, pending]; const colors = ['#10b981','#ef4444'];
+  if (revised > 0 && (type === 'all' || type === 'delegation')) {
+    labels.push('Revised'); data.push(revised); colors.push('#f59e0b');
+  }
+  if (upcomingCount > 0) {
+    labels.push('Upcoming'); data.push(upcomingCount); colors.push('#8b5cf6');
+  }
+  dashChartInst = new Chart(canvas.getContext('2d'), {
+    type:'pie',
+    data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:3,borderColor:'#fff',hoverOffset:6}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}`}}}}
+  });
+}
+
+function dashTab(type, el) {
+  dashType = type;
+  document.querySelectorAll('#dashTypeTabGroup .tab').forEach(t=>t.classList.remove('active'));
+  if(el) el.classList.add('active');
+  // Refresh stat cards + chart from cached totals; table re-renders from the same cache.
+  updateDashStats(dashType);
+  if (window._lastDashTasks) {
+    // Switching type tab must not lose the completed rows the user is looking
+    // at — this path renders straight from cache, so fill the cache first if the
+    // active stat-card filter reads from it.
+    if ((dashStatusFilter === 'completed' || dashStatusFilter === 'all') && !window._lastDashCompleted) {
+      loadDashCompleted().then(() => renderDashTable(window._lastDashTasks || [], dashType));
+    }
+    renderDashTable(window._lastDashTasks, dashType);
+  } else {
+    withPageLoader(loadDashboard);
+  }
+}
+
+// Stat-card filter — keeps user on Dashboard, just narrows the table to
+// pending / completed / all. Completed rows are lazy-fetched (and cached)
+// the first time the user opens that view, so the regular load stays cheap.
+let dashStatusFilter = 'pending';
+async function goToAllTasksFromDash(status) {
+  dashStatusFilter = status;
+  // Visually mark which card is active.
+  document.querySelectorAll('.ov-card').forEach(c => c.classList.remove('ov-card-active'));
+  const cardSel = status === 'completed' ? '.ov-card.completed'
+                : status === 'all'       ? '.ov-card.total'
+                : status === 'upcoming'  ? '.ov-card.upcoming'
+                : '.ov-card.pending';
+  document.querySelector(cardSel)?.classList.add('ov-card-active');
+
+  // Update the table title so the user knows what they're looking at.
+  const titleEl = document.querySelector('#dashTbody')?.closest('.task-table-card')?.querySelector('.card-head-title');
+  if (titleEl) titleEl.textContent = status === 'completed' ? 'Completed Tasks'
+                                   : status === 'all'       ? 'All Tasks (Pending + Revised + Completed)'
+                                   : status === 'upcoming'  ? 'Upcoming Tasks (Future Due Date)'
+                                   : 'All Pending Tasks (incl. Revised)';
+
+  // Lazy-load completed/revised rows on first ask.
+  if ((status === 'completed' || status === 'all') && !window._lastDashCompleted) {
+    await loadDashCompleted();
+  }
+  if ((status === 'pending' || status === 'all' || status === 'upcoming') && !window._lastDashRevised) {
+    await loadDashRevised();
+  }
+  // Show Revised tab only on upcoming view; hide on others
+  const revisedTab = document.getElementById('dashTabRevised');
+  if (revisedTab) revisedTab.style.display = status === 'upcoming' ? '' : 'none';
+  // If switching away from upcoming while Revised tab was active, reset to All
+  if (status !== 'upcoming' && dashType === 'revised') {
+    dashTab('all', document.getElementById('dashTabAll'));
+    return;
+  }
+  // Re-render with whatever cache we have.
+  renderDashTable(window._lastDashTasks || [], dashType);
+}
+
+// Fetch completed task rows for the same employee / date window the dashboard
+// is currently viewing. Stored in window._lastDashCompleted (cleared on
+// loadDashboard so it stays in sync after status changes).
+async function loadDashCompleted(seq = newDashSeq()) {
+  const empFilter = document.getElementById('dashEmployeeFilter');
+  const empVal = empFilter ? empFilter.value : 'all';
+  const isAdmin = ME.role === 'admin';
+  const isHod = ME.role === 'hod';
+  const isPC = ME.role === 'pc';
+  const hodParam = isHod ? '&hodDept='+encodeURIComponent(ME.department||'') : '';
+  const dateFrom = isPC ? (document.getElementById('pcDateFrom')?.value || '') : '';
+  const dateTo   = isPC ? (document.getElementById('pcDateTo')?.value   || '') : '';
+  const dateParams = (isPC && dateFrom && dateTo) ? `&dateFrom=${dateFrom}&dateTo=${dateTo}` : '';
+  const baseUrl = (isAdmin || isHod || isPC)
+    ? `/api/dashboard?employee=${empVal}${hodParam}${dateParams}&status=completed&skipStats=1&taskType=`
+    : `/api/dashboard?status=completed&skipStats=1&taskType=`;
+  try {
+    const [dDel, dChl] = await Promise.all([api(baseUrl + 'delegation'), api(baseUrl + 'checklist')]);
+    if (seq !== _dashSeq) return;
+    window._lastDashCompleted = [...(dDel.tasks || []), ...(dChl.tasks || [])];
+  } catch (e) {
+    // Guarded like the success path: a stale call that fails must not
+    // blank a cache a newer call has already filled.
+    if (seq !== _dashSeq) return;
+    window._lastDashCompleted = [];
+  }
+}
+
+// Same pattern as loadDashCompleted but for revised rows.
+async function loadDashRevised(seq = newDashSeq()) {
+  const empFilter = document.getElementById('dashEmployeeFilter');
+  const empVal = empFilter ? empFilter.value : 'all';
+  const isAdmin = ME.role === 'admin';
+  const isHod = ME.role === 'hod';
+  const isPC = ME.role === 'pc';
+  const hodParam = isHod ? '&hodDept='+encodeURIComponent(ME.department||'') : '';
+  const dateFrom = isPC ? (document.getElementById('pcDateFrom')?.value || '') : '';
+  const dateTo   = isPC ? (document.getElementById('pcDateTo')?.value   || '') : '';
+  const dateParams = (isPC && dateFrom && dateTo) ? `&dateFrom=${dateFrom}&dateTo=${dateTo}` : '';
+  const baseUrl = (isAdmin || isHod || isPC)
+    ? `/api/dashboard?employee=${empVal}${hodParam}${dateParams}&status=revised&skipStats=1&taskType=`
+    : `/api/dashboard?status=revised&skipStats=1&taskType=`;
+  try {
+    const [dDel, dChl] = await Promise.all([api(baseUrl + 'delegation'), api(baseUrl + 'checklist')]);
+    if (seq !== _dashSeq) return;
+    window._lastDashRevised = [...(dDel.tasks || []), ...(dChl.tasks || [])];
+  } catch (e) {
+    if (seq !== _dashSeq) return;
+    window._lastDashRevised = [];
+  }
+}
+
+// FMS Dashboard loader — fetches FMS rows used by the unified pending table
+async function loadDashFMS(seq = newDashSeq()) {
+  // Keep the separate section hidden — FMS rows now render inside the main pending table
+  const isAdmin = ME.role === 'admin';
+  const isHod   = ME.role === 'hod';
+  const isPC    = ME.role === 'pc';
+
+  const empFilter = document.getElementById('dashEmployeeFilter');
+  const empVal = empFilter ? empFilter.value : 'all';
+  const url = `/api/fms-dashboard${(isAdmin||isHod||isPC) ? `?employee=${empVal}` : ''}`;
+
+  const data = await api(url);
+  if (seq !== _dashSeq) return;
+  if (data.error) {
+    window._lastDashFMS = [];
+    // Re-render unified table without FMS
+    if (window._lastDashTasks) renderDashTable(window._lastDashTasks, dashType);
+    return;
+  }
+
+  const rows = data.rows || [];
+
+  // Keep all FMS-specific fields so the FMS tab can render the rich layout
+  // (same fields as loadAllTasks uses for its FMS tab).
+  window._lastDashFMS = rows.map(r => ({
+    id: r.stepId || r.id || 0,
+    type: 'fms',
+    fmsId: r.fmsId,
+    stepId: r.stepId,
+    rowNumber: r.rowNumber,
+    fmsName: r.fmsName || '',
+    stepName: r.stepName || '',
+    doer: r.doer || '—',
+    planValue: r.planValue || '',
+    planTime: r.planTime || '',
+    details: Array.isArray(r.details) ? r.details : [],
+    isLate: !!r.isLate,
+    description: `${r.fmsName || ''} — ${r.stepName || ''}`,
+    assignedToName: r.doer || '—',
+    assignedByName: r.doer || '—',
+    due_date: r.planDate || '',
+    status: 'pending'
+  }));
+
+  // Feed FMS pending count into the cached totals so the type-tab + stat cards stay in sync.
+  if (window._dashTotals) {
+    window._dashTotals.fmsPending = window._lastDashFMS.length;
+    updateDashStats(dashType);
+  }
+
+  // Re-render unified table now that FMS data is in
+  if (window._lastDashTasks) renderDashTable(window._lastDashTasks, dashType);
+}
+
+function toggleDashDateSort() {
+  _dashDateSortState = (_dashDateSortState + 1) % 3; // 0→1→2→0
+  const icon = document.getElementById('dashDateSortIcon');
+  if (icon) {
+    icon.textContent = _dashDateSortState === 0 ? '⇅' : _dashDateSortState === 1 ? '↑' : '↓';
+    icon.style.color = _dashDateSortState === 0 ? '#94a3b8' : '#4f46e5';
+  }
+  if (window._lastDashTasks) renderDashTable(window._lastDashTasks, dashType);
+}
+
+function renderDashTable(tasks, type) {
+  // Show ALL pending tasks (delegation + checklist + FMS) combined
+  const isAdmin = ME.role==='admin' || ME.role==='hod';
+  const isPC    = ME.role==='pc';
+  const tbody = document.getElementById('dashTbody');
+  const thead = document.getElementById('dashThead');
+  window._dashTaskMap = {};
+
+  // FMS tab — swap to the rich FMS layout (FMS-Step / Details / Planned Date / Action)
+  // with Done + Open buttons, same as the All Tasks → FMS tab.
+  if (type === 'fms') {
+    thead.innerHTML = `<tr>
+      <th style="white-space:nowrap">FMS — Step</th>
+      <th>Details</th>
+      <th style="white-space:nowrap;cursor:pointer;user-select:none" onclick="toggleDashDateSort()" title="Click to sort by date">Planned Date <span id="dashDateSortIcon" style="font-size:10px;color:#94a3b8">⇅</span></th>
+      <th style="white-space:nowrap">Action</th>
+    </tr>`;
+    // FMS shows the full pipeline (upcoming + today + overdue) — no future-hide.
+    let fmsRows = (window._lastDashFMS || []).slice();
+    if (_dashDateSortState === 1) fmsRows = [...fmsRows].sort((a,b) => (a.due_date||'').localeCompare(b.due_date||''));
+    else if (_dashDateSortState === 2) fmsRows = [...fmsRows].sort((a,b) => (b.due_date||'').localeCompare(a.due_date||''));
+    if (!fmsRows.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty">No pending FMS rows 🎉</td></tr>`; return; }
+    tbody.innerHTML = fmsRows.map(_buildFmsRowHtml).join('');
+    return;
+  }
+
+  // Default unified layout (All / Delegation / Checklist) — restore original headers
+  thead.innerHTML = `<tr>
+    <th style="white-space:nowrap">Type</th>
+    <th style="max-width:240px">Description</th>
+    <th id="dashDoerHead">${(isAdmin||isPC)?'Doer':'Assigned By'}</th>
+    <th style="white-space:nowrap;cursor:pointer;user-select:none" onclick="toggleDashDateSort()" title="Click to sort by date">Date <span id="dashDateSortIcon" style="font-size:10px;color:#94a3b8">⇅</span></th>
+    <th style="white-space:nowrap">Client</th>
+    <th id="dashPriorityHead"${(type === 'delegation') ? '' : ' style="display:none"'}>Priority</th>
+    <th>Action</th>
+  </tr>`;
+  const showPriority = (type === 'delegation');
+
+  // Merge in FMS rows when the user wants 'all' or 'fms'
+  // Choose the source list based on the active stat-card filter (pending/completed/all).
+  // FMS only has pending data on dashboard, so it's merged only when status allows pending.
+  const pendingSource = (tasks || []).slice();
+  const completedSource = window._lastDashCompleted || [];
+  const revisedSource = window._lastDashRevised || [];
+  let combined;
+  if (type === 'fms') {
+    // FMS has no completed/revised dashboard rows — only pending stream.
+    combined = (dashStatusFilter === 'completed')
+      ? [] : (window._lastDashFMS || []).slice();
+  } else if (dashStatusFilter === 'completed') {
+    combined = completedSource;
+  } else if (dashStatusFilter === 'all') {
+    combined = pendingSource.concat(revisedSource).concat(completedSource);
+    if (!type || type === 'all') combined = combined.concat(window._lastDashFMS || []);
+  } else {
+    // pending (default) — revised rows are merged in so they show as pending work.
+    combined = pendingSource.concat(revisedSource);
+    if (!type || type === 'all') combined = combined.concat(window._lastDashFMS || []);
+  }
+
+  // Filter by selected type tab + status filter (status comes from stat-card clicks).
+  // Backend already caps checklist at today + 10 days and shows delegation/FMS in full —
+  // so we just render whatever it returned, no extra date hide here.
+  const _todayStr = new Date().toISOString().split('T')[0];
+  let allPending = combined.filter(t => {
+    // 'revised' is a pseudo-type tab — filter by status, not task type
+    const matchType = type === 'revised' ? t.status === 'revised'
+                    : (!type || type === 'all') ? true
+                    : t.type === type;
+    const matchStatus = dashStatusFilter === 'all' ? true
+                      : dashStatusFilter === 'completed' ? t.status === 'completed'
+                      : dashStatusFilter === 'upcoming'  ? t.status === 'revised'
+                                                         || ((t.status === 'pending' || !t.status) && t.due_date && t.due_date > _todayStr && t.due_date.substring(0,7) === _todayStr.substring(0,7))
+                      : (t.status === 'pending' || t.status === 'revised' || !t.status) && (!t.due_date || t.due_date <= _todayStr);
+    return matchType && matchStatus;
+  });
+  // Apply date sort
+  if (_dashDateSortState === 1) {
+    allPending = [...allPending].sort((a,b) => (a.due_date||a.date||'').localeCompare(b.due_date||b.date||''));
+  } else if (_dashDateSortState === 2) {
+    allPending = [...allPending].sort((a,b) => (b.due_date||b.date||'').localeCompare(a.due_date||a.date||''));
+  }
+  const colCount = showPriority ? 7 : 6;
+  if (!allPending.length) {
+    const emptyMsg = dashStatusFilter === 'completed' ? 'No completed tasks in this window'
+                   : dashStatusFilter === 'all'       ? 'No tasks in this window'
+                   : 'No pending tasks 🎉';
+    tbody.innerHTML=`<tr><td colspan="${colCount}" class="empty">${emptyMsg}</td></tr>`;
+    return;
+  }
+  const typeBadge = t => {
+    if (t.type === 'fms') return `<span style="font-size:10px;background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fed7aa">📊 FMS</span>`;
+    if (t.type === 'checklist') return `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ Checklist</span>`;
+    return `<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bfdbfe">📋 Delegation</span>`;
+  };
+  tbody.innerHTML = allPending.map(t => {
+    if (t.type === 'fms') {
+      const lateBadge = t.isLate
+        ? `<span style="font-size:10px;background:#fef2f2;color:#dc2626;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fecaca">⏰ Late</span>`
+        : `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ On Track</span>`;
+      // Date cell — planned date with optional time, falls back to raw planValue.
+      let dateCell;
+      if (t.due_date) {
+        const datePart = fmtDate(t.due_date);
+        const timePart = t.planTime ? `<div style="color:#64748b;font-size:11px;margin-top:1px">🕒 ${dtEscape(t.planTime)}</div>` : '';
+        dateCell = `<span style="${t.isLate?'color:#dc2626;font-weight:700':''}">${datePart}</span>${timePart}<div style="margin-top:4px">${lateBadge}</div>`;
+      } else {
+        dateCell = `<span style="color:#94a3b8;font-size:12px">${dtEscape(t.planValue||'—')}</span><div style="margin-top:4px">${lateBadge}</div>`;
+      }
+      // Description cell — FMS name + Step + Doer + details key:value list (compact).
+      const detailsHtml = (Array.isArray(t.details) && t.details.length)
+        ? `<div style="margin-top:5px;display:flex;flex-direction:column;gap:2px">${t.details.map(d => `<div style="display:flex;gap:6px;align-items:baseline;font-size:11px;line-height:1.4"><span style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap">${dtEscape(d.header||'—')}:</span><span style="color:#1e293b">${dtEscape(d.value||'—')}</span></div>`).join('')}</div>`
+        : '';
+      const descCell = `<div style="font-weight:700;color:#0f172a;font-size:13px">${dtEscape(t.fmsName||'')}</div>
+        <div style="color:#64748b;font-size:11px;margin-top:2px">↳ ${dtEscape(t.stepName||'')}</div>
+        ${detailsHtml}`;
+      const refArg = JSON.stringify({ fmsId: t.fmsId, stepId: t.stepId, rowNumber: t.rowNumber }).replace(/"/g, '&quot;');
+      const actionCell = `<button class="action-btn done" onclick='openFmsDoneFromRow(${refArg})' title="Mark this FMS row done">✅ Done</button>
+        <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 8px;margin-left:4px" onclick='openFmsTaskFromRow(${refArg})' title="Open in FMS Tasks page">Open</button>`;
+      return `<tr>
+        <td style="white-space:nowrap;vertical-align:top">${typeBadge(t)}</td>
+        <td style="vertical-align:top;max-width:240px">${descCell}</td>
+        <td style="vertical-align:top">${dtEscape(t.doer||t.assignedToName||'—')}</td>
+        <td style="white-space:nowrap;vertical-align:top">${dateCell}</td>
+        <td style="white-space:nowrap;vertical-align:top;color:#94a3b8">—</td>
+        ${showPriority ? `<td style="vertical-align:top">—</td>` : ''}
+        <td style="white-space:nowrap;vertical-align:top">${actionCell}</td>
+      </tr>`;
+    }
+    if (t.id) window._dashTaskMap[t.id] = t;
+    const clientCell = t.client_name
+      ? `<td style="white-space:nowrap"><span style="font-size:11px;background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span></td>`
+      : `<td style="color:#94a3b8">—</td>`;
+    const isDeleg = t.type === 'delegation';
+    const isCompleted = t.status === 'completed';
+    const isRevised = t.status === 'revised';
+    const revisedBadge = isRevised
+      ? `<span style="font-size:10px;color:#9d174d;font-weight:700;background:#fce7f3;padding:2px 8px;border-radius:10px;border:1px solid #fbcfe8;margin-right:6px">🔄 Revised</span>`
+      : '';
+    // "Awaiting a date" has to mean "has no date". The flag alone was trusted
+    // here, and Edit used to set a date without clearing it — so rows with a
+    // real deadline still rendered the yellow badge instead of the date. Asking
+    // both questions shows those correctly without waiting on a data fix.
+    const awaitingDate = t.awaiting_due_date==1 && !t.due_date;
+    const canSetDue = awaitingDate && (isAdmin || isPC || String(t.assigned_to)===String(ME.id) || String(t.assigned_by)===String(ME.id));
+    // Second line under the due date — tells you how much runway the doer actually got.
+    const delegatedLine = t.delegated_on
+      ? `<div style="font-size:10px;color:#94a3b8;font-weight:500;margin-top:2px;white-space:nowrap">Given ${fmtDate(t.delegated_on)}</div>`
+      : '';
+    // Third line — when it was actually finished, next to when it was due, so
+    // "late or not" is readable without opening anything. Only delegation tasks
+    // carry completed_at; anything closed before that column existed stays blank
+    // rather than guessing a date.
+    const completedLine = (isCompleted && t.completed_on)
+      ? `<div style="font-size:10px;color:#16a34a;font-weight:600;margin-top:2px;white-space:nowrap">Done ${fmtDate(t.completed_on)}</div>`
+      : '';
+    const actionCell = isCompleted
+      ? `<span style="font-size:11px;color:#16a34a;font-weight:700;background:#dcfce7;padding:3px 8px;border-radius:6px;border:1px solid #bbf7d0">✅ Completed</span>
+         ${(isAdmin || isPC || String(t.assigned_to)===String(ME.id)) ? `<button class="action-btn reopen" style="margin-left:6px" onclick="event.stopPropagation();reopenTask(${t.id},'dashboard','${t.type}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}`
+      : (awaitingDate ? `
+          ${revisedBadge}
+          <span style="display:inline-flex;gap:6px;align-items:center">
+          ${canSetDue
+            // dtEscape around the JSON is load-bearing: JSON.stringify emits real
+            // double quotes, and this onclick is itself delimited by double
+            // quotes, so the raw form closed the attribute early and the button
+            // silently did nothing. &quot; parses back to " inside the value.
+            ? `<button class="action-btn" style="background:#fef9c3;color:#854d0e;border:1px solid #fde68a" onclick="openSetDueDate(${t.id},${dtEscape(JSON.stringify(t.no_due_date_reason || ''))})">🗓 ${t.no_due_date_reason ? 'Set date' : 'Set due date'}</button>`
+            : `<span style="font-size:11px;color:#854d0e;font-weight:600">🗓 Awaiting doer's date</span>`}
+          ${(!isPC || t.type==='checklist') ? `<button class="action-btn done" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>` : ''}
+          </span>
+        ` : t.waiting_approval==1 ? `
+          ${revisedBadge}
+          <span style="font-size:11px;color:#f59e0b;font-weight:600">⏳ Waiting Approval</span>
+        ` : `
+          ${revisedBadge}
+          ${(!isPC || t.type==='checklist') ? `<button class="action-btn done" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>` : ''}
+          ${(!isPC && t.type!=='checklist') ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${t.type}')">Revise</button>` : ''}
+        `);
+    return `<tr onclick="window._dashTaskMap[${t.id}]&&openTaskDetail(window._dashTaskMap[${t.id}])" style="cursor:pointer" title="Click to view details">
+      <td style="white-space:nowrap">${typeBadge(t)}</td>
+      <td style="max-width:240px;word-break:break-word">${esc(t.description||t.desc)}</td>
+      <td>${(isAdmin||isPC)?t.assignedToName:t.assignedByName}</td>
+      <td>${awaitingDate
+            ? `<span style="font-size:10px;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fde68a;white-space:nowrap">🗓 Awaiting date</span>`
+              // The doer's answer to "why not yet" belongs in the column that is
+              // missing the date, not next to the buttons.
+              + (t.no_due_date_reason
+                  ? `<div style="font-size:10px;color:#854d0e;margin-top:3px;max-width:230px;line-height:1.4;white-space:normal" title="${dtEscape(t.no_due_date_reason)}">💬 ${dtEscape(t.no_due_date_reason)}</div>`
+                  : '')
+            : fmtDate(t.due_date||t.date)}${delegatedLine}${completedLine}</td>
+      ${clientCell}
+      ${showPriority ? `<td>${isDeleg ? `<span class="priority-badge ${t.priority||'low'}">${t.priority||'low'}</span>` : '—'}</td>` : ''}
+      <td onclick="event.stopPropagation()">${actionCell}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// ALL TASKS
+// ══════════════════════════════════════════════════════
+let allTasksData = [];
+let taskStatusFilter = 'pending';
+
+let allTasksPage = 1;
+// Bumped on every loadAllTasks() call. Whichever load owns the current value is
+// the only one allowed to write allTasksData — see the guards after each await.
+let _allTasksSeq = 0;
+const ALL_TASKS_PAGE_SIZE = 50;
+
+async function loadAllTasks() {
+  // A dozen things call this — tab clicks, both date inputs, the doer filter,
+  // Done, Revise, Reopen, delete, page open. Two of them overlapping used to
+  // mean the response that arrived LAST won, even when it belonged to the
+  // request made FIRST, so the table could settle on a stale or partial list.
+  // Refreshing fixed it because a reload fires exactly one request. Claim a
+  // ticket here and drop our own result after each await if someone newer holds it.
+  const seq = ++_allTasksSeq;
+  const isAdmin = ME.role==='admin';
+  const isHod = ME.role==='hod';
+  const isPC = ME.role==='pc';
+  const isUser = ME.role==='user';
+  const isDesktop = window.innerWidth >= 768;
+
+  // Show/hide assign task button based on role; label follows the active tab so the
+  // user knows which form will open.
+  const assignBtn = document.getElementById('tasksAssignBtn');
+  if (assignBtn) {
+    // Hide for FMS tab (no in-app create — FMS rows come from Google Sheets).
+    const canAssign = (isAdmin || isHod || isUser) && tasksType !== 'fms';
+    assignBtn.style.display = canAssign ? '' : 'none';
+    if (tasksType === 'checklist')        assignBtn.textContent = '+ Checklist';
+    else if (tasksType === 'delegatebyme') assignBtn.textContent = '+ Delegate Task';
+    else                                   assignBtn.textContent = '+ Delegate Task';
+  }
+
+  // Delegate by Me tab — show only for users who can assign tasks
+  const dbmTab = document.getElementById('tasksTabDelByMe');
+  if (dbmTab) dbmTab.style.display = (isAdmin || isHod || isUser) ? '' : 'none';
+
+  // Client Tasks tab — a manager-only view of every task delegated TO a client.
+  const clientsTab = document.getElementById('tasksTabClients');
+  if (clientsTab) clientsTab.style.display = (isAdmin || isHod || isPC) ? '' : 'none';
+
+  // Awaiting Date tab — open work carrying no deadline at all. Admin sees every
+  // department, a hod only their own (the route enforces both); PC and plain
+  // users do not get it, so the tab stays hidden for them.
+  const awaitingTab = document.getElementById('tasksTabAwaiting');
+  if (awaitingTab) awaitingTab.style.display = (isAdmin || isHod) ? '' : 'none';
+
+  // Show doer filter + date range to everyone on desktop (employee dropdown
+  // stays "All Employees" for non-admin/PC since backend scopes to own tasks).
+  const filtersDiv = document.getElementById('tasksUserDateFilters');
+  if (filtersDiv) {
+    filtersDiv.style.display = isDesktop ? 'flex' : 'none';
+  }
+
+  // Awaiting Date tab — its own shape (department > doer > tasks) and its own
+  // fixed scope, so it returns before the shared table path runs. The status
+  // tabs and the search/date filters are hidden while it is open: this list is
+  // already "open work with no date", and those controls would offer filters
+  // that either mean nothing here or quietly contradict it.
+  const statusRow = document.getElementById('tasksStatusTabRow');
+  if (tasksType === 'awaitingdate') {
+    if (statusRow) statusRow.style.display = 'none';
+    if (filtersDiv) filtersDiv.style.display = 'none';
+    if (assignBtn) assignBtn.style.display = 'none';
+    const data = await api('/api/tasks/awaiting-date');
+    if (seq !== _allTasksSeq) return;
+    renderAwaitingDate(data);
+    return;
+  }
+  if (statusRow) statusRow.style.display = '';
+
+  // FMS Tasks tab — fetch from the FMS dashboard endpoint and normalize into the same shape
+  if (tasksType === 'fms') {
+    const empVal = document.getElementById('tasksUserFilter')?.value || 'all';
+    const url = '/api/fms-dashboard' + (empVal !== 'all' ? `?employee=${empVal}` : '');
+    const fmsData = await api(url);
+    if (seq !== _allTasksSeq) return;
+    const rows = (fmsData?.rows) || [];
+    allTasksData = rows.map(r => ({
+      id: r.stepId || r.id || 0,
+      type: 'fms',
+      // Keep FMS-specific fields so _buildFmsRowHtml can render them directly.
+      fmsId: r.fmsId,
+      stepId: r.stepId,
+      rowNumber: r.rowNumber,
+      fmsName: r.fmsName || '',
+      stepName: r.stepName || '',
+      doer: r.doer || '—',
+      planValue: r.planValue || '',
+      planTime: r.planTime || '',
+      details: Array.isArray(r.details) ? r.details : [],
+      isLate: !!r.isLate,
+      // Aliased shape so existing filters / grouping keep working.
+      description: `${r.fmsName || ''} — ${r.stepName || ''}`,
+      assigned_to: null,
+      assigned_by: null,
+      assignedToName: r.doer || '—',
+      assignedByName: r.doer || '—',
+      due_date: r.planDate || '',
+      status: 'pending',
+      remarks: ''
+    }));
+    allTasksPage = 1;
+    renderTasksTable();
+    return;
+  }
+
+  const fetchType = (tasksType === 'delegatebyme' || tasksType === 'clienttasks') ? 'delegation' : tasksType;
+  const mineParam = tasksType === 'delegatebyme' ? '&mine=1'
+                  : tasksType === 'clienttasks' ? '&clients=1' : '';
+  const dateFromVal = document.getElementById('tasksDateFrom')?.value || '';
+  const dateToVal   = document.getElementById('tasksDateTo')?.value   || '';
+  const rangeParam = (dateFromVal || dateToVal)
+    ? `${dateFromVal ? `&from=${dateFromVal}` : ''}${dateToVal ? `&to=${dateToVal}` : ''}`
+    : '';
+  const data = await api(`/api/tasks?type=${fetchType}${mineParam}${rangeParam}`);
+  if (seq !== _allTasksSeq) return;
+
+  // Flatten all tasks — admin, HOD and PC get grouped response
+  let allTasks = [];
+  if (tasksType === 'delegatebyme') {
+    if (data.grouped) {
+      data.grouped.forEach(g => g.tasks.forEach(t => allTasks.push(t)));
+    } else {
+      allTasks = data.tasks || [];
+    }
+    allTasks = allTasks.filter(t => String(t.assigned_by) === String(ME.id));
+  } else if (isAdmin || isHod || ME.role==='pc') {
+    (data.grouped||[]).forEach(g => {
+      g.tasks.forEach(t => allTasks.push(t));
+    });
+  } else {
+    allTasks = data.tasks || [];
+  }
+  allTasksData = allTasks;
+  allTasksPage = 1;
+
+  // Admin / PC desktop: populate doer dropdown — skip for FMS (rows lack user IDs;
+  // keeping the dropdown from delegation/checklist load so the user can still filter server-side).
+  if ((isAdmin || isPC) && isDesktop && tasksType !== 'fms') {
+    const userSel = document.getElementById('tasksUserFilter');
+    if (userSel) {
+      const prevVal = userSel.value;
+      const uniqueUsers = {};
+      allTasks.forEach(t => {
+        const id = t.assignedToId || t.assigned_to;
+        if (id && t.assignedToName) uniqueUsers[id] = t.assignedToName;
+      });
+      userSel.innerHTML = '<option value="all">All Employees</option>';
+      Object.entries(uniqueUsers).sort((a,b)=>a[1].localeCompare(b[1])).forEach(([id,name]) => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = name;
+        userSel.appendChild(opt);
+      });
+      if (prevVal && [...userSel.options].some(o => o.value === prevVal)) userSel.value = prevVal;
+    }
+  }
+
+  // Admin / PC: float own tasks to the top — latest due-date first within each bucket.
+  if (isAdmin || isPC) {
+    const myId = String(ME.id);
+    allTasks.sort((a, b) => {
+      const aMine = String(a.assigned_to) === myId ? 0 : 1;
+      const bMine = String(b.assigned_to) === myId ? 0 : 1;
+      if (aMine !== bMine) return aMine - bMine;
+      return (b.due_date || '').localeCompare(a.due_date || '');
+    });
+    allTasksData = allTasks;
+  }
+
+  renderTasksTable();
+}
+
+function clearTasksDateFilter() {
+  const f = document.getElementById('tasksDateFrom');
+  const t = document.getElementById('tasksDateTo');
+  if (f) f.value = '';
+  if (t) t.value = '';
+  loadAllTasks();
+}
+
+function filterTasks() {
+  allTasksPage = 1;
+  // FMS rows are server-filtered by employee — re-fetch when the doer dropdown changes.
+  if (tasksType === 'fms') return loadAllTasks();
+  renderTasksTable();
+}
+
+function filterTaskStatus(status, el) {
+  taskStatusFilter = status;
+  allTasksPage = 1;
+  document.querySelectorAll('#page-alltasks .tab-group .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  renderTasksTable();
+}
+
+function _buildFmsRowHtml(t) {
+  const lateBadge = t.isLate
+    ? `<span style="font-size:10px;background:#fef2f2;color:#dc2626;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fecaca">⏰ Late</span>`
+    : `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ On Track</span>`;
+  let dateCell;
+  if (t.due_date) {
+    const datePart = fmtDate(t.due_date);
+    const timePart = t.planTime ? `<span style="color:#64748b;font-size:11px;font-weight:500;display:block;margin-top:1px">🕒 ${dtEscape(t.planTime)}</span>` : '';
+    dateCell = `<span style="${t.isLate?'color:#dc2626;font-weight:700':''}">${datePart}</span>${timePart}`;
+  } else {
+    dateCell = `<span style="color:#94a3b8;font-size:12px">${dtEscape(t.planValue||'—')}</span>`;
+  }
+  const detailsHtml = (Array.isArray(t.details) && t.details.length)
+    ? t.details.map(d => `<div style="display:flex;gap:6px;align-items:baseline;font-size:12px;line-height:1.45">
+        <span style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap">${dtEscape(d.header||'—')}:</span>
+        <span style="color:#1e293b">${dtEscape(d.value||'—')}</span>
+      </div>`).join('')
+    : '<span style="color:#94a3b8;font-size:12px">—</span>';
+  const refArg = JSON.stringify({ fmsId: t.fmsId, stepId: t.stepId, rowNumber: t.rowNumber }).replace(/"/g, '&quot;');
+  return `<tr>
+    <td style="vertical-align:top">
+      <div style="font-weight:700;color:#0f172a;font-size:13.5px">${dtEscape(t.fmsName||'')}</div>
+      <div style="color:#64748b;font-size:11px;margin-top:2px">↳ ${dtEscape(t.stepName||'')}</div>
+      <div style="color:#94a3b8;font-size:11px;margin-top:3px">Doer: ${dtEscape(t.doer||'—')}</div>
+    </td>
+    <td style="vertical-align:top;max-width:380px">${detailsHtml}</td>
+    <td style="vertical-align:top;white-space:nowrap">
+      <div>${dateCell}</div>
+      <div style="margin-top:4px">${lateBadge}</div>
+    </td>
+    <td style="vertical-align:top;white-space:nowrap">
+      <button class="action-btn done" onclick='openFmsDoneFromRow(${refArg})' title="Mark this FMS row done">✅ Done</button>
+      <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 8px;margin-left:4px" onclick='openFmsTaskFromRow(${refArg})' title="Open in FMS Tasks page">Open</button>
+    </td>
+  </tr>`;
+}
+
+async function openFmsTaskFromRow(ref) {
+  try {
+    if (!ref || !ref.fmsId) return;
+    navigate('fms-tasks', document.getElementById('nav-fms-tasks'));
+    for (let tries = 0; tries < 20; tries++) {
+      const sel = document.getElementById('fmsTasksSelect');
+      if (sel && [...sel.options].some(o => String(o.value) === String(ref.fmsId))) {
+        sel.value = String(ref.fmsId);
+        await onFMSTasksSelect();
+        return;
+      }
+      await new Promise(r => setTimeout(r, 100));
+    }
+  } catch(e) { console.error(e); }
+}
+
+// Mark Done directly from the All Tasks → FMS row — opens the existing FMS Done
+// modal in place (no navigation away from All Tasks).
+async function openFmsDoneFromRow(ref) {
+  try {
+    if (!ref || !ref.fmsId || !ref.stepId || !ref.rowNumber) {
+      showToast('Missing FMS row reference', 'error');
+      return;
+    }
+
+    // Set the active FMS / step so saveFMSDone() and the modal pick them up.
+    fmsTasksActiveFmsId = Number(ref.fmsId);
+    fmsTasksActiveStepId = Number(ref.stepId);
+
+    // Fetch step config (for extraRows) and step rows (for row data) in parallel.
+    const [stepsData, rowsData] = await Promise.all([
+      api(`/api/fms-tasks/${ref.fmsId}`),
+      api(`/api/fms-tasks/${ref.fmsId}/steps/${ref.stepId}/rows`)
+    ]);
+
+    if (stepsData?.error) { showToast(stepsData.error, 'error'); return; }
+    if (rowsData?.error)  { showToast(rowsData.error,  'error'); return; }
+
+    const steps = stepsData?.steps || [];
+    const step = steps.find(s => Number(s.id) === Number(ref.stepId));
+    if (step && !(step.isMyStep || ME.role === 'admin')) {
+      showToast('This FMS step is not assigned to you', 'error');
+      return;
+    }
+    window._fmsAllSteps = steps;
+    window._fmsActiveStepData = step || null;
+
+    const rows = rowsData?.rows || [];
+    const idx = rows.findIndex(r => Number(r.sheetRowNumber) === Number(ref.rowNumber));
+    if (idx < 0) {
+      showToast('Row already completed or not pending anymore', 'error');
+      // Refresh All Tasks so the stale row drops out of view.
+      if (typeof loadAllTasks === 'function') loadAllTasks();
+      return;
+    }
+    window._fmsCurrentRows = rows;
+
+    openFMSDoneModal(idx);
+  } catch(e) { console.error(e); showToast('Could not open Done modal: ' + e.message, 'error'); }
+}
+
+function _buildTaskRowHtml(t, ctx) {
+  const { isAdmin, isDelegateByMe, isClickable, showClientCol } = ctx;
+  if (t.type === 'fms' || tasksType === 'fms') return _buildFmsRowHtml(t);
+  const isCompleted = t.status === 'completed';
+  const isWaiting = t.waiting_approval == 1;
+  const isChecklist = tasksType === 'checklist';
+  // Client Tasks are delegation rows under the hood — edit/status calls must
+  // target the 'delegation' table, not the synthetic 'clienttasks' tab name.
+  const editType = (isDelegateByMe || tasksType === 'clienttasks') ? 'delegation' : tasksType;
+  if (isClickable) window._taskDetailMap[t.id] = t;
+
+  const isMyDelegation = (tasksType === 'delegation' || isDelegateByMe || tasksType === 'clienttasks') && String(t.assigned_by) === String(ME.id);
+  const canEditThis   = (isAdmin || isDelegateByMe || isMyDelegation) && canDo('edit_task');
+  const canDeleteThis = (isAdmin || isDelegateByMe || isMyDelegation) && canDo('delete_task');
+  const canReopenThis = canDo('reopen_task');
+  const hasFullCtrl   = canEditThis || canDeleteThis;
+  const actionBtns = hasFullCtrl ? `
+    ${canEditThis  ? `<button class="action-btn edit" style="padding:4px 7px" onclick="openEditTask(${t.id},'${editType}')" title="Edit">✏️</button>` : ''}
+    ${canDeleteThis? `<button class="action-btn delete" style="padding:4px 7px;margin-left:3px" onclick="deleteTask(${t.id},'${editType}')" title="Delete">🗑</button>` : ''}
+    <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px;margin-left:3px" onclick="openComments(${t.id},'${editType}')" title="Comments">💬</button>
+    ${!isDelegateByMe && !isCompleted && !isWaiting ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${editType}')">Done</button>` : ''}
+    ${!isDelegateByMe && !isChecklist && !isCompleted && !isWaiting ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${editType}')">Revise</button>` : ''}
+    ${isCompleted && canReopenThis ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${editType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
+    ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
+  ` : `
+    <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px" onclick="openComments(${t.id},'${editType}')" title="Comments">💬</button>
+    ${!isDelegateByMe && !isCompleted && !isWaiting ? `
+      <button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${editType}')">Done</button>
+      ${!isChecklist ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${editType}')">Revise</button>` : ''}
+    ` : ''}
+    ${isCompleted && canReopenThis ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${editType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
+    ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting Approval</span>` : ''}
+  `;
+  const clientCell = showClientCol
+    ? `<td style="white-space:nowrap;font-size:12px">${t.client_name ? `<span style="background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span>` : '<span style="color:#94a3b8">—</span>'}</td>`
+    : '';
+  const trClick = isClickable
+    ? `onclick="openTaskDetail(window._taskDetailMap[${t.id}])" style="cursor:pointer" title="Click to view details"`
+    : '';
+  const subtaskBadge = (Number(t.subtasks_done||0) + Number(t.subtasks_pending||0)) > 0
+    ? `<div style="margin-top:3px">
+        ${Number(t.subtasks_done||0)   ? `<span style="font-size:10px;color:#15803d;font-weight:700;background:#dcfce7;padding:1px 6px;border-radius:8px">✅ ${t.subtasks_done} done</span>` : ''}
+        ${Number(t.subtasks_pending||0)? `<span style="font-size:10px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:1px 6px;border-radius:8px;margin-left:4px">⏳ ${t.subtasks_pending} pending</span>` : ''}
+      </div>`
+    : '';
+  return `<tr ${trClick}>
+    <td style="white-space:nowrap;padding-right:12px" onclick="event.stopPropagation()">${actionBtns}</td>
+    <td>${esc(t.description||'')}${subtaskBadge}</td>
+    <td style="white-space:nowrap">${esc(t.assignedToName||'')}</td>
+    <td style="white-space:nowrap">${esc((t.assignedByName && t.assignedByName.trim() && t.assignedByName !== '—') ? t.assignedByName : 'Simran Gurnani')}</td>
+    <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}${t.delegated_on ? `<div style="font-size:10px;color:#94a3b8;font-weight:500;margin-top:2px">Given ${fmtDate(t.delegated_on)}</div>` : ''}</td>
+    <td style="white-space:nowrap;color:#16a34a;font-weight:600">${(t.status === 'completed' && t.completed_on) ? fmtDate(t.completed_on) : '<span style="color:#cbd5e1;font-weight:500">—</span>'}</td>
+    ${clientCell}
+    <td style="color:#64748b;max-width:220px;word-break:break-word;overflow-wrap:anywhere;font-size:12px">${esc(t.remarks||'—')}</td>
+    <td style="white-space:nowrap"><span class="status-badge ${['pending','completed','revised'].includes(t.status)?t.status:'pending'}">${t.status==='revised'?'Revised':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
+  </tr>`;
+}
+
+// Which doer groups are expanded — keyed by "userId|name". Kept across
+// re-renders so completing a task (Done → reload) doesn't collapse the group
+// the user is working inside.
+const _tgOpenKeys = new Set();
+
+function toggleTaskGroup(headerEl) {
+  const section = headerEl.closest('.tg-section');
+  if (!section) return;
+  section.classList.toggle('open');
+  const key = section.dataset.tgKey;
+  if (key != null) {
+    if (section.classList.contains('open')) _tgOpenKeys.add(key);
+    else _tgOpenKeys.delete(key);
+  }
+}
+
+function tgSetAll(open) {
+  document.querySelectorAll('#tasksContent .tg-section').forEach(s => {
+    s.classList.toggle('open', open);
+    const k = s.dataset.tgKey;
+    if (k != null) { if (open) _tgOpenKeys.add(k); else _tgOpenKeys.delete(k); }
+  });
+}
+
+function renderTasksTable() {
+  const isAdmin = ME.role==='admin' || ME.role==='hod'; // HOD gets admin-like view
+  const isPC    = ME.role==='pc';
+  const useGroupView = isAdmin || isPC; // PC also sees everyone's tasks, group it too.
+  const search = (document.getElementById('taskSearch')?.value||'').toLowerCase();
+  const userFilterVal = document.getElementById('tasksUserFilter')?.value || 'all';
+  const dateFrom = document.getElementById('tasksDateFrom')?.value || '';
+  const dateTo = document.getElementById('tasksDateTo')?.value || '';
+  const container = document.getElementById('tasksContent');
+
+  const _todayStr = new Date().toISOString().split('T')[0];
+  let tasks = allTasksData.filter(t => {
+    // "Pending" tab includes revised rows — revise/pending are treated as one bucket of open work.
+    const matchStatus = taskStatusFilter === 'all'
+      || (taskStatusFilter === 'pending' && (t.status === 'pending' || t.status === 'revised'))
+      // "Upcoming" = open work still ahead of us this month. The future-date check is what
+      // keeps it disjoint from "Pending"; without it every open row shows up in both tabs.
+      || (taskStatusFilter === 'upcoming' && (t.status === 'pending' || t.status === 'revised') && t.due_date && t.due_date > _todayStr && t.due_date.slice(0,7) === _todayStr.slice(0,7))
+      || t.status === taskStatusFilter;
+    const matchSearch = !search ||
+      (t.description||'').toLowerCase().includes(search) ||
+      (t.assignedToName||'').toLowerCase().includes(search) ||
+      (t.assignedByName||'').toLowerCase().includes(search) ||
+      (t.due_date||'').includes(search) ||
+      (t.remarks||'').toLowerCase().includes(search) ||
+      (t.status||'').toLowerCase().includes(search) ||
+      (t.priority||'').toLowerCase().includes(search);
+    // FMS rows are pre-filtered server-side by employee; skip the client-side ID match for them.
+    const matchUser = tasksType === 'fms' || userFilterVal === 'all' || String(t.assignedToId || t.assigned_to) === String(userFilterVal);
+    const matchDateFrom = !dateFrom || (t.due_date && t.due_date >= dateFrom);
+    const matchDateTo = !dateTo || (t.due_date && t.due_date <= dateTo);
+    return matchStatus && matchSearch && matchUser && matchDateFrom && matchDateTo;
+  });
+
+  if (!tasks.length) {
+    container.innerHTML = `<div class="empty tasks-slide-in" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">No tasks found</div>`;
+    return;
+  }
+
+  const isDelegateByMe = tasksType === 'delegatebyme';
+  const isClientTasksView = tasksType === 'clienttasks';
+  const isClickable = tasksType === 'delegation' || isDelegateByMe || isClientTasksView;
+  if (isClickable) window._taskDetailMap = {};
+  const showClientCol = tasksType === 'delegation' || tasksType === 'delegatebyme' || tasksType === 'checklist';
+  const ctx = { isAdmin, isDelegateByMe, isClickable, showClientCol };
+
+  const tableHeadHtml = tasksType === 'fms'
+    ? `<thead><tr>
+        <th style="white-space:nowrap">FMS — Step</th>
+        <th>Details</th>
+        <th style="white-space:nowrap">Planned Date</th>
+        <th style="white-space:nowrap">Action</th>
+      </tr></thead>`
+    : `<thead><tr>
+        <th style="white-space:nowrap">Action</th>
+        <th>Desc</th>
+        <th>Doer</th>
+        <th>Assignee</th>
+        <th>Date</th>
+        <th style="white-space:nowrap">Completed</th>
+        ${showClientCol ? '<th>Client</th>' : ''}
+        <th>Remarks</th>
+        <th>Status</th>
+      </tr></thead>`;
+
+  // ── ADMIN / HOD / PC: group by doer name, collapsed-by-default accordion ───
+  if (useGroupView) {
+    const groups = new Map();
+    for (const t of tasks) {
+      // Client Tasks tab groups by the CLIENT the work is for; every other tab
+      // groups by the doer (the staff member the task is assigned to).
+      const key = isClientTasksView
+        ? `client|${t.client_id || ''}|${t.client_name || '—'}`
+        : `${t.assigned_to || ''}|${t.assignedToName || '—'}`;
+      const gname = isClientTasksView ? (t.client_name || '—') : (t.assignedToName || '—');
+      if (!groups.has(key)) groups.set(key, { key, name: gname, userId: isClientTasksView ? '' : (t.assigned_to || ''), tasks: [] });
+      groups.get(key).tasks.push(t);
+    }
+    // The logged-in user's own group is pinned to the top; deleted-user groups
+    // (tasks whose doer no longer exists) sink to the bottom; the rest stay A-Z.
+    const _isMe = (g) => String(g.userId) === String(ME.id);
+    const _isDeleted = (g) => (g.name || '').includes('deleted user');
+    const sortedGroups = [...groups.values()].sort((a,b) =>
+      (_isMe(b) - _isMe(a)) ||
+      (_isDeleted(a) - _isDeleted(b)) ||
+      a.name.localeCompare(b.name));
+    // If a doer filter is active, auto-expand that single group.
+    const autoOpen = sortedGroups.length === 1;
+
+    const sectionsHtml = sortedGroups.map((g, idx) => {
+      const rows = g.tasks.map(t => _buildTaskRowHtml(t, ctx)).join('');
+      const pending = g.tasks.filter(t => t.status === 'pending').length;
+      const completed = g.tasks.filter(t => t.status === 'completed').length;
+      const revised = g.tasks.filter(t => t.status === 'revised').length;
+      const isOpen = autoOpen || _tgOpenKeys.has(g.key);
+      return `<div class="tg-section ${isOpen ? 'open' : ''}" data-tg-key="${dtEscape(g.key)}">
+        <button type="button" class="tg-head" onclick="toggleTaskGroup(this)" aria-expanded="${isOpen}">
+          <span class="tg-caret">▶</span>
+          <span class="tg-name">${dtEscape(g.name)}</span>
+          <span class="tg-counts">
+            <span class="tg-count tg-count-total">${g.tasks.length} total</span>
+            ${pending   ? `<span class="tg-count tg-count-pending">${pending} pending</span>` : ''}
+            ${completed ? `<span class="tg-count tg-count-done">${completed} done</span>` : ''}
+            ${revised   ? `<span class="tg-count tg-count-revised">${revised} revised</span>` : ''}
+          </span>
+        </button>
+        <div class="tg-body">
+          <div class="flat-tasks-scroll">
+            <table style="min-width:${showClientCol ? '820px' : '700px'};width:100%">
+              ${tableHeadHtml}
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    container.innerHTML = `
+      <div class="tg-toolbar">
+        <span class="tg-summary">${sortedGroups.length} ${isClientTasksView ? (sortedGroups.length === 1 ? 'client' : 'clients') : (sortedGroups.length === 1 ? 'doer' : 'doers')} · ${tasks.length} tasks</span>
+        <button type="button" class="tg-mini-btn" onclick="tgSetAll(true)">Expand all</button>
+        <button type="button" class="tg-mini-btn" onclick="tgSetAll(false)">Collapse all</button>
+      </div>
+      <div class="tg-list tasks-slide-in">${sectionsHtml}</div>`;
+    return;
+  }
+
+  // ── Regular users: single flat table, paginated, always open ───────────
+  const totalPages = Math.ceil(tasks.length / ALL_TASKS_PAGE_SIZE);
+  const pageTasks = tasks.slice((allTasksPage-1)*ALL_TASKS_PAGE_SIZE, allTasksPage*ALL_TASKS_PAGE_SIZE);
+  const pageRows = pageTasks.map(t => _buildTaskRowHtml(t, ctx)).join('');
+
+  const paginationHtml = totalPages > 1 ? `
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:12px;border-top:1px solid #f1f5f9;font-size:13px;color:#64748b">
+      <button onclick="if(allTasksPage>1){allTasksPage--;renderTasksTable();}"
+        style="padding:4px 12px;border:1.5px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;${allTasksPage===1?'opacity:.4;cursor:not-allowed;pointer-events:none;':''}" >
+        ◀ Prev
+      </button>
+      <span>Page <strong>${allTasksPage}</strong> of <strong>${totalPages}</strong> &nbsp;(${tasks.length} tasks)</span>
+      <button onclick="if(allTasksPage<${totalPages}){allTasksPage++;renderTasksTable();}"
+        style="padding:4px 12px;border:1.5px solid #e2e8f0;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;${allTasksPage===totalPages?'opacity:.4;cursor:not-allowed;pointer-events:none;':''}" >
+        Next ▶
+      </button>
+    </div>` : '';
+
+  container.innerHTML = `
+    <div class="flat-tasks-table tasks-slide-in">
+      <div class="flat-tasks-scroll">
+        <table style="min-width:${showClientCol ? '820px' : '700px'};width:100%">
+          ${tableHeadHtml}
+          <tbody>${pageRows}</tbody>
+        </table>
+      </div>
+      ${paginationHtml}
+    </div>`;
+}
+
+// ── Awaiting Date tab ────────────────────────────────────────────────────────
+// Department > employee > tasks, both levels collapsed on open so the shape of
+// the problem reads before the detail does. Rows leave this list on their own:
+// the query asks for due_date IS NULL, so the moment a date is set the task is
+// simply not returned any more — nothing here has to remove it.
+function renderAwaitingDate(data) {
+  const el = document.getElementById('tasksContent');
+  if (!el) return;
+  const depts = (data && data.departments) || [];
+  if (data && data.error) {
+    el.innerHTML = `<div class="empty" style="color:#dc2626">${esc(data.error)}</div>`;
+    return;
+  }
+  if (!depts.length) {
+    el.innerHTML = `<div class="empty">Every open task has a due date. Nothing is waiting.</div>`;
+    return;
+  }
+  const total = data.total || 0;
+  el.innerHTML = `
+    <div class="awd-head">
+      <b>${total}</b> open task${total === 1 ? '' : 's'} with no due date
+      · across ${depts.length} department${depts.length === 1 ? '' : 's'}
+    </div>
+    ${depts.map((d, di) => `
+      <div class="awd-dept">
+        <div class="awd-dept-head" onclick="awdToggle('awd-d-${di}',this)">
+          <span class="awd-caret">▸</span>
+          <span class="awd-dept-name">${dtEscape(d.name)}</span>
+          <span class="awd-count">${d.count}</span>
+        </div>
+        <div class="awd-dept-body" id="awd-d-${di}">
+          ${d.doers.map((u, ui) => `
+            <div class="awd-doer">
+              <div class="awd-doer-head" onclick="awdToggle('awd-u-${di}-${ui}',this)">
+                <span class="awd-caret">▸</span>
+                <span class="awd-doer-name">${dtEscape(u.name)}</span>
+                <span class="awd-count">${u.tasks.length}</span>
+              </div>
+              <div class="awd-doer-body" id="awd-u-${di}-${ui}">
+                <table class="awd-table">
+                  <thead><tr>
+                    <th style="width:110px">Type</th>
+                    <th>Description</th>
+                    <th style="width:110px">Given</th>
+                    <th style="width:34%">Reason</th>
+                  </tr></thead>
+                  <tbody>
+                    ${u.tasks.map(t => `
+                      <tr>
+                        <td><span class="awd-type">${dtEscape(t.type)}</span></td>
+                        <td>${dtEscape(t.description)}</td>
+                        <td class="awd-date">${t.given_on ? fmtDate(t.given_on) : '—'}</td>
+                        <td>${t.reason
+                              ? `<span class="awd-reason">${dtEscape(t.reason)}</span>`
+                              : `<span class="awd-noreason">—</span>`}</td>
+                      </tr>`).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>`).join('')}`;
+}
+
+function awdToggle(id, head) {
+  const body = document.getElementById(id);
+  if (!body) return;
+  const open = body.classList.toggle('open');
+  const caret = head?.querySelector('.awd-caret');
+  if (caret) caret.textContent = open ? '▾' : '▸';
+}
+
+function tasksTab(type, el) {
+  tasksType = type;
+  document.querySelectorAll('#tasksTypeTabGroup .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  withPageLoader(loadAllTasks);
+}
+
+// Routes the "+ Assign Task" button to the right form based on the current type tab.
+function openAssignForActiveTab() {
+  if (tasksType === 'checklist') return openChecklist();
+  // delegation / delegate-by-me / fms all default to the Delegate flow.
+  return openDelegate();
+}
+
+function openTaskDetail(t) {
+  const priorityColors = { urgent:'#dc2626', high:'#ea580c', medium:'#d97706', low:'#16a34a' };
+  const statusLabels = { pending:'Pending', completed:'Completed', revised:'Revised', transferred:'Transferred' };
+  const row = (label, value) => value
+    ? `<div style="display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid #f1f5f9;padding-bottom:10px">
+        <span style="min-width:110px;color:#64748b;font-size:12px;font-weight:600;padding-top:1px">${label}</span>
+        <span style="flex:1;word-break:break-word;overflow-wrap:anywhere">${value}</span>
+      </div>`
+    : '';
+  const urlVal = t.url
+    ? `<a href="${dtEscape(t.url)}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:underline;word-break:break-all">${dtEscape(t.url)}</a>`
+    : null;
+  const priorityBadge = t.priority
+    ? `<span style="background:${priorityColors[t.priority]||'#64748b'}22;color:${priorityColors[t.priority]||'#64748b'};padding:2px 9px;border-radius:5px;font-weight:600;font-size:12px">${t.priority.charAt(0).toUpperCase()+t.priority.slice(1)}</span>`
+    : null;
+  const statusBadge = (t.waiting_approval == 1)
+    ? `<span class="status-badge revised" style="font-size:12px">⏳ Revision Requested — awaiting approval</span>`
+    : (t.status
+      ? `<span class="status-badge ${t.status}" style="font-size:12px">${statusLabels[t.status]||t.status}</span>`
+      : null);
+
+  // What we still need FROM the client to finish this. Goes to their WhatsApp
+  // group in the next digest, so it needs a deadline — and the task must have
+  // its own due date first, since the ask cannot outlive it.
+  const askSection = (t.type === 'delegation' && t.id && t.client_id) ? `
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0">
+      <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px">📥 Needed from client</div>
+      ${t.due_date ? `
+        <input type="text" id="tdAskNote" value="${dtEscape(t.client_ask || '')}"
+               placeholder="e.g. Standard hours sheet not received"
+               style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12.5px;outline:none"/>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+          <span style="font-size:11px;color:#64748b;font-weight:600">Needed by</span>
+          <input type="date" id="tdAskDate" max="${dtEscape(t.due_date || '')}" value="${dtEscape(t.client_ask_date || '')}"
+                 style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px"/>
+          <select id="tdAskTime"
+                 style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff">
+            ${tdAskTimeOptions(t.client_ask_time || '')}
+          </select>
+          <span style="font-size:11px;color:#94a3b8">IST</span>
+          <button class="action-btn" style="padding:4px 11px;font-size:11px" onclick="saveClientAsk(${t.id})">Save</button>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:5px">Cannot be later than this task's own due date. Blank clears it.</div>
+      ` : `<div style="font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 10px">
+             Set this task's due date first — then you can record what you need from the client.
+           </div>`}
+    </div>` : '';
+
+  const subtasksSection = (t.type === 'delegation' && t.id) ? `
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0">
+      <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px">🧩 Sub-tasks <span style="font-weight:500;color:#94a3b8">(added by client)</span></div>
+      <div id="tdSubtasksList" style="overflow-x:auto;font-size:13px;color:#94a3b8">Loading…</div>
+    </div>` : '';
+
+  document.getElementById('tdTitle').textContent = '📋 ' + (t.description || 'Task Detail');
+  document.getElementById('tdBody').innerHTML = [
+    row('Description', dtEscape(t.description||'')),
+    row('Doer', dtEscape(t.assignedToName||'')),
+    row('Assigned By', dtEscape((t.assignedByName && t.assignedByName.trim() && t.assignedByName !== '—') ? t.assignedByName : 'Simran Gurnani')),
+    row('Delegated On', fmtDate(t.delegated_on||'')),
+    row('Due Date', fmtDate(t.due_date||'')),
+    // Only rendered when there is something to show — row() drops a null, so a
+    // task closed before completed_at existed simply has no Completed On line
+    // instead of an empty or invented one.
+    row('Completed On', (t.status === 'completed' && t.completed_on)
+      ? `<span style="color:#16a34a;font-weight:600">${fmtDate(t.completed_on)}</span>`
+      : null),
+    row('Client', t.client_name ? `<span style="background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span>` : null),
+    row('Priority', priorityBadge),
+    row('Status', statusBadge),
+    row('Approval', t.approval === 'yes' ? '<span style="color:#16a34a;font-weight:600">Required</span>' : '<span style="color:#64748b">Not required</span>'),
+    row('Remarks', t.remarks ? dtEscape(t.remarks) : null),
+    row('URL', urlVal || '<span style="color:#94a3b8">No URL</span>'),
+  ].filter(Boolean).join('') + askSection + subtasksSection;
+  document.getElementById('taskDetailModal').classList.add('open');
+  if (t.type === 'delegation' && t.id) loadSubtasks(t.id);
+}
+
+async function loadSubtasks(taskId) {
+  const wrap = document.getElementById('tdSubtasksList');
+  if (!wrap) return;
+  const r = await api(`/api/tasks/${taskId}/subtasks`);
+  if (!wrap.isConnected) return; // modal closed before the fetch resolved
+  if (r.error) { wrap.innerHTML = `<span style="color:#dc2626">${dtEscape(r.error)}</span>`; return; }
+  const items = r.subtasks || [];
+  if (!items.length) { wrap.innerHTML = `<span style="color:#94a3b8">No sub-tasks yet</span>`; return; }
+  const priorityColors = { urgent: '#dc2626', high: '#ea580c', medium: '#d97706', low: '#16a34a' };
+  const rows = items.map((s, i) => {
+    const prColor = priorityColors[s.priority] || priorityColors.low;
+    return `<tr style="border-bottom:1px solid #f1f5f9">
+      <td style="padding:6px 8px;color:#94a3b8">${i + 1}</td>
+      <td style="padding:6px 8px;color:#0f172a;word-break:break-word;${s.status==='completed'?'text-decoration:line-through;color:#94a3b8':''}">${dtEscape(s.description)}</td>
+      <td style="padding:6px 8px;white-space:nowrap;color:#64748b">${fmtDate(s.created_at)}</td>
+      <td style="padding:6px 8px;white-space:nowrap;color:#64748b">${s.completed_at ? fmtDate(s.completed_at) : '—'}</td>
+      <td style="padding:6px 8px;color:${prColor};font-weight:600;text-transform:capitalize">${dtEscape(s.priority||'low')}</td>
+      <td style="padding:6px 8px">${s.status==='completed'
+        ? '<span style="font-size:10px;color:#15803d;font-weight:700;background:#dcfce7;padding:2px 8px;border-radius:8px">✓ Done</span>'
+        : '<span style="font-size:10px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:2px 8px;border-radius:8px">⏳ Pending</span>'}</td>
+      <td style="padding:6px 8px;white-space:nowrap">
+        <button class="action-btn" style="padding:1px 6px;font-size:11px;${s.status==='completed'?'':'opacity:.35'}" onclick="toggleSubtask(${s.id},${taskId},${s.status!=='completed'})" title="Mark done">✅</button>
+        <button class="action-btn" style="padding:1px 6px;font-size:11px;margin-left:4px" onclick="deleteSubtask(${s.id},${taskId})" title="Delete">🗑️</button>
+      </td>
+    </tr>
+    <tr style="border-bottom:1px solid #f1f5f9">
+      <td></td>
+      <td colspan="6" style="padding:0 8px 8px">
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="text" id="stRemark_${s.id}" value="${dtEscape(s.remarks || '')}"
+                 placeholder="Remark — e.g. FMS sheet not sent by client"
+                 style="flex:1;padding:5px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:11.5px;outline:none"/>
+          <button class="action-btn" style="padding:3px 9px;font-size:11px" onclick="saveSubtaskRemark(${s.id},${taskId})">Save</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="text-align:left;color:#94a3b8;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px">
+      <th style="padding:4px 8px">S.No</th><th style="padding:4px 8px">Task</th><th style="padding:4px 8px">Date</th>
+      <th style="padding:4px 8px">Done</th><th style="padding:4px 8px">Priority</th><th style="padding:4px 8px">Status</th><th style="padding:4px 8px">Action</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// "Needed by" time as a scheduler-style dropdown instead of the raw time input.
+// 30-minute slots, 6:00 AM–11:30 PM, each labelled in 12-hour with AM/PM. Option
+// values stay "HH:MM" (24h) so saveClientAsk and the server parse them unchanged.
+// A saved odd-minute time (e.g. 04:49) is kept as its own selected option so it
+// is never silently dropped.
+function tdAskTimeOptions(selected) {
+  const sel = String(selected || '').slice(0, 5);
+  const label = (v) => {
+    const [h, m] = v.split(':').map(Number);
+    const period = h < 12 ? 'AM' : 'PM', h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${String(h12).padStart(2,'0')}:${String(m).padStart(2,'0')} ${period}`;
+  };
+  const slots = [];
+  for (let mins = 6*60; mins <= 23*60 + 30; mins += 30) {
+    slots.push(`${String(Math.floor(mins/60)).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`);
+  }
+  if (sel && !slots.includes(sel)) slots.unshift(sel);
+  return `<option value="">Time —</option>` +
+    slots.map(v => `<option value="${v}"${v === sel ? ' selected' : ''}>${label(v)}</option>`).join('');
+}
+
+// Record what we still need from the client on this task. The server enforces
+// the two rules (task must have a due date; the ask cannot fall after it), so a
+// stale form here cannot slip past them.
+async function saveClientAsk(taskId) {
+  const note = document.getElementById('tdAskNote')?.value.trim() || '';
+  const body = { note, byDate: document.getElementById('tdAskDate')?.value || '',
+                       byTime: document.getElementById('tdAskTime')?.value || '' };
+  const r = await api(`/api/tasks/${taskId}/client-ask`, 'PUT', body);
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  showToast(note ? 'Saved — goes to the client group in the next digest' : 'Cleared');
+}
+
+// Handler's note on why a sub-task is stuck. Sent without a status, so saving a
+// remark never flips the sub-task's done/pending state. Blank clears it, which
+// also drops it out of the client's pending digest.
+async function saveSubtaskRemark(id, taskId) {
+  const input = document.getElementById('stRemark_' + id);
+  if (!input) return;
+  const r = await api(`/api/subtasks/${id}`, 'PUT', { remarks: input.value.trim() });
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  showToast(input.value.trim() ? 'Remark saved' : 'Remark cleared');
+  loadSubtasks(taskId);
+}
+
+async function toggleSubtask(id, taskId, checked) {
+  const r = await api(`/api/subtasks/${id}`, 'PUT', { status: checked ? 'completed' : 'pending' });
+  if (r.error) { showToast(r.error, 'error'); }
+  loadSubtasks(taskId);
+}
+
+async function deleteSubtask(id, taskId) {
+  if (!await appConfirm('Delete this sub-task?')) return;
+  const r = await api(`/api/subtasks/${id}`, 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  loadSubtasks(taskId);
+}
+
+function toggleBlock(header) { header.nextElementSibling.classList.toggle('open'); }
+
+// ══════════════════════════════════════════════════════
+// TASK ACTIONS
+// ══════════════════════════════════════════════════════
+async function updateStatus(id, status, from, type) {
+  const r = await api(`/api/tasks/${id}/status`,'PUT',{status, type: type || dashType});
+  if (r.error) { appAlert(r.error, 'Not allowed'); return; }
+  if (r.needsApproval) {
+    showToast('✅ Approval request sent to the assigner!');
+  }
+  if (from==='dashboard') loadDashboard(true); else loadAllTasks();
+  loadApprovalBadge();
+}
+
+// Reopen a completed task → back to pending (in case it was marked done by mistake).
+// Confirms first so it can't fire on a stray click; the same status endpoint applies
+// it (the doer or admin/PC are allowed by the server).
+async function reopenTask(id, from, type) {
+  if (!await appConfirm('Reopen this task? It will move back to Pending.')) return;
+  const r = await api(`/api/tasks/${id}/status`,'PUT',{status:'pending', type: type || dashType});
+  if (r.error) { appAlert(r.error, 'Not allowed'); return; }
+  showToast('↩ Task reopened — moved to Pending');
+  if (from==='dashboard') loadDashboard(true); else loadAllTasks();
+  loadApprovalBadge();
+}
+
+async function deleteTask(id, type) {
+  const effType = type || tasksType;
+  // For checklists, also offer "delete entire series" so future-dated copies of
+  // the same task don't keep reappearing after the cap clears.
+  if (effType === 'checklist') {
+    const choice = await _showAppPrompt({
+      title: 'Delete checklist task',
+      message: 'This task may exist for multiple future dates. What do you want to delete?',
+      buttons: [
+        { label: 'Cancel',                          className: 'btn btn-outline', value: 'cancel' },
+        { label: 'Only this date',                  className: 'btn btn-primary', value: 'one' },
+        { label: 'This + all future occurrences',   className: 'btn btn-danger',  value: 'series' }
+      ]
+    });
+    if (choice === 'cancel' || choice === false) return;
+    if (choice === 'series') {
+      const r = await api(`/api/tasks/${id}/checklist-series`, 'DELETE');
+      if (r.error) { appAlert(r.error, 'Error'); return; }
+      showToast(`🗑 ${r.deleted} task${r.deleted===1?'':'s'} deleted`);
+      loadAllTasks();
+      return;
+    }
+    // fall through to single-row delete
+    await api(`/api/tasks/${id}?type=${effType}`, 'DELETE');
+    loadAllTasks();
+    return;
+  }
+  if (!await appConfirm('Delete this task?')) return;
+  await api(`/api/tasks/${id}?type=${effType}`,'DELETE');
+  loadAllTasks();
+  if (document.getElementById('delegateByMeModal')?.classList.contains('open')) openDelegateByMeModal();
+}
+
+// ══════════════════════════════════════════════════════
+// REVISE DATE MODAL
+// ══════════════════════════════════════════════════════
+function openReviseModal(taskId, taskType) {
+  const today = new Date().toISOString().split('T')[0];
+  // Min date = tomorrow
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const minDate = tomorrow.toISOString().split('T')[0];
+
+  document.getElementById('reviseTaskId').value = taskId;
+  document.getElementById('reviseTaskType').value = taskType;
+  document.getElementById('reviseDate').value = '';
+  document.getElementById('reviseDate').min = minDate;
+  document.getElementById('reviseReason').value = '';
+  document.getElementById('reviseErr').style.display = 'none';
+  document.getElementById('reviseDateModal').classList.add('open');
+}
+
+async function submitRevise() {
+  const taskId   = document.getElementById('reviseTaskId').value;
+  const taskType = document.getElementById('reviseTaskType').value;
+  const newDate  = document.getElementById('reviseDate').value;
+  const reason   = document.getElementById('reviseReason').value.trim();
+  const err      = document.getElementById('reviseErr');
+  err.style.display = 'none';
+
+  if (!newDate) { err.textContent='Please select a new date'; err.style.display='block'; return; }
+
+  // Send revise request with new date
+  const r = await api(`/api/tasks/${taskId}/status`,'PUT',{
+    status: 'revised',
+    type: taskType,
+    newDate,
+    reason
+  });
+
+  if (r.error) { err.textContent = r.error; err.style.display='block'; return; }
+
+  closeModal('reviseDateModal');
+  if (r.needsApproval) {
+    showToast('✅ Revision request sent to the assigner for approval!');
+  } else {
+    showToast('Task revised with new date!');
+  }
+  loadDashboard(true);
+  loadAllTasks();
+  loadApprovalBadge();
+}
+
+// ══════════════════════════════════════════════════════
+// EDIT TASK MODAL (Admin only)
+// ══════════════════════════════════════════════════════
+async function openEditTask(id, type) {
+  // Fetch task details + client list
+  const [data, clients] = await Promise.all([
+    api(`/api/tasks/${id}/detail?type=${type}`),
+    api('/api/clients')
+  ]);
+  if (data.error) { showToast(data.error,'error'); return; }
+  const t = data.task;
+
+  document.getElementById('editTId').value = id;
+  document.getElementById('editTType').value = type;
+  document.getElementById('editTDesc').value = t.description || '';
+  document.getElementById('editTDate').value = t.due_date || '';
+  document.getElementById('editTRemarks').value = t.remarks || '';
+  document.getElementById('editTClient').innerHTML = '<option value="">— No Client —</option>' +
+    (clients || []).map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+  document.getElementById('editTClient').value = t.client_id ? String(t.client_id) : '';
+  document.getElementById('editTaskErr').style.display = 'none';
+
+  // Show/hide priority, approval, and URL for delegation only
+  const isDeleg = type === 'delegation';
+  document.getElementById('editTPriorityWrap').style.display = isDeleg ? 'block' : 'none';
+  document.getElementById('editTApprovalWrap').style.display = isDeleg ? 'block' : 'none';
+  // due_time is delegation-only. It arrives as "14:30:00"; a time input wants HH:MM.
+  document.getElementById('editTTimeWrap').style.display = isDeleg ? 'block' : 'none';
+  document.getElementById('editTTime').value = isDeleg ? String(t.due_time || '').slice(0, 5) : '';
+  const urlWrap = document.getElementById('editTUrlWrap');
+  if (urlWrap) urlWrap.style.display = isDeleg ? 'block' : 'none';
+  if (isDeleg) {
+    document.getElementById('editTPriority').value = t.priority || 'low';
+    document.getElementById('editTApproval').value = t.approval || 'no';
+    const urlEl = document.getElementById('editTUrl');
+    if (urlEl) urlEl.value = t.url || '';
+  }
+
+  document.getElementById('editTaskModal').classList.add('open');
+}
+
+async function saveEditTask() {
+  const id      = document.getElementById('editTId').value;
+  const type    = document.getElementById('editTType').value;
+  const desc    = document.getElementById('editTDesc').value.trim();
+  const date    = document.getElementById('editTDate').value;
+  const remarks = document.getElementById('editTRemarks').value.trim();
+  const err     = document.getElementById('editTaskErr');
+  err.style.display = 'none';
+
+  if (!desc) { err.textContent='Description required'; err.style.display='block'; return; }
+  if (!date)  { err.textContent='Date required'; err.style.display='block'; return; }
+
+  const client_id = document.getElementById('editTClient').value || null;
+  const body = { desc, date, remarks, type, client_id };
+  if (type === 'delegation') {
+    body.priority = document.getElementById('editTPriority').value;
+    body.approval = document.getElementById('editTApproval').value;
+    // Sent even when blank — that is how a clock time gets cleared.
+    body.dueTime  = document.getElementById('editTTime').value;
+    const urlEl = document.getElementById('editTUrl');
+    body.url = urlEl ? (urlEl.value.trim() || null) : null;
+  }
+
+  const r = await api(`/api/tasks/${id}/edit`,'PUT', body);
+  if (r.error) { err.textContent = r.error; err.style.display='block'; return; }
+
+  closeModal('editTaskModal');
+  showToast('Task updated!');
+  loadAllTasks();
+  if (document.getElementById('delegateByMeModal')?.classList.contains('open')) openDelegateByMeModal();
+}
+
+// ══════════════════════════════════════════════════════
+// COMMENTS
+// ══════════════════════════════════════════════════════
+async function openComments(taskId, taskType) {
+  document.getElementById('commentTaskId').value = taskId;
+  document.getElementById('commentTaskType').value = taskType;
+  document.getElementById('commentInput').value = '';
+  await loadComments(taskId, taskType);
+  document.getElementById('commentModal').classList.add('open');
+}
+
+async function loadComments(taskId, taskType) {
+  const comments = await api(`/api/comments/${taskType}/${taskId}`);
+  const container = document.getElementById('commentsList');
+  if (!comments.length) {
+    container.innerHTML = `<div class="comment-empty">No comments yet. Be the first!</div>`;
+    return;
+  }
+  container.innerHTML = comments.map(c => `
+    <div class="comment-item">
+      <div class="comment-header">
+        <span class="comment-author">👤 ${esc(c.userName)}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="comment-time">${new Date(c.created_at).toLocaleString('en-IN')}</span>
+          <button class="action-btn delete" style="padding:2px 7px;font-size:10px" onclick="deleteComment(${c.id})">✕</button>
+        </div>
+      </div>
+      <div class="comment-text">${esc(c.comment)}</div>
+    </div>`).join('');
+  container.scrollTop = container.scrollHeight;
+}
+
+async function addComment() {
+  const taskId = document.getElementById('commentTaskId').value;
+  const taskType = document.getElementById('commentTaskType').value;
+  const comment = document.getElementById('commentInput').value.trim();
+  if (!comment) return;
+  await api('/api/comments','POST',{taskId, taskType, comment});
+  document.getElementById('commentInput').value = '';
+  await loadComments(taskId, taskType);
+}
+
+async function deleteComment(id) {
+  if (!await appConfirm('Delete this comment?')) return;
+  await api(`/api/comments/${id}`,'DELETE');
+  const taskId = document.getElementById('commentTaskId').value;
+  const taskType = document.getElementById('commentTaskType').value;
+  await loadComments(taskId, taskType);
+}
+
+async function bulkDelete(userId) {
+  if (!await appConfirm(`Delete all ${tasksType} tasks for this user?`)) return;
+  await api(`/api/tasks/user/${userId}?type=${tasksType}`,'DELETE');
+  loadAllTasks();
+}
+
+async function transferToday(userId) {
+  await api(`/api/tasks/user/${userId}/transfer-today?type=${tasksType}`,'PUT');
+  loadAllTasks();
+  showToast('Tasks moved to today!');
+}
+
+// ══════════════════════════════════════════════════════
+// DELEGATE MODAL
+// ══════════════════════════════════════════════════════
+async function openDelegate(prefill = {}) {
+  document.getElementById('delegateErr').style.display='none';
+  document.getElementById('dDesc').value='';
+  document.getElementById('dUrl').value='';
+  document.getElementById('dRemarks').value='';
+  document.getElementById('dPriority').value='low';
+  document.getElementById('dApproval').value='no';
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('dDate').value=today;
+  document.getElementById('dDate').min=today;
+  document.getElementById('dDate').disabled=false;
+  document.getElementById('dDoerSetsDate').checked=false;
+  const [users, clients] = await Promise.all([api('/api/users'), api('/api/clients')]);
+  // Cache for email lookup in onDelegateApproverChange()
+  window._delegateUsers = users || [];
+  const opts = (users || []).map(u=>`<option value="${u.id}" data-email="${dtEscape(u.email||'')}">${u.name}</option>`).join('');
+  document.getElementById('dDoer').innerHTML='<option value="">Select Doer</option>'+opts;
+  document.getElementById('dApprover').innerHTML='<option value="">Select Approver</option>'+opts;
+  // Client dropdown — pulls from Client Master
+  const clientOpts = (clients || []).map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+  document.getElementById('dClient').innerHTML = '<option value="">— Select Client —</option>' + clientOpts;
+  // Hidden by default — only shown when Approval Required = Yes
+  document.getElementById('dApproverGroup').style.display = 'none';
+  document.getElementById('dApproverEmail').style.display = 'none';
+  // Apply caller-supplied pre-fills (used by the Client Master "+ Delegate" shortcut)
+  if (prefill && typeof prefill === 'object') {
+    if (prefill.clientId) document.getElementById('dClient').value = String(prefill.clientId);
+    if (prefill.doerId)   document.getElementById('dDoer').value   = String(prefill.doerId);
+  }
+  document.getElementById('delegateModal').classList.add('open');
+}
+
+// Doer (or assigner/admin) sets the due date on a "doer-defines-date" task.
+let _setDueTaskId = null;
+function openSetDueDate(id, existingReason) {
+  _setDueTaskId = id;
+  document.getElementById('setDueErr').style.display = 'none';
+  const inp = document.getElementById('setDueInput');
+  inp.value = '';
+  inp.min = new Date().toISOString().split('T')[0];
+  // Reopening a task that already carries a reason shows it, so the doer edits
+  // what they said last time instead of writing it out again from scratch.
+  const box = document.getElementById('setDueNoDate');
+  box.checked = !!existingReason;
+  document.getElementById('setDueReason').value = existingReason || '';
+  onSetDueNoDateChange();
+  document.getElementById('setDueDateModal').classList.add('open');
+}
+// Ticking "no date yet" swaps the date field for the reason field — the two are
+// alternatives, and leaving both live invites sending a date AND an excuse.
+function onSetDueNoDateChange() {
+  const on = document.getElementById('setDueNoDate').checked;
+  document.getElementById('setDueInput').disabled = on;
+  if (on) document.getElementById('setDueInput').value = '';
+  document.getElementById('setDueReasonGroup').style.display = on ? '' : 'none';
+}
+async function submitSetDueDate() {
+  const err = document.getElementById('setDueErr'); err.style.display = 'none';
+  const noDate = document.getElementById('setDueNoDate').checked;
+  const date   = document.getElementById('setDueInput').value;
+  const reason = document.getElementById('setDueReason').value.trim();
+  if (!noDate && !date)   { err.textContent = 'Please pick a date';   err.style.display = 'block'; return; }
+  if (noDate  && !reason) { err.textContent = 'Please write a reason'; err.style.display = 'block'; return; }
+  const r = await api(`/api/tasks/${_setDueTaskId}/due-date`, 'PUT',
+    noDate ? { reason } : { date });
+  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+  closeModal('setDueDateModal');
+  showToast(r.reasonSaved
+    ? 'Reason saved — task still needs a due date before it can be marked done'
+    : (r.effectiveDate ? `Due date set: ${fmtDate(r.effectiveDate)}` : 'Due date set'));
+  loadDashboard(true);
+}
+
+// When ticked, the doer will pick their own due date — disable the date field here.
+function onDoerSetsDateChange() {
+  const on = document.getElementById('dDoerSetsDate').checked;
+  const d = document.getElementById('dDate');
+  d.disabled = on;
+  if (on) d.value = '';
+  else if (!d.value) d.value = new Date().toISOString().split('T')[0];
+}
+
+function onDelegateApprovalChange() {
+  const approval = document.getElementById('dApproval').value;
+  const group = document.getElementById('dApproverGroup');
+  if (approval === 'yes') {
+    group.style.display = 'block';
+  } else {
+    group.style.display = 'none';
+    document.getElementById('dApprover').value = '';
+    document.getElementById('dApproverEmail').style.display = 'none';
+  }
+}
+
+function onDelegateApproverChange() {
+  const sel = document.getElementById('dApprover');
+  const opt = sel.options[sel.selectedIndex];
+  const email = opt ? opt.getAttribute('data-email') : '';
+  const box = document.getElementById('dApproverEmail');
+  const text = document.getElementById('dApproverEmailText');
+  if (email) {
+    text.textContent = email;
+    box.style.display = 'block';
+  } else {
+    box.style.display = 'none';
+  }
+}
+
+async function saveDelegate() {
+  const err = document.getElementById('delegateErr');
+  err.style.display='none';
+  const doer = document.getElementById('dDoer').value;
+  const date = document.getElementById('dDate').value;
+  const desc = document.getElementById('dDesc').value.trim();
+  const priority = document.getElementById('dPriority').value;
+  const approval = document.getElementById('dApproval').value;
+  const remarks = document.getElementById('dRemarks').value.trim();
+  const url = document.getElementById('dUrl').value.trim() || null;
+  const approver = approval === 'yes' ? document.getElementById('dApprover').value : '';
+  const client_id = document.getElementById('dClient').value || null;
+  const doerSetsDueDate = document.getElementById('dDoerSetsDate').checked;
+  if (!doer) { err.textContent='Please select a doer'; err.style.display='block'; return; }
+  if (!doerSetsDueDate && !date) { err.textContent='Please select a date'; err.style.display='block'; return; }
+  if (!desc) { err.textContent='Description is required'; err.style.display='block'; return; }
+  if (!client_id) { err.textContent='Please select a client'; err.style.display='block'; return; }
+  if (approval === 'yes' && !approver) { err.textContent='Please select an approver'; err.style.display='block'; return; }
+  // Lock the button for the round-trip. Without this a second tap on a slow
+  // connection created a second identical task, and the doer then saw the same
+  // task again after finishing the first one.
+  const btn = document.getElementById('delegateSubmitBtn');
+  const btnLabel = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Assigning…'; }
+  let r;
+  try {
+    r = await api('/api/tasks','POST',{type:'delegation',desc,assignedTo:doer,date,priority,approval,approver,remarks,client_id,url,doerSetsDueDate});
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
+  }
+  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+  if (r.duplicate) { closeModal('delegateModal'); showToast('That task was already created a moment ago — not duplicated.'); loadDashboard(true); return; }
+  closeModal('delegateModal');
+  if (doerSetsDueDate) {
+    showToast('Task delegated! Doer will set their due date.');
+  } else if (r.adjusted) {
+    showToast(`Task delegated! 📅 Moved to ${r.effectiveDate} (holiday/week-off)`);
+  } else {
+    showToast('Task delegated successfully!');
+  }
+  loadDashboard(true);
+}
+
+// ══════════════════════════════════════════════════════
+// CHECKLIST MODAL - Recurring
+// ══════════════════════════════════════════════════════
+async function openChecklist() {
+  document.getElementById('checklistErr').style.display='none';
+  document.getElementById('checklistSuccess').style.display='none';
+  document.getElementById('cDesc').value='';
+  document.getElementById('cRemarks').value='';
+  document.getElementById('cFrequency').value='daily';
+  document.getElementById('cPreview').style.display='none';
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('cDate').value=today;
+  document.getElementById('cDate').min=today;
+  document.getElementById('cEndDate').value='';
+  document.getElementById('cEndDate').min=today;
+  const [users, clients] = await Promise.all([api('/api/users'), api('/api/clients')]);
+  document.getElementById('cDoer').innerHTML='<option value="">Select Employee</option>'+
+    users.map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('');
+  document.getElementById('cClient').innerHTML='<option value="">Select Client</option>'+
+    (clients || []).map(c=>`<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+
+  ['cFrequency','cDate','cEndDate','cDesc'].forEach(id=>{
+    document.getElementById(id).onchange = updateChecklistPreview;
+    document.getElementById(id).oninput = updateChecklistPreview;
+  });
+
+  document.getElementById('checklistModal').classList.add('open');
+}
+
+function updateChecklistPreview() {
+  const freq = document.getElementById('cFrequency').value;
+  const date = document.getElementById('cDate').value;
+  const customEnd = document.getElementById('cEndDate').value || '';
+  const desc = document.getElementById('cDesc').value.trim();
+  if (!date || !desc) { document.getElementById('cPreview').style.display='none'; return; }
+
+  const counts = {daily:365, weekly:52, alternative_week:26, monthly:12, quarterly:4, yearly:1};
+  const labels = {daily:'Daily', weekly:'Weekly', alternative_week:'Alternative Week', monthly:'Monthly', quarterly:'Quarterly', yearly:'Yearly'};
+  const count = counts[freq];
+  const naturalEnd = getEndDate(date, freq, count);
+  const effectiveEnd = (customEnd && customEnd < naturalEnd) ? customEnd : naturalEnd;
+  // Real count = how many dates the generator would actually emit with the custom cap.
+  const realCount = generateDates(date, freq, '', '', customEnd || '').length;
+
+  document.getElementById('cPreviewText').textContent =
+    `"${desc}" — ${realCount} task${realCount===1?'':'s'} will be created from ${date} to ${effectiveEnd} (${labels[freq]})`;
+  document.getElementById('cPreview').style.display='block';
+}
+
+function getEndDate(startDate, freq, count) {
+  const d = new Date(startDate);
+  const intervals = {daily:1, weekly:7, alternative_week:14, monthly:30, quarterly:90, yearly:365};
+  d.setDate(d.getDate() + (intervals[freq] * (count-1)));
+  return d.toISOString().split('T')[0];
+}
+
+function generateDates(startDate, freq, weekOffStr, extraOffStr, endDate) {
+  const dates = [];
+  const d = new Date(startDate+'T00:00:00');
+  const endCap = endDate ? new Date(endDate+'T00:00:00') : null;
+  const counts = {daily:365, weekly:52, alternative_week:26, monthly:12, quarterly:4, yearly:1};
+  const count = counts[freq];
+  const weekOff = (weekOffStr||'').split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n));
+  let extraOff = [];
+  try { extraOff = extraOffStr ? JSON.parse(extraOffStr) : []; } catch(e) {}
+
+  // Helper: get occurrence number of a weekday in its month (1=1st, 2=2nd...)
+  function getNthWeekday(date) {
+    const day = date.getDate();
+    return Math.ceil(day / 7);
+  }
+
+  function isExtraOff(date) {
+    const dayOfWeek = date.getDay();
+    const nth = getNthWeekday(date);
+    return extraOff.some(e => e.day === dayOfWeek && e.weeks.includes(nth));
+  }
+
+  let added = 0;
+  let safety = count * 14;
+  while (added < count && safety-- > 0) {
+    if (endCap && d > endCap) break; // stop generating past the end date
+    const day = d.getDay();
+    if (freq === 'daily') {
+      if (weekOff.includes(day) || isExtraOff(d)) {
+        d.setDate(d.getDate() + 1);
+        continue;
+      }
+    }
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    dates.push(`${yyyy}-${mm}-${dd}`);
+    added++;
+    if (freq==='daily')            d.setDate(d.getDate()+1);
+    else if (freq==='weekly')      d.setDate(d.getDate()+7);
+    else if (freq==='alternative_week') d.setDate(d.getDate()+14);
+    else if (freq==='monthly')     d.setMonth(d.getMonth()+1);
+    else if (freq==='quarterly')   d.setMonth(d.getMonth()+3);
+    else if (freq==='yearly')      d.setFullYear(d.getFullYear()+1);
+  }
+  return dates;
+}
+
+async function saveChecklist() {
+  const err = document.getElementById('checklistErr');
+  const suc = document.getElementById('checklistSuccess');
+  err.style.display='none'; suc.style.display='none';
+
+  const doer    = document.getElementById('cDoer').value;
+  const date    = document.getElementById('cDate').value;
+  const endDate = document.getElementById('cEndDate').value || '';
+  const desc    = document.getElementById('cDesc').value.trim();
+  const remarks = document.getElementById('cRemarks').value.trim();
+  const freq    = document.getElementById('cFrequency').value;
+  const clientVal = document.getElementById('cClient').value;
+
+  if (!doer) { err.textContent='Please select an employee'; err.style.display='block'; return; }
+  if (!clientVal) { err.textContent='Please select a client'; err.style.display='block'; return; }
+  if (!date) { err.textContent='Please select a start date'; err.style.display='block'; return; }
+  if (!desc) { err.textContent='Task name is required'; err.style.display='block'; return; }
+  if (endDate && endDate < date) { err.textContent='End date must be on or after start date'; err.style.display='block'; return; }
+
+  const btn = document.getElementById('cGenerateBtn');
+  btn.disabled=true; btn.textContent='Generating…';
+
+  // No per-user week_off — holiday filtering happens server-side via /api/holidays
+  const dates = generateDates(date, freq, '', '', endDate);
+  if (!dates.length) {
+    btn.disabled=false; btn.textContent='Generate Tasks';
+    err.textContent = 'No dates would be generated between Start and End. Pick a wider range.';
+    err.style.display='block';
+    return;
+  }
+  const client_id = clientVal;
+
+  const result = await api('/api/tasks/bulk-checklist','POST',{
+    desc, assignedTo: doer, priority: 'low', remarks, dates, client_id
+  });
+
+  btn.disabled=false; btn.textContent='Generate Tasks';
+
+  if (result.error) { err.textContent=result.error; err.style.display='block'; return; }
+
+  const skippedNote = result.skipped ? ` (${result.skipped} holiday date${result.skipped===1?'':'s'} skipped)` : '';
+  suc.textContent = `✅ ${result.count || dates.length} tasks generated!${skippedNote}`;
+  suc.style.display='block';
+  closeModal('checklistModal');
+  loadDashboard(true);
+}
+
+// ══════════════════════════════════════════════════════
+// HOLIDAYS — server-backed; admin manages
+// ══════════════════════════════════════════════════════
+async function openHoliday() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('hDate').value='';
+  document.getElementById('hDate').min=today;
+  document.getElementById('hName').value='';
+  document.getElementById('holidayErr').style.display = 'none';
+  document.getElementById('holidayBulkFile').value = '';
+  await refreshHolidays();
+  document.getElementById('holidayModal').classList.add('open');
+}
+
+async function refreshHolidays() {
+  try {
+    const data = await api('/api/holidays');
+    holidays = Array.isArray(data) ? data : [];
+  } catch(e) { holidays = []; }
+  renderHolidayList();
+}
+
+async function addHoliday() {
+  const err = document.getElementById('holidayErr');
+  err.style.display = 'none';
+  const date = document.getElementById('hDate').value;
+  const name = document.getElementById('hName').value.trim();
+  if (!date||!name) { err.textContent='Date and name required!'; err.style.display='block'; return; }
+
+  const r = await api('/api/holidays','POST',{ date, name });
+  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+
+  document.getElementById('hDate').value='';
+  document.getElementById('hName').value='';
+  await refreshHolidays();
+
+  const parts = [];
+  if (r.deletedChecklist) parts.push(`${r.deletedChecklist} checklist task(s) removed`);
+  if (r.pushedDelegation) parts.push(`${r.pushedDelegation} delegation task(s) pushed forward`);
+  const detail = parts.length ? ' — ' + parts.join(', ') : '';
+  showToast(`✅ Holiday added${detail}`);
+}
+
+async function deleteHoliday(id) {
+  if (!await appConfirm('Remove this holiday?')) return;
+  const r = await api('/api/holidays/'+id, 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  await refreshHolidays();
+  showToast('🗑 Holiday removed');
+}
+
+function renderHolidayList() {
+  const container = document.getElementById('holidayList');
+  if (!holidays.length) { container.innerHTML='<div class="empty" style="padding:16px">No holidays added yet</div>'; return; }
+  container.innerHTML = holidays.map(h => `
+    <div class="holiday-item">
+      <span><strong>${formatDate(h.holiday_date || h.date)}</strong> — ${dtEscape(h.name)}</span>
+      <button class="action-btn delete" onclick="deleteHoliday(${h.id})">Remove</button>
+    </div>`).join('');
+}
+
+function downloadHolidaySample() {
+  const csv = `date,name\n2026-08-15,Independence Day\n2026-10-02,Gandhi Jayanti\n2026-11-09,Diwali\n2026-12-25,Christmas`;
+  downloadFile(csv, 'holidays_sample.csv');
+}
+
+async function uploadHolidayBulk() {
+  const err = document.getElementById('holidayErr');
+  err.style.display = 'none';
+  const file = document.getElementById('holidayBulkFile').files[0];
+  if (!file) { err.textContent = 'Please select a CSV file'; err.style.display = 'block'; return; }
+
+  const text = await file.text();
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (!lines.length) { err.textContent = 'CSV is empty'; err.style.display = 'block'; return; }
+
+  // Skip header if present (starts with "date" or contains "date,name")
+  const firstLow = lines[0].toLowerCase();
+  if (firstLow.startsWith('date,') || firstLow === 'date,name') lines.shift();
+
+  const list = [];
+  const errors = [];
+  for (let i = 0; i < lines.length; i++) {
+    const parts = lines[i].split(',').map(s => s.trim());
+    if (parts.length < 2) { errors.push(`Line ${i+1}: missing name`); continue; }
+    let date = parts[0];
+    const name = parts.slice(1).join(',').trim();
+    // Accept DD-MM-YYYY → convert to YYYY-MM-DD
+    if (/^\d{2}-\d{2}-\d{4}$/.test(date)) date = date.split('-').reverse().join('-');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { errors.push(`Line ${i+1}: invalid date "${parts[0]}"`); continue; }
+    if (!name) { errors.push(`Line ${i+1}: empty name`); continue; }
+    list.push({ date, name });
+  }
+  if (!list.length) {
+    err.textContent = 'No valid rows. ' + (errors[0] || ''); err.style.display = 'block'; return;
+  }
+
+  const r = await api('/api/holidays/bulk', 'POST', { holidays: list });
+  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+
+  document.getElementById('holidayBulkFile').value = '';
+  await refreshHolidays();
+  const parts = [`✅ ${r.added} holiday(s) added`];
+  if (r.skipped) parts.push(`${r.skipped} skipped`);
+  if (r.cascadeDeleted) parts.push(`${r.cascadeDeleted} checklist removed`);
+  if (r.cascadePushed) parts.push(`${r.cascadePushed} delegation pushed`);
+  showToast(parts.join(' · '));
+}
+
+function formatDate(d) {
+  const dt = new Date(d+'T00:00:00');
+  return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+}
+
+// ══════════════════════════════════════════════════════
+// BULK UPLOAD
+// ══════════════════════════════════════════════════════
+function downloadSample() {
+  const csv = `doer_email,approver_email,due_date,priority,approval,description,remarks,client_name\npriyanka@test.com,aman@test.com,2026-04-01,high,yes,Complete sales report,Follow up needed,Ambraee\npooja@test.com,aman@test.com,2026-04-02,medium,no,Prepare presentation,,Sohan Health Care`;
+  downloadFile(csv,'delegation_sample.csv');
+}
+
+function downloadSampleC() {
+  const csv = [
+    'user_email,frequency,start_date,description,remarks,client_name',
+    'priyanka@test.com,daily,2026-04-01,Review attendance sheet,,Ambraee',
+    'pooja@test.com,weekly,2026-04-01,Send weekly report,,Ambraee',
+    'rahul@test.com,monthly,2026-04-01,Submit monthly expense report,April month,Sohan Health Care',
+    'neha@test.com,yearly,2026-04-01,Annual performance self-review,,Sohan Health Care',
+    'amit@test.com,alternative_week,2026-04-01,Bi-weekly team sync notes,,Ambraee',
+    'sneha@test.com,quarterly,2026-04-01,Quarterly audit checklist,Q2 2026,Sohan Health Care',
+  ].join('\n');
+  downloadFile(csv,'checklist_bulk_sample.csv');
+}
+
+function downloadFile(content, filename) {
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(content);
+  a.download = filename;
+  a.click();
+}
+
+async function uploadCSV() {
+  const file = document.getElementById('bulkFile').files[0];
+  if (!file) { showToast('Please select a CSV file','error'); return; }
+  const text = await file.text();
+  const lines = text.trim().split('\n').slice(1);
+  if (!lines.length) { showToast('CSV is empty','error'); return; }
+  // Fetch users + clients once
+  const [allUsers, allClients] = await Promise.all([api('/api/users'), api('/api/clients')]);
+  const clientByName = {};
+  (allClients || []).forEach(c => { clientByName[c.name.toLowerCase().trim()] = c.id; });
+  let count = 0, skipped = 0;
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const [doer_email,approver_email,due_date,priority,approval,description,remarks,client_name] = line.split(',').map(s=>s.trim());
+    if (!doer_email||!description) { skipped++; continue; }
+    const doer = allUsers.find(u=>u.email===doer_email);
+    if (!doer) { skipped++; continue; }
+    const client_id = client_name ? (clientByName[client_name.toLowerCase()] || null) : null;
+    await api('/api/tasks','POST',{type:'delegation',desc:description,assignedTo:doer.id,approverEmail:approver_email,date:due_date,priority,approval,remarks,client_id});
+    count++;
+  }
+  showToast(`✅ ${count} tasks uploaded! ${skipped?`(${skipped} skipped)`:''}`);
+  closeModal('delegateModal');
+  loadDashboard(true);
+}
+
+async function uploadCSVC() {
+  const file = document.getElementById('bulkFileC').files[0];
+  if (!file) { showToast('Please select a CSV file','error'); return; }
+  const text = await file.text();
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) { showToast('CSV is empty','error'); return; }
+
+  // Detect format: new (frequency) vs old (due_date)
+  const header = lines[0].toLowerCase().replace(/\s/g,'');
+  const isNewFormat = header.includes('frequency') || header.includes('start_date');
+
+  const dataLines = lines.slice(1);
+  const [allUsers, allClients] = await Promise.all([api('/api/users'), api('/api/clients')]);
+  const clientByName = {};
+  (allClients || []).forEach(c => { clientByName[c.name.toLowerCase().trim()] = c.id; });
+
+  let totalTasks = 0, skipped = 0;
+  const validFreqs = ['daily','weekly','alternative_week','monthly','quarterly','yearly'];
+
+  showToast('⏳ Generating tasks, please wait…');
+
+  for (const line of dataLines) {
+    if (!line.trim()) continue;
+
+    let user_email, frequency, start_date, description, remarks, client_name, client_id;
+
+    if (isNewFormat) {
+      // New format: user_email, frequency, start_date, description, remarks, client_name
+      [user_email, frequency, start_date, description, remarks, client_name] = line.split(',').map(s => s.trim());
+      if (!user_email || !description || !frequency || !start_date || !client_name) { skipped++; continue; }
+      frequency = frequency.toLowerCase();
+      if (!validFreqs.includes(frequency)) { skipped++; continue; }
+      client_id = clientByName[client_name.toLowerCase()];
+      if (!client_id) { skipped++; continue; }
+    } else {
+      // Old format fallback: user_email, due_date, priority, description, remarks
+      let due_date, priority;
+      [user_email, due_date, priority, description, remarks] = line.split(',').map(s => s.trim());
+      if (!user_email || !description) { skipped++; continue; }
+      const user = allUsers.find(u => u.email === user_email);
+      if (!user) { skipped++; continue; }
+      await api('/api/tasks','POST',{type:'checklist',desc:description,assignedTo:user.id,date:due_date,priority,remarks});
+      totalTasks++;
+      continue;
+    }
+
+    const user = allUsers.find(u => u.email === user_email);
+    if (!user) { skipped++; continue; }
+
+    const weekOff  = user.week_off  || '';
+    const extraOff = user.extra_off || '';
+    const dates    = generateDates(start_date, frequency, weekOff, extraOff);
+
+    if (!dates.length) { skipped++; continue; }
+
+    const result = await api('/api/tasks/bulk-checklist','POST',{
+      desc: description,
+      assignedTo: user.id,
+      priority: 'low',
+      remarks: remarks || '',
+      dates,
+      client_id
+    });
+
+    if (!result.error) totalTasks += dates.length;
+    else skipped++;
+  }
+
+  showToast(`✅ ${totalTasks} tasks generated!${skipped ? ` (${skipped} rows skipped)` : ''}`);
+  closeModal('checklistModal');
+  loadDashboard(true);
+}
+
+// ══════════════════════════════════════════════════════
+// USERS
+// ══════════════════════════════════════════════════════
+let allUsersData = [];
+
+async function loadUsers() {
+  allUsersData = await api('/api/users');
+  renderUsersTable(allUsersData);
+}
+
+function filterUsers() {
+  const q = (document.getElementById('userSearch')?.value||'').toLowerCase().trim();
+  if (!q) { renderUsersTable(allUsersData); return; }
+  const filtered = allUsersData.filter(u =>
+    (u.name||'').toLowerCase().includes(q) ||
+    (u.email||'').toLowerCase().includes(q) ||
+    (u.department||'').toLowerCase().includes(q) ||
+    (u.role||'').toLowerCase().includes(q) ||
+    (u.phone||'').includes(q)
+  );
+  renderUsersTable(filtered);
+}
+
+function downloadUsersCSV() {
+  const data = allUsersData;
+  if (!data || !data.length) { alert('No user data to download.'); return; }
+  const headers = ['Name','Email','Phone','Department','App Role','User Role'];
+  const rows = data.map(u => [
+    u.name || '',
+    u.email || '',
+    u.phone || '',
+    u.department || '',
+    u.role || '',
+    u.user_role || ''
+  ].map(v => '"' + String(v).replace(/"/g, '""') + '"'));
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'users.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Map to store full user data for safe edit access (avoids inline special-char bugs)
+const _usersMap = {};
+
+function renderUsersTable(users) {
+  const tbody = document.getElementById('usersTbody');
+  if (!users.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:#94a3b8">No users found</td></tr>`;
+    return;
+  }
+  // Store all users in map so openEditUser(id) can safely retrieve data
+  users.forEach(u => { _usersMap[u.id] = u; });
+  const roleLabel = r => r==='admin'?'👑 Admin':r==='hod'?'🏢 HOD':r==='pc'?'🖥️ PC':'👤 User';
+  tbody.innerHTML = users.map(u=>{
+    const userRole = u.user_role || u.role;
+    const showBoth = userRole !== u.role;
+    return `
+    <tr>
+      <td style="font-weight:600">${esc(u.name)}</td>
+      <td style="color:#64748b">${esc(u.email)}</td>
+      <td style="color:#64748b">${esc(u.phone||'—')}</td>
+      <td style="color:#64748b">${esc(u.department||'—')}</td>
+      <td>
+        <span class="role-badge ${['admin','hod','pc','user'].includes(u.role)?u.role:'user'}" title="App Role — permissions">${roleLabel(u.role)}</span>
+        ${showBoth ? `<br><span class="role-badge ${['admin','hod','pc','user'].includes(userRole)?userRole:'user'}" style="font-size:10px;margin-top:3px;display:inline-block;opacity:.85" title="User Role — leave hierarchy">→ ${roleLabel(userRole)}</span>` : ''}
+      </td>
+      <td>
+        <button class="action-btn edit" onclick="openEditUser(${u.id})">Edit</button>
+        <button class="action-btn delete" style="margin-left:6px" onclick="deleteUser(${u.id})">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function _setWeekOff(s) {
+  const offs = (s||'').split(',').map(x=>x.trim()).filter(Boolean);
+  document.querySelectorAll('.woff-cb').forEach(cb => { cb.checked = offs.includes(cb.value); });
+}
+function _getWeekOff() {
+  return [...document.querySelectorAll('.woff-cb:checked')].map(cb=>cb.value).join(',');
+}
+
+// Extra Off — stored as JSON: [{day:6, weeks:[2,4]}]
+let _extraOffData = [];
+
+function _renderExtraOffList() {
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const weekNames = {1:'1st',2:'2nd',3:'3rd',4:'4th',5:'5th'};
+  const container = document.getElementById('extraOffList');
+  if (!container) return;
+  container.innerHTML = _extraOffData.map((item,i) => `
+    <div style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px">
+      <span style="font-size:12px;flex:1">
+        <strong>${item.weeks.map(w=>weekNames[w]).join(', ')}</strong> ${dayNames[item.day]}
+      </span>
+      <select onchange="_extraOffData[${i}].day=parseInt(this.value);_renderExtraOffList()"
+        style="padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;font-family:'Inter',sans-serif;outline:none">
+        ${[0,1,2,3,4,5,6].map(d=>`<option value="${d}" ${item.day===d?'selected':''}>${dayNames[d]}</option>`).join('')}
+      </select>
+      <div style="display:flex;gap:3px">
+        ${[1,2,3,4,5].map(w=>`
+          <label style="display:flex;align-items:center;gap:2px;font-size:11px;cursor:pointer;text-transform:none;letter-spacing:0">
+            <input type="checkbox" ${item.weeks.includes(w)?'checked':''}
+              onchange="if(this.checked)_extraOffData[${i}].weeks.push(${w});else _extraOffData[${i}].weeks=_extraOffData[${i}].weeks.filter(x=>x!==${w});_renderExtraOffList()"
+              style="accent-color:#4f46e5;width:12px;height:12px"/>
+            ${weekNames[w]}
+          </label>`).join('')}
+      </div>
+      <button type="button" onclick="_extraOffData.splice(${i},1);_renderExtraOffList()"
+        style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:0 2px">✕</button>
+    </div>`).join('');
+}
+
+function addExtraOff() {
+  _extraOffData.push({ day: 6, weeks: [2,4] }); // default: 2nd & 4th Saturday
+  _renderExtraOffList();
+}
+
+function _setExtraOff(jsonStr) {
+  try { _extraOffData = jsonStr ? JSON.parse(jsonStr) : []; } catch(e) { _extraOffData = []; }
+  _renderExtraOffList();
+}
+
+function _getExtraOff() {
+  return JSON.stringify(_extraOffData.filter(e => e.weeks.length > 0));
+}
+
+// Page list shared by the user modal. Loaded once from /api/access/pages.
+let _accessPages = null;
+async function ensureAccessPages() {
+  if (_accessPages) return _accessPages;
+  const r = await api('/api/access/pages');
+  _accessPages = Array.isArray(r) ? r : [];
+  return _accessPages;
+}
+async function renderExtraAccessGrid(currentAccess) {
+  const grid = document.getElementById('uExtraAccessGrid');
+  if (!grid) return;
+  const pages = await ensureAccessPages();
+  const set = new Set(Array.isArray(currentAccess) ? currentAccess : []);
+  grid.innerHTML = pages.map(p => `
+    <label style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;font-weight:500;color:#374151">
+      <input type="checkbox" class="u-extra-access" value="${p.key}" ${set.has(p.key) ? 'checked' : ''} style="accent-color:#4f46e5;width:14px;height:14px;cursor:pointer">
+      ${p.label}
+    </label>
+  `).join('');
+}
+function readExtraAccessFromForm() {
+  return [...document.querySelectorAll('#uExtraAccessGrid .u-extra-access:checked')].map(el => el.value);
+}
+
+function openAddUser() {
+  document.getElementById('userModalTitle').textContent='Add User';
+  ['editUserId','uName','uEmail','uNotifEmail','uPhone','uDepartment','uPosition','uPassword','uBirthday','uJoiningDate'].forEach(id=>document.getElementById(id).value='');
+  // Position is not stored on the user — it only feeds the WhatsApp welcome
+  // announcement, so it shows on Add and stays hidden on Edit.
+  document.getElementById('uPositionGroup').style.display='';
+  document.getElementById('uRole').value='user';
+  document.getElementById('uUserRole').value='user';
+  document.getElementById('pwdOptional').style.display='none';
+  document.getElementById('uBirthdayReq').style.display='inline';
+  document.getElementById('uJoiningReq').style.display='inline';
+  document.getElementById('userErr').style.display='none';
+  document.getElementById('userSuccess').style.display='none';
+  document.getElementById('uExcludeReminder').checked = false;
+  renderExtraAccessGrid([]);
+  document.getElementById('userModal').classList.add('open');
+}
+
+function openEditUser(id) {
+  const u = _usersMap[id];
+  if (!u) { appAlert('User data not found. Please refresh the page.'); return; }
+  document.getElementById('userModalTitle').textContent='Edit User';
+  document.getElementById('editUserId').value=u.id;
+  document.getElementById('uName').value=u.name||'';
+  document.getElementById('uEmail').value=u.email||'';
+  document.getElementById('uNotifEmail').value=u.notification_email||'';
+  document.getElementById('uPhone').value=u.phone||'';
+  document.getElementById('uDepartment').value=u.department||'';
+  document.getElementById('uPosition').value='';
+  document.getElementById('uPositionGroup').style.display='none';
+  // The API returns these as full ISO timestamps, which a date input cannot
+  // parse — without the split the field renders blank even when a date is
+  // stored, and saving would then wipe it. Same trim the Profile page does.
+  document.getElementById('uBirthday').value=String(u.birthday||'').split('T')[0];
+  document.getElementById('uJoiningDate').value=String(u.joining_date||'').split('T')[0];
+  document.getElementById('uPassword').value='';
+  document.getElementById('uRole').value=u.role||'user';
+  document.getElementById('uUserRole').value=u.user_role||u.role||'user';
+  document.getElementById('uExcludeReminder').checked = !!u.exclude_from_reminder;
+  document.getElementById('pwdOptional').style.display='inline';
+  document.getElementById('uBirthdayReq').style.display='none';
+  document.getElementById('uJoiningReq').style.display='none';
+  document.getElementById('userErr').style.display='none';
+  document.getElementById('userSuccess').style.display='none';
+  renderExtraAccessGrid(Array.isArray(u.extra_access) ? u.extra_access : []);
+  document.getElementById('userModal').classList.add('open');
+}
+
+async function saveUser() {
+  const err=document.getElementById('userErr'); err.style.display='none';
+  const suc=document.getElementById('userSuccess'); suc.style.display='none';
+  const id=document.getElementById('editUserId').value;
+  const name=document.getElementById('uName').value.trim();
+  const email=document.getElementById('uEmail').value.trim();
+  const notification_email=document.getElementById('uNotifEmail').value.trim();
+  const phone=document.getElementById('uPhone').value.trim();
+  const department=document.getElementById('uDepartment').value.trim();
+  const position=document.getElementById('uPosition').value.trim();
+  const birthday=document.getElementById('uBirthday').value;
+  const joining_date=document.getElementById('uJoiningDate').value;
+  const password=document.getElementById('uPassword').value;
+  const role=document.getElementById('uRole').value;
+  const user_role=document.getElementById('uUserRole').value;
+  const exclude_from_reminder = document.getElementById('uExcludeReminder').checked;
+  if (!name||!email) { err.textContent='Name and email required'; err.style.display='block'; return; }
+  // Required only for a new user. Editing an existing one must not be blocked
+  // by a date nobody recorded when the account was made.
+  if (!id && !birthday) { err.textContent='Birthday is required'; err.style.display='block'; return; }
+  if (!id && !joining_date) { err.textContent='Joining date is required'; err.style.display='block'; return; }
+  if (!id&&!password) { err.textContent='Password required for new user'; err.style.display='block'; return; }
+  const extra_access = readExtraAccessFromForm();
+  const body={name,email,notification_email,role,user_role,phone,department,birthday,joining_date,exclude_from_reminder,extra_access};
+  // Send-only on create: nothing stores it, the POST just puts it in the
+  // welcome message. On edit there is no welcome message to write.
+  if (!id) body.position=position;
+  if (password) body.password=password;
+  const r = id ? await api(`/api/users/${id}`,'PUT',body) : await api('/api/users','POST',body);
+  if (r.error) { err.textContent=r.error; err.style.display='block'; return; }
+  closeModal('userModal');
+  loadUsers();
+}
+
+function downloadUserSample() {
+  const csv = `name,email,password,role,user_role,phone,department\nJohn Doe,john@test.com,pass123,user,user,9876543210,Sales\nJane Smith,jane@test.com,pass123,hod,hod,9876543211,Production\nIT Admin,it@test.com,pass123,admin,user,9876543212,IT\nAdmin User,admin2@test.com,pass123,admin,admin,,Management`;
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download = 'users_sample.csv'; a.click();
+  showToast('Sample CSV downloaded!');
+}
+
+async function uploadUsersCSV() {
+  const file = document.getElementById('bulkUserFile').files[0];
+  if (!file) { showToast('Please select a CSV file','error'); return; }
+  const text = await file.text();
+  const lines = text.trim().split('\n');
+  const hdrs = lines[0].toLowerCase().split(',').map(h=>h.trim());
+  const users = [];
+  for (let i=1; i<lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const cols = lines[i].split(',').map(c=>c.trim());
+    const u = {}; hdrs.forEach((h,hi) => u[h]=cols[hi]||'');
+    if (u.name && u.email && u.password) users.push(u);
+  }
+  if (!users.length) { showToast('No valid rows found','error'); return; }
+  const r = await api('/api/users/bulk','POST',{users});
+  if (r.error) { showToast(r.error,'error'); return; }
+  const suc = document.getElementById('userSuccess');
+  suc.textContent = `✅ Added: ${r.added}, Skipped: ${r.skipped}`;
+  suc.style.display='block';
+  loadUsers();
+}
+
+
+// ══════════════════════════════════════════════════════
+async function loadApprovalBadge() {
+  const [d, lv, pr] = await Promise.all([
+    api('/api/approvals/count'),
+    api('/api/leaves/pending-count'),
+    // Was ME.name === 'Naman Gupta'. The endpoint is approver-gated anyway, so
+    // a mismatch here only ever meant a wasted 403 or a badge that never showed.
+    ME.canApprovePayments ? api('/api/payment-requests?status=pending') : Promise.resolve([])
+  ]);
+  const taskCnt    = d.count  || 0;
+  const leaveCnt   = lv?.count || 0;
+  const paymentCnt = Array.isArray(pr) ? pr.filter(r => r.bank_name !== '__system__' && r.status === 'pending').length : 0;
+  const waCnt      = 0;
+  const total = taskCnt + leaveCnt + paymentCnt;
+  document.querySelectorAll('.nav-approval-badge').forEach(badge => {
+    if (total > 0) {
+      badge.textContent = total;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  });
+  // Approvals page tab badge (leaves only)
+  const tabBadge = document.getElementById('apprLeaveBadge');
+  if (tabBadge) {
+    if (leaveCnt > 0) { tabBadge.textContent = leaveCnt; tabBadge.style.display = 'inline-block'; }
+    else tabBadge.style.display = 'none';
+  }
+  // WhatsApp tasks badge
+  const waTabBadge = document.getElementById('apprWaBadge');
+  if (waTabBadge) {
+    if (waCnt > 0) { waTabBadge.textContent = waCnt; waTabBadge.style.display = 'inline-block'; }
+    else waTabBadge.style.display = 'none';
+  }
+  document.querySelectorAll('.nav-wa-badge').forEach(waDelegBadge => {
+    if (waCnt > 0) { waDelegBadge.textContent = waCnt; waDelegBadge.style.display = 'flex'; }
+    else waDelegBadge.style.display = 'none';
+  });
+  // Also refresh transfer badge
+  loadTransferBadge();
+}
+
+function switchApprovalTab(tab, el) {
+  document.querySelectorAll('#page-approvals .tab').forEach(t=>t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  document.getElementById('approvalsPanel').style.display = tab==='task' ? 'block' : 'none';
+  document.getElementById('transferApprovalsPanel').style.display = tab==='transfer' ? 'block' : 'none';
+  const leavePanel = document.getElementById('leaveApprovalsPanel');
+  if (leavePanel) leavePanel.style.display = tab==='leave' ? 'block' : 'none';
+  const waPanel = document.getElementById('waDelPanel');
+  if (waPanel) waPanel.style.display = tab==='wa' ? 'block' : 'none';
+  const payPanel = document.getElementById('paymentApprovalsPanel');
+  if (payPanel) payPanel.style.display = tab==='payment' ? 'block' : 'none';
+  const mdoPanel = document.getElementById('mdoApprovalsPanel');
+  if (mdoPanel) mdoPanel.style.display = tab==='mdo' ? 'block' : 'none';
+  if (tab==='transfer') loadTransferApprovals();
+  if (tab==='leave') loadLeaveApprovals();
+  if (tab==='wa') loadWaDelegations();
+  if (tab==='payment') loadPaymentApprovals();
+  if (tab==='mdo') loadMdoApprovals();
+}
+
+async function loadApprovals() {
+  // Show Transfer tab for admin/HOD/PC
+  if (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc') {
+    document.getElementById('apprTabTransfer').style.display = 'block';
+  }
+  // WhatsApp Tasks tab — disabled (feature postponed)
+  // if (ME.role === 'admin' || ME.name === 'Naman Gupta') {
+  //   document.getElementById('apprTabWa').style.display = 'block';
+  // }
+  // Payment Approvals tab. The server decides — this used to hold its own copy
+  // of the approver names, so a rename had to be made in two files or the tab
+  // and the API disagreed about who was allowed in.
+  if (ME.canApprovePayments) {
+    document.getElementById('apprTabPayment').style.display = 'block';
+    loadPaymentApprovalsBadge();
+  }
+  // MDO Approvals tab — Purvi Saini only
+  if (ME.canReviewMdoTasks) {
+    document.getElementById('apprTabMdo').style.display = 'block';
+  }
+  // Also pre-load leave approvals (so badge stays in sync)
+  loadLeaveApprovals();
+
+  const approvals = await api('/api/approvals');
+  const container = document.getElementById('approvalsContent');
+
+  if (!approvals.length) {
+    container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">✅ No pending task approvals!</div>`;
+  } else {
+    const reviseCount = approvals.filter(a => a.action_type === 'revised').length;
+    const bulkBtn = (reviseCount > 0 && (ME.role === 'admin' || ME.role === 'pc'))
+      ? `<div style="margin-bottom:12px;display:flex;justify-content:flex-end">
+           <button class="btn btn-primary" onclick="approveAllRevises()">✅ Approve all ${reviseCount} revise request${reviseCount>1?'s':''}</button>
+         </div>`
+      : '';
+    container.innerHTML = bulkBtn + `
+      <div class="flat-tasks-table">
+        <table>
+          <thead><tr>
+            <th>Employee</th><th>Task</th><th>Action Requested</th><th>Requested On</th><th>Approve / Reject</th>
+          </tr></thead>
+          <tbody>
+            ${approvals.map(a => `
+              <tr>
+                <td style="font-weight:600">${a.requestedByName}</td>
+                <td>${esc(a.description||'—')}</td>
+                <td><span class="status-badge ${a.action_type}">${a.action_type==='completed'?'✅ Mark Complete':'🔄 Revision'}</span>${a.action_type==='revised' && a.reviseToDate ? `<div style="font-size:11px;color:#64748b;margin-top:3px">${a.currentDue?fmtDate(a.currentDue)+' → ':''}<b style="color:#9d174d">${fmtDate(a.reviseToDate)}</b></div>` : ''}</td>
+                <td style="color:#64748b;font-size:12px">${new Date(a.created_at).toLocaleDateString('en-IN')}</td>
+                <td>
+                  <button class="action-btn done" onclick="handleApproval(${a.id},'approved')">Approve</button>
+                  <button class="action-btn delete" style="margin-left:6px" onclick="handleApproval(${a.id},'rejected')">Reject</button>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+}
+
+async function approveAllRevises() {
+  if (!await appConfirm('Saare pending revise requests approve kar dein? (proposed dates apply ho jayengi)')) return;
+  const r = await api('/api/approvals/approve-all-revises', 'POST', {});
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast(`✅ ${r.approved||0} revise request approved`);
+  loadApprovals();
+  loadApprovalBadge();
+}
+
+async function handleApproval(id, action) {
+  const note = action === 'rejected' ? prompt('Reason for rejection (optional):') : '';
+  const r = await api(`/api/approvals/${id}`,'PUT',{action, note: note||''});
+  // The server can refuse — e.g. a completion whose sub-tasks are still open.
+  // Without this the toast claimed success while nothing had changed.
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  showToast(action === 'approved' ? '✅ Approved!' : '❌ Rejected!');
+  loadApprovals();
+  loadApprovalBadge();
+}
+
+// ── WhatsApp Delegation Functions ─────────────────────
+
+async function loadWaDelegations() {
+  const container = document.getElementById('waDelContent');
+  if (!container) return;
+  container.innerHTML = `<div class="empty">Loading…</div>`;
+  const rows = await api('/api/wa-delegation');
+  if (rows && rows.error) {
+    container.innerHTML = `<div class="empty" style="padding:36px;color:#ef4444">❌ Server error: ${rows.error}<br><small style="color:#94a3b8">Please check Vercel logs for details.</small></div>`;
+    return;
+  }
+  if (!Array.isArray(rows) || !rows.length) {
+    loadApprovalBadge();
+    container.innerHTML = `<div class="empty" style="padding:36px">✅ No pending WhatsApp tasks!</div>`;
+    return;
+  }
+  container.innerHTML = `
+    <div class="flat-tasks-table">
+      <table>
+        <thead><tr>
+          <th>Task</th>
+          <th>From (WhatsApp)</th>
+          <th>Assign To</th>
+          <th>Due Date</th>
+          <th>Priority</th>
+          <th>Remarks</th>
+          <th>Received</th>
+          <th style="min-width:140px">Action</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td style="max-width:220px;font-size:13px">${esc(r.description||'—')}</td>
+              <td style="font-weight:600;font-size:13px">
+                ${r.sender_name ? `${r.sender_name}<br>` : ''}
+                <span style="color:#64748b;font-size:11px">${r.sender_phone||'—'}</span>
+              </td>
+              <td style="font-size:13px">${r.assignedToName||'—'}</td>
+              <td style="font-size:12px;color:#64748b">${r.due_date ? fmtDate(r.due_date) : '—'}</td>
+              <td><span class="status-badge ${r.priority||'low'}" style="font-size:10px;text-transform:capitalize">${r.priority||'low'}</span></td>
+              <td style="font-size:12px;color:#64748b;max-width:150px">${esc(r.remarks||'—')}</td>
+              <td style="font-size:11px;color:#94a3b8">${new Date(r.created_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</td>
+              <td>
+                <button class="action-btn done" onclick="handleWaDelegation(${r.id},'approved')" style="margin-bottom:4px">✅ Approve</button>
+                <button class="action-btn delete" onclick="handleWaDelegation(${r.id},'denied')">❌ Deny</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function handleWaDelegation(id, action) {
+  const confirmed = await appConfirm(
+    action === 'approved'
+      ? 'Approve this task? It will be added to delegation_tasks and the sender will be notified (WhatsApp / email).'
+      : 'Deny this task? The sender will be notified (WhatsApp / email).'
+  );
+  if (!confirmed) return;
+  const r = await api(`/api/wa-delegation/${id}`, 'PUT', { action });
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast(action === 'approved' ? '✅ Task approved and added to system!' : '❌ Task denied');
+  loadWaDelegations();
+  loadApprovalBadge();
+}
+
+async function sendBirthdayReminder() {
+  if (!await appConfirm('Send birthday reminder to the WhatsApp group?')) return;
+  const r = await api('/api/admin/send-birthday-reminder', 'POST');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast('✅ Reminder sent to group!');
+}
+
+async function deleteUser(id) {
+  if (!await appConfirm('Delete this user?')) return;
+  const r=await api(`/api/users/${id}`,'DELETE');
+  if (r.error) { appAlert(r.error, 'Error'); return; }
+  loadUsers();
+}
+
+// ══════════════════════════════════════════════════════
+// PROFILE
+// ══════════════════════════════════════════════════════
+async function saveProfile() {
+  const s=document.getElementById('profileSuccess'),e=document.getElementById('profileError');
+  s.style.display='none'; e.style.display='none';
+  const name=document.getElementById('pName').value.trim();
+  const email=document.getElementById('pEmail').value.trim();
+  const notification_email=document.getElementById('pNotifEmail').value.trim();
+  const phone=document.getElementById('pPhone').value.trim();
+  const birthday=document.getElementById('pBirthday').value||null;
+  const joining_date=document.getElementById('pJoiningDate').value||null;
+  const currentPassword=document.getElementById('pCurrent').value;
+  const newPassword=document.getElementById('pNew').value;
+  const confirmPassword=document.getElementById('pConfirm').value;
+  if (newPassword&&newPassword!==confirmPassword) { e.textContent='Passwords do not match'; e.style.display='block'; return; }
+  const body={name,email,notification_email,phone,birthday,joining_date};
+  if (currentPassword) { body.currentPassword=currentPassword; body.newPassword=newPassword; }
+  const r=await api('/api/profile','PUT',body);
+  if (r.error) { e.textContent=r.error; e.style.display='block'; return; }
+  s.textContent='Profile updated!'; s.style.display='block';
+  ME.name=name; ME.phone=phone; ME.notification_email=notification_email; ME.birthday=birthday; ME.joining_date=joining_date;
+  const initials=name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+  document.getElementById('sidebarName').textContent=name;
+  document.getElementById('profileNameDisplay').textContent=name;
+  if (!ME.profile_image) setAvatarDisplay(null, initials);
+  document.getElementById('pCurrent').value='';
+  document.getElementById('pNew').value='';
+  document.getElementById('pConfirm').value='';
+}
+
+// ══════════════════════════════════════════════════════
+// 📆 MONDAY WEEKLY CHECK-IN
+// ══════════════════════════════════════════════════════
+let MW_DATA = null;
+let MW_CHOSEN_SCORE = -10;
+let MW_LAST_COMMITTED = null; // for live-preview comparison
+
+function mwScoreClass(score) {
+  if (score === null || score === undefined) return '';
+  if (score >= -10) return 'mw-good';
+  if (score >= -40) return 'mw-warn';
+  return 'mw-bad';
+}
+function mwFmtScore(score) {
+  if (score === null || score === undefined) return '—';
+  return (score > 0 ? '+' : '') + score.toFixed(1);
+}
+function mwFmtDateRange(start, end) {
+  const fmt = d => {
+    const [y,m,da] = d.split('-');
+    return `${da} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m)-1]}`;
+  };
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
+// ── Rank / badge mapping based on score band ──
+function mwRankFor(score) {
+  if (score === null || score === undefined) return { icon: '⏳', title: 'No data' };
+  if (score >= -5)  return { icon: '🏆', title: 'Legend'   };
+  if (score >= -15) return { icon: '⭐', title: 'Achiever' };
+  if (score >= -35) return { icon: '💪', title: 'Builder'  };
+  if (score >= -60) return { icon: '📈', title: 'Climber'  };
+  return                    { icon: '🔥', title: 'Hustler'  };
+}
+
+// Confetti — 30 emoji particles, 1.6s.
+function mwConfetti() {
+  const wrap = document.createElement('div');
+  wrap.className = 'mw-confetti';
+  const emojis = ['🎉','🎊','✨','⭐','🏆'];
+  for (let i = 0; i < 30; i++) {
+    const s = document.createElement('span');
+    s.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    s.style.left = (Math.random() * 100) + '%';
+    s.style.top  = (-20 - Math.random() * 60) + 'px';
+    s.style.animationDelay = (Math.random() * 0.3) + 's';
+    s.style.setProperty('--dx', ((Math.random() - 0.5) * 200) + 'px');
+    wrap.appendChild(s);
+  }
+  document.body.appendChild(wrap);
+  setTimeout(() => wrap.remove(), 2200);
+}
+
+async function mwMaybeOpen() {
+  try {
+    const r = await api('/api/my-week-status');
+    if (r && r.needsCheckin) {
+      await mwLoadAndShow();
+    }
+  } catch(e) { /* silent — not critical */ }
+}
+
+async function mwLoadAndShow() {
+  try {
+    MW_DATA = await api('/api/my-week-data');
+    if (!MW_DATA || MW_DATA.error) {
+      showToast('Could not load weekly data', 'error');
+      return;
+    }
+
+    // Header
+    const hr = new Date(Date.now() + (5.5*60*60*1000)).getUTCHours();
+    const greet = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
+    const firstName = (ME.name || '').split(' ')[0] || '';
+    document.getElementById('mwGreeting').textContent = `${greet}, ${firstName}`;
+    document.getElementById('mwSubtitle').textContent = `Monday Check-in · 30 seconds`;
+
+    // Last week — score, rank, verdict
+    const lw = MW_DATA.lastWeek;
+    const lastCommit = lw.plan && lw.plan.user_committed_score !== null ? parseFloat(lw.plan.user_committed_score) : null;
+    const lastActual = lw.stats.overall.score;
+    MW_LAST_COMMITTED = lastCommit;
+
+    document.getElementById('mwLastRange').textContent = mwFmtDateRange(lw.start, lw.end);
+    const rank = mwRankFor(lastActual);
+    document.getElementById('mwBadgeIcon').textContent = rank.icon;
+    document.getElementById('mwBadgeTitle').textContent = rank.title;
+    const scoreEl = document.getElementById('mwGaugeText');
+    scoreEl.textContent = mwFmtScore(lastActual);
+    scoreEl.className = 'mw-last-score ' + mwScoreClass(lastActual);
+
+    const verdictEl = document.getElementById('mwLastVerdict');
+    if (lastCommit !== null && lastActual !== null) {
+      if (lastActual >= lastCommit) {
+        verdictEl.className = 'mw-last-verdict mw-hit';
+        verdictEl.innerHTML = `🎯 Target hit · committed ${mwFmtScore(lastCommit)}, scored ${mwFmtScore(lastActual)}`;
+      } else {
+        const gap = (lastCommit - lastActual).toFixed(1);
+        verdictEl.className = 'mw-last-verdict mw-miss';
+        verdictEl.innerHTML = `📉 Missed by ${gap} pts · committed ${mwFmtScore(lastCommit)}, scored ${mwFmtScore(lastActual)}`;
+      }
+    } else if (lastActual === null) {
+      verdictEl.className = 'mw-last-verdict';
+      verdictEl.textContent = 'No tasks last week — fresh slate.';
+    } else {
+      verdictEl.className = 'mw-last-verdict';
+      verdictEl.textContent = `${lw.stats.overall.completed}/${lw.stats.overall.total} tasks done · no target was set last week`;
+    }
+
+    // Pre-fill breakdown card headers/meta (tasks lazy-loaded on first toggle)
+    const del = lw.stats.delegation, chl = lw.stats.checklist;
+    const delScoreEl = document.getElementById('mwDetDelScore');
+    delScoreEl.textContent = mwFmtScore(del.score);
+    delScoreEl.className = 'mw-det-score ' + mwScoreClass(del.score);
+    document.getElementById('mwDetDelMeta').textContent = del.total
+      ? `${del.completed}/${del.total} done · ${del.pending} pending${del.overdue ? ' · ' + del.overdue + ' overdue' : ''}`
+      : 'No delegation tasks';
+    const chlScoreEl = document.getElementById('mwDetChlScore');
+    chlScoreEl.textContent = mwFmtScore(chl.score);
+    chlScoreEl.className = 'mw-det-score ' + mwScoreClass(chl.score);
+    document.getElementById('mwDetChlMeta').textContent = chl.total
+      ? `${chl.completed}/${chl.total} done · ${chl.pending} pending${chl.overdue ? ' · ' + chl.overdue + ' overdue' : ''}`
+      : 'No checklist tasks';
+
+    // FMS placeholder — score/meta filled lazily after sheet fetch
+    document.getElementById('mwDetFmsScore').textContent = '—';
+    document.getElementById('mwDetFmsScore').className = 'mw-det-score';
+    document.getElementById('mwDetFmsMeta').textContent = 'Tap to load';
+
+    // Reset details panel to collapsed and not-loaded so a fresh open re-fetches
+    const detEl = document.getElementById('mwDetails');
+    detEl.style.display = 'none';
+    detEl.dataset.loaded = '';
+    document.querySelector('.mw-last')?.classList.remove('mw-open');
+    document.getElementById('mwDetailsToggle').textContent = '▼ details';
+    document.getElementById('mwDetDelTasks').innerHTML = '';
+    document.getElementById('mwDetChlTasks').innerHTML = '';
+    document.getElementById('mwDetFmsTasks').innerHTML = '';
+
+    // This week — picker
+    const tw = MW_DATA.thisWeek;
+    document.getElementById('mwThisRange').textContent = mwFmtDateRange(tw.start, tw.end);
+
+    let defaultScore = -10;
+    if (lastActual !== null && lastActual !== undefined) {
+      defaultScore = Math.max(-100, Math.min(0, Math.round(lastActual)));
+    }
+    mwSetPick(defaultScore);
+
+    document.getElementById('mwErr').style.display = 'none';
+    document.getElementById('mondayCheckinModal').classList.add('open');
+  } catch (e) {
+    console.error('mwLoadAndShow:', e);
+    showToast('Failed to open check-in', 'error');
+  }
+}
+
+function mwRefreshPreview() {
+  const v = MW_CHOSEN_SCORE;
+  const rank = mwRankFor(v);
+  document.getElementById('mwPreviewVal').textContent   = (v > 0 ? '+' : '') + v;
+  document.getElementById('mwPreviewEmoji').textContent = rank.icon;
+  document.getElementById('mwPreviewRank').textContent  = rank.title;
+  // Warn if committing worse than last week's ACHIEVED score (regression).
+  const lastActual = MW_DATA?.lastWeek?.stats?.overall?.score;
+  const warn = document.getElementById('mwRegressWarn');
+  if (warn) {
+    if (lastActual !== null && lastActual !== undefined && v < lastActual) {
+      warn.style.display = 'block';
+      warn.innerHTML = `⚠️ Last week you <b>achieved ${mwFmtScore(lastActual)}</b> — you're committing <b>${mwFmtScore(v)}</b>, which is worse. Aim to match or beat it. (This flag will be visible to the admin.)`;
+    } else {
+      warn.style.display = 'none';
+    }
+  }
+}
+
+function mwSetPick(val) {
+  const v = Math.max(-100, Math.min(0, parseInt(val) || 0));
+  MW_CHOSEN_SCORE = v;
+  document.getElementById('mwSlider').value = v;
+  document.querySelectorAll('.mw-quick-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.v) === v);
+  });
+  mwRefreshPreview();
+}
+function mwSliderChange(val) {
+  MW_CHOSEN_SCORE = Math.max(-100, Math.min(0, parseInt(val) || 0));
+  document.querySelectorAll('.mw-quick-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.v) === MW_CHOSEN_SCORE);
+  });
+  mwRefreshPreview();
+}
+
+async function mwToggleDetails() {
+  const det = document.getElementById('mwDetails');
+  const wrap = document.querySelector('.mw-last');
+  const toggle = document.getElementById('mwDetailsToggle');
+  if (det.style.display === 'block') {
+    det.style.display = 'none';
+    wrap.classList.remove('mw-open');
+    toggle.textContent = '▼ details';
+    return;
+  }
+  det.style.display = 'block';
+  wrap.classList.add('mw-open');
+  toggle.textContent = '▲ hide';
+  if (det.dataset.loaded === '1') return;
+
+  const renderTaskList = (containerId, tasks, emptyMsg) => {
+    const el = document.getElementById(containerId);
+    if (!tasks || !tasks.length) {
+      el.innerHTML = `<div class="mw-det-empty">${emptyMsg}</div>`;
+      return;
+    }
+    const today = MW_DATA.todayStr;
+    el.innerHTML = tasks.map(t => {
+      const isOverdue = t.status === 'pending' && t.due_date < today;
+      const stCls = isOverdue ? 'overdue' : t.status;
+      const stLabel = isOverdue ? 'Overdue' : (t.status === 'revised' ? 'Revised' : t.status[0].toUpperCase() + t.status.slice(1));
+      const sub = `${fmtDate(t.due_date) || ''}${t.assigned_by_name ? ' · by ' + dtEscape(t.assigned_by_name) : ''}`;
+      return `<div class="mw-det-task">
+        <div class="mw-det-task-desc">${dtEscape(t.description || '—')}<small>${sub}</small></div>
+        <span class="mw-det-task-st ${stCls}">${stLabel}</span>
+      </div>`;
+    }).join('');
+  };
+
+  const renderFmsList = (tasks) => {
+    const el = document.getElementById('mwDetFmsTasks');
+    if (!tasks || !tasks.length) {
+      el.innerHTML = '<div class="mw-det-empty">No FMS rows planned this week</div>';
+      return;
+    }
+    el.innerHTML = tasks.map(t => {
+      const stCls = t.status === 'completed' ? 'completed' : 'pending';
+      const stLabel = t.status === 'completed' ? 'Done' : 'Pending';
+      const sub = `${dtEscape(t.fmsName)} · planned ${dtEscape(t.planValue)}${t.actualValue ? ' · done ' + dtEscape(t.actualValue) : ''}`;
+      return `<div class="mw-det-task">
+        <div class="mw-det-task-desc">${dtEscape(t.stepName || '—')}<small>${sub}</small></div>
+        <span class="mw-det-task-st ${stCls}">${stLabel}</span>
+      </div>`;
+    }).join('');
+  };
+
+  document.getElementById('mwDetDelTasks').innerHTML = '<div class="mw-det-empty">Loading…</div>';
+  document.getElementById('mwDetChlTasks').innerHTML = '<div class="mw-det-empty">Loading…</div>';
+  document.getElementById('mwDetFmsTasks').innerHTML = '<div class="mw-det-empty">Loading…</div>';
+  try {
+    const [delRes, chlRes, fmsRes] = await Promise.all([
+      api(`/api/my-week-tasks?type=delegation&start=${MW_DATA.lastWeek.start}&end=${MW_DATA.lastWeek.end}`),
+      api(`/api/my-week-tasks?type=checklist&start=${MW_DATA.lastWeek.start}&end=${MW_DATA.lastWeek.end}`),
+      api(`/api/my-week-fms-tasks?start=${MW_DATA.lastWeek.start}&end=${MW_DATA.lastWeek.end}`)
+    ]);
+    renderTaskList('mwDetDelTasks', delRes.tasks || [], 'No delegation tasks this week');
+    renderTaskList('mwDetChlTasks', chlRes.tasks || [], 'No checklist tasks this week');
+
+    // Compute FMS score/meta from the returned tasks (no separate stats call)
+    const fmsTasks = fmsRes.tasks || [];
+    const fmsTotal = fmsTasks.length;
+    const fmsDone  = fmsTasks.filter(t => t.status === 'completed').length;
+    const fmsScoreEl = document.getElementById('mwDetFmsScore');
+    if (fmsTotal === 0) {
+      fmsScoreEl.textContent = '—';
+      fmsScoreEl.className = 'mw-det-score';
+      document.getElementById('mwDetFmsMeta').textContent = 'No FMS steps assigned';
+    } else {
+      // FMS uses % completion (0–100), not the -100..0 scale
+      const pct = Math.round((fmsDone / fmsTotal) * 100);
+      fmsScoreEl.textContent = pct + '%';
+      fmsScoreEl.className = 'mw-det-score ' + (pct >= 80 ? 'mw-good' : pct >= 50 ? 'mw-warn' : 'mw-bad');
+      document.getElementById('mwDetFmsMeta').textContent = `${fmsDone}/${fmsTotal} done · ${fmsTotal - fmsDone} pending`;
+    }
+    renderFmsList(fmsTasks);
+
+    det.dataset.loaded = '1';
+  } catch (e) {
+    document.getElementById('mwDetDelTasks').innerHTML = '<div class="mw-det-empty">Failed to load.</div>';
+    document.getElementById('mwDetChlTasks').innerHTML = '<div class="mw-det-empty">Failed to load.</div>';
+    document.getElementById('mwDetFmsTasks').innerHTML = '<div class="mw-det-empty">Failed to load.</div>';
+  }
+}
+
+async function mwSubmit() {
+  const btn = document.getElementById('mwCommitBtn');
+  const err = document.getElementById('mwErr');
+  err.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    const r = await api('/api/my-week-plan', 'POST', {
+      startDate: MW_DATA.thisWeek.start,
+      committedScore: MW_CHOSEN_SCORE
+    });
+    if (r.error) {
+      err.textContent = r.error;
+      err.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Commit & Start Week →';
+      return;
+    }
+    closeModal('mondayCheckinModal');
+    const rank = mwRankFor(MW_CHOSEN_SCORE);
+    // Confetti when user hit last week's target OR commits to top-tier this week.
+    const lastActual = MW_DATA && MW_DATA.lastWeek ? MW_DATA.lastWeek.stats.overall.score : null;
+    const lastCommit = MW_LAST_COMMITTED;
+    const hitLast = lastCommit !== null && lastActual !== null && lastActual >= lastCommit;
+    if (hitLast || MW_CHOSEN_SCORE >= -10) mwConfetti();
+    showToast(`${rank.icon} Locked: ${mwFmtScore(MW_CHOSEN_SCORE)} — go be a ${rank.title} this week!`);
+  } catch (e) {
+    err.textContent = 'Network error: ' + e.message;
+    err.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Commit & Start Week →';
+  }
+}
+
+async function mwSnooze() {
+  try {
+    await api('/api/my-week-plan/snooze', 'POST', {});
+    closeModal('mondayCheckinModal');
+    showToast('⏰ Reminder set for tomorrow.');
+  } catch (e) { showToast('Failed to snooze', 'error'); }
+}
+
+// ══════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════
+async function api(url,method='GET',body=null) {
+  const token = localStorage.getItem('authToken');
+  const opts={method, headers:{'Content-Type':'application/json'}, credentials:'include'};
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+  if (body) opts.body=JSON.stringify(body);
+  // A dropped connection used to throw straight out of here. Callers invoked from
+  // an inline onclick never caught it, so the click silently did nothing: no error,
+  // no toast, no refresh — the row just sat there and the user assumed it saved.
+  // Returning an error object instead makes every existing `if (r.error)` branch fire.
+  let r;
+  try {
+    r = await fetch(url,opts);
+  } catch (e) {
+    console.error('API network error:', url, e);
+    return { error: 'Network problem — this was NOT saved. Check your connection and try again.' };
+  }
+  if (r.status===401) {
+    localStorage.removeItem('authToken');
+    window.location.replace('/');
+    return {};
+  }
+  try {
+    const data = await r.json();
+    if (!r.ok && !data.error) data.error = `HTTP ${r.status}`;
+    return data;
+  } catch(e) {
+    console.error('API error:', url, r.status, e);
+    return { error: `HTTP ${r.status}` };
+  }
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// In-app replacements for native alert()/confirm(). Both return Promises so the
+// existing call-sites can switch from `if (!confirm(...))` to
+// `if (!await appConfirm(...))` with no other plumbing.
+function _showAppPrompt({ title, message, buttons }) {
+  return new Promise(resolve => {
+    const modal  = document.getElementById('appPromptModal');
+    const titleEl = document.getElementById('appPromptTitle');
+    const bodyEl  = document.getElementById('appPromptBody');
+    const footer  = document.getElementById('appPromptFooter');
+    titleEl.textContent = title || 'Notice';
+    bodyEl.textContent  = message || '';
+    footer.innerHTML = '';
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      modal.classList.remove('open');
+      resolve(value);
+    };
+    buttons.forEach(b => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = b.className || 'btn btn-primary';
+      btn.textContent = b.label;
+      btn.addEventListener('click', () => finish(b.value));
+      footer.appendChild(btn);
+    });
+    // ESC + the auto-injected ✕ on every modal resolve as "cancel"-ish.
+    const onEsc = e => {
+      if (e.key === 'Escape') { document.removeEventListener('keydown', onEsc, true); finish(buttons[0]?.value ?? false); }
+    };
+    document.addEventListener('keydown', onEsc, true);
+    modal.classList.add('open');
+    // Focus the primary action so Enter works.
+    const primary = footer.querySelector('.btn-primary, .btn-danger, .btn-green') || footer.lastElementChild;
+    if (primary) primary.focus();
+  });
+}
+function appAlert(message, title = 'Notice') {
+  return _showAppPrompt({
+    title, message,
+    buttons: [{ label: 'OK', className: 'btn btn-primary', value: true }]
+  });
+}
+function appConfirm(message, title = 'Please confirm') {
+  return _showAppPrompt({
+    title, message,
+    buttons: [
+      { label: 'Cancel', className: 'btn btn-outline', value: false },
+      { label: 'OK',     className: 'btn btn-primary', value: true }
+    ]
+  });
+}
+
+// Inject a top-right close (×) into every modal, and let ESC close the topmost open one.
+(function setupModalUX() {
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    const modal = overlay.querySelector('.modal');
+    if (!modal || modal.querySelector('.modal-close')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'modal-close';
+    btn.setAttribute('aria-label', 'Close');
+    btn.innerHTML = '&times;';
+    btn.addEventListener('click', () => overlay.classList.remove('open'));
+    modal.insertBefore(btn, modal.firstChild);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const opens = document.querySelectorAll('.modal-overlay.open');
+    if (!opens.length) return;
+    opens[opens.length - 1].classList.remove('open');
+    e.stopPropagation();
+  });
+})();
+
+async function logout() {
+  await fetch('/api/logout',{method:'POST', credentials:'include'});
+  localStorage.removeItem('authToken');
+  window.location.replace('/');
+}
+
+function showToast(msg,type='success') {
+  const t=document.createElement('div');
+  const bg=type==='error'?'#dc2626':'#1e293b';
+  t.style.cssText=`position:fixed;bottom:24px;right:24px;background:${bg};color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.2);animation:fadeIn .3s ease`;
+  t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),3000);
+}
+
+// ── Page-level loader (tab/page switches) ─────────────────────────
+// Refcounted so rapid switches don't flicker. withPageLoader() wraps
+// any sync or async work — overlay shows while the promise is pending.
+let _pageLoaderCnt = 0;
+function showPageLoader() {
+  _pageLoaderCnt++;
+  const el = document.getElementById('pageLoader');
+  if (el) el.classList.add('show');
+}
+function hidePageLoader() {
+  _pageLoaderCnt = Math.max(0, _pageLoaderCnt - 1);
+  if (_pageLoaderCnt === 0) {
+    const el = document.getElementById('pageLoader');
+    if (el) el.classList.remove('show');
+  }
+}
+function withPageLoader(fnOrPromise) {
+  showPageLoader();
+  const p = (typeof fnOrPromise === 'function')
+    ? Promise.resolve().then(fnOrPromise)
+    : Promise.resolve(fnOrPromise);
+  return p.catch(e => { console.error('[pageLoader] task failed:', e); }).finally(hidePageLoader);
+}
+
+// ══════════════════════════════════════════════════════
+// ── DATE FORMAT HELPER ──────────────────────────────
+// Converts YYYY-MM-DD → DD-MM-YYYY for display only
+function fmtDate(d) {
+  if (!d) return '';
+  const parts = d.split('-');
+  if (parts.length !== 3) return d;
+  return `${parts[2]}-${parts[1]}-${parts[0]}`;
+}
+// ── SET WEEK PLAN ───────────────────────────────────
+async function openSetPlanModal() {
+  document.getElementById('setPlanErr').style.display = 'none';
+  document.getElementById('setPlanErr').textContent = '';
+  document.getElementById('planEmpSelect').innerHTML = '<option value="">Select Employee</option>';
+  document.getElementById('planStartDate').value = '';
+  document.getElementById('planImprovementPct').value = '';
+  document.getElementById('planPctPreview').textContent = '';
+
+  // Live preview for improvement pct
+  document.getElementById('planImprovementPct').oninput = function() {
+    const v = parseInt(this.value);
+    const preview = document.getElementById('planPctPreview');
+    if (isNaN(v)) { preview.textContent = ''; return; }
+    const color = v < 0 ? '#dc2626' : '#16a34a';
+    const arrow = v < 0 ? '📉' : '📈';
+    preview.innerHTML = `<span style="color:${color};font-weight:600">${arrow} Next week target: ${v > 0 ? '+' : ''}${v}% improvement</span>`;
+  };
+
+  // Load department employees
+  const allUsers = await api('/api/users');
+  const deptUsers = ME.role === 'admin'
+    ? allUsers.filter(u => u.role === 'user' || u.role === 'employee')
+    : allUsers.filter(u => u.department === ME.department && u.id !== ME.id);
+  deptUsers.forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u.id;
+    opt.textContent = u.name + ' (' + u.email + ')';
+    document.getElementById('planEmpSelect').appendChild(opt);
+  });
+
+  document.getElementById('setPlanModal').classList.add('open');
+}
+
+async function saveWeekPlan() {
+  const empId = document.getElementById('planEmpSelect').value;
+  const startDate = document.getElementById('planStartDate').value;
+  const improvementPct = document.getElementById('planImprovementPct').value;
+  const err = document.getElementById('setPlanErr');
+  err.style.display = 'none';
+
+  if (!empId) { err.textContent = 'Please select an employee'; err.style.display = 'block'; return; }
+  if (!startDate) { err.textContent = 'Please select start date of week'; err.style.display = 'block'; return; }
+
+  const payload = {
+    employeeId: parseInt(empId),
+    startDate,
+    targetCount: 0,
+    hodId: ME.id
+  };
+  if (improvementPct !== '' && !isNaN(parseInt(improvementPct))) {
+    payload.improvementPct = parseInt(improvementPct);
+  }
+
+  const res = await api('/api/week-plan', 'POST', payload);
+
+  if (res.error) { err.textContent = res.error; err.style.display = 'block'; return; }
+  closeModal('setPlanModal');
+  showToast('✅ Week plan saved successfully!');
+}
+
+
+
+// MIS REPORT
+// ══════════════════════════════════════════════════════
+let misType = 'delegation';
+let misData = {};
+let misFMSData = [];
+let misAllData = [];
+
+function switchMisTab(type, el) {
+  misType = type;
+  document.querySelectorAll('#page-mis .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  if (type === 'fms') {
+    if (misFMSData.length) renderFMSMIS(misFMSData);
+    else document.getElementById('misResults').innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Click Generate to load FMS MIS</div>`;
+  } else if (type === 'all') {
+    if (misAllData.length) renderAllMIS(misAllData, misFMSData);
+    else document.getElementById('misResults').innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Click Generate to load All MIS</div>`;
+  } else {
+    if (Object.keys(misData).length) renderMIS(misData);
+  }
+}
+
+async function generateMIS() {
+  const start = document.getElementById('misStart').value;
+  const end   = document.getElementById('misEnd').value;
+  if (!start || !end) { showToast('Please select start and end date','error'); return; }
+  if (start > end) { showToast('Start date must be before end date','error'); return; }
+
+  document.getElementById('misResults').innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Loading…</div>`;
+
+  if (misType === 'fms') {
+    const data = await api(`/api/mis/fms?start=${start}&end=${end}`);
+    if (data.error) { showToast(data.error,'error'); return; }
+    misFMSData = data;
+    renderFMSMIS(data);
+  } else if (misType === 'all') {
+    document.getElementById('misResults').innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Loading…</div>`;
+    const [data, fmsData] = await Promise.all([
+      api(`/api/mis/all?start=${start}&end=${end}`),
+      api(`/api/mis/fms?start=${start}&end=${end}`)
+    ]);
+    if (data.error) { showToast(data.error,'error'); return; }
+    misAllData = data;
+    misFMSData = Array.isArray(fmsData) ? fmsData : [];
+    renderAllMIS(data, misFMSData);
+  } else {
+    const data = await api(`/api/mis?start=${start}&end=${end}`);
+    if (data.error) { showToast(data.error,'error'); return; }
+    misData = data;
+    renderMIS(data);
+  }
+}
+
+function renderMIS(data) {
+  const container = document.getElementById('misResults');
+  const key = misType === 'delegation' ? 'delegation' : 'checklist';
+  const rows = data[key] || [];
+
+  if (!rows.length) {
+    container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">No data found for this date range</div>`;
+    return;
+  }
+
+  const tableRows = rows.map((r,i) => {
+    const score = parseFloat(r.score);
+    const scoreClass = score === 0 ? 'score-zero' : score < 0 ? 'score-negative' : 'score-positive';
+    const barWidth = Math.abs(score);
+    const barColor = score === 0 ? '#94a3b8' : score < 0 ? '#ef4444' : '#10b981';
+    const scoreLabel = score === 0 ? '✅ Perfect' : score < 0 ? '⚠️ Needs Improvement' : '✅ Good';
+
+    return `<tr style="cursor:pointer" onclick="openMISDetail(${jsArg(r.userId||r.id)},${jsArg(r.name)})" title="Click to see task details">
+      <td>
+        <span style="font-weight:600;color:#4f46e5;text-decoration:underline dotted">${esc(r.name)}</span>
+      </td>
+      <td style="font-weight:700">${r.total}</td>
+      <td style="color:#ef4444;font-weight:600">${r.pending}</td>
+      <td style="color:#10b981;font-weight:600">${r.completed}</td>
+      ${misType==='delegation' ? `<td style="color:#f59e0b;font-weight:600">${r.revised||0}</td>` : ''}
+      <td style="color:#dc2626;font-weight:600">${r.delayed||0}</td>
+      <td>
+        <div class="${scoreClass}" style="font-size:14px;font-weight:700">${score.toFixed(1)}%</div>
+        <div style="font-size:10px;color:#94a3b8;margin-top:1px">${scoreLabel}</div>
+        <div class="mis-score-bar">
+          <div class="mis-score-fill" style="width:${barWidth}%;background:${barColor}"></div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="mis-table-wrap">
+      <table>
+        <thead><tr>
+          <th>Name <span style="font-weight:400;color:#94a3b8;font-size:10px">(click for details)</span></th>
+          <th>Total</th><th>Pending</th><th>Completed</th>${misType==='delegation'?'<th>Revised</th>':''}<th>Delayed</th><th>Score %</th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+    <div style="font-size:12px;color:#94a3b8;margin-top:10px;padding:0 4px">
+      * Score: 0% = All completed | Negative = Pending/delayed tasks reduce score
+    </div>`;
+}
+
+// Open MIS detail modal for a user
+async function openMISDetail(userId, userName) {
+  const key = misType === 'delegation' ? 'delegation' : 'checklist';
+  // Find row by userId
+  const row = (misData[key] || []).find(r => String(r.userId||r.id) === String(userId));
+  if (!row) { showToast('Data not found, please Generate again', 'error'); return; }
+
+  const start = document.getElementById('misStart').value;
+  const end   = document.getElementById('misEnd').value;
+
+  const data = await api(`/api/mis/detail?userId=${userId}&type=${misType}&start=${start}&end=${end}`);
+
+  const score = parseFloat(row.score);
+  const scoreColor = score === 0 ? '#64748b' : score < 0 ? '#dc2626' : '#16a34a';
+
+  let scoreReason = '';
+  if (score === 0) scoreReason = '✅ All tasks completed on time — perfect score!';
+  else {
+    const parts = [];
+    if (parseInt(row.pending) > 0) parts.push(`${row.pending} task(s) still pending`);
+    if (parseInt(row.delayed) > 0) parts.push(`${row.delayed} task(s) past due date`);
+    if (parseInt(row.revised) > 0) parts.push(`${row.revised} task(s) revised/rejected`);
+    scoreReason = '⚠️ Score reduced because: ' + parts.join(', ');
+  }
+
+  const taskRows = (data.tasks||[]).map(t => `
+    <tr>
+      <td>${esc(t.description)}</td>
+      <td style="color:#64748b;font-size:12px">${t.assigned_by_name||'—'}</td>
+      <td style="white-space:nowrap;font-size:12px">${fmtDate(t.due_date)}</td>
+      <td><span class="status-badge ${t.status}">${t.status==='revised'?'Revision Requested':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
+      ${t.status==='pending' && t.due_date < new Date().toISOString().split('T')[0]
+        ? `<td style="color:#dc2626;font-size:11px;font-weight:600">⏰ Overdue</td>`
+        : `<td></td>`}
+    </tr>`).join('');
+
+  document.getElementById('misDetailTitle').textContent = `${row.name} — ${misType === 'delegation' ? 'Delegation' : 'Checklist'} Tasks`;
+  document.getElementById('misDetailScore').innerHTML = `
+    <div style="font-size:28px;font-weight:800;color:${scoreColor}">${score.toFixed(1)}%</div>
+    <div style="font-size:13px;color:#64748b;margin-top:4px">${scoreReason}</div>
+    <div style="display:flex;gap:16px;margin-top:12px;font-size:13px;flex-wrap:wrap">
+      <span>📋 Total: <strong>${row.total}</strong></span>
+      <span style="color:#10b981">✅ Done: <strong>${row.completed}</strong></span>
+      <span style="color:#ef4444">⏳ Pending: <strong>${row.pending}</strong></span>
+      <span style="color:#dc2626">⏰ Delayed: <strong>${row.delayed||0}</strong></span>
+      ${misType==='delegation'?`<span style="color:#f59e0b">🔄 Revised: <strong>${row.revised||0}</strong></span>`:''}
+    </div>`;
+  document.getElementById('misDetailBody').innerHTML = taskRows || `<tr><td colspan="5" class="empty">No tasks found</td></tr>`;
+  document.getElementById('misDetailModal').classList.add('open');
+}
+
+function exportMIS() {
+  if (misType === 'fms') {
+    if (!misFMSData || !misFMSData.length) { showToast('Generate FMS report first','error'); return; }
+    const rows = [];
+    misFMSData.forEach(fms => {
+      rows.push([fms.fmsName, 'Total', fms.total, fms.pending, fms.done]);
+      (fms.steps||[]).forEach(s => rows.push([fms.fmsName, s.stepName, s.total, s.pending, s.done]));
+    });
+    const csv = ['FMS Name,Step,Total,Pending,Done', ...rows.map(r=>r.join(','))].join('\n');
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+    a.download = `FMS_MIS_${document.getElementById('misStart').value}_to_${document.getElementById('misEnd').value}.csv`;
+    a.click();
+    showToast('CSV exported!');
+    return;
+  }
+  if (misType === 'all') {
+    const lines = ['Type,Name,Total,Pending,Completed,Revised,Delayed,Score%'];
+    ['delegation','checklist'].forEach(type => {
+      (misData[type]||[]).forEach(r => lines.push(`${type},${r.name},${r.total},${r.pending},${r.completed},${r.revised||0},${r.delayed||0},${r.score}%`));
+    });
+    (misFMSData||[]).forEach(fms => {
+      lines.push(`fms,${fms.fmsName},${fms.total},${fms.pending},${fms.done},0,0,—`);
+    });
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(lines.join('\n'));
+    a.download = `All_MIS_${document.getElementById('misStart').value}_to_${document.getElementById('misEnd').value}.csv`;
+    a.click();
+    showToast('CSV exported!');
+    return;
+  }
+  if (!misData || !misData[misType]?.length) { showToast('Generate report first','error'); return; }
+  const rows = misData[misType];
+  const csv = ['Name,Total,Pending,Completed,Revised,Delayed,Score%',
+    ...rows.map(r=>`${r.name},${r.total},${r.pending},${r.completed},${r.revised},${r.delayed},${r.score}%`)
+  ].join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download = `MIS_${misType}_${document.getElementById('misStart').value}_to_${document.getElementById('misEnd').value}.csv`;
+  a.click();
+  showToast('CSV exported!');
+}
+
+function renderFMSMIS(data) {
+  const container = document.getElementById('misResults');
+  if (!data || !data.length) {
+    container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">No FMS data found</div>`;
+    return;
+  }
+  const sections = data.map(fms => {
+    const hasError = fms.error;
+    const stepRows = (fms.steps||[]).map(s => `
+      <tr>
+        <td style="padding-left:24px;color:#64748b;font-size:12px">Step ${s.stepOrder}: ${esc(s.stepName)}</td>
+        <td style="font-size:12px;color:#64748b">${s.doers}</td>
+        <td style="font-weight:600;color:#4f46e5">${s.total}</td>
+        <td style="color:#ef4444;font-weight:600">${s.pending}</td>
+        <td style="color:#10b981;font-weight:600">${s.done}</td>
+        <td>
+          ${s.total > 0 ? `
+          <div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;width:80px">
+            <div style="height:100%;background:#10b981;border-radius:3px;width:${Math.round((s.done/s.total)*100)}%"></div>
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">${Math.round((s.done/s.total)*100)}% done</div>` : '—'}
+        </td>
+      </tr>`).join('');
+
+    return `
+      <div class="mis-table-wrap" style="margin-bottom:16px">
+        <div style="background:#f8fafc;padding:12px 16px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:14px;font-weight:700;color:#1e293b">📊 ${esc(fms.fmsName)}</div>
+          <div style="display:flex;gap:16px;font-size:13px">
+            <span>Total: <strong style="color:#4f46e5">${fms.total}</strong></span>
+            <span>Pending: <strong style="color:#ef4444">${fms.pending}</strong></span>
+            <span>Done: <strong style="color:#10b981">${fms.done}</strong></span>
+            ${hasError ? `<span style="color:#dc2626;font-size:11px">⚠️ ${fms.error}</span>` : ''}
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Step</th><th>Doer(s)</th><th>Total</th><th>Pending</th><th>Done</th><th>Progress</th></tr></thead>
+          <tbody>${stepRows || `<tr><td colspan="6" class="empty">No step data</td></tr>`}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = sections;
+}
+
+function renderAllMIS(data, fmsData) {
+  const container = document.getElementById('misResults');
+  if (!data || !data.length) {
+    container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">No data found for this date range. Click Generate.</div>`;
+    return;
+  }
+
+  const tableRows = data.map(emp => {
+    const score = emp.overallScore;
+    const scoreClass = score === null ? 'score-zero' : score === 0 ? 'score-zero' : score < 0 ? 'score-negative' : 'score-positive';
+    const scoreDisplay = score === null ? '—' : `${score > 0 ? '+' : ''}${score.toFixed(1)}%`;
+    const barColor = score === null ? '#94a3b8' : score < 0 ? '#ef4444' : '#10b981';
+    const barWidth = score === null ? 0 : Math.min(Math.abs(score), 100);
+    const scoreLabel = score === null ? '—' : score === 0 ? '✅ Perfect' : score < 0 ? '⚠️ Needs Work' : '✅ Good';
+
+    const delScore = emp.delegation.score;
+    const chlScore = emp.checklist.score;
+    const fmsObj = emp.fms || { total: 0, pending: 0, done: 0, score: null };
+    const completedAll = (emp.delegation.completed||0) + (emp.checklist.completed||0) + (fmsObj.done||0);
+
+    // Mini breakdown badges — Delegation, Checklist, FMS sab
+    const delBadge = emp.delegation.total > 0
+      ? `<span style="font-size:10px;padding:1px 7px;border-radius:8px;background:${delScore<0?'#fef2f2':'#f0fdf4'};color:${delScore<0?'#dc2626':'#16a34a'};font-weight:600;border:1px solid ${delScore<0?'#fecaca':'#bbf7d0'}">Del: ${delScore>0?'+':''}${delScore.toFixed(0)}%</span>` : '';
+    const chlBadge = emp.checklist.total > 0
+      ? `<span style="font-size:10px;padding:1px 7px;border-radius:8px;background:${chlScore<0?'#fef2f2':'#f0fdf4'};color:${chlScore<0?'#dc2626':'#16a34a'};font-weight:600;border:1px solid ${chlScore<0?'#fecaca':'#bbf7d0'}">CL: ${chlScore>0?'+':''}${chlScore.toFixed(0)}%</span>` : '';
+    const fmsBadge = (fmsObj.total > 0 && fmsObj.score !== null)
+      ? `<span style="font-size:10px;padding:1px 7px;border-radius:8px;background:${fmsObj.score<50?'#fef2f2':fmsObj.score<80?'#fffbeb':'#f0fdf4'};color:${fmsObj.score<50?'#dc2626':fmsObj.score<80?'#b45309':'#16a34a'};font-weight:600;border:1px solid ${fmsObj.score<50?'#fecaca':fmsObj.score<80?'#fde68a':'#bbf7d0'}">FMS: ${fmsObj.score.toFixed(0)}%</span>` : '';
+
+    // Next Week Plan column
+    let planHtml = '<span style="color:#94a3b8;font-size:12px">—</span>';
+    if (emp.plan) {
+      const weekDate = fmtDate(emp.plan.start_date);
+
+      let improvBadge = '<span style="font-size:11px;color:#94a3b8">No improvement goal set</span>';
+      if (emp.plan.improvement_pct !== null && emp.plan.improvement_pct !== undefined) {
+        const ip = emp.plan.improvement_pct;
+        const ipColor = ip < 0 ? '#dc2626' : '#16a34a';
+        const ipBg = ip < 0 ? '#fef2f2' : '#f0fdf4';
+        const ipBorder = ip < 0 ? '#fecaca' : '#bbf7d0';
+        const ipArrow = ip < 0 ? '📉' : '📈';
+        improvBadge = `<span style="font-size:11px;padding:2px 8px;border-radius:8px;background:${ipBg};color:${ipColor};font-weight:700;border:1px solid ${ipBorder}">${ipArrow} ${ip > 0 ? '+' : ''}${ip}% improvement</span>`;
+      }
+
+      planHtml = `
+        <div style="font-size:11px;color:#64748b;margin-bottom:4px">📅 Week: <strong>${weekDate}</strong></div>
+        <div>${improvBadge}</div>`;
+    }
+
+    return `<tr style="cursor:pointer" onclick="openAllMISDetail(${jsArg(emp.userId)},${jsArg(emp.name)})">
+      <td>
+        <div style="font-weight:600;color:#4f46e5;text-decoration:underline dotted">${esc(emp.name)}</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:2px">${emp.department||'—'}</div>
+      </td>
+      <td style="font-weight:700">${emp.totalAll}</td>
+      <td style="color:#ef4444;font-weight:600">${emp.pendingAll}</td>
+      <td style="color:#10b981;font-weight:600">${completedAll}</td>
+      <td style="color:#f59e0b;font-weight:600">${emp.revisedAll}</td>
+      <td style="color:#dc2626;font-weight:600">${emp.overdueAll}</td>
+      <td>${planHtml}</td>
+      <td>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">${delBadge}${chlBadge}${fmsBadge}</div>
+        <div class="${scoreClass}" style="font-size:15px;font-weight:800">${scoreDisplay}</div>
+        <div style="font-size:10px;color:#94a3b8">${scoreLabel}</div>
+        <div class="mis-score-bar" style="margin-top:3px">
+          <div class="mis-score-fill" style="width:${barWidth}%;background:${barColor}"></div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="mis-table-wrap" style="overflow-x:auto">
+      <table style="min-width:900px">
+        <thead><tr>
+          <th>Employee <span style="font-weight:400;color:#94a3b8;font-size:10px">(click for breakdown)</span></th>
+          <th>Total</th><th>Pending</th><th>Completed</th><th>Revised</th><th>Delayed</th>
+          <th>📅 Next Week Plan</th><th>Overall Score</th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+    <div style="font-size:12px;color:#94a3b8;margin-top:10px;padding:0 4px">
+      * Score combines Delegation + Checklist + FMS. Click employee name to see full breakdown.
+    </div>`;
+
+  // Append FMS section if data exists
+  if (fmsData && fmsData.length) {
+    const fmsRows = fmsData.map(f => {
+      const pct = f.total > 0 ? Math.round((f.done/f.total)*100) : 0;
+      const barColor = pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444';
+      return `<tr>
+        <td style="font-weight:600;color:#374151">${esc(f.fmsName)}</td>
+        <td style="font-weight:700">${f.total}</td>
+        <td style="color:#ef4444;font-weight:600">${f.pending}</td>
+        <td style="color:#10b981;font-weight:600">${f.done}</td>
+        <td>
+          <div style="font-size:13px;font-weight:700;color:${barColor}">${pct}%</div>
+          <div style="height:5px;border-radius:3px;background:#e2e8f0;margin-top:3px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:${barColor};border-radius:3px"></div>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML += `
+      <div style="margin-top:18px">
+        <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:8px">📊 FMS Overview</div>
+        <div class="mis-table-wrap">
+          <table>
+            <thead><tr>
+              <th>FMS Name</th><th>Total</th><th>Pending</th><th>Done</th><th>Completion %</th>
+            </tr></thead>
+            <tbody>${fmsRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+}
+
+// Open All MIS detail modal for employee
+async function openAllMISDetail(userId, userName) {
+  const emp = (misAllData || []).find(e => String(e.userId) === String(userId));
+  if (!emp) { showToast('Generate report first', 'error'); return; }
+
+  const start = document.getElementById('misStart').value;
+  const end   = document.getElementById('misEnd').value;
+
+  // Fetch task details for delegation, checklist, AND FMS in parallel.
+  const fmsExpected = emp.fms && emp.fms.total > 0;
+  const [delDetail, chlDetail, fmsDetail] = await Promise.all([
+    emp.delegation.total > 0 ? api(`/api/mis/detail?userId=${userId}&type=delegation&start=${start}&end=${end}`) : Promise.resolve({ tasks: [] }),
+    emp.checklist.total > 0  ? api(`/api/mis/detail?userId=${userId}&type=checklist&start=${start}&end=${end}`)  : Promise.resolve({ tasks: [] }),
+    fmsExpected              ? api(`/api/mis/fms-detail?userId=${userId}&start=${start}&end=${end}`)             : Promise.resolve({ tasks: [] })
+  ]);
+
+  const today = new Date().toISOString().split('T')[0];
+
+  const makeTaskRows = (tasks, showRevised) => tasks.map(t => `
+    <tr>
+      <td style="font-size:12px">${esc(t.description)}</td>
+      <td style="color:#64748b;font-size:11px;white-space:nowrap">${fmtDate(t.due_date)}</td>
+      <td><span class="status-badge ${t.status}">${t.status === 'revised' ? 'Revision' : t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
+      <td>${t.status==='pending' && t.due_date < today ? '<span style="font-size:10px;color:#dc2626;font-weight:600">⏰ Overdue</span>' : ''}</td>
+    </tr>`).join('') || `<tr><td colspan="4" class="empty" style="font-size:12px">No tasks</td></tr>`;
+
+  const score = emp.overallScore;
+  const scoreColor = score === null ? '#64748b' : score < 0 ? '#dc2626' : '#16a34a';
+
+  document.getElementById('misDetailTitle').textContent = `${userName} — All Tasks`;
+  const fms = emp.fms || { total: 0, pending: 0, done: 0, score: null };
+  const completedTotal = (emp.delegation.completed||0) + (emp.checklist.completed||0) + (fms.done||0);
+  document.getElementById('misDetailScore').innerHTML = `
+    <div style="font-size:28px;font-weight:800;color:${scoreColor}">${score !== null ? (score>0?'+':'')+ score.toFixed(1)+'%' : '—'}</div>
+    <div style="display:flex;gap:16px;margin-top:10px;font-size:13px;flex-wrap:wrap">
+      <span>📋 Total: <strong>${emp.totalAll}</strong></span>
+      <span style="color:#10b981">✅ Done: <strong>${completedTotal}</strong></span>
+      <span style="color:#ef4444">⏳ Pending: <strong>${emp.pendingAll}</strong></span>
+      <span style="color:#dc2626">⏰ Delayed: <strong>${emp.overdueAll}</strong></span>
+      <span style="color:#f59e0b">🔄 Revised: <strong>${emp.revisedAll}</strong></span>
+    </div>
+
+    ${emp.delegation.total > 0 ? `
+    <div style="margin-top:16px;border-top:1px solid #f1f5f9;padding-top:12px">
+      <div style="font-size:13px;font-weight:700;color:#1d4ed8;margin-bottom:8px">📋 Delegation (${emp.delegation.total} tasks) — Score: ${emp.delegation.score > 0 ? '+' : ''}${emp.delegation.score.toFixed(1)}%</div>
+      <div style="overflow-x:auto">
+        <table style="font-size:12px">
+          <thead><tr><th>Task</th><th>Date</th><th>Status</th><th></th></tr></thead>
+          <tbody>${makeTaskRows(delDetail.tasks || [], true)}</tbody>
+        </table>
+      </div>
+    </div>` : ''}
+
+    ${emp.checklist.total > 0 ? `
+    <div style="margin-top:16px;border-top:1px solid #f1f5f9;padding-top:12px">
+      <div style="font-size:13px;font-weight:700;color:#16a34a;margin-bottom:8px">✅ Checklist (${emp.checklist.total} tasks) — Score: ${emp.checklist.score > 0 ? '+' : ''}${emp.checklist.score.toFixed(1)}%</div>
+      <div style="overflow-x:auto">
+        <table style="font-size:12px">
+          <thead><tr><th>Task</th><th>Date</th><th>Status</th><th></th></tr></thead>
+          <tbody>${makeTaskRows(chlDetail.tasks || [], false)}</tbody>
+        </table>
+      </div>
+    </div>` : ''}
+
+    ${fms.total > 0 ? `
+    <div style="margin-top:16px;border-top:1px solid #f1f5f9;padding-top:12px">
+      <div style="font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:8px">📊 FMS (${fms.total} entries) — Completion: ${fms.score !== null ? fms.score.toFixed(1) : 0}%</div>
+      <div style="display:flex;gap:14px;font-size:12px;flex-wrap:wrap;padding:8px 10px;background:#faf5ff;border-radius:8px;margin-bottom:10px">
+        <span>Total entries: <strong>${fms.total}</strong></span>
+        <span style="color:#10b981">Done: <strong>${fms.done}</strong></span>
+        <span style="color:#ef4444">Pending: <strong>${fms.pending}</strong></span>
+      </div>
+      ${(fmsDetail.tasks && fmsDetail.tasks.length) ? `
+      <div style="overflow-x:auto">
+        <table style="font-size:12px;width:100%">
+          <thead><tr><th>FMS — Step</th><th>Planned</th><th>Actual</th><th>Status</th></tr></thead>
+          <tbody>${fmsDetail.tasks.map(t => `
+            <tr>
+              <td style="font-size:12px"><div style="font-weight:600;color:#0f172a">${dtEscape(t.fmsName || '')}</div><div style="color:#64748b;font-size:11px;margin-top:2px">↳ ${dtEscape(t.stepName || '')}</div></td>
+              <td style="color:#475569;font-size:11px;white-space:nowrap">${dtEscape(t.planValue || '—')}</td>
+              <td style="color:${t.actualValue ? '#16a34a' : '#94a3b8'};font-size:11px;white-space:nowrap">${dtEscape(t.actualValue || '—')}</td>
+              <td><span class="status-badge ${t.status}">${t.status === 'completed' ? 'Done' : 'Pending'}</span></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : '<div style="color:#94a3b8;font-size:12px;padding:6px 10px">No FMS rows to show.</div>'}
+    </div>` : ''}`;
+
+  // Reuse existing misDetailBody (blank it since we put everything in score div)
+  document.getElementById('misDetailBody').innerHTML = '';
+  document.getElementById('misDetailModal').classList.add('open');
+}
+
+// Set default MIS dates (current week)
+function setDefaultMISDates() {
+  const today = new Date();
+  const monday = new Date(today);
+  const dow = today.getDay();
+  monday.setDate(today.getDate() + (dow === 0 ? -6 : 1 - dow));
+  document.getElementById('misStart').value = monday.toISOString().split('T')[0];
+  document.getElementById('misEnd').value = today.toISOString().split('T')[0];
+  // Race Tracker uses the same default window
+  const rs = document.getElementById('raceStart');
+  const re = document.getElementById('raceEnd');
+  if (rs) rs.value = monday.toISOString().split('T')[0];
+  if (re) re.value = today.toISOString().split('T')[0];
+}
+
+// ══════════════════════════════════════════════════════
+// RACE TRACKER (Admin only)
+// ── Score range: -100 (worst) → 0 (perfect). Position on track = 100 + score.
+// ── Sorted by overallScore desc; ties → more completed tasks → name.
+// ══════════════════════════════════════════════════════
+function setRaceDatesToCurrentWeek() {
+  const today = new Date();
+  const dow = today.getDay();           // 0=Sun ... 6=Sat
+  const offsetToMon = dow === 0 ? -6 : 1 - dow;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + offsetToMon);
+  const ymd = d => d.toISOString().split('T')[0];
+  const rs = document.getElementById('raceStart');
+  const re = document.getElementById('raceEnd');
+  if (rs) rs.value = ymd(monday);
+  if (re) re.value = ymd(today);
+}
+
+async function loadRaceTracker() {
+  setRaceDatesToCurrentWeek();
+  await generateRace();
+}
+
+let lastRacers = [];
+
+async function generateRace() {
+  const start = document.getElementById('raceStart').value;
+  const end   = document.getElementById('raceEnd').value;
+  if (!start || !end) { showToast('Please select start and end date','error'); return; }
+  if (start > end)   { showToast('Start date must be before end date','error'); return; }
+
+  const container = document.getElementById('raceResults');
+  container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Loading race…</div>`;
+
+  const data = await api(`/api/mis/all?start=${start}&end=${end}`);
+  if (data.error) { showToast(data.error,'error'); container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">${data.error}</div>`; return; }
+  const arr = Array.isArray(data) ? data : [];
+  // openAllMISDetail (re-used for lane click) reads dates from #misStart/#misEnd — sync them
+  const misStartEl = document.getElementById('misStart');
+  const misEndEl   = document.getElementById('misEnd');
+  if (misStartEl) misStartEl.value = start;
+  if (misEndEl)   misEndEl.value   = end;
+  misAllData = arr;
+  renderRaceTracker(arr);
+}
+
+function pickCar(_idx) { return '🚗'; }
+
+function renderRaceTracker(data) {
+  const container = document.getElementById('raceResults');
+  const racers = data
+    .filter(e => e.overallScore !== null && e.overallScore !== undefined)
+    .sort((a, b) => {
+      if (b.overallScore !== a.overallScore) return b.overallScore - a.overallScore;
+      if ((b.completedAll||0) !== (a.completedAll||0)) return (b.completedAll||0) - (a.completedAll||0);
+      return a.name.localeCompare(b.name);
+    });
+
+  lastRacers = racers;
+
+  if (!racers.length) {
+    container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">No racers found for this date range.</div>`;
+    return;
+  }
+
+  const leader = racers[0];
+
+  const lanes = racers.map((emp, idx) => {
+    const rank = idx + 1;
+    const score = emp.overallScore;
+    const pending = emp.pendingAll || 0;
+    const done = emp.completedAll || 0;
+    const pct = Math.max(0, Math.min(100, 100 + score));
+    const initials = emp.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+    const car = pickCar(idx);
+
+    // Binary: green if no pending tasks, red otherwise. Finish-line variant when score reaches 0.
+    let runnerClass, scoreClass;
+    if (pending === 0 && score === 0) { runnerClass = 'finish-line'; scoreClass = 's-lead'; }
+    else if (pending === 0)           { runnerClass = 'lead';        scoreClass = 's-lead'; }
+    else                              { runnerClass = 'lag';         scoreClass = 's-lag';  }
+
+    const rankClass = rank === 1 ? 'r1' : rank === 2 ? 'r2' : rank === 3 ? 'r3' : '';
+    const rankBadge = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+    // Rank circle = profile photo (with a small rank badge), else the medal/number.
+    const rankCircle = emp.profileImage
+      ? `<div class="race-rank ${rankClass}" style="padding:0;overflow:visible;position:relative;background:none">
+           <img src="${emp.profileImage}" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;display:block;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.18)"/>
+           <span style="position:absolute;bottom:-3px;right:-3px;background:#1e293b;color:#fff;font-size:9px;font-weight:800;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;padding:0 3px;line-height:1">${rankBadge}</span>
+         </div>`
+      : `<div class="race-rank ${rankClass}">${rankBadge}</div>`;
+
+    const gap = rank === 1
+      ? (score === 0 ? 'Finished 🏁' : 'Leader')
+      : `${(leader.overallScore - score).toFixed(1)} behind`;
+
+    const safeName = jsArg(emp.name);
+    return `
+      <div class="race-lane">
+        ${rankCircle}
+        <div class="race-runner-info">
+          <div class="race-runner-name">${escapeHtml(emp.name)}</div>
+          <div class="race-runner-dept">${escapeHtml(emp.department||'—')}</div>
+          <div class="race-runner-meta">
+            <span class="meta-total">${emp.totalAll} total</span>
+            <span class="meta-done">${done} done</span>
+            ${pending > 0 ? `<span class="meta-pending">${pending} pending</span>` : ''}
+          </div>
+        </div>
+        <div class="race-track ${runnerClass}" style="--pct:${pct}%">
+          <div class="race-track-lane"></div>
+          <div class="race-track-finish"></div>
+          <div class="race-runner ${runnerClass}" style="left:${pct}%" title="${score > 0 ? '+' : ''}${score.toFixed(1)}%">
+            <span class="race-runner-initials">${initials}</span>
+            ${car}
+          </div>
+        </div>
+        <div class="race-score-cell" onclick="openAllMISDetail(${emp.userId}, ${safeName})" title="Click for ${escapeHtml(emp.name)}'s full task breakdown">
+          <div class="race-score ${scoreClass}">${score > 0 ? '+' : ''}${score.toFixed(1)}%</div>
+          <div class="race-gap">${gap}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="race-wrap">
+      <div class="race-legend">
+        <span class="start-flag">🚩 START · −100</span>
+        <span>Score: lower → behind · higher → ahead</span>
+        <span class="finish-flag">0 · FINISH 🏁</span>
+      </div>
+      ${lanes}
+    </div>`;
+}
+
+// Show team-wide list of tasks filtered to a single status (pending or completed)
+async function showRaceMetric(metric) {
+  if (!lastRacers.length) { showToast('Generate the race first', 'error'); return; }
+  const isPending = metric === 'pending';
+  const targetStatus = isPending ? 'pending' : 'completed';
+  const color  = isPending ? '#f87171' : '#16a34a';
+  const subtle = isPending ? '#fef2f2' : '#f0fdf4';
+
+  const start = document.getElementById('raceStart').value;
+  const end   = document.getElementById('raceEnd').value;
+
+  document.getElementById('misDetailTitle').textContent = isPending
+    ? `⏳ Pending Tasks — Team`
+    : `✅ Completed Tasks — Team`;
+  document.getElementById('misDetailScore').innerHTML =
+    `<div style="text-align:center;padding:32px;color:#94a3b8">Loading ${targetStatus} tasks…</div>`;
+  document.getElementById('misDetailBody').innerHTML = '';
+  document.getElementById('misDetailModal').classList.add('open');
+
+  // Only fetch from racers who have at least one task of the target status
+  const candidates = lastRacers.filter(r =>
+    isPending ? (r.pendingAll||0) > 0 : (r.completedAll||0) > 0
+  );
+
+  const fetches = [];
+  for (const r of candidates) {
+    if ((r.delegation?.total||0) > 0) {
+      fetches.push(
+        api(`/api/mis/detail?userId=${r.userId}&type=delegation&start=${start}&end=${end}`)
+          .then(d => ({ user: r, taskType: 'Delegation', tasks: (d.tasks||[]).filter(t => t.status === targetStatus) }))
+          .catch(() => ({ user: r, taskType: 'Delegation', tasks: [] }))
+      );
+    }
+    if ((r.checklist?.total||0) > 0) {
+      fetches.push(
+        api(`/api/mis/detail?userId=${r.userId}&type=checklist&start=${start}&end=${end}`)
+          .then(d => ({ user: r, taskType: 'Checklist', tasks: (d.tasks||[]).filter(t => t.status === targetStatus) }))
+          .catch(() => ({ user: r, taskType: 'Checklist', tasks: [] }))
+      );
+    }
+  }
+
+  const results = await Promise.all(fetches);
+
+  // Group by employee
+  const byUser = {};
+  for (const r of results) {
+    if (!r.tasks.length) continue;
+    if (!byUser[r.user.userId]) byUser[r.user.userId] = { user: r.user, tasks: [] };
+    for (const t of r.tasks) byUser[r.user.userId].tasks.push({ ...t, _type: r.taskType });
+  }
+  const groups = Object.values(byUser).sort((a,b) => b.tasks.length - a.tasks.length);
+  const grandTotal = groups.reduce((s,g) => s + g.tasks.length, 0);
+  const today = new Date().toISOString().split('T')[0];
+
+  if (!grandTotal) {
+    document.getElementById('misDetailScore').innerHTML = `
+      <div style="text-align:center;padding:24px;color:#64748b">
+        <div style="font-size:42px">${isPending ? '🎉' : '📭'}</div>
+        <div style="font-size:14px;margin-top:6px">No ${targetStatus} tasks in this date range.</div>
+      </div>`;
+    return;
+  }
+
+  const header = `
+    <div style="display:flex;align-items:center;justify-content:space-between;background:${subtle};padding:12px 16px;border-radius:10px;margin-bottom:14px">
+      <div>
+        <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;font-weight:600">Team Total ${isPending ? 'Pending' : 'Completed'}</div>
+        <div style="font-size:30px;font-weight:800;color:${color};line-height:1.1">${grandTotal}</div>
+      </div>
+      <div style="text-align:right;font-size:12px;color:#64748b">
+        ${groups.length} ${groups.length === 1 ? 'employee' : 'employees'}
+      </div>
+    </div>`;
+
+  const cards = groups.map(g => {
+    const safeName = jsArg(g.user.name);
+    const rows = g.tasks.map(t => {
+      const isOverdue = isPending && t.due_date && t.due_date < today;
+      const typeBg = t._type === 'Delegation' ? '#dbeafe' : '#dcfce7';
+      const typeFg = t._type === 'Delegation' ? '#1d4ed8' : '#15803d';
+      return `
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:12px">
+          <span style="font-size:9px;padding:2px 7px;border-radius:4px;background:${typeBg};color:${typeFg};font-weight:700;letter-spacing:.3px">${t._type}</span>
+          <span style="flex:1;color:#374151;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(t.description)}">${escapeHtml(t.description)}</span>
+          <span style="color:#64748b;font-size:11px;white-space:nowrap">${fmtDate(t.due_date)}</span>
+          ${isOverdue ? '<span style="color:#dc2626;font-size:10px;font-weight:700">⏰ OVERDUE</span>' : ''}
+        </div>`;
+    }).join('');
+
+    return `
+      <div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;cursor:pointer" onclick="closeModal('misDetailModal'); setTimeout(()=>openAllMISDetail(${g.user.userId}, ${safeName}), 120)">
+          <div>
+            <div style="font-weight:700;color:#1e293b;font-size:14px">${escapeHtml(g.user.name)} <span style="font-size:11px;color:#6366f1;font-weight:600">View all →</span></div>
+            <div style="font-size:11px;color:#94a3b8">${escapeHtml(g.user.department||'—')}</div>
+          </div>
+          <div style="background:${color};color:#fff;padding:3px 12px;border-radius:14px;font-weight:800;font-size:13px">${g.tasks.length}</div>
+        </div>
+        <div>${rows}</div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('misDetailScore').innerHTML = `${header}<div style="max-height:440px;overflow-y:auto;padding-right:4px">${cards}</div>`;
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ══════════════════════════════════════════════════════
+// FMS ADMIN
+// ══════════════════════════════════════════════════════
+let fmsData = { fmsName:'', sheetName:'', sheetId:'', headerRow:1, totalSteps:1 };
+let fmsSteps = [];
+let fmsDeleteMode = false;
+let fmsDupMode = false;
+let fmsAllSheets = [];
+let fmsActiveId = null;
+let fmsActiveStep = 0;
+let fmsAllUsers = [];
+let fmsSheetHeaders = [];
+
+async function loadFMSAdmin() {
+  const usersRes = await api('/api/users');
+  fmsAllUsers = Array.isArray(usersRes) ? usersRes : [];
+  const sheets = await api('/api/fms');
+  fmsAllSheets = sheets;
+
+  const tabsEl = document.getElementById('fmsListTabs');
+  const emptyEl = document.getElementById('fmsEmpty');
+  const detailEl = document.getElementById('fmsDetailView');
+
+  if (!sheets.length) {
+    tabsEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+    detailEl.style.display = 'none';
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+  // ✅ Use fms_name if available, else sheet_name
+  tabsEl.innerHTML = sheets.map(s => `
+    <div class="fms-name-tab ${fmsActiveId===s.id?'active':''}" onclick="loadFMSDetail(${s.id})">${s.fms_name||s.sheet_name}</div>
+  `).join('');
+
+  if (!fmsActiveId && sheets.length) loadFMSDetail(sheets[0].id);
+  else if (fmsActiveId) loadFMSDetail(fmsActiveId);
+}
+
+async function loadFMSDetail(id) {
+  fmsActiveId = id;
+  const sheet_data = fmsAllSheets.find(s=>s.id===id);
+  document.querySelectorAll('.fms-name-tab').forEach(t => {
+    t.classList.toggle('active', sheet_data && t.textContent.trim() === (sheet_data.fms_name||sheet_data.sheet_name));
+  });
+
+  const data = await api(`/api/fms/${id}`);
+  const { sheet, steps } = data;
+  document.getElementById('fmsDetailView').style.display = 'block';
+  document.getElementById('fmsEmpty').style.display = 'none';
+
+  // Sheet info bar
+  document.getElementById('fmsSheetInfoText').innerHTML =
+    `<strong>${sheet.sheet_name}</strong> &nbsp;·&nbsp; Sheet ID: <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;font-size:12px">${sheet.sheet_id}</code> &nbsp;·&nbsp; Header Row: ${sheet.header_row}`;
+
+  // Step tabs
+  const stepTabsEl = document.getElementById('fmsStepTabs');
+  stepTabsEl.innerHTML = steps.map((s,i) => `
+    <div class="fms-step-tab ${i===0?'active':''}" onclick="showFMSStep(${i})" id="fmsStepTab${i}">${esc(s.step_name)}</div>
+  `).join('');
+
+  fmsActiveStep = 0;
+  showFMSStepData(steps, 0);
+  document.getElementById('fmsDetailView').dataset.steps = JSON.stringify(steps);
+  document.getElementById('fmsSyncResult').style.display = 'none';
+}
+
+function showFMSStep(idx) {
+  fmsActiveStep = idx;
+  document.querySelectorAll('.fms-step-tab').forEach((t,i) => t.classList.toggle('active', i===idx));
+  const steps = JSON.parse(document.getElementById('fmsDetailView').dataset.steps || '[]');
+  showFMSStepData(steps, idx);
+}
+
+function showFMSStepData(steps, idx) {
+  const s = steps[idx];
+  if (!s) return;
+  const doerNames = (s.doers||[]).map(d=>d.name).join(', ') || '—';
+  const extraRowsHtml = s.extraInput==='yes' ? `
+    <div style="margin-top:12px">
+      <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">Extra Input Rows:</div>
+      ${(s.extraRows||[]).map(r=>`<div style="font-size:13px;padding:4px 0;color:#374151">• ${r.row_label||'(unnamed)'}</div>`).join('')}
+    </div>` : '';
+
+  document.getElementById('fmsStepContent').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.4px">Step Name</div>
+        <div style="font-size:15px;font-weight:600;color:#1e293b;margin-top:4px">${esc(s.step_name)}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.4px">Step Doer(s)</div>
+        <div style="font-size:14px;color:#374151;margin-top:4px">${doerNames}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.4px">Plan Column</div>
+        <div style="font-size:14px;color:#374151;margin-top:4px">${s.plan_col||'—'} <span style="color:#94a3b8;font-size:12px">(Plan ${idx+1})</span></div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.4px">Actual Column</div>
+        <div style="font-size:14px;color:#374151;margin-top:4px">${s.actual_col||'—'} <span style="color:#94a3b8;font-size:12px">(Actual ${idx+1})</span></div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.4px">Extra Input</div>
+        <div style="font-size:14px;color:#374151;margin-top:4px">${s.extra_input==='yes'?'Yes (Col: '+s.extra_col+')':'No'}</div>
+      </div>
+    </div>
+    ${extraRowsHtml}
+    <div style="display:flex;gap:8px;margin-top:16px;border-top:1px solid #f1f5f9;padding-top:14px">
+      ${idx>0?`<button class="btn btn-outline btn-sm" onclick="showFMSStep(${idx-1})">← Prev Step</button>`:''}
+      ${idx<steps.length-1?`<button class="btn btn-primary btn-sm" onclick="showFMSStep(${idx+1})">Next Step →</button>`:''}
+    </div>`;
+}
+
+async function deleteFMSSheet(id) {
+  if (!await appConfirm('Delete this FMS? This cannot be undone!', 'Delete FMS')) return;
+  await api(`/api/fms/${id}`,'DELETE');
+  fmsActiveId = null;
+  document.getElementById('fmsDetailView').style.display='none';
+  showToast('FMS deleted!');
+  loadFMSAdmin();
+}
+
+// ── Edit FMS ──
+async function openEditFMS() {
+  if (!fmsActiveId) return;
+  const usersRes = await api('/api/users');
+  fmsAllUsers = Array.isArray(usersRes) ? usersRes : [];
+  const data = await api(`/api/fms/${fmsActiveId}`);
+  const { sheet, steps } = data;
+
+  document.getElementById('editFmsFmsName').value = sheet.fms_name || sheet.sheet_name;
+  document.getElementById('editFmsSheetName').value = sheet.sheet_name;
+  document.getElementById('editFmsSheetId').value = sheet.sheet_id;
+  document.getElementById('editFmsHeaderRow').value = sheet.header_row;
+  document.getElementById('fmsEditErr').style.display='none';
+
+  fmsSteps = steps.map(s => ({
+    stepName: s.step_name,
+    doers: (s.doers||[]).map(d=>parseInt(d.user_id)),
+    planCol: s.plan_col||'',
+    actualCol: s.actual_col||'',
+    extraInput: s.extra_input||'no',
+    extraCol: s.extra_col||'',
+    extraRows: (s.extraRows||[]).map(r=>({col_letter:r.col_letter||'', field_type:r.field_type||'text', label:r.row_label||r.label||r.col_letter||'', dropdown_options:r.dropdown_options||'', required: r.required==null?1:(r.required?1:0)})),
+    showCols: s.show_cols_parsed || [],
+    delayReasonCol: s.delay_reason_col||'',
+    doerNameCol: s.doer_name_col||''
+  }));
+
+  fmsDeleteMode = false;
+  fmsDupMode = false;
+  document.getElementById('editFmsDeleteModeBtn').textContent = '🗑 Select to Delete';
+  document.getElementById('fmsConfirmDeleteBtn').style.display='none';
+  const dupBtn = document.getElementById('editFmsDupModeBtn');
+  const dupConfBtn = document.getElementById('editFmsDupConfirmBtn');
+  if (dupBtn) dupBtn.textContent = '📋 Duplicate';
+  if (dupConfBtn) dupConfBtn.style.display = 'none';
+
+  // Open modal first — show loading
+  document.getElementById('fmsEditModal').classList.add('open');
+  const container = document.getElementById('fmsEditStepsContainer');
+  container.innerHTML = `<div style="text-align:center;padding:20px;color:#64748b">⏳ Loading headers...</div>`;
+
+  // Fetch headers
+  fmsSheetHeaders = [];
+  try {
+    const payload = { sheetId: sheet.sheet_id, sheetName: sheet.sheet_name, headerRow: sheet.header_row };
+    console.log('Fetching headers:', payload);
+    const hRes = await api('/api/fms/fetch-headers','POST', payload);
+    console.log('Headers response:', hRes);
+    fmsSheetHeaders = hRes.headers || [];
+    if (fmsSheetHeaders.length) showToast(`✅ ${fmsSheetHeaders.length} headers loaded!`);
+    else showToast(`⚠️ ${hRes.error || 'No headers found'}`, 'error');
+  } catch(e) {
+    console.error('Headers fetch error:', e);
+    showToast('⚠️ Headers fetch failed','error');
+  }
+
+  // Render steps with or without headers
+  container.innerHTML = '';
+  fmsSteps.forEach((_,i) => appendFMSStepBox(i, 'fmsEditStepsContainer'));
+  updateEditStepNav();
+}
+
+function updateEditStepNav() {
+  const nav = document.getElementById('editFmsStepNav');
+  if (!nav) return;
+  nav.innerHTML = fmsSteps.map((s,i)=>`
+    <div class="fms-step-tab active" onclick="scrollToStep(${i})" style="font-size:11px;padding:4px 10px">${esc(s.stepName||'Step '+(i+1))}</div>
+  `).join('');
+}
+
+function scrollToStep(idx) {
+  const boxes = document.querySelectorAll('.fms-step-box');
+  if (boxes[idx]) boxes[idx].scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+async function saveEditFMS() {
+  const fmsName    = document.getElementById('editFmsFmsName')?.value.trim() || document.getElementById('editFmsSheetName').value.trim();
+  const sheetName  = document.getElementById('editFmsSheetName').value.trim();
+  const sheetId    = document.getElementById('editFmsSheetId').value.trim();
+  const headerRow  = parseInt(document.getElementById('editFmsHeaderRow').value)||1;
+  const err = document.getElementById('fmsEditErr');
+  err.style.display='none';
+
+  if (!sheetName) { err.textContent='Sheet Tab Name required'; err.style.display='block'; return; }
+
+  // ✅ Read latest values from DOM (same as saveFMS does)
+  const boxes = document.querySelectorAll('#fmsEditStepsContainer .fms-step-box');
+  boxes.forEach((box, i) => {
+    if (!fmsSteps[i]) return;
+    const nameInput = box.querySelector('input[type=text]');
+    if (nameInput) fmsSteps[i].stepName = nameInput.value.trim() || `Step ${i+1}`;
+    fmsSteps[i].step_order = i+1;
+    // Flush dropdown_options and labels for all extraRows from DOM
+    (fmsSteps[i].extraRows||[]).forEach((_, ri) => {
+      const el = document.getElementById(`fmsDropOpt_${i}_${ri}`);
+      if (el) fmsSteps[i].extraRows[ri].dropdown_options = el.value;
+      const labelEl = document.getElementById(`fmsExtraLabel_${i}_${ri}`);
+      if (labelEl) fmsSteps[i].extraRows[ri].label = labelEl.value;
+    });
+  });
+
+  console.log('Saving steps count:', fmsSteps.length); // debug
+
+  const r = await api(`/api/fms/${fmsActiveId}`,'PUT',{
+    fmsName: fmsName || sheetName,
+    sheetName, sheetId, headerRow,
+    steps: fmsSteps.map(s=>({...s, showCols:s.showCols||[], delayReasonCol:s.delayReasonCol||'', doerNameCol:s.doerNameCol||s.doer_name_col||'', extraRows:(s.extraRows||[]).map(r=>({...r,dropdown_options:r.dropdown_options||''}))}))
+  });
+  if (r.error) { err.textContent=r.error; err.style.display='block'; return; }
+
+  closeModal('fmsEditModal');
+  showToast('✅ FMS updated! Steps: ' + fmsSteps.length);
+  fmsSheetHeaders = [];
+  loadFMSAdmin();
+}
+
+// ── Sync Data ──
+async function syncFMSData() {
+  const syncBtn = document.querySelector('[onclick="syncFMSData()"]');
+  if (syncBtn) { syncBtn.textContent='⏳ Syncing...'; syncBtn.disabled=true; }
+
+  const r = await api(`/api/fms/${fmsActiveId}/sync`);
+
+  if (syncBtn) { syncBtn.textContent='🔄 Sync Data'; syncBtn.disabled=false; }
+
+  const syncEl = document.getElementById('fmsSyncResult');
+
+  if (r.error) {
+    syncEl.style.cssText='display:block;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px;margin-top:14px';
+    syncEl.innerHTML=`<strong style="color:#dc2626">❌ Error:</strong> <span style="color:#374151">${r.error}</span>`;
+    return;
+  }
+
+  const headerBadges = r.headers.map(h=>
+    `<span style="background:#eff6ff;color:#1d4ed8;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:600">${h}</span>`
+  ).join(' ');
+
+  syncEl.style.cssText='display:block;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;margin-top:14px';
+  syncEl.innerHTML=`
+    <div style="font-weight:600;color:#16a34a;margin-bottom:10px;font-size:14px">✅ Sync Successful!</div>
+    <div style="font-size:13px;color:#374151;margin-bottom:6px">
+      📊 Header Row: <strong>${r.headerRow}</strong> &nbsp;·&nbsp; Total Data Rows: <strong>${r.totalRows}</strong>
+    </div>
+    <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px">
+      Headers Found (${r.headers.length}):
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:${r.sample?.length?'12px':'0'}">
+      ${headerBadges}
+    </div>
+    ${r.sample?.length ? `
+    <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px;margin-top:8px;text-transform:uppercase;letter-spacing:.4px">All Data (${r.sample.length} rows):</div>
+    <div style="overflow-x:auto;max-height:300px;overflow-y:auto">
+      <table style="font-size:12px;border-collapse:collapse;width:100%">
+        <thead><tr>${r.headers.map(h=>`<th style="padding:4px 8px;background:#e8f5e9;border:1px solid #bbf7d0;text-align:left;font-weight:600;white-space:nowrap">${h}</th>`).join('')}</tr></thead>
+        <tbody>${r.sample.map(row=>`<tr>${r.headers.map((_,ci)=>`<td style="padding:4px 8px;border:1px solid #e2e8f0;color:#374151;white-space:nowrap">${row[ci]||'—'}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table>
+    </div>` : ''}
+  `;
+}
+
+// ── Add New FMS Flow ──
+function openAddFMS() {
+  document.getElementById('fmsFmsName').value='';
+  document.getElementById('fmsSheetName').value='';
+  document.getElementById('fmsSheetId').value='';
+  document.getElementById('fmsHeaderRow').value='1';
+  document.getElementById('fmsTotalSteps').value='1';
+  document.getElementById('fmsAddErr').style.display='none';
+  fmsActiveId = null; // ✅ Reset so saveFMS doesn't PUT on wrong ID
+  document.getElementById('fmsAddModal').classList.add('open');
+}
+
+function proceedToShareNotice() {
+  const fmsName = document.getElementById('fmsFmsName').value.trim();
+  const name = document.getElementById('fmsSheetName').value.trim();
+  const id   = document.getElementById('fmsSheetId').value.trim();
+  const err  = document.getElementById('fmsAddErr');
+  if (!fmsName) { err.textContent='FMS Name required'; err.style.display='block'; return; }
+  if (!name) { err.textContent='Sheet Tab Name required'; err.style.display='block'; return; }
+  if (!id)   { err.textContent='Sheet ID required'; err.style.display='block'; return; }
+
+  fmsData = {
+    fmsName,
+    sheetName: name,
+    sheetId: id,
+    headerRow: parseInt(document.getElementById('fmsHeaderRow').value)||1,
+    totalSteps: parseInt(document.getElementById('fmsTotalSteps').value)||1
+  };
+
+  closeModal('fmsAddModal');
+  startShareCountdown();
+}
+
+function startShareCountdown() {
+  // Set email via JS to avoid Cloudflare masking
+  const emailEl = document.getElementById('fmsShareEmail');
+  if (emailEl) emailEl.textContent = 'pareek.aman' + '@' + 'e-marketing.com';
+
+  document.getElementById('fmsShareModal').classList.add('open');
+  const btn = document.getElementById('fmsSkipBtn');
+  const cd  = document.getElementById('fmsCountdown');
+  let sec = 7;
+  btn.style.pointerEvents='none'; btn.style.opacity='.6';
+  btn.innerHTML = `Skip (<span id="fmsCountdown">${sec}</span>s)`;
+  const timer = setInterval(()=>{
+    sec--;
+    const cdEl = document.getElementById('fmsCountdown');
+    if (cdEl) cdEl.textContent = sec;
+    if (sec<=0) {
+      clearInterval(timer);
+      btn.style.pointerEvents='auto'; btn.style.opacity='1';
+      btn.innerHTML = 'Skip & Continue →';
+    }
+  }, 1000);
+}
+
+function copyFMSEmail() {
+  const email = 'pareek.aman' + '@' + 'e-marketing.com';
+  navigator.clipboard.writeText(email).then(()=>showToast('Email copied!')).catch(()=>{
+    const el = document.createElement('textarea');
+    el.value = email; document.body.appendChild(el);
+    el.select(); document.execCommand('copy');
+    document.body.removeChild(el); showToast('Email copied!');
+  });
+}
+
+async function proceedToStepsConfig() {
+  closeModal('fmsShareModal');
+  if (!fmsAllUsers.length) { const ur = await api('/api/users'); fmsAllUsers = Array.isArray(ur) ? ur : []; }
+
+  // Build default steps
+  fmsSteps = [];
+  const container = document.getElementById('fmsStepsContainer');
+  container.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b">⏳ Loading headers...</div>';
+  for (let i=0; i<fmsData.totalSteps; i++) {
+    fmsSteps.push({ stepName:`Step ${i+1}`, doers:[], planCol:'', actualCol:'', extraInput:'no', extraCol:'', extraRows:[], showCols:[], delayReasonCol:'', doerNameCol:'' }); // extraRows items: {col_letter, field_type, label}
+  }
+
+  fmsDeleteMode = false;
+  const addDelBtn = document.getElementById('fmsAddDeleteModeBtn');
+  const addDelConfBtn = document.getElementById('fmsAddConfirmDeleteBtn');
+  if (addDelBtn) addDelBtn.textContent = '🗑 Select to Delete';
+  if (addDelConfBtn) addDelConfBtn.style.display='none';
+  document.getElementById('fmsStepsModal').classList.add('open');
+
+  // Fetch headers after modal open
+  fmsSheetHeaders = [];
+  try {
+    const hRes = await api('/api/fms/fetch-headers', 'POST', {
+      sheetId: fmsData.sheetId,
+      sheetName: fmsData.sheetName,
+      headerRow: fmsData.headerRow
+    });
+    fmsSheetHeaders = hRes.headers || [];
+    if (fmsSheetHeaders.length) showToast(`✅ ${fmsSheetHeaders.length} headers loaded!`);
+    else showToast('⚠️ No headers found','error');
+  } catch(e) {
+    showToast('⚠️ Headers fetch failed — using text input','error');
+  }
+
+  // Re-render steps with headers
+  container.innerHTML = '';
+  fmsSteps.forEach((_, i) => appendFMSStepBox(i, 'fmsStepsContainer'));
+}
+
+function appendFMSStepBox(idx, containerId) {
+  const cid = containerId || 'fmsStepsContainer';
+  const container = document.getElementById(cid);
+  if (!container) return;
+  const div = document.createElement('div');
+  div.className = 'fms-step-box';
+  div.dataset.idx = idx;
+  div.draggable = true;
+  div.innerHTML = buildStepBoxHTML(idx);
+  container.appendChild(div);
+  setupDragEvents(div);
+  setupMultiSelect(idx);
+  // Show existing doer tags
+  updateFMSDoerTags(idx);
+}
+
+function buildStepBoxHTML(idx) {
+  const s = fmsSteps[idx];
+  const userOptions = fmsAllUsers.map(u=>`
+    <div class="multi-select-item" data-uid="${u.id}" onclick="toggleFMSDoer(event,${idx},${u.id})">
+      <input type="checkbox" ${(s.doers||[]).map(d=>parseInt(d)).includes(parseInt(u.id))?'checked':''}/> ${esc(u.name)}
+    </div>`).join('');
+
+  // Build header options for selects — MUST be declared BEFORE extraRowsHTML
+  const headers = fmsSheetHeaders || [];
+
+  // Use the shared row builder — it includes the Required/Optional toggle that
+  // lets admins mark individual extra inputs as optional.
+  const extraRowsHTML = (s.extraRows||[]).map((r,ri) =>
+    `<div class="extra-row-item" id="fmsExtraRow_${idx}_${ri}" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:10px">
+      ${buildExtraRowHTML(idx, ri, headers)}
+    </div>`
+  ).join('');
+  const blankOpt = `<option value="">-- Select Column --</option>`;
+  const hdrOpts = headers.map(h=>`<option value="${h.col}" title="${esc(h.name)}">${esc(h.name)} (COL ${h.col})</option>`).join('');
+
+  // Show cols — multi-select badges
+  const showColsSelected = s.showCols || [];
+  const showColsBadges = showColsSelected.map(ci=>{
+    const hdr = headers[ci] || { name:`COL ${ci}`, col:'' };
+    return `<span class="hdr-tag" onclick="removeFMSShowCol(${idx},${ci})">${esc(hdr.name)} <span class="rm">✕</span></span>`;
+  }).join('');
+  const unusedHeaders = headers.filter(h=>!showColsSelected.includes(h.index));
+  const showColsOpts = `<option value="">+ Add column to show</option>`+unusedHeaders.map(h=>`<option value="${h.index}">${esc(h.name)} (COL ${h.col})</option>`).join('');
+
+  return `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <span class="drag-handle" title="Drag to reorder">⠿</span>
+      <div class="fms-step-num">Step ${idx+1}</div>
+      ${fmsDeleteMode?`<input type="checkbox" class="fms-del-check" style="margin-left:auto" data-idx="${idx}"/>`:''}
+      ${fmsDupMode?`<input type="checkbox" class="fms-dup-check" style="margin-left:auto;accent-color:#7c3aed" data-idx="${idx}"/>`:''}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group" style="margin:0">
+        <label>Step Name</label>
+        <input type="text" value="${esc(s.stepName||'')}" placeholder="Step Name"
+          oninput="fmsSteps[${idx}].stepName=this.value;updateStepNum(${idx},this.value)"
+          style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Step Doer(s)</label>
+        <div class="multi-select-wrap" id="fmsDoerWrap_${idx}">
+          <div class="selected-tags" id="fmsDoerTags_${idx}" onclick="toggleFMSDropdown(${idx})">
+            <span style="color:#94a3b8;font-size:12px">Select users...</span>
+          </div>
+          <div class="multi-select-dropdown" id="fmsDoerDrop_${idx}">${userOptions}</div>
+        </div>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Plan <span style="color:#94a3b8;font-weight:400;font-size:11px">(Plan ${idx+1})</span></label>
+        ${headers.length ? `
+        <select class="header-select" onchange="fmsSteps[${idx}].planCol=this.value">
+          ${blankOpt}${headers.map(h=>`<option value="${h.col}" ${s.planCol===h.col?'selected':''}>${esc(h.name)} (COL ${h.col})</option>`).join('')}
+        </select>` : `
+        <input type="text" value="${s.planCol||''}" placeholder="Column e.g. I"
+          oninput="fmsSteps[${idx}].planCol=this.value"
+          style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>`}
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Actual <span style="color:#94a3b8;font-weight:400;font-size:11px">(Actual ${idx+1})</span></label>
+        ${headers.length ? `
+        <select class="header-select" onchange="fmsSteps[${idx}].actualCol=this.value">
+          ${blankOpt}${headers.map(h=>`<option value="${h.col}" ${s.actualCol===h.col?'selected':''}>${esc(h.name)} (COL ${h.col})</option>`).join('')}
+        </select>` : `
+        <input type="text" value="${s.actualCol||''}" placeholder="Column e.g. J"
+          oninput="fmsSteps[${idx}].actualCol=this.value"
+          style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>`}
+      </div>
+    </div>
+
+    <!-- Columns to show in FMS Tasks -->
+    <div class="form-group" style="margin:10px 0 0">
+      <label>Columns to Show in FMS Tasks <span style="color:#94a3b8;font-weight:400;font-size:11px">(blank = show all)</span></label>
+      ${headers.length ? `
+      <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1.5px solid #e2e8f0;border-radius:8px;background:#f8fafc;max-height:160px;overflow-y:auto">
+        ${headers.map(h => `
+          <label style="display:flex;align-items:center;gap:4px;font-size:11px;font-weight:500;cursor:pointer;text-transform:none;letter-spacing:0;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;white-space:nowrap">
+            <input type="checkbox" ${showColsSelected.includes(h.index)?'checked':''}
+              onchange="if(this.checked){if(!fmsSteps[${idx}].showCols.includes(${h.index}))fmsSteps[${idx}].showCols.push(${h.index})}else{fmsSteps[${idx}].showCols=fmsSteps[${idx}].showCols.filter(x=>x!==${h.index})}"
+              style="accent-color:#4f46e5;width:12px;height:12px"/>
+            ${esc(h.name)}
+          </label>`).join('')}
+      </div>` : '<span style="color:#94a3b8;font-size:12px">Will show once headers are loaded</span>'}
+    </div>
+
+    <!-- Delay Reason Column -->
+    <div class="form-group" style="margin:10px 0 0">
+      <label>Delay Reason Column <span style="color:#94a3b8;font-weight:400;font-size:11px">(jahan delay reason save ho)</span></label>
+      ${headers.length ? `
+      <select class="header-select" onchange="fmsSteps[${idx}].delayReasonCol=this.value">
+        <option value="">-- None (don't save delay reason) --</option>
+        ${headers.map(h=>`<option value="${h.col}" ${s.delayReasonCol===h.col?'selected':''}>${esc(h.name)} (COL ${h.col})</option>`).join('')}
+      </select>` : `
+      <input type="text" value="${s.delayReasonCol||''}" placeholder="e.g. K"
+        oninput="fmsSteps[${idx}].delayReasonCol=this.value"
+        style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>`}
+    </div>
+
+    <div class="form-group" style="margin:10px 0 0">
+      <label>Doer Name Column <span style="color:#94a3b8;font-weight:400;font-size:11px">(column where the doer's name is auto-saved on completion)</span></label>
+      <div style="display:flex;gap:8px;align-items:stretch">
+        ${headers.length ? `
+        <select class="header-select" id="fmsDoerNameCol_${idx}" onchange="fmsSteps[${idx}].doerNameCol=this.value" style="flex:1">
+          <option value="">-- None (don't save doer name) --</option>
+          ${headers.map(h=>`<option value="${h.col}" ${(s.doerNameCol||s.doer_name_col||'')===h.col?'selected':''}>${esc(h.name)} (COL ${h.col})</option>`).join('')}
+        </select>` : `
+        <input type="text" id="fmsDoerNameCol_${idx}" value="${s.doerNameCol||s.doer_name_col||''}" placeholder="e.g. L"
+          oninput="fmsSteps[${idx}].doerNameCol=this.value"
+          style="flex:1;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>`}
+        <button class="btn btn-sm" type="button" onclick="loadDoersFromColumn(${idx})"
+          style="background:#10b981;color:#fff;border:none;padding:0 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap"
+          title="Auto-fill Step Doers from this column's unique values">
+          🔄 Load Doers
+        </button>
+      </div>
+      <div id="fmsLoadDoersResult_${idx}" style="margin-top:8px;font-size:12px;display:none"></div>
+    </div>
+
+    <div class="form-group" style="margin:10px 0 0">
+      <label>Extra Input</label>
+      <select onchange="toggleFMSExtra(${idx},this.value)"
+        style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none">
+        <option value="no" ${s.extraInput==='no'?'selected':''}>No</option>
+        <option value="yes" ${s.extraInput==='yes'?'selected':''}>Yes</option>
+      </select>
+    </div>
+    <div id="fmsExtraSection_${idx}" style="display:${s.extraInput==='yes'?'block':'none'};margin-top:10px;background:#f0f4ff;border-radius:8px;padding:12px">
+      <!-- Column selection moved to individual rows below -->
+      <div id="fmsExtraRows_${idx}">${extraRowsHTML}</div>
+      <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="addFMSExtraRow(${idx})">+ Add Row</button>
+    </div>`;
+}
+
+function addFMSShowCol(idx, colIndex) {
+  if (isNaN(colIndex)) return;
+  if (!fmsSteps[idx].showCols) fmsSteps[idx].showCols = [];
+  if (!fmsSteps[idx].showCols.includes(colIndex)) {
+    fmsSteps[idx].showCols.push(colIndex);
+    refreshStepBox(idx);
+  }
+}
+
+function removeFMSShowCol(idx, colIndex) {
+  if (!fmsSteps[idx].showCols) return;
+  fmsSteps[idx].showCols = fmsSteps[idx].showCols.filter(c=>c!==colIndex);
+  refreshStepBox(idx);
+}
+
+function updateStepNum(idx, val) {
+  const boxes = document.querySelectorAll('.fms-step-box');
+  boxes.forEach((b,i)=>{
+    const numEl = b.querySelector('.fms-step-num');
+    if (numEl) numEl.textContent = `Step ${i+1}`;
+  });
+}
+
+function toggleFMSExtra(idx, val) {
+  fmsSteps[idx].extraInput = val;
+  document.getElementById(`fmsExtraSection_${idx}`).style.display = val==='yes'?'block':'none';
+}
+
+function addFMSExtraRow(idx) {
+  if (!fmsSteps[idx].extraRows) fmsSteps[idx].extraRows=[];
+  // Flush any dropdown_options values typed in DOM before re-render
+  fmsSteps[idx].extraRows.forEach((_, ri) => {
+    const el = document.getElementById(`fmsDropOpt_${idx}_${ri}`);
+    if (el) fmsSteps[idx].extraRows[ri].dropdown_options = el.value;
+    const labelEl = document.getElementById(`fmsExtraLabel_${idx}_${ri}`);
+    if (labelEl) fmsSteps[idx].extraRows[ri].label = labelEl.value;
+  });
+  fmsSteps[idx].extraRows.push({col_letter:'', field_type:'text', label:'', dropdown_options:'', required:1});
+  refreshStepBox(idx);
+  setupMultiSelect(idx);
+  updateFMSDoerTags(idx);
+}
+
+function buildExtraRowHTML(idx, ri, headers) {
+  const r = (fmsSteps[idx].extraRows || [])[ri] || {};
+  const colSel = headers.length
+    ? `<select onchange="onFMSExtraColChange(${idx},${ri},this)"
+        style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:'Inter',sans-serif;outline:none;background:#fff">
+        <option value="">-- Select Column --</option>
+        ${headers.map(h=>`<option value="${h.col}" data-name="${esc(h.name)}" ${r.col_letter===h.col?'selected':''}>${esc(h.name)} (COL ${h.col})</option>`).join('')}
+      </select>`
+    : `<input type="text" value="${r.col_letter||''}" placeholder="Col e.g. AS"
+        oninput="fmsSteps[${idx}].extraRows[${ri}].col_letter=this.value"
+        style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:'Inter',sans-serif;outline:none"/>`;
+  const labelField = `<input type="text" value="${(r.label||'').replace(/"/g,'&quot;')}" placeholder="Label (auto-filled from header)"
+    oninput="fmsSteps[${idx}].extraRows[${ri}].label=this.value"
+    id="fmsExtraLabel_${idx}_${ri}"
+    style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:'Inter',sans-serif;outline:none"/>`;
+  const ftSel = `<select onchange="onFMSExtraTypeChange(${idx},${ri},this.value)"
+    style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:'Inter',sans-serif;outline:none;background:#fff">
+    <option value="text" ${(r.field_type||'text')==='text'?'selected':''}>📝 Text</option>
+    <option value="number" ${r.field_type==='number'?'selected':''}>🔢 Number</option>
+    <option value="date" ${r.field_type==='date'?'selected':''}>📅 Date</option>
+    <option value="link" ${r.field_type==='link'?'selected':''}>🔗 Link</option>
+    <option value="dropdown" ${r.field_type==='dropdown'?'selected':''}>🔽 Dropdown</option>
+  </select>`;
+  const dropOptsSection = r.field_type==='dropdown' ? buildDropdownOptionsHTML(idx, ri, r) : '';
+  // required defaults to true (1) — explicit false / 0 means optional
+  const isRequired = !(r.required === 0 || r.required === false || r.required === '0');
+  return `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">
+      <div>
+        <div style="font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">Column</div>
+        ${colSel}
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">Label</div>
+        ${labelField}
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">Field Type</div>
+        ${ftSel}
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px">Required?</div>
+        <label style="display:flex;align-items:center;gap:6px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:'Inter',sans-serif;background:#fff;cursor:pointer;height:34px;box-sizing:border-box">
+          <input type="checkbox" ${isRequired?'checked':''}
+            onchange="fmsSteps[${idx}].extraRows[${ri}].required=this.checked?1:0"
+            style="accent-color:#4f46e5;width:14px;height:14px;cursor:pointer"/>
+          <span style="font-weight:600;color:#374151">${isRequired?'Required':'Optional'}</span>
+        </label>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+      <button class="action-btn delete" style="padding:4px 12px" onclick="removeFMSExtraRow(${idx},${ri})">✕ Remove Row</button>
+    </div>
+    <div id="fmsDropOptSection_${idx}_${ri}">${dropOptsSection}</div>`;
+}
+
+function buildDropdownOptionsHTML(idx, ri, r) {
+  const opts = (r.dropdown_options || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const depts = [...new Set((fmsAllUsers||[]).map(u => (u.department||'').trim()).filter(Boolean))]
+    .sort((a,b) => a.localeCompare(b));
+  const deptOpts = depts.map(d => `<option value="@dept:${esc(d)}">${esc(d)} department</option>`).join('');
+  return `<div style="margin-top:4px">
+    <label style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.3px">Dropdown Options <span style="color:#94a3b8;font-weight:400">(comma separated, e.g. Yes,No,N/A)</span></label>
+    <input type="text" value="${opts}" placeholder="Yes,No,N/A or Option1,Option2,Option3"
+      oninput="fmsSteps[${idx}].extraRows[${ri}].dropdown_options=this.value"
+      id="fmsDropOpt_${idx}_${ri}"
+      style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;font-family:'Inter',sans-serif;outline:none;margin-top:4px"/>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:5px">
+      <select onchange="addFMSDropdownUserToken(${idx},${ri},this)"
+        style="padding:5px 8px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;font-family:'Inter',sans-serif;background:#fff;outline:none">
+        <option value="">+ Add a live user list…</option>
+        <option value="@users">All users</option>
+        ${deptOpts}
+      </select>
+      <span style="font-size:10px;color:#94a3b8">Live lists stay in sync when staff join or leave.</span>
+    </div>
+  </div>`;
+}
+
+// Appends a live-user token (@users / @dept:X) to the dropdown options input.
+function addFMSDropdownUserToken(idx, ri, sel) {
+  const token = sel.value;
+  sel.selectedIndex = 0;
+  if (!token) return;
+  const input = document.getElementById(`fmsDropOpt_${idx}_${ri}`);
+  if (!input) return;
+  const parts = input.value.split(',').map(o => o.trim()).filter(Boolean);
+  if (parts.some(p => p.toLowerCase() === token.toLowerCase())) return;
+  parts.push(token);
+  input.value = parts.join(',');
+  fmsSteps[idx].extraRows[ri].dropdown_options = input.value;
+}
+
+function onFMSExtraColChange(idx, ri, sel) {
+  fmsSteps[idx].extraRows[ri].col_letter = sel.value;
+  // Auto-fill label from header name
+  const selectedOpt = sel.options[sel.selectedIndex];
+  const headerName = selectedOpt.dataset.name || sel.value;
+  fmsSteps[idx].extraRows[ri].label = headerName;
+  const labelEl = document.getElementById(`fmsExtraLabel_${idx}_${ri}`);
+  if (labelEl) labelEl.value = headerName;
+}
+
+function onFMSExtraTypeChange(idx, ri, val) {
+  fmsSteps[idx].extraRows[ri].field_type = val;
+  const section = document.getElementById(`fmsDropOptSection_${idx}_${ri}`);
+  if (section) {
+    section.innerHTML = val === 'dropdown' ? buildDropdownOptionsHTML(idx, ri, fmsSteps[idx].extraRows[ri]) : '';
+  }
+}
+
+function removeFMSExtraRow(idx, ri) {
+  // Flush all dropdown_options and labels from DOM before splice so data isn't lost
+  fmsSteps[idx].extraRows.forEach((_, i) => {
+    const el = document.getElementById(`fmsDropOpt_${idx}_${i}`);
+    if (el) fmsSteps[idx].extraRows[i].dropdown_options = el.value;
+    const labelEl = document.getElementById(`fmsExtraLabel_${idx}_${i}`);
+    if (labelEl) fmsSteps[idx].extraRows[i].label = labelEl.value;
+  });
+  fmsSteps[idx].extraRows.splice(ri,1);
+  refreshStepBox(idx);
+  setupMultiSelect(idx);
+  updateFMSDoerTags(idx);
+}
+
+function toggleFMSDropdown(idx) {
+  document.getElementById(`fmsDoerDrop_${idx}`).classList.toggle('open');
+}
+
+function toggleFMSDoer(e, idx, uid) {
+  e.stopPropagation();
+  uid = parseInt(uid);
+  if (!fmsSteps[idx].doers) fmsSteps[idx].doers=[];
+  const i = fmsSteps[idx].doers.indexOf(uid);
+  if (i===-1) fmsSteps[idx].doers.push(uid);
+  else fmsSteps[idx].doers.splice(i,1);
+  // Update checkbox state
+  const drop = document.getElementById(`fmsDoerDrop_${idx}`);
+  if (drop) {
+    drop.querySelectorAll('.multi-select-item').forEach(item => {
+      const itemUid = parseInt(item.dataset.uid);
+      const cb = item.querySelector('input[type=checkbox]');
+      if (cb) cb.checked = fmsSteps[idx].doers.includes(itemUid);
+    });
+  }
+  updateFMSDoerTags(idx);
+}
+
+function updateFMSDoerTags(idx) {
+  const tags = document.getElementById(`fmsDoerTags_${idx}`);
+  const doers = fmsSteps[idx].doers||[];
+  if (!doers.length) { tags.innerHTML=`<span style="color:#94a3b8;font-size:12px">Select users...</span>`; return; }
+  const names = doers.map(uid=>{ const u=fmsAllUsers.find(u=>parseInt(u.id)===parseInt(uid)); return u?u.name:''; }).filter(Boolean);
+  tags.innerHTML = names.map(n=>`<span class="tag-badge">${n}</span>`).join('');
+}
+
+function setupMultiSelect(idx) {
+  document.addEventListener('click', function(e) {
+    const drop = document.getElementById(`fmsDoerDrop_${idx}`);
+    const wrap = document.getElementById(`fmsDoerWrap_${idx}`);
+    if (drop && wrap && !wrap.contains(e.target)) drop.classList.remove('open');
+  });
+}
+
+// 🔄 Load Step Doers from a Sheet column (uses doer_name_col)
+async function loadDoersFromColumn(idx) {
+  const step = fmsSteps[idx];
+  const col = (step.doerNameCol || step.doer_name_col || '').trim().toUpperCase();
+  const resultBox = document.getElementById(`fmsLoadDoersResult_${idx}`);
+  resultBox.style.display = 'block';
+  resultBox.innerHTML = '<i style="color:#64748b">Loading...</i>';
+
+  if (!col) {
+    resultBox.innerHTML = '<span style="color:#dc2626">⚠️ Please select the "Doer Name Column" first, then click this button.</span>';
+    return;
+  }
+
+  // Get sheet ID + tab name + header row from whichever modal is open (new or edit)
+  const isEdit = document.getElementById('fmsEditModal')?.classList.contains('open');
+  const sheetId = isEdit
+    ? document.getElementById('editFmsSheetId').value.trim()
+    : document.getElementById('fmsSheetId').value.trim();
+  const tabName = isEdit
+    ? document.getElementById('editFmsSheetName').value.trim()
+    : document.getElementById('fmsSheetName').value.trim();
+  const headerRow = isEdit
+    ? (parseInt(document.getElementById('editFmsHeaderRow').value)||1)
+    : (parseInt(document.getElementById('fmsHeaderRow').value)||1);
+
+  if (!sheetId) {
+    resultBox.innerHTML = '<span style="color:#dc2626">⚠️ Please enter the Sheet ID above first.</span>';
+    return;
+  }
+
+  try {
+    const params = new URLSearchParams({ sheetId, tabName, col, headerRow });
+    const r = await api('/api/fms/sheet-column-values?' + params.toString());
+    if (r.error) throw new Error(r.error);
+
+    // Auto-select matched users
+    const matchedIds = r.matched.map(m => m.user_id);
+    fmsSteps[idx].doers = matchedIds;
+
+    // Update UI: refresh checkboxes & tags
+    const drop = document.getElementById(`fmsDoerDrop_${idx}`);
+    if (drop) {
+      drop.querySelectorAll('.multi-select-item').forEach(item => {
+        const itemUid = parseInt(item.dataset.uid);
+        const cb = item.querySelector('input[type=checkbox]');
+        if (cb) cb.checked = matchedIds.includes(itemUid);
+      });
+    }
+    updateFMSDoerTags(idx);
+
+    // Show result summary
+    let html = `<div style="background:#f0fdf4;border:1px solid #86efac;color:#166534;padding:8px 12px;border-radius:6px;line-height:1.5">`;
+    html += `<b>✅ Loaded ${r.total_unique} unique name${r.total_unique===1?'':'s'} from Col ${col}</b><br>`;
+    html += `Matched & auto-selected: <b>${r.matched_count}</b>`;
+    if (r.matched_count) {
+      html += ` <span style="color:#475569">(${r.matched.map(m => dtEscape(m.user_name)).join(', ')})</span>`;
+    }
+    if (r.unmatched_count) {
+      html += `<br><span style="color:#b45309">⚠️ Not in users DB (${r.unmatched_count}): ${r.unmatched.map(n => dtEscape(n)).join(', ')}</span>`;
+      html += `<br><span style="color:#64748b;font-size:11px">→ Add these names in the Users tab, then click Load Doers again.</span>`;
+    }
+    html += `</div>`;
+    resultBox.innerHTML = html;
+  } catch (e) {
+    resultBox.innerHTML = `<span style="color:#dc2626">❌ ${e.message}</span>`;
+  }
+}
+
+function getActiveFMSContainer() {
+  if (document.getElementById('fmsEditModal')?.classList.contains('open')) return 'fmsEditStepsContainer';
+  return 'fmsStepsContainer';
+}
+
+function addFMSStep() {
+  const idx = fmsSteps.length;
+  fmsSteps.push({stepName:`Step ${idx+1}`, doers:[], planCol:'', actualCol:'', extraInput:'no', extraCol:'', extraRows:[], showCols:[], delayReasonCol:'', doerNameCol:''});
+  appendFMSStepBox(idx, getActiveFMSContainer());
+  updateEditStepNav();
+}
+
+// ── Delete mode (Edit modal) ──
+function toggleFMSDeleteMode() {
+  fmsDeleteMode = !fmsDeleteMode;
+  const btn = document.getElementById('editFmsDeleteModeBtn');
+  const delBtn = document.getElementById('fmsConfirmDeleteBtn');
+  if (btn) btn.textContent = fmsDeleteMode ? '✕ Cancel' : '🗑 Select to Delete';
+  if (delBtn) delBtn.style.display = fmsDeleteMode ? 'inline-block' : 'none';
+  refreshAllStepBoxes();
+  updateEditStepNav();
+}
+
+function confirmFMSDelete() {
+  const checked = [...document.querySelectorAll('.fms-del-check:checked')].map(c=>parseInt(c.dataset.idx));
+  if (!checked.length) { showToast('No steps selected','error'); return; }
+  checked.sort((a,b)=>b-a).forEach(idx=>fmsSteps.splice(idx,1));
+  fmsDeleteMode=false;
+  const btn = document.getElementById('editFmsDeleteModeBtn');
+  if (btn) btn.textContent='🗑 Select to Delete';
+  document.getElementById('fmsConfirmDeleteBtn').style.display='none';
+  refreshAllStepBoxes();
+  updateEditStepNav();
+}
+
+// ── Duplicate mode (Edit modal) ──
+function toggleFMSDupMode() {
+  fmsDupMode = !fmsDupMode;
+  const btn = document.getElementById('editFmsDupModeBtn');
+  const confBtn = document.getElementById('editFmsDupConfirmBtn');
+  if (btn) btn.textContent = fmsDupMode ? '✕ Cancel' : '📋 Duplicate';
+  if (confBtn) confBtn.style.display = fmsDupMode ? 'inline-block' : 'none';
+  refreshAllStepBoxes();
+  updateEditStepNav();
+}
+
+function confirmFMSDup() {
+  const checked = [...document.querySelectorAll('.fms-dup-check:checked')].map(c=>parseInt(c.dataset.idx));
+  if (!checked.length) { showToast('No steps selected','error'); return; }
+  // Deep copy selected steps and add at end
+  checked.forEach(idx => {
+    const orig = fmsSteps[idx];
+    const copy = JSON.parse(JSON.stringify(orig));
+    copy.stepName = orig.stepName + ' (Copy)';
+    fmsSteps.push(copy);
+  });
+  fmsDupMode = false;
+  const btn = document.getElementById('editFmsDupModeBtn');
+  if (btn) btn.textContent = '📋 Duplicate';
+  document.getElementById('editFmsDupConfirmBtn').style.display = 'none';
+  refreshAllStepBoxes();
+  updateEditStepNav();
+  showToast(`✅ ${checked.length} step(s) duplicated!`);
+}
+
+// ── Delete mode (Add modal) ──
+function toggleFMSDeleteModeAdd() {
+  fmsDeleteMode = !fmsDeleteMode;
+  const btn = document.getElementById('fmsAddDeleteModeBtn');
+  const delBtn = document.getElementById('fmsAddConfirmDeleteBtn');
+  if (btn) btn.textContent = fmsDeleteMode ? '✕ Cancel' : '🗑 Select to Delete';
+  if (delBtn) delBtn.style.display = fmsDeleteMode ? 'inline-block' : 'none';
+  refreshAllStepBoxes();
+}
+
+function confirmFMSDeleteAdd() {
+  const checked = [...document.querySelectorAll('.fms-del-check:checked')].map(c=>parseInt(c.dataset.idx));
+  if (!checked.length) { showToast('No steps selected','error'); return; }
+  checked.sort((a,b)=>b-a).forEach(idx=>fmsSteps.splice(idx,1));
+  fmsDeleteMode=false;
+  const btn = document.getElementById('fmsAddDeleteModeBtn');
+  if (btn) btn.textContent='🗑 Select to Delete';
+  document.getElementById('fmsAddConfirmDeleteBtn').style.display='none';
+  refreshAllStepBoxes();
+}
+
+function refreshAllStepBoxes() {
+  const cid = getActiveFMSContainer();
+  const container = document.getElementById(cid);
+  if (!container) return;
+  container.innerHTML='';
+  fmsSteps.forEach((_,i) => appendFMSStepBox(i, cid));
+  updateEditStepNav();
+}
+
+function refreshStepBox(idx) {
+  const boxes = document.querySelectorAll('.fms-step-box');
+  if (boxes[idx]) {
+    boxes[idx].innerHTML = buildStepBoxHTML(idx);
+    setupMultiSelect(idx);
+  }
+}
+
+// ── Drag & Drop reorder ──
+let dragSrcIdx = null;
+
+function setupDragEvents(el) {
+  el.addEventListener('dragstart', e => {
+    dragSrcIdx = parseInt(el.dataset.idx);
+    e.dataTransfer.effectAllowed='move';
+  });
+  el.addEventListener('dragover', e => {
+    e.preventDefault();
+    el.classList.add('drag-over');
+  });
+  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+  el.addEventListener('drop', e => {
+    e.preventDefault();
+    el.classList.remove('drag-over');
+    const destIdx = parseInt(el.dataset.idx);
+    if (dragSrcIdx===null || dragSrcIdx===destIdx) return;
+    // Swap
+    const moved = fmsSteps.splice(dragSrcIdx,1)[0];
+    fmsSteps.splice(destIdx,0,moved);
+    dragSrcIdx=null;
+    refreshAllStepBoxes();
+  });
+}
+
+// ── Save FMS ──
+async function saveFMS() {
+  const boxes = document.querySelectorAll('#fmsStepsContainer .fms-step-box');
+  boxes.forEach((box,i)=>{
+    const nameInput = box.querySelector('input[type=text]');
+    if (nameInput) fmsSteps[i].stepName = nameInput.value.trim() || `Step ${i+1}`;
+    fmsSteps[i].step_order = i+1;
+    // Flush dropdown_options and labels for all extraRows from DOM
+    (fmsSteps[i].extraRows||[]).forEach((_, ri) => {
+      const el = document.getElementById(`fmsDropOpt_${i}_${ri}`);
+      if (el) fmsSteps[i].extraRows[ri].dropdown_options = el.value;
+      const labelEl = document.getElementById(`fmsExtraLabel_${i}_${ri}`);
+      if (labelEl) fmsSteps[i].extraRows[ri].label = labelEl.value;
+    });
+  });
+
+  if (fmsSteps.some(s=>!s.stepName)) { showToast('Please enter a name for all steps','error'); return; }
+
+  const body = {
+    fmsName: fmsData.fmsName || fmsData.sheetName,
+    sheetName: fmsData.sheetName,
+    sheetId: fmsData.sheetId,
+    headerRow: fmsData.headerRow,
+    totalSteps: fmsSteps.length,
+    steps: fmsSteps.map(s=>({...s, showCols: s.showCols||[], delayReasonCol: s.delayReasonCol||'', doerNameCol: s.doerNameCol||s.doer_name_col||'', extraRows: (s.extraRows||[]).map(r=>({...r, dropdown_options: r.dropdown_options||''}))}))
+  };
+
+  const r = await api('/api/fms', 'POST', body);
+  if (r.error) { showToast(r.error,'error'); return; }
+
+  closeModal('fmsStepsModal');
+  showToast('✅ FMS saved successfully!');
+  fmsActiveId = r.id;
+  fmsSheetHeaders = [];
+  loadFMSAdmin();
+}
+
+// ══════════════════════════════════════════════════════
+// FMS TASKS
+// ══════════════════════════════════════════════════════
+let fmsTasksActiveFmsId = null;
+let fmsTasksActiveStepId = null;
+let fmsTasksActiveStepData = null;
+let fmsTrainPaused = false;
+
+async function loadFMSTasks() {
+  document.getElementById('fmsTasksRefreshBtn').style.display = 'block';
+  const sel = document.getElementById('fmsTasksSelect');
+  const trainContainer = document.getElementById('fmsTrainContainer');
+  const stepPanel = document.getElementById('fmsTaskStepPanel');
+  const emptyEl = document.getElementById('fmsTasksEmpty');
+
+  sel.innerHTML = '<option value="">Loading...</option>';
+  trainContainer.style.display = 'none';
+  stepPanel.style.display = 'none';
+  emptyEl.style.display = 'none';
+
+  const list = await api('/api/fms-tasks');
+  if (!list.length) {
+    sel.innerHTML = '<option value="">-- No FMS available --</option>';
+    emptyEl.style.display = 'block';
+    return;
+  }
+
+  sel.innerHTML = '<option value="">-- Select an FMS --</option>' +
+    list.map(f => `<option value="${f.id}">${f.fms_name || f.sheet_name}</option>`).join('');
+
+  // Auto-select first
+  if (list.length === 1) {
+    sel.value = list[0].id;
+    onFMSTasksSelect();
+  }
+}
+
+async function onFMSTasksSelect() {
+  const fmsId = document.getElementById('fmsTasksSelect').value;
+  const trainContainer = document.getElementById('fmsTrainContainer');
+  const stepPanel = document.getElementById('fmsTaskStepPanel');
+
+  if (!fmsId) {
+    trainContainer.style.display = 'none';
+    stepPanel.style.display = 'none';
+    return;
+  }
+
+  fmsTasksActiveFmsId = parseInt(fmsId);
+  fmsTasksActiveStepId = null;
+  stepPanel.style.display = 'none';
+  trainContainer.style.display = 'block';
+
+  document.getElementById('fmsTrainInner').innerHTML = '<div style="color:#64748b;font-size:12px;padding:20px">Loading steps...</div>';
+
+  const data = await api(`/api/fms-tasks/${fmsId}`);
+  buildFMSTrain(data.steps, data.sheet);
+}
+
+function buildFMSTrain(steps, sheet) {
+  window._fmsAllSteps = steps; // Store all steps for modal use
+  const isAdmin = ME.role === 'admin';
+  const uid = ME.id;
+
+  // Build double set for infinite scroll loop
+  const buildCoaches = () => steps.map((s, i) => {
+    const isMine = isAdmin || s.isMyStep;
+    const doerNames = (s.doers || []).map(d => d.name).join(', ') || '—';
+    return `
+      <div class="fms-coach ${isMine ? 'mine' : 'not-mine'}" 
+           onclick="${isMine ? `selectFMSStep(${s.id},${jsArg(s.step_name)},${jsArg(doerNames)})` : ''}"
+           title="${isMine ? 'Click to view tasks' : 'Not your step'}">
+        <div class="fms-coach-num">Step ${s.step_order}</div>
+        <div class="fms-coach-name">${esc(s.step_name)}</div>
+        <div class="fms-coach-doers">👤 ${doerNames}</div>
+        ${isMine ? '<div style="font-size:9px;margin-top:4px;opacity:.7">▶ Click to open</div>' : '<div style="font-size:9px;margin-top:4px;opacity:.5">🔒 Not assigned</div>'}
+      </div>
+      ${i < steps.length - 1 ? '<div class="fms-coach-connector"></div>' : ''}`;
+  }).join('');
+
+  const engine = `
+    <div class="fms-train-engine">
+      🚂
+      <div style="font-size:9px;margin-top:4px;opacity:.7;max-width:70px;text-align:center;word-break:break-word">${(document.getElementById('fmsTasksSelect').selectedOptions[0]?.text || '').substring(0,12)}</div>
+    </div>
+    <div class="fms-coach-connector"></div>`;
+
+  // Double the coaches for seamless loop
+  const coaches = buildCoaches();
+  document.getElementById('fmsTrainInner').innerHTML = engine + coaches + '<div style="width:30px;flex-shrink:0"></div>' + coaches;
+
+  // Set initial speed
+  setTrainSpeed(document.getElementById('fmsTrainSpeedSlider').value);
+}
+
+function selectFMSStep(stepId, stepName, doerNames) {
+  fmsTasksActiveStepId = stepId;
+  // Store active step data for modal
+  window._fmsActiveStepData = (window._fmsAllSteps || []).find(s => s.id === stepId) || null;
+
+  // Highlight selected coach
+  document.querySelectorAll('.fms-coach').forEach(c => {
+    c.classList.toggle('active', c.querySelector('.fms-coach-name')?.textContent === stepName);
+  });
+
+  document.getElementById('fmsTaskStepName').textContent = stepName;
+  document.getElementById('fmsTaskStepDoers').textContent = '👤 ' + doerNames;
+  document.getElementById('fmsTaskRowCount').textContent = '';
+  document.getElementById('fmsTaskRowsContainer').innerHTML = `
+    <div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">
+      Click "Load Tasks" to fetch pending rows for this step
+    </div>`;
+  document.getElementById('fmsTaskStepPanel').style.display = 'block';
+  document.getElementById('fmsTaskStepPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function loadFMSTaskRows() {
+  if (!fmsTasksActiveFmsId || !fmsTasksActiveStepId) return;
+  const btn = document.getElementById('fmsTaskLoadBtn');
+  btn.textContent = '⏳ Loading...';
+  btn.disabled = true;
+
+  const r = await api(`/api/fms-tasks/${fmsTasksActiveFmsId}/steps/${fmsTasksActiveStepId}/rows`);
+  btn.textContent = 'Refresh';
+  btn.disabled = false;
+
+  if (r.error) {
+    showToast(r.error, 'error');
+    return;
+  }
+
+  document.getElementById('fmsTaskRowCount').textContent = r.total ? `${r.total} pending row(s)` : '✅ All done!';
+
+  // Filter banner — show if doer-name filtering is applied (or if admin viewing all)
+  let banner = '';
+  if (r.filtered) {
+    banner = `<div style="background:#dbeafe;border:1px solid #93c5fd;color:#1e3a8a;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;">
+      🎯 <b>Showing only your assigned rows</b> — filtered by Col ${r.doerColumn} (Doer Name).
+      ${r.totalPending > r.total ? ` <span style="color:#475569">${r.totalPending - r.total} other row(s) belong to other doers.</span>` : ''}
+    </div>`;
+  } else if (r.isAdmin && r.doerColumn) {
+    banner = `<div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;">
+      👑 <b>Admin view</b> — showing all ${r.totalPending} pending rows across all doers (Col ${r.doerColumn}).
+    </div>`;
+  }
+
+  if (!r.rows || !r.rows.length) {
+    document.getElementById('fmsTaskRowsContainer').innerHTML = banner + `
+      <div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">
+        ${r.filtered ? '✅ No rows assigned to you in this step!' : '✅ No pending rows — all actual values filled for this step!'}
+      </div>`;
+    return;
+  }
+
+  // Build table headers from first row's data keys
+  const colKeys = Object.keys(r.rows[0].data);
+  const tableRows = r.rows.map((row, ri) => `
+    <tr ${row.isMine === false && r.isAdmin ? 'style="opacity:.85"' : ''}>
+      <td>
+        <button class="fms-done-btn" onclick="openFMSDoneModal(${ri})">✅ Done</button>
+      </td>
+      ${colKeys.map(k => `<td>${row.data[k] || '—'}</td>`).join('')}
+      <td>
+        <span class="fms-status-badge">⏳ Pending</span>
+        ${row.rowDoerName && r.isAdmin ? `<br><span style="font-size:10px;color:#64748b;margin-top:4px;display:inline-block">→ ${row.rowDoerName}</span>` : ''}
+      </td>
+    </tr>`).join('');
+
+  document.getElementById('fmsTaskRowsContainer').innerHTML = banner + `
+    <div class="fms-step-rows-table">
+      <table>
+        <thead><tr>
+          <th>Action</th>
+          ${colKeys.map(k => `<th>${k}</th>`).join('')}
+          <th>Status</th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>`;
+
+  // Store rows in memory for modal
+  window._fmsCurrentRows = r.rows;
+}
+
+function openFMSDoneModal(rowIdx) {
+  const row = window._fmsCurrentRows[rowIdx];
+  if (!row) return;
+
+  document.getElementById('fmsDoneFmsId').value = fmsTasksActiveFmsId;
+  document.getElementById('fmsDoneStepId').value = fmsTasksActiveStepId;
+  document.getElementById('fmsDoneRowNum').value = row.sheetRowNumber;
+  document.getElementById('fmsDonePlanVal').value = row.planValue;
+  document.getElementById('fmsDoneErr').style.display = 'none';
+  document.getElementById('fmsDoneDelaySection').style.display = 'none';
+  document.getElementById('fmsDoneDelayReason').value = '';
+
+  // Show row data
+  const colKeys = Object.keys(row.data);
+  document.getElementById('fmsDoneRowPreview').innerHTML = colKeys.map(k =>
+    `<div style="display:flex;gap:8px;margin-bottom:4px"><span style="font-size:11px;font-weight:600;color:#64748b;min-width:120px;flex-shrink:0">${k}</span><span style="color:#1e293b">${row.data[k]||'—'}</span></div>`
+  ).join('');
+
+  // Set plan display
+  document.getElementById('fmsDonePlanDisplay').textContent = row.planValue || '—';
+
+  // Set actual = current full timestamp (DD/MM/YYYY HH:mm:ss) — saved to sheet as-is
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const actualStr = `${pad(now.getDate())}/${pad(now.getMonth()+1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  document.getElementById('fmsDoneActualDisplay').textContent = actualStr;
+
+  // Check delay: actual > plan = delayed
+  const planVal = (row.planValue || '').trim();
+  let isDelayed = false;
+  try {
+    // Try various date formats: DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD, DD-MM-YYYY HH:MM:SS
+    let planDate;
+    const ddmmyyyy = planVal.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(.*)?$/);
+    const yyyymmdd = planVal.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(.*)?$/);
+    if (ddmmyyyy) {
+      const [, d, m, y, time=''] = ddmmyyyy;
+      planDate = new Date(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}${time.replace(' ','T')||'T23:59:59'}`);
+    } else if (yyyymmdd) {
+      planDate = new Date(planVal);
+    }
+    if (planDate && !isNaN(planDate.getTime()) && now > planDate) isDelayed = true;
+  } catch(e) {}
+
+  document.getElementById('fmsDoneDelaySection').style.display = isDelayed ? 'block' : 'none';
+  document.getElementById('fmsDoneDelayReason').value = '';
+
+  // Populate extra input fields based on step configuration
+  const activeStep = window._fmsActiveStepData;
+  const extraRows = (activeStep && activeStep.extraRows) ? activeStep.extraRows.filter(r => r.col_letter) : [];
+  const extraSection = document.getElementById('fmsDoneExtraSection');
+  const extraFieldsEl = document.getElementById('fmsDoneExtraFields');
+  _fmsExtraGates = fmsBuildExtraGates(extraRows);
+  if (extraRows.length > 0) {
+    const inputStyle = 'width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:\'Inter\',sans-serif;outline:none;box-sizing:border-box';
+    extraFieldsEl.innerHTML = extraRows.map((r, i) => {
+      const label = r.label || r.row_label || r.col_letter || `Field ${i+1}`;
+      let inputHtml;
+      switch(r.field_type || 'text') {
+        case 'number':
+          inputHtml = `<input type="number" id="fmsExtra_${i}" placeholder="Enter number..." style="${inputStyle}"/>`;
+          break;
+        case 'date':
+          inputHtml = `<input type="date" id="fmsExtra_${i}" style="${inputStyle}"/>`;
+          break;
+        case 'link':
+          inputHtml = `<input type="url" id="fmsExtra_${i}" placeholder="https://..." style="${inputStyle}"/>`;
+          break;
+        case 'dropdown': {
+          const rawOpts = (r.dropdown_options || '').split(',').map(o => o.trim()).filter(Boolean);
+          const optionsList = rawOpts.length
+            ? rawOpts.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('')
+            : '<option value="">-- No options configured --</option>';
+          const gateHook = _fmsExtraGates.includes(i) ? ' onchange="applyFMSExtraGates()"' : '';
+          inputHtml = `<select id="fmsExtra_${i}"${gateHook} style="${inputStyle};background:#fff"><option value="">-- Select --</option>${optionsList}</select>`;
+          break;
+        }
+        default:
+          inputHtml = `<input type="text" id="fmsExtra_${i}" placeholder="Enter value..." style="${inputStyle}"/>`;
+      }
+      const requiredTag = fmsExtraIsRequired(r, i) ? FMS_EXTRA_REQ_TAG : FMS_EXTRA_OPT_TAG;
+      return `<div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px">${label} <span id="fmsExtraReq_${i}">${requiredTag}</span> <span style="color:#94a3b8;font-weight:400">(COL ${r.col_letter})</span></label>
+        ${inputHtml}
+      </div>`;
+    }).join('');
+    applyFMSExtraGates();
+    extraSection.style.display = 'block';
+  } else {
+    extraSection.style.display = 'none';
+    extraFieldsEl.innerHTML = '';
+  }
+
+  document.getElementById('fmsDoneModal').classList.add('open');
+}
+
+// (delay reason is now a plain text input — no dropdown listener needed)
+
+const FMS_EXTRA_REQ_TAG = '<span style="color:#ef4444">*</span>';
+const FMS_EXTRA_OPT_TAG = '<span style="color:#94a3b8;font-size:10px;font-weight:600">(optional)</span>';
+
+// A field labelled "Is <thing> Required?" gates the fields that follow it: those
+// whose label mentions the same <thing> are only mandatory while the answer is
+// Yes. Driven by the labels, so no extra per-field config is needed.
+// _fmsExtraGates[i] = index of the field gating field i, or -1.
+let _fmsExtraGates = [];
+
+function fmsBuildExtraGates(extraRows) {
+  const labelOf = (r, i) => (r.label || r.row_label || r.col_letter || `Field ${i+1}`);
+  const gates = extraRows.map(() => -1);
+  let gateIdx = -1, keyword = '';
+  extraRows.forEach((r, i) => {
+    const m = labelOf(r, i).match(/^is\s+(.+?)\s+required\s*\??$/i);
+    if (m) { gateIdx = i; keyword = m[1].trim().toLowerCase(); return; }
+    if (gateIdx >= 0 && keyword && labelOf(r, i).toLowerCase().includes(keyword)) gates[i] = gateIdx;
+  });
+  return gates;
+}
+
+// Declared-required AND not switched off by its gate. An unanswered gate keeps
+// the declared requirement, so the * only disappears once someone actually
+// answers No — and the gate's own * blocks the save until then anyway.
+function fmsExtraIsRequired(r, i) {
+  if (r.required === 0 || r.required === false || r.required === '0') return false;
+  const g = _fmsExtraGates[i];
+  if (g == null || g < 0) return true;
+  const gateEl = document.getElementById(`fmsExtra_${g}`);
+  const answer = (gateEl ? gateEl.value : '').trim().toLowerCase();
+  return answer === '' || answer === 'yes';
+}
+
+function applyFMSExtraGates() {
+  const activeStep = window._fmsActiveStepData;
+  const extraRows = (activeStep && activeStep.extraRows) ? activeStep.extraRows.filter(r => r.col_letter) : [];
+  extraRows.forEach((r, i) => {
+    if ((_fmsExtraGates[i] == null ? -1 : _fmsExtraGates[i]) < 0) return;
+    const tag = document.getElementById(`fmsExtraReq_${i}`);
+    if (!tag) return;
+    const req = fmsExtraIsRequired(r, i);
+    tag.innerHTML = req ? FMS_EXTRA_REQ_TAG : FMS_EXTRA_OPT_TAG;
+    // Drop the red outline left by an earlier failed save once the field stops being mandatory.
+    const el = document.getElementById(`fmsExtra_${i}`);
+    if (el && !req) el.style.border = '1.5px solid #e2e8f0';
+  });
+}
+
+async function saveFMSDone() {
+  const fmsId = document.getElementById('fmsDoneFmsId').value;
+  const stepId = document.getElementById('fmsDoneStepId').value;
+  const rowNum = document.getElementById('fmsDoneRowNum').value;
+  const actualValue = document.getElementById('fmsDoneActualDisplay').textContent;
+  const errEl = document.getElementById('fmsDoneErr');
+  errEl.style.display = 'none';
+
+  const delaySection = document.getElementById('fmsDoneDelaySection');
+  let delayReason = '';
+  if (delaySection.style.display !== 'none') {
+    delayReason = document.getElementById('fmsDoneDelayReason').value.trim();
+    if (!delayReason) { errEl.textContent = 'Delay reason is required!'; errEl.style.display = 'block'; return; }
+  }
+
+  const saveBtn = document.getElementById('fmsDoneSaveBtn') || document.querySelector('#fmsDoneModal .btn-green');
+  saveBtn.textContent = '⏳ Saving...';
+  saveBtn.disabled = true;
+
+  // Collect extra input values — mandatory check only for `required` fields
+  const activeStep = window._fmsActiveStepData;
+  const extraRows = (activeStep && activeStep.extraRows) ? activeStep.extraRows.filter(r => r.col_letter) : [];
+  for (let i = 0; i < extraRows.length; i++) {
+    const r = extraRows[i];
+    const isRequired = fmsExtraIsRequired(r, i);
+    const el = document.getElementById(`fmsExtra_${i}`);
+    const val = el ? el.value.trim() : '';
+    if (isRequired && !val) {
+      const label = r.label || r.row_label || r.col_letter || `Field ${i+1}`;
+      errEl.textContent = `"${label}" field is required!`;
+      errEl.style.display = 'block';
+      saveBtn.textContent = '💾 Save to Sheet';
+      saveBtn.disabled = false;
+      if (el) { el.style.border = '1.5px solid #ef4444'; el.focus(); }
+      return;
+    } else {
+      if (el) el.style.border = '1.5px solid #e2e8f0';
+    }
+  }
+  const extraInputs = extraRows.map((r, i) => {
+    const el = document.getElementById(`fmsExtra_${i}`);
+    return { colLetter: r.col_letter, value: el ? el.value.trim() : '' };
+  }).filter(e => e.colLetter && e.value !== '');
+
+  const r = await api(`/api/fms-tasks/${fmsId}/steps/${stepId}/done`, 'POST', {
+    rowNumber: parseInt(rowNum),
+    actualValue,
+    delayReason,
+    extraInputs
+  });
+
+  saveBtn.textContent = '💾 Save to Sheet';
+  saveBtn.disabled = false;
+
+  if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+
+  closeModal('fmsDoneModal');
+  showToast('✅ Saved to Google Sheet!');
+  // Reload rows on whichever page is visible
+  if (typeof loadFMSTaskRows === 'function') loadFMSTaskRows();
+  // If the user marked done from the All Tasks → FMS tab, refresh that view too
+  // so the completed row drops out of the pending list.
+  if (typeof tasksType !== 'undefined' && tasksType === 'fms' && typeof loadAllTasks === 'function') {
+    loadAllTasks();
+  }
+  // Dashboard pending-FMS list also needs to drop the completed row.
+  if (typeof loadDashFMS === 'function' && document.getElementById('page-dashboard')?.classList.contains('active')) {
+    loadDashFMS();
+  }
+}
+
+function setTrainSpeed(val) {
+  const dur = parseInt(val);
+  document.getElementById('fmsTrainSpeedLabel').textContent = dur + 's';
+  const scroll = document.getElementById('fmsTrainInner');
+  if (scroll) {
+    scroll.style.setProperty('--train-dur', dur + 's');
+    scroll.style.animationDuration = dur + 's';
+  }
+  const track = document.getElementById('fmsTrainTrack');
+  if (track) track.style.setProperty('--train-dur', dur + 's');
+}
+
+function toggleTrainPause() {
+  fmsTrainPaused = !fmsTrainPaused;
+  const scroll = document.getElementById('fmsTrainInner');
+  const btn = document.getElementById('fmsTrainPauseBtn');
+  if (scroll) scroll.style.animationPlayState = fmsTrainPaused ? 'paused' : 'running';
+  if (btn) btn.textContent = fmsTrainPaused ? '▶ Play' : '⏸ Pause';
+}
+
+// ══════════════════════════════════════════════════════
+// BULK DELETE
+// ══════════════════════════════════════════════════════
+let _bdFromUserId = null;
+let _bdDateTasks = [];
+
+async function openBulkDeleteModal() {
+  document.getElementById('bulkDeleteErr').style.display = 'none';
+  document.getElementById('bdStep1').style.display = 'none';
+  document.getElementById('bdStep2').style.display = 'none';
+  document.getElementById('bdStep3').style.display = 'none';
+  document.getElementById('bdCancelBtn').style.display = 'block';
+  document.getElementById('bdDate').value = '';
+  document.getElementById('bdTasksList').innerHTML = '';
+  _bdFromUserId = null;
+  _bdDateTasks = [];
+
+  const isAdmin = ME.role === 'admin';
+  const isHod = ME.role === 'hod';
+
+  if (isAdmin || isHod) {
+    const allUsers = await api('/api/users');
+    const eligible = isAdmin
+      ? allUsers
+      : allUsers.filter(u => u.department === ME.department);
+    document.getElementById('bdFromUser').innerHTML =
+      '<option value="">-- Select user --</option>' +
+      eligible.map(u=>`<option value="${u.id}">${esc(u.name)} — ${esc(u.email)} (${esc(u.department||u.role)})</option>`).join('');
+    document.getElementById('bdStep1').style.display = 'block';
+
+    // 12-month section: admin only
+    if (isAdmin) {
+      document.getElementById('bdYearSection').style.display = 'block';
+      // Populate user dropdown
+      document.getElementById('bdYearUser').innerHTML =
+        '<option value="">-- Select Employee --</option>' +
+        eligible.filter(u => u.role !== 'admin').map(u=>`<option value="${u.id}" data-email="${esc(u.email)}">${esc(u.name)}</option>`).join('');
+      document.getElementById('bdYearUserEmail').style.display = 'none';
+    } else {
+      document.getElementById('bdYearSection').style.display = 'none';
+    }
+  } else {
+    _bdFromUserId = ME.id;
+    document.getElementById('bdStep2').style.display = 'block';
+    document.getElementById('bdYearSection').style.display = 'none';
+  }
+  document.getElementById('bulkDeleteModal').classList.add('open');
+}
+
+async function onBdFromChange() {
+  const val = document.getElementById('bdFromUser').value;
+  if (!val) return;
+  _bdFromUserId = parseInt(val);
+  document.getElementById('bdStep2').style.display = 'block';
+  document.getElementById('bdDate').value = '';
+  document.getElementById('bdStep3').style.display = 'none';
+}
+
+async function onBdDateChange() {
+  const date = document.getElementById('bdDate').value;
+  if (!date || !_bdFromUserId) return;
+
+  document.getElementById('bulkDeleteErr').style.display = 'none';
+  document.getElementById('bdTasksList').innerHTML = '<div style="padding:10px;color:#94a3b8;font-size:13px">Loading...</div>';
+  document.getElementById('bdStep3').style.display = 'block';
+  document.getElementById('bdCancelBtn').style.display = 'none';
+  document.getElementById('bdDateLabel').textContent = date;
+
+  // Fetch tasks for this user on this date
+  const [delData, chlData] = await Promise.all([
+    api('/api/tasks?type=delegation'),
+    api('/api/tasks?type=checklist')
+  ]);
+
+  const allTasks = [];
+  const pick = (data, type) => {
+    const list = data.grouped
+      ? (data.grouped.find(g => g.userId === _bdFromUserId)?.tasks || [])
+      : (data.tasks || []);
+    list.forEach(t => { if (t.due_date === date) allTasks.push({...t, taskType: type}); });
+  };
+  pick(delData, 'delegation');
+  pick(chlData, 'checklist');
+  _bdDateTasks = allTasks;
+
+  if (!allTasks.length) {
+    document.getElementById('bdTasksList').innerHTML =
+      '<div style="padding:12px;color:#94a3b8;font-size:13px;text-align:center">No tasks on this date</div>';
+    return;
+  }
+
+  document.getElementById('bdTasksList').innerHTML = allTasks.map((t,i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #f1f5f9">
+      <input type="checkbox" class="bd-cb" data-idx="${i}" checked
+        style="width:15px;height:15px;accent-color:#dc2626;cursor:pointer;flex-shrink:0"/>
+      <span style="font-size:13px;flex:1">${esc(t.description||'—')}</span>
+      <span style="font-size:11px;background:${t.status==='pending'?'#fef2f2':'#f0fdf4'};color:${t.status==='pending'?'#dc2626':'#16a34a'};padding:2px 7px;border-radius:8px;font-weight:600">${t.status}</span>
+      <span style="font-size:11px;background:#eff6ff;color:#1d4ed8;padding:2px 7px;border-radius:8px;font-weight:600">${t.taskType}</span>
+    </div>`).join('');
+}
+
+async function _doBulkDelete(tasks) {
+  if (!tasks.length) {
+    document.getElementById('bulkDeleteErr').textContent = 'No tasks selected';
+    document.getElementById('bulkDeleteErr').style.display = 'block';
+    return;
+  }
+  if (!await appConfirm(`Are you sure you want to permanently delete ${tasks.length} task(s)?`, 'Bulk delete tasks')) return;
+
+  let deleted = 0;
+  for (const t of tasks) {
+    const r = await api(`/api/tasks/${t.id}?type=${t.taskType}`, 'DELETE');
+    if (!r.error) deleted++;
+  }
+
+  closeModal('bulkDeleteModal');
+  showToast(`🗑 ${deleted} task(s) deleted!`);
+  loadAllTasks();
+}
+
+async function bulkDeleteAll() { await _doBulkDelete(_bdDateTasks); }
+
+async function bulkDeleteSelected() {
+  const checked = [...document.querySelectorAll('.bd-cb:checked')];
+  await _doBulkDelete(checked.map(cb => _bdDateTasks[parseInt(cb.dataset.idx)]).filter(Boolean));
+}
+
+function onBdYearUserChange() {
+  const sel = document.getElementById('bdYearUser');
+  const opt = sel.options[sel.selectedIndex];
+  const email = opt?.dataset?.email || '';
+  const emailDiv = document.getElementById('bdYearUserEmail');
+  const emailText = document.getElementById('bdYearUserEmailText');
+  if (opt?.value && email) {
+    emailText.textContent = email;
+    emailDiv.style.display = 'block';
+  } else {
+    emailDiv.style.display = 'none';
+  }
+}
+
+async function openDelete12MonthsConfirm() {
+  const sel = document.getElementById('bdYearUser');
+  const userId = sel.value;
+  if (!userId) { appAlert('Please select an employee first!'); return; }
+
+  const userName = sel.options[sel.selectedIndex].text;
+  const userEmail = sel.options[sel.selectedIndex]?.dataset?.email || '';
+
+  // Fetch total checklist count (all time, no year filter)
+  const data = await api(`/api/tasks/checklist-year-count?userId=${userId}&year=all`);
+  if (data.error) { appAlert('Error: ' + data.error, 'Error'); return; }
+
+  const count = data.count || 0;
+  if (count === 0) {
+    appAlert(`No checklist tasks found for ${userName}.`);
+    return;
+  }
+
+  const confirmed = await appConfirm(
+    `⚠️ CONFIRM DELETE\n\nEmployee: ${userName}\nEmail: ${userEmail}\n\nTotal Checklist Tasks: ${count}\n\nThese ${count} tasks will be permanently deleted and cannot be recovered!\n\nDo you want to proceed?`,
+    'Delete all checklist tasks?'
+  );
+  if (!confirmed) return;
+
+  const result = await api('/api/tasks/checklist-year-delete', 'POST', { userId: parseInt(userId) });
+  if (result.error) { appAlert('Error: ' + result.error, 'Error'); return; }
+
+  closeModal('bulkDeleteModal');
+  showToast(`🗑 ${result.deleted} checklist tasks deleted for ${userName}!`);
+  loadAllTasks();
+}
+
+
+let _transferFromUserId = null;
+let _transferDateTasks = [];
+
+async function openNewTransferModal() {
+  document.getElementById('transferErr').style.display = 'none';
+  document.getElementById('transferStep1').style.display = 'none';
+  document.getElementById('transferStep2').style.display = 'none';
+  document.getElementById('transferStep3').style.display = 'none';
+  document.getElementById('transferCancelBtn').style.display = 'block';
+  document.getElementById('transferDate').value = '';
+  document.getElementById('transferDateTo').value = '';
+  document.getElementById('transferTasksListNew').innerHTML = '';
+  document.getElementById('transferToUser').innerHTML = '<option value="">-- Select user --</option>';
+  _transferFromUserId = null;
+  _transferDateTasks = [];
+
+  const isAdmin = ME.role === 'admin';
+  const isHod = ME.role === 'hod';
+
+  if (isAdmin || isHod) {
+    const allUsers = await api('/api/users');
+    const eligible = isAdmin
+      ? allUsers
+      : allUsers.filter(u => u.department === ME.department && u.id !== ME.id);
+    document.getElementById('transferFromUser').innerHTML =
+      '<option value="">-- Select user --</option>' +
+      eligible.map(u=>`<option value="${u.id}">${esc(u.name)} (${esc(u.department||u.role)})</option>`).join('');
+    document.getElementById('transferStep1').style.display = 'block';
+  } else {
+    _transferFromUserId = ME.id;
+    document.getElementById('transferStep2').style.display = 'block';
+  }
+  document.getElementById('transferModal').classList.add('open');
+}
+
+async function onTransferFromChange() {
+  const val = document.getElementById('transferFromUser').value;
+  if (!val) return;
+  _transferFromUserId = parseInt(val);
+  document.getElementById('transferStep2').style.display = 'block';
+  document.getElementById('transferDate').value = '';
+  document.getElementById('transferDateTo').value = '';
+  document.getElementById('transferStep3').style.display = 'none';
+}
+
+async function onTransferDateChange() {
+  const fromV = document.getElementById('transferDate').value;
+  let toV = document.getElementById('transferDateTo').value || fromV; // empty "To" → single day
+  if (!fromV || !_transferFromUserId) return;
+  // Tolerate a reversed range — swap so from <= to.
+  let from = fromV, to = toV;
+  if (to < from) { const tmp = from; from = to; to = tmp; }
+
+  document.getElementById('transferErr').style.display = 'none';
+  document.getElementById('transferTasksListNew').innerHTML =
+    '<div style="padding:10px;color:#94a3b8;font-size:13px">Loading...</div>';
+  document.getElementById('transferStep3').style.display = 'block';
+  document.getElementById('transferCancelBtn').style.display = 'none';
+  document.getElementById('transferDateLabel').textContent = from === to ? from : `${from} → ${to}`;
+
+  const [delData, chlData] = await Promise.all([
+    api(`/api/tasks?type=delegation&from=${from}&to=${to}`),
+    api(`/api/tasks?type=checklist&from=${from}&to=${to}`)
+  ]);
+
+  const allTasks = [];
+  const pick = (data, type) => {
+    const list = data.grouped
+      ? (data.grouped.find(g => g.userId === _transferFromUserId)?.tasks || [])
+      : (data.tasks || []);
+    list.forEach(t => { if (t.due_date >= from && t.due_date <= to && (t.status === 'pending' || t.status === 'revised')) allTasks.push({...t, taskType: type}); });
+  };
+  pick(delData, 'delegation');
+  pick(chlData, 'checklist');
+  allTasks.sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '') || (a.taskType < b.taskType ? -1 : 1));
+  _transferDateTasks = allTasks;
+
+  if (!allTasks.length) {
+    document.getElementById('transferTasksListNew').innerHTML =
+      '<div style="padding:12px;color:#94a3b8;font-size:13px;text-align:center">No pending or revised tasks in this range</div>';
+  } else {
+    const pendingRes = await api('/api/transfers/pending-tasks');
+    const pendingIds = new Set((pendingRes||[]).map(p=>`${p.task_type}_${p.task_id}`));
+    document.getElementById('transferTasksListNew').innerHTML = allTasks.map((t,i) => {
+      const isPending = pendingIds.has(`${t.taskType}_${t.id}`);
+      return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #f1f5f9">
+        ${isPending
+          ? `<span style="font-size:10px;background:#fef9c3;color:#92400e;padding:2px 7px;border-radius:10px;font-weight:600;border:1px solid #fde68a;white-space:nowrap">⏳ Sent</span>`
+          : `<input type="checkbox" class="tr-date-cb" data-idx="${i}" checked
+              style="width:15px;height:15px;accent-color:#7c3aed;cursor:pointer;flex-shrink:0"/>`}
+        <span style="font-size:10px;background:#f1f5f9;color:#475569;padding:2px 6px;border-radius:6px;font-weight:600;white-space:nowrap">${t.due_date||'—'}</span>
+        <span style="font-size:13px;flex:1">${esc(t.description||'—')}</span>
+        <span style="font-size:11px;background:#eff6ff;color:#1d4ed8;padding:2px 7px;border-radius:8px;font-weight:600">${t.taskType}</span>
+      </div>`;
+    }).join('');
+  }
+
+  const allUsers = await api('/api/users');
+  const eligible = (ME.role === 'hod')
+    ? allUsers.filter(u => u.department === ME.department && u.id !== _transferFromUserId)
+    : allUsers.filter(u => u.id !== _transferFromUserId);
+  document.getElementById('transferToUser').innerHTML =
+    '<option value="">-- Select user --</option>' +
+    eligible.map(u=>`<option value="${u.id}">${esc(u.name)} (${esc(u.department||u.role)})</option>`).join('');
+}
+
+async function _doTransfer(tasks) {
+  const err = document.getElementById('transferErr');
+  err.style.display = 'none';
+  const toUserId = document.getElementById('transferToUser').value;
+  if (!toUserId) { err.textContent='Please select a "Transfer To" user'; err.style.display='block'; return; }
+  if (!tasks.length) { err.textContent='No tasks selected'; err.style.display='block'; return; }
+  const r = await api('/api/transfers','POST',{
+    tasks: tasks.map(t => ({ taskId: t.id, taskType: t.taskType })),
+    toUserId: parseInt(toUserId)
+  });
+  if (r.error) { err.textContent = r.error; err.style.display='block'; return; }
+  closeModal('transferModal');
+  if (r.count > 0) showToast(`✅ ${r.count} transfer request(s) sent for approval!`);
+  else showToast('⚠️ All tasks already have a pending transfer request!', 'error');
+  loadTransferBadge();
+}
+
+async function submitTransferAll() { await _doTransfer(_transferDateTasks); }
+async function submitTransferSelected() {
+  const checked = [...document.querySelectorAll('.tr-date-cb:checked')];
+  await _doTransfer(checked.map(cb => _transferDateTasks[parseInt(cb.dataset.idx)]).filter(Boolean));
+}
+
+async function loadTransferBadge() {
+  if (ME.role !== 'admin' && ME.role !== 'hod') return;
+  try {
+    const d = await api('/api/transfers/count');
+    document.querySelectorAll('.nav-transfer-badge').forEach(badge => {
+      badge.textContent = d.count||0; badge.style.display = d.count>0 ? 'flex' : 'none';
+    });
+  } catch(e) {}
+}
+
+async function loadTransferApprovals() {
+  const container = document.getElementById('transferApprovalsContent');
+  if (!container) return;
+  const transfers = await api('/api/transfers');
+  if (!transfers.length) { container.innerHTML=`<div class="empty">✅ No pending transfer requests!</div>`; return; }
+  container.innerHTML = `
+    <table>
+      <thead><tr><th>Task</th><th>Type</th><th>From</th><th>To</th><th>Requested By</th><th>Date</th><th>Action</th></tr></thead>
+      <tbody>
+        ${transfers.map(t=>`<tr>
+          <td style="font-size:12px;max-width:180px">${esc(t.description)}</td>
+          <td><span class="status-badge pending" style="font-size:10px">${t.task_type}</span></td>
+          <td style="font-weight:600">${t.fromUserName}</td>
+          <td style="color:#7c3aed;font-weight:600">${t.toUserName}</td>
+          <td style="color:#64748b;font-size:12px">${t.requestedByName}</td>
+          <td style="color:#64748b;font-size:12px">${new Date(t.created_at).toLocaleDateString('en-IN')}</td>
+          <td>
+            <button class="action-btn done" onclick="handleTransfer(${t.id},'approved')">✅ Approve</button>
+            <button class="action-btn delete" style="margin-left:4px" onclick="handleTransfer(${t.id},'rejected')">❌ Reject</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function handleTransfer(id, action) {
+  const note = action === 'rejected' ? prompt('Reason (optional):') : '';
+  await api(`/api/transfers/${id}`,'PUT',{ action, note: note||'' });
+  showToast(action === 'approved' ? '✅ Transfer approved!' : '❌ Transfer rejected!');
+  loadTransferApprovals();
+  loadTransferBadge();
+}
+
+// ══════════════════════════════════════════════════════
+// 📅 DAILY TASK FORM
+// ══════════════════════════════════════════════════════
+let DT_CLIENTS = [];
+let DT_DEPARTMENTS = [];
+let DT_LOCKED = false;
+// 'daily' writes to daily_tasks; 'extra' files an Extra Working request into
+// leave_requests so it reuses the existing HOD approval flow. Same table UI for
+// both — only the submit target, the lock source and the history differ.
+let DT_MODE = 'daily';
+let DT_EXTRA_MINE = [];   // own extra_working requests, newest first
+
+function dtPad(n){ return n<10 ? '0'+n : n; }
+function dtFormatDate(d){ return `${d.getFullYear()}-${dtPad(d.getMonth()+1)}-${dtPad(d.getDate())}`; }
+function dtFormatDDMMYYYY(d){ return `${dtPad(d.getDate())}/${dtPad(d.getMonth()+1)}/${d.getFullYear()}`; }
+
+function dtTickClock(){
+  const now = new Date();
+  const t = `${dtFormatDDMMYYYY(now)} ${dtPad(now.getHours())}:${dtPad(now.getMinutes())}:${dtPad(now.getSeconds())}`;
+  const el = document.getElementById('dtNow');
+  if (el) el.textContent = t;
+}
+if (window._clockTimer) clearInterval(window._clockTimer);
+window._clockTimer = setInterval(dtTickClock, 1000);
+
+// Labels/chrome only — callers decide when to re-fetch. Keeps dtSetMode() and
+// loadDailyForm() from rendering the table twice.
+function dtApplyModeChrome(){
+  const isExtra = DT_MODE === 'extra';
+  document.getElementById('dtModeBtnDaily').classList.toggle('active', !isExtra);
+  document.getElementById('dtModeBtnExtra').classList.toggle('active', isExtra);
+  document.getElementById('dtPageTitle').textContent = isExtra ? 'Extra Working' : 'Daily Task';
+  document.getElementById('dtPageSub').textContent = isExtra
+    ? 'Log work done outside office hours by client and department. Goes to your HOD for approval.'
+    : 'Log the time you spent today by client and department.';
+  document.getElementById('dtHistoryTitle').textContent = isExtra
+    ? '⚡ My Extra Working Requests' : '📚 My Past Submissions';
+  const btn = document.querySelector('.dt-btn-submit');
+  if (btn) btn.textContent = isExtra ? 'Submit for Approval →' : 'Submit All →';
+}
+
+async function dtSetMode(mode){
+  if (DT_MODE === mode) return;
+  DT_MODE = mode;
+  dtApplyModeChrome();
+  await dtCheckLockAndRender();
+  await dtLoadHistory();
+}
+
+async function loadDailyForm(){
+  dtTickClock();
+  document.getElementById('dtUserName').textContent = ME.name;
+  document.getElementById('dtDoerName').value = ME.name;
+  DT_MODE = 'daily';
+  dtApplyModeChrome();
+
+  // Date dropdown — today + yesterday only
+  const sel = document.getElementById('dtEntryDate');
+  sel.innerHTML = '';
+  const today = new Date();
+  for (let i = 0; i < 2; i++){
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    const v = dtFormatDate(d);
+    const label = i === 0 ? `Today (${dtFormatDDMMYYYY(d)})` : `Yesterday (${dtFormatDDMMYYYY(d)})`;
+    const opt = document.createElement('option');
+    opt.value = v; opt.textContent = label;
+    sel.appendChild(opt);
+  }
+  sel.onchange = dtCheckLockAndRender;
+
+  // Load clients + departments
+  try {
+    const [clients, departments] = await Promise.all([
+      api('/api/clients'),
+      api('/api/departments')
+    ]);
+    DT_CLIENTS = Array.isArray(clients) ? clients : [];
+    DT_DEPARTMENTS = Array.isArray(departments) ? departments : [];
+  } catch(e) {
+    DT_CLIENTS = []; DT_DEPARTMENTS = [];
+  }
+
+  await dtCheckLockAndRender();
+  await dtLoadHistory();
+}
+
+async function dtCheckLockAndRender(){
+  const date = document.getElementById('dtEntryDate').value;
+  const lockNotice = document.getElementById('dtLockedNotice');
+
+  if (DT_MODE === 'extra') {
+    await dtLoadExtraMine();
+    const hit = dtExtraRequestFor(date);
+    DT_LOCKED = !!hit;
+    if (hit) {
+      lockNotice.innerHTML = `🔒 Extra Working for this date is already submitted — status: <b>${dtEscape(hit.status)}</b>.` +
+        (hit.status === 'pending' ? ' Delete it from Leave Tracker if you need to change it.' : '');
+    }
+  } else {
+    try {
+      const r = await api('/api/daily-tasks/status?date=' + date);
+      DT_LOCKED = !!r.submitted;
+    } catch(e) { DT_LOCKED = false; }
+    if (DT_LOCKED) {
+      lockNotice.textContent = '🔒 You have already submitted for this date — entries are now locked.';
+    }
+  }
+
+  const tableWrap = document.getElementById('dtTableWrap');
+  const actions = document.getElementById('dtActions');
+
+  if (DT_LOCKED) {
+    lockNotice.style.display = 'block';
+    tableWrap.style.display = 'none';
+    actions.style.display = 'none';
+  } else {
+    lockNotice.style.display = 'none';
+    tableWrap.style.display = 'block';
+    actions.style.display = 'flex';
+    // Reset rows to a single empty row
+    document.getElementById('dtRowsBody').innerHTML = '';
+    dtAddRow();
+  }
+  dtRecalcTotal();
+}
+
+function dtClientOptions(selected){
+  let html = '<option value="">--select--</option>';
+  for (const c of DT_CLIENTS) {
+    const sel = (selected === c.name) ? 'selected' : '';
+    html += `<option value="${dtEscape(c.name)}" ${sel}>${dtEscape(c.name)}</option>`;
+  }
+  return html;
+}
+function dtDeptOptions(selected){
+  let html = '<option value="">--select--</option>';
+  for (const d of DT_DEPARTMENTS) {
+    const sel = (selected === d) ? 'selected' : '';
+    html += `<option value="${dtEscape(d)}" ${sel}>${dtEscape(d)}</option>`;
+  }
+  return html;
+}
+function dtEscape(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function dtAddRow(prefill){
+  const tbody = document.getElementById('dtRowsBody');
+  const tr = document.createElement('tr');
+  tr.className = 'dt-row';
+  // Most rows are for the user's own department, so preselect it — they can
+  // still switch. `??` (not `||`) so a duplicated row that deliberately has no
+  // department stays empty instead of silently acquiring one.
+  const dept = prefill?.dept ?? (ME?.department || '');
+  tr.innerHTML = `
+    <td><select class="dt-client">${dtClientOptions(prefill?.client)}</select></td>
+    <td><select class="dt-dept">${dtDeptOptions(dept)}</select></td>
+    <td><textarea class="dt-desc" placeholder="What did you do?">${dtEscape(prefill?.desc||'')}</textarea></td>
+    <td><input type="number" min="1" class="dt-time" value="${prefill?.time||''}" placeholder="0" oninput="dtRecalcTotal()"/></td>
+    <td><button class="dt-row-btn dt-btn-dup" onclick="dtDupRow(this)">Dup</button></td>
+    <td><button class="dt-row-btn dt-btn-del" onclick="dtDelRow(this)">Del</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function dtDupRow(btn){
+  const tr = btn.closest('tr');
+  const prefill = {
+    client: tr.querySelector('.dt-client').value,
+    dept: tr.querySelector('.dt-dept').value,
+    desc: tr.querySelector('.dt-desc').value,
+    time: tr.querySelector('.dt-time').value,
+  };
+  dtAddRow(prefill);
+  dtRecalcTotal();
+}
+function dtDelRow(btn){
+  const tbody = document.getElementById('dtRowsBody');
+  if (tbody.children.length <= 1) {
+    showToast('At least 1 row required','error');
+    return;
+  }
+  btn.closest('tr').remove();
+  dtRecalcTotal();
+}
+function dtRecalcTotal(){
+  let total = 0;
+  document.querySelectorAll('.dt-time').forEach(inp => {
+    const v = parseInt(inp.value) || 0;
+    if (v > 0) total += v;
+  });
+  const el = document.getElementById('dtTotalMin');
+  if (el) el.textContent = total;
+}
+
+// Reads + validates the row table. Returns null (after toasting) if anything
+// is missing, so both submit paths share one set of rules.
+function dtReadRows(){
+  const out = [];
+  for (const tr of document.querySelectorAll('#dtRowsBody tr')) {
+    const client = tr.querySelector('.dt-client').value.trim();
+    const dept = tr.querySelector('.dt-dept').value.trim();
+    const desc = tr.querySelector('.dt-desc').value.trim();
+    const time = parseInt(tr.querySelector('.dt-time').value) || 0;
+    if (!client || !desc || time <= 0) {
+      showToast('Each row needs Client, Description and Time (>0)','error');
+      return null;
+    }
+    out.push({ client, dept, desc, time });
+  }
+  if (!out.length) { showToast('Add at least 1 row','error'); return null; }
+  return out;
+}
+
+async function dtSubmit(){
+  if (DT_MODE === 'extra') return dtSubmitExtra();
+  if (DT_LOCKED) { showToast('Already submitted for this date','error'); return; }
+  const date = document.getElementById('dtEntryDate').value;
+  const read = dtReadRows();
+  if (!read) return;
+  const rows = read.map(r => ({
+    client_name: r.client, department: r.dept, description: r.desc, duration_min: r.time
+  }));
+
+  const btn = document.querySelector('.dt-btn-submit');
+  btn.disabled = true; btn.textContent = 'Submitting...';
+  try {
+    const r = await api('/api/daily-tasks', 'POST', { entry_date: date, rows });
+    if (r.error) { showToast(r.error, 'error'); }
+    else {
+      showToast(`✅ ${r.count} entries submitted! Confirmation sent on email.`);
+      DT_LOCKED = true;
+      await dtCheckLockAndRender();
+      await dtLoadHistory();
+    }
+  } catch(e) {
+    showToast('Submit failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Submit All →';
+  }
+}
+
+// ── Extra Working (same form, filed as a leave_requests approval request) ──
+
+async function dtLoadExtraMine(){
+  try {
+    const rows = await api('/api/leaves?scope=mine');
+    DT_EXTRA_MINE = (Array.isArray(rows) ? rows : []).filter(r => r.leave_type === 'extra_working');
+  } catch(e) { DT_EXTRA_MINE = []; }
+}
+
+// A rejected request does NOT hold the date — the user can fix it and re-file.
+function dtExtraRequestFor(date){
+  return DT_EXTRA_MINE.find(r =>
+    r.status !== 'rejected' &&
+    (r.dates || []).some(d => String(d.date || '').slice(0,10) === date)
+  ) || null;
+}
+
+// Rows may carry minutes (this form) or only hours (Leave Tracker calendar).
+function dtEntryMinutes(o){
+  if (o && o.minutes) return o.minutes;
+  return Math.round(((o && o.hours) || 0) * 60);
+}
+
+// Show the unit the submitter actually typed — minutes here, hours from the
+// Leave Tracker calendar. Matches the approval email/WhatsApp wording.
+function dtFmtWorkDur(o){
+  if (o && o.minutes) return `${o.minutes} min`;
+  return `${Number(o && o.hours) || 0}h`;
+}
+
+async function dtSubmitExtra(){
+  if (DT_LOCKED) { showToast('Extra Working already submitted for this date','error'); return; }
+  const date = document.getElementById('dtEntryDate').value;
+  const read = dtReadRows();
+  if (!read) return;
+  const entries = read.map(r => ({
+    client: r.client, department: r.dept, description: r.desc, minutes: r.time
+  }));
+
+  const btn = document.querySelector('.dt-btn-submit');
+  btn.disabled = true; btn.textContent = 'Submitting...';
+  try {
+    const r = await api('/api/leaves', 'POST', {
+      leave_type: 'extra_working',
+      dates: [{ date, entries }]
+    });
+    if (r.error) { showToast(r.error, 'error'); }
+    else {
+      showToast(`⚡ Extra Working sent for approval (${entries.length} row${entries.length>1?'s':''}).`);
+      DT_LOCKED = true;
+      await dtCheckLockAndRender();
+      await dtLoadHistory();
+    }
+  } catch(e) {
+    showToast('Submit failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Submit for Approval →';
+  }
+}
+
+// One card per date (a request can cover several), newest date first.
+function dtRenderExtraHistory(){
+  const wrap = document.getElementById('dtHistoryWrap');
+  const days = [];
+  for (const r of DT_EXTRA_MINE) {
+    for (const d of (r.dates || [])) {
+      days.push({ req: r, date: String(d.date || '').slice(0,10), day: d });
+    }
+  }
+  if (!days.length) {
+    wrap.innerHTML = '<div class="empty">No extra working submitted yet.</div>';
+    return;
+  }
+  days.sort((a,b) => b.date.localeCompare(a.date));
+
+  let html = '';
+  for (const { req, date, day } of days) {
+    const rows = Array.isArray(day.entries) ? day.entries : [];
+    const totalMin = day.minutes || rows.reduce((a,e) => a + dtEntryMinutes(e), 0) || dtEntryMinutes(day);
+    html += `<div class="dt-history-day">
+      <div class="dt-history-date">
+        <span>📅 ${dtEscape(fmtDate(date) || date)}</span>
+        <span class="lv-status lv-status-${dtEscape(req.status)}">${dtEscape(req.status)}</span>
+        ${rows.length ? `<span class="dt-history-meta">${rows.length} task${rows.length>1?'s':''}</span>` : ''}
+        <span class="dt-history-meta">${totalMin} min total</span>
+      </div>`;
+    if (rows.length) {
+      for (const e of rows) {
+        html += `<div class="dt-history-row">
+          <span class="pill">${dtEscape(e.client)}</span>
+          ${e.department ? `<span class="pill" style="background:#dbeafe;color:#1e40af;border-color:#bfdbfe">${dtEscape(e.department)}</span>` : ''}
+          <span style="flex:1;min-width:160px">${dtEscape(e.description)}</span>
+          <span class="dt-history-time">${dtEntryMinutes(e)} min</span>
+        </div>`;
+      }
+    } else {
+      // Legacy request filed before per-client rows existed
+      html += `<div class="dt-history-row">
+        <span style="flex:1;min-width:160px;color:#64748b">No client breakdown recorded</span>
+        <span class="dt-history-time">${totalMin} min</span>
+      </div>`;
+    }
+    if (req.approver_note) {
+      html += `<div class="dt-history-row" style="background:#fffbeb;border-color:#fde68a">
+        <span style="flex:1;min-width:160px"><b>Approver note:</b> ${dtEscape(req.approver_note)}</span>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  wrap.innerHTML = html;
+}
+
+async function dtLoadHistory(){
+  const wrap = document.getElementById('dtHistoryWrap');
+  if (DT_MODE === 'extra') {
+    // dtCheckLockAndRender() already refreshed DT_EXTRA_MINE for this render pass
+    dtRenderExtraHistory();
+    return;
+  }
+  try {
+    const rows = await api('/api/daily-tasks/mine');
+    if (!rows || !rows.length) {
+      wrap.innerHTML = '<div class="empty">No past submissions yet.</div>';
+      return;
+    }
+    // Group by date
+    const byDate = {};
+    for (const r of rows) {
+      if (!byDate[r.entry_date]) byDate[r.entry_date] = [];
+      byDate[r.entry_date].push(r);
+    }
+    let html = '';
+    for (const date of Object.keys(byDate)) {
+      const items = byDate[date];
+      const total = items.reduce((a,b) => a + (b.duration_min||0), 0);
+      html += `<div class="dt-history-day">
+        <div class="dt-history-date">
+          <span>📅 ${dtEscape(fmtDate(date) || date)}</span>
+          <span class="dt-history-meta">${items.length} task${items.length>1?'s':''}</span>
+          <span class="dt-history-meta">${total} min total</span>
+        </div>`;
+      for (const it of items) {
+        html += `<div class="dt-history-row">
+          <span class="pill">${dtEscape(it.client_name)}</span>
+          ${it.department ? `<span class="pill" style="background:#dbeafe;color:#1e40af;border-color:#bfdbfe">${dtEscape(it.department)}</span>` : ''}
+          <span style="flex:1;min-width:160px">${dtEscape(it.description)}</span>
+          <span class="dt-history-time">${it.duration_min} min</span>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+    wrap.innerHTML = html;
+  } catch(e) {
+    wrap.innerHTML = '<div class="empty">Failed to load history</div>';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// 🏢 CLIENT MASTER (admin)
+// ══════════════════════════════════════════════════════
+let CM_OPEN_ID = null;
+let CM_ALL = [];
+
+const CM_AVATAR_PALETTE = [
+  ['#fb923c','#ea580c'], ['#60a5fa','#2563eb'], ['#34d399','#059669'],
+  ['#a78bfa','#7c3aed'], ['#f472b6','#db2777'], ['#facc15','#ca8a04'],
+  ['#22d3ee','#0891b2'], ['#f87171','#dc2626'], ['#94a3b8','#475569'],
+];
+function cmAvatarStyle(name){
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const [a, b] = CM_AVATAR_PALETTE[h % CM_AVATAR_PALETTE.length];
+  return `background:linear-gradient(135deg,${a},${b});`;
+}
+function cmInitials(name){
+  const parts = name.trim().split(/\s+/).slice(0, 2);
+  return parts.map(p => p[0] || '').join('').toUpperCase() || '?';
+}
+
+// Client Master is read-only for anyone who is not admin/HOD/PC — they reach it
+// only to see the clients they handle. The write routes already refuse them
+// (requireAdminOrHod), so this just stops the app from offering buttons that
+// would 403.
+// Was ['admin','hod','pc'] — which never matched the routes. Every Client Master
+// write asked for admin-or-hod, so PC saw Add / Bulk / Logo and got a 403 on
+// click; Remove is admin-only, so a hod saw that one and got a 403 too. Both
+// sides now ask the same question, and the Remove button is gated separately
+// where it is rendered.
+function cmCanEdit(){ return canDo('edit_clients'); }
+
+function cmApplyRoleControls(){
+  const show = cmCanEdit() ? '' : 'none';
+  const addBtn = document.getElementById('cmAddBtn');
+  if (addBtn) addBtn.style.display = show;
+  const bulkBtn = document.getElementById('cmBulkBtn');
+  if (bulkBtn) bulkBtn.style.display = show;
+  // The Credentials Vault holds plaintext passwords, so the tab is admin-only.
+  const vaultBtn = document.getElementById('cmTabVaultBtn');
+  if (vaultBtn) vaultBtn.style.display = (ME.role === 'admin') ? '' : 'none';
+}
+
+let CM_USERS = [];
+async function loadClients(){
+  const wrap = document.getElementById('cmListWrap');
+  wrap.innerHTML = '<div class="empty">Loading clients…</div>';
+  CM_OPEN_ID = null;
+  try {
+    // scope=master → the server returns only the clients this role may manage
+    // here (admin/PC all, HOD their department's, everyone else their own).
+    // The plain /api/clients used by the task and meeting pickers stays full.
+    const [clients, users] = await Promise.all([api('/api/clients?scope=master'), api('/api/users')]);
+    CM_ALL = Array.isArray(clients) ? clients : [];
+    CM_USERS = Array.isArray(users) ? users : [];
+    document.getElementById('cmStatTotal').textContent = CM_ALL.length;
+    cmApplyRoleControls();
+    cmRenderList();
+  } catch(e) {
+    wrap.innerHTML = '<div class="empty">Failed to load clients</div>';
+    document.getElementById('cmStatTotal').textContent = '0';
+    document.getElementById('cmStatVisible').textContent = '0';
+  }
+}
+
+// ── Client Master tabs: Clients list ⇄ Credentials Vault ─────────────
+function cmTab(which, el){
+  if (which === 'vault' && ME.role !== 'admin') return;  // admin-only
+  document.querySelectorAll('#cmTabClientsBtn,#cmTabVaultBtn').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('cmTab-clients').style.display = which === 'clients' ? 'block' : 'none';
+  document.getElementById('cmTab-vault').style.display   = which === 'vault'   ? 'block' : 'none';
+  if (which === 'vault') cvLoad();
+}
+
+// ── Credentials Vault ────────────────────────────────────────────────
+// A per-client store of the logins for whatever we build for a client (a
+// bespoke task manager, a dashboard, etc.). Admin-only, plaintext passwords —
+// the point is to read them back, so this is not a secrets manager.
+let CV_DATA = [];
+let _cvExpanded = new Set();  // which client groups are open (by client name)
+function cvToggleGroup(name){
+  if (_cvExpanded.has(name)) _cvExpanded.delete(name); else _cvExpanded.add(name);
+  cvRender();
+}
+async function cvLoad(){
+  const wrap = document.getElementById('cvListWrap');
+  wrap.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const rows = await api('/api/client-credentials');
+    CV_DATA = Array.isArray(rows) ? rows : [];
+    cvRender();
+  } catch(e){ wrap.innerHTML = '<div class="empty">Failed to load credentials</div>'; }
+}
+
+function cvRender(){
+  const wrap = document.getElementById('cvListWrap');
+  const q = (document.getElementById('cvSearch')?.value || '').toLowerCase().trim();
+  const match = c => !q || [c.client_name, c.system_name, c.role_label, c.url, c.username, c.notes]
+    .some(v => String(v || '').toLowerCase().includes(q));
+  const list = CV_DATA.filter(match);
+  if (!list.length){
+    wrap.innerHTML = `<div class="empty">${CV_DATA.length ? 'No matches' : 'No credentials stored yet — click “+ Add Credential”.'}</div>`;
+    return;
+  }
+  // Group by client so each client's systems sit together.
+  const groups = {};
+  list.forEach(c => { (groups[c.client_name || '— Unknown client —'] ||= []).push(c); });
+  const field = (label, value, copyable) => value ? `
+    <div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:13px">
+      <span style="min-width:70px;color:#64748b;font-weight:600">${label}</span>
+      <span style="flex:1;word-break:break-all;color:#0f172a">${dtEscape(value)}</span>
+      ${copyable ? `<button class="cm-btn-ghost" style="padding:2px 8px;font-size:11px" onclick="cvCopy(${JSON.stringify(value).replace(/"/g,'&quot;')},'${label}')">📋</button>` : ''}
+    </div>` : '';
+  const card = c => `
+    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-weight:700;color:#0f172a">${dtEscape(c.system_name)}</span>
+        ${c.role_label ? `<span style="font-size:11px;font-weight:700;color:#7c3aed;background:#f3e8ff;padding:2px 8px;border-radius:999px">${dtEscape(c.role_label)}</span>` : ''}
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <button class="cm-btn-ghost" style="padding:4px 10px;font-size:12px" onclick="cvOpenModal(${c.id})">✏️ Edit</button>
+          <button class="cm-btn-ghost" style="padding:4px 10px;font-size:12px;color:#dc2626" onclick="cvDelete(${c.id})">🗑 Delete</button>
+        </div>
+      </div>
+      ${field('Link', c.url, true)}
+      ${field('ID', c.username, true)}
+      ${c.password ? `
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:13px">
+          <span style="min-width:70px;color:#64748b;font-weight:600">Password</span>
+          <span id="cvPw${c.id}" data-shown="0" data-pw="${dtEscape(c.password)}" style="flex:1;word-break:break-all;color:#0f172a;font-family:monospace">••••••••</span>
+          <button class="cm-btn-ghost" style="padding:2px 8px;font-size:11px" onclick="cvTogglePw(${c.id})" id="cvPwBtn${c.id}">👁 Show</button>
+          <button class="cm-btn-ghost" style="padding:2px 8px;font-size:11px" onclick="cvCopy(${JSON.stringify(c.password).replace(/"/g,'&quot;')},'Password')">📋</button>
+        </div>` : ''}
+      ${c.notes ? `<div style="margin-top:6px;font-size:12px;color:#64748b;white-space:pre-wrap">${dtEscape(c.notes)}</div>` : ''}
+    </div>`;
+  // Collapsible per-client groups: click the header to open/close. While
+  // searching, every matching group is forced open so results are visible.
+  const searching = !!q;
+  wrap.innerHTML = Object.keys(groups).sort().map(name => {
+    const open = searching || _cvExpanded.has(name);
+    const nameArg = JSON.stringify(name).replace(/"/g,'&quot;');
+    return `
+    <div style="margin-bottom:12px;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div onclick="cvToggleGroup(${nameArg})" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;padding:12px 14px;background:#f8fafc;font-weight:700;color:#0f766e;font-size:14px">
+        <span style="display:inline-block;transition:transform .15s;transform:rotate(${open?90:0}deg);color:#94a3b8;font-size:11px">▶</span>
+        🏢 ${dtEscape(name)}
+        <span style="font-size:11px;color:#94a3b8;font-weight:500">${groups[name].length} login${groups[name].length===1?'':'s'}</span>
+      </div>
+      <div style="display:${open?'block':'none'};padding:${open?'12px 14px':'0'}">
+        ${groups[name].map(card).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function cvTogglePw(id){
+  const el = document.getElementById('cvPw'+id);
+  const btn = document.getElementById('cvPwBtn'+id);
+  if (!el) return;
+  const shown = el.getAttribute('data-shown') === '1';
+  el.textContent = shown ? '••••••••' : el.getAttribute('data-pw');
+  el.setAttribute('data-shown', shown ? '0' : '1');
+  if (btn) btn.textContent = shown ? '👁 Show' : '🙈 Hide';
+}
+
+function cvCopy(text, label){
+  navigator.clipboard?.writeText(text).then(
+    () => showToast(`${label || 'Value'} copied`),
+    () => showToast('Copy failed', 'error'));
+}
+
+// Role field: a dropdown (Admin / User / Other). "Other" reveals a free-text
+// box so any role can still be typed. On edit, an existing custom role that
+// isn't Admin/User lands in "Other" with its text pre-filled.
+function cvRoleChange(){
+  const isOther = document.getElementById('cvRoleSelect').value === 'Other';
+  document.getElementById('cvRoleOther').style.display = isOther ? 'block' : 'none';
+}
+function cvSetRole(role){
+  const sel = document.getElementById('cvRoleSelect');
+  const other = document.getElementById('cvRoleOther');
+  if (!role) { sel.value = ''; other.value = ''; }
+  else if (role === 'Admin' || role === 'User') { sel.value = role; other.value = ''; }
+  else { sel.value = 'Other'; other.value = role; }
+  cvRoleChange();
+}
+function cvGetRole(){
+  const v = document.getElementById('cvRoleSelect').value;
+  return v === 'Other' ? document.getElementById('cvRoleOther').value.trim() : v;
+}
+
+// In-app confirm — a promise that resolves true/false, so no browser popup.
+let _cvConfirmCb = null;
+function cvConfirm(msg, okLabel = 'Delete'){
+  return new Promise(resolve => {
+    _cvConfirmCb = resolve;
+    document.getElementById('cvConfirmMsg').textContent = msg;
+    document.getElementById('cvConfirmOk').textContent = okLabel;
+    document.getElementById('cvConfirmModal').classList.add('open');
+  });
+}
+function cvConfirmResolve(val){
+  document.getElementById('cvConfirmModal').classList.remove('open');
+  const cb = _cvConfirmCb; _cvConfirmCb = null;
+  if (cb) cb(val);
+}
+
+function cvOpenModal(id){
+  if (ME.role !== 'admin') return;
+  document.getElementById('cvErr').style.display = 'none';
+  const sel = document.getElementById('cvClient');
+  // Reuse the Client Master list (already role-scoped by the server).
+  sel.innerHTML = '<option value="">— Select client —</option>' +
+    (CM_ALL || []).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''))
+      .map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+  const c = id ? CV_DATA.find(x => x.id === id) : null;
+  document.getElementById('cvModalTitle').textContent = c ? '✏️ Edit Credential' : '＋ Add Credential';
+  document.getElementById('cvId').value     = c ? c.id : '';
+  document.getElementById('cvClient').value = c ? c.client_id : '';
+  document.getElementById('cvClient').disabled = !!c;  // don't move an entry between clients
+  document.getElementById('cvSystem').value = c ? (c.system_name || '') : '';
+  cvSetRole(c ? (c.role_label || '') : '');
+  document.getElementById('cvUrl').value    = c ? (c.url || '') : '';
+  document.getElementById('cvUser').value   = c ? (c.username || '') : '';
+  document.getElementById('cvPass').value   = c ? (c.password || '') : '';
+  document.getElementById('cvNotes').value  = c ? (c.notes || '') : '';
+  document.getElementById('cvModal').classList.add('open');
+}
+
+async function cvSave(){
+  const err = document.getElementById('cvErr');
+  err.style.display = 'none';
+  const id = document.getElementById('cvId').value;
+  const payload = {
+    client_id:   document.getElementById('cvClient').value,
+    system_name: document.getElementById('cvSystem').value.trim(),
+    role_label:  cvGetRole(),
+    url:         document.getElementById('cvUrl').value.trim(),
+    username:    document.getElementById('cvUser').value.trim(),
+    password:    document.getElementById('cvPass').value,
+    notes:       document.getElementById('cvNotes').value.trim(),
+  };
+  if (!payload.client_id) { err.textContent = 'Pick a client'; err.style.display = 'block'; return; }
+  if (!payload.system_name) { err.textContent = 'System name is required'; err.style.display = 'block'; return; }
+  const btn = document.getElementById('cvSaveBtn');
+  const label = btn.textContent; btn.disabled = true; btn.textContent = 'Saving…';
+  let r;
+  try {
+    r = id ? await api(`/api/client-credentials/${id}`, 'PUT', payload)
+           : await api('/api/client-credentials', 'POST', payload);
+  } finally { btn.disabled = false; btn.textContent = label; }
+  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+  closeModal('cvModal');
+  showToast(id ? '✅ Credential updated' : '✅ Credential saved');
+  cvLoad();
+}
+
+async function cvDelete(id){
+  const c = CV_DATA.find(x => x.id === id);
+  const ok = await cvConfirm(`Delete "${c?.system_name || 'this'}"${c?.role_label ? ' ('+c.role_label+')' : ''} credential? It will be archived, not lost.`);
+  if (!ok) return;
+  const r = await api(`/api/client-credentials/${id}`, 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast('🗑 Credential deleted');
+  cvLoad();
+}
+
+function cmExportExcel() {
+  if (!CM_ALL || !CM_ALL.length) { showToast('No clients to export', 'error'); return; }
+  // Respect the active search filter so the export matches what's on screen.
+  const q = (document.getElementById('cmSearch')?.value || '').toLowerCase().trim();
+  const list = q ? CM_ALL.filter(c => (c.name || '').toLowerCase().includes(q)) : CM_ALL;
+  // CSV cell escaping — wrap in quotes, double any inner quotes.
+  const cell = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const header = ['#', 'Client Name', 'Handler', 'Client ID'];
+  const rows = list.map((c, i) => [i + 1, c.name || '', c.handler_name || '', c.id]);
+  // BOM so Excel reads UTF-8 (handles ₹, accents, etc.) correctly.
+  const csv = '﻿' + [header, ...rows].map(r => r.map(cell).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const today = new Date().toISOString().split('T')[0];
+  a.href = url;
+  a.download = `clients-${today}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`⬇ Exported ${list.length} client${list.length === 1 ? '' : 's'}`);
+}
+
+function cmOpenAddModal() {
+  document.getElementById('cmAddErr').style.display = 'none';
+  document.getElementById('cmFormName').value = '';
+  document.getElementById('cmFormLoginEmail').value = '';
+  document.getElementById('cmFormLoginPassword').value = '';
+
+  // Populate dept filter dropdown
+  const depts = [...new Set(CM_USERS.filter(u=>u.role!=='client').map(u=>u.department||'').filter(Boolean))].sort();
+  document.getElementById('cmAddDeptDropdown').innerHTML =
+    `<div class="multi-select-item" onclick="cmAddSelectAllDepts()" style="font-weight:600;cursor:pointer;border-bottom:1px solid #e2e8f0">
+      <input type="checkbox" id="cmAddAllDeptsCb" checked style="width:14px;height:14px;accent-color:#4f46e5;cursor:pointer;pointer-events:none;flex-shrink:0"/>
+      <span>All Departments</span>
+    </div>` +
+    depts.map(d=>`
+      <label class="multi-select-item" data-dept="${dtEscape(d)}" style="cursor:pointer">
+        <input type="checkbox" class="cmAddDeptCb" value="${dtEscape(d)}" onchange="cmAddFilterHandlers()" style="width:14px;height:14px;accent-color:#4f46e5;cursor:pointer;flex-shrink:0"/>
+        <span>${dtEscape(d)}</span>
+      </label>`).join('');
+
+  // Populate handler list
+  document.getElementById('cmAddHandlerDropdown').innerHTML =
+    CM_USERS.filter(u=>u.role!=='client').map(u=>`
+      <label data-dept="${dtEscape(u.department||'')}" style="display:flex;align-items:center;gap:8px;padding:7px 14px;cursor:pointer;font-size:13px;transition:background .1s" onmouseover="this.style.background='#f8f5ff'" onmouseout="this.style.background=''">
+        <input type="checkbox" class="cmAddHandlerCb" value="${u.id}" style="width:15px;height:15px;accent-color:#7c3aed;cursor:pointer" onchange="cmAddHandlerCbChange()"/>
+        <span>${dtEscape(u.name)}</span>
+        ${u.department?`<span style="font-size:10px;color:#94a3b8;margin-left:auto">${dtEscape(u.department)}</span>`:''}
+      </label>`).join('');
+
+  document.getElementById('cmAddHandlerCount').textContent = 'Select handlers';
+  document.getElementById('cmAddDeptCount').textContent = 'All Departments';
+  document.getElementById('cmAddHandlerDropdown').style.display = 'none';
+
+  document.getElementById('clientAddModal').classList.add('open');
+  setTimeout(() => document.getElementById('cmFormName')?.focus(), 0);
+}
+
+function cmRenderList(){
+  const wrap = document.getElementById('cmListWrap');
+  const q = (document.getElementById('cmSearch')?.value || '').toLowerCase().trim();
+  const filtered = q ? CM_ALL.filter(c => (c.name || '').toLowerCase().includes(q)) : CM_ALL;
+  document.getElementById('cmStatVisible').textContent = filtered.length;
+
+  if (!CM_ALL.length) {
+    wrap.innerHTML = '<div class="empty">No clients yet — add one above.</div>';
+    return;
+  }
+  if (!filtered.length) {
+    wrap.innerHTML = '<div class="empty">No clients match your search.</div>';
+    return;
+  }
+
+  let html = '';
+  for (const c of filtered) {
+    const safeName = dtEscape(c.name);
+    const initials = dtEscape(cmInitials(c.name));
+    const avatarStyle = cmAvatarStyle(c.name);
+    const handlerNames = c.all_handler_names
+      ? c.all_handler_names.split('||')
+      : (c.handler_name ? [c.handler_name] : []);
+    const handlerLabel = handlerNames.length
+      ? handlerNames.map(n => `<span style="font-size:11px;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:4px">👤 ${dtEscape(n)}</span>`).join('')
+      : `<span style="font-size:11px;color:#94a3b8;background:#f1f5f9;padding:2px 8px;border-radius:10px;font-weight:600">No handler</span>`;
+    // is_active is absent on older rows — COALESCE'd to 1 server-side, so treat undefined as active.
+    const isOn = c.is_active === undefined || !!Number(c.is_active);
+    html += `<div class="cm-client-row${isOn ? '' : ' cm-inactive'}" data-cm-id="${c.id}" onclick="cmShowDetail(${c.id})">
+        <div class="cm-client-info">
+          <div class="cm-avatar" style="${avatarStyle}">${initials}</div>
+          <div class="cm-client-meta">
+            <span class="cm-client-name">${safeName}</span>
+            <div class="cm-client-id">Client #${c.id} · ${handlerLabel}</div>
+          </div>
+        </div>
+        <div class="cm-client-actions">
+          <button class="cm-client-dash" title="Open this client's portal exactly as the client sees it (read-only)"
+                  onclick="event.stopPropagation();cmOpenClientPortal(${c.id})">📊 Dashboard</button>
+          <span class="cm-switch${isOn ? ' is-on' : ''}" id="cmSw${c.id}" title="${isOn ? 'Click to mark inactive' : 'Click to mark active'}"
+                onclick="event.stopPropagation();cmToggleActive(${c.id},${isOn ? 0 : 1})">
+            <span class="cm-switch-track"></span>
+            <span class="cm-switch-label">${isOn ? 'Active' : 'Inactive'}</span>
+          </span>
+          ${ME.role === 'admin' ? `<button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>` : ''}
+          <span class="cm-client-arrow">›</span>
+        </div>
+      </div>`;
+  }
+  wrap.innerHTML = html;
+}
+
+// Flip a client between Active and Inactive. Writes clients.is_active through the
+// existing PUT /api/clients/:id — the same flag and endpoint the Employee 360
+// page's "Mark active/inactive" button uses, so the two views stay in agreement.
+// Patches just this row instead of re-rendering the list, to keep scroll position.
+async function cmToggleActive(id, makeActive){
+  const sw = document.getElementById('cmSw' + id);
+  if (sw) sw.classList.add('is-busy');
+  try {
+    const r = await api('/api/clients/' + id, 'PUT', { is_active: makeActive });
+    if (r && r.error) throw new Error(r.error);
+    // noop:true is a 200 where the server wrote nothing — every field sent was
+    // one this role may not change. Without this check the switch flipped on a
+    // write that never landed, and the row reverted on the next refresh.
+    if (r && r.noop) throw new Error('You do not have permission to change this client');
+    const client = CM_ALL.find(c => String(c.id) === String(id));
+    if (client) client.is_active = makeActive;
+    if (sw) {
+      const on = !!makeActive;
+      sw.classList.toggle('is-on', on);
+      sw.title = on ? 'Click to mark inactive' : 'Click to mark active';
+      sw.querySelector('.cm-switch-label').textContent = on ? 'Active' : 'Inactive';
+      sw.setAttribute('onclick', `event.stopPropagation();cmToggleActive(${id},${on ? 0 : 1})`);
+      sw.closest('.cm-client-row')?.classList.toggle('cm-inactive', !on);
+    }
+    showToast(makeActive ? 'Client marked active' : 'Client marked inactive');
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  } finally {
+    if (sw) sw.classList.remove('is-busy');
+  }
+}
+
+// Open the client-facing portal (public/client.html) for one client, read-only,
+// in the SAME tab — the portal's own "← Back to Client Master" banner returns
+// here. The ?clientId= form is only honoured for admin/hod/pc — see
+// resolvePortalClientId in server.js — and every write control there is hidden
+// behind the portal's own preview mode. This is NOT impersonation: no token is
+// swapped, and it works even for clients that have no portal login yet.
+function cmOpenClientPortal(id){
+  window.location.href = '/client?clientId=' + encodeURIComponent(id);
+}
+
+function cmFilter(){ cmRenderList(); }
+
+function cmToggleBulk(){
+  const panel = document.getElementById('cmBulkPanel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+async function cmShowDetail(id, from, to) {
+  document.getElementById('cmListView').style.display = 'none';
+  const detail = document.getElementById('cmDetailView');
+  detail.style.display = 'block';
+  detail.innerHTML = '<div class="empty" style="padding:40px">Loading client details…</div>';
+  window.scrollTo(0, 0);
+  try {
+    const qs = (from && to) ? `?from=${from}&to=${to}` : '';
+    const [s, handlers] = await Promise.all([
+      api('/api/clients/' + id + '/stats' + qs),
+      api('/api/clients/' + id + '/handlers')
+    ]);
+    if (s.error) { detail.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed: ${s.error}</div>`; return; }
+    CM_LINKS = Array.isArray(s.client?.system_links) ? s.client.system_links.map(l => ({ ...l })) : [];
+    detail.innerHTML = cmRenderDetailHtml(s, id, Array.isArray(handlers) ? handlers : []);
+    cmRenderLinksRows();
+    cmInitHandlerWidget(id);
+    cmDmsLoad(id);
+  } catch (e) {
+    detail.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed to load: ${e.message}</div>`;
+  }
+}
+
+function cmApplyDateFilter(id) {
+  const from = document.getElementById('cmDetailFrom')?.value;
+  const to   = document.getElementById('cmDetailTo')?.value;
+  cmShowDetail(id, from, to);
+}
+
+// Resize an uploaded image File to a 256x256 JPEG dataURL (preserves aspect
+// ratio, centers + lets background show through on letterbox).
+function cmResizeImage(file, maxDim = 256) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith('image/')) return reject(new Error('Not an image'));
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Read failed'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Image decode failed'));
+      img.onload = () => {
+        const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
+        const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+        const c = document.createElement('canvas');
+        c.width = maxDim; c.height = maxDim;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, maxDim, maxDim);
+        ctx.drawImage(img, (maxDim - w) / 2, (maxDim - h) / 2, w, h);
+        resolve(c.toDataURL('image/jpeg', 0.85));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function cmUploadLogo(id, fileInput) {
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+  try {
+    const dataUrl = await cmResizeImage(file, 256);
+    const r = await api(`/api/clients/${id}/logo`, 'PUT', { logo: dataUrl });
+    if (r?.error) { showToast(r.error, 'error'); return; }
+    showToast('✅ Logo updated');
+    cmShowDetail(id);
+  } catch (e) { showToast('Logo upload failed: ' + e.message, 'error'); }
+  finally { fileInput.value = ''; }
+}
+
+async function cmRemoveLogo(id) {
+  if (!await appConfirm('Remove the client logo?')) return;
+  try {
+    const r = await api(`/api/clients/${id}/logo`, 'PUT', { logo: null });
+    if (r?.error) { showToast(r.error, 'error'); return; }
+    showToast('Logo removed');
+    cmShowDetail(id);
+  } catch (e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+function cmOpenLoginModal(id, existingEmail) {
+  document.getElementById('cmLoginErr').style.display = 'none';
+  document.getElementById('cmLoginClientId').value = id;
+  document.getElementById('cmLoginEmail').value = existingEmail || '';
+  document.getElementById('cmLoginPassword').value = '';
+  document.getElementById('cmLoginTitle').textContent = existingEmail ? 'Reset Client Login' : 'Provision Client Login';
+  document.getElementById('clientLoginModal').classList.add('open');
+  setTimeout(() => document.getElementById(existingEmail ? 'cmLoginPassword' : 'cmLoginEmail')?.focus(), 0);
+}
+
+async function cmSaveLogin() {
+  const err = document.getElementById('cmLoginErr');
+  err.style.display = 'none';
+  const id = document.getElementById('cmLoginClientId').value;
+  const email = document.getElementById('cmLoginEmail').value.trim();
+  const password = document.getElementById('cmLoginPassword').value;
+  if (!email || !password) { err.textContent = 'Email and password required'; err.style.display = 'block'; return; }
+  try {
+    const r = await api(`/api/clients/${id}/login`, 'POST', { email, password });
+    if (r?.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+    showToast('✅ Login saved — share credentials with the client');
+    closeModal('clientLoginModal');
+    cmShowDetail(id); // refresh to reflect new login state
+  } catch (e) {
+    err.textContent = 'Failed: ' + (e.message || 'error');
+    err.style.display = 'block';
+  }
+}
+
+function cmBackToList() {
+  document.getElementById('cmDetailView').style.display = 'none';
+  document.getElementById('cmListView').style.display = 'block';
+}
+
+function cmRenderDetailHtml(s, id, currentHandlers) {
+  const client = s.client || {};
+  // WhatsApp group, System Links and Documents are operational data a handler of
+  // THIS client may manage too — not just full editors (edit_clients). Renaming
+  // or reassigning the client stays behind cmCanEdit().
+  const iHandleThisClient = String(client.handler_id) === String(ME.id)
+    || (Array.isArray(currentHandlers) && currentHandlers.some(h => String(h.id) === String(ME.id)));
+  const canEditClientOps = cmCanEdit() || iHandleThisClient;
+  const del = s.delegation || {}, chl = s.checklist || {};
+  const meet = s.meetings || {};
+  const range = s.range || {};
+  const tasksTotal = (parseInt(del.total)||0) + (parseInt(chl.total)||0);
+  const pendingTotal = (parseInt(del.pending)||0) + (parseInt(chl.pending)||0);
+  const completedTotal = (parseInt(del.completed)||0) + (parseInt(chl.completed)||0);
+  const overdueTotal = (parseInt(del.overdue)||0) + (parseInt(chl.overdue)||0);
+  const revisedTotal = parseInt(del.revised)||0;
+  const meetingsTotal = parseInt(meet.total)||0;
+  const meetingsScheduled = parseInt(meet.scheduled)||0;
+  const meetingsCancelled = parseInt(meet.cancelled)||0;
+  const completionPct = tasksTotal > 0 ? Math.round((completedTotal / tasksTotal) * 100) : 0;
+  const selIds = new Set((currentHandlers||[]).map(h => String(h.id)));
+  const handlerLine = selIds.size
+    ? (currentHandlers||[]).map(h => `<span style="background:#ccfbf1;color:#0f766e;padding:3px 10px;border-radius:6px;font-weight:600;font-size:12px;display:inline-block;margin:2px 2px">👤 ${dtEscape(h.name)}</span>`).join('')
+    : `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:6px;font-weight:600;font-size:12px">⚠️ No handler</span>`;
+
+  const recentHtml = (s.recent || []).length
+    ? s.recent.map(t => {
+        const typeBadge = t.type === 'checklist'
+          ? `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700">✅ Checklist</span>`
+          : `<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:700">📋 Delegation</span>`;
+        const statusColor = t.status === 'completed' ? '#16a34a' : t.status === 'revised' ? '#9d174d' : '#b91c1c';
+        const statusLabel = t.status === 'completed' ? 'Done' : t.status === 'revised' ? 'Revised' : 'Pending';
+        return `<tr>
+          <td>${typeBadge}</td>
+          <td>${dtEscape(t.description || '')}</td>
+          <td style="white-space:nowrap">${dtEscape(t.doer || '—')}</td>
+          <td style="white-space:nowrap">${fmtDate(t.due_date || '')}</td>
+          <td style="white-space:nowrap"><span style="color:${statusColor};font-weight:700;font-size:12px">${statusLabel}</span></td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="5" class="empty" style="padding:20px">No tasks in this window</td></tr>';
+
+  const meetingsHtml = (meet.recent || []).length
+    ? meet.recent.map(m => {
+        const statusPill = m.status === 'cancelled'
+          ? '<span style="font-size:10px;color:#b91c1c;background:#fee2e2;padding:2px 8px;border-radius:10px;font-weight:700">CANCELLED</span>'
+          : m.status === 'done'
+          ? '<span style="font-size:10px;color:#16a34a;background:#dcfce7;padding:2px 8px;border-radius:10px;font-weight:700">DONE</span>'
+          : '<span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:2px 8px;border-radius:10px;font-weight:700">SCHEDULED</span>';
+        return `<div style="padding:10px 14px;border-bottom:1px solid #f1f5f9">
+          <div style="font-weight:600;color:#0f172a;font-size:13px">${dtEscape(m.title)} ${statusPill}</div>
+          <div style="font-size:11px;color:#64748b;margin-top:3px">${fmtDate(m.meeting_date)} · ${m.start_time}–${m.end_time}${m.organizer_name ? ` · 👤 ${dtEscape(m.organizer_name)}` : ''}</div>
+        </div>`;
+      }).join('')
+    : '<div class="empty" style="padding:20px">No meetings in this window</div>';
+
+  const statCard = (label, value, color, sub) => `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px">
+    <div style="font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px">${label}</div>
+    <div style="font-size:28px;font-weight:700;color:${color};margin-top:6px">${value}</div>
+    ${sub ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px">${sub}</div>` : ''}
+  </div>`;
+
+  // Logo block — actual image if uploaded, else gradient initials avatar.
+  const initials = dtEscape(cmInitials(client.name || 'C'));
+  const avatarStyle = cmAvatarStyle(client.name || 'C');
+  const logoBlock = client.logo_url
+    ? `<img src="${client.logo_url}" alt="${dtEscape(client.name)}" style="width:60px;height:60px;border-radius:12px;object-fit:cover;border:1px solid #e2e8f0;flex-shrink:0"/>`
+    : `<div style="width:60px;height:60px;border-radius:12px;${avatarStyle};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:22px;flex-shrink:0">${initials}</div>`;
+  const logoBtns = client.logo_url
+    ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="document.getElementById('cmLogoInput_${client.id}').click()">Change</button>
+       <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;color:#dc2626;border-color:#fca5a5" onclick="cmRemoveLogo(${client.id})">Remove</button>`
+    : `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="document.getElementById('cmLogoInput_${client.id}').click()">＋ Upload Logo</button>`;
+
+  return `
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin-bottom:16px">
+      <button class="btn btn-outline" onclick="cmBackToList()" style="padding:6px 12px;font-size:12px;margin-bottom:12px">← Back to Clients</button>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          ${logoBlock}
+          <div>
+            <div style="font-size:22px;font-weight:700;color:#0f172a">${dtEscape(client.name)}</div>
+            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              ${handlerLine}
+              <span style="font-size:11px;color:#94a3b8">Client #${client.id}</span>
+            </div>
+            <div style="margin-top:8px;display:flex;gap:6px">
+              ${cmCanEdit() ? `${logoBtns}
+              <input type="file" id="cmLogoInput_${client.id}" accept="image/*" style="display:none" onchange="cmUploadLogo(${client.id}, this)"/>` : ''}
+            </div>
+          </div>
+        </div>
+        <div style="${cmCanEdit() ? 'display:flex' : 'display:none'};gap:8px;align-items:flex-start;flex-wrap:wrap;margin-top:8px">
+          <label style="font-size:11px;color:#64748b;font-weight:600;padding-top:6px">Handlers:</label>
+          <div style="position:relative" id="cmHandlerWidget_${id}">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <div class="multi-select-wrap" id="cmDeptFilterWrap_${id}" style="position:relative;min-width:200px">
+                <button type="button" onclick="cmToggleDeptDropdown(${id})"
+                  style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:190px">
+                  <span id="cmDeptCount_${id}">All Departments</span> ▾
+                </button>
+                <div class="multi-select-dropdown" id="cmDeptDropdown_${id}">
+                  <div class="multi-select-item" onclick="cmSelectAllDepts(${id})" style="font-weight:600;cursor:pointer;border-bottom:1px solid #e2e8f0">
+                    <input type="checkbox" id="cmAllDeptsCb_${id}" checked style="width:14px;height:14px;accent-color:#4f46e5;cursor:pointer;pointer-events:none;flex-shrink:0"/>
+                    <span>All Departments</span>
+                  </div>
+                  ${[...new Set(CM_USERS.map(u=>u.department||'').filter(Boolean))].sort().map(d=>`
+                    <label class="multi-select-item" data-dept="${dtEscape(d)}" style="cursor:pointer">
+                      <input type="checkbox" class="cm-dept-cb_${id}" value="${dtEscape(d)}" onchange="cmFilterHandlerList(${id})" style="width:14px;height:14px;accent-color:#4f46e5;cursor:pointer;flex-shrink:0"/>
+                      <span>${dtEscape(d)}</span>
+                    </label>
+                  `).join('')}
+                </div>
+              </div>
+              <button onclick="cmToggleHandlerDropdown(${id})"
+                style="padding:5px 12px;border:1.5px solid #7c3aed;border-radius:6px;font-size:12px;background:#fff;color:#7c3aed;font-weight:600;cursor:pointer">
+                👥 <span id="cmHandlerCount_${id}">${selIds.size ? selIds.size + ' selected' : 'Select handlers'}</span> ▾
+              </button>
+              <button onclick="cmSaveHandlers(${id})"
+                style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;background:#7c3aed;color:#fff;font-weight:600;cursor:pointer">Save</button>
+            </div>
+            <div id="cmHandlerDropdown_${id}" style="display:none;position:absolute;top:34px;left:0;z-index:99;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:240px;max-height:260px;overflow-y:auto;padding:6px 0">
+              ${CM_USERS.filter(u=>u.role!=='client').map(u=>`
+                <label data-dept="${dtEscape(u.department||'')}" style="display:flex;align-items:center;gap:8px;padding:7px 14px;cursor:pointer;font-size:13px;transition:background .1s" onmouseover="this.style.background='#f8f5ff'" onmouseout="this.style.background=''">
+                  <input type="checkbox" class="cm-handler-cb_${id}" value="${u.id}" ${selIds.has(String(u.id))?'checked':''}
+                    style="width:15px;height:15px;accent-color:#7c3aed;cursor:pointer" onchange="cmHandlerCbChange(${id})"/>
+                  <span>${dtEscape(u.name)}</span>
+                  ${u.department?`<span style="font-size:10px;color:#94a3b8;margin-left:auto">${dtEscape(u.department)}</span>`:''}
+                </label>`).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:14px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;flex-wrap:wrap">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:10px 14px;border-radius:8px">
+          <label style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Range</label>
+          <input type="date" id="cmDetailFrom" value="${range.from || ''}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
+          <span style="font-size:11px;color:#94a3b8">to</span>
+          <input type="date" id="cmDetailTo" value="${range.to || ''}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
+          <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="cmApplyDateFilter(${id})">Apply</button>
+          <span style="font-size:11px;color:#64748b">Default: current month</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;background:#eff6ff;padding:10px 14px;border-radius:8px;border:1px solid #bfdbfe">
+          ${(s.login && s.login.provisioned)
+            ? `<span style="font-size:11px;color:#1e40af;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Login</span>
+               <span style="font-size:12px;color:#1e293b;font-weight:600">${dtEscape(s.login.email)}</span>
+               <button class="btn btn-outline" style="padding:5px 10px;font-size:11px" onclick="cmOpenLoginModal(${id}, '${dtEscape(s.login.email)}')">Reset</button>`
+            : `<span style="font-size:11px;color:#1e40af;font-weight:700;text-transform:uppercase;letter-spacing:.4px">No login set</span>
+               <button class="btn btn-primary" style="padding:5px 12px;font-size:12px" onclick="cmOpenLoginModal(${id}, '')">＋ Provision</button>`}
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
+      ${statCard('Total Tasks', tasksTotal, '#4f46e5', `${del.total||0} delegation · ${chl.total||0} checklist`)}
+      ${statCard('Pending', pendingTotal, '#ef4444', overdueTotal > 0 ? `${overdueTotal} overdue` : 'On track')}
+      ${statCard('Completed', completedTotal, '#10b981', `${completionPct}% completion rate`)}
+      ${statCard('Revised', revisedTotal, '#f59e0b', revisedTotal > 0 ? 'Needs rework' : 'None')}
+      ${statCard('Meetings', meetingsTotal, '#7c3aed', `${meetingsScheduled} scheduled · ${meetingsCancelled} cancelled`)}
+    </div>
+
+    <div class="cm-detail-grid" style="display:grid;grid-template-columns:1fr 360px;gap:16px">
+      <div class="task-table-card" style="padding:0">
+        <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
+          <div class="card-head-title">Recent Activity</div>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;min-width:580px">
+            <thead><tr>
+              <th>Type</th><th>Description</th><th>Doer</th><th>Date</th><th>Status</th>
+            </tr></thead>
+            <tbody>${recentHtml}</tbody>
+          </table>
+        </div>
+      </div>
+      <div class="task-table-card" style="padding:0">
+        <div class="card-head" style="padding:14px 16px;border-bottom:1px solid #e2e8f0">
+          <div class="card-head-title">Meetings (this window)</div>
+        </div>
+        <div>${meetingsHtml}</div>
+      </div>
+    </div>
+
+    <div class="task-table-card" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div class="card-head-title">📱 WhatsApp Group <span style="font-weight:400;color:#94a3b8;font-size:12px">— where this client's pending-task digest is sent</span></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="text" id="cmWaGroup_${id}" value="${dtEscape(client.whatsapp_group_id || '')}"
+               placeholder="1203634...@g.us"
+               style="flex:1;min-width:240px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:monospace"/>
+        <button class="btn btn-primary" style="padding:7px 16px;font-size:12px" onclick="cmSaveWaGroup(${id})">💾 Save</button>
+      </div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:7px">
+        Leave blank to switch the digest off for this client. Sent 9:30 AM, Mon–Fri, only when something is pending.
+      </div>
+    </div>
+
+    <div class="task-table-card" id="cmLinksCard" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div class="card-head-title">🔗 System Links <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on this client's portal</span></div>
+        <button class="btn btn-outline" style="padding:5px 11px;font-size:12px" onclick="cmAddLinkRow()">＋ Add Link</button>
+      </div>
+      <div id="cmLinksList"></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px">
+        <button class="btn btn-primary" id="cmSaveLinksBtn" style="padding:6px 16px;font-size:12px;transition:background .2s" onclick="cmSaveLinks(${id})">💾 Save Links</button>
+      </div>
+    </div>
+
+    <div class="task-table-card" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div class="card-head-title">📁 Documents <span style="font-weight:400;color:#94a3b8;font-size:12px">— Google Drive</span></div>
+      </div>
+      <div id="cmDmsContent"><div style="color:#94a3b8;font-size:12px;padding:8px 0">Loading…</div></div>
+    </div>
+  `;
+}
+
+// ── System Links editor (admin client detail) ───────────────────────
+var CM_LINKS = [];
+function cmRenderLinksRows(){
+  const box = document.getElementById('cmLinksList');
+  if (!box) return;
+  if (!CM_LINKS.length) {
+    box.innerHTML = `<div style="color:#94a3b8;font-size:12px;padding:8px 2px">No links yet — click "Add Link" to add the systems this client should see (e.g. IMS, CRM).</div>`;
+    return;
+  }
+  const inp = 'padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;outline:none;font-family:inherit';
+  box.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 150px 1.4fr 38px;gap:8px;margin-bottom:6px;padding:0 2px">
+      <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px">Name</div>
+      <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px">Live Date</div>
+      <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px">Open (URL)</div>
+      <div></div>
+    </div>` +
+    CM_LINKS.map((l, i) => `
+    <div style="display:grid;grid-template-columns:1fr 150px 1.4fr 38px;gap:8px;align-items:center;margin-bottom:8px">
+      <input type="text" value="${dtEscape(l.label||'')}" placeholder="e.g. IMS Store" oninput="CM_LINKS[${i}].label=this.value" style="${inp}"/>
+      <input type="date" value="${dtEscape(l.liveDate||'')}" oninput="CM_LINKS[${i}].liveDate=this.value" style="${inp}"/>
+      <input type="url" value="${dtEscape(l.url||'')}" placeholder="https://…" oninput="CM_LINKS[${i}].url=this.value" style="${inp}"/>
+      <button class="btn btn-outline" style="padding:6px 8px;font-size:12px;color:#dc2626;border-color:#fca5a5" onclick="cmRemoveLinkRow(${i})" title="Remove">🗑</button>
+    </div>`).join('');
+}
+// Save this client's own WhatsApp group. Blank clears it, which switches the
+// pending-task digest off for them — the server never falls back to the shared
+// client group, so a blank here simply means no digest.
+async function cmSaveWaGroup(id){
+  const input = document.getElementById('cmWaGroup_' + id);
+  if (!input) return;
+  const r = await api('/api/clients/' + id, 'PUT', { whatsapp_group_id: input.value.trim() });
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  showToast(input.value.trim() ? '✅ WhatsApp group saved' : 'Digest switched off for this client');
+}
+
+function cmAddLinkRow(){ CM_LINKS.push({ label:'', url:'', liveDate:'' }); cmRenderLinksRows(); }
+function cmRemoveLinkRow(i){ CM_LINKS.splice(i,1); cmRenderLinksRows(); }
+async function cmSaveLinks(id){
+  const clean = CM_LINKS
+    .map(l => ({ label:(l.label||'').trim(), url:(l.url||'').trim(), liveDate:(l.liveDate||'').trim() }))
+    .filter(l => l.label && l.url);
+  const btn = document.getElementById('cmSaveLinksBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  const r = await api('/api/clients/' + id, 'PUT', { system_links: clean });
+  if (r.error) {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save Links'; }
+    appAlert(r.error, 'Error'); return;
+  }
+  CM_LINKS = clean;
+  cmRenderLinksRows();
+  showToast('🔗 System links saved');
+  // Clear green-flash confirmation so it's obvious the save went through.
+  const card = document.getElementById('cmLinksCard');
+  if (card) {
+    card.style.boxShadow = '0 0 0 2px #10b981';
+    card.style.borderColor = '#10b981';
+    setTimeout(() => { card.style.boxShadow = ''; card.style.borderColor = ''; }, 1600);
+  }
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = '✓ Saved!';
+    btn.style.background = '#10b981';
+    setTimeout(() => { btn.textContent = '💾 Save Links'; btn.style.background = ''; }, 1600);
+  }
+}
+
+// ── DMS (Document Management System) ───────────────────────────────────
+var DMS_STATE = {};
+
+async function cmDmsLoad(clientId) {
+  var box = document.getElementById('cmDmsContent');
+  if (!box) return;
+  var data = await api('/api/clients/' + clientId + '/dms');
+  if (data.error) {
+    box.innerHTML = '<div style="color:#dc2626;font-size:12px;padding:8px 0">Failed to load DMS: ' + dtEscape(data.error) + '</div>';
+    return;
+  }
+  var prevDept = DMS_STATE.activeDept;
+  DMS_STATE = { clientId: clientId, files: [], loading: false, activeDept: null,
+    drive_configured: data.drive_configured, drive_folder_id: data.drive_folder_id,
+    departments: data.departments || [] };
+  // Keep the previously selected dept active if it still exists, else default to first
+  var keepDept = DMS_STATE.departments.find(function(d){ return d.department_name === prevDept; });
+  DMS_STATE.activeDept = keepDept ? keepDept.department_name
+    : (DMS_STATE.departments.length ? DMS_STATE.departments[0].department_name : null);
+  cmDmsRender();
+  if (DMS_STATE.activeDept) {
+    var dept = DMS_STATE.departments.find(function(d){ return d.department_name === DMS_STATE.activeDept; });
+    if (dept) cmDmsLoadFiles(dept.drive_folder_id);
+  }
+}
+
+function cmDmsRender() {
+  var box = document.getElementById('cmDmsContent');
+  if (!box) return;
+  var s = DMS_STATE;
+  if (!s.drive_configured) {
+    var missingMsg = 'Share the DMS root Drive folder with the service account\'s email (Editor access), then set <code>GOOGLE_DRIVE_ROOT_FOLDER_ID</code> in environment variables.';
+    box.innerHTML = '<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e">' + missingMsg + '</div>';
+    return;
+  }
+  if (!s.drive_folder_id) {
+    box.innerHTML = '<div style="text-align:center;padding:24px">' +
+      '<div style="color:#64748b;font-size:13px;margin-bottom:12px">No Drive folder set up for this client yet.</div>' +
+      '<button class="btn btn-primary" style="padding:8px 18px;font-size:13px" onclick="cmDmsSetup(' + s.clientId + ',this)">☁️ Create Drive Folder</button>' +
+      '</div>';
+    return;
+  }
+  var allDepts = s.departments || [];
+  var tabsHtml = allDepts.map(function(d) {
+    var active = d.department_name === s.activeDept;
+    var dn = jsArg(d.department_name);
+    return '<span style="display:inline-flex;align-items:center">' +
+      '<button onclick="cmDmsSelectDept(' + dn + ')" style="padding:6px 14px;border:none;border-right:none;border-radius:6px 0 0 6px;font-size:12px;font-weight:600;cursor:pointer;' + (active ? 'background:#7c3aed;color:#fff' : 'background:#f1f5f9;color:#475569') + '">' + dtEscape(d.department_name) + '</button>' +
+      '<button onclick="cmDmsRemoveDept(' + dn + ',' + s.clientId + ')" title="Remove" style="padding:6px 7px;border:none;border-radius:0 6px 6px 0;font-size:11px;cursor:pointer;' + (active ? 'background:#6d28d9;color:#ddd' : 'background:#e2e8f0;color:#94a3b8') + '">✕</button>' +
+      '</span>';
+  }).join('');
+  box.innerHTML =
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">' +
+      tabsHtml +
+      '<button onclick="cmDmsShowAddDept(' + s.clientId + ')" style="padding:6px 12px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;color:#7c3aed;font-weight:600;background:#fff;cursor:pointer">＋ Department</button>' +
+    '</div>' +
+    '<div id="cmDmsFiles">' + cmDmsFilesHtml() + '</div>';
+}
+
+function cmDmsFilesHtml() {
+  var s = DMS_STATE;
+  if (!s.activeDept) return '<div style="color:#94a3b8;font-size:13px;padding:12px 0">Add a department folder above to get started.</div>';
+  if (s.loading) return '<div style="color:#94a3b8;font-size:13px;padding:12px 0">Loading files…</div>';
+  var dept = (s.departments || []).find(function(d){ return d.department_name === s.activeDept; });
+  if (!dept) return '<div style="color:#94a3b8;font-size:13px;padding:12px 0">Department not found.</div>';
+  var mimeIcon = function(m) {
+    if (m.includes('spreadsheet')) return '📊';
+    if (m.includes('document')) return '📄';
+    if (m.includes('presentation')) return '📽️';
+    if (m.includes('folder')) return '📁';
+    return '📎';
+  };
+  var files = s.files || [];
+  var filesHtml = files.length
+    ? files.map(function(f) {
+        var date = f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:#f8fafc;margin-bottom:6px" ' +
+          'onmouseover="this.style.background=\'#f1f5f9\'" onmouseout="this.style.background=\'#f8fafc\'">' +
+          '<span style="font-size:18px">' + mimeIcon(f.mimeType) + '</span>' +
+          '<a href="' + (/^https?:\/\//i.test(f.webViewLink) ? f.webViewLink : '#') + '" target="_blank" rel="noopener" style="font-size:13px;color:#1d4ed8;font-weight:600;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + dtEscape(f.name) + '</a>' +
+          '<span style="font-size:11px;color:#94a3b8;white-space:nowrap;flex-shrink:0">' + date + '</span>' +
+          '</div>';
+      }).join('')
+    : '<div style="color:#94a3b8;font-size:13px;padding:12px 0">No files yet — create one with the buttons above.</div>';
+  var fid = dept.drive_folder_id;
+  var cid = s.clientId;
+  return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">' +
+      '<div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px">' + dtEscape(s.activeDept) + '</div>' +
+      '<div style="display:flex;gap:6px">' +
+        '<button onclick="cmDmsCreateFile(\'doc\',\'' + fid + '\',' + cid + ')" style="padding:5px 12px;border:none;border-radius:6px;font-size:12px;background:#eff6ff;color:#1d4ed8;font-weight:600;cursor:pointer">＋ Doc</button>' +
+        '<button onclick="cmDmsCreateFile(\'sheet\',\'' + fid + '\',' + cid + ')" style="padding:5px 12px;border:none;border-radius:6px;font-size:12px;background:#f0fdf4;color:#16a34a;font-weight:600;cursor:pointer">＋ Sheet</button>' +
+        '<button onclick="cmDmsUploadFile(\'' + fid + '\',' + cid + ')" style="padding:5px 12px;border:none;border-radius:6px;font-size:12px;background:#fff7ed;color:#c2410c;font-weight:600;cursor:pointer">⬆ Upload</button>' +
+        '<button onclick="cmDmsLoadFiles(\'' + fid + '\')" title="Refresh" style="padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;color:#64748b;background:#fff;cursor:pointer">↺</button>' +
+      '</div>' +
+    '</div>' + filesHtml;
+}
+
+function cmDmsSelectDept(deptName) {
+  DMS_STATE.activeDept = deptName;
+  DMS_STATE.files = [];
+  cmDmsRender();
+  var dept = (DMS_STATE.departments || []).find(function(d){ return d.department_name === deptName; });
+  if (dept) cmDmsLoadFiles(dept.drive_folder_id);
+}
+
+async function cmDmsRemoveDept(deptName, clientId) {
+  if (!await appConfirm(`Remove "${deptName}" folder link? (The Google Drive folder itself is NOT deleted.)`, 'Remove Folder Link?')) return;
+  var r = await api('/api/clients/' + clientId + '/dms/departments/' + encodeURIComponent(deptName), 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  await cmDmsLoad(clientId);
+}
+
+async function cmDmsLoadFiles(folderId) {
+  DMS_STATE.loading = true;
+  var filesDiv = document.getElementById('cmDmsFiles');
+  if (filesDiv) filesDiv.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:12px 0">Loading…</div>';
+  var files = await api('/api/clients/' + DMS_STATE.clientId + '/dms/folders/' + folderId + '/files');
+  DMS_STATE.files = Array.isArray(files) ? files : [];
+  DMS_STATE.loading = false;
+  filesDiv = document.getElementById('cmDmsFiles');
+  if (filesDiv) filesDiv.innerHTML = cmDmsFilesHtml();
+}
+
+async function cmDmsSetup(clientId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+  var r = await api('/api/clients/' + clientId + '/dms/setup', 'POST');
+  if (r.error) {
+    showToast(r.error, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '☁️ Create Drive Folder'; }
+    return;
+  }
+  await cmDmsLoad(clientId);
+}
+
+async function cmDmsShowAddDept(clientId) {
+  var dept = (prompt('Department name to add (e.g. Accounts, Audit, Compliance):') || '').trim();
+  if (!dept) return;
+  var r = await api('/api/clients/' + clientId + '/dms/departments', 'POST', { department_name: dept });
+  if (r.error) { showToast(r.error, 'error'); return; }
+  DMS_STATE.activeDept = dept; // select the new dept after reload
+  await cmDmsLoad(clientId);
+}
+
+async function cmDmsCreateFile(kind, folderId, clientId) {
+  var label = kind === 'sheet' ? 'Google Sheet' : 'Google Doc';
+  var name = (prompt('Name for the new ' + label + ':') || '').trim();
+  if (!name) return;
+  var r = await api('/api/clients/' + clientId + '/dms/folders/' + folderId + '/files', 'POST', { name: name, kind: kind });
+  if (r.error) { showToast(r.error, 'error'); return; }
+  if (r.web_view_link) window.open(r.web_view_link, '_blank');
+  cmDmsLoadFiles(folderId);
+}
+
+function cmDmsUploadFile(folderId, clientId) {
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.onchange = async function() {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    var fd = new FormData();
+    fd.append('file', file);
+    var token = localStorage.getItem('authToken') || '';
+    showToast('Uploading "' + file.name + '"…');
+    try {
+      var res = await fetch('/api/clients/' + clientId + '/dms/folders/' + folderId + '/upload', {
+        method: 'POST',
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+        body: fd
+      });
+      var data = await res.json();
+      if (data.error) { showToast(data.error, 'error'); return; }
+      showToast('File uploaded!');
+      cmDmsLoadFiles(folderId);
+    } catch (e) { showToast('Upload failed: ' + e.message, 'error'); }
+  };
+  input.click();
+}
+
+async function cmAdd(){
+  const err = document.getElementById('cmAddErr');
+  err.style.display = 'none';
+  const name = document.getElementById('cmFormName').value.trim();
+  const handler_ids = [...document.querySelectorAll('.cmAddHandlerCb:checked')].map(cb => parseInt(cb.value));
+  const handler_id = handler_ids[0] || null;
+  const login_email = document.getElementById('cmFormLoginEmail').value.trim();
+  const login_password = document.getElementById('cmFormLoginPassword').value;
+  if (!name) { err.textContent = 'Client name required'; err.style.display = 'block'; return; }
+  if ((login_email && !login_password) || (!login_email && login_password)) {
+    err.textContent = 'Fill both login email and password, or leave both blank';
+    err.style.display = 'block'; return;
+  }
+  try {
+    const r = await api('/api/clients', 'POST', { name, handler_id, login_email, login_password });
+    if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+    if (r.client_id && handler_ids.length > 0) {
+      await api('/api/clients/' + r.client_id + '/handlers', 'PUT', { user_ids: handler_ids });
+    }
+    if (r.warning) showToast(r.warning);
+    else showToast(login_email ? '✅ Client added with login' : '✅ Client added');
+    closeModal('clientAddModal');
+    loadClients();
+  } catch(e) {
+    err.textContent = 'Failed to add';
+    err.style.display = 'block';
+  }
+}
+
+async function cmUpdateHandler(clientId, handlerId) {
+  try {
+    const r = await api('/api/clients/' + clientId, 'PUT', { handler_id: handlerId || null });
+    if (r.error) { showToast(r.error, 'error'); return; }
+    showToast('Handler updated');
+    // Patch in-memory so the row refresh is instant; full reload would close the panel.
+    const c = CM_ALL.find(x => x.id === clientId);
+    if (c) {
+      c.handler_id = handlerId ? parseInt(handlerId, 10) : null;
+      const u = CM_USERS.find(u => String(u.id) === String(handlerId));
+      c.handler_name = u ? u.name : null;
+    }
+    CM_OPEN_ID = null; // re-render wipes the panel; user can click again to view
+    cmRenderList();
+  } catch(e) { showToast('Update failed', 'error'); }
+}
+
+function cmInitHandlerWidget(id) {
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', function _close(e) {
+    const w = document.getElementById('cmHandlerWidget_' + id);
+    if (!w || !w.contains(e.target)) {
+      const dd = document.getElementById('cmHandlerDropdown_' + id);
+      if (dd) dd.style.display = 'none';
+      const dd2 = document.getElementById('cmDeptDropdown_' + id);
+      if (dd2) dd2.classList.remove('open');
+      document.removeEventListener('click', _close);
+    }
+  });
+}
+
+function cmToggleHandlerDropdown(id) {
+  const dd = document.getElementById('cmHandlerDropdown_' + id);
+  if (dd) dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+}
+
+function cmToggleDeptDropdown(id) {
+  const dd = document.getElementById('cmDeptDropdown_' + id);
+  if (dd) dd.classList.toggle('open');
+}
+
+function cmSelectAllDepts(id) {
+  document.querySelectorAll(`.cm-dept-cb_${id}`).forEach(cb => cb.checked = false);
+  const allCb = document.getElementById('cmAllDeptsCb_' + id);
+  if (allCb) allCb.checked = true;
+  cmFilterHandlerList(id);
+}
+
+function cmFilterHandlerList(id) {
+  const selected = [...document.querySelectorAll(`.cm-dept-cb_${id}:checked`)].map(cb => cb.value);
+  const total = document.querySelectorAll(`.cm-dept-cb_${id}`).length;
+  const countEl = document.getElementById('cmDeptCount_' + id);
+  if (countEl) {
+    countEl.textContent = (!selected.length || selected.length === total)
+      ? 'All Departments'
+      : `${selected.length} selected`;
+  }
+  const allCb = document.getElementById('cmAllDeptsCb_' + id);
+  if (allCb) allCb.checked = (!selected.length || selected.length === total);
+  const showAll = !selected.length || selected.length === total;
+  document.querySelectorAll(`#cmHandlerDropdown_${id} label`).forEach(lbl => {
+    lbl.style.display = showAll || selected.includes(lbl.dataset.dept) ? 'flex' : 'none';
+  });
+}
+
+function cmHandlerCbChange(id) {
+  const checked = document.querySelectorAll(`.cm-handler-cb_${id}:checked`);
+  const countEl = document.getElementById('cmHandlerCount_' + id);
+  if (countEl) countEl.textContent = checked.length ? checked.length + ' selected' : 'Select handlers';
+}
+
+async function cmSaveHandlers(id) {
+  const checked = [...document.querySelectorAll(`.cm-handler-cb_${id}:checked`)].map(cb => parseInt(cb.value));
+  try {
+    const r = await api('/api/clients/' + id + '/handlers', 'PUT', { user_ids: checked });
+    if (r.error) { showToast(r.error, 'error'); return; }
+    showToast('✅ Handlers saved');
+    cmShowDetail(id);
+  } catch(e) { showToast('Save failed', 'error'); }
+}
+
+function cmAddToggleDeptDrop() {
+  document.getElementById('cmAddDeptDropdown')?.classList.toggle('open');
+}
+
+function cmAddToggleHandlerDrop() {
+  const dd = document.getElementById('cmAddHandlerDropdown');
+  if (dd) dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+  document.getElementById('cmAddDeptDropdown')?.classList.remove('open');
+}
+
+function cmAddSelectAllDepts() {
+  document.querySelectorAll('.cmAddDeptCb').forEach(cb => cb.checked = false);
+  const allCb = document.getElementById('cmAddAllDeptsCb');
+  if (allCb) allCb.checked = true;
+  cmAddFilterHandlers();
+}
+
+function cmAddFilterHandlers() {
+  const selected = [...document.querySelectorAll('.cmAddDeptCb:checked')].map(cb => cb.value);
+  const total = document.querySelectorAll('.cmAddDeptCb').length;
+  const countEl = document.getElementById('cmAddDeptCount');
+  if (countEl) countEl.textContent = (!selected.length || selected.length === total) ? 'All Departments' : `${selected.length} selected`;
+  const allCb = document.getElementById('cmAddAllDeptsCb');
+  if (allCb) allCb.checked = (!selected.length || selected.length === total);
+  const showAll = !selected.length || selected.length === total;
+  document.querySelectorAll('#cmAddHandlerDropdown label').forEach(lbl => {
+    lbl.style.display = showAll || selected.includes(lbl.dataset.dept) ? 'flex' : 'none';
+  });
+}
+
+function cmAddHandlerCbChange() {
+  const cnt = document.querySelectorAll('.cmAddHandlerCb:checked').length;
+  const el = document.getElementById('cmAddHandlerCount');
+  if (el) el.textContent = cnt ? cnt + ' selected' : 'Select handlers';
+}
+
+async function cmDelete(id, name){
+  if (!await appConfirm(`Remove client "${name}"?`)) return;
+  try {
+    await api('/api/clients/' + id, 'DELETE');
+    showToast('🗑 Client removed');
+    loadClients();
+  } catch(e) { showToast('Failed to delete', 'error'); }
+}
+
+// Download sample CSV
+function cmDownloadSample() {
+  const csv = `client_name\nVibes\nCCIS\nParty Walls\nA1 India\nKala Textiles`;
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'clients_sample.csv';
+  a.click();
+  showToast('✅ Sample downloaded');
+}
+
+// Bulk upload clients via CSV
+async function cmBulkUpload() {
+  const fileInput = document.getElementById('cmBulkFile');
+  const file = fileInput.files[0];
+  if (!file) { showToast('Choose a CSV file first', 'error'); return; }
+
+  try {
+    const text = await file.text();
+    // Parse: split by newlines, take first column (handles plain list or CSV with header)
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+    if (!lines.length) { showToast('CSV file is empty', 'error'); return; }
+
+    // Skip first row if it looks like a header (e.g. "client_name", "name", "Client Name")
+    let names = lines.map(line => line.split(',')[0].trim().replace(/^["']|["']$/g, ''));
+    const firstLower = (names[0] || '').toLowerCase();
+    if (['client_name', 'name', 'client name', 'clients'].includes(firstLower)) {
+      names = names.slice(1);
+    }
+    names = names.filter(n => n);
+    if (!names.length) { showToast('No valid client names found in CSV', 'error'); return; }
+
+    if (!await appConfirm(`Upload ${names.length} client${names.length===1?'':'s'} from CSV?`)) return;
+
+    const r = await api('/api/clients/bulk', 'POST', { names });
+    if (r.error) { showToast(r.error, 'error'); return; }
+
+    let msg = `✅ Added ${r.added} client${r.added===1?'':'s'}`;
+    if (r.skipped) msg += ` · ⚠️ ${r.skipped} duplicate${r.skipped===1?'':'s'} skipped`;
+    showToast(msg);
+
+    // Show details if any skipped
+    if (r.skipped && r.skippedNames && r.skippedNames.length) {
+      console.log('Skipped (already exist):', r.skippedNames.join(', '));
+    }
+    fileInput.value = '';
+    loadClients();
+  } catch(e) {
+    showToast('Failed to upload: ' + e.message, 'error');
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// 📊 COMPLIANCE TRACKER (admin)
+// ══════════════════════════════════════════════════════
+let CP_DATA = null;
+
+async function loadCompliance(){
+  const wrap = document.getElementById('cpGridWrap');
+  wrap.innerHTML = '<div class="empty">Loading...</div>';
+  try {
+    CP_DATA = await api('/api/compliance/last7');
+    renderCompliance();
+  } catch(e) {
+    wrap.innerHTML = '<div class="empty">Failed to load compliance data</div>';
+  }
+}
+
+function renderCompliance(){
+  if (!CP_DATA) return;
+  const wrap = document.getElementById('cpGridWrap');
+  const search = (document.getElementById('cpSearch')?.value || '').toLowerCase();
+  const roleF = document.getElementById('cpRoleFilter')?.value || '';
+
+  const dates = CP_DATA.dates;
+  let users = CP_DATA.users;
+
+  if (search) {
+    users = users.filter(u =>
+      u.name.toLowerCase().includes(search) ||
+      u.email.toLowerCase().includes(search) ||
+      (u.department||'').toLowerCase().includes(search)
+    );
+  }
+  if (roleF) users = users.filter(u => u.role === roleF);
+
+  if (!users.length) { wrap.innerHTML = '<div class="empty">No users match filters</div>'; return; }
+
+  let html = `<table class="cp-grid"><thead><tr>
+    <th style="text-align:left">Name</th>
+    <th style="text-align:left">Role</th>
+    <th style="text-align:left">Department</th>`;
+  for (const d of dates) {
+    const dt = new Date(d);
+    const dayLabel = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()];
+    html += `<th>${dayLabel}<br><span style="font-weight:400;font-size:10px;opacity:.85">${d.slice(5)}</span></th>`;
+  }
+  html += `<th>Score</th></tr></thead><tbody>`;
+
+  for (const u of users) {
+    // Working days = days that aren't user's off/holiday/before-joining/on-leave
+    const workingDays = u.status.filter(s => !s.off && !s.preJoin && !s.onLeave).length;
+    const filledCnt = u.status.filter(s => s.filled).length;
+    const denom = workingDays || 1;
+    const pct = Math.round((filledCnt/denom)*100);
+    const pillClass = pct >= 80 ? 'cp-summary-good' : pct >= 50 ? 'cp-summary-meh' : 'cp-summary-bad';
+
+    html += `<tr>
+      <td>${dtEscape(u.name)}</td>
+      <td>${u.role}</td>
+      <td>${dtEscape(u.department)}</td>`;
+    for (const s of u.status) {
+      let cell;
+      if (s.preJoin) {
+        cell = '<span class="cp-cell-off" title="Before joining date">–</span>';
+      } else if (s.off) {
+        cell = s.isHoliday
+          ? '<span class="cp-cell-holiday" title="Holiday">🎉 Off</span>'
+          : '<span class="cp-cell-off" title="Week off">Off</span>';
+      } else if (s.onLeave) {
+        // L, not A — the legend now names it, and "A" read as Absent, which is
+        // the opposite of what an approved leave means. Not counted as a working
+        // day either way (see workingDays above), so the percentage is unchanged.
+        cell = '<span style="color:#7c3aed;font-weight:700" title="On leave">L</span>';
+      } else if (s.filled) {
+        cell = '<span class="cp-cell-yes">✓</span>';
+      } else {
+        cell = '<span class="cp-cell-no">✗</span>';
+      }
+      html += `<td>${cell}</td>`;
+    }
+    html += `<td><span class="cp-summary-pill ${pillClass}">${filledCnt}/${workingDays} (${pct}%)</span></td></tr>`;
+  }
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════
+// 👤 EMPLOYEE 360 — full snapshot for increment review
+// ══════════════════════════════════════════════════════
+let EMP360_USERS = null;   // cached employee list for the picker
+let EMP360_DATA  = null;   // last loaded 360 payload
+
+function cpTab(which, el){
+  document.querySelectorAll('#cpTabDaily,#cpTabEmp').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('cpTab-daily').style.display  = which === 'daily'  ? 'block' : 'none';
+  document.getElementById('cpTab-emp360').style.display = which === 'emp360' ? 'block' : 'none';
+  if (which === 'emp360' && !EMP360_USERS) emp360InitPicker();
+}
+
+// Shortcut from the dashboard — jump straight to Compliance → Employee 360
+// with the employee picker ready (pick a user, see their full snapshot). Admin only.
+function openEmployee360(){
+  if (ME.role !== 'admin') return;
+  navigate('compliance', document.getElementById('nav-compliance'));
+  const empTab = document.getElementById('cpTabEmp');
+  if (empTab) cpTab('emp360', empTab);
+}
+
+async function emp360InitPicker(){
+  try {
+    // Sourced from CP_DATA (already scoped by the backend: admin sees everyone,
+    // hod/pc see their own department, plain user sees only self) so the picker
+    // never lists someone the current user isn't allowed to open.
+    if (!CP_DATA) await loadCompliance();
+    const users = CP_DATA?.users || [];
+    EMP360_USERS = users.filter(u => u.role !== 'client');
+    const sel = document.getElementById('empSelect');
+    sel.innerHTML = '<option value="">— Select employee —</option>' +
+      EMP360_USERS.map(u => `<option value="${u.id}">${dtEscape(u.name)}${u.department ? ' · ' + dtEscape(u.department) : ''}</option>`).join('');
+    // Default range = current month
+    if (!document.getElementById('empFrom').value) emp360Preset('month', true);
+  } catch(e) {
+    document.getElementById('emp360Wrap').innerHTML = '<div class="empty">Failed to load employee list</div>';
+  }
+}
+
+function emp360Preset(p, skipLoad){
+  const to = new Date();
+  let from = new Date();
+  if (p === 'month') { from = new Date(to.getFullYear(), to.getMonth(), 1); }
+  else { from.setMonth(from.getMonth() - Number(p)); }
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  document.getElementById('empFrom').value = fmt(from);
+  document.getElementById('empTo').value   = fmt(to);
+  if (!skipLoad) loadEmp360();
+}
+
+// "150" → "2h 30m". Day headers carry a total, and raw minutes stop being
+// readable somewhere around the second hour.
+function fmtMins(n) {
+  const m = Math.max(0, Math.round(Number(n) || 0));
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60), rest = m % 60;
+  return rest ? `${h}h ${rest}m` : `${h}h`;
+}
+
+function e3ToggleDay(idx) {
+  document.getElementById('e3day' + idx)?.classList.toggle('open');
+}
+
+async function loadEmp360(){
+  const id = document.getElementById('empSelect').value;
+  const wrap = document.getElementById('emp360Wrap');
+  if (!id) { wrap.innerHTML = '<div class="empty">Select an employee to see the full 360° view.</div>'; return; }
+  const from = document.getElementById('empFrom').value;
+  const to   = document.getElementById('empTo').value;
+  wrap.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const qs = (from && to) ? `?from=${from}&to=${to}` : '';
+    const d = await api('/api/compliance/employee/' + id + qs);
+    if (d.error) throw new Error(d.error);
+    EMP360_DATA = d;
+    renderEmp360();
+  } catch(e) {
+    wrap.innerHTML = `<div class="empty">Failed: ${dtEscape(e.message)}</div>`;
+  }
+}
+
+function renderEmp360(){
+  const d = EMP360_DATA;
+  if (!d) return;
+  const u = d.user, del = d.delegation, chl = d.checklist, dr = d.dailyReport, mt = d.meetings, cl = d.clients;
+  const sc = d.scores || { categories:{}, weights:{}, average:null, final:null, grade:'N/A' };
+  const fmtRange = `${d.range.from} → ${d.range.to}`;
+  const fillClass = dr.fillPct >= 80 ? 'e3-done' : dr.fillPct >= 50 ? 'e3-pend' : 'e3-over';
+  const scoreTone = v => v == null ? 'e3-sc-na' : v >= 85 ? 'e3-sc-exc' : v >= 70 ? 'e3-sc-good' : v >= 50 ? 'e3-sc-avg' : 'e3-sc-bad';
+  const scoreTxt = v => v == null ? '—' : v;
+
+  const taskCard = (title, icon, t) => `
+    <div class="e3-card">
+      <div class="e3-card-title">${icon} ${title}</div>
+      <div class="e3-big">${t.total}<small> tasks</small></div>
+      <div style="margin-top:10px">
+        <div class="e3-row"><span class="e3-k">Completed</span><b class="e3-done">${t.completed}</b></div>
+        <div class="e3-row"><span class="e3-k">Pending</span><b class="e3-pend">${t.pending}</b></div>
+        <div class="e3-row"><span class="e3-k">Overdue</span><b class="e3-over">${t.overdue}</b></div>
+        ${t.revised ? `<div class="e3-row"><span class="e3-k">Revised</span><b>${t.revised}</b></div>` : ''}
+      </div>
+    </div>`;
+
+  let html = `
+    <div class="e3-head">
+      <div>
+        <div class="e3-name">${dtEscape(u.name)}</div>
+        <div class="e3-meta">${dtEscape(u.role.toUpperCase())} · ${dtEscape(u.department)} · ${dtEscape(u.email)}</div>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:14px;">
+        <div class="e3-range">📆 ${fmtRange}</div>
+        <div class="e3-finalbox ${scoreTone(sc.final)}">
+          <div class="e3-finalbox-num">${scoreTxt(sc.final)}<small>/100</small></div>
+          <div class="e3-finalbox-lbl">${dtEscape(sc.grade)}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="e3-cards">
+      ${taskCard('Delegation', '📋', del)}
+      ${taskCard('Checklist', '✅', chl)}
+      <div class="e3-card">
+        <div class="e3-card-title">📝 Daily Reports</div>
+        <div class="e3-big ${fillClass}">${dr.fillPct}%<small> filled</small></div>
+        <div style="margin-top:10px">
+          <div class="e3-row"><span class="e3-k">Days filled</span><b>${dr.daysFilled}/${dr.workingDays}</b></div>
+          <div class="e3-row"><span class="e3-k">Entries</span><b>${dr.entries}</b></div>
+          <div class="e3-row"><span class="e3-k">Hours logged</span><b>${dr.hours}h</b></div>
+        </div>
+      </div>
+      <div class="e3-card">
+        <div class="e3-card-title">📅 Meetings</div>
+        <div class="e3-big">${mt.organized.total}<small> organized</small></div>
+        <div style="margin-top:10px">
+          <div class="e3-row"><span class="e3-k">Done</span><b class="e3-done">${mt.organized.done}</b></div>
+          <div class="e3-row"><span class="e3-k">Scheduled</span><b>${mt.organized.scheduled}</b></div>
+          <div class="e3-row"><span class="e3-k">Attended</span><b>${mt.attended}</b></div>
+        </div>
+      </div>
+      <div class="e3-card">
+        <div class="e3-card-title">🏢 Clients</div>
+        <div class="e3-big">${cl.total}<small> handled</small></div>
+        <div style="margin-top:10px">
+          <div class="e3-row"><span class="e3-k">Active</span><b class="e3-done">${cl.active}</b></div>
+          <div class="e3-row"><span class="e3-k">Inactive</span><b class="e3-k">${cl.inactive}</b></div>
+        </div>
+      </div>
+    </div>`;
+
+  // Scorecard — per-section scores → average → weighted final
+  const scRows = [
+    ['Delegation', 'delegation'],
+    ['Checklist', 'checklist'],
+    ['Daily Reports', 'dailyReport'],
+    ['Meetings', 'meetings'],
+    ['Clients (active)', 'clients']
+  ];
+  html += `<div class="e3-section-title">📊 Scorecard</div>`;
+  html += `<table class="e3-table e3-scoretable"><thead><tr>
+    <th>Section</th><th>Weight</th><th style="text-align:right">Score / 100</th></tr></thead><tbody>`;
+  for (const [label, key] of scRows) {
+    const v = sc.categories[key];
+    html += `<tr>
+      <td>${label}</td>
+      <td>${sc.weights[key]}%</td>
+      <td style="text-align:right"><span class="e3-scorepill ${scoreTone(v)}">${scoreTxt(v)}</span></td>
+    </tr>`;
+  }
+  html += `<tr class="e3-score-sum">
+      <td><b>Average Score</b><div style="font-size:11px;color:#94a3b8;font-weight:600">equal weight, applicable sections only</div></td>
+      <td>—</td>
+      <td style="text-align:right"><span class="e3-scorepill ${scoreTone(sc.average)}">${scoreTxt(sc.average)}</span></td>
+    </tr>`;
+  html += `<tr class="e3-score-final">
+      <td><b>Final Score</b><div style="font-size:11px;color:#94a3b8;font-weight:600">weighted · ${dtEscape(sc.grade)}</div></td>
+      <td>—</td>
+      <td style="text-align:right"><span class="e3-scorepill e3-scorepill-lg ${scoreTone(sc.final)}">${scoreTxt(sc.final)}</span></td>
+    </tr>`;
+  html += `</tbody></table>`;
+
+  // Weekly Planned (committed) vs Actual (achieved) scoring
+  const weekly = Array.isArray(d.weekly) ? d.weekly : [];
+  html += `<div class="e3-section-title">🎯 Weekly Planned vs Actual <span style="font-size:11px;color:#94a3b8;font-weight:600">(committed vs achieved · scale −100…0, higher = better)</span></div>`;
+  if (!weekly.length) {
+    html += `<div class="empty">No weeks in this range.</div>`;
+  } else {
+    const f = v => (v === null || v === undefined) ? '—' : (v > 0 ? '+' : '') + v;
+    html += `<table class="e3-table"><thead><tr>
+      <th>Week</th><th style="text-align:right">Planned</th><th style="text-align:right">Actual</th><th style="text-align:right">Gap</th>
+      <th style="text-align:right">Total Tasks</th><th style="text-align:right">Completed</th><th style="text-align:right">Pending</th>
+      <th></th></tr></thead><tbody>`;
+    const empId = document.getElementById('empSelect').value;
+    for (const w of weekly) {
+      const gapTone = w.gap == null ? '' : w.gap >= 0 ? 'color:#16a34a;font-weight:700' : 'color:#dc2626;font-weight:700';
+      const flag = w.regression
+        ? `<span style="font-size:10px;background:#fffbeb;color:#92400e;border:1px solid #fde68a;padding:2px 8px;border-radius:10px;font-weight:700" title="Committed worse than previous week's achieved (${f(w.prevAchieved)})">⚠️ Below last week</span>`
+        : '';
+      const rowBg = w.regression ? 'background:#fffbeb' : '';
+      const pendCol = w.taskPending > 0 ? 'color:#dc2626;font-weight:700' : 'color:#94a3b8';
+      html += `<tr style="${rowBg}cursor:pointer" onclick="emp360WeekDrill(${empId},'${w.weekStart}','${w.weekEnd}','all')" onmouseenter="this.style.background='#f0f7ff'" onmouseleave="this.style.background='${w.regression?'#fffbeb':''}'">
+        <td>${fmtDate(w.weekStart)} – ${fmtDate(w.weekEnd)}</td>
+        <td style="text-align:right">${f(w.committed)}</td>
+        <td style="text-align:right">${f(w.achieved)}</td>
+        <td style="text-align:right;${gapTone}">${f(w.gap)}</td>
+        <td style="text-align:right;color:#2563eb;font-weight:600">${w.taskTotal}</td>
+        <td style="text-align:right;color:#2563eb;font-weight:600">${w.taskCompleted}</td>
+        <td style="text-align:right;${pendCol}">${w.taskPending}</td>
+        <td>${flag}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+    html += `<div style="font-size:11px;color:#94a3b8;margin-top:6px">Planned = score committed in Monday check-in · Actual = achieved from tasks · Gap = Actual − Planned (green = beat commitment). ⚠️ = committed worse than previous week's achieved.</div>`;
+  }
+
+  // Clients table with active/inactive toggle
+  html += `<div class="e3-section-title">🏢 Clients Handled</div>`;
+  if (!cl.list.length) {
+    html += `<div class="empty">No clients assigned to this employee.</div>`;
+  } else {
+    html += `<table class="e3-table"><thead><tr>
+      <th>Client</th><th>Status</th><th>Tasks</th><th>Pending</th><th>Meetings</th><th></th></tr></thead><tbody>`;
+    for (const c of cl.list) {
+      const on = !!c.is_active;
+      html += `<tr>
+        <td><b>${dtEscape(c.name)}</b></td>
+        <td><span class="e3-badge ${on?'e3-badge-on':'e3-badge-off'}">${on?'Active':'Inactive'}</span></td>
+        <td>${c.tasks}</td>
+        <td>${c.pending ? `<span class="e3-pend">${c.pending}</span>` : '0'}</td>
+        <td>${c.meetings}</td>
+        <td><button class="e3-toggle ${on?'e3-badge-off':'e3-badge-on'}" onclick="emp360ToggleClient(${c.id},${on?0:1})">${on?'Mark inactive':'Mark active'}</button></td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+
+  // Recent daily entries
+  html += `<div class="e3-section-title">📝 Recent Daily Report Entries</div>`;
+  if (!d.recentEntries.length) {
+    html += `<div class="empty">No daily entries in this range.</div>`;
+  } else {
+    // One collapsed row per day. The server returns the range already sorted
+    // newest-first, so walking it in order keeps the days in order without a
+    // second sort. Collapsed by default: a three-month range is a few hundred
+    // entries, and the day totals are what someone reviewing wants first.
+    const byDay = new Map();
+    for (const e of d.recentEntries) {
+      if (!byDay.has(e.entry_date)) byDay.set(e.entry_date, []);
+      byDay.get(e.entry_date).push(e);
+    }
+    const totalMin = d.recentEntries.reduce((s, e) => s + (Number(e.duration_min) || 0), 0);
+    html += `<div style="font-size:11.5px;color:#64748b;margin-bottom:10px">
+      ${d.recentEntries.length} ${d.recentEntries.length === 1 ? 'entry' : 'entries'}
+      across ${byDay.size} ${byDay.size === 1 ? 'day' : 'days'} · ${fmtMins(totalMin)}
+      <span style="color:#94a3b8">· click a day to open it — printing shows them all</span>
+    </div>`;
+    let dayIdx = 0;
+    for (const [day, list] of byDay) {
+      const mins = list.reduce((s, e) => s + (Number(e.duration_min) || 0), 0);
+      const rows = list.map(e => `<tr>
+        <td>${dtEscape(e.client_name || '—')}</td>
+        <td>${dtEscape(e.description || '')}</td>
+        <td style="white-space:nowrap">${e.duration_min || 0}</td>
+      </tr>`).join('');
+      html += `<div class="e3-day" id="e3day${dayIdx}">
+        <div class="e3-day-head" onclick="e3ToggleDay(${dayIdx})">
+          <span class="e3-day-chev">▶</span>
+          <span class="e3-day-date">${dtEscape(day)}</span>
+          <span class="e3-day-meta">${list.length} ${list.length === 1 ? 'entry' : 'entries'} · ${fmtMins(mins)}</span>
+        </div>
+        <div class="e3-day-body">
+          <table class="e3-table"><thead><tr>
+            <th>Client</th><th>Task</th><th>Min</th></tr></thead><tbody>${rows}</tbody></table>
+        </div>
+      </div>`;
+      dayIdx++;
+    }
+  }
+
+  // Recent meetings
+  if (mt.recent.length) {
+    html += `<div class="e3-section-title">📅 Recent Meetings</div>`;
+    html += `<table class="e3-table"><thead><tr>
+      <th>Date</th><th>Title</th><th>Client</th><th>Role</th><th>Status</th></tr></thead><tbody>`;
+    for (const m of mt.recent) {
+      html += `<tr>
+        <td style="white-space:nowrap">${m.meeting_date} ${m.start_time||''}</td>
+        <td>${dtEscape(m.title || '—')}</td>
+        <td>${dtEscape(m.client_name || '—')}</td>
+        <td>${dtEscape(m.my_role)}</td>
+        <td>${dtEscape(m.status)}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+
+  document.getElementById('emp360Wrap').innerHTML = html;
+}
+
+async function emp360ToggleClient(clientId, makeActive){
+  try {
+    const r = await api('/api/clients/' + clientId, 'PUT', { is_active: makeActive });
+    if (r.error) throw new Error(r.error);
+    if (r.noop) throw new Error('You do not have permission to change this client');
+    showToast(makeActive ? 'Client marked active' : 'Client marked inactive');
+    loadEmp360(); // refresh counts + badges
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+function closeWeekTaskModal() {
+  document.getElementById('weekTaskModal').style.display = 'none';
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeWeekTaskModal();
+});
+
+let _wtCache = [];
+
+function _wtRender(filter) {
+  const body = document.getElementById('weekTaskBody');
+  const count = document.getElementById('wt-count');
+  ['all','completed','pending'].forEach(k => {
+    const btn = document.getElementById('wt-btn-'+k);
+    if (!btn) return;
+    const isActive = k === filter;
+    const colors = { all: '#2563eb', completed: '#16a34a', pending: '#dc2626' };
+    const c = colors[k];
+    btn.style.background = isActive ? c : '#fff';
+    btn.style.color = isActive ? '#fff' : c;
+  });
+  const filtered = filter === 'all' ? _wtCache : _wtCache.filter(t => t.status === filter);
+  count.textContent = filtered.length + ' task' + (filtered.length !== 1 ? 's' : '');
+  if (!filtered.length) {
+    body.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8">No tasks found.</div>';
+    return;
+  }
+  const statusBadge = s =>
+    s==='completed' ? '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">Completed</span>'
+    : s==='pending'  ? '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">Pending</span>'
+    : s==='revised'  ? '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">Revised</span>'
+    : `<span style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:10px;font-size:11px">${dtEscape(s)}</span>`;
+  const typeLabel = t => t==='delegation'
+    ? '<span style="font-size:10px;color:#6366f1;font-weight:600">Delegation</span>'
+    : '<span style="font-size:10px;color:#0891b2;font-weight:600">Checklist</span>';
+  body.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:#f8fafc;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.05em">
+      <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #e2e8f0">Task</th>
+      <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #e2e8f0">Type</th>
+      <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #e2e8f0">Delegated By</th>
+      <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #e2e8f0">Client</th>
+      <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #e2e8f0">Due</th>
+      <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #e2e8f0">Status</th>
+    </tr></thead><tbody>` +
+    filtered.map(t => `<tr style="border-bottom:1px solid #f1f5f9">
+      <td style="padding:8px 10px;font-weight:500">${dtEscape(t.title)}</td>
+      <td style="padding:8px 10px">${typeLabel(t.task_type)}</td>
+      <td style="padding:8px 10px;color:#64748b">${dtEscape(t.assigned_by)}</td>
+      <td style="padding:8px 10px;color:#64748b">${dtEscape(t.client_name)}</td>
+      <td style="padding:8px 10px;color:#64748b">${fmtDate(t.due_date)}</td>
+      <td style="padding:8px 10px">${statusBadge(t.status)}</td>
+    </tr>`).join('') +
+    '</tbody></table>';
+}
+
+function emp360FilterTasks(filter) { _wtRender(filter); }
+
+async function emp360WeekDrill(empId, weekStart, weekEnd, filter) {
+  const modal = document.getElementById('weekTaskModal');
+  const body  = document.getElementById('weekTaskBody');
+  document.getElementById('weekTaskTitle').textContent = fmtDate(weekStart) + ' – ' + fmtDate(weekEnd);
+  document.getElementById('wt-count').textContent = '';
+  body.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8">Loading…</div>';
+  _wtCache = [];
+  modal.style.display = 'flex';
+  try {
+    const tasks = await api('/api/compliance/employee/' + empId + '/week-tasks?from=' + weekStart + '&to=' + weekEnd);
+    if (!Array.isArray(tasks) || tasks.error) throw new Error(tasks.error || 'Failed');
+    _wtCache = tasks;
+    _wtRender(filter || 'all');
+  } catch(e) {
+    body.innerHTML = '<div style="color:#dc2626;padding:16px">Failed: ' + dtEscape(e.message) + '</div>';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// 📈 DAILY REPORTS (admin, month-wise)
+// ══════════════════════════════════════════════════════
+let DR_DATA = null;
+
+async function loadDailyReports(){
+  const monthInput = document.getElementById('drMonth');
+  const fromInput  = document.getElementById('drDateFrom');
+  const toInput    = document.getElementById('drDateTo');
+  if (!monthInput.value && !(fromInput?.value && toInput?.value)) {
+    const now = new Date();
+    monthInput.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  }
+  document.getElementById('drStats').innerHTML = '<div class="empty">Loading...</div>';
+  document.getElementById('drSummaryWrap').innerHTML = '<div class="empty">Loading...</div>';
+  document.getElementById('drEntriesWrap').innerHTML = '<div class="empty">Loading...</div>';
+
+  try {
+    let qs = '';
+    if (fromInput?.value && toInput?.value) {
+      qs = `?from=${fromInput.value}&to=${toInput.value}`;
+    } else {
+      qs = '?month=' + monthInput.value;
+    }
+    DR_DATA = await api('/api/daily-tasks/report' + qs);
+    if (DR_DATA.error) throw new Error(DR_DATA.error);
+    renderDRStats();
+    renderDRSummary();
+    renderDREntriesUserDropdown();
+    renderDREntriesClientDropdown();
+    renderDREntries();
+  } catch(e) {
+    document.getElementById('drStats').innerHTML = `<div class="empty">Failed: ${e.message}</div>`;
+    document.getElementById('drSummaryWrap').innerHTML = '';
+    document.getElementById('drEntriesWrap').innerHTML = '';
+  }
+}
+
+function renderDRStats(){
+  const d = DR_DATA;
+  const totalHours = (d.total_minutes / 60).toFixed(1);
+  const monthLabel = new Date(d.month + '-01').toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  document.getElementById('drStats').innerHTML = `
+    <div class="dr-stat">
+      <div class="dr-stat-label">Month</div>
+      <div class="dr-stat-value" style="font-size:20px">${monthLabel}</div>
+    </div>
+    <div class="dr-stat">
+      <div class="dr-stat-label">Total Entries</div>
+      <div class="dr-stat-value">${d.total_entries}</div>
+      <div class="dr-stat-sub">across ${d.summary.length} user${d.summary.length===1?'':'s'}</div>
+    </div>
+    <div class="dr-stat">
+      <div class="dr-stat-label">Total Time</div>
+      <div class="dr-stat-value">${d.total_minutes}<span style="font-size:14px"> min</span></div>
+      <div class="dr-stat-sub">≈ ${totalHours} hours</div>
+    </div>
+    <div class="dr-stat">
+      <div class="dr-stat-label">Active Users</div>
+      <div class="dr-stat-value">${d.summary.length}</div>
+      <div class="dr-stat-sub">submitted at least once</div>
+    </div>
+  `;
+}
+
+function renderDRSummary(){
+  const wrap = document.getElementById('drSummaryWrap');
+  if (!DR_DATA.summary.length) {
+    wrap.innerHTML = '<div class="empty">No submissions in this month yet.</div>';
+    return;
+  }
+  let html = `<table class="dr-table"><thead><tr>
+    <th>User</th><th>Department</th><th>Days Filled</th>
+    <th>Total Tasks</th><th>Total Minutes</th><th>Hours</th><th>Avg/Day</th>
+  </tr></thead><tbody>`;
+  for (const u of DR_DATA.summary) {
+    const hours = (u.total_minutes / 60).toFixed(1);
+    const avg = u.days_filled > 0 ? Math.round(u.total_minutes / u.days_filled) : 0;
+    html += `<tr>
+      <td><b>${dtEscape(u.name)}</b><br><span style="color:#64748b;font-size:11px">${dtEscape(u.email)}</span></td>
+      <td>${dtEscape(u.department || '—')}</td>
+      <td>${u.days_filled} day${u.days_filled===1?'':'s'}</td>
+      <td>${u.total_tasks}</td>
+      <td><span class="pill-min">${u.total_minutes} min</span></td>
+      <td>${hours} hr</td>
+      <td>${avg} min/day</td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
+}
+
+function renderDREntriesUserDropdown(){
+  const sel = document.getElementById('drUserFilter');
+  const cur = sel.value;
+  let html = '<option value="">All Doers</option>';
+  for (const u of DR_DATA.summary) {
+    const selected = cur == u.user_id ? 'selected' : '';
+    html += `<option value="${u.user_id}" ${selected}>${dtEscape(u.name)}</option>`;
+  }
+  sel.innerHTML = html;
+}
+
+function renderDREntriesClientDropdown(){
+  const sel = document.getElementById('drClientFilter');
+  if (!sel) return;
+  const cur = sel.value;
+  const clients = [...new Set(DR_DATA.entries.map(e => e.client_name).filter(Boolean))].sort();
+  let html = '<option value="">All Clients</option>';
+  for (const c of clients) {
+    const selected = cur === c ? 'selected' : '';
+    html += `<option value="${dtEscape(c)}" ${selected}>${dtEscape(c)}</option>`;
+  }
+  sel.innerHTML = html;
+}
+
+function drClearEntryFilters(){
+  const s = document.getElementById('drSearch'); if (s) s.value = '';
+  const u = document.getElementById('drUserFilter'); if (u) u.value = '';
+  const c = document.getElementById('drClientFilter'); if (c) c.value = '';
+  renderDREntries();
+}
+
+function drClearRange(){
+  const f = document.getElementById('drDateFrom'); if (f) f.value = '';
+  const t = document.getElementById('drDateTo'); if (t) t.value = '';
+  loadDailyReports();
+}
+
+function drFilteredEntries(){
+  if (!DR_DATA) return [];
+  const search = (document.getElementById('drSearch')?.value || '').toLowerCase();
+  const userId = document.getElementById('drUserFilter')?.value || '';
+  const client = document.getElementById('drClientFilter')?.value || '';
+  let entries = DR_DATA.entries;
+  if (userId) entries = entries.filter(e => String(e.user_id) === String(userId));
+  if (client) entries = entries.filter(e => e.client_name === client);
+  if (search) {
+    entries = entries.filter(e =>
+      e.doer_name.toLowerCase().includes(search) ||
+      e.client_name.toLowerCase().includes(search) ||
+      (e.description||'').toLowerCase().includes(search) ||
+      (e.department||'').toLowerCase().includes(search)
+    );
+  }
+  return entries;
+}
+
+function renderDREntries(){
+  if (!DR_DATA) return;
+  const wrap = document.getElementById('drEntriesWrap');
+  const entries = drFilteredEntries();
+
+  const summaryEl = document.getElementById('drFilterSummary');
+  if (summaryEl) {
+    const totalMin = entries.reduce((s,e) => s + (e.duration_min||0), 0);
+    const users = new Set(entries.map(e => e.user_id));
+    summaryEl.textContent = entries.length
+      ? `${entries.length} entries · ${users.size} ${users.size===1?'doer':'doers'} · ${totalMin} min (${(totalMin/60).toFixed(1)} hr)`
+      : '';
+  }
+
+  if (!entries.length) {
+    wrap.innerHTML = '<div class="empty">No entries match the filters.</div>';
+    return;
+  }
+
+  let html = `<table class="dr-table"><thead><tr>
+    <th>Date</th><th>User</th><th>Client</th><th>Department</th>
+    <th>Description</th><th>Time</th>
+  </tr></thead><tbody>`;
+  for (const e of entries) {
+    html += `<tr>
+      <td><b>${e.entry_date}</b></td>
+      <td>${dtEscape(e.doer_name)}</td>
+      <td><span class="pill-tag">${dtEscape(e.client_name)}</span></td>
+      <td>${e.department ? `<span class="pill-dept">${dtEscape(e.department)}</span>` : '—'}</td>
+      <td>${dtEscape(e.description)}</td>
+      <td><span class="pill-min">${e.duration_min} min</span></td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
+}
+
+function drExportCSV(){
+  if (!DR_DATA) { showToast('No data to export', 'error'); return; }
+  const entries = drFilteredEntries();
+  if (!entries.length) { showToast('No entries match the current filters', 'error'); return; }
+  const rows = [['Date', 'User', 'Email', 'Client', 'Department', 'Description', 'Minutes']];
+  for (const e of entries) {
+    rows.push([
+      e.entry_date,
+      (e.doer_name||'').replace(/,/g,';'),
+      e.doer_email,
+      (e.client_name||'').replace(/,/g,';'),
+      (e.department||'').replace(/,/g,';'),
+      (e.description||'').replace(/,/g,';').replace(/\n/g,' '),
+      e.duration_min
+    ]);
+  }
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `daily_tasks_${DR_DATA.from || DR_DATA.month}_to_${DR_DATA.to || DR_DATA.month}.csv`;
+  a.click();
+  showToast('✅ CSV downloaded');
+}
+
+function drExportPDF(){
+  if (!DR_DATA) { showToast('No data to export', 'error'); return; }
+  const entries = drFilteredEntries();
+  if (!entries.length) { showToast('No entries match the current filters', 'error'); return; }
+  const totalMin = entries.reduce((s,e) => s + (e.duration_min||0), 0);
+  const totalHr = (totalMin/60).toFixed(1);
+  const doers = new Set(entries.map(e => e.user_id)).size;
+  const rangeLabel = DR_DATA.from && DR_DATA.to
+    ? `${DR_DATA.from} → ${DR_DATA.to}`
+    : DR_DATA.month;
+  const userId = document.getElementById('drUserFilter')?.value || '';
+  const client  = document.getElementById('drClientFilter')?.value || '';
+  const search  = document.getElementById('drSearch')?.value || '';
+  const filterLine = [
+    userId ? `Doer: ${entries[0]?.doer_name || userId}` : '',
+    client ? `Client: ${client}` : '',
+    search ? `Search: "${search}"` : ''
+  ].filter(Boolean).join(' · ') || 'No filters applied';
+
+  const rowsHtml = entries.map(e => `
+    <tr>
+      <td>${dtEscape(e.entry_date)}</td>
+      <td>${dtEscape(e.doer_name)}</td>
+      <td>${dtEscape(e.client_name)}</td>
+      <td>${dtEscape(e.department || '—')}</td>
+      <td>${dtEscape(e.description||'')}</td>
+      <td style="text-align:right">${e.duration_min}</td>
+    </tr>`).join('');
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Daily Task Report — ${rangeLabel}</title>
+    <style>
+      body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0f172a;margin:24px;}
+      h1{font-size:18px;margin:0 0 4px;}
+      .meta{font-size:12px;color:#475569;margin-bottom:6px;}
+      .summary{font-size:12px;color:#1e293b;background:#f1f5f9;padding:8px 12px;border-radius:6px;margin-bottom:14px;}
+      table{width:100%;border-collapse:collapse;font-size:11px;}
+      th,td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top;}
+      th{background:#0f172a;color:#fff;font-weight:700;}
+      tr:nth-child(even) td{background:#f8fafc;}
+      tfoot td{font-weight:700;background:#e2e8f0;}
+      @media print{ body{margin:12mm;} }
+    </style></head><body>
+    <h1>Daily Task Report</h1>
+    <div class="meta">Range: <b>${dtEscape(rangeLabel)}</b> · Generated: ${new Date().toLocaleString()}</div>
+    <div class="summary"><b>${entries.length}</b> entries · <b>${doers}</b> ${doers===1?'doer':'doers'} · <b>${totalMin}</b> min (${totalHr} hr) · ${dtEscape(filterLine)}</div>
+    <table>
+      <thead><tr><th>Date</th><th>Doer</th><th>Client</th><th>Department</th><th>Description</th><th style="text-align:right">Min</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot><tr><td colspan="5" style="text-align:right">Total</td><td style="text-align:right">${totalMin}</td></tr></tfoot>
+    </table>
+    <script>window.addEventListener('load', () => { setTimeout(() => window.print(), 200); });<\/script>
+  </body></html>`;
+
+  const win = window.open('', '_blank');
+  if (!win) { showToast('Please allow pop-ups to export PDF', 'error'); return; }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  showToast('🖨 Print dialog will open — choose "Save as PDF"');
+}
+
+// ══════════════════════════════════════════════════════
+// 📢 DAILY REMINDER — admin trigger + preview
+// ══════════════════════════════════════════════════════
+async function reminderPreview(){
+  const box = document.getElementById('reminderResult');
+  box.style.display = 'block';
+  box.className = 'dr-reminder-result';
+  box.innerHTML = '<i>Loading preview…</i>';
+  try {
+    const r = await api('/api/daily-reminder/preview');
+    if (r.error) throw new Error(r.error);
+
+    let html = `<h4>👁 Preview — ${r.date}</h4>`;
+    html += `<div><b>WhatsApp Group:</b> <code>${dtEscape(r.group_id)}</code></div>`;
+    html += `<div style="margin-top:10px"><b>❌ Will be reminded (${r.missing_count}):</b></div>`;
+    if (r.missing_count) {
+      html += '<ul>' + r.missing.map(u => `<li>${dtEscape(u.name)} <span style="color:#94a3b8">(${dtEscape(u.department||'no dept')})</span></li>`).join('') + '</ul>';
+    } else {
+      html += '<div style="color:#10b981;margin-left:8px">🎉 Everyone has filled today!</div>';
+    }
+    html += `<div style="margin-top:10px"><b>✅ Already filled (${r.filled_count}):</b> ${r.filled.map(u=>dtEscape(u.name)).join(', ') || '<i>none</i>'}</div>`;
+    html += `<div style="margin-top:10px"><b>🚫 Excluded (${r.excluded_count}):</b></div>`;
+    if (r.excluded_count) {
+      html += '<ul>' + r.excluded.map(u => {
+        const reasonColor = u.reason === 'CXO Department' ? '#7c3aed' : u.reason === 'Manually Excluded' ? '#F39C12' : '#dc2626';
+        return `<li>${dtEscape(u.name)} <span style="color:${reasonColor};font-size:11px;font-weight:600">(${dtEscape(u.reason)})</span></li>`;
+      }).join('') + '</ul>';
+    } else {
+      html += '<div style="color:#94a3b8;margin-left:8px"><i>none</i></div>';
+    }
+    box.innerHTML = html;
+  } catch(e) {
+    box.className = 'dr-reminder-result error';
+    box.innerHTML = `<h4>❌ Preview failed</h4><div>${e.message}</div>`;
+  }
+}
+
+async function reminderSendNow(){
+  if (!await appConfirm('Send the daily reminder WhatsApp now?\n\nThis will message the group with names of users who haven\'t filled today\'s report.', 'Send Reminder')) return;
+
+  const box = document.getElementById('reminderResult');
+  box.style.display = 'block';
+  box.className = 'dr-reminder-result';
+  box.innerHTML = '<i>Sending…</i>';
+  try {
+    const r = await api('/api/daily-reminder/send', 'POST', {});
+    if (r.error) throw new Error(r.error);
+
+    if (!r.ok) {
+      box.className = 'dr-reminder-result error';
+      box.innerHTML = `<h4>❌ Send failed</h4><div>${dtEscape(JSON.stringify(r))}</div>`;
+      return;
+    }
+
+    box.className = 'dr-reminder-result success';
+    if (r.allDone) {
+      box.innerHTML = `<h4>✅ Sent — Everyone filled!</h4><div>All eligible users have filled today's report. "All done" message sent to group.</div>`;
+    } else {
+      box.innerHTML = `<h4>✅ Reminder sent to group</h4>
+        <div><b>Date:</b> ${r.date}</div>
+        <div><b>Reminded ${r.missingCount} user(s):</b></div>
+        <ul>${r.missingNames.map(n => `<li>${dtEscape(n)}</li>`).join('')}</ul>`;
+    }
+    showToast('📱 Reminder sent!');
+  } catch(e) {
+    box.className = 'dr-reminder-result error';
+    box.innerHTML = `<h4>❌ Send failed</h4><div>${e.message}</div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// 📊 PENDING TASK SUMMARY — send 3 group WhatsApp messages (auto-cron at 10/16 IST)
+// ══════════════════════════════════════════════════════
+async function pendingSummarySendNow(){
+  if (!await appConfirm('Send the 3 pending-task-summary messages now (WhatsApp + email)?', 'Send Pending Summary')) return;
+  const box = document.getElementById('pendingSummaryResult');
+  box.style.display = 'block';
+  box.className = 'dr-reminder-result';
+  box.innerHTML = '<i>Sending 3 messages…</i>';
+  try {
+    const r = await api('/api/pending-summary/send', 'POST', {});
+    if (r.error) throw new Error(r.error);
+    const fmtRow = (type, info) => {
+      if (info?.skipped) return `<li>${type}: skipped — ${info.skipped}</li>`;
+      if (info?.ok) return `<li>${type}: ✅ sent</li>`;
+      return `<li>${type}: ❌ ${dtEscape(JSON.stringify(info))}</li>`;
+    };
+    const groupBlock = r.group || r.results || {};
+    const dmBlocks = (r.dms || []).map(d => {
+      const lines = ['delegation','checklist','fms'].map(t => fmtRow(t.charAt(0).toUpperCase()+t.slice(1), d.perType?.[t])).join('');
+      return `<div style="margin-top:8px"><b>📱 ${dtEscape(d.name)} (${dtEscape(d.phone)})</b><ul>${lines}</ul></div>`;
+    }).join('');
+    box.innerHTML = `<h4>✅ Pending summary dispatched</h4>
+      <div style="font-size:12px;color:#64748b">
+        Delegation: <b>${r.counts.delegation}</b> · Checklist: <b>${r.counts.checklist}</b> · FMS: <b>${r.counts.fms}</b>
+      </div>
+      <div style="margin-top:6px"><b>Group</b></div>
+      <ul>${fmtRow('Delegation', groupBlock.delegation)}${fmtRow('Checklist', groupBlock.checklist)}${fmtRow('FMS', groupBlock.fms)}</ul>
+      ${dmBlocks || '<div style="font-size:12px;color:#94a3b8">No email recipients configured (tick "Pending Task Summary Recipient" on any user in the Users page).</div>'}`;
+    showToast('📱 Pending summary sent!');
+  } catch(e) {
+    box.className = 'dr-reminder-result error';
+    box.innerHTML = `<h4>❌ Send failed</h4><div>${e.message}</div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// 🗓 LEAVE TRACKER
+// ══════════════════════════════════════════════════════
+const LEAVE_TYPE_LABEL = {
+  full_day: 'Full Day Leave',
+  half_day: 'Half Day Leave',
+  work_from_home: 'Work From Home',
+  extra_working: 'Extra Working'
+};
+const LEAVE_TYPE_ICON = {
+  full_day: '🛌', half_day: '⏱', work_from_home: '🏠', extra_working: '⚡'
+};
+let LEAVE_DATA = [];
+let LEAVE_TAB = 'mine';
+let LEAVE_STATUS = '';
+let LEAVE_PICKED_TYPE = '';
+let LEAVE_DECIDE_ID = null;
+// Calendar state
+let LEAVE_CAL_VIEW = new Date(); // month being viewed
+const LEAVE_SELECTED = new Map(); // dateStr -> hours (only meaningful for extra_working)
+// Extra working — per-date client/task rows: dateStr -> [{client, description, hours}]
+const LEAVE_EXTRA_ROWS = new Map();
+const LEAVE_INTERNAL_CLIENT = 'Internal / Office Work';
+let LEAVE_CLIENTS = [];
+
+async function lvLoadClients(){
+  try {
+    const list = await api('/api/clients');
+    LEAVE_CLIENTS = (Array.isArray(list) ? list : [])
+      .filter(c => c.is_active === undefined || !!Number(c.is_active))
+      .map(c => c.name);
+  } catch { LEAVE_CLIENTS = []; }
+  // If the user already picked Extra Working before clients arrived, refresh dropdowns
+  if (LEAVE_PICKED_TYPE === 'extra_working') lvRenderSelectedList();
+}
+
+async function loadLeaves(){
+  const wrap = document.getElementById('lvListWrap');
+  wrap.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const qs = `?scope=${LEAVE_TAB}${LEAVE_STATUS ? '&status='+LEAVE_STATUS : ''}`;
+    const [data, approverRes] = await Promise.all([
+      api('/api/leaves' + qs),
+      api('/api/leaves/my-approvers')
+    ]);
+    if (data.error) throw new Error(data.error);
+    LEAVE_DATA = Array.isArray(data) ? data : [];
+    lvRegisterPool(LEAVE_DATA);
+    renderLeaves();
+    // Show approver names in page header
+    const approverLine = document.getElementById('lvApproverLine');
+    if (approverLine && approverRes?.names) {
+      approverLine.textContent = `Your approver${approverRes.names.includes(',') ? 's' : ''}: ${approverRes.names}`;
+    }
+  } catch(e){
+    wrap.innerHTML = `<div class="empty" style="color:#dc2626">⚠️ ${dtEscape(e.message)}</div>`;
+  }
+  loadApprovalBadge();
+}
+
+function lvCanFilterTeam() {
+  return ME && (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc' || ME.canViewAllLeaves);
+}
+
+function lvSyncTeamFilters() {
+  const box = document.getElementById('lvTeamFilters');
+  if (!box) return;
+  box.style.display = (LEAVE_TAB === 'team' && lvCanFilterTeam()) ? 'flex' : 'none';
+  if (box.style.display === 'flex') {
+    const sel = document.getElementById('lvUserFilter');
+    if (sel) {
+      const prev = sel.value;
+      const uniq = {};
+      for (const r of LEAVE_DATA) {
+        if (r.user_id && r.user_name) uniq[r.user_id] = r.user_name;
+      }
+      sel.innerHTML = '<option value="all">All Employees</option>';
+      Object.entries(uniq).sort((a,b) => a[1].localeCompare(b[1])).forEach(([id,name]) => {
+        const opt = document.createElement('option');
+        opt.value = id; opt.textContent = name;
+        sel.appendChild(opt);
+      });
+      if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+      // Custom in-page dropdown so the list never paints over the sidebar.
+      initCustomSelect('lvUserFilter');
+    }
+  }
+}
+
+function lvClearFilters() {
+  const sel = document.getElementById('lvUserFilter'); if (sel) { sel.value = 'all'; sel._cselectSync && sel._cselectSync(); }
+  const f = document.getElementById('lvDateFrom'); if (f) f.value = '';
+  const t = document.getElementById('lvDateTo'); if (t) t.value = '';
+  renderLeaves();
+}
+
+// Client-wise work breakdown for extra_working requests (empty for legacy rows without entries)
+function lvExtraBreakdownHtml(r){
+  if (r.leave_type !== 'extra_working') return '';
+  const dates = Array.isArray(r.dates) ? r.dates : [];
+  const parts = [];
+  for (const d of dates) {
+    if (!Array.isArray(d.entries) || !d.entries.length) continue;
+    parts.push(
+      `<div class="lv-extra-bd-date"><b>${fmtDate(d.date)}</b> (${dtFmtWorkDur(d)})</div>` +
+      d.entries.map(e =>
+        `<div class="lv-extra-bd-line">• ${dtEscape(e.client || '')}` +
+        (e.department ? ` <span style="color:#64748b">[${dtEscape(e.department)}]</span>` : '') +
+        ` — ${dtEscape(e.description || '')} <b>(${dtFmtWorkDur(e)})</b></div>`
+      ).join('')
+    );
+  }
+  return parts.length ? `<div class="lv-extra-breakdown">${parts.join('')}</div>` : '';
+}
+
+function renderLeaves(){
+  const wrap = document.getElementById('lvListWrap');
+  lvSyncTeamFilters();
+  if (!LEAVE_DATA.length) {
+    wrap.innerHTML = '<div class="empty">No leave records yet.</div>';
+    return;
+  }
+  const search = (document.getElementById('lvSearch')?.value || '').toLowerCase();
+  const userVal = document.getElementById('lvUserFilter')?.value || 'all';
+  const dateFrom = document.getElementById('lvDateFrom')?.value || '';
+  const dateTo = document.getElementById('lvDateTo')?.value || '';
+  let rows = LEAVE_DATA;
+  if (search) {
+    rows = rows.filter(r =>
+      (r.user_name||'').toLowerCase().includes(search) ||
+      (r.reason||'').toLowerCase().includes(search) ||
+      (LEAVE_TYPE_LABEL[r.leave_type]||'').toLowerCase().includes(search)
+    );
+  }
+  if (LEAVE_TAB === 'team' && lvCanFilterTeam()) {
+    if (userVal && userVal !== 'all') {
+      rows = rows.filter(r => String(r.user_id) === String(userVal));
+    }
+    if (dateFrom) {
+      rows = rows.filter(r => (r.to_date || r.from_date || '') >= dateFrom);
+    }
+    if (dateTo) {
+      rows = rows.filter(r => (r.from_date || r.to_date || '') <= dateTo);
+    }
+  }
+  // Filter summary: count distinct users and total leave days for quick figures.
+  const summaryEl = document.getElementById('lvFilterSummary');
+  if (summaryEl && LEAVE_TAB === 'team' && lvCanFilterTeam()) {
+    const distinctUsers = new Set(rows.map(r => r.user_id));
+    const totalDays = rows.reduce((s,r) => s + (Array.isArray(r.dates) ? r.dates.length : 1), 0);
+    summaryEl.textContent = `${rows.length} leaves · ${distinctUsers.size} ${distinctUsers.size === 1 ? 'employee' : 'employees'} · ${totalDays} days`;
+  } else if (summaryEl) {
+    summaryEl.textContent = '';
+  }
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="empty">No leaves match the filters.</div>';
+    return;
+  }
+
+  // Nested accordion: Name → Month-Year → entries. Both levels start collapsed;
+  // clicking a name reveals its months, clicking a month reveals its leaves.
+  const groups = {};
+  for (const r of rows) {
+    const nkey = r.user_id + '|' + r.user_name;
+    if (!groups[nkey]) groups[nkey] = { key: nkey, name: r.user_name, dept: r.user_department, months: {} };
+    const ym = String(r.from_date || (Array.isArray(r.dates) && r.dates[0] && r.dates[0].date) || '').slice(0, 7); // YYYY-MM
+    (groups[nkey].months[ym] ||= []).push(r);
+  }
+  const LV_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const monthLabel = ym => { const [y,m] = ym.split('-'); return m ? `${LV_MONTHS[+m-1]} ${y}` : 'Undated'; };
+  const arg = s => JSON.stringify(s).replace(/"/g, '&quot;');
+
+  let html = '';
+  for (const nkey of Object.keys(groups)) {
+    const g = groups[nkey];
+    const nameOpen = _lvOpenNames.has(nkey);
+    const total = Object.values(g.months).reduce((s,a)=>s+a.length,0);
+    html += `<div class="lv-user-group">
+      <div class="lv-user-head" onclick="lvToggleName(${arg(nkey)})" style="cursor:pointer;user-select:none">
+        <span><span class="lv-caret" style="display:inline-block;transition:transform .15s;transform:rotate(${nameOpen?90:0}deg);color:#94a3b8;font-size:11px;margin-right:4px">▶</span>${dtEscape(g.name)}</span>
+        <span style="display:flex;align-items:center;gap:10px">${g.dept ? `<small>${dtEscape(g.dept)}</small>` : ''}<small style="color:#94a3b8">${total}</small></span>
+      </div>
+      <div style="display:${nameOpen?'block':'none'}">`;
+    for (const ym of Object.keys(g.months).sort((a,b)=>b.localeCompare(a))) {
+      const mkey = nkey + '||' + ym;
+      const monthOpen = _lvOpenMonths.has(mkey);
+      const items = g.months[ym];
+      html += `<div class="lv-month-group">
+        <div class="lv-month-head" onclick="lvToggleMonth(${arg(mkey)})" style="cursor:pointer;user-select:none;padding:9px 16px;background:#f8fafc;border-bottom:1px solid #eef2f7;font-weight:600;font-size:13px;color:#0f766e;display:flex;align-items:center;gap:8px">
+          <span class="lv-caret" style="display:inline-block;transition:transform .15s;transform:rotate(${monthOpen?90:0}deg);color:#94a3b8;font-size:10px">▶</span>
+          ${monthLabel(ym)}
+          <span style="margin-left:auto;color:#94a3b8;font-weight:500;font-size:11px">${items.length} ${items.length===1?'entry':'entries'}</span>
+        </div>
+        <div style="display:${monthOpen?'block':'none'}">${items.map(lvItemHtml).join('')}</div>
+      </div>`;
+    }
+    html += `</div></div>`;
+  }
+  wrap.innerHTML = html;
+}
+
+// One leave / extra-working row (used inside the month accordion body).
+function lvItemHtml(r) {
+  const dates = Array.isArray(r.dates) && r.dates.length ? r.dates : [{ date: r.from_date }];
+  const dateLine = dates.map(d => {
+    const dStr = fmtDate(d.date);
+    return r.leave_type === 'extra_working' && d.hours
+      ? `${dStr}<span class="lv-hours-pill">${d.hours}h</span>` : dStr;
+  }).join(' · ');
+  const countLabel = dates.length > 1
+    ? `<span style="color:#94a3b8;font-weight:500"> · ${dates.length} day${dates.length===1?'':'s'}</span>` : '';
+  const canDelete = (r.user_id === ME.id && r.status === 'pending') || ME.role === 'admin';
+  return `<div class="lv-item">
+    <div class="lv-item-main">
+      <div class="lv-item-row1">
+        <span class="lv-type-pill lv-type-${r.leave_type}">${LEAVE_TYPE_ICON[r.leave_type]||''} ${LEAVE_TYPE_LABEL[r.leave_type]||r.leave_type}</span>
+        <span class="lv-status lv-status-${r.status}">${r.status}</span>
+      </div>
+      ${(() => { const bd = lvExtraBreakdownHtml(r); return bd || `<div class="lv-item-reason">${dtEscape(r.reason)}</div>`; })()}
+      <div class="lv-item-meta">
+        <b>Applied:</b> ${dtEscape((r.created_at||'').slice(0,16))}
+        ${r.status === 'pending'
+          ? (r.dept_hod_names ? ` · <b>Approver:</b> ${dtEscape(r.dept_hod_names)}` : (r.approver_name ? ` · <b>Approver:</b> ${dtEscape(r.approver_name)}` : ''))
+          : (r.approver_name ? ` · <b>Decided by:</b> ${dtEscape(r.approver_name)}` : '')}
+        ${r.decided_at ? ` · <b>Decided:</b> ${dtEscape(r.decided_at.slice(0,16))}` : ''}
+        ${r.approver_note ? ` · <b>Note:</b> ${dtEscape(r.approver_note)}` : ''}
+      </div>
+    </div>
+    <div class="lv-item-actions">
+      <div class="lv-item-date">${dateLine}${countLabel}</div>
+      ${canDelete ? `<div class="lv-item-btns"><button class="lv-btn-delete" onclick="deleteLeave(${r.id})">🗑 Delete</button></div>` : ''}
+    </div>
+  </div>`;
+}
+
+let _lvOpenNames = new Set(), _lvOpenMonths = new Set();
+function lvToggleName(k){ _lvOpenNames.has(k) ? _lvOpenNames.delete(k) : _lvOpenNames.add(k); renderLeaves(); }
+function lvToggleMonth(k){ _lvOpenMonths.has(k) ? _lvOpenMonths.delete(k) : _lvOpenMonths.add(k); renderLeaves(); }
+
+function lvSwitchTab(tab, el){
+  LEAVE_TAB = tab;
+  document.querySelectorAll('.lv-tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  loadLeaves();
+}
+
+function lvSetStatus(status, el){
+  LEAVE_STATUS = status;
+  document.querySelectorAll('.lv-pill').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  loadLeaves();
+}
+
+function openLeaveForm(){
+  document.getElementById('leaveErr').style.display = 'none';
+  // Timestamp
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const tsStr = `${pad(now.getDate())}-${months[now.getMonth()]}-${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  document.getElementById('lvTimestamp').value = tsStr;
+  document.getElementById('lvEmpName').value = ME.name || '';
+  document.getElementById('lvEmpEmail').value = ME.email || '';
+  // Reset form
+  document.querySelectorAll('#lvTypeGrid .lv-type-btn').forEach(b => b.classList.remove('active'));
+  LEAVE_PICKED_TYPE = '';
+  LEAVE_SELECTED.clear();
+  LEAVE_EXTRA_ROWS.clear();
+  document.getElementById('lvReasonGroup').style.display = '';
+  lvLoadClients();
+  LEAVE_CAL_VIEW = new Date();
+  LEAVE_CAL_VIEW.setDate(1);
+  lvRenderCalendar();
+  lvRenderSelectedList();
+  document.getElementById('lvReason').value = '';
+  // Approver hint — show actual HOD names from API
+  const hintBox = document.getElementById('lvApproverHint');
+  const hintName = document.getElementById('lvApproverHintName');
+  hintBox.style.display = 'block';
+  hintName.textContent = '…';
+  api('/api/leaves/my-approvers').then(r => {
+    hintName.textContent = r?.names || 'HOD';
+  }).catch(() => {
+    if (ME.role === 'admin') hintName.textContent = 'Another Admin';
+    else if (ME.role === 'hod' || ME.role === 'pc') hintName.textContent = 'Admin';
+    else hintName.textContent = `HOD${ME.department ? ' — '+ME.department : ''}`;
+  });
+  document.getElementById('leaveModal').classList.add('open');
+}
+
+function lvPickType(type, el){
+  LEAVE_PICKED_TYPE = type;
+  document.querySelectorAll('#lvTypeGrid .lv-type-btn').forEach(b => b.classList.remove('active'));
+  if (el) el.classList.add('active');
+  // Extra working uses per-row task descriptions instead of a single reason
+  document.getElementById('lvReasonGroup').style.display = type === 'extra_working' ? 'none' : '';
+  // Show / hide selected list (hours input panel)
+  lvRenderSelectedList();
+}
+
+// ── Calendar render & navigation ──────────────────────
+function lvCalNav(dir){
+  LEAVE_CAL_VIEW.setMonth(LEAVE_CAL_VIEW.getMonth() + dir);
+  lvRenderCalendar();
+}
+
+function lvDateKey(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+function lvRenderCalendar(){
+  const view = LEAVE_CAL_VIEW;
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('lvCalMonthLabel').textContent = `${monthNames[month]} ${year}`;
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startWeekday = firstDay.getDay(); // 0=Sun
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayKey = lvDateKey(today);
+  const minAllowed = new Date(today); minAllowed.setDate(minAllowed.getDate() - 33);
+
+  let html = '';
+  // Leading blanks
+  for (let i = 0; i < startWeekday; i++) html += `<button type="button" class="lv-cal-day lv-cal-day-other" disabled></button>`;
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const cur = new Date(year, month, d);
+    const key = lvDateKey(cur);
+    const isPast = cur < minAllowed;
+    const isToday = key === todayKey;
+    const isSelected = LEAVE_SELECTED.has(key);
+    const classes = ['lv-cal-day'];
+    if (isPast) classes.push('lv-cal-day-disabled');
+    if (isToday && !isSelected) classes.push('lv-cal-day-today');
+    if (isSelected) classes.push('lv-cal-day-selected');
+    const dis = isPast ? 'disabled' : '';
+    html += `<button type="button" class="${classes.join(' ')}" ${dis} onclick="lvToggleDate('${key}')">${d}</button>`;
+  }
+  document.getElementById('lvCalGrid').innerHTML = html;
+
+  // Count
+  const cnt = LEAVE_SELECTED.size;
+  document.getElementById('lvCalCount').textContent =
+    cnt === 0 ? '0 dates selected' : `${cnt} date${cnt===1?'':'s'} selected`;
+}
+
+function lvToggleDate(key){
+  if (LEAVE_SELECTED.has(key)) {
+    LEAVE_SELECTED.delete(key);
+    LEAVE_EXTRA_ROWS.delete(key);
+  } else {
+    LEAVE_SELECTED.set(key, '');
+  }
+  lvRenderCalendar();
+  lvRenderSelectedList();
+}
+
+function lvRenderSelectedList(){
+  const box = document.getElementById('lvSelectedBox');
+  const list = document.getElementById('lvSelectedList');
+  const label = document.getElementById('lvSelectedLabel');
+  const isExtra = LEAVE_PICKED_TYPE === 'extra_working';
+  list.classList.toggle('lv-extra-mode', isExtra);
+  lvComboHideNow(); // rows are about to be re-rendered; the popup would point at a dead input
+
+  if (!LEAVE_SELECTED.size) {
+    box.style.display = 'none';
+    return;
+  }
+  if (!isExtra) {
+    // Show a compact summary only when not extra_working
+    box.style.display = 'block';
+    label.textContent = 'Selected Dates';
+    const sorted = [...LEAVE_SELECTED.keys()].sort();
+    const first = sorted[0], last = sorted[sorted.length - 1];
+    const summary = sorted.length === 1
+      ? `${fmtDate(first)}`
+      : `${sorted.length} days leave — ${fmtDate(first)} … ${fmtDate(last)}`;
+    list.innerHTML = `<div class="lv-selected-row">
+      <span style="font-size:14px">📅</span>
+      <span class="lv-selected-date">${summary}</span>
+    </div>`;
+    return;
+  }
+  // Extra working — client/task rows per date (Daily Task style)
+  box.style.display = 'block';
+  label.textContent = 'Work Details per Date';
+  const sorted = [...LEAVE_SELECTED.keys()].sort();
+  list.innerHTML = sorted.map(k => {
+    const rows = lvExtraRowsFor(k);
+    return `
+    <div class="lv-extra-date-block">
+      <div class="lv-extra-date-head">
+        <span>📅 ${fmtDate(k)}</span>
+        <span class="lv-extra-date-total" id="lvExtraTotal-${k}">${lvExtraDateTotal(k)}h</span>
+        <button type="button" class="lv-selected-remove" onclick="lvToggleDate('${k}')">✕</button>
+      </div>
+      ${rows.map((row, i) => `
+      <div class="lv-extra-row">
+        <input type="text" placeholder="Client…" value="${dtEscape(row.client || '')}"
+          oninput="lvClientCombo('${k}',${i},this)" onfocus="lvClientCombo('${k}',${i},this)"
+          onblur="lvClientComboHide(this)"/>
+        <input type="text" placeholder="What did you do?" value="${dtEscape(row.description || '')}"
+          oninput="lvExtraSet('${k}',${i},'description',this.value)"/>
+        <input type="number" min="0.5" max="24" step="0.5" placeholder="hrs" value="${row.hours || ''}"
+          oninput="lvExtraSet('${k}',${i},'hours',this.value)"/>
+        <button type="button" class="lv-extra-row-del" onclick="lvExtraDelRow('${k}',${i})" title="Remove row">✕</button>
+      </div>`).join('')}
+      <button type="button" class="lv-extra-add-row" onclick="lvExtraAddRow('${k}')">+ Add Client Row</button>
+    </div>`;
+  }).join('');
+}
+
+function lvExtraRowsFor(key){
+  if (!LEAVE_EXTRA_ROWS.has(key)) {
+    LEAVE_EXTRA_ROWS.set(key, [{ client: '', description: '', hours: '' }]);
+  }
+  return LEAVE_EXTRA_ROWS.get(key);
+}
+
+function lvExtraDateTotal(key){
+  const rows = LEAVE_EXTRA_ROWS.get(key) || [];
+  const t = rows.reduce((s, r) => s + (parseFloat(r.hours) || 0), 0);
+  return Math.round(t * 100) / 100;
+}
+
+// Searchable client picker — the popup widens to the full client name (never truncates).
+// It is ONE global element appended to <body>: inside the modal, position:fixed re-anchors
+// to .modal because its entrance animation (fill-mode:both) leaves transform:scale(1)
+// applied forever, which made the popup land in scrolled-away content and vanish.
+let LV_COMBO_INPUT = null;
+
+function lvComboEl(){
+  let el = document.getElementById('lvClientComboPop');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'lvClientComboPop';
+    el.className = 'lv-client-combo-list';
+    el.style.display = 'none';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function lvComboHideNow(){
+  const el = document.getElementById('lvClientComboPop');
+  if (el) el.style.display = 'none';
+  LV_COMBO_INPUT = null;
+}
+
+function lvClientCombo(key, idx, input){
+  lvExtraSet(key, idx, 'client', input.value);
+  LV_COMBO_INPUT = input;
+  const listEl = lvComboEl();
+  const q = input.value.trim().toLowerCase();
+  const names = [LEAVE_INTERNAL_CLIENT, ...LEAVE_CLIENTS];
+  const matches = names.filter(n => !q || n.toLowerCase().includes(q)).slice(0, 50);
+  if (!matches.length) { listEl.style.display = 'none'; return; }
+  listEl.innerHTML = matches.map(n =>
+    `<div class="lv-client-combo-item" onmousedown="lvClientComboPick('${key}',${idx},this)">${dtEscape(n)}</div>`).join('');
+  listEl.style.display = 'block';
+  // Fixed-position under the input; flip above / pull left when the viewport runs out
+  const r = input.getBoundingClientRect();
+  listEl.style.minWidth = r.width + 'px';
+  listEl.style.left = r.left + 'px';
+  listEl.style.top = (r.bottom + 2) + 'px';
+  const w = listEl.offsetWidth, h = listEl.offsetHeight;
+  if (r.left + w > window.innerWidth - 8) listEl.style.left = Math.max(8, window.innerWidth - 8 - w) + 'px';
+  if (r.bottom + h + 8 > window.innerHeight) listEl.style.top = Math.max(8, r.top - h - 2) + 'px';
+}
+
+function lvClientComboPick(key, idx, el){
+  const name = el.textContent;
+  lvExtraSet(key, idx, 'client', name);
+  if (LV_COMBO_INPUT) LV_COMBO_INPUT.value = name;
+  lvComboHideNow();
+}
+
+function lvClientComboHide(input){
+  // mousedown on an item fires before blur, so a pick still lands;
+  // keep the popup when focus moved straight into another client input
+  setTimeout(() => {
+    if (document.activeElement !== LV_COMBO_INPUT) lvComboHideNow();
+  }, 150);
+}
+
+function lvExtraSet(key, idx, field, value){
+  const rows = LEAVE_EXTRA_ROWS.get(key);
+  if (!rows || !rows[idx]) return;
+  rows[idx][field] = value;
+  if (field === 'hours') {
+    const el = document.getElementById('lvExtraTotal-' + key);
+    if (el) el.textContent = lvExtraDateTotal(key) + 'h';
+  }
+}
+
+function lvExtraAddRow(key){
+  lvExtraRowsFor(key).push({ client: '', description: '', hours: '' });
+  lvRenderSelectedList();
+}
+
+function lvExtraDelRow(key, idx){
+  const rows = LEAVE_EXTRA_ROWS.get(key);
+  if (!rows) return;
+  rows.splice(idx, 1);
+  if (!rows.length) rows.push({ client: '', description: '', hours: '' });
+  lvRenderSelectedList();
+}
+
+async function saveLeave(){
+  const errBox = document.getElementById('leaveErr');
+  errBox.style.display = 'none';
+  const showErr = (m) => { errBox.textContent = m; errBox.style.display = 'block'; };
+
+  if (!LEAVE_PICKED_TYPE) return showErr('Please pick a Leave Type');
+  if (!LEAVE_SELECTED.size) return showErr('Select at least one date');
+
+  const isExtra = LEAVE_PICKED_TYPE === 'extra_working';
+  const reason = document.getElementById('lvReason').value.trim();
+  if (!isExtra && !reason) return showErr('Reason is required');
+
+  const dates = [];
+  for (const key of [...LEAVE_SELECTED.keys()].sort()) {
+    const item = { date: key };
+    if (isExtra) {
+      // Keep only rows the user actually touched; require complete rows
+      const rows = (LEAVE_EXTRA_ROWS.get(key) || [])
+        .filter(r => r.client || (r.description || '').trim() || r.hours);
+      if (!rows.length) return showErr(`Add at least one client row for ${fmtDate(key)}`);
+      const entries = [];
+      for (const row of rows) {
+        let client = (row.client || '').trim();
+        const description = (row.description || '').trim();
+        const h = parseFloat(row.hours);
+        if (!client) return showErr(`Select a client for ${fmtDate(key)}`);
+        // Normalize a typed name to the canonical list entry; reject unknown names
+        // (skipped when the client list failed to load, so submission never dead-ends)
+        if (LEAVE_CLIENTS.length) {
+          const all = [LEAVE_INTERNAL_CLIENT, ...LEAVE_CLIENTS];
+          const match = all.find(n => n.toLowerCase() === client.toLowerCase());
+          if (!match) return showErr(`"${client}" is not in the client list (${fmtDate(key)}) — pick from the suggestions`);
+          client = match;
+        }
+        if (!description) return showErr(`Enter task description for ${client} on ${fmtDate(key)}`);
+        if (!h || h <= 0) return showErr(`Enter hours for ${client} on ${fmtDate(key)}`);
+        entries.push({ client, description, hours: h });
+      }
+      item.entries = entries;
+    }
+    dates.push(item);
+  }
+
+  const r = await api('/api/leaves', 'POST', {
+    leave_type: LEAVE_PICKED_TYPE, dates, reason
+  });
+  if (r.error) return showErr(r.error);
+  closeModal('leaveModal');
+  showToast('✅ Leave request submitted for approval');
+  loadLeaves();
+  loadApprovalBadge();
+}
+
+// Pool of leaves currently shown (Leave Tracker page + Approvals page) — used by decision modal
+let LEAVE_DECISION_POOL = {};
+
+function lvRegisterPool(list){
+  for (const r of (list || [])) LEAVE_DECISION_POOL[r.id] = r;
+}
+
+function openLeaveDecision(id, action){
+  LEAVE_DECIDE_ID = id;
+  const lr = LEAVE_DECISION_POOL[id] || (LEAVE_DATA.find(x => x.id === id));
+  if (!lr) return;
+  document.getElementById('lvDecisionErr').style.display = 'none';
+  document.getElementById('lvDecisionNote').value = '';
+  document.getElementById('lvDecisionTitle').textContent =
+    action === 'approve' ? 'Approve Leave' : 'Reject Leave';
+  const dates = Array.isArray(lr.dates) && lr.dates.length ? lr.dates : [{date: lr.from_date}];
+  const datesHtml = dates.map(d =>
+    lr.leave_type === 'extra_working' && d.hours
+      ? `${fmtDate(d.date)} <span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:5px;font-size:10px;font-weight:700;margin-left:3px">${d.hours}h</span>`
+      : fmtDate(d.date)
+  ).join(' · ');
+  const bd = lvExtraBreakdownHtml(lr);
+  document.getElementById('lvDecisionInfo').innerHTML = `
+    <div><b>Employee:</b> ${dtEscape(lr.user_name)}</div>
+    <div><b>Type:</b> ${LEAVE_TYPE_LABEL[lr.leave_type]||lr.leave_type}</div>
+    <div><b>Dates (${dates.length}):</b> ${datesHtml}</div>
+    ${bd ? `<div><b>Work done:</b>${bd}</div>` : `<div><b>Reason:</b> ${dtEscape(lr.reason)}</div>`}`;
+  const approveBtn = document.getElementById('lvApproveBtn');
+  const rejectBtn = document.getElementById('lvRejectBtn');
+  approveBtn.style.opacity = action === 'approve' ? '1' : '.7';
+  rejectBtn.style.opacity = action === 'reject' ? '1' : '.7';
+  document.getElementById('leaveDecisionModal').classList.add('open');
+}
+
+async function submitLeaveDecision(action){
+  if (!LEAVE_DECIDE_ID) return;
+  const note = document.getElementById('lvDecisionNote').value.trim();
+  const r = await api('/api/leaves/' + LEAVE_DECIDE_ID, 'PUT', { action, note });
+  if (r.error) {
+    const e = document.getElementById('lvDecisionErr');
+    e.textContent = r.error; e.style.display = 'block';
+    return;
+  }
+  closeModal('leaveDecisionModal');
+  showToast(action === 'approve' ? '✅ Leave approved' : '❌ Leave rejected');
+  LEAVE_DECIDE_ID = null;
+  loadLeaveApprovals();
+  loadApprovalBadge();
+  // If user is currently on Leave Tracker, also refresh that view
+  if (document.getElementById('page-leaves')?.classList.contains('active')) loadLeaves();
+}
+
+async function deleteLeave(id){
+  if (!await appConfirm('Delete this leave request?')) return;
+  const r = await api('/api/leaves/' + id, 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast('🗑 Leave deleted');
+  loadLeaves();
+  loadApprovalBadge();
+}
+
+async function loadLeaveApprovals(){
+  const wrap = document.getElementById('leaveApprovalsContent');
+  if (!wrap) return;
+  try {
+    const list = await api('/api/leaves?scope=approvals&status=pending');
+    const rows = Array.isArray(list) ? list : [];
+    lvRegisterPool(rows);
+
+    // Update tab badge
+    const tabBadge = document.getElementById('apprLeaveBadge');
+    if (tabBadge) {
+      if (rows.length > 0) { tabBadge.textContent = rows.length; tabBadge.style.display = 'inline-block'; }
+      else tabBadge.style.display = 'none';
+    }
+
+    if (!rows.length) {
+      wrap.innerHTML = `<div class="empty" style="padding:36px">✅ No pending leave approvals!</div>`;
+      return;
+    }
+    wrap.innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Employee</th><th>Type</th><th>Dates</th><th>Reason</th><th>Applied</th><th>Action</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(r => {
+            const dates = Array.isArray(r.dates) && r.dates.length ? r.dates : [{date: r.from_date}];
+            const datesHtml = dates.map(d =>
+              r.leave_type === 'extra_working' && d.hours
+                ? `${fmtDate(d.date)}<span class="lv-hours-pill">${d.hours}h</span>`
+                : fmtDate(d.date)
+            ).join(' · ');
+            return `<tr>
+              <td><b>${dtEscape(r.user_name)}</b>${r.user_department ? `<br><span style="color:#94a3b8;font-size:11px">${dtEscape(r.user_department)}</span>` : ''}</td>
+              <td><span class="lv-type-pill lv-type-${r.leave_type}">${LEAVE_TYPE_ICON[r.leave_type]||''} ${LEAVE_TYPE_LABEL[r.leave_type]||r.leave_type}</span></td>
+              <td style="font-size:12px;line-height:1.5">${datesHtml}<br><span style="color:#94a3b8;font-size:11px">${dates.length} day${dates.length===1?'':'s'}</span></td>
+              <td style="font-size:12px;max-width:280px">${lvExtraBreakdownHtml(r) || dtEscape(r.reason)}</td>
+              <td style="color:#64748b;font-size:11px">${dtEscape((r.created_at||'').slice(0,16))}</td>
+              <td style="white-space:nowrap">
+                <button class="action-btn done" onclick="openLeaveDecision(${r.id},'approve')">Approve</button>
+                <button class="action-btn delete" style="margin-left:6px" onclick="openLeaveDecision(${r.id},'reject')">Reject</button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  } catch(e) {
+    wrap.innerHTML = `<div class="empty" style="color:#dc2626">⚠️ ${dtEscape(e.message)}</div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// CLIENT PORTAL — only role='client' sees this
+// ══════════════════════════════════════════════════════
+let _cpMe = null;
+let _cpStatusChart = null;
+
+async function loadClientPortal(from, to) {
+  const wrap = document.getElementById('cpContent');
+  wrap.innerHTML = '<div class="empty" style="padding:40px">Loading…</div>';
+  _cpFeedbackLoaded = false;
+  try {
+    const qs = (from && to) ? `?from=${from}&to=${to}` : '';
+    const s = await api('/api/client-portal/stats' + qs);
+    if (s.error) { wrap.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">${s.error}</div>`; return; }
+    _cpMe = s.client || {};
+    wrap.innerHTML = cpRenderHtml(s);
+    // Render charts after the DOM is in place.
+    setTimeout(() => cpRenderCharts(s), 0);
+  } catch(e) {
+    wrap.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed to load: ${e.message || 'error'}</div>`;
+  }
+}
+
+function cpRenderCharts(s) {
+  if (_cpStatusChart) { try { _cpStatusChart.destroy(); } catch {} _cpStatusChart = null; }
+  const del = s.delegation || {}, chl = s.checklist || {};
+  const pending   = (parseInt(del.pending)||0)   + (parseInt(chl.pending)||0);
+  const completed = (parseInt(del.completed)||0) + (parseInt(chl.completed)||0);
+  const revised   = parseInt(del.revised)||0;
+  const statusCanvas = document.getElementById('cpStatusChart');
+  if (statusCanvas && (pending + completed + revised > 0)) {
+    _cpStatusChart = new Chart(statusCanvas.getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Completed','Pending','Revised'],
+        datasets: [{
+          data: [completed, pending, revised],
+          backgroundColor: ['#10b981','#ef4444','#f59e0b'],
+          borderWidth: 3, borderColor: '#fff', hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '65%',
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { size: 12 }, padding: 14 } },
+          tooltip: { callbacks: { label: c => ` ${c.label}: ${c.raw}` } }
+        }
+      }
+    });
+  }
+}
+
+function cpApplyRange() {
+  const from = document.getElementById('cpFrom')?.value;
+  const to   = document.getElementById('cpTo')?.value;
+  loadClientPortal(from, to);
+}
+
+function cpRenderHtml(s) {
+  const client = s.client || {};
+  const del = s.delegation || {}, chl = s.checklist || {};
+  const meet = s.meetings || {};
+  const range = s.range || {};
+  const tasksTotal     = (parseInt(del.total)||0)     + (parseInt(chl.total)||0);
+  const pendingTotal   = (parseInt(del.pending)||0)   + (parseInt(chl.pending)||0);
+  const completedTotal = (parseInt(del.completed)||0) + (parseInt(chl.completed)||0);
+  const overdueTotal   = (parseInt(del.overdue)||0)   + (parseInt(chl.overdue)||0);
+  const revisedTotal   = parseInt(del.revised)||0;
+  const meetingsTotal     = parseInt(meet.total)||0;
+  const meetingsScheduled = parseInt(meet.scheduled)||0;
+  const meetingsCancelled = parseInt(meet.cancelled)||0;
+  const completionPct = tasksTotal > 0 ? Math.round((completedTotal / tasksTotal) * 100) : 0;
+  const canDelegate = !!client.handler_id;
+
+  // Avatar — real logo if uploaded, else gradient circle with initials.
+  const initials = dtEscape(cmInitials(client.name || 'C'));
+  const avatarStyle = cmAvatarStyle(client.name || 'C');
+  const avatarHtml = client.logo_url
+    ? `<img src="${client.logo_url}" alt="${dtEscape(client.name)}" style="width:72px;height:72px;border-radius:18px;object-fit:cover;box-shadow:0 6px 18px rgba(0,0,0,.12);flex-shrink:0;background:#fff"/>`
+    : `<div style="width:72px;height:72px;border-radius:18px;${avatarStyle};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:26px;box-shadow:0 6px 18px rgba(0,0,0,.12);flex-shrink:0">${initials}</div>`;
+
+  // Time-of-day greeting (IST).
+  const istHour = (new Date(Date.now() + (5.5*60*60*1000))).getUTCHours();
+  const greeting = istHour < 12 ? 'Good morning' : istHour < 17 ? 'Good afternoon' : 'Good evening';
+
+  const handlerLine = client.handler_name
+    ? `<div style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.92);color:#0f766e;padding:8px 14px;border-radius:999px;font-weight:600;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+         <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#14b8a6,#0d9488);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${dtEscape(cmInitials(client.handler_name))}</div>
+         <span>Handler: <strong>${dtEscape(client.handler_name)}</strong></span>
+         ${client.handler_email ? `<span style="color:#64748b;font-weight:500">· ${dtEscape(client.handler_email)}</span>` : ''}
+       </div>`
+    : `<div style="display:inline-flex;align-items:center;gap:6px;background:#fef2f2;color:#991b1b;padding:8px 14px;border-radius:999px;font-weight:600;font-size:13px;border:1px solid #fecaca">
+         ⚠️ No handler assigned — contact admin before delegating tasks
+       </div>`;
+
+  const recentHtml = (s.recent || []).length
+    ? s.recent.map(t => {
+        const typeBadge = t.type === 'checklist'
+          ? `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:3px 9px;border-radius:10px;font-weight:700;letter-spacing:.3px">✅ CHECKLIST</span>`
+          : `<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:3px 9px;border-radius:10px;font-weight:700;letter-spacing:.3px">📋 DELEGATION</span>`;
+        const statusPill = t.status === 'completed'
+          ? `<span style="font-size:11px;color:#15803d;font-weight:700;background:#dcfce7;padding:4px 10px;border-radius:999px;border:1px solid #bbf7d0">✓ Done</span>`
+          : t.status === 'revised'
+          ? `<span style="font-size:11px;color:#9d174d;font-weight:700;background:#fce7f3;padding:4px 10px;border-radius:999px;border:1px solid #fbcfe8">🔄 Revised</span>`
+          : `<span style="font-size:11px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:4px 10px;border-radius:999px;border:1px solid #fca5a5">⏳ Pending</span>`;
+        return `<tr style="transition:background .15s" onmouseover="this.style.background='#fafbfc'" onmouseout="this.style.background='transparent'">
+          <td>${typeBadge}</td>
+          <td style="font-weight:500;color:#0f172a">${dtEscape(t.description || '')}</td>
+          <td style="white-space:nowrap;color:#475569">${dtEscape(t.doer || '—')}</td>
+          <td style="white-space:nowrap;color:#64748b;font-size:12px">${fmtDate(t.due_date || '')}</td>
+          <td style="white-space:nowrap">${statusPill}</td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="5" style="padding:32px;text-align:center;color:#94a3b8">
+         <div style="font-size:32px;margin-bottom:6px">📭</div>
+         No tasks in this window yet
+       </td></tr>`;
+
+  const meetingsHtml = (meet.recent || []).length
+    ? meet.recent.map(m => {
+        const statusPill = m.status === 'cancelled'
+          ? '<span style="font-size:10px;color:#b91c1c;background:#fee2e2;padding:3px 8px;border-radius:10px;font-weight:700">CANCELLED</span>'
+          : m.status === 'done'
+          ? '<span style="font-size:10px;color:#15803d;background:#dcfce7;padding:3px 8px;border-radius:10px;font-weight:700">DONE</span>'
+          : '<span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:3px 8px;border-radius:10px;font-weight:700">SCHEDULED</span>';
+        return `<div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;transition:background .15s" onmouseover="this.style.background='#fafbfc'" onmouseout="this.style.background='transparent'">
+          <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+            <div style="font-weight:600;color:#0f172a;font-size:13px;line-height:1.3">${dtEscape(m.title)}</div>
+            ${statusPill}
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span>📅 ${fmtDate(m.meeting_date)}</span>
+            <span>·</span>
+            <span>🕐 ${m.start_time}–${m.end_time}</span>
+            ${m.organizer_name ? `<span>·</span><span>👤 ${dtEscape(m.organizer_name)}</span>` : ''}
+          </div>
+        </div>`;
+      }).join('')
+    : `<div style="padding:32px;text-align:center;color:#94a3b8">
+         <div style="font-size:32px;margin-bottom:6px">📅</div>
+         No meetings in this window
+       </div>`;
+
+  // Icon + label + value stat card with subtle accent bar.
+  const statCard = (icon, label, value, color, sub, extra) => `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(15,23,42,.08)'" onmouseout="this.style.transform='none';this.style.boxShadow='none'">
+    <div style="position:absolute;top:0;left:0;width:4px;height:100%;background:${color}"></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+      <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${label}</div>
+      <div style="font-size:22px;opacity:.7">${icon}</div>
+    </div>
+    <div style="font-size:32px;font-weight:800;color:${color};line-height:1">${value}</div>
+    ${sub ? `<div style="font-size:11px;color:#94a3b8;margin-top:6px">${sub}</div>` : ''}
+    ${extra || ''}
+  </div>`;
+
+  // Completion progress bar inside the Completed card.
+  const completedExtra = tasksTotal > 0
+    ? `<div style="margin-top:10px;background:#f1f5f9;border-radius:999px;height:6px;overflow:hidden"><div style="width:${completionPct}%;height:100%;background:linear-gradient(90deg,#10b981,#059669);border-radius:999px;transition:width .4s"></div></div>`
+    : '';
+
+  return `
+    <div class="tab-group" style="margin-bottom:18px">
+      <div class="tab active" id="cpTabOverview" onclick="cpShowTab('overview',this)">📊 Overview</div>
+      <div class="tab" id="cpTabFeedback" onclick="cpShowTab('feedback',this)">⭐ Give Feedback</div>
+    </div>
+
+    <div id="cpPanelOverview">
+    <div style="background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 60%,#fde68a 100%);padding:24px 28px;border-radius:16px;margin-bottom:18px;border:1px solid #fde68a;box-shadow:0 4px 20px rgba(245,158,11,.08)">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px">
+        <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+          ${avatarHtml}
+          <div>
+            <div style="font-size:12px;color:#92400e;font-weight:600;text-transform:uppercase;letter-spacing:.6px">${greeting}</div>
+            <div style="font-size:26px;font-weight:800;color:#0f172a;line-height:1.1;margin-top:2px">${dtEscape(client.name || 'Client')}</div>
+            <div style="margin-top:10px">${handlerLine}</div>
+          </div>
+        </div>
+        <button class="btn btn-primary" ${canDelegate ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'} onclick="cpOpenDelegate()" style="padding:12px 20px;font-size:14px;font-weight:600;border-radius:10px;box-shadow:0 4px 12px rgba(79,70,229,.25)">＋ New Task for Handler</button>
+      </div>
+      <div style="margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:rgba(255,255,255,.7);padding:10px 14px;border-radius:10px;border:1px solid rgba(254,243,199,.8)">
+        <label style="font-size:11px;color:#92400e;font-weight:700;text-transform:uppercase;letter-spacing:.4px">📅 Range</label>
+        <input type="date" id="cpFrom" value="${range.from || ''}" style="padding:6px 10px;border:1.5px solid #fde68a;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
+        <span style="font-size:11px;color:#92400e">to</span>
+        <input type="date" id="cpTo" value="${range.to || ''}" style="padding:6px 10px;border:1.5px solid #fde68a;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
+        <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="cpApplyRange()">Apply</button>
+        <span style="font-size:11px;color:#a16207;margin-left:auto">Showing: <strong>${fmtDate(range.from)} → ${fmtDate(range.to)}</strong></span>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:18px">
+      ${statCard('📊', 'Total Tasks', tasksTotal, '#4f46e5', `${del.total||0} delegation · ${chl.total||0} checklist`)}
+      ${statCard('⏳', 'Pending', pendingTotal, '#ef4444', overdueTotal > 0 ? `${overdueTotal} overdue` : 'On track')}
+      ${statCard('✅', 'Completed', completedTotal, '#10b981', `${completionPct}% completion rate`, completedExtra)}
+      ${statCard('🔄', 'Revised', revisedTotal, '#f59e0b', revisedTotal > 0 ? 'Needs rework' : 'None')}
+      ${statCard('📅', 'Meetings', meetingsTotal, '#7c3aed', `${meetingsScheduled} scheduled · ${meetingsCancelled} cancelled`)}
+    </div>
+
+    <div class="cp-status-grid" style="display:grid;grid-template-columns:300px 1fr;gap:16px;margin-bottom:18px">
+      <div class="task-table-card" style="padding:16px 18px;border-radius:14px">
+        <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px">🥧 Task Status</div>
+        <div style="position:relative;height:220px">
+          <canvas id="cpStatusChart"></canvas>
+          ${(pendingTotal + completedTotal + revisedTotal === 0) ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;text-align:center;padding:0 12px">No tasks in this window — pie chart will appear once activity starts.</div>` : ''}
+        </div>
+      </div>
+      ${cpRenderUpcomingHtml(s.upcoming || [])}
+    </div>
+
+    <div class="cp-recent-grid" style="display:grid;grid-template-columns:1fr 360px;gap:16px">
+      <div class="task-table-card" style="padding:0;border-radius:14px">
+        <div class="card-head" style="padding:16px 18px;border-bottom:1px solid #e2e8f0">
+          <div class="card-head-title" style="font-size:15px">📋 Recent Activity</div>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;min-width:580px">
+            <thead><tr style="background:#f8fafc">
+              <th>Type</th><th>Description</th><th>Doer</th><th>Date</th><th>Status</th>
+            </tr></thead>
+            <tbody>${recentHtml}</tbody>
+          </table>
+        </div>
+      </div>
+      <div class="task-table-card" style="padding:0;border-radius:14px">
+        <div class="card-head" style="padding:16px 18px;border-bottom:1px solid #e2e8f0">
+          <div class="card-head-title" style="font-size:15px">📅 Meetings (this window)</div>
+        </div>
+        <div>${meetingsHtml}</div>
+      </div>
+    </div>
+    </div><!-- /cpPanelOverview -->
+
+    <div id="cpPanelFeedback" style="display:none">
+      <div class="task-table-card" style="max-width:600px;margin:0 auto;padding:28px 32px;border-radius:16px">
+        <div style="font-size:18px;font-weight:700;color:#0f172a;margin-bottom:6px">⭐ Share Your Feedback</div>
+        <div style="font-size:13px;color:#64748b;margin-bottom:24px">Your feedback helps us improve our service for you.</div>
+        <div id="cpFeedbackFormWrap"><div class="empty" style="padding:20px">Loading handlers…</div></div>
+      </div>
+    </div>
+  `;
+}
+
+function cpRenderUpcomingHtml(upcoming) {
+  if (!upcoming.length) {
+    return `<div class="task-table-card" style="padding:16px 18px;border-radius:14px;height:252px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#94a3b8">
+      <div style="font-size:13px;font-weight:700;color:#0f172a;align-self:flex-start">📌 Upcoming Deadlines</div>
+      <div style="text-align:center;margin:auto;padding:0 14px">
+        <div style="font-size:32px;margin-bottom:6px">✨</div>
+        <div style="font-size:12px">Nothing pending — all caught up!</div>
+      </div>
+    </div>`;
+  }
+  // Today (IST) ISO date for due-date urgency calculation.
+  const ist = new Date(Date.now() + (5.5*60*60*1000));
+  const todayIso = `${ist.getUTCFullYear()}-${String(ist.getUTCMonth()+1).padStart(2,'0')}-${String(ist.getUTCDate()).padStart(2,'0')}`;
+  const todayMs = new Date(todayIso + 'T00:00:00').getTime();
+  const urgencyPill = dueIso => {
+    if (!dueIso) return '';
+    const diffDays = Math.round((new Date(dueIso + 'T00:00:00').getTime() - todayMs) / (1000*60*60*24));
+    if (diffDays < 0)  return `<span style="font-size:10px;color:#fff;font-weight:700;background:#dc2626;padding:3px 8px;border-radius:999px">${Math.abs(diffDays)}d OVERDUE</span>`;
+    if (diffDays === 0) return `<span style="font-size:10px;color:#fff;font-weight:700;background:#ea580c;padding:3px 8px;border-radius:999px">TODAY</span>`;
+    if (diffDays === 1) return `<span style="font-size:10px;color:#92400e;font-weight:700;background:#fde68a;padding:3px 8px;border-radius:999px">TOMORROW</span>`;
+    if (diffDays <= 7)  return `<span style="font-size:10px;color:#1e40af;font-weight:700;background:#dbeafe;padding:3px 8px;border-radius:999px">${diffDays}d</span>`;
+    return `<span style="font-size:10px;color:#475569;font-weight:600;background:#f1f5f9;padding:3px 8px;border-radius:999px">${diffDays}d</span>`;
+  };
+  const priorityDot = pr => {
+    const color = pr === 'urgent' ? '#991b1b' : pr === 'high' ? '#dc2626' : pr === 'medium' ? '#f59e0b' : '#64748b';
+    return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;vertical-align:middle" title="Priority: ${pr || 'low'}"></span>`;
+  };
+  const typeBadge = t => t.type === 'checklist'
+    ? `<span style="font-size:9px;background:#f0fdf4;color:#16a34a;padding:1px 6px;border-radius:8px;font-weight:700">CHK</span>`
+    : `<span style="font-size:9px;background:#eff6ff;color:#1d4ed8;padding:1px 6px;border-radius:8px;font-weight:700">DEL</span>`;
+  const rows = upcoming.map(t => `<div style="padding:10px 14px;border-bottom:1px solid #f1f5f9;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;transition:background .15s" onmouseover="this.style.background='#fafbfc'" onmouseout="this.style.background='transparent'">
+    <div style="min-width:0">
+      <div style="font-size:13px;color:#0f172a;font-weight:500;line-height:1.3;display:flex;align-items:center;gap:6px">
+        ${priorityDot(t.priority)}${typeBadge(t)}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dtEscape(t.description || '')}</span>
+      </div>
+      <div style="font-size:11px;color:#64748b;margin-top:3px">👤 ${dtEscape(t.doer || '—')} · 📅 ${fmtDate(t.due_date || '')}</div>
+    </div>
+    ${urgencyPill(t.due_date)}
+  </div>`).join('');
+  return `<div class="task-table-card" style="padding:0;border-radius:14px;display:flex;flex-direction:column">
+    <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:13px;font-weight:700;color:#0f172a">📌 Upcoming Deadlines</div>
+      <div style="font-size:11px;color:#94a3b8">${upcoming.length} pending</div>
+    </div>
+    <div style="overflow-y:auto;max-height:220px">${rows}</div>
+  </div>`;
+}
+
+async function cpOpenDelegate() {
+  if (!_cpMe?.handler_id) {
+    showToast('No handler assigned — contact admin', 'error');
+    return;
+  }
+  document.getElementById('cpDelErr').style.display = 'none';
+  document.getElementById('cpDelDesc').value = '';
+  document.getElementById('cpDelRemarks').value = '';
+  document.getElementById('cpDelPriority').value = 'low';
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('cpDelDate').value = today;
+  document.getElementById('cpDelDate').min = today;
+
+  // Populate the handler dropdown with ALL of this client's handlers, so the
+  // client can pick which one to send the task to. Defaults to the primary.
+  const sel = document.getElementById('cpDelHandler');
+  sel.innerHTML = `<option value="${_cpMe.handler_id}">${(_cpMe.handler_name || 'Handler')}</option>`;
+  try {
+    const r = await api('/api/client-portal/handlers');
+    const handlers = (r && Array.isArray(r.handlers)) ? r.handlers : [];
+    if (handlers.length) {
+      sel.innerHTML = handlers.map(h =>
+        `<option value="${h.id}" ${String(h.id) === String(_cpMe.handler_id) ? 'selected' : ''}>${esc(h.name)}${h.department ? ' · ' + esc(h.department) : ''}</option>`
+      ).join('');
+    }
+  } catch (e) { /* keep the single default option */ }
+
+  document.getElementById('clientDelegateModal').classList.add('open');
+}
+
+async function cpSaveDelegate() {
+  const err = document.getElementById('cpDelErr');
+  err.style.display = 'none';
+  const desc = document.getElementById('cpDelDesc').value.trim();
+  const date = document.getElementById('cpDelDate').value;
+  const priority = document.getElementById('cpDelPriority').value;
+  const remarks = document.getElementById('cpDelRemarks').value.trim();
+  if (!desc) { err.textContent = 'Description required'; err.style.display = 'block'; return; }
+  if (!date) { err.textContent = 'Due date required'; err.style.display = 'block'; return; }
+  // The chosen handler; the server validates it belongs to this client and
+  // forces client_id = our client.
+  const assignedTo = document.getElementById('cpDelHandler').value || undefined;
+  const r = await api('/api/tasks', 'POST', {
+    type: 'delegation', desc, date, priority, remarks, approval: 'no', assignedTo
+  });
+  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+  showToast('✅ Task sent to your handler');
+  closeModal('clientDelegateModal');
+  loadClientPortal();
+}
+
+// ── Client portal tab switcher ────────────────────────
+let _cpFeedbackLoaded = false;
+function cpShowTab(tab, el) {
+  document.querySelectorAll('#cpContent .tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  document.getElementById('cpPanelOverview').style.display  = tab === 'overview'  ? '' : 'none';
+  document.getElementById('cpPanelFeedback').style.display  = tab === 'feedback'  ? '' : 'none';
+  if (tab === 'feedback' && !_cpFeedbackLoaded) { _cpFeedbackLoaded = true; cpLoadFeedbackForm(); }
+}
+
+// ── Client portal feedback form ───────────────────────
+let _cpFbRating = 0;
+let _cpFbHandlers = [];
+let _cpFbHodMap = {};
+
+async function cpLoadFeedbackForm() {
+  const wrap = document.getElementById('cpFeedbackFormWrap');
+  if (!wrap) return;
+  try {
+    const r = await api('/api/client-portal/handlers');
+    if (r.error) { wrap.innerHTML = `<div style="color:#dc2626">${dtEscape(r.error)}</div>`; return; }
+    _cpFbHandlers = r.handlers || [];
+    _cpFbHodMap   = r.hodMap   || {};
+    _cpFbRating   = 0;
+    wrap.innerHTML = cpBuildFeedbackForm();
+  } catch(e) {
+    wrap.innerHTML = `<div style="color:#dc2626">Failed to load handlers: ${e.message}</div>`;
+  }
+}
+
+function cpBuildFeedbackForm() {
+  const handlers = _cpFbHandlers;
+  if (!handlers.length) return `<div style="color:#64748b;text-align:center;padding:24px">No handlers assigned to your account yet.</div>`;
+
+  const handlerSection = handlers.length === 1
+    ? `<div style="background:#f8fafc;border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
+        <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">${dtEscape(cmInitials(handlers[0].name))}</div>
+        <div><div style="font-weight:700;color:#0f172a;font-size:14px">${dtEscape(handlers[0].name)}</div><div style="font-size:12px;color:#64748b">${dtEscape(handlers[0].department||'—')}</div></div>
+        <input type="hidden" id="cpFbEmployee" value="${handlers[0].id}" onchange="cpFbHandlerChange()"/>
+       </div>`
+    : `<div style="margin-bottom:20px">
+        <label style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:8px">Select Employee</label>
+        <select id="cpFbEmployee" onchange="cpFbHandlerChange()" style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;background:#fff;outline:none">
+          ${handlers.map(h=>`<option value="${h.id}" data-dept="${dtEscape(h.department||'')}">${dtEscape(h.name)} — ${dtEscape(h.department||'')}</option>`).join('')}
+        </select>
+       </div>`;
+
+  const firstHandler = handlers[0];
+  const hodName = _cpFbHodMap[firstHandler.department] || '—';
+
+  return `
+    ${handlerSection}
+    <div id="cpFbRecipients" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#0369a1">
+      <div style="font-weight:700;margin-bottom:6px">📬 Feedback will be shared with:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <span style="background:#fff;border:1px solid #7dd3fc;padding:4px 12px;border-radius:999px;font-weight:600">Abhishek Jain</span>
+        <span style="background:#fff;border:1px solid #7dd3fc;padding:4px 12px;border-radius:999px;font-weight:600">Simran Gurnani</span>
+        <span id="cpFbHodPill" style="background:#fff;border:1px solid #7dd3fc;padding:4px 12px;border-radius:999px;font-weight:600">${dtEscape(hodName)} (HOD)</span>
+      </div>
+    </div>
+
+    <div style="margin-bottom:20px">
+      <label style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:8px">Rating *</label>
+      <div class="cp-star-row" id="cpFbStarRow">
+        ${[1,2,3,4,5].map(i=>`<span class="cp-star" data-val="${i}" onclick="cpSetRating(${i})" onmouseover="cpPreviewRating(${i})" onmouseout="cpPreviewRating(0)">★</span>`).join('')}
+      </div>
+      <div id="cpFbRatingLabel" style="font-size:12px;color:#94a3b8;margin-top:4px">Click a star to rate</div>
+    </div>
+
+    <div style="margin-bottom:24px">
+      <label style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:8px">Description</label>
+      <textarea id="cpFbDesc" rows="4" placeholder="Share your experience — what went well, what could be improved…"
+        style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;resize:vertical;font-family:inherit;outline:none;box-sizing:border-box"></textarea>
+    </div>
+
+    <div id="cpFbErr" style="display:none;color:#dc2626;font-size:13px;margin-bottom:12px"></div>
+    <button onclick="cpSubmitFeedback()" style="padding:12px 28px;background:#4f46e5;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;width:100%">Submit Feedback</button>
+  `;
+}
+
+function cpFbHandlerChange() {
+  const sel = document.getElementById('cpFbEmployee');
+  if (!sel) return;
+  const dept = sel.options[sel.selectedIndex]?.dataset.dept || '';
+  const hodPill = document.getElementById('cpFbHodPill');
+  if (hodPill) hodPill.textContent = (_cpFbHodMap[dept] || '—') + ' (HOD)';
+}
+
+const _cpRatingLabels = ['','Poor','Fair','Good','Very Good','Excellent'];
+function cpSetRating(val) {
+  _cpFbRating = val;
+  cpPreviewRating(val);
+  const lbl = document.getElementById('cpFbRatingLabel');
+  if (lbl) lbl.textContent = val ? `${val}/5 — ${_cpRatingLabels[val]}` : 'Click a star to rate';
+}
+
+function cpPreviewRating(val) {
+  document.querySelectorAll('#cpFbStarRow .cp-star').forEach(s => {
+    s.classList.toggle('lit', parseInt(s.dataset.val) <= (val || _cpFbRating));
+  });
+}
+
+async function cpSubmitFeedback() {
+  const err = document.getElementById('cpFbErr');
+  err.style.display = 'none';
+  const empEl = document.getElementById('cpFbEmployee');
+  const employee_id = empEl?.value;
+  const description = (document.getElementById('cpFbDesc')?.value || '').trim();
+  if (!employee_id) { err.textContent = 'Please select an employee.'; err.style.display = 'block'; return; }
+  if (!_cpFbRating) { err.textContent = 'Please select a rating.'; err.style.display = 'block'; return; }
+  try {
+    const r = await api('/api/client-portal/feedback', 'POST', { employee_id, rating: _cpFbRating, description });
+    if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+    document.getElementById('cpFeedbackFormWrap').innerHTML = `
+      <div style="text-align:center;padding:32px 16px">
+        <div style="font-size:48px;margin-bottom:12px">🙏</div>
+        <div style="font-size:18px;font-weight:700;color:#0f172a;margin-bottom:6px">Thank you for your feedback!</div>
+        <div style="font-size:14px;color:#64748b;margin-bottom:20px">Your feedback has been shared with the management team.</div>
+        <button onclick="_cpFbRating=0;_cpFeedbackLoaded=false;cpLoadFeedbackForm()" style="padding:10px 24px;background:#4f46e5;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Submit Another</button>
+      </div>`;
+  } catch(e) {
+    err.textContent = 'Submission failed. Please try again.';
+    err.style.display = 'block';
+  }
+}
+
+// ── Admin feedback view ───────────────────────────────
+async function loadFeedbackAdmin() {
+  const wrap = document.getElementById('feedbackContent');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty" style="padding:40px">Loading…</div>';
+  try {
+    const rows = await api('/api/feedback');
+    if (rows.error) { wrap.innerHTML = `<div class="empty" style="color:#dc2626">${dtEscape(rows.error)}</div>`; return; }
+    if (!rows.length) { wrap.innerHTML = '<div class="empty" style="padding:40px">No feedback received yet.</div>'; return; }
+    const stars = n => '★'.repeat(n) + '☆'.repeat(5-n);
+    const ratingColor = n => n >= 4 ? '#10b981' : n === 3 ? '#f59e0b' : '#ef4444';
+    wrap.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">` +
+      rows.map(f => `
+        <div id="fb-card-${f.id}" style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px 22px;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.08)'" onmouseout="this.style.boxShadow=''">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px">
+            <div>
+              <div style="font-weight:700;color:#0f172a;font-size:15px">${dtEscape(f.client_name)}</div>
+              <div style="font-size:12px;color:#64748b;margin-top:2px">${new Date(f.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div>
+            </div>
+            <div style="display:flex;align-items:start;gap:10px">
+              <div style="text-align:right">
+                <div style="font-size:20px;color:${ratingColor(f.rating)};letter-spacing:1px">${stars(f.rating)}</div>
+                <div style="font-size:11px;color:#94a3b8;margin-top:2px">${f.rating}/5</div>
+              </div>
+              <button onclick="deleteFeedback(${f.id})" title="Delete" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:16px;padding:2px 5px;border-radius:6px;line-height:1;transition:color .15s,background .15s" onmouseover="this.style.color='#dc2626';this.style.background='#fee2e2'" onmouseout="this.style.color='#94a3b8';this.style.background='none'">🗑</button>
+            </div>
+          </div>
+          ${f.description ? `<div style="font-size:13px;color:#374151;background:#f8fafc;border-radius:8px;padding:10px 12px;margin-bottom:12px;line-height:1.5">"${dtEscape(f.description)}"</div>` : ''}
+          <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:4px">
+            <div style="font-size:12px;color:#0f172a;font-weight:600">${dtEscape(f.employee_name)}</div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px">${dtEscape(f.department||'—')}</div>
+            ${f.hod_name ? `<div style="font-size:11px;color:#7c3aed;margin-top:4px">HOD: ${dtEscape(f.hod_name)}</div>` : ''}
+          </div>
+        </div>`).join('') + `</div>`;
+  } catch(e) {
+    wrap.innerHTML = `<div class="empty" style="color:#dc2626">Failed to load: ${e.message}</div>`;
+  }
+}
+
+async function deleteFeedback(id) {
+  if (!await appConfirm('This feedback will be permanently deleted.', 'Delete Feedback?')) return;
+  const r = await api(`/api/feedback/${id}`, 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return; }
+  const card = document.getElementById(`fb-card-${id}`);
+  if (card) card.remove();
+  showToast('Feedback deleted');
+}
+
+// ══════════════════════════════════════════════════════
+// CREDIT CARDS
+// ══════════════════════════════════════════════════════
+const CC_BANKS = ['RBL Bank','ICICI','HDFC','AXIS','AMEX','SBI','SCB'];
+const CC_BANK_COLORS = {
+  'RBL Bank':'#dc2626','ICICI':'#f97316','HDFC':'#4f46e5',
+  'AXIS':'#7c3aed','AMEX':'#0891b2','SBI':'#16a34a','SCB':'#b45309'
+};
+// ══════════════════════════════════════════════════════
+// PAYMENT REQUEST
+// ══════════════════════════════════════════════════════
+let _prCards = []; // [{bank_name, card_number}]
+let _prCurrency = '₹'; // currently selected currency for new requests
+
+function prToggleCurrency() {
+  _prCurrency = _prCurrency === '₹' ? '$' : '₹';
+  const btn = document.getElementById('prCurrencyBtn');
+  if (btn) { btn.textContent = _prCurrency; btn.style.color = _prCurrency === '$' ? '#16a34a' : '#4f46e5'; }
+}
+
+async function initPaymentReqPage() {
+  document.getElementById('prName').value = ME.name || '';
+  try {
+    const res = await api('/api/payment-requests/cards');
+    _prCards = Array.isArray(res) ? res : [];
+  } catch(e) { _prCards = []; }
+  prPopulateBanks();
+  const formWrap = document.getElementById('prFormWrap');
+  if (formWrap) formWrap.style.display = '';
+  const listTitle = document.getElementById('prMyListTitle');
+  if (listTitle) listTitle.textContent = ME.role === 'admin' ? 'All Requests' : 'My Requests';
+  loadMyPaymentRequests();
+  // Show card management panel for all admins
+  if (ME.role === 'admin') {
+    const wrap = document.getElementById('prManageCardsWrap');
+    if (wrap) wrap.style.display = '';
+    prRenderCardList();
+  }
+}
+
+function prRenderCardList() {
+  const el = document.getElementById('prCardList');
+  if (!el) return;
+  const manual = _prCards.filter(c => c.src === 'manual');
+  if (!manual.length) { el.innerHTML = '<div style="color:#94a3b8;padding:8px 0">No manual cards added yet.</div>'; return; }
+  el.innerHTML = manual.map(c => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9">
+      <span><strong style="color:#374151">${dtEscape(c.bank_name)}</strong> — <span style="font-family:monospace;font-size:12px">${dtEscape(c.card_number)}</span></span>
+      <button onclick="prRemoveCard(${c.id})"
+        style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px;line-height:1"
+        onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#94a3b8'">✕</button>
+    </div>`).join('');
+}
+
+function prMgmtBankChange() {
+  const val = document.getElementById('prMgmtBank').value;
+  const inp = document.getElementById('prMgmtBankOther');
+  if (val === '__other__') { inp.style.display = ''; inp.focus(); }
+  else { inp.style.display = 'none'; inp.value = ''; }
+}
+
+async function prAddCard() {
+  const sel = document.getElementById('prMgmtBank').value;
+  const bank = sel === '__other__'
+    ? document.getElementById('prMgmtBankOther').value.trim()
+    : sel.trim();
+  const card = document.getElementById('prMgmtCard').value.trim();
+  if (!bank || !card) { showToast('Enter bank name and card number', 'error'); return; }
+  try {
+    await api('/api/payment-requests/cards', 'POST', { bank_name:bank, card_number:card });
+    _prCards = await api('/api/payment-requests/cards');
+    prPopulateBanks();
+    prRenderCardList();
+    document.getElementById('prMgmtBank').value = '';
+    document.getElementById('prMgmtBankOther').style.display = 'none';
+    document.getElementById('prMgmtBankOther').value = '';
+    document.getElementById('prMgmtCard').value = '';
+    showToast('Card added');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function prRemoveCard(id) {
+  if (!confirm('Is card ko remove karein?')) return;
+  try {
+    await api(`/api/payment-requests/cards/${id}`, 'DELETE');
+    _prCards = await api('/api/payment-requests/cards');
+    prPopulateBanks();
+    prRenderCardList();
+    showToast('Card removed');
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+function prPopulateBanks() {
+  const banks = [...new Set(_prCards.map(c => c.bank_name))].sort();
+  const sel = document.getElementById('prBank');
+  sel.innerHTML = '<option value="">— Select Bank —</option>' +
+    banks.map(b => `<option value="${dtEscape(b)}">${dtEscape(b)}</option>`).join('') +
+    '<option value="__other__">Other…</option>';
+  document.getElementById('prCard').innerHTML = '<option value="">— Select Card —</option>';
+  document.getElementById('prBankOther').style.display = 'none';
+  document.getElementById('prCardOther').style.display = 'none';
+}
+
+function prBankChange() {
+  const val = document.getElementById('prBank').value;
+  const otherInput = document.getElementById('prBankOther');
+  const cardSel = document.getElementById('prCard');
+  const cardOther = document.getElementById('prCardOther');
+
+  if (val === '__other__') {
+    otherInput.style.display = '';
+    otherInput.focus();
+    // For unknown bank, always use text input for card
+    cardSel.style.display = 'none';
+    cardSel.innerHTML = '<option value="">— Select Card —</option>';
+    cardOther.style.display = '';
+    cardOther.placeholder = 'Enter card number…';
+  } else {
+    otherInput.style.display = 'none';
+    otherInput.value = '';
+    const cards = Array.isArray(_prCards) ? _prCards.filter(c => c.bank_name === val) : [];
+
+    if (cards.length === 0) {
+      // No saved cards for this bank — directly show text input
+      cardSel.style.display = 'none';
+      cardSel.innerHTML = '<option value="">— Select Card —</option>';
+      cardOther.style.display = '';
+      cardOther.value = '';
+      cardOther.placeholder = 'Enter card number…';
+      cardOther.focus();
+    } else {
+      cardSel.style.display = '';
+      cardOther.style.display = 'none';
+      cardOther.value = '';
+      cardSel.innerHTML = '<option value="">— Select Card —</option>' +
+        cards.map(c => `<option value="${dtEscape(c.card_number)}">${dtEscape(c.card_number)}</option>`).join('') +
+        '<option value="__other__">+ Add more</option>';
+    }
+  }
+}
+
+function prCardChange() {
+  const val = document.getElementById('prCard').value;
+  const cardOther = document.getElementById('prCardOther');
+  if (val === '__other__') {
+    cardOther.style.display = '';
+    cardOther.focus();
+  } else {
+    cardOther.style.display = 'none';
+    cardOther.value = '';
+  }
+}
+
+// Parse amount + currency + reason from reason field
+function prParseReason(raw) {
+  if (!raw) return { amount: null, currency: '₹', reason: '' };
+  const s = String(raw);
+  if (s.charAt(0) === '[') {
+    const close = s.indexOf('] ');
+    if (close > 1) {
+      const inner = s.slice(1, close);
+      const num = parseFloat(inner.slice(1).replace(/,/g, ''));
+      if (!isNaN(num) && num >= 0) {
+        return { amount: num, currency: inner.charAt(0), reason: s.slice(close + 2) };
+      }
+    }
+  }
+  return { amount: null, currency: '₹', reason: s };
+}
+
+async function prSubmit() {
+  const bankSel = document.getElementById('prBank').value;
+  const cardSel = document.getElementById('prCard').value;
+  const reason  = document.getElementById('prReason').value.trim();
+
+  const bank = bankSel === '__other__'
+    ? document.getElementById('prBankOther').value.trim()
+    : bankSel;
+  const card = (bankSel === '__other__' || cardSel === '__other__')
+    ? document.getElementById('prCardOther').value.trim()
+    : cardSel;
+
+  const amount = parseFloat(document.getElementById('prAmount').value) || 0;
+
+  if (!bank) { showToast('Enter bank name', 'error'); document.getElementById('prBankOther').focus(); return; }
+  if (!card) { showToast('Enter card number', 'error'); return; }
+  if (!amount || amount <= 0) { showToast('Enter amount', 'error'); document.getElementById('prAmount').focus(); return; }
+  if (!reason) { showToast('Enter reason', 'error'); return; }
+
+  // Encode amount + currency inside reason
+  const encodedReason = `[${_prCurrency}${amount.toFixed(2)}] ${reason}`;
+
+  const btn = document.getElementById('prSubmitBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Submitting...'; }
+
+  try {
+    // Auto-save new bank/card combo (route might not exist on old server — ignore errors)
+    const isNewBank = bankSel === '__other__';
+    const isNewCard = bankSel === '__other__' || cardSel === '__other__';
+    if (isNewBank || isNewCard) {
+      const cr = await api('/api/payment-requests/cards', 'POST', { bank_name:bank, card_number:card });
+      if (!cr.error) {
+        const fresh = await api('/api/payment-requests/cards');
+        if (Array.isArray(fresh)) { _prCards = fresh; prPopulateBanks(); }
+        if (ME.role === 'admin') prRenderCardList();
+      }
+    }
+
+    const r = await api('/api/payment-requests', 'POST', { bank_name:bank, card_number:card, amount, reason: encodedReason });
+    if (r.error) { showToast('Error: ' + r.error, 'error'); return; }
+    showToast('✅ Request submitted!');
+    document.getElementById('prBank').value = '';
+    document.getElementById('prBankOther').style.display = 'none';
+    document.getElementById('prBankOther').value = '';
+    document.getElementById('prCard').innerHTML = '<option value="">— Select Card —</option>';
+    document.getElementById('prCard').style.display = '';
+    document.getElementById('prCardOther').style.display = 'none';
+    document.getElementById('prCardOther').value = '';
+    document.getElementById('prAmount').value = '';
+    document.getElementById('prReason').value = '';
+    loadMyPaymentRequests();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+  finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="16" height="16" fill="none" stroke="#fff" stroke-width="2.5" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Submit Request'; }
+  }
+}
+
+async function loadMyPaymentRequests() {
+  const el = document.getElementById('prMyList');
+  if (!el) return;
+  try {
+    // Admin sees everyone's requests (so the row needs an Employee column to tell them
+    // apart); a regular user only ever gets their own rows back, where a name column
+    // would just repeat their own name on every line.
+    const isAdminView = ME.role === 'admin';
+    const endpoint = isAdminView ? '/api/payment-requests' : '/api/payment-requests/my';
+    const all = await api(endpoint);
+    if (!Array.isArray(all)) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No requests</div>'; return; }
+    const sentinels = all.filter(r => r.bank_name === '__system__');
+    const rows = all.filter(r => r.bank_name !== '__system__');
+    if (!rows.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No requests</div>'; return; }
+    const statusBadge = s => s==='approved'
+      ? '<span style="background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">✅ Approved</span>'
+      : s==='rejected'
+      ? '<span style="background:#fee2e2;color:#dc2626;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">❌ Rejected</span>'
+      : '<span style="background:#fef9c3;color:#a16207;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">⏳ Pending</span>';
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+        <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Date</th>
+        ${isAdminView ? '<th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Employee</th>' : ''}
+        <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bank</th>
+        <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Card</th>
+        <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Amount</th>
+        <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Reason</th>
+        <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
+        <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Payment Status</th>
+        <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bill</th>
+      </tr></thead>
+      <tbody>${rows.map((r,i) => {
+        const parsed = prParseReason(r.reason);
+        const dispAmt = (r.amount > 0) ? Number(r.amount) : parsed.amount;
+        const dispCur = parsed.currency || '₹';
+        const dispReason = parsed.reason || r.reason;
+        const isDone = r.payment_done || sentinels.some(s => s.card_number === '__paid__' && s.reason === '__paid__:' + String(r.id));
+        const cancelSentinel = sentinels.find(s => s.card_number === '__cancelled__' && s.reason.startsWith('__cancelled__:' + String(r.id) + ':'));
+        const isCancelled = cancelSentinel != null;
+        const billSentinels = sentinels.filter(s => s.card_number === '__bill__' && s.reason.startsWith('__bill__:' + String(r.id) + ':'));
+        const billSentinel = billSentinels[0];
+        const billFileId = billSentinel ? billSentinel.reason.replace('__bill__:' + String(r.id) + ':', '') : null;
+        const billCell = billFileId
+          ? `<span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap"><a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" style="display:inline-flex;align-items:center;gap:4px;background:#fff;color:#16a34a;border:1.5px solid #16a34a;border-radius:7px;padding:4px 11px;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer">👁 View</a><button onclick="prOpenBillModal(${r.id})" title="Change Bill" style="display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #cbd5e1;border-radius:7px;cursor:pointer;color:#64748b;font-size:13px;padding:4px 7px;line-height:1">🔄</button></span>`
+          : (_prBillUploading.has(r.id)
+            ? `<span style="color:#64748b;font-size:12px;font-weight:600">Processing…</span>`
+            : (isDone && r.status === 'approved'
+              ? `<button onclick="prOpenBillModal(${r.id})" style="background:none;border:none;color:#f59e0b;font-size:12px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline">Upload Bill</button>`
+              : `<span style="color:#94a3b8;font-size:12px">—</span>`));
+        let payStatusCell = '';
+        if (r.status === 'approved') {
+          if (isDone) payStatusCell = '<span style="font-size:20px">✅</span>';
+          else if (isCancelled) payStatusCell = '<span style="font-size:20px" title="' + dtEscape(cancelSentinel.reason.replace('__cancelled__:' + r.id + ':','')) + '">❌</span>';
+          // Not admin-gated: marking a request paid (with its bill) or cancelling it
+          // (with a reason) is the requester's own record-keeping step, since they are
+          // the one who actually made the payment and holds the bill. Scoping is
+          // implicit — a regular user's list only ever contains their own requests.
+          else payStatusCell = `<span style="display:inline-flex;gap:10px;align-items:center">
+            <button onclick="prOpenBillModal(${r.id})" title="Mark as Paid" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;padding:2px">✅</button>
+            <button onclick="prOpenCancelModal(${r.id})" title="Cancel Payment" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;padding:2px">❌</button>
+          </span>`;
+        }
+        return `<tr style="${i%2?'background:#f8fafc':''}">
+        <td style="padding:9px 14px;font-size:12px;color:#64748b">${new Date(r.created_at).toLocaleDateString('en-IN')}</td>
+        ${isAdminView ? `<td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.name)}</td>` : ''}
+        <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.bank_name)}</td>
+        <td style="padding:9px 14px;font-size:12px">${dtEscape(r.card_number)}</td>
+        <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">${dispAmt?dispCur+Number(dispAmt).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
+        <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:200px">${dtEscape(dispReason)}</td>
+        <td style="padding:9px 14px">${statusBadge(r.status)}</td>
+        <td style="padding:9px 14px;text-align:center">${payStatusCell}</td>
+        <td style="padding:9px 14px;text-align:center">${billCell}</td>
+      </tr>`;}).join('')}</tbody>
+    </table>`;
+  } catch(e) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
+}
+
+let _paAllRows = [], _paSentinels = [];
+
+function paApplyFilters() {
+  const emp  = (document.getElementById('paFilterEmployee')?.value || '').trim();
+  const from = document.getElementById('paFilterDateFrom')?.value;
+  const to   = document.getElementById('paFilterDateTo')?.value;
+  const minA = parseFloat(document.getElementById('paFilterAmtMin')?.value) || null;
+  const maxA = parseFloat(document.getElementById('paFilterAmtMax')?.value) || null;
+  const filtered = _paAllRows.filter(r => {
+    if (emp && r.name !== emp) return false;
+    const d = new Date(r.created_at);
+    if (from && d < new Date(from)) return false;
+    if (to   && d > new Date(to + 'T23:59:59')) return false;
+    const parsed = prParseReason(r.reason);
+    const amt = parsed.amount != null ? parsed.amount : ((parseFloat(r.amount) || 0) > 0 ? Number(r.amount) : null);
+    if (minA !== null && (!amt || amt < minA)) return false;
+    if (maxA !== null && (!amt || amt > maxA)) return false;
+    return true;
+  });
+  paRenderApprovalRows(filtered);
+}
+
+function paResetFilters() {
+  const ids = ['paFilterEmployee','paFilterDateFrom','paFilterDateTo','paFilterAmtMin','paFilterAmtMax'];
+  ids.forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('paFilterEmployee')?._cselectSync?.();
+  paRenderApprovalRows(_paAllRows);
+}
+
+function paRenderApprovalRows(rows) {
+  const el = document.getElementById('paymentApprovalsList');
+  if (!el) return;
+  const sentinels = _paSentinels;
+  if (!rows.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">No requests found</div>'; return; }
+  const isMobile = window.innerWidth < 680;
+  const statusBadge = s => s==='approved'
+      ? '<span style="background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">✅ Approved</span>'
+      : s==='rejected'
+      ? '<span style="background:#fee2e2;color:#dc2626;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">❌ Rejected</span>'
+      : '<span style="background:#fef9c3;color:#a16207;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">⏳ Pending</span>';
+
+  const rowData = rows.map((r,i) => {
+    const parsed = prParseReason(r.reason);
+    // The encoded "[<currency><amount>] <reason>" inside `reason` is
+    // authoritative (the server sends it raw since the currency fix): prefer
+    // the parsed amount/clean reason; the numeric amount column is only a
+    // fallback for legacy rows with plain reasons. Note r.amount is a DECIMAL
+    // string ("0.00" is truthy) — never use it as a boolean.
+    const dispAmt = parsed.amount != null ? parsed.amount : ((parseFloat(r.amount) || 0) > 0 ? Number(r.amount) : null);
+    const dispCur = parsed.currency || '₹';
+    const dispReason = parsed.amount != null ? parsed.reason : r.reason;
+    const isDone = r.payment_done || sentinels.some(s => s.card_number === '__paid__' && s.reason === '__paid__:' + String(r.id));
+    const cancelSentinel = sentinels.find(s => s.card_number === '__cancelled__' && s.reason.startsWith('__cancelled__:' + String(r.id) + ':'));
+    const isCancelled = cancelSentinel != null;
+    const cancelReason = isCancelled ? cancelSentinel.reason.replace('__cancelled__:' + r.id + ':', '') : '';
+    const billSentinels = sentinels.filter(s => s.card_number === '__bill__' && s.reason.startsWith('__bill__:' + String(r.id) + ':'));
+    const billSentinel = billSentinels[0];
+    const billFileId = billSentinel ? billSentinel.reason.replace('__bill__:' + String(r.id) + ':', '') : null;
+    const paBillCell = billFileId
+      ? `<a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" style="display:inline-flex;align-items:center;gap:4px;background:#fff;color:#16a34a;border:1.5px solid #16a34a;border-radius:7px;padding:4px 11px;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;white-space:nowrap">👁 View</a>`
+      : (_prBillUploading.has(r.id)
+        ? `<span style="color:#64748b;font-size:12px;font-weight:600">Processing…</span>`
+        : (isDone && r.status === 'approved'
+          ? `<button onclick="prOpenBillModal(${r.id})" style="background:none;border:none;color:#f59e0b;font-size:12px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline">Upload Bill</button>`
+          : `<span style="color:#94a3b8;font-size:12px">—</span>`));
+    const actionCell = r.status==='pending'
+      ? `<button onclick="prReview(${r.id},'approved')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;margin-right:6px">✅ Approve</button><button onclick="prReview(${r.id},'rejected')" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">❌ Reject</button>`
+      : isDone ? `<span style="font-size:12px;font-weight:700;color:#16a34a">Payment Done</span>`
+      : isCancelled ? `<span style="font-size:12px;font-weight:700;color:#dc2626">Cancelled<br><span style="font-weight:400;font-size:11px;color:#64748b">${dtEscape(cancelReason)}</span></span>`
+      : '—';
+    const deleteBtn = `<button onclick="prDeleteRequest(${r.id})" title="Delete" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:16px;line-height:1;padding:2px 4px;border-radius:4px" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#cbd5e1'">🗑</button>`;
+    return { r, i, dispAmt, dispCur, dispReason, isDone, isCancelled, cancelReason, paBillCell, actionCell, deleteBtn };
+  });
+
+  if (isMobile) {
+    el.innerHTML = `<div style="padding:8px">` + rowData.map(({ r, i, dispAmt, dispCur, dispReason, paBillCell, actionCell, deleteBtn }) => `
+      <div id="paRow-${r.id}" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#0f172a">${dtEscape(r.name)}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px">${new Date(r.created_at).toLocaleDateString('en-IN')}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span id="paStatus-${r.id}">${statusBadge(r.status)}</span>
+            ${deleteBtn}
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+          <div style="background:#f8fafc;border-radius:8px;padding:6px 10px;flex:1;min-width:120px">
+            <div style="font-size:10px;color:#94a3b8;font-weight:600;text-transform:uppercase;margin-bottom:2px">Bank / Card</div>
+            <div style="font-size:12px;font-weight:700;color:#0f172a">${dtEscape(r.bank_name)}</div>
+            <div style="font-size:11px;color:#64748b">${dtEscape(r.card_number)}</div>
+          </div>
+          <div style="background:#f8fafc;border-radius:8px;padding:6px 10px;flex:1;min-width:100px">
+            <div style="font-size:10px;color:#94a3b8;font-weight:600;text-transform:uppercase;margin-bottom:2px">Amount</div>
+            <div style="font-size:15px;font-weight:800;color:#0f172a">${dispAmt ? dispCur + Number(dispAmt).toLocaleString('en-IN',{minimumFractionDigits:2}) : '—'}</div>
+          </div>
+        </div>
+        ${dispReason ? `<div style="font-size:12px;color:#475569;margin-bottom:10px;padding:6px 10px;background:#f8fafc;border-radius:8px">${dtEscape(dispReason)}</div>` : ''}
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div id="paAction-${r.id}">${actionCell}</div>
+          <div>${paBillCell}</div>
+        </div>
+      </div>`).join('') + `</div>`;
+  } else {
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+        <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Date</th>
+        <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Employee</th>
+        <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bank</th>
+        <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Card</th>
+        <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Amount</th>
+        <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Reason</th>
+        <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
+        <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Action</th>
+        <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bill</th>
+        <th style="padding:9px 14px;width:40px"></th>
+      </tr></thead>
+      <tbody>${rowData.map(({ r, i, dispAmt, dispCur, dispReason, paBillCell, actionCell, deleteBtn }) => `
+        <tr id="paRow-${r.id}" style="${i%2?'background:#f8fafc':''}">
+        <td style="padding:9px 14px;font-size:12px;color:#64748b">${new Date(r.created_at).toLocaleDateString('en-IN')}</td>
+        <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.name)}</td>
+        <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.bank_name)}</td>
+        <td style="padding:9px 14px;font-size:12px">${dtEscape(r.card_number)}</td>
+        <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">${dispAmt?dispCur+Number(dispAmt).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
+        <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:200px">${dtEscape(dispReason)}</td>
+        <td style="padding:9px 14px" id="paStatus-${r.id}">${statusBadge(r.status)}</td>
+        <td style="padding:9px 14px;text-align:center" id="paAction-${r.id}">${actionCell}</td>
+        <td style="padding:9px 14px;text-align:center">${paBillCell}</td>
+        <td style="padding:9px 14px;text-align:center">${deleteBtn}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  }
+}
+
+window.addEventListener('resize', () => { if (_paAllRows && _paAllRows.length) paApplyFilters(); });
+
+async function loadPaymentApprovals() {
+  const el = document.getElementById('paymentApprovalsList');
+  if (!el) return;
+  try {
+    const all = await api('/api/payment-requests');
+    if (!Array.isArray(all) || all.error) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error loading requests</div>'; return; }
+    _paSentinels = all.filter(r => r.bank_name === '__system__');
+    const rows = all.filter(r => r.bank_name !== '__system__');
+    _paAllRows = rows;
+    const empSel = document.getElementById('paFilterEmployee');
+    if (empSel) {
+      const names = [...new Set(rows.map(r => r.name).filter(Boolean))].sort();
+      const curVal = empSel.value;
+      empSel.innerHTML = '<option value="">All Employees</option>' + names.map(n => `<option value="${dtEscape(n)}"${n===curVal?'selected':''}>${dtEscape(n)}</option>`).join('');
+      initCustomSelect('paFilterEmployee');  // custom dropdown — no native popup over the sidebar
+    }
+    paApplyFilters();
+  } catch(e) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
+}
+
+async function loadPaymentApprovalsBadge() {
+  try {
+    const all = await api('/api/payment-requests');
+    if (!Array.isArray(all)) return;
+    const pending = all.filter(r => r.bank_name !== '__system__' && r.status === 'pending').length;
+    const badge = document.getElementById('apprPaymentBadge');
+    if (badge) { badge.textContent = pending; badge.style.display = pending ? 'inline-block' : 'none'; }
+  } catch(e) {}
+}
+
+async function prReview(id, status) {
+  // Give instant feedback — the server call can take a few seconds (it waits on the
+  // WhatsApp notification before responding), so swap the buttons for a spinner right away
+  // instead of leaving both Approve/Reject clickable while the request is in flight.
+  const actionCell = document.getElementById('paAction-' + id);
+  if (actionCell) {
+    actionCell.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#64748b;font-weight:600">
+      <span style="width:13px;height:13px;border:2px solid #e2e8f0;border-top-color:#4f46e5;border-radius:50%;display:inline-block;animation:spin .7s linear infinite"></span>
+      ${status==='approved' ? 'Approving…' : 'Rejecting…'}
+    </span>`;
+  }
+  try {
+    await api(`/api/payment-requests/${id}`, 'PATCH', { status });
+    showToast(status==='approved' ? '✅ Request approved!' : '❌ Request rejected!');
+    loadPaymentApprovals();
+    loadPaymentApprovalsBadge();
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+    loadPaymentApprovals();
+  }
+}
+
+async function prDeleteRequest(id) {
+  if (!confirm('Delete this payment request?')) return;
+  try {
+    const r = await api('/api/payment-requests/' + id, 'DELETE');
+    if (r && r.error) { showToast('Error: ' + r.error, 'error'); return; }
+    showToast('Deleted');
+    loadMyPaymentRequests();
+    loadPaymentApprovals();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════
+// MDO APPROVALS — WhatsApp-bot task intake queue + message log
+// ══════════════════════════════════════════════════════
+async function loadMdoApprovals() {
+  const tasksEl = document.getElementById('mdoTasksList');
+  try {
+    const tasks = await api('/api/mdo-tasks');
+    if (!Array.isArray(tasks)) { tasksEl.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error loading tasks</div>'; }
+    else mdoRenderTasks(tasks);
+  } catch(e) { tasksEl.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
+}
+
+function mdoRenderTasks(rows) {
+  const el = document.getElementById('mdoTasksList');
+  if (!rows.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">No tasks found</div>'; return; }
+  const statusBadge = s => s==='Approved'
+      ? '<span style="background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">✅ Approved</span>'
+      : s==='Rejected'
+      ? '<span style="background:#fee2e2;color:#dc2626;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">❌ Rejected</span>'
+      : '<span style="background:#fef9c3;color:#a16207;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">⏳ ' + dtEscape(s || 'Pending') + '</span>';
+  const actionCell = r => r.status === 'Pending'
+      ? `<button onclick="mdoReviewTask(${r.id},'Approved')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;margin-right:6px">✅ Approve</button><button onclick="mdoReviewTask(${r.id},'Rejected')" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">❌ Reject</button>`
+      : '—';
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse">
+    <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Timestamp</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Task ID</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Description</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Assigned By</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Assigned To</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Priority</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Due Date</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Approval Needed</th>
+      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
+      <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Action</th>
+    </tr></thead>
+    <tbody>${rows.map((r,i) => {
+      const desc = r.task_description || r.description || '—';
+      const dueDate = r.target_date || r.due_date;
+      return `<tr id="mdoTaskRow-${r.id}" style="${i%2?'background:#f8fafc':''}">
+        <td style="padding:9px 14px;font-size:12px;color:#64748b">${r.timestamp ? new Date(r.timestamp).toLocaleString('en-IN') : '—'}</td>
+        <td style="padding:9px 14px;font-size:12px;font-weight:600">${dtEscape(r.task_id || '—')}</td>
+        <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:260px">${dtEscape(desc)}</td>
+        <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.assigned_by || r.assigned_name || '—')}</td>
+        <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.assigned_to || '—')}</td>
+        <td style="padding:9px 14px;font-size:12px">${dtEscape(r.priority || '—')}</td>
+        <td style="padding:9px 14px;font-size:12px;color:#64748b">${dueDate ? new Date(dueDate).toLocaleDateString('en-IN') : '—'}</td>
+        <td style="padding:9px 14px;font-size:12px">${dtEscape(r.approval_needed || '—')}</td>
+        <td style="padding:9px 14px" id="mdoTaskStatus-${r.id}">${statusBadge(r.status)}</td>
+        <td style="padding:9px 14px;text-align:center" id="mdoTaskAction-${r.id}">${actionCell(r)}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+async function mdoReviewTask(id, status) {
+  const actionCell = document.getElementById('mdoTaskAction-' + id);
+  if (actionCell) {
+    actionCell.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#64748b;font-weight:600">
+      <span style="width:13px;height:13px;border:2px solid #e2e8f0;border-top-color:#4f46e5;border-radius:50%;display:inline-block;animation:spin .7s linear infinite"></span>
+      ${status==='Approved' ? 'Approving…' : 'Rejecting…'}
+    </span>`;
+  }
+  try {
+    await api(`/api/mdo-tasks/${id}`, 'PATCH', { status });
+    showToast(status==='Approved' ? '✅ Task approved!' : '❌ Task rejected!');
+    loadMdoApprovals();
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+    loadMdoApprovals();
+  }
+}
+
+// prMarkPaymentDone() used to sit here — a second way to post the __paid__
+// sentinel, never wired to any button. The ✅ control opens prOpenBillModal
+// instead, so marking paid and attaching the bill stay one step.
+
+let _prBillPendingId = null;
+let _prBillFile = null;
+const _prBillUploading = new Set();
+
+function prOpenBillModal(id) {
+  _prBillPendingId = id;
+  _prBillFile = null;
+  document.getElementById('prBillFileInput').value = '';
+  document.getElementById('prBillPreview').style.display = 'none';
+  document.getElementById('prBillPrompt').style.display = '';
+  document.getElementById('prBillFilename').value = 'PaymentBill_ID' + id;
+  document.getElementById('prBillOverlay').style.display = 'flex';
+}
+function prCloseBillModal() {
+  document.getElementById('prBillOverlay').style.display = 'none';
+  _prBillPendingId = null; _prBillFile = null;
+}
+function prBillFileSelected() {
+  const file = document.getElementById('prBillFileInput').files[0];
+  if (!file) return;
+  _prBillFile = file;
+  const preview = document.getElementById('prBillPreview');
+  const prompt  = document.getElementById('prBillPrompt');
+  if (file.type === 'application/pdf') {
+    document.getElementById('prBillImg').style.display = 'none';
+    preview.innerHTML = `<div style="padding:18px 12px;text-align:center"><div style="font-size:38px">📄</div><div style="font-size:12px;font-weight:600;color:#475569;margin-top:6px">${esc(file.name)}</div><div style="font-size:11px;color:#94a3b8;margin-top:2px">${(file.size/1024).toFixed(0)} KB</div></div>`;
+    preview.style.display = '';
+    prompt.style.display = 'none';
+  } else {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = document.getElementById('prBillImg');
+      img.src = e.target.result;
+      img.style.display = '';
+      preview.style.display = '';
+      prompt.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  }
+}
+async function prBillCompressToBase64(file) {
+  if (file.type === 'application/pdf') {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve({ base64: e.target.result.split(',')[1], mimeType: 'application/pdf' });
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1200;
+      let w = img.width, h = img.height;
+      if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+      if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+      resolve({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+async function prBillSubmit() {
+  const id = _prBillPendingId;
+  if (!id) return;
+  const submitBtn = document.getElementById('prBillSubmitBtn');
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    // 1. Mark as done sentinel
+    const s = await api('/api/payment-requests', 'POST', {
+      bank_name: '__system__', card_number: '__paid__', reason: '__paid__:' + id
+    });
+    if (s && s.error) { showToast('Error: ' + s.error, 'error'); if (submitBtn) submitBtn.disabled = false; return; }
+
+    // 2. Capture file refs BEFORE closing modal (prCloseBillModal nulls them)
+    const billFile = _prBillFile;
+    const rawName = (document.getElementById('prBillFilename')?.value || ('PaymentBill_ID' + id)).trim();
+    prCloseBillModal();
+    loadMyPaymentRequests();
+
+    if (billFile && PR_BILL_SCRIPT_URL && !PR_BILL_SCRIPT_URL.includes('PLACEHOLDER')) {
+      showToast('✅ Payment done! Uploading bill');
+      _prBillUploading.add(id);
+      loadMyPaymentRequests();
+      // fire-and-forget
+      (async () => {
+        try {
+          const { base64, mimeType } = await prBillCompressToBase64(billFile);
+          const isPdf = mimeType === 'application/pdf';
+          const filename = isPdf
+            ? (rawName.endsWith('.pdf') ? rawName : rawName + '.pdf')
+            : (rawName.endsWith('.jpg') ? rawName : rawName + '.jpg');
+          await fetch(PR_BILL_SCRIPT_URL, {
+            method: 'POST', mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+            body: JSON.stringify({ fileBase64: base64, filename, mimeType, requestId: String(id) })
+          });
+          await new Promise(r => setTimeout(r, 2500));
+          const resp = await fetch(PR_BILL_SCRIPT_URL + '?requestId=' + id);
+          const result = await resp.json();
+          if (result && result.fileId) {
+            await api('/api/payment-requests', 'POST', {
+              bank_name: '__system__', card_number: '__bill__', reason: '__bill__:' + id + ':' + result.fileId
+            });
+            showToast('✅ Bill uploaded to Drive!');
+          }
+        } catch(e) { showToast('Bill upload failed: ' + e.message, 'error'); }
+        finally { _prBillUploading.delete(id); loadMyPaymentRequests(); }
+      })();
+    } else {
+      showToast('✅ Payment marked as done!');
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+function prOpenCancelModal(id) {
+  const overlay = document.getElementById('prCancelOverlay');
+  document.getElementById('prCancelReason').value = '';
+  document.getElementById('prCancelBtn').onclick = () => prSubmitCancel(id);
+  overlay.style.display = 'flex';
+  setTimeout(() => document.getElementById('prCancelReason').focus(), 80);
+}
+function prCloseCancelModal() {
+  document.getElementById('prCancelOverlay').style.display = 'none';
+}
+async function prSubmitCancel(id) {
+  const reason = document.getElementById('prCancelReason').value.trim();
+  if (!reason) { showToast('Enter a reason for cancellation', 'error'); return; }
+  prCloseCancelModal();
+  try {
+    const s = await api('/api/payment-requests', 'POST', {
+      bank_name: '__system__', card_number: '__cancelled__', reason: '__cancelled__:' + id + ':' + reason
+    });
+    if (s && s.error) { showToast('Error: ' + s.error, 'error'); return; }
+    showToast('Payment cancelled');
+    loadMyPaymentRequests();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// _ccData[bank][cardNum] = [ { id, statement_date, payment_due_date, payable_amount, min_amount_due, transactions[] }, ... ]
+let _ccData       = {};
+let _ccActiveBank = localStorage.getItem('cc_active_bank') || null;
+let _ccActiveCard = localStorage.getItem('cc_active_card') || null;
+let _ccDepts = [];
+let _ccFilter  = { preset:'all', dateFrom:null, dateTo:null, amtMin:'', amtMax:'' };
+let _ccCal     = { show:false, leftYear:new Date().getFullYear(), leftMonth:new Date().getMonth()-1, tempFrom:null, tempTo:null, hover:null };
+
+// Credit Cards access. Admins get full read/write; whoever the server puts in
+// cc_viewer_ids gets a read-only page — no upload, no edit, no delete. The list
+// used to be duplicated here as names and had to be kept in step with server.js
+// by hand; it now arrives on ME, so there is one list and it cannot drift.
+// server.js is still what enforces it — every ccCanEdit() check is UI-level.
+function ccCanView() { return !!ME && (ME.role === 'admin' || ME.canViewCreditCards === true); }
+function ccCanEdit() { return !!ME && ME.role === 'admin'; }
+
+function ccSave() {
+  try {
+    if (_ccActiveBank) localStorage.setItem('cc_active_bank', _ccActiveBank); else localStorage.removeItem('cc_active_bank');
+    if (_ccActiveCard) localStorage.setItem('cc_active_card', _ccActiveCard); else localStorage.removeItem('cc_active_card');
+  } catch(e) {}
+}
+
+async function loadCreditCards() {
+  const dd = document.getElementById('ccBankDropdown');
+  if (dd) {
+    dd.innerHTML = '<option value="">— Select Bank —</option>' +
+      CC_BANKS.map(b => `<option value="${b}">${b}</option>`).join('');
+    if (_ccActiveBank) dd.value = _ccActiveBank;
+  }
+  // Read-only viewers get no statement upload
+  const upBtn = document.getElementById('ccUploadBtn');
+  if (upBtn) upBtn.style.display = ccCanEdit() ? 'inline-flex' : 'none';
+  try {
+    const depts = await api('/api/credit-cards/departments');
+    _ccDepts = Array.isArray(depts) ? depts : [];
+  } catch(e) { _ccDepts = []; }
+  // Load from DB
+  try {
+    const fresh = await api('/api/credit-cards/data');
+    if (fresh && !fresh.error) { _ccData = fresh; ccSyncPreviewUrls(); }
+  } catch(e) {}
+  // Auto-restore active bank
+  if (!_ccActiveBank || !_ccData[_ccActiveBank]) {
+    const firstBank = Object.keys(_ccData).find(b => Object.keys(_ccData[b]||{}).length > 0);
+    if (firstBank) { _ccActiveBank = firstBank; if (dd) dd.value = firstBank; }
+  }
+  if (_ccActiveBank && dd) dd.value = _ccActiveBank;
+  if (_ccActiveBank) ccRenderDetail();
+}
+
+function ccSelectBank(bank) {
+  _ccActiveBank = bank || null;
+  _ccActiveCard = null;
+  _ccFilter = { preset:'all', dateFrom:null, dateTo:null, amtMin:'', amtMax:'' };
+  ccSave();
+  const dd = document.getElementById('ccBankDropdown');
+  if (dd && bank) dd.value = bank;
+  ccRenderDetail();
+}
+
+function ccSelectBankFromOverview(bank) {
+  ccSelectBank(bank);
+}
+
+function ccSelectCard(cardNum) {
+  _ccActiveCard = cardNum;
+  _ccFilter = { preset:'all', dateFrom:null, dateTo:null, amtMin:'', amtMax:'' };
+  ccSave();
+  ccRenderDetail();
+}
+
+let _ccPendingFile = null;
+let _ccPreviewPdfUrl = null;
+let _ccStmtPreviewUrls = {}; // stmtId → URL (blob or server)
+
+function ccSyncPreviewUrls() {
+  // Drive URL always takes priority over blob URL
+  Object.values(_ccData).forEach(cards => {
+    Object.values(cards).forEach(stmts => {
+      stmts.forEach(s => {
+        if (s.pdf_url) _ccStmtPreviewUrls[s.id] = s.pdf_url;
+      });
+    });
+  });
+}
+
+// ── CC Ownership dropdown ─────────────────────────────────
+const _CC_OWN_DEFAULTS = ['Jai Marketing', 'E-Marketing', 'Personal'];
+let _CC_OWN_OPTIONS = (() => {
+  try { const s = localStorage.getItem('cc_own_options'); return s ? JSON.parse(s) : [..._CC_OWN_DEFAULTS]; } catch(e) { return [..._CC_OWN_DEFAULTS]; }
+})();
+function ccOwnSaveOptions() { try { localStorage.setItem('cc_own_options', JSON.stringify(_CC_OWN_OPTIONS)); } catch(e) {} }
+
+let _ccOwnDropCtx = null; // { bank, card, si, oi }
+
+function ccOwnToggleDrop(bank, card, si, oi) {
+  if (!ccCanEdit()) return;
+  const panel = document.getElementById('ccOwnDropPanel');
+  if (_ccOwnDropCtx && _ccOwnDropCtx.si === si && _ccOwnDropCtx.oi === oi) {
+    panel.style.display = 'none'; _ccOwnDropCtx = null; return;
+  }
+  _ccOwnDropCtx = { bank, card, si, oi };
+  ccOwnBuildPanel();
+  const btn = document.getElementById(`ccOwnBtn-${si}-${oi}`);
+  if (btn) {
+    const rect = btn.getBoundingClientRect();
+    panel.style.left = rect.left + 'px';
+    panel.style.top = (rect.bottom + 4) + window.scrollY + 'px';
+  }
+  panel.style.display = 'block';
+}
+
+function ccOwnBuildPanel() {
+  const items = document.getElementById('ccOwnDropItems');
+  if (!items) return;
+  const clearRow = `<div onclick="ccOwnClear()" style="padding:7px 14px;font-size:12px;color:#94a3b8;cursor:pointer;border-bottom:1px solid #f1f5f9;font-style:italic" onmouseover="this.style.background='#fef2f2';this.style.color='#ef4444'" onmouseout="this.style.background='';this.style.color='#94a3b8'">✕ &nbsp;Clear selection</div>`;
+  items.innerHTML = clearRow + _CC_OWN_OPTIONS.map(opt => {
+    const safe = jsArg(opt);
+    return `<div style="display:flex;align-items:center;padding:0 10px;cursor:pointer" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+      <span onclick="ccOwnSelectOption(${safe})" style="flex:1;font-size:12px;padding:7px 4px 7px 0;color:#0f172a">${dtEscape(opt)}</span>
+      <span onclick="ccOwnDeleteOption(${safe})" title="Remove" style="color:#cbd5e1;font-size:15px;font-weight:700;padding:2px 4px;cursor:pointer;border-radius:4px;line-height:1" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">×</span>
+    </div>`;
+  }).join('');
+  document.getElementById('ccOwnOtherBtn').style.display = '';
+  document.getElementById('ccOwnOtherInputRow').style.display = 'none';
+  const txt = document.getElementById('ccOwnPanelTxt'); if (txt) txt.value = '';
+}
+
+let _ccSummaryOpenSi = null;
+
+function ccRefreshSummaryIfOpen(si) {
+  if (_ccSummaryOpenSi === si) ccBuildSummaryModal(si);
+}
+
+function ccCloseSummaryModal() {
+  const modal = document.getElementById('ccSummaryModal');
+  if (modal) modal.style.display = 'none';
+  const btn = _ccSummaryOpenSi !== null ? document.getElementById('ccSummaryBtn-' + _ccSummaryOpenSi) : null;
+  if (btn) btn.style.background = 'rgba(255,255,255,.15)';
+  _ccSummaryOpenSi = null;
+}
+
+function ccSumSwitchTab(tab) {
+  document.getElementById('ccSumContent-dept').style.display  = tab === 'dept'  ? '' : 'none';
+  document.getElementById('ccSumContent-owner').style.display = tab === 'owner' ? '' : 'none';
+  document.getElementById('ccSumTab-dept').style.background  = tab === 'dept'  ? '#4f46e5' : '#f1f5f9';
+  document.getElementById('ccSumTab-dept').style.color       = tab === 'dept'  ? '#fff'    : '#64748b';
+  document.getElementById('ccSumTab-owner').style.background = tab === 'owner' ? '#4f46e5' : '#f1f5f9';
+  document.getElementById('ccSumTab-owner').style.color      = tab === 'owner' ? '#fff'    : '#64748b';
+}
+
+function ccBuildSummaryModal(si) {
+  const tbody = document.getElementById('ccTxBody-' + si);
+  if (!tbody) return;
+  const deptMap = {}, ownMap = {};
+  Array.from(tbody.rows).forEach(row => {
+    if (row.style.display === 'none') return;
+    // Column index shifts when the select column is hidden (read-only viewers),
+    // so find the amount cell by class rather than position.
+    const amtCell = row.querySelector('.ccAmtCell') || row.cells[3];
+    const rawAmt  = amtCell ? amtCell.textContent.replace(/[^\d.]/g, '') : '0';
+    const isCredit = amtCell && amtCell.style.color === 'rgb(22, 163, 74)';
+    const amt = (parseFloat(rawAmt) || 0) * (isCredit ? -1 : 1);
+    const deptLbl = row.querySelector('[id^="ccDeptLabel-"]');
+    const ownLbl  = row.querySelector('[id^="ccOwnLabel-"]');
+    const dept = (deptLbl && deptLbl.style.color !== 'rgb(148, 163, 184)') ? deptLbl.textContent.trim() : '(unset)';
+    const own  = (ownLbl  && ownLbl.style.color  !== 'rgb(148, 163, 184)') ? ownLbl.textContent.trim()  : '(unset)';
+    deptMap[dept] = deptMap[dept] || { count:0, amt:0, debit:0, credit:0 };
+    deptMap[dept].count++; deptMap[dept].amt += amt;
+    if (isCredit) deptMap[dept].credit += Math.abs(amt); else deptMap[dept].debit += amt;
+    ownMap[own]   = ownMap[own]   || { count:0, amt:0, debit:0, credit:0 };
+    ownMap[own].count++;  ownMap[own].amt  += amt;
+    if (isCredit) ownMap[own].credit += Math.abs(amt); else ownMap[own].debit += amt;
+  });
+  const fmtAmt = (v) => {
+    const color = v >= 0 ? '#dc2626' : '#16a34a';
+    const prefix = v < 0 ? '+ ' : '';
+    return `<span style="color:${color};font-weight:700">${prefix}₹${Math.abs(v).toLocaleString('en-IN',{minimumFractionDigits:2})}</span>`;
+  };
+  const buildTable = (map) => {
+    const rows = Object.entries(map).sort((a,b) => b[1].debit - a[1].debit);
+    if (!rows.length) return '<div style="font-size:13px;color:#94a3b8;padding:12px 0">No data</div>';
+    const totalDebit  = rows.reduce((s,[,v])=>s+v.debit,0);
+    const totalCredit = rows.reduce((s,[,v])=>s+v.credit,0);
+    const totalNet    = totalDebit - totalCredit;
+    return `<table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+        <th style="padding:9px 12px;text-align:left;font-weight:700;color:#475569">Name</th>
+        <th style="padding:9px 12px;text-align:center;font-weight:700;color:#475569">Txns</th>
+        <th style="padding:9px 12px;text-align:right;font-weight:700;color:#dc2626">Debit</th>
+        <th style="padding:9px 12px;text-align:right;font-weight:700;color:#16a34a">Credit</th>
+        <th style="padding:9px 12px;text-align:right;font-weight:700;color:#475569">Net</th>
+      </tr></thead>
+      <tbody>${rows.map(([name, v], i) =>
+        `<tr style="border-bottom:1px solid #f1f5f9;${i%2?'background:#f8fafc':''}">
+          <td style="padding:9px 12px;color:${name==='(unset)'?'#94a3b8':'#0f172a'};font-style:${name==='(unset)'?'italic':'normal'};font-weight:500">${dtEscape(name)}</td>
+          <td style="padding:9px 12px;text-align:center;color:#64748b;font-weight:600">${v.count}</td>
+          <td style="padding:9px 12px;text-align:right;color:#dc2626;font-weight:700">${v.debit?'₹'+v.debit.toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
+          <td style="padding:9px 12px;text-align:right;color:#16a34a;font-weight:700">${v.credit?'+ ₹'+v.credit.toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
+          <td style="padding:9px 12px;text-align:right">${fmtAmt(v.amt)}</td>
+        </tr>`).join('')}
+        <tr style="border-top:2px solid #e2e8f0;background:#fff7ed">
+          <td style="padding:9px 12px;font-weight:700;color:#0f172a">Total</td>
+          <td style="padding:9px 12px;text-align:center;font-weight:700;color:#0f172a">${rows.reduce((s,[,v])=>s+v.count,0)}</td>
+          <td style="padding:9px 12px;text-align:right;font-weight:800;color:#dc2626">₹${totalDebit.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+          <td style="padding:9px 12px;text-align:right;font-weight:800;color:#16a34a">${totalCredit?'+ ₹'+totalCredit.toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
+          <td style="padding:9px 12px;text-align:right">${fmtAmt(totalNet)}</td>
+        </tr>
+      </tbody></table>`;
+  };
+  document.getElementById('ccSumContent-dept').innerHTML  = buildTable(deptMap);
+  document.getElementById('ccSumContent-owner').innerHTML = buildTable(ownMap);
+}
+
+function ccOwnSelectOption(val) {
+  if (!_ccOwnDropCtx) return;
+  const { bank, card, si, oi } = _ccOwnDropCtx;
+  ccUpdateField(bank, card, si, oi, 'expenses', val);
+  const label = document.getElementById(`ccOwnLabel-${si}-${oi}`);
+  if (label) { label.textContent = val; label.style.color = '#0f172a'; }
+  document.getElementById('ccOwnDropPanel').style.display = 'none';
+  _ccOwnDropCtx = null;
+  ccRefreshSummaryIfOpen(si);
+}
+
+function ccOwnClear() {
+  if (!_ccOwnDropCtx) return;
+  const { bank, card, si, oi } = _ccOwnDropCtx;
+  ccUpdateField(bank, card, si, oi, 'expenses', '');
+  const label = document.getElementById(`ccOwnLabel-${si}-${oi}`);
+  if (label) { label.textContent = '— Owner —'; label.style.color = '#94a3b8'; }
+  document.getElementById('ccOwnDropPanel').style.display = 'none';
+  _ccOwnDropCtx = null;
+  ccRefreshSummaryIfOpen(si);
+}
+
+function ccOwnDeleteOption(val) {
+  if (!ccCanEdit()) return;
+  const idx = _CC_OWN_OPTIONS.indexOf(val);
+  if (idx !== -1) { _CC_OWN_OPTIONS.splice(idx, 1); ccOwnSaveOptions(); }
+  ccOwnBuildPanel();
+}
+
+function ccOwnShowOtherInput() {
+  document.getElementById('ccOwnOtherBtn').style.display = 'none';
+  document.getElementById('ccOwnOtherInputRow').style.display = 'flex';
+  setTimeout(() => document.getElementById('ccOwnPanelTxt')?.focus(), 30);
+}
+
+function ccOwnConfirmPanel() {
+  if (!ccCanEdit()) return;
+  const val = (document.getElementById('ccOwnPanelTxt')?.value || '').trim();
+  if (!val || !_ccOwnDropCtx) return;
+  const { bank, card, si, oi } = _ccOwnDropCtx;
+  if (!_CC_OWN_OPTIONS.includes(val)) { _CC_OWN_OPTIONS.push(val); ccOwnSaveOptions(); }
+  ccUpdateField(bank, card, si, oi, 'expenses', val);
+  const label = document.getElementById(`ccOwnLabel-${si}-${oi}`);
+  if (label) { label.textContent = val; label.style.color = '#0f172a'; }
+  document.getElementById('ccOwnDropPanel').style.display = 'none';
+  _ccOwnDropCtx = null;
+  ccRefreshSummaryIfOpen(si);
+}
+
+function ccOwnCancelPanel() {
+  document.getElementById('ccOwnDropPanel').style.display = 'none';
+  _ccOwnDropCtx = null;
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#ccOwnDropPanel') && !e.target.closest('[id^="ccOwnBtn-"]')) {
+    const panel = document.getElementById('ccOwnDropPanel');
+    if (panel) { panel.style.display = 'none'; _ccOwnDropCtx = null; }
+  }
+});
+// ─────────────────────────────────────────────────────────
+
+// ── CC Department dropdown ────────────────────────────────
+let _ccDeptDropCtx = null;
+
+function ccDeptToggleDrop(bank, card, si, oi) {
+  if (!ccCanEdit()) return;
+  const panel = document.getElementById('ccDeptDropPanel');
+  if (_ccDeptDropCtx && _ccDeptDropCtx.si === si && _ccDeptDropCtx.oi === oi) {
+    panel.style.display = 'none'; _ccDeptDropCtx = null; return;
+  }
+  _ccDeptDropCtx = { bank, card, si, oi };
+  ccDeptBuildPanel();
+  const btn = document.getElementById(`ccDeptBtn-${si}-${oi}`);
+  if (btn) {
+    const rect = btn.getBoundingClientRect();
+    panel.style.left = rect.left + 'px';
+    panel.style.top = (rect.bottom + 4) + window.scrollY + 'px';
+  }
+  panel.style.display = 'block';
+}
+
+function ccDeptBuildPanel() {
+  const items = document.getElementById('ccDeptDropItems');
+  if (!items) return;
+  const clearRow = `<div onclick="ccDeptClear()" style="padding:7px 14px;font-size:12px;color:#94a3b8;cursor:pointer;border-bottom:1px solid #f1f5f9;font-style:italic" onmouseover="this.style.background='#fef2f2';this.style.color='#ef4444'" onmouseout="this.style.background='';this.style.color='#94a3b8'">✕ &nbsp;Clear selection</div>`;
+  items.innerHTML = clearRow + _ccDepts.map(opt => {
+    const safe = jsArg(opt);
+    return `<div style="display:flex;align-items:center;padding:0 10px;cursor:pointer" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+      <span onclick="ccDeptSelectOption(${safe})" style="flex:1;font-size:12px;padding:7px 4px 7px 0;color:#0f172a">${dtEscape(opt)}</span>
+      <span onclick="ccDeptDeleteOption(${safe})" title="Remove" style="color:#cbd5e1;font-size:15px;font-weight:700;padding:2px 4px;cursor:pointer;border-radius:4px;line-height:1" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">×</span>
+    </div>`;
+  }).join('');
+  document.getElementById('ccDeptOtherBtn').style.display = '';
+  document.getElementById('ccDeptOtherInputRow').style.display = 'none';
+  const txt = document.getElementById('ccDeptPanelTxt'); if (txt) txt.value = '';
+}
+
+function ccDeptClear() {
+  if (!_ccDeptDropCtx) return;
+  const { bank, card, si, oi } = _ccDeptDropCtx;
+  ccUpdateField(bank, card, si, oi, 'department', '');
+  const label = document.getElementById(`ccDeptLabel-${si}-${oi}`);
+  if (label) { label.textContent = '— Dept —'; label.style.color = '#94a3b8'; }
+  document.getElementById('ccDeptDropPanel').style.display = 'none';
+  _ccDeptDropCtx = null;
+  ccRefreshSummaryIfOpen(si);
+}
+
+function ccDeptSelectOption(val) {
+  if (!_ccDeptDropCtx) return;
+  const { bank, card, si, oi } = _ccDeptDropCtx;
+  ccUpdateField(bank, card, si, oi, 'department', val);
+  const label = document.getElementById(`ccDeptLabel-${si}-${oi}`);
+  if (label) { label.textContent = val; label.style.color = '#0f172a'; }
+  document.getElementById('ccDeptDropPanel').style.display = 'none';
+  _ccDeptDropCtx = null;
+  ccRefreshSummaryIfOpen(si);
+}
+
+async function ccDeptDeleteOption(val) {
+  if (!ccCanEdit()) return;
+  try {
+    const token = localStorage.getItem('authToken') || '';
+    await fetch(`/api/credit-cards/departments/${encodeURIComponent(val)}`, { method:'DELETE', headers: token ? {'Authorization':'Bearer '+token} : {} });
+    _ccDepts = _ccDepts.filter(d => d !== val);
+  } catch(e) {}
+  ccDeptBuildPanel();
+}
+
+function ccDeptShowOtherInput() {
+  document.getElementById('ccDeptOtherBtn').style.display = 'none';
+  document.getElementById('ccDeptOtherInputRow').style.display = 'flex';
+  setTimeout(() => document.getElementById('ccDeptPanelTxt')?.focus(), 30);
+}
+
+async function ccDeptConfirmPanel() {
+  if (!ccCanEdit()) return;
+  const val = (document.getElementById('ccDeptPanelTxt')?.value || '').trim();
+  if (!val || !_ccDeptDropCtx) return;
+  const { bank, card, si, oi } = _ccDeptDropCtx;
+  try {
+    const res = await api('/api/credit-cards/departments', 'POST', { name: val });
+    if (res && res.error) { showToast(res.error, 'error'); return; }
+    if (!_ccDepts.includes(val)) _ccDepts.push(val);
+  } catch(e) { showToast('Error adding department', 'error'); return; }
+  ccUpdateField(bank, card, si, oi, 'department', val);
+  const label = document.getElementById(`ccDeptLabel-${si}-${oi}`);
+  if (label) { label.textContent = val; label.style.color = '#0f172a'; }
+  document.getElementById('ccDeptDropPanel').style.display = 'none';
+  _ccDeptDropCtx = null;
+  ccRefreshSummaryIfOpen(si);
+}
+
+function ccDeptCancelPanel() {
+  document.getElementById('ccDeptDropPanel').style.display = 'none';
+  _ccDeptDropCtx = null;
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#ccDeptDropPanel') && !e.target.closest('[id^="ccDeptBtn-"]')) {
+    const panel = document.getElementById('ccDeptDropPanel');
+    if (panel) { panel.style.display = 'none'; _ccDeptDropCtx = null; }
+  }
+});
+// ─────────────────────────────────────────────────────────
+
+// ── CC Filters ────────────────────────────────────────────
+const _CC_PRESETS = [
+  { key:'last7',     label:'Last 7 days'  },
+  { key:'last14',    label:'Last 14 days' },
+  { key:'last30',    label:'Last 30 days' },
+  { key:'last90',    label:'Last 90 days' },
+  { key:'thismonth', label:'This month'   },
+  { key:'lastmonth', label:'Last month'   },
+  { key:'ytd',       label:'Year to date' },
+  { key:'all',       label:'All time'     },
+];
+const _CC_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const _CC_DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+function ccPresetRange(key) {
+  const t = new Date(), fmt = d => d.toISOString().slice(0,10), ts = fmt(t);
+  const ago = n => { const d = new Date(t); d.setDate(d.getDate()-n); return fmt(d); };
+  if (key==='last7')     return [ago(6), ts];
+  if (key==='last14')    return [ago(13), ts];
+  if (key==='last30')    return [ago(29), ts];
+  if (key==='last90')    return [ago(89), ts];
+  if (key==='thismonth') return [fmt(new Date(t.getFullYear(),t.getMonth(),1)), ts];
+  if (key==='lastmonth') return [fmt(new Date(t.getFullYear(),t.getMonth()-1,1)), fmt(new Date(t.getFullYear(),t.getMonth(),0))];
+  if (key==='ytd')       return [`${t.getFullYear()}-01-01`, ts];
+  return [null, null];
+}
+
+function ccFilterLabel() {
+  const f = _ccFilter;
+  if (!f.dateFrom && !f.dateTo) return 'All time';
+  const p = _CC_PRESETS.find(p => p.key === f.preset);
+  if (p && f.preset !== 'all') return p.label;
+  return `${f.dateFrom} – ${f.dateTo}`;
+}
+
+function ccFilterSubLabel() {
+  const f = _ccFilter;
+  if (!f.dateFrom && !f.dateTo) return '';
+  return `${f.dateFrom||''} – ${f.dateTo||''}`;
+}
+
+function ccOpenDatePicker() {
+  const t = new Date();
+  _ccCal.leftYear  = t.getFullYear();
+  _ccCal.leftMonth = t.getMonth() - 1;
+  if (_ccCal.leftMonth < 0) { _ccCal.leftMonth = 11; _ccCal.leftYear--; }
+  _ccCal.tempFrom = _ccFilter.dateFrom;
+  _ccCal.tempTo   = _ccFilter.dateTo;
+  _ccCal.hover    = null;
+  _ccCal.show     = true;
+  ccCalRender();
+  document.getElementById('ccDatePickerWrap').style.display = 'block';
+}
+
+function ccCloseDatePicker() {
+  _ccCal.show = false;
+  const el = document.getElementById('ccDatePickerWrap');
+  if (el) el.style.display = 'none';
+}
+
+function ccCalNav(dir) {
+  _ccCal.leftMonth += dir;
+  if (_ccCal.leftMonth > 11) { _ccCal.leftMonth = 0; _ccCal.leftYear++; }
+  if (_ccCal.leftMonth < 0)  { _ccCal.leftMonth = 11; _ccCal.leftYear--; }
+  ccCalRender();
+}
+
+function ccCalClickDay(dateStr) {
+  if (!_ccCal.tempFrom || (_ccCal.tempFrom && _ccCal.tempTo)) {
+    _ccCal.tempFrom = dateStr; _ccCal.tempTo = null;
+  } else {
+    if (dateStr < _ccCal.tempFrom) { _ccCal.tempTo = _ccCal.tempFrom; _ccCal.tempFrom = dateStr; }
+    else _ccCal.tempTo = dateStr;
+  }
+  ccCalRender();
+}
+
+function ccCalHover(dateStr) {
+  if (_ccCal.tempFrom && !_ccCal.tempTo) { _ccCal.hover = dateStr; ccCalRender(); }
+}
+
+function ccCalSelectPreset(key) {
+  _ccCal.tempFrom = null; _ccCal.tempTo = null; _ccCal.hover = null;
+  const [from, to] = ccPresetRange(key);
+  _ccCal.tempFrom = from; _ccCal.tempTo = to;
+  // set active preset highlight
+  document.querySelectorAll('.cc-preset-btn').forEach(b => {
+    b.style.background = b.dataset.preset === key ? '#4f46e5' : 'transparent';
+    b.style.color      = b.dataset.preset === key ? '#fff' : '#374151';
+  });
+  ccCalRender();
+}
+
+function ccCalApply() {
+  const key = document.querySelector('.cc-preset-btn[style*="1a56db"]')?.dataset.preset || 'custom';
+  _ccFilter.preset   = key;
+  _ccFilter.dateFrom = _ccCal.tempFrom || null;
+  _ccFilter.dateTo   = _ccCal.tempTo   || null;
+  ccCloseDatePicker();
+  ccUpdateFilterBar();
+  ccRenderStatements();
+}
+
+function ccFilterApplyAmt() {
+  _ccFilter.amtMin = document.getElementById('ccAmtMin')?.value || '';
+  _ccFilter.amtMax = document.getElementById('ccAmtMax')?.value || '';
+  ccRenderStatements();
+}
+
+function ccFilterClear() {
+  _ccFilter = { preset:'all', dateFrom:null, dateTo:null, amtMin:'', amtMax:'' };
+  const minEl = document.getElementById('ccAmtMin'), maxEl = document.getElementById('ccAmtMax');
+  if (minEl) minEl.value = ''; if (maxEl) maxEl.value = '';
+  ccUpdateFilterBar();
+  ccRenderStatements();
+}
+
+function ccUpdateFilterBar() {
+  const btn = document.getElementById('ccDateFilterBtn');
+  if (!btn) return;
+  const sub = ccFilterSubLabel();
+  btn.innerHTML = `<span style="font-size:15px">📅</span>
+    <div style="text-align:left;line-height:1.2">
+      <div style="font-weight:700;font-size:13px">${dtEscape(ccFilterLabel())}</div>
+      ${sub ? `<div style="font-size:11px;opacity:.7">${dtEscape(sub)}</div>` : ''}
+    </div>`;
+}
+
+function _ccCalMonthGrid(year, month) {
+  const firstDay    = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const tf = _ccCal.tempFrom, tt = _ccCal.tempTo, hv = _ccCal.hover;
+  const rangeEnd = tt || (tf && hv && hv > tf ? hv : null);
+  let html = `<div style="width:224px">
+    <div style="text-align:center;font-weight:700;font-size:14px;margin-bottom:10px;color:#0f172a">${_CC_MONTHS[month]} ${year}</div>
+    <div style="display:grid;grid-template-columns:repeat(7,32px);gap:0">
+      ${_CC_DAYS.map(d=>`<div style="text-align:center;font-size:11px;font-weight:600;color:#94a3b8;padding:4px 0">${d}</div>`).join('')}`;
+  for (let i=0;i<firstDay;i++) html+=`<div></div>`;
+  for (let d=1;d<=daysInMonth;d++) {
+    const ds   = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isFr = ds===tf, isTo = ds===tt;
+    const inRng = tf && rangeEnd && ds>tf && ds<rangeEnd;
+    let bg='transparent', col='#374151', brR='50%', fw='400';
+    if (isFr||isTo)     { bg='#4f46e5'; col='#fff'; fw='700'; }
+    else if (inRng)     { bg='#dbeafe'; col='#1e40af'; brR='0'; }
+    if (isFr && rangeEnd && ds<rangeEnd) brR='50% 0 0 50%';
+    if (isTo && tf && ds>tf)             brR='0 50% 50% 0';
+    html+=`<div onclick="ccCalClickDay('${ds}')" onmouseenter="ccCalHover('${ds}')"
+      style="height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:${bg};border-radius:${brR};color:${col};font-size:13px;font-weight:${fw};transition:background .1s;user-select:none"
+      onmouseover="if(this.style.background==='transparent')this.style.background='#f1f5f9'"
+      onmouseout="this.style.background='${bg}'">${d}</div>`;
+  }
+  return html + '</div></div>';
+}
+
+function ccCalRender() {
+  const wrap = document.getElementById('ccCalBody');
+  if (!wrap) return;
+  let ry = _ccCal.leftYear, rm = _ccCal.leftMonth;
+  let rm2 = rm+1, ry2 = ry;
+  if (rm2>11) { rm2=0; ry2++; }
+  wrap.innerHTML = _ccCalMonthGrid(ry, rm) + _ccCalMonthGrid(ry2, rm2);
+  // highlight active preset
+  const tf=_ccCal.tempFrom, tt=_ccCal.tempTo;
+  document.querySelectorAll('.cc-preset-btn').forEach(b => {
+    const [pf,pt] = ccPresetRange(b.dataset.preset);
+    const match = b.dataset.preset==='all' ? (!tf&&!tt) : (pf===tf&&pt===tt);
+    b.style.background = match ? '#4f46e5' : 'transparent';
+    b.style.color      = match ? '#fff'    : '#374151';
+    b.style.fontWeight = match ? '700' : '400';
+  });
+}
+// ─────────────────────────────────────────────────────────
+
+async function ccUploadPdf(input) {
+  if (!ccCanEdit()) return;
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  _ccPendingFile = file;
+  // Only revoke old blob URL if it's not already mapped to a saved statement
+  if (_ccPreviewPdfUrl && !Object.values(_ccStmtPreviewUrls).includes(_ccPreviewPdfUrl)) {
+    URL.revokeObjectURL(_ccPreviewPdfUrl);
+  }
+  _ccPreviewPdfUrl = URL.createObjectURL(file);
+  await _ccDoUpload('');
+}
+
+function ccPreviewPdf() {
+  if (!_ccPreviewPdfUrl) { showToast('Upload a PDF first', 'error'); return; }
+  window.open(_ccPreviewPdfUrl, '_blank');
+}
+
+function ccPreviewStmtPdf(stmtId) {
+  const url = _ccStmtPreviewUrls[stmtId];
+  if (!url) { showToast('No PDF available — upload one first', 'error'); return; }
+  window.open(url, '_blank');
+}
+
+async function ccRetryWithPassword() {
+  if (!ccCanEdit()) return;
+  const pwd = document.getElementById('ccPdfPwdRetry')?.value || '';
+  if (!pwd) return;
+  await _ccDoUpload(pwd);
+}
+
+async function _ccDoUpload(password) {
+  const file = _ccPendingFile;
+  if (!file) return;
+  const status = document.getElementById('ccUploadStatus');
+  if (status) status.innerHTML = '<span style="color:#4f46e5">⏳ Scanning PDF… (30–60 sec)</span>';
+  try {
+    const fd = new FormData();
+    fd.append('pdf', file);
+    if (password) fd.append('password', password);
+    const token = localStorage.getItem('authToken') || '';
+    const r = await fetch('/api/credit-cards/upload-pdf', {
+      method: 'POST',
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+      body: fd
+    });
+    const data = await r.json();
+
+    if (data.error === 'PDF_PASSWORD_REQUIRED' || data.error === 'PDF_WRONG_PASSWORD') {
+      const wrongMsg = data.error === 'PDF_WRONG_PASSWORD' ? '<span style="color:#dc2626">❌ Wrong password.</span> ' : '';
+      if (status) status.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px">
+        ${wrongMsg}<span style="color:#d97706">🔒 PDF is password protected. Enter password:</span>
+        <input type="password" id="ccPdfPwdRetry" placeholder="Enter PDF password"
+          style="padding:5px 10px;border:1px solid #d97706;border-radius:6px;font-size:12px;width:160px;outline:none"
+          onkeydown="if(event.key==='Enter')ccRetryWithPassword()">
+        <button onclick="ccRetryWithPassword()"
+          style="padding:5px 12px;background:#d97706;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">
+          Unlock & Upload
+        </button>
+      </div>`;
+      setTimeout(() => document.getElementById('ccPdfPwdRetry')?.focus(), 50);
+      return;
+    }
+
+    if (!r.ok || data.error) {
+      if (status) status.innerHTML = `<span style="color:#dc2626">❌ ${dtEscape(data.error||'Upload failed')}</span>`;
+      return;
+    }
+
+    _ccPendingFile = null;
+    // Reload from DB
+    const fresh = await api('/api/credit-cards/data');
+    if (fresh && !fresh.error) { _ccData = fresh; ccSyncPreviewUrls(); }
+    _ccActiveBank = data.bankName;
+    _ccActiveCard = data.cardNumber;
+    // If Drive upload succeeded, use Drive URL directly
+    if (data.driveFileId && data.statementId) {
+      _ccStmtPreviewUrls[data.statementId] = `https://drive.google.com/file/d/${data.driveFileId}/view`;
+    } else if (_ccPreviewPdfUrl && data.statementId && !_ccStmtPreviewUrls[data.statementId]) {
+      // Fallback to blob URL for current session if Drive upload failed
+      _ccStmtPreviewUrls[data.statementId] = _ccPreviewPdfUrl;
+    }
+    ccSave();
+    const dd = document.getElementById('ccBankDropdown');
+    if (dd) dd.value = data.bankName;
+    ccRenderDetail();
+    const n = data.transactionsAdded;
+    if (status) { status.innerHTML = `<span style="color:#16a34a">✅ ${dtEscape(data.bankName)} (${dtEscape(data.cardNumber)}): ${n} transaction${n!==1?'s':''} added</span>`; setTimeout(()=>{ status.innerHTML=''; }, 8000); }
+    showToast(`${data.bankName}: ${n} transactions imported`);
+  } catch(e) {
+    if (status) status.innerHTML = `<span style="color:#dc2626">❌ ${e.message}</span>`;
+  }
+}
+
+function ccBillCellHtml(si, oi, safeBank, safeCard, txnId, driveId) {
+  const fileInput = `<input type="file" accept=".pdf" style="display:none" onchange="ccUploadBill(${safeBank},${safeCard},${si},${oi},${txnId},this)">`;
+  // Read-only viewers can open an attached bill but never upload or replace one
+  if (!ccCanEdit()) {
+    return driveId
+      ? `<a href="https://drive.google.com/file/d/${driveId}/view" target="_blank"
+          style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:6px;font-size:11px;font-weight:600;color:#16a34a;text-decoration:none;white-space:nowrap"
+          title="View bill">👁 View</a>`
+      : `<span style="font-size:11px;color:#cbd5e1">—</span>`;
+  }
+  if (driveId) {
+    return `<div style="display:flex;align-items:center;justify-content:center;gap:4px">
+      <a href="https://drive.google.com/file/d/${driveId}/view" target="_blank"
+        style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:6px;font-size:11px;font-weight:600;color:#16a34a;text-decoration:none;white-space:nowrap"
+        title="View bill">👁 View</a>
+      <label style="display:inline-flex;align-items:center;padding:4px 6px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:6px;cursor:pointer;font-size:11px;color:#64748b;white-space:nowrap" title="Replace bill">
+        🔄${fileInput}
+      </label>
+    </div>`;
+  }
+  return `<label style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;background:#f8fafc;border:1.5px dashed #cbd5e1;border-radius:6px;cursor:pointer;font-size:11px;color:#94a3b8;white-space:nowrap" title="Upload bill PDF">
+    📎 Upload${fileInput}
+  </label>`;
+}
+
+async function ccUploadBill(bank, card, si, oi, txnId, input) {
+  if (!ccCanEdit()) return;
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  const safeBank = jsArg(bank), safeCard = jsArg(card);
+  const cell = document.getElementById(`ccBillCell-${si}-${oi}`);
+  if (cell) cell.innerHTML = '<span style="font-size:11px;color:#4f46e5">⏳ Uploading…</span>';
+  try {
+    // Build filename: originalname_date.pdf
+    const allTxns = (_ccData[bank]?.[card] || []).flatMap(s => s.transactions || []);
+    const txn = allTxns.find(t => t.id === txnId);
+    const date = txn?.date || '';
+    const origName = file.name.replace(/\.pdf$/i,'');
+    const filename = `${origName}${date ? '_'+date : ''}.pdf`;
+
+    // Convert to base64
+    const base64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = e => res(e.target.result.split(',')[1]);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+
+    // Upload DIRECTLY to Apps Script (bypass Vercel body size limit)
+    const driveResp = await fetch(PR_BILL_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify({ pdf: base64, filename, folderId: '1zIV3Bem96Bc2WgqivRQ9pf0iBQosF-sk' }),
+      redirect: 'follow'
+    });
+    const driveResult = await driveResp.json();
+    if (!driveResult.fileId) throw new Error(driveResult.error || 'Drive upload failed');
+
+    // Save only the fileId to server (lightweight request)
+    const token = localStorage.getItem('authToken') || '';
+    const saveResp = await fetch(`/api/credit-cards/transaction/${txnId}/bill`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization':'Bearer '+token} : {}) },
+      body: JSON.stringify({ fileId: driveResult.fileId })
+    });
+    const saveResult = await saveResp.json();
+    if (!saveResult.success) throw new Error(saveResult.error || 'Save failed');
+
+    if (txn) txn.bill_drive_id = driveResult.fileId;
+    if (cell) cell.innerHTML = ccBillCellHtml(si, oi, safeBank, safeCard, txnId, driveResult.fileId);
+    showToast('✅ Bill uploaded to Drive!');
+  } catch(e) {
+    if (cell) cell.innerHTML = ccBillCellHtml(si, oi, safeBank, safeCard, txnId, null);
+    showToast('Upload failed: ' + e.message, 'error');
+  }
+}
+
+function ccToggleSummary(si) {
+  const btn = document.getElementById('ccSummaryBtn-' + si);
+  const modal = document.getElementById('ccSummaryModal');
+  if (!modal) return;
+  // If already open for this si, close it
+  if (_ccSummaryOpenSi === si && modal.style.display !== 'none') {
+    ccCloseSummaryModal(); return;
+  }
+  // Close previous if open for different si
+  if (_ccSummaryOpenSi !== null) {
+    const prevBtn = document.getElementById('ccSummaryBtn-' + _ccSummaryOpenSi);
+    if (prevBtn) prevBtn.style.background = 'rgba(255,255,255,.15)';
+  }
+  _ccSummaryOpenSi = si;
+  if (btn) btn.style.background = 'rgba(255,255,255,.35)';
+  ccBuildSummaryModal(si);
+  ccSumSwitchTab('dept');
+  modal.style.display = 'flex';
+}
+
+function ccBulkApply(si, bank, card) {
+  if (!ccCanEdit()) return;
+  const ownVal  = document.getElementById('ccBulkOwn-'  + si)?.value || '';
+  const deptVal = document.getElementById('ccBulkDept-' + si)?.value || '';
+  if (!ownVal && !deptVal) { showToast('Select an Owner or Dept first', 'error'); return; }
+  const tbody = document.getElementById('ccTxBody-' + si);
+  if (!tbody) return;
+  const checked = Array.from(document.querySelectorAll('.ccTxChk-' + si + ':checked'));
+  const useSelection = checked.length > 0;
+  let count = 0;
+  Array.from(tbody.rows).forEach(row => {
+    if (row.style.display === 'none') return;
+    const oi = parseInt(row.dataset.oi);
+    if (isNaN(oi)) return;
+    if (useSelection) {
+      const chk = row.querySelector('.ccTxChk-' + si);
+      if (!chk || !chk.checked) return;
+    }
+    if (ownVal === '__CLEAR__') {
+      ccUpdateField(bank, card, si, oi, 'expenses', '');
+      const lbl = document.getElementById('ccOwnLabel-' + si + '-' + oi);
+      if (lbl) { lbl.textContent = '— Owner —'; lbl.style.color = '#94a3b8'; }
+    } else if (ownVal) {
+      ccUpdateField(bank, card, si, oi, 'expenses', ownVal);
+      const lbl = document.getElementById('ccOwnLabel-' + si + '-' + oi);
+      if (lbl) { lbl.textContent = ownVal; lbl.style.color = '#0f172a'; }
+    }
+    if (deptVal === '__CLEAR__') {
+      ccUpdateField(bank, card, si, oi, 'department', '');
+      const lbl = document.getElementById('ccDeptLabel-' + si + '-' + oi);
+      if (lbl) { lbl.textContent = '— Dept —'; lbl.style.color = '#94a3b8'; }
+    } else if (deptVal) {
+      ccUpdateField(bank, card, si, oi, 'department', deptVal);
+      const lbl = document.getElementById('ccDeptLabel-' + si + '-' + oi);
+      if (lbl) { lbl.textContent = deptVal; lbl.style.color = '#0f172a'; }
+    }
+    count++;
+  });
+  showToast('✅ ' + count + ' transaction' + (count !== 1 ? 's' : '') + ' updated' + (useSelection ? ' (selected)' : ' (all visible)'));
+  ccRefreshSummaryIfOpen(si);
+}
+
+function ccToggleSelAll(si) {
+  const master = document.getElementById('ccSelAll-' + si);
+  if (!master) return;
+  const tbody = document.getElementById('ccTxBody-' + si);
+  if (!tbody) return;
+  Array.from(tbody.rows).forEach(row => {
+    if (row.style.display === 'none') return;
+    const chk = row.querySelector('.ccTxChk-' + si);
+    if (chk) chk.checked = master.checked;
+  });
+}
+
+function ccRowChkChange(si) {
+  const tbody = document.getElementById('ccTxBody-' + si);
+  if (!tbody) return;
+  const all  = Array.from(tbody.rows).filter(r => r.style.display !== 'none').map(r => r.querySelector('.ccTxChk-' + si)).filter(Boolean);
+  const master = document.getElementById('ccSelAll-' + si);
+  if (!master) return;
+  const checkedCount = all.filter(c => c.checked).length;
+  master.checked = checkedCount === all.length;
+  master.indeterminate = checkedCount > 0 && checkedCount < all.length;
+}
+
+function ccSearchTxns(si) {
+  const q = (document.getElementById('ccSearch-' + si)?.value || '').toLowerCase().trim();
+  const tbody = document.getElementById('ccTxBody-' + si);
+  if (!tbody) return;
+  Array.from(tbody.rows).forEach(row => {
+    const visible = !q || row.textContent.toLowerCase().includes(q);
+    row.style.display = visible ? '' : 'none';
+    // Uncheck hidden rows so they don't get included in bulk apply
+    if (!visible) {
+      const chk = row.querySelector('[class^="ccTxChk-"]');
+      if (chk) chk.checked = false;
+    }
+  });
+  // Sync select-all state after search
+  ccRowChkChange(si);
+  ccRefreshSummaryIfOpen(si);
+}
+
+async function ccDeleteStatement(bank, cardNum, stmtIdx) {
+  if (!ccCanEdit()) return;
+  if (!_ccData[bank]?.[cardNum]) return;
+  const stmt = _ccData[bank][cardNum][stmtIdx];
+  const label = stmt?.statement_date ? `Statement: ${stmt.statement_date}` : 'this statement';
+  if (!await appConfirm(`${label} and all its transactions will be permanently deleted.`, 'Delete Statement?')) return;
+  if (stmt?.id) {
+    const token = localStorage.getItem('authToken') || '';
+    await fetch(`/api/credit-cards/statement/${stmt.id}`, { method:'DELETE', headers: token ? {'Authorization':'Bearer '+token} : {} });
+  }
+  // Reload fresh data from server so card tabs always reflect actual DB state
+  try {
+    const fresh = await api('/api/credit-cards/data');
+    if (fresh && !fresh.error) { _ccData = fresh; ccSyncPreviewUrls(); }
+  } catch(e) {}
+  // If card no longer exists in fresh data, switch to another card
+  if (!_ccData[bank]?.[cardNum]) {
+    const remaining = Object.keys(_ccData[bank] || {});
+    _ccActiveCard = remaining[0] || null;
+    ccRenderDetail();
+  } else {
+    ccRenderStatements();
+  }
+  showToast('Statement deleted');
+}
+
+async function ccDeleteTransaction(bank, cardNum, stmtIdx, txIdx) {
+  if (!ccCanEdit()) return;
+  const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
+  if (t?.id) {
+    const token = localStorage.getItem('authToken') || '';
+    await fetch(`/api/credit-cards/transaction/${t.id}`, { method:'DELETE', headers: token ? {'Authorization':'Bearer '+token} : {} });
+  }
+  _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions.splice(txIdx, 1);
+  ccRenderStatements();
+}
+
+// Google Drive folder URL for CC statements
+const CC_DRIVE_URL = 'https://script.google.com/macros/s/AKfycbx2kW0zTzulQu7POp7YKmkowYeK-lLzcLQ3-590-YLfTGJqcLYcABSUNACJQHnvZZX5/exec';
+// Payment bill upload — Apps Script URL (deploy the script provided by dev, then paste URL here)
+const PR_BILL_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxh0cevqSgujIctWiQ17Py5n0OvxPp7Ji6JnI151FdIi-Uyv2rM-a4XUk5D7J3iqgE3/exec';
+const PR_BILL_FOLDER = 'https://drive.google.com/drive/folders/1Zpmc-Vcenjzw7uWaNSYGPm3KtxMfDyPB';
+const CC_DRIVE_FOLDER = 'https://drive.google.com/drive/folders/1G_wzP734PykkLoS6k0KKEqIs3V_TiWgH?usp=drive_link';
+
+async function ccOpenStatementDrive(bank, cardNum, stmtIdx, btn) {
+  if (!ccCanEdit()) return;
+  const stmt = _ccData[bank]?.[cardNum]?.[stmtIdx];
+  if (!stmt) return;
+  const txns = stmt.transactions || [];
+  const rs = v => 'Rs. ' + Math.abs(parseFloat(v)||0).toLocaleString('en-IN',{minimumFractionDigits:2});
+
+  if (btn) { btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; }
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const W = 210, L = 14, R = 14, UW = W - L - R; // usable width = 182mm
+
+    // ── Header bar ──
+    doc.setFillColor(26, 86, 219); doc.rect(0, 0, W, 36, 'F');
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica','bold'); doc.setFontSize(20);
+    doc.text('E-Marketing', L, 16);
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    doc.text('Credit Card Statement', L, 25);
+    doc.setFontSize(9); doc.setTextColor(200,220,255);
+    doc.text(new Date().toLocaleString('en-IN'), W - R, 25, { align:'right' });
+
+    // ── Info block ──
+    let y = 44;
+    const purchases  = txns.filter(t=>t.txn_type!=='credit').reduce((s,t)=>s+parseFloat(t.amount||0),0);
+    const payments   = txns.filter(t=>t.txn_type==='credit').reduce((s,t)=>s+parseFloat(t.amount||0),0);
+    const curPayable = parseFloat(stmt.payable_amount||0) || purchases;
+    const prevBal    = curPayable - purchases + payments;
+
+    // Row 1: Bank name + card number
+    doc.setFillColor(248,250,252); doc.roundedRect(L, y-4, UW, 16, 2, 2, 'F');
+    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.roundedRect(L, y-4, UW, 16, 2, 2, 'S');
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(15,23,42);
+    doc.text(bank + ' Bank', L+4, y+4);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(71,85,105);
+    doc.text('Card: ' + cardNum, L+4, y+11);
+    y += 20;
+
+    // Row 2: 5-column stats grid (each col = UW/5 = 36.4mm)
+    const colW = UW / 5;
+    doc.setFillColor(255,255,255); doc.roundedRect(L, y, UW, 18, 2, 2, 'F');
+    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.roundedRect(L, y, UW, 18, 2, 2, 'S');
+    [
+      ['STATEMENT DATE', stmt.statement_date||'—',                                                                   [15,23,42]],
+      ['BILLING PERIOD', (stmt.statement_period||'—').substring(0,20),                                              [15,23,42]],
+      ['DUE DATE',       stmt.payment_due_date||'—',                                                                 [220,38,38]],
+      ['MINIMUM DUE',    stmt.min_amount_due ? 'Rs.'+parseFloat(stmt.min_amount_due).toLocaleString('en-IN',{minimumFractionDigits:2}) : '—', [217,119,6]],
+      ['TOTAL PAYABLE',  rs(curPayable),                                                                             [22,163,74]],
+    ].forEach(([lbl, val, clr], i) => {
+      const cx = L + colW*i + 3;
+      if (i > 0) { doc.setDrawColor(241,245,249); doc.setLineWidth(0.3); doc.line(L+colW*i, y, L+colW*i, y+18); }
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(100,116,139);
+      doc.text(lbl, cx, y+5);
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...clr);
+      doc.text(val, cx, y+13);
+    });
+    y += 22;
+
+    // ── Balance Breakdown ──
+    const bW = UW / 4;
+    doc.setFillColor(248,250,252); doc.rect(L, y, UW, 14, 'F');
+    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.rect(L, y, UW, 14, 'S');
+    [['PREV. BALANCE', prevBal, [15,23,42]], ['PURCHASES', purchases, [220,38,38]], ['PAYMENTS', payments, [22,163,74]], ['TOTAL DUE', curPayable, [26,86,219]]].forEach(([lbl, val, clr], i) => {
+      const bx = L + bW*i + 4;
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(100,116,139);
+      doc.text(lbl, bx, y+4.5);
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...clr);
+      doc.text('Rs.'+Math.abs(val).toLocaleString('en-IN',{minimumFractionDigits:2}), bx, y+11);
+      if (i < 3) {
+        doc.setFont('helvetica','normal'); doc.setFontSize(13); doc.setTextColor(203,213,225);
+        doc.text(['+','−','='][i], L + bW*(i+1) - 4, y+10);
+      }
+    });
+    y += 18;
+
+    // ── Table header ──
+    // cols: Date=22, Description=66, Amount=28, Owner=32, Dept=34  → total=182 ✓
+    const cols  = [22, 66, 28, 32, 34];
+    const hdrs  = ['Date', 'Description', 'Amount (Rs.)', 'Owner', 'Department'];
+    const aligns= ['left','left','right','left','left'];
+
+    doc.setFillColor(26, 86, 219); doc.rect(L, y, UW, 8, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+    let x = L;
+    hdrs.forEach((h, i) => {
+      const cx = aligns[i]==='right' ? x+cols[i]-2 : x+2;
+      doc.text(h, cx, y+5.5, { align: aligns[i]==='right'?'right':'left' });
+      x += cols[i];
+    });
+    y += 9;
+
+    // ── Rows ──
+    doc.setFontSize(8.5);
+    txns.forEach((t, idx) => {
+      if (y > 272) { doc.addPage(); y = 16; }
+      const rh = 7.5;
+      if (idx % 2 === 1) { doc.setFillColor(248,250,252); doc.rect(L, y, UW, rh, 'F'); }
+      const isCredit = t.txn_type === 'credit';
+      const rowData = [
+        t.date||'',
+        (t.description||'').substring(0,40),
+        (isCredit?'+ ':'') + Math.abs(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2}),
+        (t.expenses||'').substring(0,18),
+        (t.department||'').substring(0,20)
+      ];
+      x = L;
+      rowData.forEach((val, i) => {
+        if (i === 2) { if(isCredit) doc.setTextColor(22,163,74); else doc.setTextColor(15,23,42); }
+        else { doc.setFont('helvetica','normal'); doc.setTextColor(15,23,42); }
+        const cx = aligns[i]==='right' ? x+cols[i]-2 : x+2;
+        doc.text(String(val), cx, y+5, { align: aligns[i]==='right'?'right':'left' });
+        x += cols[i];
+      });
+      doc.setDrawColor(226,232,240); doc.setLineWidth(0.15);
+      doc.line(L, y+rh, L+UW, y+rh);
+      y += rh;
+    });
+
+    // ── Footer total ──
+    y += 3;
+    doc.setDrawColor(71,85,105); doc.setLineWidth(0.5); doc.line(L, y, L+UW, y); y += 5;
+    const txSum = purchases;
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(15,23,42);
+    doc.text('Transaction Sum', L+2, y+4);
+    doc.setTextColor(220, 38, 38);
+    doc.text('Rs. ' + txSum.toLocaleString('en-IN',{minimumFractionDigits:2}), L+UW-2, y+4, { align:'right' });
+
+    const safe = s => String(s||'').replace(/[^a-zA-Z0-9_-]/g,'_').substring(0,20);
+    const suggested = 'CC_' + safe(bank) + '_' + safe(stmt.statement_date) + '_Statement.pdf';
+    const userFilename = await new Promise(resolve => {
+      const overlay = document.getElementById('ccRenameOverlay');
+      const input = document.getElementById('ccRenameInput');
+      const okBtn = document.getElementById('ccRenameOkBtn');
+      const cancelBtn = document.getElementById('ccRenameCancelBtn');
+      input.value = suggested;
+      overlay.style.display = 'flex';
+      setTimeout(() => { input.focus(); input.select(); }, 50);
+      const finish = (val) => {
+        overlay.style.display = 'none';
+        okBtn.onclick = null; cancelBtn.onclick = null;
+        resolve(val);
+      };
+      okBtn.onclick = () => finish(input.value.trim() || null);
+      cancelBtn.onclick = () => finish(null);
+    });
+    if (!userFilename) { if (btn) { btn.style.opacity = ''; btn.style.pointerEvents = ''; } return; }
+    const filename = userFilename.endsWith('.pdf') ? userFilename : userFilename + '.pdf';
+    const pdfB64 = doc.output('datauristring').split(',')[1];
+
+    const resp = await fetch('/api/credit-cards/drive-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pdf: pdfB64, filename,
+        date: stmt.statement_date||'', description: 'Statement ' + bank,
+        amount: stmt.payable_amount||'', type: 'statement', bank, card: cardNum, owner: '', department: '' })
+    });
+    const result = await resp.json();
+    if (!result.success) throw new Error(result.error || 'Upload failed');
+
+    doc.save(filename);
+    showToast('✅ Statement PDF saved to Drive!');
+    if (btn) {
+      btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      btn.style.opacity = '1';
+      setTimeout(() => {
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="16" viewBox="0 0 87.3 78" style="display:block"><path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#fff"/><path d="M43.65 25L29.9 1.2C28.55 2 27.4 3.1 26.6 4.5L1.2 49.5C.4 50.9 0 52.45 0 54h27.5z" fill="#fff"/><path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H60l5.85 11.5z" fill="#fff"/><path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#fff"/><path d="M60 54H27.5L13.75 77.8c1.35.8 2.9 1.2 4.5 1.2h50.05c1.6 0 3.15-.45 4.5-1.2z" fill="#fff"/><path d="M73.4 27L60.7 4.5c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25 60 54h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#fff"/></svg>';
+        btn.style.pointerEvents = 'auto';
+      }, 3000);
+    }
+  } catch(e) {
+    if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+async function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
+  if (!ccCanEdit()) return;
+  if (!CC_DRIVE_URL) { showToast('Apps Script URL not configured.', 'error'); return; }
+  const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
+  if (!t) return;
+  const owner = t.expenses || '';
+  const dept  = t.department || '';
+  if (!owner || !dept) { showToast('Select Owner and Department first.', 'error'); return; }
+
+  const btn = wrap?.querySelector(`button[onclick*="ccSaveToDrive('${bank}','${cardNum}',${stmtIdx},${txIdx})"]`);
+  if (btn) { btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; }
+
+  try {
+    // ── 1. Generate PDF (base64 for Drive + local download) ──
+    // ── 2. Generate & download PDF locally ───────────────
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a5' });
+    const W = 148, pw = 12;
+    doc.setFillColor(26, 86, 219); doc.rect(0, 0, W, 28, 'F');
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(16);
+    doc.text('E-Marketing', pw, 12);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9);
+    doc.text('Credit Card Transaction Record', pw, 20);
+    doc.text(new Date().toLocaleString('en-IN'), W - pw, 20, { align:'right' });
+    let y = 36;
+    const sec = (lbl) => { doc.setFillColor(241,245,249); doc.rect(pw,y,W-pw*2,6,'F'); doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setTextColor(100,116,139); doc.text(lbl.toUpperCase(),pw+2,y+4.2); y+=9; };
+    const rw  = (lbl, val, hi) => { doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(100,116,139); doc.text(lbl,pw+2,y); doc.setFont('helvetica','bold'); if(hi) doc.setTextColor(220,38,38); else doc.setTextColor(15,23,42); doc.text(String(val),pw+52,y); y+=7; };
+    const stmt = _ccData[bank]?.[cardNum]?.[stmtIdx];
+    sec('Card Details');
+    rw('Bank', bank); rw('Card Number', cardNum);
+    rw('Statement Date', stmt?.statement_date||'—');
+    sec('Transaction');
+    rw('Date', t.date||'—'); rw('Description', (t.description||'—').substring(0,38));
+    rw('Amount', (t.txn_type==='credit'?'+ ':'')+'₹'+(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2}), t.txn_type!=='credit');
+    rw('Type', t.txn_type==='credit'?'Credit':'Debit');
+    sec('Allocation'); rw('Owner', owner); rw('Department', dept);
+    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.line(pw,y+4,W-pw,y+4);
+    doc.setFont('helvetica','italic'); doc.setFontSize(7.5); doc.setTextColor(148,163,184);
+    doc.text('Generated by E-Marketing Task Manager', pw, y+9);
+    const safe = s => String(s||'').replace(/[^a-zA-Z0-9_-]/g,'_').substring(0,20);
+    const filename = `CC_${safe(bank)}_${safe(t.date)}_${safe(t.description)}.pdf`;
+    const pdfB64 = doc.output('datauristring').split(',')[1];
+    doc.save(filename);
+
+    // ── 3. Save row to Sheet + upload PDF to Drive ────────
+    const token = localStorage.getItem('authToken') || '';
+    const resp = await fetch('/api/credit-cards/drive-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization':'Bearer '+token} : {}) },
+      body: JSON.stringify({
+        date: t.date||'', description: t.description||'',
+        amount: t.amount||'', type: t.txn_type||'',
+        bank, card: cardNum, owner, department: dept,
+        pdf: pdfB64, filename
+      })
+    });
+    const result = await resp.json();
+    if (!result.success) throw new Error(result.error || 'Drive save failed');
+
+    showToast('✅ Saved to Sheet + Drive! PDF downloaded.');
+    if (btn) {
+      btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+      btn.style.opacity = '1';
+      setTimeout(() => {
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 87.3 78" style="display:block"><path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="M43.65 25L29.9 1.2C28.55 2 27.4 3.1 26.6 4.5L1.2 49.5C.4 50.9 0 52.45 0 54h27.5z" fill="#00ac47"/><path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H60l5.85 11.5z" fill="#ea4335"/><path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/><path d="M60 54H27.5L13.75 77.8c1.35.8 2.9 1.2 4.5 1.2h50.05c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/><path d="M73.4 27L60.7 4.5c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25 60 54h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/></svg>`;
+        btn.style.pointerEvents = 'auto';
+      }, 3000);
+    }
+  } catch(e) {
+    if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+let _ccUpdateTimer = {};
+function ccUpdateField(bank, cardNum, stmtIdx, txIdx, field, val) {
+  if (!ccCanEdit()) return;
+  const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
+  if (!t) return;
+  t[field] = val;
+  if (t.id) {
+    const key = `${t.id}`;
+    clearTimeout(_ccUpdateTimer[key]);
+    _ccUpdateTimer[key] = setTimeout(async () => {
+      const token = localStorage.getItem('authToken') || '';
+      await fetch(`/api/credit-cards/transaction/${t.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type':'application/json', ...(token ? {'Authorization':'Bearer '+token} : {}) },
+        body: JSON.stringify({ expenses: t.expenses, department: t.department })
+      });
+    }, 800);
+  }
+}
+
+function ccRenderDetail() {
+  const panel = document.getElementById('ccDetailContent');
+  if (!panel) return;
+  const bank = _ccActiveBank;
+  if (!bank) {
+    // Build overview: stats across all banks
+    const allBanks = Object.keys(_ccData);
+    let totalTxns = 0, totalAmt = 0, totalCards = 0, totalStmts = 0;
+    allBanks.forEach(b => {
+      Object.values(_ccData[b] || {}).forEach(stmts => {
+        totalCards++;
+        stmts.forEach(s => {
+          totalStmts++;
+          (s.transactions || []).forEach(t => {
+            if (t.txn_type !== 'credit') { totalTxns++; totalAmt += parseFloat(t.amount)||0; }
+          });
+        });
+      });
+    });
+    const bankCards = allBanks.map(b => {
+      const color = CC_BANK_COLORS[b] || '#64748b';
+      let bTxns = 0, bAmt = 0, bCards = 0;
+      Object.values(_ccData[b] || {}).forEach(stmts => {
+        bCards++;
+        stmts.forEach(s => (s.transactions||[]).forEach(t => { if(t.txn_type!=='credit'){bTxns++;bAmt+=parseFloat(t.amount)||0;} }));
+      });
+      return `<div onclick="ccSelectBankFromOverview(${jsArg(b)})" style="background:#fff;border:2px solid #e2e8f0;border-radius:14px;padding:18px 20px;cursor:pointer;transition:all .18s;min-width:0"
+        onmouseover="this.style.borderColor='${color}';this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)'" onmouseout="this.style.borderColor='#e2e8f0';this.style.boxShadow='none'">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <div style="width:36px;height:36px;border-radius:10px;background:${color};display:grid;place-items:center;font-size:17px;flex-shrink:0">🏦</div>
+          <div style="font-size:14px;font-weight:800;color:#0f172a">${dtEscape(b)}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="background:#f8fafc;border-radius:8px;padding:8px 10px">
+            <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Cards</div>
+            <div style="font-size:16px;font-weight:800;color:#0f172a;margin-top:2px">${bCards}</div>
+          </div>
+          <div style="background:#f8fafc;border-radius:8px;padding:8px 10px">
+            <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Txns</div>
+            <div style="font-size:16px;font-weight:800;color:#0f172a;margin-top:2px">${bTxns}</div>
+          </div>
+        </div>
+        <div style="margin-top:10px;background:#fff7ed;border-radius:8px;padding:8px 10px">
+          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Total Spend</div>
+          <div style="font-size:15px;font-weight:800;color:#dc2626;margin-top:2px">₹${bAmt.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    panel.innerHTML = `
+      <div style="padding:28px 24px">
+        ${allBanks.length ? `
+        <!-- Overview stats -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px">
+          ${[
+            {icon:'🏦', label:'Banks',        val:allBanks.length,  color:'#4f46e5'},
+            {icon:'💳', label:'Cards',        val:totalCards,        color:'#7c3aed'},
+            {icon:'📄', label:'Statements',   val:totalStmts,        color:'#0891b2'},
+            {icon:'🧾', label:'Transactions', val:totalTxns,         color:'#16a34a'},
+          ].map(s=>`<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px 18px">
+            <div style="font-size:20px;margin-bottom:6px">${s.icon}</div>
+            <div style="font-size:22px;font-weight:800;color:${s.color}">${s.val}</div>
+            <div style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-top:2px">${s.label}</div>
+          </div>`).join('')}
+        </div>
+        <div style="margin-bottom:28px;background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Total Spend (All Banks)</div>
+            <div style="font-size:26px;font-weight:800;color:#dc2626;margin-top:4px">₹${totalAmt.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
+          </div>
+          <div style="font-size:36px;opacity:.15">💳</div>
+        </div>
+        <!-- Bank cards -->
+        <div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">Banks — click to open</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px">${bankCards}</div>
+        ` : `
+        <div style="text-align:center;padding:60px 20px">
+          <div style="font-size:52px;margin-bottom:16px;opacity:.25">💳</div>
+          <div style="font-size:16px;font-weight:700;color:#0f172a;margin-bottom:8px">No data</div>
+          <div style="font-size:13px;color:#94a3b8">${ccCanEdit() ? 'Upload a PDF statement using the button above to get started.' : 'No statements have been uploaded yet.'}</div>
+        </div>`}
+      </div>`;
+    return;
+  }
+  const color    = CC_BANK_COLORS[bank] || '#64748b';
+  const bankData = _ccData[bank] || {};
+  const cards    = Object.keys(bankData);
+
+  // If no cards yet, show empty state
+  if (!cards.length) {
+    panel.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#94a3b8;font-size:14px">No statements for <strong>${dtEscape(bank)}</strong> yet${ccCanEdit() ? ' — upload a PDF statement above' : ''}.</div>`;
+    return;
+  }
+
+  // Auto-select first card if none active or active card not in this bank
+  if (!_ccActiveCard || !bankData[_ccActiveCard]) _ccActiveCard = cards[0];
+
+  // Card number tabs
+  const cardTabs = cards.map(cn => `
+    <button onclick="ccSelectCard(${jsArg(cn)})"
+      style="padding:7px 16px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid ${cn===_ccActiveCard?color:'#e2e8f0'};background:${cn===_ccActiveCard?color:'#fff'};color:${cn===_ccActiveCard?'#fff':'#374151'};transition:all .15s;white-space:nowrap">
+      💳 ${dtEscape(cn)}
+    </button>`).join('');
+
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <!-- Card tabs (left) -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        ${cardTabs}
+      </div>
+      <!-- Filter bar (right) -->
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
+      <!-- Date filter -->
+      <div style="position:relative">
+        <button id="ccDateFilterBtn" onclick="ccOpenDatePicker()"
+          style="display:flex;align-items:center;gap:8px;padding:7px 14px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fff;cursor:pointer;min-width:160px;font-family:inherit">
+          <span style="font-size:15px">📅</span>
+          <div style="text-align:left;line-height:1.2">
+            <div style="font-weight:700;font-size:13px">All time</div>
+          </div>
+        </button>
+        <!-- Date picker dropdown -->
+        <div id="ccDatePickerWrap" style="display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:999;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.14);padding:0;overflow:hidden;min-width:600px">
+          <div style="display:flex">
+            <!-- Presets -->
+            <div style="padding:16px 8px;border-right:1px solid #f1f5f9;min-width:140px">
+              ${_CC_PRESETS.map(p=>`<button class="cc-preset-btn" data-preset="${p.key}" onclick="ccCalSelectPreset('${p.key}')"
+                style="display:block;width:100%;text-align:left;padding:8px 14px;border:none;border-radius:8px;background:transparent;cursor:pointer;font-size:13px;color:#374151;font-family:inherit;margin-bottom:2px;transition:background .1s"
+                onmouseover="if(this.style.background!=='rgb(26, 86, 219)')this.style.background='#f1f5f9'"
+                onmouseout="if(this.style.background!=='rgb(26, 86, 219)')this.style.background='transparent'">${p.label}</button>`).join('')}
+            </div>
+            <!-- Calendars -->
+            <div style="padding:20px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                <button onclick="ccCalNav(-1)" style="border:none;background:none;cursor:pointer;font-size:18px;color:#374151;padding:4px 8px;border-radius:6px"
+                  onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='none'">‹</button>
+                <div id="ccCalBody" style="display:flex;gap:24px"></div>
+                <button onclick="ccCalNav(1)"  style="border:none;background:none;cursor:pointer;font-size:18px;color:#374151;padding:4px 8px;border-radius:6px"
+                  onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='none'">›</button>
+              </div>
+            </div>
+          </div>
+          <!-- Footer -->
+          <div style="padding:12px 20px;border-top:1px solid #f1f5f9;display:flex;justify-content:flex-end;gap:10px;background:#fafafa">
+            <button onclick="ccCloseDatePicker()"
+              style="padding:7px 18px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit"
+              onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">Cancel</button>
+            <button onclick="ccCalApply()"
+              style="padding:7px 18px;border:none;border-radius:8px;background:#4f46e5;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit"
+              onmouseover="this.style.background='#1e40af'" onmouseout="this.style.background='#4f46e5'">Apply</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Amount filter -->
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:12px;color:#64748b;font-weight:600">₹</span>
+        <input id="ccAmtMin" type="number" placeholder="Min amount" value="${_ccFilter.amtMin||''}"
+          style="width:110px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit"
+          onfocus="this.style.borderColor='#4f46e5'" onblur="this.style.borderColor='#e2e8f0'"
+          onkeydown="if(event.key==='Enter')ccFilterApplyAmt()">
+        <span style="color:#94a3b8">—</span>
+        <input id="ccAmtMax" type="number" placeholder="Max amount" value="${_ccFilter.amtMax||''}"
+          style="width:110px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit"
+          onfocus="this.style.borderColor='#4f46e5'" onblur="this.style.borderColor='#e2e8f0'"
+          onkeydown="if(event.key==='Enter')ccFilterApplyAmt()">
+        <button onclick="ccFilterApplyAmt()"
+          style="padding:7px 14px;border:none;background:#4f46e5;color:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit"
+          onmouseover="this.style.background='#1e40af'" onmouseout="this.style.background='#4f46e5'">Apply</button>
+      </div>
+
+      <!-- Reset button — always visible -->
+      <button onclick="ccFilterClear()"
+        style="padding:7px 14px;border:1.5px solid #e2e8f0;background:#fff;color:#64748b;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit"
+        onmouseover="this.style.borderColor='#fca5a5';this.style.color='#dc2626';this.style.background='#fef2f2'"
+        onmouseout="this.style.borderColor='#e2e8f0';this.style.color='#64748b';this.style.background='#fff'">↺ Reset</button>
+      </div><!-- /filter bar -->
+    </div><!-- /card tabs + filter row -->
+
+    <div id="ccStatementsWrap"></div>`;
+
+  ccCalRender();
+  ccRenderStatements();
+}
+
+function ccRenderStatements() {
+  const wrap = document.getElementById('ccStatementsWrap');
+  if (!wrap) return;
+  const bank    = _ccActiveBank;
+  const cardNum = _ccActiveCard;
+  const color   = CC_BANK_COLORS[bank] || '#64748b';
+  const stmts   = _ccData[bank]?.[cardNum] || [];
+  const safeCard = jsArg(cardNum||'');
+  const safeBank = jsArg(bank||'');
+  // Read-only viewers lose every write control: the select column (it only
+  // feeds Bulk Apply), the owner/dept editors, upload-to-Drive and delete.
+  const canEdit = ccCanEdit();
+  const NCOLS   = canEdit ? 7 : 6;
+
+  if (!stmts.length) {
+    wrap.innerHTML = `<div style="text-align:center;padding:40px;color:#94a3b8;font-size:14px">No statements for this card yet.</div>`;
+    return;
+  }
+
+  wrap.innerHTML = stmts.map((s, si) => {
+    // Month/Year divider label above each statement
+    const MO_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    let monthBadge = '';
+    if (s.statement_date) {
+      const dp = s.statement_date.split('-');
+      const mon = MO_NAMES[parseInt(dp[1],10)-1] || '';
+      const yr  = dp[0] || '';
+      monthBadge = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;margin-top:${si>0?'28px':'0'}">
+        <div style="height:1px;flex:1;background:#e2e8f0"></div>
+        <span style="font-size:12px;font-weight:700;color:#64748b;background:#f1f5f9;padding:4px 14px;border-radius:20px;letter-spacing:.04em;white-space:nowrap">📅 ${mon} ${yr}</span>
+        <div style="height:1px;flex:1;background:#e2e8f0"></div>
+      </div>`;
+    }
+
+    const allTxns = s.transactions || [];
+    const txns = allTxns.map((t, i) => ({...t, _oi: i})).filter(t => {
+      if (_ccFilter.dateFrom && t.date && t.date < _ccFilter.dateFrom) return false;
+      if (_ccFilter.dateTo   && t.date && t.date > _ccFilter.dateTo)   return false;
+      const amt = parseFloat(t.amount)||0;
+      if (_ccFilter.amtMin !== '' && amt < parseFloat(_ccFilter.amtMin)) return false;
+      if (_ccFilter.amtMax !== '' && amt > parseFloat(_ccFilter.amtMax)) return false;
+      return true;
+    });
+    const txSum = txns.reduce((acc,t) => acc + (t.txn_type === 'credit' ? 0 : (parseFloat(t.amount)||0)), 0);
+
+    const txRows = txns.map((t, ti) => {
+      const oi = t._oi; // original index in unfiltered array
+      const rowBg = ti%2===1?'background:#fafafa':'';
+      return `
+      <tr data-oi="${oi}" style="border-top:1px solid #f1f5f9;${rowBg}">
+        ${canEdit ? `<td style="padding:8px 14px;text-align:center;border-right:1px solid #f1f5f9;width:36px">
+          <input type="checkbox" class="ccTxChk-${si}" data-oi="${oi}" onchange="ccRowChkChange(${si})" style="width:15px;height:15px;cursor:pointer;accent-color:#4f46e5">
+        </td>` : ''}
+        <td style="padding:8px 14px;font-size:13px;color:#475569;white-space:nowrap;text-align:center;border-right:1px solid #f1f5f9">${dtEscape(t.date||'—')}</td>
+        <td style="padding:8px 14px;font-size:13px;color:#0f172a;border-right:1px solid #f1f5f9">${dtEscape(t.description||'—')}</td>
+        <td class="ccAmtCell" style="padding:8px 14px;font-size:13px;font-weight:600;color:${t.txn_type==='credit'?'#16a34a':'#0f172a'};text-align:right;white-space:nowrap;border-right:1px solid #f1f5f9">${t.txn_type==='credit'?'+ ':''}${(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+        <td style="padding:6px 8px;border-right:1px solid #f1f5f9;text-align:center">
+          ${canEdit ? `<div style="position:relative;display:inline-block">
+            <div id="ccOwnBtn-${si}-${oi}" onclick="ccOwnToggleDrop(${safeBank},${safeCard},${si},${oi})"
+              style="min-width:120px;padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:6px;user-select:none">
+              <span id="ccOwnLabel-${si}-${oi}" style="color:#94a3b8;flex:1;text-align:left">— Owner —</span>
+              <span style="color:#94a3b8;font-size:10px">▾</span>
+            </div>
+          </div>` : `<span id="ccOwnLabel-${si}-${oi}" style="color:#94a3b8;font-size:12px">— Owner —</span>`}
+        </td>
+        <td style="padding:6px 8px;border-right:1px solid #f1f5f9;text-align:center">
+          ${canEdit ? `<div style="position:relative;display:inline-block">
+            <div id="ccDeptBtn-${si}-${oi}" onclick="ccDeptToggleDrop(${safeBank},${safeCard},${si},${oi})"
+              style="min-width:130px;padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:6px;user-select:none">
+              <span id="ccDeptLabel-${si}-${oi}" style="color:#94a3b8;flex:1;text-align:left">— Dept —</span>
+              <span style="color:#94a3b8;font-size:10px">▾</span>
+            </div>
+          </div>` : `<span id="ccDeptLabel-${si}-${oi}" style="color:#94a3b8;font-size:12px">— Dept —</span>`}
+        </td>
+        <td id="ccBillCell-${si}-${oi}" style="padding:6px 8px;text-align:center;min-width:80px">
+          ${ccBillCellHtml(si, oi, safeBank, safeCard, t.id, t.bill_drive_id)}
+        </td>
+      </tr>`;
+    }).join('');
+
+    const prev      = stmts[si + 1]; // previous month's statement (stmts sorted newest-first)
+    const fmtDelta  = (cur, old) => {
+      if (!old || !cur) return '';
+      const diff = cur - old, pct = Math.abs(Math.round(diff/old*100));
+      const up = diff > 0, clr = up ? '#dc2626' : '#16a34a', arrow = up ? '↑' : '↓';
+      return `<div style="font-size:11px;color:${clr};font-weight:600;margin-top:3px">${arrow} ₹${Math.abs(diff).toLocaleString('en-IN',{minimumFractionDigits:2})} <span style="opacity:.7">(${pct}%)</span></div>`;
+    };
+    const fmtTxDelta = (cur, old) => {
+      if (old == null) return '';
+      const diff = cur - old;
+      if (diff === 0) return `<div style="font-size:11px;color:#64748b;margin-top:3px">= same as last</div>`;
+      const clr = diff > 0 ? '#d97706' : '#16a34a', arrow = diff > 0 ? '↑' : '↓';
+      return `<div style="font-size:11px;color:${clr};font-weight:600;margin-top:3px">${arrow} ${Math.abs(diff)} vs last</div>`;
+    };
+    const curPayable = s.payable_amount || txSum;
+    const prevPayable = prev ? (prev.payable_amount || (prev.transactions||[]).reduce((a,t)=>a+(t.txn_type==='credit'?0:parseFloat(t.amount)||0),0)) : null;
+    const prevTxCount = prev ? (prev.transactions||[]).length : null;
+
+    return monthBadge + `
+    <div style="border:1px solid #e2e8f0;border-radius:14px;margin-bottom:20px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+      <!-- Top bar: bank name + search + delete -->
+      <div style="background:${color};padding:12px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+          <span style="color:#fff;font-size:15px;font-weight:800;letter-spacing:.01em">🏦 ${dtEscape(bank)}</span>
+          <span style="background:rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px">${txns.length} transactions</span>
+          ${s.id ? `<button onclick="ccPreviewStmtPdf(${s.id})" title="Preview uploaded PDF"
+            style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:${_ccStmtPreviewUrls[s.id]?'rgba(255,255,255,.25)':'rgba(255,255,255,.1)'};border:1.5px solid rgba(255,255,255,${_ccStmtPreviewUrls[s.id]?'.7':'.25'});border-radius:7px;color:${_ccStmtPreviewUrls[s.id]?'#fff':'rgba(255,255,255,.45)'};font-size:12px;font-weight:600;cursor:${_ccStmtPreviewUrls[s.id]?'pointer':'default'};font-family:inherit"
+            ${_ccStmtPreviewUrls[s.id]?`onmouseover="this.style.background='rgba(255,255,255,.4)'" onmouseout="this.style.background='rgba(255,255,255,.25)'"`:''}>
+            👁 Preview
+          </button>` : ''}
+          <button onclick="ccToggleSummary(${si})" id="ccSummaryBtn-${si}" title="View department & owner summary"
+            style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);border-radius:7px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit"
+            onmouseover="this.style.background='rgba(255,255,255,.35)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">
+            📊 Summary
+          </button>
+        </div>
+        <!-- Search bar -->
+        <div style="flex:1;max-width:320px;position:relative">
+          <svg width="14" height="14" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="2" viewBox="0 0 24 24" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="ccSearch-${si}" placeholder="Search transactions…"
+            oninput="ccSearchTxns(${si})"
+            style="width:100%;box-sizing:border-box;padding:7px 30px 7px 30px;border:1.5px solid rgba(255,255,255,.35);border-radius:8px;background:rgba(255,255,255,.15);color:#fff;font-size:13px;outline:none;font-family:inherit"
+            onfocus="this.style.borderColor='rgba(255,255,255,.8)'" onblur="this.style.borderColor='rgba(255,255,255,.35)'">
+          <span onclick="document.getElementById('ccSearch-${si}').value='';ccSearchTxns(${si})"
+            style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,.6);font-size:16px;cursor:pointer;line-height:1;padding:2px 4px;border-radius:4px"
+            onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,.6)'">×</span>
+        </div>
+        ${canEdit ? `<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <button onclick="ccOpenStatementDrive(${safeBank},${safeCard},${si},this)" title="Upload statement PDF to Drive"
+            style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);border-radius:8px;padding:5px 10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center"
+            onmouseover="this.style.background='rgba(255,255,255,.35)'"
+            onmouseout="this.style.background='rgba(255,255,255,.15)'">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="16" viewBox="0 0 87.3 78" style="display:block">
+              <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#fff"/>
+              <path d="M43.65 25L29.9 1.2C28.55 2 27.4 3.1 26.6 4.5L1.2 49.5C.4 50.9 0 52.45 0 54h27.5z" fill="#fff"/>
+              <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H60l5.85 11.5z" fill="#fff"/>
+              <path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#fff"/>
+              <path d="M60 54H27.5L13.75 77.8c1.35.8 2.9 1.2 4.5 1.2h50.05c1.6 0 3.15-.45 4.5-1.2z" fill="#fff"/>
+              <path d="M73.4 27L60.7 4.5c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25 60 54h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#fff"/>
+            </svg>
+          </button>
+          <button onclick="ccDeleteStatement(${safeBank},${safeCard},${si})"
+            title="Delete this statement"
+            style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);color:#fff;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap"
+            onmouseover="this.style.background='rgba(220,38,38,.6)'"
+            onmouseout="this.style.background='rgba(255,255,255,.15)'">🗑 Delete</button>
+        </div>` : ''}
+      </div>
+      <!-- Stats grid -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-bottom:1px solid #e2e8f0">
+        <div style="padding:14px 16px;border-right:1px solid #f1f5f9">
+          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Statement Date</div>
+          <div style="font-size:14px;font-weight:700;color:#0f172a">${dtEscape(s.statement_date||'—')}</div>
+        </div>
+        <div style="padding:14px 16px;border-right:1px solid #f1f5f9">
+          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Billing Period</div>
+          <div style="font-size:12px;font-weight:600;color:#0f172a;line-height:1.4">${dtEscape(s.statement_period||'—')}</div>
+        </div>
+        <div style="padding:14px 16px;border-right:1px solid #f1f5f9">
+          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Due Date</div>
+          <div style="font-size:14px;font-weight:700;color:#dc2626">${dtEscape(s.payment_due_date||'—')}</div>
+        </div>
+        <div style="padding:14px 16px;border-right:1px solid #f1f5f9">
+          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Minimum Due</div>
+          <div style="font-size:14px;font-weight:700;color:#d97706">${s.min_amount_due?'₹'+parseFloat(s.min_amount_due).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</div>
+        </div>
+        <div style="padding:14px 16px;background:#f0fdf4">
+          <div style="font-size:10px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Total Payable</div>
+          <div style="font-size:18px;font-weight:800;color:#0f172a">₹${curPayable.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
+        </div>
+      </div>
+      <!-- Balance Breakdown -->
+      ${(() => {
+        const purchases   = allTxns.filter(t=>t.txn_type!=='credit').reduce((a,t)=>a+(parseFloat(t.amount)||0),0);
+        const payments    = allTxns.filter(t=>t.txn_type==='credit').reduce((a,t)=>a+(parseFloat(t.amount)||0),0);
+        const prevBal     = curPayable - purchases + payments;
+        const fmt = v => '₹' + Math.abs(v).toLocaleString('en-IN',{minimumFractionDigits:2});
+        const cell = (label, val, color, op) =>
+          `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 16px;flex:1;min-width:0">
+            <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">${label}</div>
+            <div style="font-size:15px;font-weight:800;color:${color}">${op||''}${fmt(val)}</div>
+          </div>`;
+        const sep = (sym) =>
+          `<div style="font-size:22px;font-weight:300;color:#cbd5e1;align-self:center;flex-shrink:0;padding:0 4px">${sym}</div>`;
+        return `<div style="display:flex;align-items:stretch;background:#f8fafc;border-bottom:1px solid #e2e8f0;border-top:1px solid #f1f5f9;overflow-x:auto">
+          ${cell('Prev. Balance', prevBal, '#0f172a')}
+          ${sep('+')}
+          ${cell('Purchases', purchases, '#dc2626')}
+          ${sep('−')}
+          ${cell('Payments', payments, '#16a34a')}
+          ${sep('=')}
+          ${cell('Total Due', curPayable, '#4f46e5')}
+        </div>`;
+      })()}
+      <!-- Bulk Apply bar -->
+      ${canEdit ? `<div style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:700;color:#64748b;white-space:nowrap">Apply to selected / all visible:</span>
+        <select id="ccBulkOwn-${si}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;outline:none;font-family:inherit;background:#fff">
+          <option value="">— Owner —</option>
+          <option value="__CLEAR__">🗑 Clear Owner</option>
+          ${_CC_OWN_OPTIONS.map(o=>`<option value="${o.replace(/"/g,'&quot;')}">${dtEscape(o)}</option>`).join('')}
+        </select>
+        <select id="ccBulkDept-${si}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;outline:none;font-family:inherit;background:#fff">
+          <option value="">— Dept —</option>
+          <option value="__CLEAR__">🗑 Clear Dept</option>
+          ${_ccDepts.map(d=>`<option value="${d.replace(/"/g,'&quot;')}">${dtEscape(d)}</option>`).join('')}
+        </select>
+        <button onclick="ccBulkApply(${si},${safeBank},${safeCard})"
+          style="padding:6px 14px;background:#4f46e5;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+          ✓ Apply
+        </button>
+      </div>` : ''}
+      <!-- Transactions -->
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;min-width:640px">
+          <thead>
+            <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
+              ${canEdit ? `<th style="padding:9px 14px;text-align:center;border-right:1px solid #e2e8f0;width:36px">
+                <input type="checkbox" id="ccSelAll-${si}" onchange="ccToggleSelAll(${si})" title="Select all" style="width:15px;height:15px;cursor:pointer;accent-color:#4f46e5">
+              </th>` : ''}
+              <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;border-right:1px solid #e2e8f0">Date</th>
+              <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;border-right:1px solid #e2e8f0">Description</th>
+              <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;border-right:1px solid #e2e8f0">Amount (₹)</th>
+              <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;border-right:1px solid #e2e8f0">Ownership</th>
+              <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;border-right:1px solid #e2e8f0">Department</th>
+              <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em">Bill</th>
+            </tr>
+          </thead>
+          <tbody id="ccTxBody-${si}">
+            ${txRows || `<tr><td colspan="${NCOLS}" style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">No transactions in this statement</td></tr>`}
+          </tbody>
+          ${txns.length ? `
+          <tfoot>
+            <tr style="border-top:2px solid #e2e8f0;background:#f8fafc">
+              <td colspan="${canEdit ? 3 : 2}" style="padding:9px 12px;font-size:13px;font-weight:700;color:#0f172a">Transaction Sum</td>
+              <td style="padding:9px 12px;font-size:13px;font-weight:800;color:#dc2626;text-align:right">₹${txSum.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
+              <td colspan="3"></td>
+            </tr>
+          </tfoot>` : ''}
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Set department + ownership labels after render
+  stmts.forEach((s, si) => {
+    (s.transactions||[]).forEach((t, oi) => {
+      if (t.expenses) {
+        const label = document.getElementById(`ccOwnLabel-${si}-${oi}`);
+        if (label) { label.textContent = t.expenses; label.style.color = '#0f172a'; }
+      }
+      if (t.department) {
+        const label = document.getElementById(`ccDeptLabel-${si}-${oi}`);
+        if (label) { label.textContent = t.department; label.style.color = '#0f172a'; }
+      }
+    });
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// MEETINGS — calendar (month + day)
+// ══════════════════════════════════════════════════════
+let _mtgClientsCache = null;
+let _mtgUsersCache = null;
+let _mtgEditing = null;
+let _mtgMonthAnchor = null; // month-anchor Date (1st of viewed month)
+let _mtgDayAnchor   = null; // currently focused day in the right-pane timeline
+let _mtgMonthCache = {};
+let _mtgTaskCache = {};   // calendar task feed, keyed by grid range
+let _mtgHolidays = null;
+
+function _mtgTodayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function _mtgIso(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function _mtgParseIso(s) {
+  const [y,m,d] = s.split('-').map(Number);
+  return new Date(y, m-1, d);
+}
+
+async function loadMeetings() {
+  const today = new Date();
+  if (!_mtgMonthAnchor) _mtgMonthAnchor = new Date(today.getFullYear(), today.getMonth(), 1);
+  if (!_mtgDayAnchor)   _mtgDayAnchor   = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  await Promise.all([_mtgEnsureClients(), _mtgEnsureUsers(), _mtgEnsureHolidays()]);
+  await renderMtgMonth();
+  await renderMtgDay();
+}
+
+async function _mtgEnsureHolidays() {
+  if (_mtgHolidays) return _mtgHolidays;
+  try {
+    const list = await api('/api/holidays');
+    _mtgHolidays = new Set((list || []).map(h => h.holiday_date || h.date));
+  } catch { _mtgHolidays = new Set(); }
+  return _mtgHolidays;
+}
+
+function mtgGoToday() {
+  const t = new Date();
+  _mtgMonthAnchor = new Date(t.getFullYear(), t.getMonth(), 1);
+  _mtgDayAnchor   = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+  renderMtgMonth();
+  renderMtgDay();
+}
+
+function mtgShift(dir) {
+  // Shift the MONTH view; day pane stays focused on its own anchor.
+  _mtgMonthAnchor = new Date(_mtgMonthAnchor.getFullYear(), _mtgMonthAnchor.getMonth() + dir, 1);
+  renderMtgMonth();
+}
+
+async function renderMtgMonth() {
+  const anchor = _mtgMonthAnchor;
+  const year = anchor.getFullYear();
+  const month = anchor.getMonth(); // 0-indexed
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('mtgCalLabel').textContent = `${monthNames[month]} ${year}`;
+
+  // First Sunday on/before the 1st; last Saturday on/after the last day.
+  const first = new Date(year, month, 1);
+  const last  = new Date(year, month + 1, 0);
+  const gridStart = new Date(first);
+  gridStart.setDate(first.getDate() - first.getDay());
+  const gridEnd = new Date(last);
+  gridEnd.setDate(last.getDate() + (6 - last.getDay()));
+
+  // Fetch meetings spanning the visible grid, cache per anchor month.
+  const cacheKey = `${year}-${String(month+1).padStart(2,'0')}-grid`;
+  let meetings = _mtgMonthCache[cacheKey];
+  if (!meetings) {
+    const fromStr = _mtgIso(gridStart), toStr = _mtgIso(gridEnd);
+    try { meetings = await api(`/api/meetings?from=${fromStr}&to=${toStr}`); }
+    catch { meetings = []; }
+    _mtgMonthCache[cacheKey] = Array.isArray(meetings) ? meetings : [];
+  }
+  const byDate = {};
+  for (const m of (meetings || [])) (byDate[m.meeting_date] = byDate[m.meeting_date] || []).push(m);
+
+  // Tasks (delegation + checklist + FMS) due in the visible grid — shown alongside meetings.
+  let tasks = _mtgTaskCache[cacheKey];
+  if (!tasks) {
+    const fromStr = _mtgIso(gridStart), toStr = _mtgIso(gridEnd);
+    try { const r = await api(`/api/calendar/tasks?from=${fromStr}&to=${toStr}`); tasks = Array.isArray(r?.items) ? r.items : []; }
+    catch { tasks = []; }
+    _mtgTaskCache[cacheKey] = tasks;
+  }
+  const tasksByDate = {};
+  for (const t of tasks) (tasksByDate[t.date] = tasksByDate[t.date] || []).push(t);
+
+  const todayIso = _mtgTodayIso();
+  const grid = document.getElementById('mtgMonthGrid');
+  const cells = [];
+  for (let d = new Date(gridStart); d <= gridEnd; d.setDate(d.getDate() + 1)) {
+    const iso = _mtgIso(d);
+    const isOtherMonth = d.getMonth() !== month;
+    const isSunday = d.getDay() === 0;
+    // Last Saturday of the month is a company off day.
+    const isLastSat = d.getDay() === 6 && (new Date(d.getTime() + 7*24*60*60*1000)).getMonth() !== d.getMonth();
+    const isHoliday = _mtgHolidays && _mtgHolidays.has(iso);
+    const isOff = isSunday || isHoliday || isLastSat;
+    const isToday = iso === todayIso;
+    const cls = ['mtg-cal-cell'];
+    if (isOff) cls.push('is-off');
+    if (isOtherMonth) cls.push('is-other-month');
+    if (isToday) cls.push('is-today');
+    const items = byDate[iso] || [];
+    const pillsHtml = items.slice(0, 3).map(m => {
+      const time = m.start_time || '';
+      return `<div class="mtg-cal-mpill ${m.status==='cancelled'?'cancelled':''} ${m.status==='done'?'done':''}" onclick="event.stopPropagation();openMeetingModal(${m.id})" title="${dtEscape(m.title)} — ${time}">${m.status==='done'?'✓ ':''}${time} ${dtEscape(m.title)}</div>`;
+    }).join('');
+    const moreHtml = items.length > 3
+      ? `<div class="mtg-cal-more" onclick="event.stopPropagation();mtgJumpToDay('${iso}')">+ ${items.length - 3} more</div>`
+      : '';
+    // Task pills (max 2) — delegation/checklist/fms due this day.
+    const tItems = tasksByDate[iso] || [];
+    const tIcon = { delegation: '📋', checklist: '✅', fms: '🔁' };
+    const tPills = tItems.slice(0, 2).map(t => {
+      const done = t.status === 'completed';
+      return `<div class="mtg-cal-tpill t-${t.type} ${done?'is-done':''}" title="${dtEscape(t.title)}">${tIcon[t.type]||'•'} ${dtEscape(t.title)}</div>`;
+    }).join('');
+    const tMore = tItems.length > 2
+      ? `<div class="mtg-cal-tmore" onclick="event.stopPropagation();mtgJumpToDay('${iso}')">+ ${tItems.length - 2} task${tItems.length-2===1?'':'s'}</div>`
+      : '';
+    const offBadge = (isHoliday || isSunday || isLastSat)
+      ? `<div style="font-size:10px;color:#dc2626;font-weight:600">${isHoliday ? '⛱ Holiday' : isLastSat ? 'Off' : 'Off'}</div>`
+      : '';
+    // All 7 days are clickable so meetings/tasks on off days (Sun/last-Sat/holiday)
+    // can still be viewed in the day panel — the "Off" badge stays as a marker.
+    const clickAttr = `onclick="mtgJumpToDay('${iso}')"`;
+    cells.push(`<div class="${cls.join(' ')}" ${clickAttr}>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="mtg-cal-daynum">${d.getDate()}</span>
+        ${offBadge}
+      </div>
+      ${pillsHtml}
+      ${moreHtml}
+      ${tPills}
+      ${tMore}
+    </div>`);
+  }
+  grid.innerHTML = cells.join('');
+}
+
+function mtgJumpToDay(iso) {
+  _mtgDayAnchor = _mtgParseIso(iso);
+  renderMtgDay();
+}
+
+// "09:30:00" / "09:30" -> "9:30 AM"
+function _mtgFmtTime(t) {
+  if (!t) return '';
+  const [h, m] = String(t).split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return t;
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+
+async function renderMtgDay() {
+  const anchor = _mtgDayAnchor;
+  const iso = _mtgIso(anchor);
+  document.getElementById('mtgDayLabel').textContent = `· ${fmtDate(iso)}`;
+
+  const tlEl = document.getElementById('mtgDayTimeline');
+  const listEl = document.getElementById('mtgDayList');
+  const taskEl = document.getElementById('mtgDayTasks');
+  tlEl.innerHTML = '<div style="padding:24px;color:#94a3b8;text-align:center;font-size:12px">Loading…</div>';
+  listEl.innerHTML = '<div class="empty" style="padding:24px">Loading…</div>';
+  if (taskEl) taskEl.innerHTML = '';
+
+  const [meetings, slotResp, taskResp, planItems] = await Promise.all([
+    api(`/api/meetings?from=${iso}&to=${iso}`),
+    api(`/api/meetings/slots?date=${iso}`),
+    api(`/api/calendar/tasks?from=${iso}&to=${iso}`).catch(() => ({ items: [] })),
+    api(`/api/day-plan-items?from=${iso}&to=${iso}`).catch(() => [])
+  ]);
+
+  // Tasks due this day (delegation + checklist + FMS)
+  if (taskEl) {
+    const tItems = Array.isArray(taskResp?.items) ? taskResp.items : [];
+    if (!tItems.length) {
+      taskEl.innerHTML = '<div class="mtg-day-tasks-head">Tasks due</div><div class="empty" style="padding:18px">No tasks due on this date</div>';
+    } else {
+      const tIcon = { delegation: '📋', checklist: '✅', fms: '🔁' };
+      const tLabel = { delegation: 'Delegation', checklist: 'Checklist', fms: 'FMS' };
+      const rows = tItems.map(t => {
+        const done = t.status === 'completed';
+        const client = t.client_name ? ` · 🏢 ${dtEscape(t.client_name)}` : '';
+        return `<div class="mtg-day-task t-${t.type}">
+          <span class="mtg-day-task-dot"></span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;color:#0f172a;font-weight:600;${done?'text-decoration:line-through;opacity:.6':''}">${tIcon[t.type]||'•'} ${dtEscape(t.title)}</div>
+            <div style="font-size:11px;color:#64748b;margin-top:1px">${tLabel[t.type]||t.type}${client} · ${done?'<span style="color:#15803d;font-weight:700">✓ Done</span>':'<span style="color:#d97706;font-weight:700">Pending</span>'}</div>
+          </div>
+        </div>`;
+      }).join('');
+      taskEl.innerHTML = `<div class="mtg-day-tasks-head">Tasks due (${tItems.length})</div>${rows}`;
+    }
+  }
+
+  // Meetings list panel
+  if (!Array.isArray(meetings) || !meetings.length) {
+    listEl.innerHTML = '<div class="empty" style="padding:24px">No meetings on this date</div>';
+  } else {
+    listEl.innerHTML = meetings.map(m => {
+      const att = (m.attendees || []).map(a => dtEscape(a.name)).join(', ') || '—';
+      const statusPill = m.status === 'cancelled'
+        ? '<span style="font-size:10px;background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:10px;font-weight:700">CANCELLED</span>'
+        : m.status === 'done'
+        ? '<span style="font-size:10px;background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:10px;font-weight:700">✓ DONE</span>'
+        : '';
+      const active = m.status !== 'cancelled' && m.status !== 'done';
+      const linkBtn = m.meet_link && active
+        ? `<a href="${/^https?:\/\//i.test(m.meet_link) ? dtEscape(m.meet_link) : '#'}" target="_blank" rel="noopener" class="btn btn-primary" style="padding:4px 10px;font-size:11px">Join</a>` : '';
+      const doneBtn = active
+        ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px;color:#15803d;border-color:#86efac" onclick="markMeetingDone(${m.id})">✓ Done</button>` : '';
+      return `<div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;${m.status==='cancelled'?'opacity:0.55':''}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="flex:1">
+            <div style="font-weight:700;color:#0f172a">${dtEscape(m.title)} ${statusPill}</div>
+            <div style="font-size:12px;color:#64748b;margin-top:2px">${m.start_time} – ${m.end_time} · 🏢 ${dtEscape(m.client_name || '—')}</div>
+            <div style="font-size:12px;color:#475569;margin-top:2px">Team: ${att}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            ${linkBtn}
+            ${doneBtn}
+            ${active ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="openMeetingModal(${m.id})">Edit</button>` : ''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Timeline — render hours 8 AM – 8 PM with meetings as blocks
+  if (slotResp?.off) {
+    tlEl.innerHTML = `<div style="padding:40px;color:#dc2626;text-align:center;font-size:14px;font-weight:600">${slotResp.reason} — no slots available</div>`;
+    return;
+  }
+  const startHour = 8, endHour = 20; // 8 AM – 8 PM
+  const rowsHtml = [];
+  for (let h = startHour; h < endHour; h++) {
+    const labelHr = h % 12 === 0 ? 12 : h % 12;
+    const ampm = h < 12 ? 'AM' : 'PM';
+    rowsHtml.push(`<div class="mtg-day-hour" data-hour="${h}">
+      <div class="mtg-day-hour-label">${labelHr} ${ampm}</div>
+      <div class="mtg-day-hour-body half-hour-mark" onclick="mtgClickHour(${h}, 0)">
+        <span class="mtg-day-quickadd-btn" title="Quick add" onclick="mtgQuickAddOpen(event, ${h})">+</span>
+      </div>
+    </div>`);
+  }
+  tlEl.innerHTML = rowsHtml.join('');
+
+  // Overlay meeting blocks. Each hour row is 60px tall.
+  const body = tlEl.querySelectorAll('.mtg-day-hour-body');
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `position:absolute;top:0;left:60px;right:0;pointer-events:none`;
+  // Compute the height of one hour row to position blocks correctly.
+  const ROW_PX = 60;
+  // Build the visible meeting set with their minute-offsets, then lay overlapping
+  // meetings into side-by-side columns so names don't sit on top of each other.
+  const winMax = (endHour - startHour) * 60;
+  const meetingBlocks = (meetings || [])
+    .filter(m => m.status !== 'cancelled')
+    .map(m => {
+      const [sh,sm] = (m.start_time||'').split(':').map(Number);
+      const [eh,em] = (m.end_time||'').split(':').map(Number);
+      if (!Number.isFinite(sh) || !Number.isFinite(eh)) return null;
+      return { m, kind: 'meeting', s: (sh - startHour) * 60 + sm, e: (eh - startHour) * 60 + em };
+    })
+    .filter(Boolean);
+  const planBlocks = (Array.isArray(planItems) ? planItems : [])
+    .map(p => {
+      const [sh,sm] = (p.start_time||'').split(':').map(Number);
+      const [eh,em] = (p.end_time||'').split(':').map(Number);
+      if (!Number.isFinite(sh) || !Number.isFinite(eh)) return null;
+      return { m: p, kind: 'plan', s: (sh - startHour) * 60 + sm, e: (eh - startHour) * 60 + em };
+    })
+    .filter(Boolean);
+  const blocks = [...meetingBlocks, ...planBlocks]
+    .filter(b => b.e > 0 && b.s < winMax)
+    .sort((a,b) => a.s - b.s || a.e - b.e);
+
+  // Cluster consecutive overlapping meetings; within each cluster assign columns.
+  let i = 0;
+  while (i < blocks.length) {
+    let j = i, clusterEnd = blocks[i].e;
+    const cluster = [blocks[i]];
+    while (j + 1 < blocks.length && blocks[j+1].s < clusterEnd) {
+      j++; cluster.push(blocks[j]); clusterEnd = Math.max(clusterEnd, blocks[j].e);
+    }
+    const colEnds = [];
+    for (const b of cluster) {
+      let placed = false;
+      for (let c = 0; c < colEnds.length; c++) {
+        if (colEnds[c] <= b.s) { b.col = c; colEnds[c] = b.e; placed = true; break; }
+      }
+      if (!placed) { b.col = colEnds.length; colEnds.push(b.e); }
+    }
+    for (const b of cluster) b.nCols = colEnds.length;
+    i = j + 1;
+  }
+
+  for (const b of blocks) {
+    const m = b.m;
+    const isPlan = b.kind === 'plan';
+    const top = Math.max(0, b.s) * (ROW_PX / 60);
+    const height = Math.max(20, (b.e - Math.max(0, b.s)) * (ROW_PX / 60));
+    const nCols = b.nCols || 1, col = b.col || 0, gap = 2;
+    const block = document.createElement('div');
+    block.className = 'mtg-day-block' + (isPlan ? ' planitem' : '') + (m.status === 'done' ? ' done' : '');
+    block.style.top = top + 'px';
+    block.style.height = (height - 2) + 'px';
+    block.style.left = `calc(${(col / nCols) * 100}% + ${gap}px)`;
+    block.style.width = `calc(${(1 / nCols) * 100}% - ${gap * 2}px)`;
+    block.style.right = 'auto';
+    block.style.pointerEvents = 'auto';
+    const startFmt = _mtgFmtTime(m.start_time), endFmt = _mtgFmtTime(m.end_time);
+    const meta = isPlan ? `${startFmt}–${endFmt}` : `${startFmt}–${endFmt}${m.client_name ? ` · ${dtEscape(m.client_name)}` : ''}`;
+    block.title = isPlan
+      ? `${m.title} · ${startFmt}–${endFmt} (click to remove)`
+      : `${m.title} · ${startFmt}–${endFmt}${m.client_name ? ` · ${m.client_name}` : ''}`;
+    // Short blocks (≈30 min) can't fit two lines — show time + title on a single
+    // ellipsised line. Taller blocks get the title plus a time/client meta line.
+    if (height < 44) {
+      block.innerHTML = `<strong>${startFmt} ${dtEscape(m.title)}</strong>`;
+    } else {
+      block.innerHTML = `<strong>${dtEscape(m.title)}</strong><span class="mtg-day-block-meta">${meta}</span>`;
+    }
+    block.onclick = isPlan ? () => deletePlanItem(m.id) : () => openMeetingModal(m.id);
+    overlay.appendChild(block);
+  }
+  tlEl.style.position = 'relative';
+  tlEl.appendChild(overlay);
+}
+
+function mtgClickHour(hour, minute) {
+  const hh = String(hour).padStart(2,'0');
+  const mm = String(minute).padStart(2,'0');
+  openMeetingModal(null, `${hh}:${mm}`);
+}
+
+// Quick add — click the "+" on an hour row to type something like
+// "9am to 10am meeting" and save it straight to the schedule, no modal.
+function mtgQuickAddOpen(ev, hour) {
+  ev.stopPropagation();
+  const body = ev.currentTarget.closest('.mtg-day-hour-body');
+  if (!body || body.querySelector('.mtg-day-quickadd-input')) return;
+  const btn = body.querySelector('.mtg-day-quickadd-btn');
+  if (btn) btn.style.display = 'none';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'mtg-day-quickadd-input';
+  input.placeholder = 'e.g. 9am to 10am meeting';
+  body.appendChild(input);
+  input.focus();
+  input.onclick = e => e.stopPropagation();
+  input.onkeydown = e => {
+    if (e.key === 'Enter') { e.preventDefault(); mtgQuickAddSave(input, hour); }
+    else if (e.key === 'Escape') { e.preventDefault(); mtgQuickAddClose(input); }
+  };
+  input.onblur = () => setTimeout(() => { if (document.body.contains(input)) mtgQuickAddClose(input); }, 150);
+}
+
+function mtgQuickAddClose(input) {
+  const body = input.closest('.mtg-day-hour-body');
+  input.remove();
+  const btn = body && body.querySelector('.mtg-day-quickadd-btn');
+  if (btn) btn.style.display = '';
+}
+
+// Parses free text like "9am to 10am meeting", "10-11 client call" or just
+// "team sync" (falls back to the clicked hour, one hour long) into a title + times.
+function _mtgParseQuickAdd(text, hourHint) {
+  text = (text || '').trim();
+  if (!text) return null;
+  const to24 = (h, mer) => { h = h % 12; return mer === 'pm' ? h + 12 : h; };
+
+  const rangeRe = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:to|-|–)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(.*)$/i;
+  let m = text.match(rangeRe);
+  if (m) {
+    let [, h1, m1, mer1, h2, m2, mer2, rest] = m;
+    h1 = parseInt(h1, 10); h2 = parseInt(h2, 10);
+    mer1 = (mer1 || '').toLowerCase(); mer2 = (mer2 || '').toLowerCase();
+    if (!mer1 && mer2) mer1 = mer2;
+    if (!mer2 && mer1) mer2 = mer1;
+    if (!mer1 && !mer2) {
+      const hintMer = hourHint >= 12 ? 'pm' : 'am';
+      mer1 = h1 === 12 ? 'pm' : hintMer;
+      mer2 = h2 === 12 ? 'pm' : hintMer;
+    }
+    const startH = to24(h1, mer1), endH = to24(h2, mer2);
+    return {
+      title: (rest || '').trim() || 'Busy',
+      start_time: `${String(startH).padStart(2,'0')}:${(m1 || '00').padStart(2,'0')}`,
+      end_time: `${String(endH).padStart(2,'0')}:${(m2 || '00').padStart(2,'0')}`
+    };
+  }
+
+  const singleRe = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+(.+)$/i;
+  m = text.match(singleRe);
+  if (m) {
+    let [, h1, mm1, mer1, rest] = m;
+    h1 = parseInt(h1, 10);
+    mer1 = (mer1 || '').toLowerCase() || (h1 === 12 ? 'pm' : (hourHint >= 12 ? 'pm' : 'am'));
+    const startH = to24(h1, mer1);
+    return {
+      title: (rest || '').trim() || 'Busy',
+      start_time: `${String(startH).padStart(2,'0')}:${(mm1 || '00').padStart(2,'0')}`,
+      end_time: `${String(Math.min(startH + 1, 23)).padStart(2,'0')}:${(mm1 || '00').padStart(2,'0')}`
+    };
+  }
+
+  return {
+    title: text,
+    start_time: `${String(hourHint).padStart(2,'0')}:00`,
+    end_time: `${String(Math.min(hourHint + 1, 23)).padStart(2,'0')}:00`
+  };
+}
+
+async function mtgQuickAddSave(input, hour) {
+  const text = input.value.trim();
+  if (!text) { mtgQuickAddClose(input); return; }
+  const parsed = _mtgParseQuickAdd(text, hour);
+  input.disabled = true;
+  try {
+    const payload = {
+      title: parsed.title,
+      item_date: _mtgIso(_mtgDayAnchor),
+      start_time: parsed.start_time,
+      end_time: parsed.end_time
+    };
+    const r = await api('/api/day-plan-items', 'POST', payload);
+    if (r?.error) { showToast(r.error); mtgQuickAddClose(input); return; }
+    showToast('Added to schedule');
+    renderMtgDay();
+  } catch (e) {
+    showToast('Add failed: ' + e.message);
+    mtgQuickAddClose(input);
+  }
+}
+
+async function deletePlanItem(id) {
+  if (!await appConfirm('Remove this item from your schedule?', 'Remove item?')) return;
+  try {
+    const r = await api(`/api/day-plan-items/${id}`, 'DELETE');
+    if (r?.error) { showToast(r.error); return; }
+    showToast('Removed');
+    renderMtgDay();
+  } catch (e) { showToast('Remove failed: ' + e.message); }
+}
+
+async function _mtgEnsureClients() {
+  if (_mtgClientsCache) return _mtgClientsCache;
+  try { _mtgClientsCache = await api('/api/clients') || []; }
+  catch { _mtgClientsCache = []; }
+  return _mtgClientsCache;
+}
+
+async function _mtgEnsureUsers() {
+  if (_mtgUsersCache) return _mtgUsersCache;
+  try { _mtgUsersCache = await api('/api/users') || []; }
+  catch { _mtgUsersCache = []; }
+  return _mtgUsersCache;
+}
+
+async function openMeetingModal(id, prefillStart) {
+  _mtgEditing = id || null;
+  document.getElementById('mtgEditId').value = id || '';
+  document.getElementById('meetingModalTitle').textContent = id ? 'Edit Meeting' : 'Schedule Meeting';
+  document.getElementById('mtgDeleteBtn').style.display = id ? 'inline-block' : 'none';
+  document.getElementById('mtgDoneBtn').style.display = 'none';
+
+  // Populate dropdowns from cache
+  await Promise.all([_mtgEnsureClients(), _mtgEnsureUsers()]);
+  const clientSel = document.getElementById('mtgClient');
+  clientSel.innerHTML = '<option value="">— None —</option>' +
+    _mtgClientsCache.map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+  // Explicit reset — browsers retain the previously-selected <select> .value
+  // across innerHTML rebuilds if the new option list still contains it, so a
+  // brand-new meeting was silently inheriting the last-picked client.
+  clientSel.value = '';
+  const attEl = document.getElementById('mtgAttendees');
+  attEl.innerHTML = _mtgUsersCache.map(u =>
+    `<label data-att-row style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0;margin-bottom:0;padding:6px 10px;border-radius:6px;cursor:pointer;color:#1e293b" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">
+       <input type="checkbox" value="${u.id}" data-att onchange="updateAttSummary()" style="width:16px;height:16px;margin:0;padding:0;flex-shrink:0;accent-color:#4f46e5"/>
+       <span style="flex:1">${dtEscape(u.name)}</span>
+     </label>`).join('');
+  document.getElementById('mtgAttSearch').value = '';
+  filterAttDropdown();
+
+  // Default values
+  document.getElementById('mtgTitle').value = '';
+  document.getElementById('mtgAgenda').value = '';
+  document.getElementById('mtgLink').value = '';
+  document.getElementById('mtgFormDate').value = (_mtgDayAnchor ? _mtgIso(_mtgDayAnchor) : _mtgTodayIso());
+  mtgSetStartTime(prefillStart || '', { silent: true });
+  document.getElementById('mtgDuration').value = '30';
+  mtgRecalcEnd();
+
+  // Recurrence only applies when creating a brand-new meeting — editing one
+  // occurrence shouldn't spawn a whole new series.
+  document.getElementById('mtgRecurrenceSection').style.display = id ? 'none' : 'block';
+  document.getElementById('mtgFrequency').value = '';
+  document.getElementById('mtgRepeatUntil').value = '';
+  document.querySelectorAll('[data-repeat-day]').forEach(cb => cb.checked = false);
+  mtgOnFrequencyChange();
+
+  if (id) {
+    const m = await api(`/api/meetings/${id}`);
+    if (m && !m.error) {
+      document.getElementById('mtgTitle').value = m.title || '';
+      document.getElementById('mtgAgenda').value = m.agenda || '';
+      document.getElementById('mtgLink').value = m.meet_link || '';
+      document.getElementById('mtgDoneBtn').style.display = (m.status === 'scheduled') ? 'inline-block' : 'none';
+      document.getElementById('mtgFormDate').value = m.meeting_date || '';
+      mtgSetStartTime(m.start_time || '10:00', { silent: true });
+      clientSel.value = m.client_id || '';
+      const dur = (() => {
+        const [sh,sm] = (m.start_time||'10:00').split(':').map(Number);
+        const [eh,em] = (m.end_time||'10:30').split(':').map(Number);
+        return (eh*60+em) - (sh*60+sm);
+      })();
+      const durSel = document.getElementById('mtgDuration');
+      if ([15,30,60,90].includes(dur)) durSel.value = String(dur);
+      mtgRecalcEnd();
+      const attSet = new Set((m.attendees||[]).map(a => String(a.id)));
+      attEl.querySelectorAll('[data-att]').forEach(cb => { cb.checked = attSet.has(cb.value); });
+    }
+  }
+  document.getElementById('meetingModal').classList.add('open');
+  updateAttSummary();
+  mtgRefreshAvailNote();
+  // Update availability note when attendees change (in addition to inline summary update)
+  attEl.querySelectorAll('[data-att]').forEach(cb => cb.addEventListener('change', mtgRefreshAvailNote));
+  document.getElementById('mtgFormDate').addEventListener('change', mtgRefreshAvailNote);
+  document.getElementById('mtgStart').addEventListener('change', mtgRefreshAvailNote);
+}
+
+function toggleAttDropdown(force) {
+  const dd = document.getElementById('mtgAttDropdown');
+  const willOpen = force === undefined ? dd.style.display === 'none' : force;
+  dd.style.display = willOpen ? 'block' : 'none';
+  if (willOpen) setTimeout(() => document.getElementById('mtgAttSearch')?.focus(), 0);
+}
+
+function filterAttDropdown() {
+  const q = (document.getElementById('mtgAttSearch')?.value || '').toLowerCase();
+  document.querySelectorAll('#mtgAttendees [data-att-row]').forEach(row => {
+    row.style.display = !q || row.textContent.toLowerCase().includes(q) ? 'flex' : 'none';
+  });
+}
+
+function updateAttSummary() {
+  const checked = Array.from(document.querySelectorAll('#mtgAttendees [data-att]:checked'));
+  const summary = document.getElementById('mtgAttSummary');
+  if (!summary) return;
+  if (!checked.length) {
+    summary.textContent = 'Select attendees…';
+    summary.style.color = '#94a3b8';
+  } else {
+    const names = checked.map(cb => cb.parentElement.textContent.trim());
+    summary.textContent = checked.length <= 2 ? names.join(', ') : `${checked.length} selected`;
+    summary.style.color = '#1e293b';
+  }
+}
+
+// Close attendee dropdown on outside click
+document.addEventListener('click', (e) => {
+  const dd = document.getElementById('mtgAttDropdown');
+  const trig = document.getElementById('mtgAttTrigger');
+  if (!dd || !trig) return;
+  if (dd.style.display === 'none') return;
+  if (dd.contains(e.target) || trig.contains(e.target)) return;
+  dd.style.display = 'none';
+});
+
+function mtgOnFrequencyChange() {
+  const freq = document.getElementById('mtgFrequency').value;
+  const untilGroup = document.getElementById('mtgRepeatUntilGroup');
+  const onGroup = document.getElementById('mtgRepeatOnGroup');
+  const note = document.getElementById('mtgRecurrenceNote');
+  untilGroup.style.display = freq ? 'block' : 'none';
+  onGroup.style.display = freq === 'custom' ? 'block' : 'none';
+  if (freq && !document.getElementById('mtgRepeatUntil').value) {
+    const start = document.getElementById('mtgFormDate').value ? new Date(document.getElementById('mtgFormDate').value) : new Date();
+    const d = new Date(start);
+    d.setMonth(d.getMonth() + 3);
+    document.getElementById('mtgRepeatUntil').value = d.toISOString().split('T')[0];
+  }
+  note.textContent = freq
+    ? 'This will create one meeting per occurrence, up to the "repeat until" date — fill this form once instead of every time.'
+    : '';
+}
+
+function mtgRecalcEnd() {
+  const start = document.getElementById('mtgStart').value;
+  if (!start) { document.getElementById('mtgEnd').value = ''; return; }
+  const dur = parseInt(document.getElementById('mtgDuration').value, 10) || 30;
+  const [h,m] = start.split(':').map(Number);
+  const total = h*60 + m + dur;
+  const eh = String(Math.floor(total/60) % 24).padStart(2,'0');
+  const em = String(total % 60).padStart(2,'0');
+  document.getElementById('mtgEnd').value = `${eh}:${em}`;
+}
+
+// Zoom-style start-time picker: "H:MM" text input + separate AM/PM select, backed by a
+// hidden 24h value. The dropdown always lists the full business-hours range (8:00 AM - 8:00 PM)
+// with the period spelled out on each row, so a PM slot can be picked without touching the
+// AM/PM select first — picking a row syncs that select to the chosen period.
+const MTG_TIME_OPTIONS = (() => {
+  const opts = [];
+  for (let mins = 8 * 60; mins <= 20 * 60; mins += 15) {
+    const h24 = Math.floor(mins / 60), min = mins % 60;
+    const value = `${String(h24).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+    const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+    const period = h24 < 12 ? 'AM' : 'PM';
+    const h12Label = `${h12}:${String(min).padStart(2,'0')}`;
+    opts.push({ value, h12Label, period, label: `${h12Label} ${period}` });
+  }
+  return opts;
+})();
+
+function mtgSetStartTime(value24raw, { silent } = {}) {
+  const value24 = (value24raw || '').slice(0, 5); // tolerate DB "HH:MM:SS" TIME values
+  const hidden = document.getElementById('mtgStart');
+  hidden.value = value24 || '';
+  const opt = value24 ? MTG_TIME_OPTIONS.find(o => o.value === value24) : null;
+  document.getElementById('mtgStartDisplay').value = opt ? opt.h12Label : '';
+  if (opt) document.getElementById('mtgStartPeriod').value = opt.period;
+  if (!silent) hidden.dispatchEvent(new Event('change'));
+}
+
+function mtgRenderStartDropdown(filterText) {
+  const dd = document.getElementById('mtgStartDropdown');
+  const q = (filterText || '').trim().toLowerCase().replace(/\s+/g, '');
+  // Match against the bare "H:MM" as well as "H:MM AM/PM", so typing "10:00" keeps both periods.
+  const matches = q
+    ? MTG_TIME_OPTIONS.filter(o => o.label.toLowerCase().replace(/\s+/g, '').includes(q))
+    : MTG_TIME_OPTIONS;
+  dd.innerHTML = matches.length
+    ? matches.map(o => `<div data-time-opt="${o.value}" onclick="mtgPickStartTime('${o.value}')"
+        style="padding:8px 12px;font-size:13px;cursor:pointer;color:#1e293b" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">${o.label}</div>`).join('')
+    : `<div style="padding:10px 12px;font-size:12px;color:#94a3b8">No matching time</div>`;
+  dd.style.display = 'block';
+}
+
+function mtgOpenStartDropdown() {
+  mtgRenderStartDropdown(document.getElementById('mtgStartDisplay').value);
+  const current = document.getElementById('mtgStart').value;
+  const activeEl = current && document.getElementById('mtgStartDropdown').querySelector(`[data-time-opt="${current}"]`);
+  if (activeEl) activeEl.scrollIntoView({ block: 'center' });
+}
+
+function mtgFilterStartDropdown() {
+  mtgRenderStartDropdown(document.getElementById('mtgStartDisplay').value);
+}
+
+function mtgPickStartTime(value24) {
+  mtgSetStartTime(value24);
+  document.getElementById('mtgStartDropdown').style.display = 'none';
+}
+
+function mtgStartKeydown(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const first = document.getElementById('mtgStartDropdown').querySelector('[data-time-opt]');
+    if (first) mtgPickStartTime(first.getAttribute('data-time-opt'));
+  } else if (e.key === 'Escape') {
+    document.getElementById('mtgStartDropdown').style.display = 'none';
+  }
+}
+
+// AM/PM select changed directly: keep the typed hour:minute if it's valid for the new period
+// (e.g. 8:00 AM <-> 8:00 PM), otherwise clear the selection and let the user re-pick from the
+// dropdown list.
+function mtgPeriodChanged() {
+  const typed = document.getElementById('mtgStartDisplay').value.trim().replace(/\s+/g, '');
+  const period = document.getElementById('mtgStartPeriod').value;
+  const match = MTG_TIME_OPTIONS.find(o => o.period === period && o.h12Label.replace(/\s+/g, '') === typed);
+  mtgSetStartTime(match ? match.value : '');
+  mtgRenderStartDropdown(document.getElementById('mtgStartDisplay').value);
+}
+
+// Close start-time dropdown on outside click
+document.addEventListener('click', (e) => {
+  const dd = document.getElementById('mtgStartDropdown');
+  const input = document.getElementById('mtgStartDisplay');
+  if (!dd || !input) return;
+  if (dd.style.display === 'none') return;
+  if (dd.contains(e.target) || input.contains(e.target)) return;
+  dd.style.display = 'none';
+});
+
+function _mtgFmtTime12(hhmm) {
+  const [h, m] = (hhmm || '').split(':').map(Number);
+  if (!Number.isFinite(h)) return hhmm || '';
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+
+async function mtgRefreshAvailNote() {
+  const date = document.getElementById('mtgFormDate').value;
+  const start = document.getElementById('mtgStart').value;
+  const end = document.getElementById('mtgEnd').value;
+  const noteEl = document.getElementById('mtgAvailNote');
+  if (!date || !start || !end) { noteEl.textContent = ''; return; }
+  const ids = Array.from(document.querySelectorAll('#mtgAttendees [data-att]:checked')).map(c => c.value);
+  if (!ids.length) { noteEl.textContent = 'Pick attendees to see availability for this slot.'; noteEl.style.color = '#64748b'; return; }
+  try {
+    const r = await api(`/api/meetings/slots?date=${date}&userIds=${ids.join(',')}`);
+    if (r?.off) { noteEl.textContent = `${r.reason} — date unavailable.`; noteEl.style.color = '#dc2626'; return; }
+    // Business-hours bounds come from the actual slot range, not an exact grid
+    // match — the start-time picker offers 15-min steps while slots are 30-min,
+    // so e.g. 10:15 would never equal any slot.start even though it's in-hours.
+    const allSlots = r.slots || [];
+    if (allSlots.length) {
+      const first = allSlots[0].start, last = allSlots[allSlots.length - 1].end;
+      if (start < first || end > last) {
+        noteEl.textContent = `Start time outside business hours (${_mtgFmtTime12(first)}–${_mtgFmtTime12(last)}).`;
+        noteEl.style.color = '#f59e0b';
+        return;
+      }
+    }
+    const parts = [];
+    for (const u of _mtgUsersCache.filter(u => ids.includes(String(u.id)))) {
+      const ranges = (r.busyRanges?.[u.id] || []).filter(rg => rg.start < end && rg.end > start);
+      if (!ranges.length) continue;
+      const rangeTxt = ranges.map(rg => `${_mtgFmtTime12(rg.start)}–${_mtgFmtTime12(rg.end)}`).join(', ');
+      parts.push(`${u.name} busy ${rangeTxt}`);
+    }
+    if (parts.length) {
+      noteEl.textContent = `⚠️ ${parts.join(' · ')}`;
+      noteEl.style.color = '#dc2626';
+    } else {
+      noteEl.textContent = '✓ All selected attendees are free.';
+      noteEl.style.color = '#16a34a';
+    }
+  } catch { noteEl.textContent = ''; }
+}
+
+async function saveMeeting() {
+  const id = document.getElementById('mtgEditId').value;
+  const payload = {
+    title: document.getElementById('mtgTitle').value.trim(),
+    agenda: document.getElementById('mtgAgenda').value.trim(),
+    client_id: document.getElementById('mtgClient').value || null,
+    meeting_date: document.getElementById('mtgFormDate').value,
+    start_time: document.getElementById('mtgStart').value,
+    end_time: document.getElementById('mtgEnd').value,
+    meet_link: document.getElementById('mtgLink').value.trim() || null,
+    attendee_ids: Array.from(document.querySelectorAll('#mtgAttendees [data-att]:checked')).map(c => parseInt(c.value, 10))
+  };
+  if (!payload.title || !payload.meeting_date || !payload.start_time || !payload.end_time) {
+    showToast('Title, date, start and end time required');
+    return;
+  }
+  if (!id) {
+    const freq = document.getElementById('mtgFrequency').value;
+    if (freq) {
+      const repeatUntil = document.getElementById('mtgRepeatUntil').value;
+      if (!repeatUntil) { showToast('Pick a "repeat until" date'); return; }
+      const repeatDays = Array.from(document.querySelectorAll('[data-repeat-day]:checked')).map(cb => parseInt(cb.dataset.repeatDay, 10));
+      if (freq === 'custom' && !repeatDays.length) { showToast('Select at least one day to repeat on'); return; }
+      payload.frequency = freq;
+      payload.repeat_until = repeatUntil;
+      payload.repeat_days = repeatDays;
+    }
+  }
+  try {
+    const r = id
+      ? await api(`/api/meetings/${id}`, 'PUT', payload)
+      : await api('/api/meetings', 'POST', payload);
+    if (r?.error) { showToast(r.error); return; }
+    showToast(id
+      ? 'Meeting updated · email sent'
+      : (r?.count > 1 ? `${r.count} meetings scheduled · email sent` : 'Meeting scheduled · email sent'));
+    closeModal('meetingModal');
+    _mtgDayAnchor = _mtgParseIso(payload.meeting_date);
+    _mtgMonthAnchor = new Date(_mtgDayAnchor.getFullYear(), _mtgDayAnchor.getMonth(), 1);
+    _mtgMonthCache = {};
+    _mtgTaskCache = {};
+    loadMeetings();
+  } catch (e) { showToast('Save failed: ' + e.message); }
+}
+
+async function markMeetingDone(id) {
+  if (!await appConfirm('Mark this meeting as done?')) return;
+  try {
+    const r = await api(`/api/meetings/${id}/status`, 'PUT', { status: 'done' });
+    if (r?.error) { appAlert(r.error, 'Error'); return; }
+    showToast('✅ Meeting marked done');
+    closeModal('meetingModal');
+    _mtgMonthCache = {};
+    _mtgTaskCache = {};
+    loadMeetings();
+  } catch (e) { appAlert('Failed: ' + e.message, 'Error'); }
+}
+
+async function deleteMeeting() {
+  const id = document.getElementById('mtgEditId').value;
+  if (!id) return;
+  if (!await appConfirm('Cancel this meeting? An email notification will go out.', 'Cancel Meeting?')) return;
+  try {
+    const r = await api(`/api/meetings/${id}`, 'DELETE');
+    if (r?.error) { showToast(r.error); return; }
+    showToast('Meeting cancelled · email sent');
+    closeModal('meetingModal');
+    _mtgMonthCache = {};
+    _mtgTaskCache = {};
+    loadMeetings();
+  } catch (e) { showToast('Cancel failed: ' + e.message); }
+}
+
+init();
+setDefaultMISDates();
+
+// ══════════════════════════════════════════════════════
+// DMS — Document Management System
+// ══════════════════════════════════════════════════════
+let _dmsClients = [];
+let _dmsSelectedClient = null;
+let _dmsBrowseFolderId = null;
+let _dmsBrowseFolderName = null;
+let _dmsFolderStack = []; // [{id, name}] — nav path within the currently browsed client folder
+let _dmsSelectedIds = new Set(); // multi-select for bulk delete in the current folder's Files table
+let _dmsDepts = [];
+
+async function loadDMS() {
+  _dmsSelectedClient = null;
+  _dmsBrowseFolderId = null;
+  document.getElementById('dmsDetail').style.display = 'none';
+
+  // Check Drive connection (admin only)
+  const banner = document.getElementById('dmsAuthBanner');
+  const bulkBtn = document.getElementById('dmsBulkSetupBtn');
+  if (ME.role === 'admin') {
+    try {
+      const st = await api('/api/google/drive-status');
+      banner.style.display = st.connected ? 'none' : 'flex';
+      bulkBtn.style.display = st.connected ? 'inline-block' : 'none';
+    } catch { banner.style.display = 'none'; bulkBtn.style.display = 'none'; }
+  } else { banner.style.display = 'none'; bulkBtn.style.display = 'none'; }
+
+  // Load clients
+  const [clients] = await Promise.all([
+    api('/api/clients'),
+    dmsLoadDepts(),
+  ]);
+  _dmsClients = Array.isArray(clients) ? clients.filter(c => c.is_active !== 0) : [];
+
+  // Enrich with real Drive modified-time/size where available (admin only;
+  // silently degrades to name-only rows for non-admins or if Drive isn't set up).
+  try {
+    const rootFiles = await api('/api/admin/dms/root-files');
+    if (Array.isArray(rootFiles)) {
+      const byClientId = Object.fromEntries(rootFiles.filter(f => f.client_id).map(f => [f.client_id, f]));
+      for (const c of _dmsClients) { const f = byClientId[c.id]; if (f) { c._drive = f; } }
+    }
+  } catch {}
+
+  dmsRenderClientList();
+  document.getElementById('dmsRootView').style.display = 'block';
+  document.getElementById('dmsDetail').style.display = 'none';
+}
+
+async function dmsLoadDepts() {
+  try {
+    const depts = await api('/api/departments');
+    _dmsDepts = Array.isArray(depts) ? depts : [];
+  } catch { _dmsDepts = []; }
+}
+
+function dmsFilterClients() {
+  const q = (document.getElementById('dmsClientSearch')?.value || '').toLowerCase();
+  document.querySelectorAll('#dmsClientList .dms-client-row').forEach(row => {
+    row.style.display = row.dataset.name.includes(q) ? '' : 'none';
+  });
+}
+
+function dmsRenderClientList() {
+  const el = document.getElementById('dmsClientList');
+  if (!_dmsClients.length) {
+    el.innerHTML = '<div style="padding:16px;color:#94a3b8;font-size:13px;text-align:center">No clients found</div>';
+    return;
+  }
+  const sorted = [..._dmsClients].sort((a,b) => a.name.localeCompare(b.name));
+  el.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <thead>
+        <tr style="border-bottom:1.5px solid #e2e8f0;color:#64748b;text-align:left">
+          <th style="width:44px;padding:8px 14px;font-weight:600">S.No.</th>
+          <th style="padding:8px 14px;font-weight:600">Name</th>
+          <th style="padding:8px 14px;font-weight:600">Handler</th>
+          <th style="padding:8px 14px;font-weight:600">Modified by</th>
+          <th style="padding:8px 14px;font-weight:600">Date modified</th>
+          <th style="width:36px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sorted.map((c, i) => {
+          const d = c._drive;
+          const modWhen = d?.modifiedTime ? new Date(d.modifiedTime).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
+          const modBy = d?.modified_by ? dtEscape(d.modified_by) : '—';
+          const handlerNames = c.all_handler_names ? c.all_handler_names.split('||') : (c.handler_name ? [c.handler_name] : []);
+          const handler = handlerNames.length ? dtEscape(handlerNames.join(', ')) : '—';
+          return `
+        <tr class="dms-client-row" data-id="${c.id}" data-name="${dtEscape(c.name.toLowerCase())}"
+             onclick="dmsSelectClient(${c.id})"
+             style="cursor:pointer;border-bottom:1px solid #f1f5f9;transition:background .1s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
+          <td style="padding:8px 14px;color:#94a3b8">${i + 1}</td>
+          <td style="padding:8px 14px">
+            <div style="display:flex;align-items:center;gap:8px;min-width:0">
+              <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0;color:#64748b"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+              <span style="font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dtEscape(c.name)}</span>
+            </div>
+          </td>
+          <td style="padding:8px 14px;color:#64748b;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${handler}">${handler}</td>
+          <td style="padding:8px 14px;color:#64748b;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${modBy}">${modBy}</td>
+          <td style="padding:8px 14px;color:#64748b;white-space:nowrap">${modWhen}</td>
+          <td></td>
+        </tr>
+      `;}).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function dmsSelectClient(id) {
+  _dmsSelectedClient = _dmsClients.find(c => c.id === id);
+  if (!_dmsSelectedClient) return;
+
+  document.getElementById('dmsRootView').style.display = 'none';
+  document.getElementById('dmsDetail').style.display = 'block';
+  document.getElementById('dmsClientName').textContent = _dmsSelectedClient.name;
+  document.getElementById('dmsFolderLink').innerHTML = '';
+  document.getElementById('dmsSetupBtn').style.display = 'none';
+  document.getElementById('dmsDeptList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Loading…</div>';
+  document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Select a folder above to browse files.</div>';
+  document.getElementById('dmsBrowserFolderName').textContent = '';
+  document.getElementById('dmsCreateFileBtn').style.display = 'none';
+  document.getElementById('dmsAddShortcutBtn').style.display = 'none';
+  _dmsBrowseFolderId = null;
+
+  try {
+    const data = await api(`/api/clients/${id}/dms`);
+
+    if (data.drive_folder_id) {
+      const driveUrl = `https://drive.google.com/drive/folders/${data.drive_folder_id}`;
+      document.getElementById('dmsFolderLink').innerHTML =
+        `<a href="${driveUrl}" target="_blank" style="color:#4f46e5;font-size:12px;text-decoration:none">Open in Google Drive ↗</a>`;
+      // Browse the client's own root folder immediately — department folders
+      // are an optional extra layer, not a requirement to see any files.
+      dmsBrowseFolder(data.drive_folder_id, _dmsSelectedClient.name);
+    }
+
+    if (!data.drive_folder_id) {
+      if (data.drive_configured) {
+        document.getElementById('dmsSetupBtn').style.display = 'inline-flex';
+      } else {
+        document.getElementById('dmsDeptList').innerHTML =
+          '<div style="color:#b45309;font-size:13px;padding:8px 0">Google Drive is not configured. Connect Drive first (admin setting).</div>';
+        return;
+      }
+    }
+
+    dmsRenderDepts(data.departments || [], id, !!data.drive_folder_id);
+
+    // Show add-dept button only if folder exists
+    const addDeptBtn = document.getElementById('dmsAddDeptBtn');
+    if (addDeptBtn) addDeptBtn.style.display = data.drive_folder_id ? 'inline-flex' : 'none';
+
+  } catch (e) {
+    document.getElementById('dmsDeptList').innerHTML =
+      `<div style="color:#dc2626;font-size:13px">Error: ${dtEscape(e.message)}</div>`;
+  }
+}
+
+function dmsBackToRoot() {
+  _dmsSelectedClient = null;
+  _dmsBrowseFolderId = null;
+  document.getElementById('dmsDetail').style.display = 'none';
+  document.getElementById('dmsRootView').style.display = 'block';
+}
+
+function dmsRenderDepts(depts, clientId, hasDriveFolder) {
+  const el = document.getElementById('dmsDeptList');
+  if (!hasDriveFolder) {
+    el.innerHTML = '<div style="color:#94a3b8;font-size:13px">Create the client Drive folder first.</div>';
+    return;
+  }
+  if (!depts.length) {
+    el.innerHTML = '<div style="color:#94a3b8;font-size:13px">No department folders yet. Click "+ Add Department" to create one.</div>';
+    return;
+  }
+  el.innerHTML = depts.map(d => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f8fafc;border-radius:8px;margin-bottom:8px">
+      <button onclick="dmsBrowseFolder('${d.drive_folder_id}','${dtEscape(d.department_name)}')"
+        style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#334155;padding:0">
+        <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+        ${dtEscape(d.department_name)}
+      </button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <a href="https://drive.google.com/drive/folders/${d.drive_folder_id}" target="_blank"
+           style="font-size:11px;color:#4f46e5;text-decoration:none">Open ↗</a>
+        ${(ME.role==='admin'||ME.role==='pc') ? `<button onclick="dmsRemoveDept(${jsArg(d.department_name)})" style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:18px;padding:0 2px;line-height:1" title="Remove">×</button>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function dmsRefreshFolder() {
+  if (!_dmsBrowseFolderId) return;
+  dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName, 'jump');
+}
+
+function _dmsFmtSize(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  const units = ['B','KB','MB','GB'];
+  let i = 0, v = n;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v < 10 && i > 0 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+}
+
+function dmsFilterFiles() {
+  const q = (document.getElementById('dmsFileSearch')?.value || '').toLowerCase();
+  document.querySelectorAll('#dmsFileList .dms-file-card').forEach(row => {
+    row.style.display = row.dataset.name.toLowerCase().includes(q) ? '' : 'none';
+  });
+  dmsUpdateBulkDeleteUI();
+}
+
+// Drive-style "+ New" menu on right-click of empty space in the Files list
+// (not on a file/folder row — those keep their own "⋮" menu).
+function dmsFileListContextMenu(event) {
+  if (event.target.closest('.dms-file-card')) return;
+  if (!_dmsBrowseFolderId) return;
+  const canCreate = ME.role === 'admin' || ME.role === 'pc';
+  if (!canCreate) return;
+  event.preventDefault();
+  document.querySelectorAll('.dms-file-menu').forEach(m => m.remove());
+
+  const menu = document.createElement('div');
+  menu.className = 'dms-file-menu';
+  menu.style.cssText = `position:fixed;top:${event.clientY}px;left:${event.clientX}px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:1000;min-width:180px;overflow:hidden;padding:4px 0`;
+
+  const items = [
+    { label: '📁 New folder', action: () => dmsOpenCreateFile('folder') },
+    { label: '⬆ File upload', action: () => document.getElementById('dmsUploadInput').click() },
+    { label: '🔗 Add existing file', action: () => dmsOpenAddShortcut() },
+    null, // divider
+    { label: '📄 Google Doc', action: () => dmsOpenCreateFile('doc') },
+    { label: '📊 Google Sheet', action: () => dmsOpenCreateFile('sheet') },
+    { label: '📑 Google Slides', action: () => dmsOpenCreateFile('slide') },
+  ];
+  items.forEach(it => {
+    if (!it) { const hr = document.createElement('div'); hr.style.cssText = 'height:1px;background:#f1f5f9;margin:4px 0'; menu.appendChild(hr); return; }
+    const btn = document.createElement('button');
+    btn.textContent = it.label;
+    btn.style.cssText = 'display:block;width:100%;text-align:left;padding:8px 14px;border:none;background:none;font-size:13px;color:#334155;cursor:pointer';
+    btn.onmouseover = () => btn.style.background = '#f8fafc';
+    btn.onmouseout = () => btn.style.background = 'none';
+    btn.onclick = () => { menu.remove(); it.action(); };
+    menu.appendChild(btn);
+  });
+  document.body.appendChild(menu);
+
+  const rect = menu.getBoundingClientRect();
+  if (rect.right > window.innerWidth) menu.style.left = Math.max(8, window.innerWidth - rect.width - 8) + 'px';
+  if (rect.bottom > window.innerHeight) menu.style.top = Math.max(8, window.innerHeight - rect.height - 8) + 'px';
+
+  setTimeout(() => {
+    const closeOnOutside = e => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeOnOutside); document.removeEventListener('contextmenu', closeOnOutside); } };
+    document.addEventListener('click', closeOnOutside);
+    document.addEventListener('contextmenu', closeOnOutside);
+  }, 0);
+}
+
+function dmsRenderFolderCrumb() {
+  const el = document.getElementById('dmsBrowserFolderName');
+  el.innerHTML = _dmsFolderStack.map((f, i) => {
+    if (i === _dmsFolderStack.length - 1) return `<span>${dtEscape(f.name)}</span>`;
+    return `<a href="javascript:void(0)" onclick="dmsJumpToFolderLevel(${i})" style="color:#4f46e5;text-decoration:underline">${dtEscape(f.name)}</a><span style="color:#94a3b8"> / </span>`;
+  }).join('');
+}
+
+function dmsJumpToFolderLevel(i) {
+  _dmsFolderStack = _dmsFolderStack.slice(0, i + 1);
+  const target = _dmsFolderStack[_dmsFolderStack.length - 1];
+  dmsBrowseFolder(target.id, target.name, 'jump');
+}
+
+// mode: 'reset' (new top-level browse — client root or a department, default),
+// 'push' (drill into a subfolder row — appends to the breadcrumb),
+// 'jump' (breadcrumb click / refresh — stack already set by the caller).
+async function dmsBrowseFolder(folderId, folderName, mode) {
+  if (!_dmsSelectedClient) return;
+  if (mode === 'push') _dmsFolderStack.push({ id: folderId, name: folderName });
+  else if (mode !== 'jump') _dmsFolderStack = [{ id: folderId, name: folderName }];
+  _dmsBrowseFolderId = folderId;
+  _dmsBrowseFolderName = folderName;
+  dmsRenderFolderCrumb();
+  _dmsSelectedIds.clear();
+  const bulkBtn = document.getElementById('dmsBulkDeleteBtn');
+  if (bulkBtn) bulkBtn.style.display = 'none';
+  const searchInput = document.getElementById('dmsFileSearch');
+  if (searchInput) searchInput.value = '';
+  document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Loading files…</div>';
+  const canCreate = ME.role==='admin' || ME.role==='pc';
+  document.getElementById('dmsCreateFileBtn').style.display = canCreate ? 'inline-flex' : 'none';
+  document.getElementById('dmsUploadBtn').style.display = canCreate ? 'inline-flex' : 'none';
+  document.getElementById('dmsAddShortcutBtn').style.display = canCreate ? 'inline-flex' : 'none';
+  try {
+    const files = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${folderId}/files`);
+    if (!files.length) {
+      document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">No files in this folder yet.</div>';
+      return;
+    }
+    const icons = { 'application/vnd.google-apps.document':'📄', 'application/vnd.google-apps.spreadsheet':'📊', 'application/vnd.google-apps.presentation':'📑', 'application/vnd.google-apps.folder':'📁', 'application/x-emk-external-link':'🔗' };
+    document.getElementById('dmsFileList').innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <thead>
+          <tr style="border-bottom:1.5px solid #e2e8f0;color:#64748b;text-align:left">
+            ${canCreate ? `<th style="width:32px;padding:8px 0 8px 12px"><input type="checkbox" id="dmsSelectAllCb" onclick="dmsToggleSelectAll(this)" style="cursor:pointer"/></th>` : ''}
+            <th style="padding:8px 12px;font-weight:600">Name</th>
+            <th style="padding:8px 12px;font-weight:600">Modified by</th>
+            <th style="padding:8px 12px;font-weight:600">Date modified</th>
+            <th style="padding:8px 12px;font-weight:600;text-align:right">Size</th>
+            <th style="width:36px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${files.map(f => {
+            const modWhen = f.modifiedTime ? new Date(f.modifiedTime).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '—';
+            const modBy = f.modified_by ? dtEscape(f.modified_by) : '—';
+            const emoji = icons[f.mimeType] || '📄';
+            const isFolder = f.mimeType === 'application/vnd.google-apps.folder';
+            return `
+          <tr class="dms-file-card" data-id="${f.id}" data-name="${dtEscape(f.name)}" data-link="${dtEscape(f.webViewLink)}" data-is-folder="${isFolder ? '1' : '0'}" onclick="dmsFileCardClick(event)" style="cursor:pointer;border-bottom:1px solid #f1f5f9;transition:background .1s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
+            ${canCreate ? `<td style="padding:8px 0 8px 12px" onclick="event.stopPropagation()"><input type="checkbox" class="dms-file-select-cb" onclick="dmsToggleRowSelect(this,'${f.id}')" style="cursor:pointer"/></td>` : ''}
+            <td style="padding:8px 12px">
+              <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                ${f.thumbnailLink
+                  ? `<img src="${f.thumbnailLink}" alt="" style="width:20px;height:20px;object-fit:cover;border-radius:3px;flex-shrink:0" onerror="this.outerHTML='<span style=\\'font-size:15px\\'>${emoji}</span>'">`
+                  : `<span style="font-size:15px;flex-shrink:0">${emoji}</span>`}
+                <span style="font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dtEscape(f.name)}</span>
+              </div>
+            </td>
+            <td style="padding:8px 12px;color:#64748b;white-space:nowrap">${modBy}</td>
+            <td style="padding:8px 12px;color:#64748b;white-space:nowrap">${modWhen}</td>
+            <td style="padding:8px 12px;color:#64748b;text-align:right">${isFolder ? '—' : _dmsFmtSize(f.size)}</td>
+            <td style="padding:8px 12px;text-align:right;position:relative">
+              ${canCreate ? `<button class="dms-file-menu-btn" onclick="event.stopPropagation();dmsFileMenuToggle(event)" style="border:none;background:none;color:#94a3b8;font-size:16px;line-height:1;cursor:pointer;padding:2px 4px">⋮</button>` : ''}
+            </td>
+          </tr>
+        `;}).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (e) {
+    document.getElementById('dmsFileList').innerHTML = `<div style="color:#dc2626;font-size:13px">Error: ${dtEscape(e.message)}</div>`;
+  }
+}
+
+function dmsFileCardClick(event) {
+  if (event.target.closest('.dms-file-menu-btn') || event.target.closest('.dms-file-menu')) return;
+  const row = event.currentTarget;
+  if (row.dataset.isFolder === '1') {
+    dmsBrowseFolder(row.dataset.id, row.dataset.name, 'push');
+    return;
+  }
+  window.open(row.dataset.link, '_blank', 'noopener');
+}
+
+function dmsFileMenuToggle(event) {
+  document.querySelectorAll('.dms-file-menu').forEach(m => m.remove());
+  const btn = event.currentTarget;
+  const card = btn.closest('.dms-file-card');
+  const anchor = btn.parentElement; // action <td> — already position:relative
+  const menu = document.createElement('div');
+  menu.className = 'dms-file-menu';
+  menu.style.cssText = 'position:absolute;top:30px;right:8px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:10;min-width:110px;overflow:hidden;text-align:left';
+  const renameBtn = document.createElement('button');
+  renameBtn.textContent = '✏️ Rename';
+  renameBtn.style.cssText = 'display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;font-size:12.5px;color:#334155;cursor:pointer';
+  renameBtn.onclick = e => { e.stopPropagation(); menu.remove(); dmsRenameFile(card.dataset.id); };
+  const delBtn = document.createElement('button');
+  delBtn.textContent = '🗑 Delete';
+  delBtn.style.cssText = 'display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:none;font-size:12.5px;color:#dc2626;cursor:pointer';
+  delBtn.onclick = e => { e.stopPropagation(); menu.remove(); dmsDeleteFile(card.dataset.id); };
+  menu.appendChild(renameBtn);
+  menu.appendChild(delBtn);
+  anchor.appendChild(menu);
+  setTimeout(() => {
+    const closeOnOutside = e => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeOnOutside); } };
+    document.addEventListener('click', closeOnOutside);
+  }, 0);
+}
+
+let _dmsRenameFileId = null;
+
+function dmsOpenAddShortcut() {
+  if (!_dmsSelectedClient || !_dmsBrowseFolderId) return;
+  document.getElementById('dmsShortcutName').value = '';
+  document.getElementById('dmsShortcutUrl').value = '';
+  document.getElementById('dmsAddShortcutErr').style.display = 'none';
+  document.getElementById('dmsAddShortcutModal').classList.add('open');
+  setTimeout(() => document.getElementById('dmsShortcutName').focus(), 0);
+}
+
+async function dmsAddShortcutConfirm() {
+  const errEl = document.getElementById('dmsAddShortcutErr');
+  errEl.style.display = 'none';
+  const name = document.getElementById('dmsShortcutName').value.trim();
+  const url = document.getElementById('dmsShortcutUrl').value.trim();
+  if (!name) { errEl.textContent = 'Name is required'; errEl.style.display = 'block'; return; }
+  if (!/^https?:\/\//i.test(url)) { errEl.textContent = 'Enter a valid http(s) link'; errEl.style.display = 'block'; return; }
+  if (!_dmsSelectedClient || !_dmsBrowseFolderId) return;
+  try {
+    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/external-link`, 'POST', { name, url });
+    if (r?.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+    closeModal('dmsAddShortcutModal');
+    showToast('Link added!');
+    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName, 'jump');
+  } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+}
+
+function dmsRenameFile(fileId) {
+  const card = document.querySelector(`.dms-file-card[data-id="${fileId}"]`);
+  if (!card || !_dmsSelectedClient || !_dmsBrowseFolderId) return;
+  _dmsRenameFileId = fileId;
+  document.getElementById('dmsRenameErr').style.display = 'none';
+  const input = document.getElementById('dmsRenameInput');
+  input.value = card.dataset.name;
+  document.getElementById('dmsRenameModal').classList.add('open');
+  setTimeout(() => { input.focus(); input.select(); }, 0);
+}
+
+async function dmsRenameConfirm() {
+  const errEl = document.getElementById('dmsRenameErr');
+  errEl.style.display = 'none';
+  const newName = document.getElementById('dmsRenameInput').value.trim();
+  if (!newName) { errEl.textContent = 'Name is required'; errEl.style.display = 'block'; return; }
+  if (!_dmsRenameFileId || !_dmsSelectedClient || !_dmsBrowseFolderId) { closeModal('dmsRenameModal'); return; }
+  try {
+    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/files/${_dmsRenameFileId}`, 'PATCH', { name: newName });
+    if (r?.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+    closeModal('dmsRenameModal');
+    showToast('Renamed');
+    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName);
+  } catch (e) { errEl.textContent = 'Rename failed: ' + e.message; errEl.style.display = 'block'; }
+}
+
+async function dmsDeleteFile(fileId) {
+  const card = document.querySelector(`.dms-file-card[data-id="${fileId}"]`);
+  if (!card || !_dmsSelectedClient || !_dmsBrowseFolderId) return;
+  const isLink = fileId.startsWith('ext-');
+  const confirmMsg = isLink
+    ? `Remove the link "${card.dataset.name}"? This just removes it from this folder — permanently, no undo (the original file it links to is untouched).`
+    : `Delete "${card.dataset.name}"? It will be moved to Drive's Trash and can be recovered from there for 30 days.`;
+  if (!await appConfirm(confirmMsg, isLink ? 'Remove link?' : 'Delete file?')) return;
+  try {
+    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/files/${fileId}`, 'DELETE');
+    if (r?.error) { showToast(r.error); return; }
+    showToast(isLink ? 'Link removed' : 'Deleted');
+    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName, 'jump');
+  } catch (e) { showToast('Delete failed: ' + e.message); }
+}
+
+function dmsUpdateBulkDeleteUI() {
+  const btn = document.getElementById('dmsBulkDeleteBtn');
+  if (!btn) return;
+  const n = _dmsSelectedIds.size;
+  btn.style.display = n ? 'inline-flex' : 'none';
+  document.getElementById('dmsBulkDeleteCount').textContent = n;
+  const selectAllCb = document.getElementById('dmsSelectAllCb');
+  if (selectAllCb) {
+    const rows = Array.from(document.querySelectorAll('#dmsFileList .dms-file-card')).filter(r => r.style.display !== 'none');
+    selectAllCb.checked = rows.length > 0 && rows.every(r => _dmsSelectedIds.has(r.dataset.id));
+  }
+}
+
+function dmsToggleRowSelect(cb, id) {
+  if (cb.checked) _dmsSelectedIds.add(id); else _dmsSelectedIds.delete(id);
+  dmsUpdateBulkDeleteUI();
+}
+
+function dmsToggleSelectAll(cb) {
+  const rows = Array.from(document.querySelectorAll('#dmsFileList .dms-file-card')).filter(r => r.style.display !== 'none');
+  for (const row of rows) {
+    const rowCb = row.querySelector('.dms-file-select-cb');
+    if (rowCb) rowCb.checked = cb.checked;
+    if (cb.checked) _dmsSelectedIds.add(row.dataset.id); else _dmsSelectedIds.delete(row.dataset.id);
+  }
+  dmsUpdateBulkDeleteUI();
+}
+
+async function dmsBulkDeleteSelected() {
+  const ids = Array.from(_dmsSelectedIds);
+  if (!ids.length || !_dmsSelectedClient || !_dmsBrowseFolderId) return;
+  const anyLink = ids.some(id => id.startsWith('ext-'));
+  const anyReal = ids.some(id => !id.startsWith('ext-'));
+  const noun = anyLink && anyReal ? 'item(s)' : anyLink ? 'link(s)' : 'file(s)/folder(s)';
+  const msg = anyReal
+    ? `Delete ${ids.length} ${noun}? Real files/folders move to Drive's Trash (recoverable for 30 days); links are removed permanently with no undo.`
+    : `Remove ${ids.length} ${noun}? This is permanent, no undo.`;
+  if (!await appConfirm(msg, 'Delete selected?')) return;
+  try {
+    const results = await Promise.all(ids.map(id =>
+      api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/files/${id}`, 'DELETE').catch(e => ({ error: e.message }))
+    ));
+    const failed = results.filter(r => r?.error).length;
+    showToast(failed ? `${ids.length - failed}/${ids.length} deleted, ${failed} failed` : `${ids.length} deleted`);
+    _dmsSelectedIds.clear();
+    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName, 'jump');
+  } catch (e) { showToast('Bulk delete failed: ' + e.message); }
+}
+
+async function dmsBulkSetup() {
+  const btn = document.getElementById('dmsBulkSetupBtn');
+  if (!await appConfirm('Create a Drive folder for every existing client that doesn\'t have one yet? This may take a while for a large client list.', 'Create missing folders?')) return;
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const r = await api('/api/admin/dms/bulk-setup', 'POST');
+    if (r.error) { showToast(r.error); return; }
+    showToast(`${r.created}/${r.total} folder(s) created` + (r.failed ? `, ${r.failed} failed` : ''));
+    if (r.failed) console.error('DMS bulk-setup failures:', r.errors);
+    loadDMS();
+  } catch (e) { showToast('Bulk setup failed: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = '📁 Create missing folders'; }
+}
+
+async function dmsSetupFolder() {
+  if (!_dmsSelectedClient) return;
+  const btn = document.getElementById('dmsSetupBtn');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/setup`, 'POST');
+    if (r.error) { showToast(r.error); return; }
+    showToast('Drive folder created!');
+    dmsSelectClient(_dmsSelectedClient.id);
+  } catch (e) { showToast('Setup failed: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = 'Create Drive Folder'; }
+}
+
+function dmsOpenAddDept() {
+  const sel = document.getElementById('dmsAddDeptSelect');
+  sel.innerHTML = '<option value="">— select department —</option>' +
+    _dmsDepts.map(d => `<option value="${dtEscape(d)}">${dtEscape(d)}</option>`).join('');
+  document.getElementById('dmsAddDeptErr').style.display = 'none';
+  document.getElementById('dmsAddDeptModal').classList.add('open');
+}
+
+async function dmsSaveDept() {
+  const dept = document.getElementById('dmsAddDeptSelect').value.trim();
+  const errEl = document.getElementById('dmsAddDeptErr');
+  errEl.style.display = 'none';
+  if (!dept) { errEl.textContent = 'Please select a department'; errEl.style.display = 'block'; return; }
+  if (!_dmsSelectedClient) return;
+  try {
+    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/departments`, 'POST', { department_name: dept });
+    if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+    closeModal('dmsAddDeptModal');
+    showToast('Department folder created!');
+    dmsSelectClient(_dmsSelectedClient.id);
+  } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+}
+
+async function dmsRemoveDept(deptName) {
+  if (!_dmsSelectedClient) return;
+  if (!await appConfirm(`Remove "${deptName}" folder mapping? (Drive folder is NOT deleted.)`, 'Remove Folder Mapping?')) return;
+  try {
+    const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/departments/${encodeURIComponent(deptName)}`, 'DELETE');
+    if (r.error) { showToast(r.error); return; }
+    showToast('Department removed');
+    dmsSelectClient(_dmsSelectedClient.id);
+  } catch (e) { showToast('Remove failed: ' + e.message); }
+}
+
+function dmsOpenCreateFile(defaultKind) {
+  document.getElementById('dmsFileName').value = '';
+  document.getElementById('dmsFileKind').value = defaultKind || 'doc';
+  document.getElementById('dmsCreateFileErr').style.display = 'none';
+  document.getElementById('dmsCreateFileModal').classList.add('open');
+  setTimeout(() => document.getElementById('dmsFileName').focus(), 0);
+}
+
+async function dmsSaveFile() {
+  const name = document.getElementById('dmsFileName').value.trim();
+  const kind = document.getElementById('dmsFileKind').value;
+  const errEl = document.getElementById('dmsCreateFileErr');
+  errEl.style.display = 'none';
+  if (!name) { errEl.textContent = 'File name is required'; errEl.style.display = 'block'; return; }
+  if (!_dmsSelectedClient || !_dmsBrowseFolderId) return;
+  try {
+    const r = await api(
+      `/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/files`,
+      'POST', { name, kind }
+    );
+    if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+    closeModal('dmsCreateFileModal');
+    showToast(kind === 'folder' ? 'Folder created!' : 'File created!');
+    if (kind !== 'folder' && r.web_view_link) window.open(r.web_view_link, '_blank');
+    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName);
+  } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+}
+
+async function dmsUploadPicked(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  if (!_dmsSelectedClient || !_dmsBrowseFolderId) { input.value = ''; return; }
+  const statusEl = document.getElementById('dmsUploadStatus');
+  statusEl.style.display = 'block';
+  statusEl.style.color = '#4f46e5';
+  statusEl.textContent = `Uploading "${file.name}"…`;
+  try {
+    // Get a Drive resumable-upload session, then send it in chunks through
+    // our own server (each well under Vercel's ~4.5MB request-body cap).
+    // A direct browser PUT to Drive would dodge that cap too, but Drive's
+    // completion response is missing CORS headers, so the browser can never
+    // read it back even though the file gets created — proxying avoids that.
+    const session = await api(
+      `/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/upload-session`,
+      'POST', { name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size }
+    );
+    if (session?.error) { statusEl.style.color = '#dc2626'; statusEl.textContent = session.error; return; }
+
+    const CHUNK = 4 * 1024 * 1024; // 4 MiB — must be a multiple of 256 KiB per Drive's resumable-upload spec (except the final chunk)
+    const token = localStorage.getItem('authToken') || '';
+    const chunkUrl = `/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/upload-chunk?uploadUrl=${encodeURIComponent(session.uploadUrl)}`;
+    let offset = 0;
+    while (offset < file.size) {
+      const end = Math.min(offset + CHUNK, file.size);
+      const r = await fetch(chunkUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Range': `bytes ${offset}-${end - 1}/${file.size}`,
+          'Content-Type': 'application/octet-stream',
+          ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
+        },
+        body: file.slice(offset, end),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (r.status !== 308 && !r.ok) throw new Error(data.error || `Upload failed (HTTP ${r.status})`);
+      offset = end;
+      statusEl.textContent = `Uploading "${file.name}"… ${Math.round((offset / file.size) * 100)}%`;
+    }
+    statusEl.style.display = 'none';
+    showToast('File uploaded!');
+    dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName, 'jump');
+  } catch (e) {
+    statusEl.style.color = '#dc2626';
+    statusEl.textContent = 'Upload failed: ' + e.message;
+  } finally {
+    input.value = '';
+  }
+}
+
