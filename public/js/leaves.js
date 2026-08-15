@@ -144,7 +144,7 @@ function lvExtraBreakdownHtml(r){
     parts.push(
       `<div class="lv-extra-bd-date"><b>${fmtDate(d.date)}</b> (${dtFmtWorkDur(d)})</div>` +
       d.entries.map(e =>
-        `<div class="lv-extra-bd-line">• ${dtEscape(e.client || '')}` +
+        `<div class="lv-extra-bd-line">• <b>${dtEscape(e.client || '')}</b>` +
         (e.department ? ` <span style="color:#64748b">[${dtEscape(e.department)}]</span>` : '') +
         ` — ${lvDescHtml(e.description)} <b>(${dtFmtWorkDur(e)})</b></div>`
       ).join('')
@@ -445,8 +445,8 @@ function lvRenderSelectedList(){
         <input type="text" placeholder="Client…" value="${dtEscape(row.client || '')}"
           oninput="lvClientCombo('${k}',${i},this)" onfocus="lvClientCombo('${k}',${i},this)"
           onblur="lvClientComboHide(this)"/>
-        <input type="text" placeholder="What did you do?" value="${dtEscape(row.description || '')}"
-          oninput="lvExtraSet('${k}',${i},'description',this.value)"/>
+        <textarea class="lv-extra-desc" rows="2" placeholder="What did you do?"
+          oninput="lvExtraSet('${k}',${i},'description',this.value)">${dtEscape(row.description || '')}</textarea>
         <input type="number" min="0.5" max="24" step="0.5" placeholder="hrs" value="${row.hours || ''}"
           oninput="lvExtraSet('${k}',${i},'hours',this.value)"/>
         <button type="button" class="lv-extra-row-del" onclick="lvExtraDelRow('${k}',${i})" title="Remove row">✕</button>
