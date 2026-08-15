@@ -1,0 +1,290 @@
+/* ══════════════════════════════════════════════════════
+   MOBILE — full responsive overhaul
+   Mostly users use mobile, so every feature has to be reachable.
+══════════════════════════════════════════════════════ */
+.mobile-hamburger{display:none;background:transparent;border:none;cursor:pointer;padding:8px;border-radius:8px;color:#1e293b;transition:background .15s;}
+.mobile-hamburger:hover{background:#f1f5f9;}
+.mobile-hamburger svg{width:24px;height:24px;display:block;}
+.sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:199;}
+.sidebar-backdrop.open{display:block;}
+
+/* ── "More" sheet — the phone's second half of the sidebar ────────────────────
+   Both pieces stay display:none here and are switched on inside the mobile
+   media query only, so a desktop window never has them in the layout. On a
+   phone the sheet is always rendered and parked below the fold; .open only
+   moves it, which is what makes it slide instead of pop. */
+.mbn-sheet-backdrop{
+  display:none;position:fixed;inset:0;background:rgba(2,6,23,.5);z-index:255;
+  opacity:0;transition:opacity .22s var(--ease);
+}
+.mbn-sheet{
+  display:none;position:fixed;left:0;right:0;bottom:0;z-index:260;background:#fff;
+  border-radius:20px 20px 0 0;box-shadow:0 -14px 44px -10px rgba(15,23,42,.4);
+  max-height:84vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  transform:translateY(104%);transition:transform .26s var(--ease);
+  padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));
+}
+.mbn-sheet-grip{width:38px;height:4px;border-radius:2px;background:#e2e8f0;margin:10px auto 2px;}
+.mbn-user{
+  display:flex;align-items:center;gap:11px;padding:10px 16px 14px;
+  border-bottom:1px solid #f1f5f9;cursor:pointer;
+}
+.mbn-user:active{background:#f8fafc;}
+.mbn-user-avatar{
+  width:42px;height:42px;border-radius:50%;flex-shrink:0;overflow:hidden;
+  background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;
+  display:grid;place-items:center;font-size:14px;font-weight:700;
+  box-shadow:0 2px 8px rgba(79,70,229,.4);
+}
+.mbn-user-avatar img{width:100%;height:100%;object-fit:cover;}
+.mbn-user-name{font-size:14px;font-weight:700;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mbn-user-role{font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mbn-user-chev{width:18px;height:18px;color:#cbd5e1;margin-left:auto;flex-shrink:0;}
+.mbn-group{padding:14px 12px 0;}
+.mbn-group-label{
+  font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:#94a3b8;padding:0 4px 8px;
+}
+.mbn-links{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;}
+.mbn-link{
+  position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+  gap:7px;text-align:center;padding:13px 6px;min-height:78px;border-radius:12px;
+  background:#f8fafc;border:1px solid #eef2f7;color:#334155;
+  font-size:11px;font-weight:600;line-height:1.25;cursor:pointer;
+}
+.mbn-link:active{background:#eef2ff;}
+.mbn-link.active{background:#eef2ff;border-color:#c7d2fe;color:#4f46e5;}
+.mbn-link svg{width:21px;height:21px;flex-shrink:0;}
+/* The label span is the sidebar's own .nav-label-text, which is transparent
+   until the sidebar is hovered — here it always shows, and wraps to two lines. */
+.mbn-link .nav-label-text{opacity:1;white-space:normal;}
+.mbn-sheet-foot{padding:16px 12px 6px;}
+.mbn-logout{
+  width:100%;display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:13px;border-radius:12px;cursor:pointer;font-family:'Inter',sans-serif;
+  font-size:14px;font-weight:700;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;
+}
+.mbn-logout:active{background:#fee2e2;}
+
+@media (max-width:768px){
+  /* ── Sidebar replaced by the bottom tab bar on mobile ── */
+  .sidebar,.sidebar-backdrop,.mobile-hamburger{display:none !important;}
+
+  /* ── Bottom tab bar: four fixed tabs + More, never a scrolling strip ── */
+  .mobile-bottom-nav{
+    display:flex;position:fixed;left:0;right:0;bottom:0;z-index:250;
+    background:rgba(15,23,42,.97);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    border-top:1px solid rgba(255,255,255,.08);
+    padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));
+    gap:2px;
+  }
+  .mobile-bottom-nav .nav-item{
+    flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:3px;padding:7px 4px;border-radius:10px;cursor:pointer;
+    font-size:10px;font-weight:600;text-align:center;
+    color:#94a3b8;margin-bottom:0;border-left:none;
+  }
+  .mobile-bottom-nav .nav-item svg{width:20px;height:20px;}
+  /* Five tabs share the width, so a long label ellipses instead of pushing
+     its neighbours off-centre. */
+  .mobile-bottom-nav .nav-item .nav-label-text{
+    opacity:1;font-size:10px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .mobile-bottom-nav .nav-item.active{background:rgba(99,102,241,.18);color:#a5b4fc;}
+  .mobile-bottom-nav .nav-item:active{background:rgba(255,255,255,.08);}
+  .mobile-bottom-nav .nav-divider{display:none;}
+
+  /* ── More sheet ── */
+  .mbn-sheet-backdrop{display:block;pointer-events:none;}
+  .mbn-sheet-backdrop.open{opacity:1;pointer-events:auto;}
+  .mbn-sheet{display:block;}
+  .mbn-sheet.open{transform:translateY(0);}
+
+  /* ── Main content ── */
+  .main{margin-left:0;}
+  /* Phones open the sidebar as a drawer over a backdrop, and there is no hover
+     to speak of on touch. The desktop push rule outranks a plain .main on
+     specificity, so it has to be switched off here by name. */
+  .sidebar:hover ~ .main{margin-left:0;}
+  .topbar{padding:0 14px;height:54px;gap:10px;}
+  .topbar-title{font-size:15px;font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .topbar-right{gap:6px;flex-shrink:0;}
+
+  /* ── Pages (padding-bottom leaves room for the fixed bottom tab bar) ── */
+  .page{padding:14px 12px calc(72px + env(safe-area-inset-bottom,0px));}
+  .page-header{flex-wrap:wrap;gap:10px;margin-bottom:14px;}
+  .page-header h2{font-size:17px;}
+
+  /* ── Dashboard ── */
+  .dash-topbar{flex-direction:column;align-items:stretch;gap:10px;}
+  .dash-topbar h2{font-size:17px;}
+  .dash-topbar-btns{flex-wrap:wrap;}
+  .dash-topbar-btns .btn{flex:1;min-width:0;justify-content:center;font-size:12px;padding:8px 10px;}
+  .overview-cards{grid-template-columns:repeat(2,1fr);gap:8px;}
+  .ov-card{padding:12px 10px;}
+  .ov-card .label{font-size:11px;}
+  .ov-card .number{font-size:24px;}
+  .dash-bottom{grid-template-columns:1fr;gap:14px;}
+  .chart-card{padding:14px;}
+  .chart-wrap{height:180px;}
+
+  /* ── Topbar dropdown filters → stack ── */
+  #dashEmployeeFilter, #pcDateRangeFilter{width:100%;}
+  #pcDateRangeFilter{flex-direction:row;flex-wrap:wrap;gap:6px;}
+  #pcDateRangeFilter input{flex:1;min-width:0;}
+
+  /* ── Tab groups ── */
+  .tab-group{flex-wrap:wrap;}
+  .tab{font-size:11px;padding:5px 10px;}
+
+  /* ── Tables: allow horizontal scroll for wide tables ── */
+  .task-table-card > div,
+  .flat-tasks-scroll,
+  .flat-tasks-table,
+  .mis-table-wrap,
+  .users-grid,
+  .dr-table-wrap,
+  .cp-grid-wrap,
+  #invContent,
+  #hrm-msg-table{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .flat-tasks-scroll{max-height:calc(100vh - 200px);}
+  thead th{padding:8px 10px;font-size:10px;}
+  tbody td{padding:9px 10px;font-size:12px;}
+  .action-btn{font-size:10px;padding:3px 8px;}
+
+  /* ── Modals: near-fullscreen with breathing room ── */
+  .modal-overlay{padding:8px;align-items:flex-start;padding-top:18px;}
+  .modal{width:100% !important;max-width:100% !important;padding:18px 16px;max-height:calc(100vh - 36px);border-radius:12px;}
+  .modal h3{font-size:15px;margin-bottom:14px;}
+  .form-row{grid-template-columns:1fr;gap:0;}
+  .form-group input,.form-group select,.form-group textarea{font-size:14px;padding:10px 12px;}
+  .modal-footer{flex-wrap:wrap;gap:6px;}
+  .modal-footer .btn{flex:1;min-width:0;justify-content:center;}
+
+  /* ── Buttons: bigger touch targets ── */
+  .btn{padding:9px 14px;font-size:13px;}
+  .btn-sm{padding:6px 10px;font-size:11px;}
+
+  /* ── Sidebar user/avatar bigger ── */
+  .sidebar:hover .nav-label-text,
+  .sidebar:hover .su-info,
+  .sidebar:hover .logout-label,
+  .sidebar:hover .logo-text{opacity:1;}
+
+  /* ── All Tasks page filters ── */
+  #taskSearch, #userSearch, #cpSearch, #lvSearch, #drSearch{width:100% !important;}
+
+  /* ── Leave Tracker ── */
+  .lv-card{padding:16px 12px;}
+  .lv-title{font-size:18px;}
+  .lv-type-grid{grid-template-columns:1fr;}
+  .lv-item{grid-template-columns:1fr;}
+  .lv-item-actions{align-items:flex-start;flex-direction:row;justify-content:space-between;flex-wrap:wrap;}
+  .lv-tabs{overflow-x:auto;}
+  .lv-tab{white-space:nowrap;font-size:12px;padding:9px 14px;}
+  .lv-filter-row{flex-direction:column;align-items:stretch;}
+  .lv-filter-row input{min-width:0;max-width:100%;width:100%;}
+  .lv-calendar{padding:10px 8px;}
+  .lv-cal-day{padding:9px 0;font-size:12px;}
+
+  /* ── Daily Task ── */
+  .dt-card,.cm-card,.cp-card,.dr-card,.profile-card{padding:18px 14px;}
+  .dt-title{font-size:22px;}
+  .dt-header{flex-direction:column;align-items:stretch;gap:12px;}
+  .dt-topbar{justify-content:space-between;width:100%;}
+  .dt-meta-row{flex-direction:column;align-items:stretch;gap:10px;}
+  .dt-meta-field{flex-direction:column;align-items:stretch;}
+  .dt-meta-field select,.dt-meta-field input{min-width:0;width:100%;}
+  .dt-table-wrap{overflow-x:auto;}
+  .dt-table{min-width:560px;}
+  .dt-actions{flex-direction:column;}
+  .dt-actions .dt-btn{width:100%;}
+  .dt-summary{flex-wrap:wrap;}
+  .dt-history-row{flex-direction:column;align-items:flex-start;}
+  .dt-history-time{margin-left:0;align-self:flex-start;}
+
+  /* ── Daily Reports ── */
+  .dr-header{flex-direction:column;align-items:stretch;}
+  .dr-month-picker{flex-wrap:wrap;}
+  .dr-stats{grid-template-columns:1fr 1fr;}
+  .dr-reminder-panel{flex-direction:column;align-items:stretch;}
+  .dr-reminder-actions{justify-content:stretch;}
+  .dr-reminder-actions .btn{flex:1;}
+
+  /* ── Compliance ── */
+  .cp-header{flex-direction:column;align-items:stretch;}
+  .cp-filter-row{flex-direction:column;}
+  .cp-filter-row input,.cp-filter-row select{min-width:0;width:100%;}
+
+  /* ── Client Master ── */
+  .cm-add-row{flex-direction:column;align-items:stretch;width:100%;}
+  .cm-add-row input,.cm-add-row .cm-btn-primary,.cm-add-row .cm-btn-ghost{width:100%;}
+  .cm-toolbar{flex-direction:column;align-items:stretch;}
+  .cm-search{width:100%;}
+  .cm-header{flex-direction:column;align-items:stretch;}
+  .cm-stats{width:100%;}
+  .cm-stat{flex:1;min-width:0;}
+  .cm-detail-inner{flex-direction:column;gap:14px;}
+
+  /* ── FMS ── */
+  #fmsListTabs{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;}
+  .fms-name-tab{white-space:nowrap;flex-shrink:0;}
+  #fmsStepTabs{flex-wrap:nowrap;overflow-x:auto;padding-bottom:6px;}
+  .fms-step-tab{white-space:nowrap;flex-shrink:0;}
+  .fms-step-rows-table{overflow-x:auto;}
+  .fms-step-rows-table table{min-width:520px;}
+  .fms-train-track{padding:18px 0 32px;}
+
+  /* ── Approvals page tabs ── */
+  #page-approvals .tab-group, #page-approvals > div:nth-child(2){flex-wrap:wrap;}
+
+  /* ── Profile ── */
+  .profile-card{max-width:100%;}
+
+  /* ── Status / role badges spacing on small screens ── */
+  .status-badge,.priority-badge,.role-badge{font-size:10px;padding:2px 6px;}
+
+  /* ── Tab-action (Delegate by Me as tab) ── */
+  .tab.tab-action{padding:5px 10px;font-size:11px;}
+
+  /* ── Set Plan / MIS modals get same treatment via .modal global rule above ── */
+
+  /* ── HRM responsive ── */
+  .hrm-stat-grid{grid-template-columns:repeat(2,1fr);gap:10px;}
+  .hrm-msg-grid{grid-template-columns:1fr 1fr;gap:10px;}
+  .hrm-search,.hrm-msg-search{min-width:0;width:100%;}
+  .hrm-toolbar{flex-direction:column;align-items:stretch;}
+  .hrm-filters{width:100%;}
+  .hrm-filter-select{flex:1;}
+  .hrm-offer-form-row{flex-direction:column;}
+  .hrm-offer-form-fields{width:100% !important;}
+
+  /* ── Fixed-px side-by-side grids → stack on mobile ── */
+  .acc-matrix-grid{grid-template-columns:1fr !important;min-height:0 !important;}
+  .acc-matrix-grid > div:first-child{border-right:none !important;border-bottom:1px solid #e2e8f0;}
+  #accUserList{max-height:260px !important;}
+  .cm-detail-grid,
+  .cp-recent-grid{grid-template-columns:1fr !important;}
+  .cp-status-grid{grid-template-columns:1fr !important;}
+
+  /* ── Meetings: stack month calendar above day timeline ── */
+  #mtgGrid{grid-template-columns:1fr !important;}
+  .mtg-cal-cell{min-height:64px;}
+  .mtg-cal-month-grid{grid-auto-rows:minmax(64px,1fr);}
+
+  /* ── Topbar dashboard-switcher: don't let it push past the viewport ── */
+  #topbarActions{min-width:0;max-width:60vw;}
+  #dashUserSwitcher{max-width:150px !important;}
+}
+
+/* ── Extra small (phones <380px) ── */
+@media (max-width:380px){
+  .overview-cards{grid-template-columns:1fr;}
+  .topbar-title{font-size:14px;}
+  .dr-stats{grid-template-columns:1fr;}
+  .hrm-stat-grid{grid-template-columns:1fr;}
+  .hrm-msg-grid{grid-template-columns:1fr;}
+  #topbarActions span{display:none;}
+  #dashUserSwitcher{max-width:110px !important;}
+}
+

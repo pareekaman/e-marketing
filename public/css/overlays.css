@@ -1,0 +1,151 @@
+/* ══════════════════════════════════════════════
+   📆 MONDAY CHECK-IN MODAL  (compact, single-viewport)
+   ══════════════════════════════════════════════ */
+.mw-overlay{align-items:center;padding:16px;}
+.mw-card{background:#fff;border-radius:16px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(15,23,42,.28);overflow:hidden;}
+
+/* Hero */
+.mw-hero{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.mw-hero-title{font-size:16px;font-weight:800;letter-spacing:-.01em;line-height:1.2;}
+.mw-hero-sub{font-size:11px;opacity:.92;margin-top:2px;font-weight:600;letter-spacing:.2px;}
+.mw-hero-x{background:rgba(255,255,255,.18);color:#fff;border:none;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:13px;font-weight:700;transition:background .15s;}
+.mw-hero-x:hover{background:rgba(255,255,255,.32);}
+
+/* Last week — single row */
+.mw-last{padding:14px 20px 12px;border-bottom:1px solid #f1f5f9;}
+.mw-last-cap{font-size:10px;font-weight:800;color:#64748b;letter-spacing:.6px;margin-bottom:8px;}
+.mw-last-cap span{color:#94a3b8;font-weight:600;margin-left:4px;}
+.mw-last-row{display:flex;align-items:baseline;gap:10px;margin-bottom:6px;}
+.mw-clickable{cursor:pointer;padding:6px 8px;margin:-6px -8px 0;border-radius:8px;transition:background .12s;}
+.mw-clickable:hover{background:#f8fafc;}
+.mw-last-emoji{font-size:26px;line-height:1;flex-shrink:0;animation:mw-pop .5s cubic-bezier(.34,1.56,.64,1);}
+.mw-last-score{font-size:32px;font-weight:800;letter-spacing:-.03em;color:#0f172a;line-height:1;font-variant-numeric:tabular-nums;}
+.mw-last-score.mw-good{color:#16a34a;}
+.mw-last-score.mw-warn{color:#d97706;}
+.mw-last-score.mw-bad{color:#dc2626;}
+.mw-last-rank{font-size:14px;font-weight:700;color:#475569;}
+.mw-details-toggle{margin-left:auto;font-size:11px;color:#F39C12;font-weight:700;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0;}
+.mw-last.mw-open .mw-details-toggle::before{content:'▲';}
+.mw-last.mw-open .mw-details-toggle{content:'▲ hide';}
+.mw-last-verdict{font-size:12px;color:#64748b;line-height:1.5;margin-top:2px;}
+.mw-last-verdict.mw-hit{color:#166534;}
+.mw-last-verdict.mw-miss{color:#991b1b;}
+@keyframes mw-pop{0%{transform:scale(0);opacity:0;}60%{transform:scale(1.2);opacity:1;}100%{transform:scale(1);opacity:1;}}
+
+/* Details panel — collapsed by default, scrollable when open */
+.mw-details{margin-top:10px;display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto;padding-right:4px;}
+.mw-details::-webkit-scrollbar{width:5px;}
+.mw-details::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:5px;}
+.mw-det-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;}
+.mw-det-head{display:flex;justify-content:space-between;align-items:center;}
+.mw-det-name{font-size:13px;font-weight:700;color:#0f172a;}
+.mw-det-score{font-size:14px;font-weight:800;letter-spacing:-.02em;color:#0f172a;font-variant-numeric:tabular-nums;}
+.mw-det-score.mw-good{color:#16a34a;}
+.mw-det-score.mw-warn{color:#d97706;}
+.mw-det-score.mw-bad{color:#dc2626;}
+.mw-det-meta{font-size:11px;color:#64748b;margin-top:2px;font-weight:600;}
+.mw-det-tasks{margin-top:8px;display:flex;flex-direction:column;gap:5px;}
+.mw-det-task{display:flex;justify-content:space-between;gap:8px;align-items:center;background:#fff;border:1px solid #f1f5f9;border-radius:7px;padding:6px 9px;font-size:12px;}
+.mw-det-task-desc{flex:1;color:#1e293b;min-width:0;}
+.mw-det-task-desc small{display:block;font-size:10px;color:#94a3b8;margin-top:2px;font-weight:500;}
+.mw-det-task-st{font-size:9px;font-weight:800;padding:2px 7px;border-radius:5px;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0;white-space:nowrap;}
+.mw-det-task-st.completed{background:#dcfce7;color:#166534;}
+.mw-det-task-st.pending{background:#fef3c7;color:#92400e;}
+.mw-det-task-st.overdue{background:#fee2e2;color:#991b1b;}
+.mw-det-task-st.revised{background:#fce7f3;color:#9d174d;}
+.mw-det-empty{font-size:11px;color:#94a3b8;text-align:center;padding:6px;font-style:italic;}
+
+/* This week — picker */
+.mw-this{padding:14px 20px 16px;}
+.mw-this-cap{font-size:10px;font-weight:800;color:#64748b;letter-spacing:.6px;margin-bottom:10px;}
+.mw-this-cap span{color:#94a3b8;font-weight:600;}
+.mw-quick{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px;}
+.mw-quick-btn{background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 4px;cursor:pointer;font-family:inherit;color:#0f172a;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:2px;}
+.mw-quick-btn:hover{border-color:#fcd34d;background:#fffbeb;}
+.mw-quick-btn.active{border-color:#F39C12;background:#fff7ed;box-shadow:0 0 0 3px rgba(243,156,18,.15);}
+.mw-q-emoji{font-size:18px;line-height:1;}
+.mw-q-num{font-size:14px;font-weight:800;letter-spacing:-.02em;line-height:1;}
+.mw-quick-btn.active .mw-q-num{color:#9a3412;}
+.mw-q-lbl{font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;}
+
+.mw-slider{width:100%;accent-color:#F39C12;cursor:pointer;margin:6px 0 8px;}
+.mw-target-line{font-size:13px;color:#475569;text-align:center;font-weight:600;}
+.mw-target-line b{color:#F39C12;font-weight:800;font-size:15px;letter-spacing:-.01em;}
+
+/* Footer */
+.mw-actions{padding:12px 20px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;align-items:center;gap:10px;}
+.mw-btn-snooze{background:transparent;color:#64748b;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;padding:6px 4px;}
+.mw-btn-snooze:hover{color:#0f172a;text-decoration:underline;}
+.mw-btn-commit{background:linear-gradient(135deg,#FF9800,#F39C12);color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 2px 8px rgba(243,156,18,.3);transition:all .15s;}
+.mw-btn-commit:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(243,156,18,.4);}
+.mw-btn-commit:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+
+/* Confetti */
+.mw-confetti{position:fixed;inset:0;pointer-events:none;z-index:99999;overflow:hidden;}
+.mw-confetti span{position:absolute;font-size:20px;animation:mw-fall 1.6s cubic-bezier(.42,0,.58,1) forwards;will-change:transform,opacity;}
+@keyframes mw-fall{from{transform:translate(0,-20px) rotate(0);opacity:1;}to{transform:translate(var(--dx,0),100vh) rotate(720deg);opacity:0;}}
+
+@media (max-width:520px){
+  .mw-overlay{padding:0;align-items:stretch;}
+  .mw-card{border-radius:0;max-width:100%;min-height:100vh;display:flex;flex-direction:column;}
+  .mw-this{flex:1;}
+}
+
+/* ── Global page-level loader (tab/page switches) ── */
+.page-loader{position:fixed;inset:0;background:rgba(15,23,42,.18);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;z-index:9998;}
+.page-loader.show{display:flex;animation:pl-fade .15s ease-out;}
+.page-loader-box{display:flex;flex-direction:column;align-items:center;gap:10px;background:#fff;border-radius:14px;padding:22px 30px;box-shadow:0 8px 32px rgba(15,23,42,.18);border:1px solid #e2e8f0;}
+.page-loader-spinner{width:38px;height:38px;border:3.5px solid #fde68a;border-top-color:#F39C12;border-radius:50%;animation:pl-spin .7s linear infinite;}
+.page-loader-text{font-size:12px;font-weight:600;color:#64748b;letter-spacing:.3px;}
+@keyframes pl-spin{to{transform:rotate(360deg);}}
+@keyframes pl-fade{from{opacity:0;}to{opacity:1;}}
+/* ── Searchable select (type-to-filter on any dropdown) ──
+   Wrapper is display:contents so the input takes the native select's exact place
+   in the layout (flex rows, table cells, form groups all behave as before).
+   The dropdown panel is position:fixed and lives on <body>, so it is never
+   clipped by an ancestor's overflow (e.g. the daily-task table). */
+.ss-wrap{display:contents;}
+.ss-input{box-sizing:border-box;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font:inherit;font-size:13px;color:#1e293b;background-color:#fff;outline:none;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='10'%20height='10'%20viewBox='0%200%2024%2024'%3E%3Cpath%20fill='%2364748b'%20d='M7%2010l5%205%205-5z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 9px center;padding-right:26px!important;}
+.ss-input::placeholder{color:#94a3b8;}
+.ss-panel{display:none;position:fixed;z-index:100000;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 10px 28px rgba(15,23,42,.16);max-height:260px;overflow-y:auto;}
+.ss-panel.ss-open{display:block;}
+.ss-opt{padding:8px 12px;font-size:13px;color:#1e293b;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ss-opt:hover,.ss-opt.ss-active{background:#eff6ff;}
+.ss-opt.ss-sel{font-weight:700;color:#1d4ed8;}
+.ss-empty{padding:10px 12px;font-size:12px;color:#94a3b8;}
+.ss-orig{display:none!important;}
+
+/* ══════════════════════════════════════════════
+   PREMIUM ELEVATION LAYER
+   Lifts every card/module surface with soft shadow + hover motion,
+   without touching each module's own markup or JS.
+   ══════════════════════════════════════════════ */
+:is(.task-table-card,.chart-card,.dt-card,.cm-card,.dr-card,.lv-card,
+    .profile-card,.hrm-card,.race-wrap,.fms-step-rows-table,.user-task-block,
+    .users-grid,.mis-table-wrap,.flat-tasks-table,.tg-section,.race-stat,
+    .hrm-stat-card,.e3-card,.mw-card,.dash-perf-section){
+  border-color:rgba(15,23,42,.07) !important;
+  box-shadow:var(--shadow-xs);
+  transition:box-shadow .25s var(--ease),transform .2s var(--ease),border-color .2s var(--ease);
+}
+:is(.tg-section,.race-stat.clickable,.hrm-stat-card,.user-task-block):hover{
+  box-shadow:var(--shadow-sm);
+}
+.cp-card,.e3-head{ box-shadow:0 8px 28px -6px rgba(243,156,18,.14) !important; }
+
+/* Sticky brand gradient reused everywhere → make it feel richer with a subtle sheen */
+.dt-btn-submit,.cm-btn-primary,.lv-add-btn,.lv-save-btn,.mw-btn-commit{position:relative;overflow:hidden;}
+
+/* Nicer native scrollbars inside module scroll containers */
+.cp-scroll::-webkit-scrollbar,.flat-tasks-scroll::-webkit-scrollbar,.tg-body::-webkit-scrollbar{width:8px;height:8px;}
+.cp-scroll::-webkit-scrollbar-thumb,.flat-tasks-scroll::-webkit-scrollbar-thumb,.tg-body::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:20px;}
+
+/* Section headings across pages get a touch more presence */
+.page-header h2,.dash-topbar h2{letter-spacing:-.02em;}
+
+/* Subtle focus ring polish for non-.form-group inputs (search boxes, filters, etc.) */
+input:focus,select:focus,textarea:focus{outline:none;}
+
+/* Empty states feel designed, not forgotten */
+.empty{position:relative;}
+.empty::before{content:'';display:block;width:34px;height:34px;margin:0 auto 10px;border-radius:10px;background:linear-gradient(135deg,#eef2ff,#e0e7ff);}
