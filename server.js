@@ -2270,6 +2270,40 @@ async function fmsDoersByStep(stepIds, cols) {
   return out;
 }
 
+// Fetch one Google Sheets range per FMS sheet, a few at a time.
+//
+// These used to be awaited one after another inside the per-sheet loop, so a
+// report over four sheets paid four sequential round trips to Google before it
+// could render — which is what made the Dashboard's Performance & Activity
+// panel arrive late. Only the network part is parallel; the callers still walk
+// the results in their original order, so the numbers they accumulate cannot
+// shift.
+//
+// The cap exists so this stays true if the sheet count grows. Four concurrent
+// reads is nothing to Google's quota, forty would not be — and nobody adding an
+// FMS sheet is going to think about read limits.
+//
+// A sheet that fails resolves to null rather than rejecting, which preserves
+// the old per-sheet `catch { /* skip this sheet */ }`: one unreadable or
+// unshared spreadsheet must not blank the whole report.
+const FMS_SHEET_FETCH_CONCURRENCY = 5;
+
+async function fmsFetchRanges(sheetsApi, requests) {
+  const out = new Array(requests.length).fill(null);
+  for (let i = 0; i < requests.length; i += FMS_SHEET_FETCH_CONCURRENCY) {
+    const batch = requests.slice(i, i + FMS_SHEET_FETCH_CONCURRENCY);
+    await Promise.all(batch.map(async (r, j) => {
+      if (!r) return;
+      try {
+        const resp = await sheetsApi.spreadsheets.values.get({
+          spreadsheetId: r.spreadsheetId, range: r.range });
+        out[i + j] = resp.data.values || [];
+      } catch (e) { out[i + j] = null; }
+    }));
+  }
+  return out;
+}
+
 // step_id -> user ids. Deliberately does NOT join users, because the caller it
 // replaces (/api/mis/all) did not either: a doer row whose user has since been
 // deleted still counts there, and a join would silently drop it.
@@ -2569,25 +2603,30 @@ app.get('/api/mis/all', requireAuth, requireMisViewer, async (req, res) => {
           const doerIdsByStep = await fmsDoerIdsByStep(
             [...stepsBySheet.values()].flat().map(s => s.id));
 
-          for (const sheet of allSheets) {
+          // Work out every sheet's range first, then fetch them together. The
+          // accumulation below still runs one sheet at a time, in the original
+          // order — only the waiting is shared.
+          const plans = allSheets.map(sheet => {
             const steps = stepsBySheet.get(sheet.id) || [];
-            if (!steps.length) continue;
-            // Doers per step
-            for (const step of steps) {
-              step.doerIds = doerIdsByStep.get(step.id) || [];
-            }
+            if (!steps.length) return null;
+            for (const step of steps) step.doerIds = doerIdsByStep.get(step.id) || [];
+            const allCols = steps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)]).filter(x => x >= 0);
+            if (!allCols.length) return null;
+            return {
+              sheet, steps,
+              headerRowIdx: (sheet.header_row || 1) - 1,
+              spreadsheetId: extractSpreadsheetId(sheet.sheet_id),
+              range: `${sheet.sheet_name || 'Sheet1'}!A:${idxToCol(Math.max(...allCols))}`,
+            };
+          });
+          const fetched = await fmsFetchRanges(sheetsApi, plans);
+
+          for (let si = 0; si < plans.length; si++) {
+            const plan = plans[si];
+            if (!plan || !fetched[si]) continue;   // no steps, no columns, or the fetch failed
+            const { steps, headerRowIdx } = plan;
             try {
-              const spreadsheetId = extractSpreadsheetId(sheet.sheet_id);
-              const tabName = sheet.sheet_name || 'Sheet1';
-              const headerRowIdx = (sheet.header_row || 1) - 1;
-              const allCols = steps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)]).filter(x => x >= 0);
-              if (!allCols.length) continue;
-              const maxCol = Math.max(...allCols);
-              const lastCol = idxToCol(maxCol);
-              const range = `${tabName}!A:${lastCol}`;
-              const response = await sheetsApi.spreadsheets.values.get({ spreadsheetId, range });
-              const allRowsData = response.data.values || [];
-              const dataRows = allRowsData.slice(headerRowIdx + 1);
+              const dataRows = fetched[si].slice(headerRowIdx + 1);
               for (const step of steps) {
                 if (!step.doerIds.length) continue;
                 const planIdx = colToIdx(step.plan_col);
