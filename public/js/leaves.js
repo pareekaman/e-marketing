@@ -94,6 +94,35 @@ function lvClearFilters() {
   renderLeaves();
 }
 
+// A long task description is shown as its first 50 words with a "Read more".
+// The full text is always in the DOM — this hides it, it never shortens it.
+// (Descriptions used to be cut to 500 characters by the server before saving,
+// so the rest was simply gone. That is fixed; shortening belongs here.)
+const LV_DESC_PREVIEW_WORDS = 50;
+let _lvDescSeq = 0;
+
+function lvDescHtml(text){
+  const full = String(text || '');
+  const words = full.trim().split(/\s+/);
+  if (words.length <= LV_DESC_PREVIEW_WORDS) return dtEscape(full);
+  const short = words.slice(0, LV_DESC_PREVIEW_WORDS).join(' ');
+  const id = 'lvd' + (++_lvDescSeq);
+  return `<span id="${id}-s">${dtEscape(short)}… </span>` +
+         `<span id="${id}-f" style="display:none">${dtEscape(full)} </span>` +
+         `<button type="button" class="lv-desc-more" onclick="lvToggleDesc('${id}',this)">Read more</button>`;
+}
+
+// Toggles one description between its preview and its full text.
+function lvToggleDesc(id, btn){
+  const s = document.getElementById(id + '-s');
+  const f = document.getElementById(id + '-f');
+  if (!s || !f) return;
+  const open = f.style.display !== 'none';
+  s.style.display = open ? '' : 'none';
+  f.style.display = open ? 'none' : '';
+  btn.textContent = open ? 'Read more' : 'Show less';
+}
+
 // Client-wise work breakdown for extra_working requests (empty for legacy rows without entries)
 function lvExtraBreakdownHtml(r){
   if (r.leave_type !== 'extra_working') return '';
@@ -106,7 +135,7 @@ function lvExtraBreakdownHtml(r){
       d.entries.map(e =>
         `<div class="lv-extra-bd-line">• ${dtEscape(e.client || '')}` +
         (e.department ? ` <span style="color:#64748b">[${dtEscape(e.department)}]</span>` : '') +
-        ` — ${dtEscape(e.description || '')} <b>(${dtFmtWorkDur(e)})</b></div>`
+        ` — ${lvDescHtml(e.description)} <b>(${dtFmtWorkDur(e)})</b></div>`
       ).join('')
     );
   }

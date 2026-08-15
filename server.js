@@ -7593,6 +7593,11 @@ app.get('/api/leaves/pending-count', requireAuth, async (req, res) => {
 });
 
 // Apply for leave
+// Upper bound on one Extra Working task description. Generous on purpose:
+// the reason column is TEXT (65,535), and the point of the limit is to stop a
+// runaway paste, not to shape what someone writes about their own work.
+const EXTRA_WORK_DESC_MAX = 5000;
+
 app.post('/api/leaves', requireAuth, async (req, res) => {
   try {
     const { leave_type, dates, reason } = req.body;
@@ -7626,7 +7631,22 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
           for (const e of d.entries) {
             const client = String((e && e.client) || '').trim().slice(0, 120);
             const department = String((e && e.department) || '').trim().slice(0, 120);
-            const description = String((e && e.description) || '').trim().slice(0, 500);
+            // Stored in full. This used to be .slice(0, 500), which cut long
+            // entries mid-word on the way in — the text never reached the
+            // database and nothing said so, so the person who wrote it only
+            // found out when they read their own approval row back. The list
+            // view now shows the first 50 words with a "Read more", which is
+            // where shortening belongs: in the display, not in the data.
+            //
+            // The remaining cap is a guard against a runaway paste, and it
+            // REFUSES rather than trims — silent truncation is the bug being
+            // fixed here, so it must not come back in a larger size.
+            const description = String((e && e.description) || '').trim();
+            if (description.length > EXTRA_WORK_DESC_MAX) {
+              return res.status(400).json({
+                error: `Description for ${e && e.client ? String(e.client).trim() : 'a client'} on ${date} is ${description.length} characters — the limit is ${EXTRA_WORK_DESC_MAX}. Please shorten it.`,
+              });
+            }
             const rawMin = e && e.minutes;
             const hasMin = rawMin !== undefined && rawMin !== null && rawMin !== '';
             const min = hasMin ? parseInt(rawMin, 10) : null;
