@@ -44,7 +44,14 @@ public/signature.jpeg
 whatsapp-message-formats.pdf
 code-review-findings.pdf
 
-# Python bytecode. db.py (a standalone Flask DB browser, no part of this app)
-# is run locally from time to time and leaves these behind.
+# Python bytecode. local/db.py (a standalone Flask DB browser, no part of this
+# app) is run from time to time and leaves these behind.
 __pycache__/
 *.pyc
+
+# Personal working files — tools, notes and documents that are not part of the
+# app and never ship. Kept in one folder so the repo root stays readable:
+# right now local/db.py (Flask DB browser), the architecture PDF, and a code
+# extract. Nothing here is required by the app — db.py reads ../.env, which is
+# the only path that points back out.
+local/
