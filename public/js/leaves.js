@@ -101,8 +101,37 @@ function lvClearFilters() {
 const LV_DESC_PREVIEW_WORDS = 50;
 let _lvDescSeq = 0;
 
+// Descriptions written before the form's field became a <textarea> lost their
+// line breaks at paste time — a single-line <input> strips them — so a pasted
+// list is stored as one long run of text. This puts the breaks back for DISPLAY
+// only; the stored text is never modified.
+//
+// It runs ONLY on text that contains no newline at all. The moment an author
+// has given real breaks, theirs are the ones that count and this stays out of
+// the way — which also means it stops applying by itself as older entries are
+// replaced, rather than needing to be removed later.
+//
+// Three signals, in order of how much they can be trusted:
+//   · a run of two or more spaces — this is what a collapsed blank line leaves
+//     behind, so it is evidence rather than a guess
+//   · " - " — a dash with spaces around it. These descriptions use "—" for real
+//     dashes, so a spaced hyphen is a bullet
+//   · " 12. " — a one or two digit number followed by a full stop. Written as a
+//     lookahead requiring a space after the stop, so "3,258 lines" and
+//     "7 commits." are left alone
+function lvRecoverBreaks(text){
+  const s = String(text || '');
+  if (s.indexOf('\n') !== -1) return s;      // the author's own breaks win
+  return s
+    .replace(/ {2,}/g, '\n')
+    .replace(/\s+-\s+/g, '\n- ')
+    .replace(/\s(?=\d{1,2}\.\s)/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function lvDescHtml(text){
-  const full = String(text || '');
+  const full = lvRecoverBreaks(text);
   // Walk the words to find where the 50th one ENDS, then slice the original
   // string there. Splitting on whitespace and rejoining with spaces would be
   // simpler and would flatten the writer's line breaks — people paste numbered
