@@ -17,6 +17,42 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.SESSION_SECRET || 'taskmanager_secret_2026';
 
 const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
+// ══════════════════════════════════════════════════════
+// SECURITY HEADERS
+// ══════════════════════════════════════════════════════
+// Placed before express.static so the static files carry the headers too.
+//
+// Two of helmet's defaults are switched OFF deliberately, because leaving them
+// on would break this app outright rather than protect it:
+//
+//   contentSecurityPolicy — app.html carries ~2,250 inline style="" attributes,
+//     inline onclick handlers throughout, one inline <script>, plus three
+//     <style> blocks, and it loads Chart.js and jsPDF from cdnjs and Inter from
+//     Google Fonts. A default CSP blocks every one of those, so the page would
+//     render unstyled and no button would work. A real CSP here is not a config
+//     change, it is a refactor: the inline handlers have to become addEventListener
+//     calls first. Worth doing, but not as a one-line "hardening" step.
+//
+//   crossOriginEmbedderPolicy — helmet's default (require-corp) blocks the cdnjs
+//     and Google Fonts loads, which are exactly what this page needs.
+//
+// What stays on is the part that pays here: X-Frame-Options (helmet's default
+// SAMEORIGIN), which stops the clickjacking case — another site framing this app
+// and tricking a logged-in admin into clicking through it — plus nosniff, HSTS,
+// Referrer-Policy: no-referrer, and removal of the X-Powered-By: Express banner.
+//
+// SAMEORIGIN rather than DENY on purpose. DENY was checked against the three
+// offer-letter iframes first; all three are filled with srcdoc, never a
+// same-origin src, so DENY would not break them today. It is left at SAMEORIGIN
+// anyway because the threat DENY additionally covers requires an attacker to
+// already be serving content from this origin, and SAMEORIGIN cannot break a
+// legitimate same-origin iframe that someone adds later.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
