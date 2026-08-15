@@ -1857,7 +1857,7 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
 // Task routes now live in routes/tasks.js. canSeeTask and canTouchSubtasks
 // stay here on purpose — the task-comments routes below call canSeeTask —
 // and are injected back into the module.
-require('./routes/tasks')(app, {
+require('./backend/routes/tasks')(app, {
   db,
   requireAuth,
   requireAdmin,
@@ -3167,7 +3167,7 @@ app.delete('/api/comments/:id', requireAuth, async (req, res) => {
 // FMS routes now live in routes/fms.js. The call sits exactly
 // where the routes did, so every binding passed in is in scope at the same
 // point it always was.
-require('./routes/fms')(app, {
+require('./backend/routes/fms')(app, {
   db,
   requireAuth,
   requireAdmin,
@@ -6286,7 +6286,7 @@ function canEditCreditCards(session) {
 // CREDIT CARDS routes now live in routes/credit-cards.js. The call sits exactly
 // where the routes did, so every binding passed in is in scope at the same
 // point it always was.
-require('./routes/credit-cards')(app, {
+require('./backend/routes/credit-cards')(app, {
   db,
   requireAuth,
   archiveDeleted,
@@ -6380,7 +6380,7 @@ async function seedPaymentRoleIds() {
 // Payment Requests routes now live in routes/payment-requests.js. The call
 // sits where the main block did, so every binding passed in is in scope at
 // the same point it always was.
-require('./routes/payment-requests')(app, {
+require('./backend/routes/payment-requests')(app, {
   db,
   requireAuth,
   requireAdmin,
@@ -6593,7 +6593,7 @@ app.delete('/api/client-portal/feedback/:id', requireAuth, async (req, res) => {
 // CLIENT MASTER routes now live in routes/clients.js. The call sits exactly
 // where the routes did, so every binding passed in is in scope at the same
 // point it always was.
-require('./routes/clients')(app, {
+require('./backend/routes/clients')(app, {
   db,
   express,
   bcrypt,
@@ -8130,7 +8130,7 @@ async function sendMeetingNotification(meetingId, action) {
 // driven by the pre-meeting reminder cron above. The call sits exactly where
 // the routes did, so every binding passed in is in scope at the same point it
 // always was.
-require('./routes/meetings')(app, {
+require('./backend/routes/meetings')(app, {
   db,
   requireAuth,
   buildMeetingSlots,
@@ -8188,7 +8188,7 @@ app.delete('/api/day-plan-items/:id', requireAuth, async (req, res) => {
 // INVENTORY MANAGEMENT routes now live in routes/inventory.js. The call sits exactly
 // where the routes did, so every binding passed in is in scope at the same
 // point it always was.
-require('./routes/inventory')(app, {
+require('./backend/routes/inventory')(app, {
   db,
   requireAuth,
   userCanDo,
@@ -8199,7 +8199,7 @@ require('./routes/inventory')(app, {
 // HRM routes now live in routes/hrm.js. The call sits exactly
 // where the routes did, so every binding passed in is in scope at the same
 // point it always was.
-require('./routes/hrm')(app, {
+require('./backend/routes/hrm')(app, {
   db,
   requireAuth,
   requireAdmin,

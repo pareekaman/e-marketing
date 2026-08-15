@@ -156,7 +156,7 @@ async function _hrmDriveClient() {
     // Vercel sometimes double-escapes \n in private key — fix it
     if (creds.private_key) creds.private_key = creds.private_key.replace(/\\n/g, '\n');
   } else {
-    creds = require('../credentials.json');
+    creds = require('../../credentials.json');
   }
   const auth = new google.auth.GoogleAuth({
     credentials: creds,
@@ -577,7 +577,7 @@ function _hrmSignBuffer() { try { return _HRM_SIGN_SRC ? Buffer.from(_HRM_SIGN_S
 // (offer-letter-pdf.js): letterhead on every page, signature below the
 // sign-off, real page breaks. No browser involved.
 async function hrmRenderFinalOfferPdfBuffer({ name, position, joiningFmt, salary, today, joiningDate, probationMonths }) {
-  const { renderOfferPdfFromHtml } = require('../offer-letter-pdf');
+  const { renderOfferPdfFromHtml } = require('../../offer-letter-pdf');
   const html = hrmBuildFinalOfferHtml(name || '', position || '', joiningFmt || '', salary || '', today || '', { inlineHeader: false, joiningDate, probationMonths });
   return renderOfferPdfFromHtml(html, { logoBuffer: _hrmLogoBuffer(), signBuffer: _hrmSignBuffer() });
 }
@@ -586,7 +586,7 @@ async function hrmRenderFinalOfferPdfBuffer({ name, position, joiningFmt, salary
 // signBuffer: the preliminary letter has no signature block (it ends at
 // "For / e-Marketing (a unit of Jai Marketing)").
 async function hrmRenderPrelimOfferPdfBuffer({ name, position, joiningFmt, today }) {
-  const { renderOfferPdfFromHtml } = require('../offer-letter-pdf');
+  const { renderOfferPdfFromHtml } = require('../../offer-letter-pdf');
   const html = hrmBuildPrelimOfferHtmlPdfkit(name || '', position || '', joiningFmt || '', today || '');
   // The preliminary letter is short — spread it down the page so it doesn't sit
   // cramped at the top with a big empty bottom. Final letter keeps default spacing.
@@ -1573,7 +1573,7 @@ app.get('/api/hrm/offer-template-preview', requireAuth, async (req, res) => {
   // Always return service account email so user knows what to share with
   let serviceAccountEmail = null;
   try {
-    const raw = process.env.GOOGLE_CREDENTIALS ? JSON.parse(process.env.GOOGLE_CREDENTIALS) : require('../credentials.json');
+    const raw = process.env.GOOGLE_CREDENTIALS ? JSON.parse(process.env.GOOGLE_CREDENTIALS) : require('../../credentials.json');
     serviceAccountEmail = raw.client_email || null;
   } catch {}
 
