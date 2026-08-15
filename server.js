@@ -221,6 +221,22 @@ const _startupMigrationsPromise = (async () => {
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 
+  // Failed-login counter, keyed by the email that was TRIED — including
+  // addresses that belong to nobody. Counting those too is deliberate: locking
+  // only real accounts would tell an attacker which emails exist.
+  //
+  // It lives in the database rather than in memory because this app runs
+  // serverless. Each request can land on a different Vercel instance and
+  // instances are torn down freely, so an in-process counter would reset
+  // constantly and an attacker could simply keep trying until they hit a cold
+  // one. The password-reset OTP already counts attempts this way.
+  await sa(`CREATE TABLE IF NOT EXISTS login_attempts (
+    email VARCHAR(255) NOT NULL PRIMARY KEY,
+    attempts INT NOT NULL DEFAULT 0,
+    locked_until DATETIME NULL DEFAULT NULL,
+    last_attempt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
   await sa(`CREATE TABLE IF NOT EXISTS delegation_tasks (
     id INT AUTO_INCREMENT PRIMARY KEY,
     description TEXT NOT NULL,
@@ -1468,13 +1484,88 @@ app.get('/api/setup', async (req, res) => {
   }
 });
 
+// ── Failed-login throttle ────────────────────────────────────────────────
+// Ten wrong passwords for one email buys a fifteen-minute pause. Deliberately
+// lenient: someone fat-fingering their own password a few times, or a shared
+// machine where two people try the wrong account, must never be locked out —
+// this is here to stop a script trying thousands, not to punish typing.
+//
+// Everything below FAILS OPEN. If any of these queries throws, login proceeds
+// as if the throttle did not exist. A database hiccup must not lock the whole
+// company out of their own task manager; the worst case of failing open is
+// that a brute-force window stays open a little longer.
+const LOGIN_MAX_ATTEMPTS = 10;
+const LOGIN_LOCK_MINUTES = 15;
+// Attempts older than the lock window are stale and start again from zero, so
+// one wrong password a week never accumulates into a lockout.
+const LOGIN_ATTEMPT_WINDOW_MINUTES = 15;
+
+const loginKey = email => String(email || '').trim().toLowerCase();
+
+// Returns minutes remaining if this email is currently locked, else 0.
+async function loginLockRemaining(email) {
+  const key = loginKey(email);
+  if (!key) return 0;
+  try {
+    const [[row]] = await db.query(
+      `SELECT locked_until, TIMESTAMPDIFF(MINUTE, NOW(), locked_until) AS mins
+         FROM login_attempts WHERE email=?`, [key]);
+    if (!row || !row.locked_until) return 0;
+    return row.mins > 0 ? row.mins : 0;
+  } catch (e) { return 0; }
+}
+
+async function noteLoginFailure(email) {
+  const key = loginKey(email);
+  if (!key) return;
+  try {
+    // One statement, so two simultaneous attempts cannot both read "9" and both
+    // write "10". The first CASE restarts the count when the previous attempt
+    // has aged out of the window.
+    //
+    // ⚠️ The second assignment reads `attempts`, NOT `attempts + 1`. MySQL
+    // evaluates ON DUPLICATE KEY UPDATE assignments left to right, so by the
+    // time locked_until is computed, attempts already holds the value just
+    // written. Writing `attempts + 1` here counts the same failure twice and
+    // trips the lock one attempt early — which is exactly what the test caught.
+    await db.query(
+      `INSERT INTO login_attempts (email, attempts, last_attempt)
+       VALUES (?, 1, NOW())
+       ON DUPLICATE KEY UPDATE
+         attempts = CASE WHEN last_attempt < NOW() - INTERVAL ? MINUTE
+                         THEN 1 ELSE attempts + 1 END,
+         locked_until = CASE WHEN attempts >= ?
+                             THEN NOW() + INTERVAL ? MINUTE ELSE locked_until END,
+         last_attempt = NOW()`,
+      [key, LOGIN_ATTEMPT_WINDOW_MINUTES, LOGIN_MAX_ATTEMPTS, LOGIN_LOCK_MINUTES]);
+  } catch (e) { /* fail open — see the note above */ }
+}
+
+async function clearLoginFailures(email) {
+  const key = loginKey(email);
+  if (!key) return;
+  try { await db.query('DELETE FROM login_attempts WHERE email=?', [key]); }
+  catch (e) { /* fail open */ }
+}
+
 app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+
+    const lockedFor = await loginLockRemaining(email);
+    if (lockedFor > 0) {
+      return res.status(429).json({
+        error: `Too many failed attempts. Try again in ${lockedFor} minute${lockedFor === 1 ? '' : 's'}.`,
+      });
+    }
+
     const [rows] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
     const user = rows[0];
-    if (!user || !bcrypt.compareSync(password, user.password))
+    if (!user || !bcrypt.compareSync(password, user.password)) {
+      await noteLoginFailure(email);
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    await clearLoginFailures(email);
 
     // Issue JWT token
     const token = jwt.sign(
