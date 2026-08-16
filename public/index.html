@@ -27,8 +27,7 @@
       radial-gradient(900px circle at 100% 10%, rgba(243,156,18,.16), transparent 42%),
       linear-gradient(160deg,#fdf6ec 0%,#fbeed9 55%,#fbe4c4 100%);
     min-height:100vh;
-    display:flex;align-items:center;justify-content:center;
-    position:relative;overflow:hidden;
+    position:relative;overflow-x:hidden;
   }
 
   /* Subtle dot-grid texture for depth */
@@ -64,6 +63,146 @@
 
   @keyframes bgFloat1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(30px,20px)} }
   @keyframes bgFloat2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-20px,-30px)} }
+
+  /* ── Split stage: illustration on the left, sign-in form on the right ── */
+  .split{
+    display:flex;
+    min-height:100vh;
+    position:relative;
+    z-index:1;
+  }
+  .art-panel{
+    flex:1 1 56%;
+    display:flex;align-items:center;justify-content:center;
+    padding:40px;
+    overflow:hidden;
+  }
+  .form-panel{
+    flex:0 0 44%;
+    display:flex;align-items:center;justify-content:center;
+    padding:40px 32px;
+    background:#fff;
+    box-shadow:-24px 0 70px -34px rgba(15,23,42,.28);
+  }
+
+  /* ── Mascots ── */
+  .mascots{
+    width:min(560px,100%);
+    height:auto;
+    display:block;
+    animation: cardIn .7s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  /* Each character bobs on its own rhythm so the group never moves as one block */
+  .mascot{ animation: mascotFloat 4s ease-in-out infinite; transform-origin:center bottom; }
+  .mascot--1{ animation-delay:0s;   }
+  .mascot--2{ animation-delay:.5s;  }
+  .mascot--3{ animation-delay:1s;   }
+  .mascot--4{ animation-delay:1.5s; }
+  @keyframes mascotFloat {
+    0%,100% { transform:translateY(0);    }
+    50%     { transform:translateY(-9px); }
+  }
+
+  /* Pupils are moved by JS (see mascotEyes below); this only smooths the travel */
+  .pupil{ transition:transform .13s cubic-bezier(.4,0,.2,1); }
+
+  /* ── Password on screen: the mascots turn away and pull a face ──
+     `.is-hiding` is set on the svg by mascotPrivacy below. The turn lives on an
+     inner .turn group because .mascot already owns transform for its bob — two
+     animations on one transform would fight. */
+  .turn{
+    transform-box:fill-box;
+    transform-origin:50% 100%;      /* pivot on the floor, so they lean rather than slide */
+    transition:transform .34s cubic-bezier(.34,1.4,.64,1);
+  }
+  .mascots.is-hiding .mascot--1 .turn{ transform:rotate(-14deg); }
+  .mascots.is-hiding .mascot--2 .turn{ transform:rotate(-10deg); }
+  .mascots.is-hiding .mascot--3 .turn{ transform:rotate(-17deg); }
+  .mascots.is-hiding .mascot--4 .turn{ transform:rotate(-11deg); }
+
+  .eye-open,.mouth-happy{ transition:opacity .14s ease; }
+  .eye-lid,.mouth-upset{ opacity:0; transition:opacity .14s ease; }
+  .mascots.is-hiding .eye-open,
+  .mascots.is-hiding .mouth-happy{ opacity:0; }
+  .mascots.is-hiding .eye-lid,
+  .mascots.is-hiding .mouth-upset{ opacity:1; }
+
+  /* Caps Lock — a questioning head tilt, the other way from the turn-away.
+     :not(.is-hiding) so a revealed password always wins the .turn transform. */
+  .mascots.is-alert:not(.is-hiding) .mascot--3 .turn{ transform:rotate(9deg); }
+
+  /* Blink. Reuses the shut-eye arcs, but far quicker than the reveal cross-fade */
+  .mascot.is-blinking .eye-open{ opacity:0; }
+  .mascot.is-blinking .eye-lid { opacity:1; }
+  .mascot.is-blinking .eye-open,
+  .mascot.is-blinking .eye-lid { transition-duration:.07s; }
+
+  /* Rejected sign-in: the group flinches and the smiles drop */
+  .mascots.is-sad{ animation: mascotShake .5s cubic-bezier(.36,.07,.19,.97); }
+  .mascots.is-sad .mouth-happy{ opacity:0; }
+  .mascots.is-sad .mouth-upset{ opacity:1; }
+  @keyframes mascotShake {
+    10%,90%      { transform:translateX(-3px); }
+    20%,80%      { transform:translateX(5px);  }
+    30%,50%,70%  { transform:translateX(-7px); }
+    40%,60%      { transform:translateX(7px);  }
+  }
+
+  /* Accepted sign-in: one hop before the redirect */
+  .mascots.is-happy .mascot{ animation: mascotJump .5s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes mascotJump {
+    0%   { transform:translateY(0);     }
+    40%  { transform:translateY(-26px); }
+    70%  { transform:translateY(0);     }
+    85%  { transform:translateY(-8px);  }
+    100% { transform:translateY(0);     }
+  }
+
+  /* Caps Lock hint under a password field */
+  .caps-hint{
+    display:none;
+    align-items:center;gap:5px;
+    margin-top:6px;
+    font-size:11.5px;font-weight:600;
+    color:#b45309;
+  }
+  .caps-hint.show{ display:flex; }
+
+  @media (prefers-reduced-motion: reduce){
+    .mascot{ animation:none; }
+    .pupil,.turn{ transition:none; }
+    .eye-open,.eye-lid,.mouth-happy,.mouth-upset{ transition:none; }
+    .mascots.is-sad,.mascots.is-happy .mascot{ animation:none; }
+  }
+
+  /* On the wide layout the form sits directly on the white panel — no floating card */
+  @media (min-width:901px){
+    .login-wrap{
+      background:transparent;
+      backdrop-filter:none;-webkit-backdrop-filter:none;
+      border:none;
+      box-shadow:none;
+      padding:0;
+      width:100%;
+      max-width:380px;
+    }
+  }
+
+  /* Narrow screens stack: a smaller illustration on top, the glass card below */
+  @media (max-width:900px){
+    .split{ flex-direction:column; }
+    .art-panel{ flex:none; padding:26px 24px 0; }
+    .mascots{ width:min(330px,78%); }
+    /* On a short viewport the illustration would push the form off-screen */
+    @media (max-height:680px){ .art-panel{ display:none; } }
+    .form-panel{
+      flex:1;
+      background:transparent;
+      box-shadow:none;
+      padding:24px 18px 40px;
+    }
+    .login-wrap{ width:100%; max-width:420px; }
+  }
 
   /* ── Card ── */
   .login-wrap{
@@ -252,7 +391,95 @@
 </head>
 <body>
 <div class="bg-grid"></div>
-<div class="login-wrap">
+
+<div class="split">
+
+  <!-- ── Illustration panel ── -->
+  <div class="art-panel">
+    <svg class="mascots" viewBox="0 0 420 274" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <ellipse cx="205" cy="256" rx="186" ry="12" fill="#1e293b" opacity=".07"/>
+
+      <!-- Tall amber block -->
+      <g class="mascot mascot--1">
+        <g class="turn">
+          <rect x="118" y="68" width="98" height="182" rx="18" fill="#F39C12"/>
+          <g class="eye-open">
+            <circle cx="147" cy="112" r="10" fill="#fff"/>
+            <circle class="pupil" cx="147" cy="112" r="5" fill="#2E2A26"/>
+            <circle cx="187" cy="112" r="10" fill="#fff"/>
+            <circle class="pupil" cx="187" cy="112" r="5" fill="#2E2A26"/>
+          </g>
+          <g class="eye-lid" stroke="#2E2A26" stroke-width="3.5" stroke-linecap="round" fill="none">
+            <path d="M139 114 q8 -9 16 0"/>
+            <path d="M179 114 q8 -9 16 0"/>
+          </g>
+          <path class="mouth-happy" d="M158 138 q9 9 18 0" stroke="#2E2A26" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+          <path class="mouth-upset" d="M158 142 q9 -9 18 0" stroke="#2E2A26" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+        </g>
+      </g>
+
+      <!-- Charcoal block -->
+      <g class="mascot mascot--2">
+        <g class="turn">
+          <rect x="206" y="104" width="86" height="146" rx="10" fill="#2E2A26"/>
+          <g class="eye-open">
+            <circle cx="228" cy="146" r="9" fill="#fff"/>
+            <circle class="pupil" cx="228" cy="146" r="4.5" fill="#2E2A26"/>
+            <circle cx="270" cy="146" r="9" fill="#fff"/>
+            <circle class="pupil" cx="270" cy="146" r="4.5" fill="#2E2A26"/>
+          </g>
+          <g class="eye-lid" stroke="#fff" stroke-width="3.5" stroke-linecap="round" fill="none">
+            <path d="M221 148 q7 -8 14 0"/>
+            <path d="M263 148 q7 -8 14 0"/>
+          </g>
+          <path class="mouth-happy" d="M240 172 q9 8 18 0" stroke="#fff" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+          <path class="mouth-upset" d="M240 176 q9 -8 18 0" stroke="#fff" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+        </g>
+      </g>
+
+      <!-- Golden dome-top block -->
+      <g class="mascot mascot--3">
+        <g class="turn">
+          <path d="M282 250 V182 a46 46 0 0 1 92 0 V250 Z" fill="#FFC145"/>
+          <g class="eye-open">
+            <circle cx="305" cy="180" r="9" fill="#fff"/>
+            <circle class="pupil" cx="305" cy="180" r="4.5" fill="#2E2A26"/>
+            <circle cx="351" cy="180" r="9" fill="#fff"/>
+            <circle class="pupil" cx="351" cy="180" r="4.5" fill="#2E2A26"/>
+          </g>
+          <g class="eye-lid" stroke="#2E2A26" stroke-width="3.5" stroke-linecap="round" fill="none">
+            <path d="M298 182 q7 -8 14 0"/>
+            <path d="M344 182 q7 -8 14 0"/>
+          </g>
+          <path class="mouth-happy" d="M319 206 q9 8 18 0" stroke="#2E2A26" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+          <path class="mouth-upset" d="M319 210 q9 -8 18 0" stroke="#2E2A26" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+        </g>
+      </g>
+
+      <!-- Orange dome, front left -->
+      <g class="mascot mascot--4">
+        <g class="turn">
+          <path d="M18 250 a78 78 0 0 1 156 0 Z" fill="#FF8A3D"/>
+          <g class="eye-open">
+            <circle cx="74" cy="212" r="10" fill="#fff"/>
+            <circle class="pupil" cx="74" cy="212" r="5" fill="#2E2A26"/>
+            <circle cx="118" cy="212" r="10" fill="#fff"/>
+            <circle class="pupil" cx="118" cy="212" r="5" fill="#2E2A26"/>
+          </g>
+          <g class="eye-lid" stroke="#2E2A26" stroke-width="3.5" stroke-linecap="round" fill="none">
+            <path d="M66 214 q8 -9 16 0"/>
+            <path d="M110 214 q8 -9 16 0"/>
+          </g>
+          <path class="mouth-happy" d="M87 236 q9 8 18 0" stroke="#2E2A26" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+          <path class="mouth-upset" d="M87 240 q9 -8 18 0" stroke="#2E2A26" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+        </g>
+      </g>
+    </svg>
+  </div>
+
+  <!-- ── Sign-in panel ── -->
+  <div class="form-panel">
+  <div class="login-wrap">
 
   <!-- Logo -->
   <div class="logo-section">
@@ -295,6 +522,7 @@
         <svg id="togglePassIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
       </button>
     </div>
+    <div class="caps-hint" id="capsHint">⚠ Caps Lock is on</div>
   </div>
 
   <button class="btn-login" onclick="login()">Sign In →</button>
@@ -338,6 +566,7 @@
             <svg id="toggleResetPassIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
         </div>
+        <div class="caps-hint" id="capsHintReset">⚠ Caps Lock is on</div>
       </div>
       <button class="btn-login" id="resetBtn" onclick="doResetPassword()">Reset Password →</button>
     </div>
@@ -349,9 +578,147 @@
   <div class="footer-text">
     <strong>E-Marketing Task Manager</strong> &nbsp;·&nbsp; Grow Your Business
   </div>
-</div>
+  </div><!-- /login-wrap -->
+  </div><!-- /form-panel -->
+
+</div><!-- /split -->
 
 <script>
+// ── Mascots: every pupil watches the pointer ──
+// The pupils are plain <circle>s; their resting cx/cy are the eye centres and JS
+// only ever adds a CSS transform on top, so nothing here disturbs the SVG itself.
+(function mascotEyes(){
+  const svg = document.querySelector('.mascots');
+  if (!svg) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const VB_W = 420, VB_H = 274;   // must match the svg's viewBox
+  const MAX  = 4.2;               // how far a pupil may leave its eye centre, in user units
+
+  const pupils = Array.from(svg.querySelectorAll('.pupil')).map(el => ({
+    el,
+    x: parseFloat(el.getAttribute('cx')),
+    y: parseFloat(el.getAttribute('cy'))
+  }));
+
+  let frame = null;
+  function look(clientX, clientY){
+    frame = null;
+    const r = svg.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    // Pointer position in the svg's own coordinate space
+    const ux = (clientX - r.left) / r.width  * VB_W;
+    const uy = (clientY - r.top)  / r.height * VB_H;
+    for (const p of pupils){
+      const dx = ux - p.x, dy = uy - p.y;
+      const dist = Math.hypot(dx, dy);
+      // Clamp to MAX, but a pointer sitting right on an eye pulls the pupil less than fully
+      const k = dist > MAX ? MAX / dist : 1;
+      p.el.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
+    }
+  }
+
+  window.addEventListener('mousemove', e => {
+    if (frame) cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => look(e.clientX, e.clientY));
+  });
+  // Pointer gone from the window — look straight ahead again
+  document.addEventListener('mouseleave', () => {
+    if (frame) { cancelAnimationFrame(frame); frame = null; }
+    for (const p of pupils) p.el.style.transform = 'translate(0px, 0px)';
+  });
+
+  // A touch device never fires mousemove, so the eyes would sit frozen forever.
+  // Aiming at whichever field just took focus gives them something to follow
+  // there; on a desktop the next mouse move simply takes over again.
+  document.querySelectorAll('input').forEach(input => {
+    input.addEventListener('focus', () => {
+      const b = input.getBoundingClientRect();
+      look(b.left + b.width * 0.28, b.top + b.height / 2);
+    });
+  });
+})();
+
+// ── Mascots: an occasional blink ──
+// Each character runs its own timer, so they never blink in unison.
+(function mascotBlink(){
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  document.querySelectorAll('.mascot').forEach(m => {
+    (function schedule(){
+      setTimeout(() => {
+        m.classList.add('is-blinking');
+        setTimeout(() => { m.classList.remove('is-blinking'); schedule(); }, 130);
+      }, 3200 + Math.random() * 3800);
+    })();
+  });
+})();
+
+// ── Caps Lock warning ──
+// The commonest reason a correct-looking password is rejected. Wired to both
+// password fields, each with its own hint line.
+(function capsLockHint(){
+  const svg = document.querySelector('.mascots');
+  [['password','capsHint'], ['resetNewPass','capsHintReset']].forEach(pair => {
+    const field = document.getElementById(pair[0]);
+    const hint  = document.getElementById(pair[1]);
+    if (!field || !hint) return;
+
+    function check(e){
+      // Only a real key event carries modifier state
+      const on = typeof e.getModifierState === 'function' && e.getModifierState('CapsLock');
+      hint.classList.toggle('show', on);
+      if (svg) svg.classList.toggle('is-alert', on);
+    }
+    field.addEventListener('keydown', check);
+    field.addEventListener('keyup',   check);
+    field.addEventListener('blur', () => {
+      hint.classList.remove('show');
+      if (svg) svg.classList.remove('is-alert');
+    });
+  });
+})();
+
+// ── Mascot reactions to a sign-in attempt ──
+// Globals on purpose — every form handler in this file is one, and there is no
+// module system here.
+function mascotOops(){
+  const svg = document.querySelector('.mascots');
+  if (!svg) return;
+  svg.classList.remove('is-sad');
+  svg.getBoundingClientRect();          // reflow, so a repeat failure shakes again
+  svg.classList.add('is-sad');
+  setTimeout(() => svg.classList.remove('is-sad'), 1200);
+}
+function mascotCheer(){
+  const svg = document.querySelector('.mascots');
+  if (svg) svg.classList.add('is-happy');
+}
+
+// ── Mascots: they turn away while a password is readable on screen ──
+// Masked dots are nothing to look away from, so the trigger is the reveal, not
+// focus. The show/hide buttons work by flipping the input's `type` between
+// 'password' and 'text', so watching that attribute needs no change to them.
+// Covers both password fields — the sign-in one and the reset flow's new-password
+// one — so the behaviour doesn't vanish halfway through a reset.
+(function mascotPrivacy(){
+  const svg = document.querySelector('.mascots');
+  if (!svg) return;
+
+  const fields = ['password','resetNewPass']
+    .map(id => document.getElementById(id))
+    .filter(Boolean);
+  if (!fields.length) return;
+
+  function update(){
+    const revealed = fields.some(f => f.type === 'text');
+    svg.classList.toggle('is-hiding', revealed);
+  }
+
+  const watcher = new MutationObserver(update);
+  fields.forEach(f => watcher.observe(f, { attributes:true, attributeFilter:['type'] }));
+  update();
+})();
+
 // Where to land after login. ?next= carries a deep link (e.g. /app?page=inventory)
 // that app.html bounced here when the visitor wasn't signed in.
 // Only ever an /app path of our own: anything else and this becomes an open
@@ -390,17 +757,20 @@ async function login(){
   const password=document.getElementById('password').value;
   const err=document.getElementById('err');
   err.style.display='none';
-  if(!email||!password){err.textContent='Please fill all fields';err.style.display='block';return;}
+  if(!email||!password){err.textContent='Please fill all fields';err.style.display='block';mascotOops();return;}
   try{
     const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({email,password})});
     const d=await r.json();
-    if(!r.ok){err.textContent=d.error||'Login failed';err.style.display='block';return;}
+    if(!r.ok){err.textContent=d.error||'Login failed';err.style.display='block';mascotOops();return;}
     // Also save the token to localStorage as a backup, in case cookies get blocked
     if(d.token) localStorage.setItem('authToken', d.token);
     // Client logins land on the dedicated /client page; team members on /app
-    // (or whatever deep link brought them here).
-    window.location.replace(d.role === 'client' ? '/client' : nextTarget());
-  }catch(e){err.textContent='Server error. Try again.';err.style.display='block';}
+    // (or whatever deep link brought them here). Hold the redirect for one hop
+    // of the mascots' celebration — short enough not to feel like a delay.
+    const dest = d.role === 'client' ? '/client' : nextTarget();
+    mascotCheer();
+    setTimeout(() => window.location.replace(dest), 420);
+  }catch(e){err.textContent='Server error. Try again.';err.style.display='block';mascotOops();}
 }
 
 // Show/hide toggle for the reset-flow new-password field (mirrors togglePassword).
@@ -428,6 +798,7 @@ function _showOk(msg){
 function _showErr(msg){
   const el=document.getElementById('err'); el.textContent=msg; el.style.display='block';
   document.getElementById('okmsg').style.display='none';
+  mascotOops();
 }
 function showReset(){
   _clearMsgs();
