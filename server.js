@@ -125,22 +125,55 @@ const _rawPool = mysql.createPool(dbConfig);
 // Wrap pool with retry logic for "max_user_connections" errors
 // Shared hosting keeps throwing this error when Vercel fires concurrent requests.
 // Auto-retry helps recover gracefully without showing errors to users.
+//
+// Six attempts, not three. Every deployment — production AND each preview,
+// which reads the same DB_* variables — wakes instances that each hold a
+// connection, and the shared host caps them at around ten. On 2026-08-15 a
+// run of deploys crossed that line and the whole app stopped: three attempts
+// over roughly a second gave up while the connections were still clearing.
+// The backoff below spans about eleven seconds, which is long enough for
+// idle connections to be released (idleTimeout is 30s, but instances shed
+// them sooner under pressure) and still short enough that a request does not
+// appear to hang forever.
+const DB_MAX_RETRIES = 6;
+
+function _isConnLimitError(err) {
+  return !!err && (
+    (err.message && (err.message.includes('max_user_connections') ||
+                     err.message.includes('Too many connections'))) ||
+    err.code === 'ER_USER_LIMIT_REACHED' ||
+    err.code === 'ER_CON_COUNT_ERROR'
+  );
+}
+
 const db = {
   async query(sql, params) {
-    const maxRetries = 3;
+    const maxRetries = DB_MAX_RETRIES;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         return await _rawPool.query(sql, params);
       } catch (err) {
-        const isConnLimit = err.message && (
-          err.message.includes('max_user_connections') ||
-          err.message.includes('Too many connections') ||
-          err.code === 'ER_USER_LIMIT_REACHED' ||
-          err.code === 'ER_CON_COUNT_ERROR'
-        );
+        const isConnLimit = _isConnLimitError(err);
+        if (isConnLimit && attempt >= maxRetries) {
+          // Out of retries. Replace the driver's text before it reaches a
+          // route, because most routes answer with err.message and this one
+          // names the database user — "User lpcliimp_eMarketing already has
+          // more than 'max_user_connections' active connections" was shown on
+          // the login screen to anyone who tried to sign in that afternoon.
+          const clean = new Error('Server is busy right now — please try again in a moment.');
+          clean.code = err.code;
+          clean.cause = err;          // the real error stays available for logs
+          clean.isConnLimit = true;
+          console.error('  ⚠️ DB connection limit — gave up after', maxRetries, 'attempts:', err.message);
+          throw clean;
+        }
         if (isConnLimit && attempt < maxRetries) {
-          // Wait progressively longer before retry: 200ms, 500ms, 1000ms
-          const wait = attempt * 250 + Math.random() * 250;
+          // Roughly 0.4s, 0.8s, 1.6s, 3.2s, 6.4s — doubling rather than the
+          // old linear step, so the early retries stay quick for a brief
+          // spike while the later ones wait long enough to outlast a real
+          // one. The random part spreads out simultaneous requests instead of
+          // having them all come back at the same instant and collide again.
+          const wait = Math.min(200 * Math.pow(2, attempt), 6400) + Math.random() * 300;
           console.warn(`  ⚠️ DB conn limit hit, retry ${attempt}/${maxRetries} after ${Math.round(wait)}ms`);
           await new Promise(r => setTimeout(r, wait));
           continue;
