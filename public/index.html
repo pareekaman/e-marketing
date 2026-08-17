@@ -158,6 +158,144 @@
     100% { transform:translateY(0);     }
   }
 
+  /* ── Verification code: one box per digit ── */
+  .otp-boxes{ display:flex; gap:8px; }
+  .otp-digit{
+    flex:1 1 0;
+    width:auto;min-width:0;      /* beats the width:100% every input on this page gets */
+    padding:12px 0;
+    text-align:center;
+    font-size:19px;font-weight:700;
+    color:#1e293b;
+    border:1.5px solid #e2e8f0;
+    border-radius:11px;
+    background:#fafafa;
+    caret-color:#F39C12;
+  }
+  .otp-digit:focus{
+    border-color:#F39C12;
+    box-shadow:0 0 0 4px rgba(243,156,18,.14);
+    background:#fff;
+  }
+  /* All six filled — the row reads as one complete code */
+  .otp-boxes.is-full .otp-digit{ border-color:#F39C12; background:#fff; }
+
+  /* ── Verifying: the six boxes collapse onto a point and orbit it ──
+     Driven by otpOrbit() below, which also FLIPs each box from its place in
+     the row so they visibly fly in rather than snapping to the ring. */
+  .otp-stage{ position:relative; }
+  .otp-ring{
+    position:absolute;left:50%;top:50%;
+    width:170px;height:170px;margin:-85px 0 0 -85px;
+    opacity:0;
+    transition:opacity .3s ease;
+    pointer-events:none;
+  }
+  .otp-stage.is-orbiting{ height:180px; }
+  .otp-stage.is-orbiting .otp-ring{ opacity:1; }
+  .otp-stage.is-orbiting .otp-boxes{
+    position:absolute;left:50%;top:50%;
+    width:0;height:0;gap:0;
+  }
+  /* The spin starts only once the boxes have arrived, so the flight stays legible */
+  .otp-stage.is-spinning .otp-boxes{ animation: otpSpin 1.4s linear infinite; }
+  .otp-stage.is-orbiting .otp-digit{
+    position:absolute;left:0;top:0;
+    width:44px;height:52px;
+    margin:-26px 0 0 -22px;
+    padding:0;
+    pointer-events:none;
+    caret-color:transparent;
+    border-color:#F39C12;
+    background:#fff;
+    transform: rotate(var(--a)) translateY(-58px);   /* --a is set per box in JS */
+    transition: transform .45s cubic-bezier(.4,0,.2,1), opacity .35s ease,
+                border-color .25s ease, background .25s ease, color .25s ease;
+  }
+  @keyframes otpSpin { to { transform:rotate(360deg); } }
+
+  /* ── Accepted: the ring goes green, the boxes fall back into the hub and a
+     check pops out of it ── */
+  .otp-ring-path,.otp-ring-hub{ transition:stroke .3s ease, fill .3s ease; }
+  .otp-stage.is-verified .otp-ring-path{ stroke:#10b981; }
+  .otp-stage.is-verified .otp-ring-hub { fill:#10b981; }
+  .otp-stage.is-verified .otp-digit{
+    transform: rotate(var(--a)) translateY(0);
+    opacity:0;
+    border-color:#10b981;color:#10b981;background:#ecfdf5;
+  }
+
+  .otp-done{
+    position:absolute;left:50%;top:50%;
+    width:0;height:0;
+    opacity:0;
+    pointer-events:none;
+  }
+  .otp-stage.is-verified .otp-done{ opacity:1; }
+
+  .otp-check{
+    position:absolute;left:0;top:0;
+    width:72px;height:72px;margin:-36px 0 0 -36px;
+  }
+  .otp-stage.is-verified .otp-check{ animation: otpPop .5s cubic-bezier(.34,1.56,.64,1) .12s both; }
+  @keyframes otpPop {
+    from{ transform:scale(.5); opacity:0; }
+    to  { transform:scale(1);  opacity:1; filter:drop-shadow(0 6px 20px rgba(16,185,129,.45)); }
+  }
+  .otp-tick{ stroke-dasharray:44; stroke-dashoffset:44; }
+  .otp-stage.is-verified .otp-tick{ animation: otpDraw .4s ease .34s both; }
+  @keyframes otpDraw { to { stroke-dashoffset:0; } }
+
+  .otp-spark{
+    position:absolute;left:0;top:0;
+    width:7px;height:7px;margin:-3.5px 0 0 -3.5px;
+    border-radius:50%;
+    background:#10b981;
+    opacity:0;
+  }
+  .otp-stage.is-verified .otp-spark{ animation: otpBurst .7s cubic-bezier(.2,.7,.3,1) .3s both; }
+  @keyframes otpBurst {
+    0%  { transform:rotate(var(--a)) translateY(-12px) scale(.4); opacity:0; }
+    30% { opacity:1; }
+    100%{ transform:rotate(var(--a)) translateY(-78px) scale(.9); opacity:0; }
+  }
+
+  .otp-status-done{ display:none; color:#10b981; font-weight:600; }
+  #otpStage.is-verified ~ .otp-status .otp-status-wait{ display:none; }
+  #otpStage.is-verified ~ .otp-status .otp-status-done{ display:inline; }
+
+  /* Resend, with its cooldown. Stays put while verifying, as in the reference;
+     only the celebration takes it away. */
+  .otp-resend{
+    margin-top:12px;
+    text-align:center;
+    font-size:12.5px;
+    color:#94a3b8;
+  }
+  .otp-resend-btn{
+    background:none;border:none;padding:0 0 0 4px;
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;font-weight:600;
+    color:#4f46e5;
+    cursor:pointer;
+  }
+  .otp-resend-btn:disabled{ color:#94a3b8; cursor:default; }
+  .otp-resend-wait{ padding-left:4px; }
+  #otpStage.is-verified ~ .otp-resend{ display:none; }
+
+  /* While verifying, the rest of the step gets out of the way */
+  #resetStep2.is-verifying .sub,
+  #resetStep2.is-verifying label,
+  #resetStep2.is-verifying #resetPassGroup,
+  #resetStep2.is-verifying #resetBtn{ display:none; }
+  .otp-status{
+    display:none;
+    margin-top:10px;
+    text-align:center;
+    font-size:13px;color:#64748b;
+  }
+  #resetStep2.is-verifying .otp-status{ display:block; }
+
   /* Caps Lock hint under a password field */
   .caps-hint{
     display:none;
@@ -173,6 +311,13 @@
     .pupil,.turn{ transition:none; }
     .eye-open,.eye-lid,.mouth-happy,.mouth-upset{ transition:none; }
     .mascots.is-sad,.mascots.is-happy .mascot{ animation:none; }
+    .otp-stage.is-spinning .otp-boxes{ animation:none; }
+    /* Skip the celebration's motion but keep its end state readable */
+    .otp-stage.is-verified .otp-check,
+    .otp-stage.is-verified .otp-tick,
+    .otp-stage.is-verified .otp-spark{ animation:none; }
+    .otp-stage.is-verified .otp-tick{ stroke-dashoffset:0; }
+    .otp-stage.is-verified .otp-spark{ opacity:0; }
   }
 
   /* On the wide layout the form sits directly on the white panel — no floating card */
@@ -551,12 +696,49 @@
       <p class="sub" style="margin-top:0">Enter the 6-digit code sent to your email, and choose a new password.</p>
       <div class="form-group">
         <label>Verification Code</label>
-        <div class="input-wrap">
-          <span class="icon">🔢</span>
-          <input type="text" id="resetOtp" inputmode="numeric" maxlength="6" placeholder="6-digit code"/>
+        <div class="otp-stage" id="otpStage">
+          <svg class="otp-ring" viewBox="0 0 170 170" aria-hidden="true">
+            <circle class="otp-ring-path" cx="85" cy="85" r="58" fill="none" stroke="#F39C12" stroke-width="1.5"
+                    stroke-dasharray="2 8" stroke-linecap="round"/>
+            <circle class="otp-ring-hub" cx="85" cy="85" r="2.5" fill="#F39C12"/>
+          </svg>
+        <div class="otp-boxes" id="otpBoxes">
+          <input class="otp-digit" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="1" aria-label="Verification code digit 1 of 6"/>
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" aria-label="Verification code digit 2 of 6"/>
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" aria-label="Verification code digit 3 of 6"/>
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" aria-label="Verification code digit 4 of 6"/>
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" aria-label="Verification code digit 5 of 6"/>
+          <input class="otp-digit" type="text" inputmode="numeric" maxlength="1" aria-label="Verification code digit 6 of 6"/>
         </div>
+          <!-- Sits at the hub, revealed once the code is accepted -->
+          <div class="otp-done" aria-hidden="true">
+            <span class="otp-spark" style="--a:0deg"></span>
+            <span class="otp-spark" style="--a:45deg"></span>
+            <span class="otp-spark" style="--a:90deg"></span>
+            <span class="otp-spark" style="--a:135deg"></span>
+            <span class="otp-spark" style="--a:180deg"></span>
+            <span class="otp-spark" style="--a:225deg"></span>
+            <span class="otp-spark" style="--a:270deg"></span>
+            <span class="otp-spark" style="--a:315deg"></span>
+            <svg class="otp-check" viewBox="0 0 72 72">
+              <rect x="4" y="4" width="64" height="64" rx="18" fill="#ecfdf5" stroke="#10b981" stroke-width="2"/>
+              <path class="otp-tick" d="M22 37 l10 10 l18 -20" fill="none" stroke="#10b981" stroke-width="4"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div><!-- /otp-stage -->
+        <p class="otp-status">
+          <span class="otp-status-wait">Verifying your code…</span>
+          <span class="otp-status-done">Verified</span>
+        </p>
+        <p class="otp-resend">
+          Didn't receive the code?
+          <button type="button" class="otp-resend-btn" id="resendBtn" onclick="resendCode()">Resend</button><span class="otp-resend-wait" id="resendWait"></span>
+        </p>
+        <!-- The joined code. doResetPassword() reads this exactly as it always did. -->
+        <input type="hidden" id="resetOtp"/>
       </div>
-      <div class="form-group">
+      <div class="form-group" id="resetPassGroup">
         <label>New Password</label>
         <div class="input-wrap">
           <span class="icon">🔒</span>
@@ -786,6 +968,184 @@ function toggleResetPassword(){
     : '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/>';
 }
 
+// ── Verification code: six single-digit boxes over one hidden field ──
+// The boxes are only the UI. #resetOtp is still the value that gets submitted,
+// so doResetPassword() reads exactly what it always read.
+(function otpBoxes(){
+  const wrap   = document.getElementById('otpBoxes');
+  const hidden = document.getElementById('resetOtp');
+  if (!wrap || !hidden) return;
+
+  const boxes = Array.from(wrap.querySelectorAll('.otp-digit'));
+  const stage = document.getElementById('otpStage');
+  const step  = document.getElementById('resetStep2');
+  const ANGLE = 360 / boxes.length;
+
+  // Each box's seat on the ring, read by the CSS transform
+  boxes.forEach((b, i) => b.style.setProperty('--a', (i * ANGLE) + 'deg'));
+
+  function sync(){
+    hidden.value = boxes.map(b => b.value).join('');
+    wrap.classList.toggle('is-full', hidden.value.length === boxes.length);
+  }
+
+  function toPassword(){
+    const pass = document.getElementById('resetNewPass');
+    if (pass) pass.focus();
+  }
+
+  // A paste, or an SMS autofill, arrives as the whole code in one box — spread it
+  function distribute(text, start){
+    const digits = String(text).replace(/\D/g, '').split('');
+    if (!digits.length) return;
+    let i = start;
+    for (const d of digits){
+      if (i >= boxes.length) break;
+      boxes[i].value = d;
+      i++;
+    }
+    sync();
+    if (hidden.value.length === boxes.length) toPassword();
+    else boxes[Math.min(i, boxes.length - 1)].focus();
+  }
+
+  boxes.forEach((box, i) => {
+    box.addEventListener('input', () => {
+      const v = box.value;
+      if (v.length > 1){ box.value = ''; distribute(v, i); return; }
+      if (!/^\d$/.test(v)){ box.value = ''; sync(); return; }   // letters just don't take
+      sync();
+      if (i < boxes.length - 1) boxes[i + 1].focus();
+      else toPassword();
+    });
+
+    box.addEventListener('keydown', e => {
+      if (e.key === 'Backspace' && !box.value && i > 0){
+        // Nothing here to delete — clear the one behind and go back to it
+        e.preventDefault();
+        boxes[i - 1].value = '';
+        boxes[i - 1].focus();
+        sync();
+      } else if (e.key === 'ArrowLeft' && i > 0){
+        e.preventDefault(); boxes[i - 1].focus();
+      } else if (e.key === 'ArrowRight' && i < boxes.length - 1){
+        e.preventDefault(); boxes[i + 1].focus();
+      } else if (e.key === 'Enter'){
+        e.preventDefault(); doResetPassword();
+      }
+    });
+
+    box.addEventListener('paste', e => {
+      e.preventDefault();
+      distribute((e.clipboardData || window.clipboardData).getData('text'), i);
+    });
+
+    // Typing over a filled box should replace it, not sit behind the digit
+    box.addEventListener('focus', () => box.select());
+  });
+
+  // Collapse the row onto the hub and orbit it while the request is in flight.
+  // The boxes are laid out by CSS the instant `is-orbiting` lands, so the flight
+  // is a FLIP: measure the row, switch, then animate each box back from where it
+  // just was. Without it they would simply appear on the ring.
+  let spinTimer = null;
+  window.otpOrbit = function(on){
+    if (!stage || !step) return;
+    clearTimeout(spinTimer);
+
+    if (!on){
+      stage.classList.remove('is-orbiting', 'is-spinning', 'is-verified');
+      step.classList.remove('is-verifying');
+      return;
+    }
+
+    const first = boxes.map(b => b.getBoundingClientRect());   // seats in the row
+    step.classList.add('is-verifying');
+    stage.classList.add('is-orbiting');
+    const last = boxes.map(b => b.getBoundingClientRect());    // seats on the ring
+
+    // Nothing flies or spins if the visitor asked for less motion — the ring and
+    // the "Verifying" line carry the message on their own.
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    boxes.forEach((b, i) => {
+      const dx = first[i].left - last[i].left;
+      const dy = first[i].top  - last[i].top;
+      const seat = `rotate(${i * ANGLE}deg) translateY(-58px)`;
+      b.animate(
+        [{ transform: `translate(${dx}px, ${dy}px) ${seat}` },
+         { transform: seat }],
+        { duration: 520, easing: 'cubic-bezier(.34,1.25,.64,1)' }
+      );
+    });
+    spinTimer = setTimeout(() => stage.classList.add('is-spinning'), 520);
+  };
+
+  // The code was accepted: stop the spin, drop the boxes back into the hub and
+  // pop a check out of it. Resolves once the celebration has played, so the
+  // caller can hand back to the sign-in form afterwards.
+  window.otpVerified = function(){
+    if (!stage) return Promise.resolve();
+    // A fast response can land before otpOrbit's 520ms spin timer has fired —
+    // without this, that timer restarts the spin in the middle of the celebration
+    clearTimeout(spinTimer);
+    stage.classList.remove('is-spinning');
+    stage.classList.add('is-verified');
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    return new Promise(res => setTimeout(res, calm ? 400 : 1150));
+  };
+
+  // Called when a fresh code is sent, so a stale one is never left sitting there
+  window.otpReset = function(){
+    boxes.forEach(b => b.value = '');
+    sync();
+    boxes[0].focus();
+  };
+})();
+
+// ── Resend, with a cooldown ──
+// Step 2 previously had no way to ask for another code — you had to go back to
+// sign-in and start over. Resending just calls sendResetCode() again: the email
+// is still in #resetEmail, and it clears the boxes on the way through.
+(function resendCooldown(){
+  const btn  = document.getElementById('resendBtn');
+  const wait = document.getElementById('resendWait');
+  if (!btn || !wait) return;
+
+  const COOLDOWN = 30;   // seconds
+  let left = 0, timer = null;
+
+  function tick(){
+    left--;
+    if (left <= 0){
+      clearInterval(timer); timer = null;
+      btn.disabled = false;
+      wait.textContent = '';
+      return;
+    }
+    wait.textContent = `in ${left}s`;
+  }
+
+  // Started by sendResetCode() whenever a code actually goes out
+  window.otpStartCooldown = function(){
+    clearInterval(timer);
+    left = COOLDOWN;
+    btn.disabled = true;
+    wait.textContent = `in ${left}s`;
+    timer = setInterval(tick, 1000);
+  };
+
+  window.resendCode = async function(){
+    if (btn.disabled) return;
+    btn.disabled = true;
+    wait.textContent = '…';
+    await sendResetCode();
+    // A successful send starts the cooldown; if none is running the send failed,
+    // so give the button straight back rather than stranding it disabled
+    if (!timer){ btn.disabled = false; wait.textContent = ''; }
+  };
+})();
+
 // ── Forgot-password flow (team accounts only) ──
 function _clearMsgs(){
   document.getElementById('err').style.display='none';
@@ -829,7 +1189,9 @@ async function sendResetCode(){
     _showOk('Sent');
     document.getElementById('resetStep1').style.display='none';
     document.getElementById('resetStep2').style.display='block';
-    document.getElementById('resetOtp').focus();
+    // Clears any code from a previous attempt, then focuses the first box
+    otpReset();
+    otpStartCooldown();
   }catch(e){_showErr('Server error. Try again.');}
   finally{btn.disabled=false; btn.textContent=label;}
 }
@@ -842,18 +1204,21 @@ async function doResetPassword(){
   if(newPassword.length<6){_showErr('New password must be at least 6 characters');return;}
   const btn=document.getElementById('resetBtn');
   const label=btn.textContent; btn.disabled=true; btn.textContent='Resetting…';
+  otpOrbit(true);
   try{
     const r=await fetch('/api/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,otp,newPassword})});
     const d=await r.json();
     if(!r.ok){_showErr(d.error||'Reset failed');return;}
-    // Success — back to login with the new password.
+    // Success — let the ring finish celebrating before the view changes.
+    await otpVerified();
+    // Back to login with the new password.
     showLogin();
     document.getElementById('email').value=email;
     document.getElementById('password').value='';
     _showOk(d.message||'Password updated — sign in with your new password.');
     document.getElementById('password').focus();
   }catch(e){_showErr('Server error. Try again.');}
-  finally{btn.disabled=false; btn.textContent=label;}
+  finally{btn.disabled=false; btn.textContent=label; otpOrbit(false);}
 }
 </script>
 </body>
