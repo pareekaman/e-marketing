@@ -699,7 +699,14 @@ function buildStepBoxHTML(idx) {
           <div class="selected-tags" id="fmsDoerTags_${idx}" onclick="toggleFMSDropdown(${idx})">
             <span style="color:#94a3b8;font-size:12px">Select users...</span>
           </div>
-          <div class="multi-select-dropdown" id="fmsDoerDrop_${idx}">${userOptions}</div>
+          <div class="multi-select-dropdown" id="fmsDoerDrop_${idx}">
+            <div class="multi-select-search">
+              <input type="text" id="fmsDoerSearch_${idx}" placeholder="Search users..."
+                onclick="event.stopPropagation()" oninput="filterFMSDoers(${idx})"/>
+            </div>
+            <div id="fmsDoerList_${idx}">${userOptions}</div>
+            <div class="multi-select-empty" id="fmsDoerNone_${idx}" style="display:none">No users match</div>
+          </div>
         </div>
       </div>
       <div class="form-group" style="margin:0">
@@ -956,7 +963,30 @@ function removeFMSExtraRow(idx, ri) {
 }
 
 function toggleFMSDropdown(idx) {
-  document.getElementById(`fmsDoerDrop_${idx}`).classList.toggle('open');
+  const drop = document.getElementById(`fmsDoerDrop_${idx}`);
+  drop.classList.toggle('open');
+  // Opening starts from a clean list, with the cursor already in the search box.
+  if (drop.classList.contains('open')) {
+    const box = document.getElementById(`fmsDoerSearch_${idx}`);
+    if (box) { box.value = ''; filterFMSDoers(idx); box.focus(); }
+  }
+}
+
+// Filters the doer list by name. Only touches rows inside fmsDoerList_, so the
+// search box itself is never hidden and toggleFMSDoer's checkbox sweep is unaffected.
+function filterFMSDoers(idx) {
+  const box = document.getElementById(`fmsDoerSearch_${idx}`);
+  const list = document.getElementById(`fmsDoerList_${idx}`);
+  if (!list) return;
+  const q = (box ? box.value : '').trim().toLowerCase();
+  let shown = 0;
+  list.querySelectorAll('.multi-select-item').forEach(item => {
+    const hit = !q || item.textContent.trim().toLowerCase().includes(q);
+    item.style.display = hit ? '' : 'none';
+    if (hit) shown++;
+  });
+  const none = document.getElementById(`fmsDoerNone_${idx}`);
+  if (none) none.style.display = shown ? 'none' : '';
 }
 
 function toggleFMSDoer(e, idx, uid) {
