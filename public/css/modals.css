@@ -101,4 +101,15 @@
 .form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:#6366f1;}
 .form-group textarea{resize:vertical;min-height:70px;}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-
+
+/* -- Closing -----------------------------------------------
+   closeModal() drops `open` immediately and leaves `closing` behind for the
+   exit. The :not(.open) guard means a modal re-opened mid-fade snaps back to
+   its normal open state instead of carrying on fading away. */
+@keyframes modalOut{from{opacity:1;transform:translateY(0) scale(1);}to{opacity:0;transform:translateY(10px) scale(.98);}}
+@keyframes overlayOut{from{opacity:1;}to{opacity:0;}}
+.modal-overlay.closing:not(.open){display:flex;pointer-events:none;animation:overlayOut .18s ease both;}
+.modal-overlay.closing:not(.open) .modal{animation:modalOut .18s var(--ease) both;}
+@media (prefers-reduced-motion: reduce){
+  .modal-overlay.closing:not(.open){display:none;}
+}

@@ -32,7 +32,18 @@ async function api(url,method='GET',body=null) {
   }
 }
 
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+// `open` comes off straight away, exactly as it always did, so no caller sees a
+// delay. The fade-out then plays on a `closing` ghost, which `:not(.open)` drops
+// the moment anything re-opens the same modal.
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (!el || !el.classList.contains('open')) return;
+  el.classList.remove('open');
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  clearTimeout(el._closeTimer);
+  el.classList.add('closing');
+  el._closeTimer = setTimeout(() => el.classList.remove('closing'), 180);
+}
 
 // In-app replacements for native alert()/confirm(). Both return Promises so the
 // existing call-sites can switch from `if (!confirm(...))` to
@@ -116,13 +127,144 @@ async function logout() {
   window.location.replace('/');
 }
 
+// Every toast used to be positioned at the same fixed corner, so two at once sat
+// exactly on top of each other. They share a stack now, and leave the way they
+// arrived instead of blinking out of existence.
 function showToast(msg,type='success') {
+  let stack=document.getElementById('toastStack');
+  if(!stack){
+    stack=document.createElement('div');
+    stack.id='toastStack';
+    document.body.appendChild(stack);
+  }
   const t=document.createElement('div');
-  const bg=type==='error'?'#dc2626':'#1e293b';
-  t.style.cssText=`position:fixed;bottom:24px;right:24px;background:${bg};color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.2);animation:fadeIn .3s ease`;
+  t.className='toast'+(type==='error'?' toast--error':'');
   t.textContent=msg;
-  document.body.appendChild(t);
-  setTimeout(()=>t.remove(),3000);
+  stack.appendChild(t);
+  setTimeout(()=>{
+    t.classList.add('is-leaving');
+    setTimeout(()=>t.remove(),300);
+  },3000);
+}
+
+// ── Table rows arriving ──────────────────────────────────────────────────
+// Rows fade up in sequence when a table is filled.
+//
+// The trap this avoids: at least six pages run a live search that rewrites the
+// whole tbody on **every keystroke**. Animating each of those rewrites makes the
+// table flicker while you type. So a body only animates when it goes from empty
+// (or a single placeholder row) to a real set of rows — i.e. when data lands.
+// Filtering keeps the body populated, so it stays still.
+//
+// Watching the tbody rather than hooking render calls, for the same reason as
+// the tab indicator: the rows are written from dozens of places.
+(function tableRowAnim(){
+  const CAP = 20;              // only the first screenful bothers; longer lists would drag
+  const counts = new WeakMap();
+
+  function onChange(tbody){
+    const rows = tbody.rows ? tbody.rows.length : 0;
+    const prev = counts.get(tbody) || 0;
+    counts.set(tbody, rows);
+    if (prev > 1 || rows <= 1) return;                 // a filter, not an arrival
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const n = Math.min(rows, CAP);
+    for (let i = 0; i < n; i++){
+      tbody.rows[i].style.animationDelay = (i * 22) + 'ms';
+      tbody.rows[i].classList.add('row-in');
+    }
+  }
+
+  function watch(tbody){
+    if (tbody._rowObs) return;
+    counts.set(tbody, tbody.rows ? tbody.rows.length : 0);
+    tbody._rowObs = new MutationObserver(() => onChange(tbody));
+    tbody._rowObs.observe(tbody, { childList: true });
+  }
+
+  function scan(){ document.querySelectorAll('tbody').forEach(watch); }
+
+  scan();
+  document.addEventListener('DOMContentLoaded', scan);
+  window.initTableRowAnim = scan;      // for tables built after load
+})();
+
+// ── Sliding tab indicator ────────────────────────────────────────────────
+// The active tab's white pill used to jump straight from one tab to the next.
+// Each group gets one shared pill that slides instead.
+//
+// Deliberately additive: the per-tab background is only suppressed once a group
+// actually has its indicator (`has-ind`), so if this never runs — or a group is
+// rendered somewhere this misses — the tabs look exactly as they always did.
+//
+// It watches for `active` moving rather than hooking the switchers, because the
+// app changes tabs from ~11 different places with no shared function.
+(function tabIndicators(){
+  function place(group, animate){
+    const ind = group._tabInd;
+    if (!ind) return;
+    const active = group.querySelector('.tab.active');
+    const a = active && active.getBoundingClientRect();
+    // A hidden group measures zero — leave the pill parked until it is shown
+    if (!active || !a.width){ ind.style.opacity = '0'; return; }
+    const g = group.getBoundingClientRect();
+    if (!animate) ind.style.transition = 'none';
+    ind.style.opacity = '1';
+    ind.style.width  = a.width + 'px';
+    ind.style.height = a.height + 'px';
+    ind.style.transform = 'translate(' + (a.left - g.left) + 'px,' + (a.top - g.top) + 'px)';
+    if (!animate){ void ind.offsetWidth; ind.style.transition = ''; }
+  }
+
+  function init(group){
+    if (group._tabInd) return;
+    const ind = document.createElement('span');
+    ind.className = 'tab-ind';
+    group.insertBefore(ind, group.firstChild);
+    group._tabInd = ind;
+    group.classList.add('has-ind');
+    place(group, false);
+
+    // Ignore our own style writes, or placing the pill would retrigger this
+    new MutationObserver(muts => {
+      if (muts.every(m => m.target === ind)) return;
+      place(group, true);
+    }).observe(group, { subtree:true, attributes:true, attributeFilter:['class','style'] });
+
+    if (window.ResizeObserver) new ResizeObserver(() => place(group, false)).observe(group);
+  }
+
+  function scan(){ document.querySelectorAll('.tab-group').forEach(init); }
+
+  scan();                                              // groups already parsed
+  document.addEventListener('DOMContentLoaded', scan); // and the rest of the page
+  window.addEventListener('resize', () =>
+    document.querySelectorAll('.tab-group').forEach(g => place(g, false)));
+  window.initTabIndicators = scan;                     // for groups rendered later
+})();
+
+// Runs an element's number from whatever it currently shows up to `to`. The
+// start is read off the DOM, so a re-render counts on from the old figure
+// instead of restarting at zero. Anything non-numeric is written straight
+// through, which keeps the dashboard's placeholder and its 'Err' state intact.
+function countUp(el, to, ms = 700) {
+  if (!el) return;
+  const target = Number(to);
+  if (!Number.isFinite(target)) { el.textContent = to; return; }
+  const from = Number(String(el.textContent).replace(/[^0-9.-]/g, '')) || 0;
+  if (from === target || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    el.textContent = target; return;
+  }
+  if (el._countRAF) cancelAnimationFrame(el._countRAF);
+  const start = performance.now();
+  const step = now => {
+    const p = Math.min(1, (now - start) / ms);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(from + (target - from) * eased);
+    if (p < 1) { el._countRAF = requestAnimationFrame(step); }
+    else { el._countRAF = null; el.textContent = target; }
+  };
+  el._countRAF = requestAnimationFrame(step);
 }
 
 // ── Page-level loader (tab/page switches) ─────────────────────────
@@ -690,4 +832,4 @@ function setDefaultMISDates() {
   if (rs) rs.value = monday.toISOString().split('T')[0];
   if (re) re.value = today.toISOString().split('T')[0];
 }
-
+

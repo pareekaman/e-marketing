@@ -148,4 +148,15 @@ input:focus,select:focus,textarea:focus{outline:none;}
 
 /* Empty states feel designed, not forgotten */
 .empty{position:relative;}
-.empty::before{content:'';display:block;width:34px;height:34px;margin:0 auto 10px;border-radius:10px;background:linear-gradient(135deg,#eef2ff,#e0e7ff);}
+.empty::before{
+  content:'';display:block;
+  width:58px;height:42px;margin:0 auto 12px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 42'%3E%3Cpath d='M2 40a28 28 0 0 1 56 0Z' fill='%23FF8A3D'/%3E%3Ccircle cx='22' cy='23' r='4.5' fill='%23fff'/%3E%3Ccircle cx='22' cy='23' r='2.2' fill='%232E2A26'/%3E%3Ccircle cx='38' cy='23' r='4.5' fill='%23fff'/%3E%3Ccircle cx='38' cy='23' r='2.2' fill='%232E2A26'/%3E%3Cpath d='M25 31q5 4 10 0' stroke='%232E2A26' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:center bottom;background-size:contain;
+  animation:emptyIn .45s var(--ease) both, emptyFloat 3.6s ease-in-out .45s infinite;
+}
+@keyframes emptyIn{from{opacity:0;transform:translateY(8px) scale(.9);}to{opacity:1;transform:translateY(0) scale(1);}}
+@keyframes emptyFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-5px);}}
+@media (prefers-reduced-motion: reduce){
+  .empty::before{animation:none;}
+}

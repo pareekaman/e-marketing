@@ -51,7 +51,7 @@ async function loadDashboard(light = false) {
   window._dashTotals = { del: dDel, chl: dChl, fmsPending: 0, fmsCompleted: 0, upcoming: (dDel.upcoming||0) + (dChl.upcoming||0) };
   // Show upcoming count immediately from server stats (no need to wait for full task list)
   const upElEarly = document.getElementById('dUpcoming');
-  if (upElEarly) upElEarly.textContent = window._dashTotals.upcoming;
+  if (upElEarly) countUp(upElEarly, window._dashTotals.upcoming);
   updateDashStats(dashType);
 
   if (isAdmin || isHod || isPC) {
@@ -418,9 +418,9 @@ function updateDashStats(type) {
   const cEl     = document.getElementById('dCompleted');
   const pEl     = document.getElementById('dPending');
   const pBreak  = document.getElementById('dPendingBreakdown');
-  if (totalEl) totalEl.textContent = total;
-  if (cEl)     cEl.textContent     = completed;
-  if (pEl)     pEl.textContent     = pending;
+  if (totalEl) countUp(totalEl, total);
+  if (cEl)     countUp(cEl,     completed);
+  if (pEl)     countUp(pEl,     pending);
   if (pBreak) {
     if (revised > 0) { pBreak.textContent = `+ ${revised} revised`; pBreak.style.display = 'block'; }
     else             { pBreak.style.display = 'none'; }
@@ -428,7 +428,7 @@ function updateDashStats(type) {
   // Upcoming — server-side count, already resolved for the current type above.
   const upcomingCount = upcoming;
   const upEl = document.getElementById('dUpcoming');
-  if (upEl) upEl.textContent = upcomingCount;
+  if (upEl) countUp(upEl, upcomingCount);
 
   if (dashChartInst) dashChartInst.destroy();
   const canvas = document.getElementById('dashChart');
@@ -825,4 +825,4 @@ function renderDashTable(tasks, type) {
     </tr>`;
   }).join('');
 }
-
+

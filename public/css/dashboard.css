@@ -86,4 +86,34 @@ tbody tr:last-child td{border-bottom:none;}
 .profile-card{background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:28px;max-width:500px;}
 .profile-avatar-big{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#6366f1);display:grid;place-items:center;font-size:22px;font-weight:700;color:#fff;margin-bottom:18px;}
 .section-title{font-size:14px;font-weight:700;margin-bottom:14px;padding-top:8px;border-top:1px solid #f1f5f9;margin-top:4px;}
-
+
+/* -- Overview cards deal in on arrival ---------------------
+   `backwards` and not `both` on purpose: `both` would hold the end transform
+   after the run, which kills the :hover lift defined above. */
+.page.active .ov-card{animation:ovCardIn .42s var(--ease) backwards;}
+.page.active .ov-card:nth-child(1){animation-delay:.02s;}
+.page.active .ov-card:nth-child(2){animation-delay:.08s;}
+.page.active .ov-card:nth-child(3){animation-delay:.14s;}
+.page.active .ov-card:nth-child(4){animation-delay:.20s;}
+@keyframes ovCardIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+@media (prefers-reduced-motion: reduce){
+  .page.active .ov-card{animation:none;}
+}
+
+/* -- Sliding tab indicator ---------------------------------
+   One pill per group, moved by tabIndicators() in helpers.js. The per-tab
+   background is only dropped on groups that actually got a pill, so a group
+   this never reaches keeps the original look rather than losing its highlight. */
+.tab-group{position:relative;}
+.tab-ind{
+  position:absolute;left:0;top:0;
+  border-radius:7px;background:#fff;
+  box-shadow:0 1px 6px rgba(15,23,42,.12);
+  opacity:0;pointer-events:none;z-index:0;
+  transition:transform .28s var(--ease),width .28s var(--ease),opacity .15s ease;
+}
+.tab-group.has-ind .tab{position:relative;z-index:1;}
+.tab-group.has-ind .tab.active{background:transparent;box-shadow:none;}
+@media (prefers-reduced-motion: reduce){
+  .tab-ind{transition:opacity .15s ease;}
+}

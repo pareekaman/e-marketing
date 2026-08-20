@@ -254,4 +254,35 @@ body{
 .page.active{display:block;}
 .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
 .page-header h2{font-size:20px;font-weight:700;}
-
+
+/* -- Toasts ------------------------------------------------
+   Stacked bottom-right, newest nearest the corner. This was inline styling on
+   a fixed-position div, so two toasts at once landed on the same spot. */
+#toastStack{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column-reverse;gap:10px;pointer-events:none;}
+.toast{
+  background:#1e293b;color:#fff;padding:12px 20px;border-radius:10px;
+  font-size:13px;font-weight:500;max-width:340px;
+  box-shadow:0 4px 20px rgba(0,0,0,.2);
+  pointer-events:auto;
+  /* `backwards` not `both`: a finished animation's fill outranks .is-leaving
+     below, which left the exit transition with nothing to do. */
+  animation:toastIn .32s var(--ease-spring) backwards;
+  transition:opacity .28s var(--ease),transform .28s var(--ease);
+}
+.toast--error{background:#dc2626;}
+.toast.is-leaving{opacity:0;transform:translateX(110%);}
+@keyframes toastIn{from{opacity:0;transform:translateX(110%);}to{opacity:1;transform:translateX(0);}}
+@media (prefers-reduced-motion: reduce){
+  .toast{animation:none;transition:opacity .2s ease;}
+  .toast.is-leaving{transform:none;}
+}
+
+/* -- Rows arriving -----------------------------------------
+   Added per row by tableRowAnim() in helpers.js, capped at the first 20.
+   `backwards` again, so the row hands its styling back afterwards and hover
+   and striping keep working. */
+@keyframes rowIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+tbody tr.row-in{animation:rowIn .3s var(--ease) backwards;}
+@media (prefers-reduced-motion: reduce){
+  tbody tr.row-in{animation:none;}
+}
