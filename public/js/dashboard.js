@@ -12,8 +12,43 @@
 let _dashSeq = 0;
 const newDashSeq = () => ++_dashSeq;
 
+// ── One paint for the stat cards, not two ────────────────────────────────
+// The four cards used to fill in as soon as /api/dashboard answered, with the
+// FMS count still at zero, and then repaint when /api/fms-dashboard came back
+// from Google Sheets about two seconds later. Total and Pending visibly jumped
+// — by 49 on the roster this was reported from — and countUp animated the jump,
+// so it read as the figures correcting themselves rather than as data arriving.
+//
+// A full load now holds the cards until the FMS count is in, so the first
+// number anyone reads is the final one. The hold is keyed to the load's own
+// seq: a newer load takes it over, and an older one's timer finds the seq
+// changed and does nothing.
+let _dashStatsHold = 0; // seq of the load holding the cards; 0 = not holding
+// Sheets is the slowest thing on this page and it can fail outright. Whatever
+// happens, the cards must not stay dimmed — this cap releases them and shows
+// what did arrive, which is exactly the behaviour that existed before.
+const DASH_STATS_HOLD_MS = 2500;
+
+function beginDashStatsHold(seq) {
+  _dashStatsHold = seq;
+  document.querySelector('.overview-cards')?.classList.add('is-loading');
+  setTimeout(() => releaseDashStatsHold(seq, true), DASH_STATS_HOLD_MS);
+}
+
+// `paint` is for the timeout, which has nothing else to trigger a render.
+// The callers that already call updateDashStats() right after leave it false.
+function releaseDashStatsHold(seq, paint = false) {
+  if (_dashStatsHold !== seq) return;
+  _dashStatsHold = 0;
+  document.querySelector('.overview-cards')?.classList.remove('is-loading');
+  if (paint) updateDashStats(dashType);
+}
+
 async function loadDashboard(light = false) {
   const seq = newDashSeq();
+  // Light refreshes (Done, Reopen, a new task) skip the FMS fetch entirely, so
+  // there is nothing for them to wait on.
+  if (!light) beginDashStatsHold(seq);
   const empFilter = document.getElementById('dashEmployeeFilter');
   const empVal = empFilter ? empFilter.value : 'all';
   const isAdmin = ME.role === 'admin';
@@ -38,6 +73,9 @@ async function loadDashboard(light = false) {
 
   // Error check: show error to user if DB or API fails
   if (dDel.error || dChl.error) {
+    // Nothing is coming — drop the hold so the cards are not left dimmed
+    // behind the error text written into them below.
+    releaseDashStatsHold(seq);
     const errMsg = dDel.error || dChl.error;
     console.error('Dashboard API error:', errMsg);
     document.getElementById('dTotal').textContent = 'Err';
@@ -48,10 +86,20 @@ async function loadDashboard(light = false) {
   }
 
   // Cache totals so the type-tab can re-derive cards + chart without re-fetching.
-  window._dashTotals = { del: dDel, chl: dChl, fmsPending: 0, fmsCompleted: 0, upcoming: (dDel.upcoming||0) + (dChl.upcoming||0) };
-  // Show upcoming count immediately from server stats (no need to wait for full task list)
+  //
+  // fmsPending carries over from the previous load instead of resetting to 0.
+  // loadDashFMS() is skipped on a light refresh, so zeroing it here meant that
+  // pressing Done silently dropped every FMS row out of Total and Pending —
+  // while the table below went on rendering those same rows from _lastDashFMS,
+  // leaving the cards and the table disagreeing until the next full load. A
+  // full load overwrites this a moment later with a freshly counted value.
+  window._dashTotals = { del: dDel, chl: dChl, fmsPending: window._dashTotals?.fmsPending || 0, fmsCompleted: 0, upcoming: (dDel.upcoming||0) + (dChl.upcoming||0) };
+  // Show upcoming count immediately from server stats (no need to wait for full
+  // task list). Skipped while the cards are held: Upcoming owes nothing to FMS
+  // and would be correct, but one card counting up beside three dimmed ones
+  // reads as a glitch. The release paints all four together.
   const upElEarly = document.getElementById('dUpcoming');
-  if (upElEarly) countUp(upElEarly, window._dashTotals.upcoming);
+  if (upElEarly && !_dashStatsHold) countUp(upElEarly, window._dashTotals.upcoming);
   updateDashStats(dashType);
 
   if (isAdmin || isHod || isPC) {
@@ -376,6 +424,9 @@ async function refreshPCEmployeeDropdown() {
 
 // Recompute the four overview cards + the pie chart based on the current type tab.
 function updateDashStats(type) {
+  // Held while a full load waits for the FMS count. _dashTotals keeps being
+  // filled in underneath; releaseDashStatsHold() repaints from it.
+  if (_dashStatsHold) return;
   const t = window._dashTotals || { del:{}, chl:{}, fmsPending:0, fmsCompleted:0 };
   const del = t.del || {}, chl = t.chl || {};
   let pending = 0, completed = 0, revised = 0, upcoming = 0;
@@ -579,6 +630,14 @@ async function loadDashFMS(seq = newDashSeq()) {
   if (seq !== _dashSeq) return;
   if (data.error) {
     window._lastDashFMS = [];
+    // Sheets refused — the count is never coming, so stop holding the cards and
+    // show the delegation/checklist figures on their own. The carried-over
+    // count from the previous load has to go with it: the table below is about
+    // to render with no FMS rows, and a card still counting them would put the
+    // two out of step in the opposite direction.
+    if (window._dashTotals) window._dashTotals.fmsPending = 0;
+    releaseDashStatsHold(seq);
+    updateDashStats(dashType);
     // Re-render unified table without FMS
     if (window._lastDashTasks) renderDashTable(window._lastDashTasks, dashType);
     return;
@@ -611,6 +670,9 @@ async function loadDashFMS(seq = newDashSeq()) {
   // Feed FMS pending count into the cached totals so the type-tab + stat cards stay in sync.
   if (window._dashTotals) {
     window._dashTotals.fmsPending = window._lastDashFMS.length;
+    // The last number the cards were waiting on. Release first, then paint —
+    // updateDashStats() is a no-op while the hold is up.
+    releaseDashStatsHold(seq);
     updateDashStats(dashType);
   }
 

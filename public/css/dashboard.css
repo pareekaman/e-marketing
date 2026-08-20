@@ -100,6 +100,23 @@ tbody tr:last-child td{border-bottom:none;}
   .page.active .ov-card{animation:none;}
 }
 
+/* -- ...and wait for the whole figure before showing it -----
+   Set by beginDashStatsHold() in dashboard.js while a full load waits on the
+   FMS count, which comes from Google Sheets a couple of seconds behind
+   everything else. The numbers standing there during the hold belong to the
+   previous load, so they are dimmed and breathing rather than left looking
+   final. Only the figures fade — the labels and the cards themselves stay put,
+   so nothing moves and the layout does not flicker. */
+.overview-cards.is-loading .number,
+.overview-cards.is-loading #dPendingBreakdown{
+  animation:ovStatWait 1.1s var(--ease) infinite alternate;
+}
+@keyframes ovStatWait{from{opacity:.3;}to{opacity:.55;}}
+@media (prefers-reduced-motion: reduce){
+  .overview-cards.is-loading .number,
+  .overview-cards.is-loading #dPendingBreakdown{animation:none;opacity:.4;}
+}
+
 /* -- Sliding tab indicator ---------------------------------
    One pill per group, moved by tabIndicators() in helpers.js. The per-tab
    background is only dropped on groups that actually got a pill, so a group
