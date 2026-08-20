@@ -918,19 +918,67 @@ async function notifyBotSender(phone, subject, text) {
 // ══════════════════════════════════════════════════════
 // MIDDLEWARE
 // ══════════════════════════════════════════════════════
-function requireAuth(req, res, next) {
+// ── Live role, not the one baked into the token ─────────────────────────
+// The JWT is signed at login with `role` inside it and is good for 7 days, and
+// this middleware used to read that copy. So an Access Control role change did
+// nothing at all until the person logged out and back in — they kept every tab
+// and every route their old role allowed, for up to a week, while the panel
+// showed the new one. A deleted user's token kept working just the same.
+//
+// The role is read from the DB instead. That would put a query on every single
+// authenticated request, so a short cache collapses a burst into one: with the
+// TTL at 30s the worst case per user is two queries a minute, and a role change
+// takes effect within that window even without the invalidation below.
+const ROLE_CACHE_TTL_MS = 30 * 1000;
+const roleCache = new Map(); // userId -> { role, exp }
+
+// Call after anything that writes users.role (or deletes the row) so the change
+// lands on the next request rather than up to TTL later.
+function invalidateRoleCache(userId) {
+  roleCache.delete(Number(userId));
+}
+
+async function liveRole(userId, tokenRole) {
+  const hit = roleCache.get(userId);
+  if (hit && hit.exp > Date.now()) return hit.role;
+  let row;
+  try {
+    [[row]] = await db.query('SELECT role FROM users WHERE id=? LIMIT 1', [userId]);
+  } catch (e) {
+    // DB blip. Fall back to the token's role — that is exactly what this
+    // middleware did before, so a bad minute on the database degrades to the
+    // old behaviour instead of logging the whole company out at once.
+    return tokenRole;
+  }
+  // The query succeeded and there is no such user: the row was deleted. Only
+  // reachable on a successful read, so it cannot be confused with the case above.
+  if (!row) return null;
+  roleCache.set(userId, { role: row.role, exp: Date.now() + ROLE_CACHE_TTL_MS });
+  return row.role;
+}
+
+async function requireAuth(req, res, next) {
   const token = req.cookies?.token || req.headers['authorization']?.replace('Bearer ','');
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
+  let decoded;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.session = {
-      userId: decoded.userId, role: decoded.role, name: decoded.name,
-      // Set only while an admin is viewing the app AS another user.
-      impersonatedBy: decoded.impersonatedBy || null,
-      impersonatorName: decoded.impersonatorName || null
-    };
-    next();
-  } catch(e) { res.status(401).json({ error: 'Invalid token' }); }
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch(e) { return res.status(401).json({ error: 'Invalid token' }); }
+  // While an admin is viewing as an employee the token already carries the
+  // TARGET's userId, so this resolves the employee's own current role — which
+  // is what "view as" is supposed to show.
+  const role = await liveRole(decoded.userId, decoded.role);
+  if (role === null) {
+    res.clearCookie('token');
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+  req.session = {
+    userId: decoded.userId, role, name: decoded.name,
+    // Set only while an admin is viewing the app AS another user.
+    impersonatedBy: decoded.impersonatedBy || null,
+    impersonatorName: decoded.impersonatorName || null
+  };
+  next();
 }
 function requireAdmin(req, res, next) {
   if (req.session.role === 'admin') return next();
@@ -3071,6 +3119,7 @@ app.put('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
       [name,email,notification_email||'',appRole,userRole,bcrypt.hashSync(password,10),phone||null,department||'',week_off||'',extra_off||'',exclVal,accessJson,birthday||null,joining_date||null,req.params.id]);
     else await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=?,extra_access=?,birthday=?,joining_date=? WHERE id=?',
       [name,email,notification_email||'',appRole,userRole,phone||null,department||'',week_off||'',extra_off||'',exclVal,accessJson,birthday||null,joining_date||null,req.params.id]);
+    invalidateRoleCache(req.params.id);
     // Update Google Sheet row matching this user's name
     const SHEET_ID = '1k8GTp731LMNE6E1_FwNO8yvGJu7ogo-4PX6c7JP4emM';
     const fmtDate = d => { if (!d) return ''; const [y,m,dd] = d.split('-'); return `${dd}/${m}/${y}`; };
@@ -3155,6 +3204,9 @@ app.delete('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
     const [doomed] = await db.query('SELECT * FROM users WHERE id=?', [req.params.id]);
     await archiveDeleted('users', doomed, req, { summary: r => `User: ${r.name || ''} <${r.email || ''}>` });
     await db.query('DELETE FROM users WHERE id=?', [req.params.id]);
+    // Their token stays valid for the rest of its 7 days; dropping the cache
+    // entry is what makes the next request find no row and reject it.
+    invalidateRoleCache(req.params.id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3292,6 +3344,10 @@ app.patch('/api/users/:id/role', requireAuth, requireAdmin, async (req, res) => 
     if (!target) return res.status(404).json({ error: 'User not found' });
     if (target.role === 'client') return res.status(400).json({ error: 'Client logins cannot be changed here' });
     await db.query('UPDATE users SET role=? WHERE id=?', [role, userId]);
+    // This is the panel the role is actually changed from — without this the
+    // new role would wait out the cache TTL before the person's next request
+    // picked it up.
+    invalidateRoleCache(userId);
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
