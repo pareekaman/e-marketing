@@ -794,12 +794,12 @@ const _startupMigrationsPromise = (async () => {
   try {
     const [[{ cnt }]] = await db.query('SELECT COUNT(*) AS cnt FROM users');
     if (cnt === 0) {
-      const hash = bcrypt.hashSync('password', 10);
+      const hash = bcrypt.hashSync('test@123', 10);
       await db.query(
         'INSERT INTO users (name, email, password, role, department) VALUES (?,?,?,?,?)',
-        ['Simran Admin', 'aman@test.com', hash, 'admin', 'Management']
+        ['Naman Admin', 'naman@local.com', hash, 'admin', 'Management']
       );
-      console.log('  🌱 Default admin seeded → aman@test.com / password');
+      console.log('  🌱 Default admin seeded → naman@local.com / test@123');
     }
   } catch (e) {
     console.error('  ⚠️ Admin seed skipped:', e.message);
@@ -1516,14 +1516,14 @@ app.get('/api/setup', async (req, res) => {
 
     // ── Seed admin user ────────────────────────────────
     try {
-      const [[{ cnt }]] = await db.query('SELECT COUNT(*) AS cnt FROM users WHERE email=?', ['aman@test.com']);
+      const [[{ cnt }]] = await db.query('SELECT COUNT(*) AS cnt FROM users WHERE email=?', ['naman@local.com']);
       if (cnt === 0) {
-        const hash = bcrypt.hashSync('password', 10);
+        const hash = bcrypt.hashSync('test@123', 10);
         await db.query(
           'INSERT INTO users (name, email, password, role, department) VALUES (?,?,?,?,?)',
-          ['Simran Admin', 'aman@test.com', hash, 'admin', 'Management']
+          ['Naman Admin', 'naman@local.com', hash, 'admin', 'Management']
         );
-        log.push('🌱 Admin user seeded: aman@test.com / password');
+        log.push('🌱 Admin user seeded: naman@local.com / test@123');
       } else {
         log.push('ℹ️ Admin user already exists');
       }
@@ -1540,7 +1540,7 @@ app.get('/api/setup', async (req, res) => {
       <pre>${log.join('\n')}</pre>
       <hr>
       <p>✅ Setup done! Now <a href="/">click here to login</a></p>
-      <p style="color:#aaa;font-size:12px;">Login: aman@test.com / password</p>
+      <p style="color:#aaa;font-size:12px;">Login: naman@local.com / test@123</p>
       </body></html>
     `);
   } catch (err) {
@@ -8605,7 +8605,7 @@ if (process.env.VERCEL || process.env.NOW_REGION) {
 } else {
   app.listen(PORT, () => {
     console.log(`\n  ✦ E-Marketing Task Manager: http://localhost:${PORT}`);
-    console.log(`  Login: aman@test.com / password\n`);
+    console.log(`  Login: naman@local.com / test@123\n`);
   });
   module.exports = app;
 }
