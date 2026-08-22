@@ -1415,7 +1415,7 @@ app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) =>
           <li>Two guardians — name, relation &amp; mobile number</li>
           <li>Date of birth</li>
           <li>Residential address</li>
-          <li>Resume (optional) — PDF or Word</li>
+          <li>Resume — PDF or Word</li>
           <li>Aadhaar card — one PDF, or front &amp; back photos</li>
           <li>PAN card (optional) — one PDF, or front &amp; back photos</li>
         </ul>
