@@ -26,9 +26,15 @@ module.exports = function registerHrmRoutes(app, deps) {
 // ══════════════════════════════════════════════════════
 // HRM — INTERVIEW MANAGEMENT
 // ══════════════════════════════════════════════════════
-const HRM_AMUFIY_API_KEY  = process.env.HRM_AMUFIY_API_KEY  || 'sl_f7f604b7eeb89f938399b888621a341f2183bceea4bcb9650f3b8a529d396bfe';
-const HRM_TEXT_ENDPOINT   = 'https://api.aumpfy.com/api/apis/trigger/emk-dbde65';
-const HRM_FILE_ENDPOINT   = 'https://api.aumpfy.com/api/apis/trigger/hrm-file-6b7116';
+// Waumfy replaced Aumpfy on 2026-08-22, when the Aumpfy key was deactivated.
+// Its single endpoint serves text and media alike, so the old HRM_FILE_ENDPOINT
+// is gone — nothing ever called it anyway (offer letters go out as email
+// attachments, not WhatsApp files). The key now comes from the env with no
+// fallback: the previous one sat in this file in plain text. It also shares one
+// name with server.js — HRM_AMUFIY_API_KEY held the same secret under a
+// misspelled second name, so both are folded into WAUMFY_API_KEY.
+const WAUMFY_API_KEY      = process.env.WAUMFY_API_KEY || '';
+const HRM_TEXT_ENDPOINT   = process.env.WAUMFY_URL || 'https://www.waumfy.com/api/v1/send-message';
 const HRM_COMPANY         = process.env.HRM_COMPANY || 'E-Marketing';
 const HRM_OFFER_FOLDER_ID   = process.env.HRM_OFFER_FOLDER_ID   || '1DWfwjSdkVP_sDEe62mM50Mc1mV52f6rA';
 // Final (probationary) offer letters save here — the "final offer letter"
@@ -98,7 +104,7 @@ async function hrmSendJoiningForm(c) {
   const sep = HRM_JOINING_FORM_URL.includes('?') ? '&' : '?';
   const formUrl = `${HRM_JOINING_FORM_URL}${sep}token=${token}`;
 
-  const r = await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { to: hrmFormatPhone(c.phone), text:
+  const r = await hrmSendWhatsApp(HRM_TEXT_ENDPOINT, { phone: hrmFormatPhone(c.phone), message:
 `Hello ${c.name}! 📋
 
 Before we issue your offer letter, please fill this short details form:
@@ -640,6 +646,9 @@ async function hrmGenerateFinalOfferDoc(candidate, joining_date, salary, overrid
 
 async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateName, action) {
   let status = 'Failed', errorDetail = '', timedOut = false;
+  // Name the cause up front — otherwise a missing key reads as a bare provider
+  // 401 in the message log, which looks like a Waumfy fault rather than ours.
+  if (!WAUMFY_API_KEY) console.error('  ❌ HRM WhatsApp — WAUMFY_API_KEY is unset in this environment');
   try {
     const fetchFn = global.fetch || (await import('node-fetch')).default;
     // Bound the provider call. For a file send the provider fetches our
@@ -653,7 +662,7 @@ async function hrmSendWhatsApp(endpoint, payload, type, candidateId, candidateNa
     try {
       resp = await fetchFn(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': HRM_AMUFIY_API_KEY },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': WAUMFY_API_KEY },
         body: JSON.stringify(payload),
         signal: controller.signal
       });
@@ -1620,13 +1629,24 @@ app.post('/api/hrm/messages/:id/retry', requireAuth, async (req, res) => {
     let parsed;
     try { parsed = JSON.parse(msg.payload_json); } catch { return res.status(400).json({ error: 'Payload corrupt' }); }
 
+    // Rows logged before the 2026-08-22 Waumfy migration stored the Aumpfy URL
+    // and its {to, text} body. Replayed as-is they would POST a dead shape at a
+    // dead host, so every pre-migration retry would fail forever. Translate to
+    // the current endpoint and field names on the way out.
+    const endpoint = /(^|\.)aumpfy\.com/.test(parsed.endpoint || '')
+      ? HRM_TEXT_ENDPOINT
+      : (parsed.endpoint || HRM_TEXT_ENDPOINT);
+    const body = { ...parsed.body };
+    if (body.to   !== undefined && body.phone   === undefined) { body.phone   = body.to;   delete body.to; }
+    if (body.text !== undefined && body.message === undefined) { body.message = body.text; delete body.text; }
+
     let status = 'Failed', errorDetail = '';
     try {
       const fetchFn = global.fetch || (await import('node-fetch')).default;
-      const resp = await fetchFn(parsed.endpoint, {
+      const resp = await fetchFn(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': HRM_AMUFIY_API_KEY },
-        body: JSON.stringify(parsed.body)
+        headers: { 'Content-Type': 'application/json', 'x-api-key': WAUMFY_API_KEY },
+        body: JSON.stringify(body)
       });
       if (resp.ok) { status = 'Sent'; } else {
         const txt = await resp.text();

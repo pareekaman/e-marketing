@@ -4483,14 +4483,27 @@ const _migrationMarkerPromise = (async () => {
   }
 })();
 
-// ── WhatsApp helper (Aumpfy API) ──────────────────────
+// ── WhatsApp helper (Waumfy API) ──────────────────────
+// Moved off Aumpfy on 2026-08-22, when that key was deactivated. Waumfy differs
+// in three ways at once: lowercase `x-api-key`, and a {phone, message} body
+// where Aumpfy took {to, text}. Its single endpoint also accepts group ids
+// ("120363…@g.us") in `phone`, so the raw sender below shares this URL rather
+// than needing a second one.
+//
+// No hardcoded key fallback on purpose — the previous key shipped in this file,
+// which is a good way to get a key deactivated. Set WAUMFY_API_KEY in the env.
+const WAUMFY_URL = process.env.WAUMFY_URL || 'https://www.waumfy.com/api/v1/send-message';
+const WAUMFY_API_KEY = process.env.WAUMFY_API_KEY || '';
+
 async function sendWhatsApp(phone, text) {
   if (process.env.WA_DISABLED === 'true') {
     console.log(`  🔇 WhatsApp send SKIPPED (WA_DISABLED) → ${phone}: ${text.slice(0, 60)}...`);
     return { ok: true, skipped: true };
   }
-  const AUMPFY_URL = process.env.AUMPFY_URL || 'https://api.aumpfy.com/api/apis/trigger/emk-dbde65';
-  const AUMPFY_API_KEY = process.env.AUMPFY_API_KEY || 'sl_f7f604b7eeb89f938399b888621a341f2183bceea4bcb9650f3b8a529d396bfe';
+  if (!WAUMFY_API_KEY) {
+    console.error('  ❌ WhatsApp NOT sent — WAUMFY_API_KEY is unset in this environment');
+    return { ok: false, reason: 'WAUMFY_API_KEY not set' };
+  }
 
   if (!phone) return { ok: false, reason: 'no phone' };
   // Strip non-digits, ensure 91 prefix (India)
@@ -4500,17 +4513,17 @@ async function sendWhatsApp(phone, text) {
   else if (to.length === 11 && to.startsWith('0')) to = '91' + to.slice(1);
   else return { ok: false, reason: 'invalid phone format' };
 
-  // Cap the provider call at 30s. Without it a stalled Aumpfy fetch hangs the
+  // Cap the provider call at 30s. Without it a stalled Waumfy fetch hangs the
   // whole awaiting request — which is how a cron that sends WhatsApp (e.g. the
   // due-date nudge) would run past Vercel's 60s limit and never respond.
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 30000);
   try {
     const fetch = global.fetch || (await import('node-fetch')).default;
-    const r = await fetch(AUMPFY_URL, {
+    const r = await fetch(WAUMFY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': AUMPFY_API_KEY },
-      body: JSON.stringify({ to, text }),
+      headers: { 'Content-Type': 'application/json', 'x-api-key': WAUMFY_API_KEY },
+      body: JSON.stringify({ phone: to, message: text }),
       signal: ctrl.signal
     });
     const data = await r.text();
@@ -4535,8 +4548,10 @@ async function sendWhatsAppRaw(to, text) {
     console.log(`  🔇 WhatsApp (raw) send SKIPPED (WA_DISABLED) → ${to}: ${text.slice(0, 60)}...`);
     return { ok: true, skipped: true };
   }
-  const AUMPFY_URL = process.env.AUMPFY_URL || 'https://api.aumpfy.com/api/apis/trigger/emk-dbde65';
-  const AUMPFY_API_KEY = process.env.AUMPFY_API_KEY || 'sl_f7f604b7eeb89f938399b888621a341f2183bceea4bcb9650f3b8a529d396bfe';
+  if (!WAUMFY_API_KEY) {
+    console.error('  ❌ WhatsApp (raw) NOT sent — WAUMFY_API_KEY is unset in this environment');
+    return { ok: false, reason: 'WAUMFY_API_KEY not set' };
+  }
 
   if (!to) return { ok: false, reason: 'no destination' };
 
@@ -4544,10 +4559,10 @@ async function sendWhatsAppRaw(to, text) {
   const timer = setTimeout(() => ctrl.abort(), 30000);
   try {
     const fetch = global.fetch || (await import('node-fetch')).default;
-    const r = await fetch(AUMPFY_URL, {
+    const r = await fetch(WAUMFY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': AUMPFY_API_KEY },
-      body: JSON.stringify({ to: String(to), text }),
+      headers: { 'Content-Type': 'application/json', 'x-api-key': WAUMFY_API_KEY },
+      body: JSON.stringify({ phone: String(to), message: text }),
       signal: ctrl.signal
     });
     const data = await r.text();
