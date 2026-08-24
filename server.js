@@ -5505,6 +5505,88 @@ app.get('/api/cron/daily-reminder', async (req, res) => {
   }
 });
 
+// ── Birthdays & work anniversaries ────────────────────
+// Every date comparison stays in SQL on purpose. This database runs on IST, so
+// CURDATE() is already the local date — reading a DATE column into a JS Date and
+// formatting it shifts it back through UTC and wishes the whole company a day
+// early. That is not hypothetical; the first draft of this query did exactly it.
+//
+// The '02-29' clause is for the one person born on a leap day. In a non-leap
+// year that date never arrives, so the wish falls to the 28th. The leap-year
+// test inside the same clause is what stops a double wish in a year that DOES
+// have a 29th — without it they would be greeted on both days.
+const CELEBRATIONS_SQL = `
+  SELECT name, 'birthday' AS kind, 0 AS years
+    FROM users
+   WHERE role <> 'client' AND birthday IS NOT NULL
+     AND ( DATE_FORMAT(birthday,'%m-%d') = DATE_FORMAT(CURDATE(),'%m-%d')
+        OR ( DATE_FORMAT(birthday,'%m-%d') = '02-29'
+             AND DATE_FORMAT(CURDATE(),'%m-%d') = '02-28'
+             AND DAY(LAST_DAY(CONCAT(YEAR(CURDATE()),'-02-01'))) = 28 ) )
+  UNION ALL
+  SELECT name, 'anniversary' AS kind, TIMESTAMPDIFF(YEAR, joining_date, CURDATE()) AS years
+    FROM users
+   WHERE role <> 'client' AND joining_date IS NOT NULL
+     AND DATE_FORMAT(joining_date,'%m-%d') = DATE_FORMAT(CURDATE(),'%m-%d')
+     AND TIMESTAMPDIFF(YEAR, joining_date, CURDATE()) >= 1
+   ORDER BY kind, name`;
+
+// "A" / "A and B" / "A, B and C"
+function joinNames(names) {
+  if (names.length <= 1) return names[0] || '';
+  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+}
+
+async function sendCelebrationMessages() {
+  const [rows] = await db.query(CELEBRATIONS_SQL);
+  const birthdays     = rows.filter(r => r.kind === 'birthday').map(r => r.name);
+  const anniversaries = rows.filter(r => r.kind === 'anniversary');
+  if (!birthdays.length && !anniversaries.length) return { ok: true, sent: 0, quiet: true };
+
+  const messages = [];
+  if (birthdays.length) {
+    const you = birthdays.length === 1 ? 'you' : birthdays.length === 2 ? 'you both' : 'you all';
+    messages.push(`Happy birthday, ${joinNames(birthdays)}! 🎉\n`
+      + `Wishing ${you} a wonderful year ahead — have a great day!`);
+  }
+  // Anniversaries go one message per person. Folding them together produces
+  // "Today marks 5 years and 1 year with e-marketing", which stops making sense
+  // the moment the numbers differ — and they almost always do.
+  for (const a of anniversaries) {
+    messages.push(`Congratulations, ${a.name}! 🎊\n`
+      + `Today marks ${a.years} year${a.years === 1 ? '' : 's'} with e-marketing`
+      + ` — thank you for everything you bring to the team.`);
+  }
+
+  // Sequential, not Promise.all: the provider rate-limits and spaces sends out
+  // anyway, and sending in order keeps the birthday message first in the group.
+  const results = [];
+  for (const text of messages) results.push(await sendToReminderDestination(text));
+
+  return {
+    ok: true,
+    sent: messages.length,
+    birthdays,
+    anniversaries: anniversaries.map(a => `${a.name} (${a.years}y)`),
+    results
+  };
+}
+
+app.get('/api/cron/celebrations', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: celebrations');
+    res.json(await sendCelebrationMessages());
+  } catch (err) {
+    console.error('Cron celebrations error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── 10-min pre-meeting reminder. Hit by an external cron (GitHub Actions, 5-min
 // schedule) since the Vercel Hobby plan only allows daily crons. ──
 async function sendMeetingReminders() {
