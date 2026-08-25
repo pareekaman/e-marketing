@@ -88,6 +88,10 @@ function prPopulateBanks() {
   sel.innerHTML = '<option value="">— Select Bank —</option>' +
     banks.map(b => `<option value="${dtEscape(b)}">${dtEscape(b)}</option>`).join('') +
     '<option value="__other__">Other…</option>';
+  initCustomSelect('prBank');  // native popup paints over the sidebar
+  // prCard is deliberately NOT upgraded: prBankChange() shows and hides it with
+  // style.display to swap in a free-text input, and the helper keeps the <select>
+  // permanently hidden behind its button, so that toggle would stop working.
   document.getElementById('prCard').innerHTML = '<option value="">— Select Card —</option>';
   document.getElementById('prBankOther').style.display = 'none';
   document.getElementById('prCardOther').style.display = 'none';

@@ -1007,10 +1007,22 @@ function initCustomSelect(selectId){
   // Already upgraded → just refresh the button label (options may have changed).
   if (sel.dataset.cselect) { sel._cselectSync && sel._cselectSync(); return; }
   sel.dataset.cselect = '1';
-  const fullWidth = /width\s*:\s*100%/.test(sel.getAttribute('style') || '');
+  const styleAttr = sel.getAttribute('style') || '';
+  const fullWidth = /width\s*:\s*100%/.test(styleAttr);
+  // A select sized by a flex parent carries `flex` on the <select> itself — but
+  // that element is about to be hidden inside the wrapper, so the wrapper has to
+  // take the sizing over or the control collapses to the width of its label.
+  // Without this, upgrading a `flex:1` select visibly shrinks it.
+  const flexProp = (styleAttr.match(/(?:^|;)\s*flex\s*:\s*([^;]+)/) || [])[1];
+  const minWidth = (styleAttr.match(/min-width\s*:\s*([^;]+)/) || [])[1];
+  const stretch = fullWidth || !!flexProp;
 
   const wrap = document.createElement('span');
-  wrap.style.cssText = fullWidth ? 'position:relative;display:block' : 'position:relative;display:inline-block';
+  wrap.style.cssText = stretch ? 'position:relative;display:block' : 'position:relative;display:inline-block';
+  if (flexProp) {
+    wrap.style.flex = flexProp.trim();
+    if (minWidth) wrap.style.minWidth = minWidth.trim();
+  }
   sel.parentNode.insertBefore(wrap, sel);
   wrap.appendChild(sel);
   sel.style.display = 'none';
@@ -1019,7 +1031,7 @@ function initCustomSelect(selectId){
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'cselect-btn';
-  if (fullWidth) { btn.style.width = '100%'; btn.style.justifyContent = 'space-between'; }
+  if (stretch) { btn.style.width = '100%'; btn.style.justifyContent = 'space-between'; }
   const list = document.createElement('div');
   list.className = 'dash-emp-filter-list';
   wrap.appendChild(btn);

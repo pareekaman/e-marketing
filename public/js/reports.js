@@ -32,6 +32,7 @@ async function emp360InitPicker(){
     const sel = document.getElementById('empSelect');
     sel.innerHTML = '<option value="">— Select employee —</option>' +
       EMP360_USERS.map(u => `<option value="${u.id}">${dtEscape(u.name)}${u.department ? ' · ' + dtEscape(u.department) : ''}</option>`).join('');
+    initCustomSelect('empSelect');  // native popup paints over the sidebar
     // Default range = current month
     if (!document.getElementById('empFrom').value) emp360Preset('month', true);
   } catch(e) {
