@@ -5,6 +5,40 @@
    ported block stays diffable against the original, and so this does not
    collide with unrelated in-progress work in that file.
 */
+/* ── Design tokens this page needs ──────────────────────────────────
+   The sales dashboard was built on a shadcn-style token set that this app
+   simply does not have: of the 16 custom properties the rules below reference,
+   13 were undefined here. An undefined var() resolves to nothing, so this was
+   not a subtle shift — the source dropdown rendered fully transparent with the
+   KPI cards showing through it, and every border, muted label and chart colour
+   on the page was silently blank too.
+
+   Values are the dashboard's own :root, so the page looks exactly as it did.
+   Scoped to the page and its modal rather than :root on purpose: these names
+   are generic enough (--card, --border, --foreground) that leaking them app-wide
+   could quietly restyle unrelated screens.
+
+   --shadow-xs / --shadow-md / --shadow-lg are deliberately NOT redefined — this
+   app already has its own, and inheriting them keeps the page consistent here.
+   --enq-accent is not listed here either, but for a different reason: the
+   .enq-kpi modifier classes further down set it per card (.total, .new, .won …)
+   from the chart tokens above, so it resolves once those exist. */
+#page-leads,
+#enqDetailModal {
+  --foreground:#0a0a0a;
+  --card:#ffffff;
+  --muted:#f5f5f5;
+  --muted-foreground:#737373;
+  --border:#e5e5e5;
+  --destructive:#e40014;
+  --success:#00a151;
+  --warning:#f0a133;
+  --chart-1:#3b6df4;
+  --chart-3:#ed990e;
+  --chart-5:#009fc2;
+  --radius-lg:.75rem;
+}
+
 /* ── Website Enquiries — KPI cards + table polish ───────────────── */
 .enq-kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
 .enq-kpi-row.enq-kpi-6{grid-template-columns:repeat(6,1fr);}
