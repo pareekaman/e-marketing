@@ -1281,6 +1281,7 @@ async function loadFMSTasks() {
   const list = await api('/api/fms-tasks');
   if (!list.length) {
     sel.innerHTML = '<option value="">-- No FMS available --</option>';
+    initCustomSelect('fmsTasksSelect');
     emptyEl.style.display = 'block';
     return;
   }
@@ -1293,6 +1294,12 @@ async function loadFMSTasks() {
     sel.value = list[0].id;
     onFMSTasksSelect();
   }
+
+  // Replace the native popup with the styled dropdown. A native <select> list is
+  // drawn by the browser, so it ignores z-index and paints over the sidebar —
+  // this one is wide, so it spilled well past its own box. Called after the
+  // auto-select above so the button shows the chosen label, not the placeholder.
+  initCustomSelect('fmsTasksSelect');
 }
 
 async function onFMSTasksSelect() {
