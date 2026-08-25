@@ -5590,6 +5590,85 @@ app.get('/api/cron/celebrations', async (req, res) => {
   }
 });
 
+// ── Holiday notice ────────────────────────────────────
+// Goes out at noon IST the day before a holiday, to the same team group as the
+// daily reminder.
+//
+// A "run" is built ONLY from dates in the holidays table. Sundays and the
+// monthly last Saturday are deliberately not folded in, even though they are
+// off days: the team already knows about those, and counting them turned the
+// single Raksha Bandhan notice into a three-day one nobody asked for. The one
+// place the full off-day rules DO apply is the resume date below, where the
+// message makes a factual claim about when work restarts.
+//
+// Sent only when tomorrow starts a run — if today is a holiday too, the notice
+// for this run already went out, so a four-day Diwali produces one message
+// rather than four.
+async function sendHolidayNotice() {
+  const [[{ today, tomorrow }]] = await db.query(
+    `SELECT DATE_FORMAT(CURDATE(),'%Y-%m-%d') AS today,
+            DATE_FORMAT(CURDATE() + INTERVAL 1 DAY,'%Y-%m-%d') AS tomorrow`);
+  // A month ahead is plenty to walk a run without a second query.
+  const [rows] = await db.query(
+    `SELECT DATE_FORMAT(holiday_date,'%Y-%m-%d') AS d, name
+       FROM holidays
+      WHERE holiday_date BETWEEN CURDATE() AND CURDATE() + INTERVAL 30 DAY
+      ORDER BY holiday_date`);
+
+  const byDate = new Map(rows.map(r => [r.d, r.name]));
+  if (!byDate.has(tomorrow)) return { ok: true, sent: 0, quiet: true, reason: 'tomorrow is not a holiday' };
+  if (byDate.has(today))     return { ok: true, sent: 0, quiet: true, reason: 'already inside a holiday run' };
+
+  // Built from a UTC midnight so the arithmetic never crosses a DST or local
+  // offset — these are plain calendar dates, not moments in time.
+  const shift = (s, n) => {
+    const d = new Date(s + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  const run = [tomorrow];
+  while (byDate.has(shift(run[run.length - 1], 1))) run.push(shift(run[run.length - 1], 1));
+
+  // First working day after the run. Skips Sundays, the monthly last Saturday
+  // and any further holiday — writing "we resume the next day" without this
+  // would have been wrong the moment a run ended on a Saturday.
+  let resume = shift(run[run.length - 1], 1);
+  for (let i = 0; i < 14; i++) {
+    const dow = new Date(resume + 'T00:00:00Z').getUTCDay();
+    if (dow !== 0 && !isLastSaturdayOfMonth(resume) && !byDate.has(resume)) break;
+    resume = shift(resume, 1);
+  }
+
+  const fmt = s => new Date(s + 'T00:00:00Z')
+    .toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' });
+  const uniq = [...new Set(run.map(d => byDate.get(d)))];
+  const names = uniq.length === 1 ? uniq[0]
+    : uniq.slice(0, -1).join(', ') + ' and ' + uniq[uniq.length - 1];
+
+  const text = run.length === 1
+    ? `Hello Team,\nTomorrow, ${fmt(run[0])}, is a holiday for ${names}\nThe office will remain closed.`
+    : `Hello Team,\nThe office will remain closed from ${fmt(run[0])} to ${fmt(run[run.length - 1])} for ${names}\n`
+      + `We resume on ${fmt(resume)}.`;
+
+  const result = await sendToReminderDestination(text);
+  return { ok: true, sent: 1, days: run.length, resume, holidays: run.map(d => `${d} ${byDate.get(d)}`), result };
+}
+
+app.get('/api/cron/holiday-notice', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: holiday-notice');
+    res.json(await sendHolidayNotice());
+  } catch (err) {
+    console.error('Cron holiday-notice error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── 10-min pre-meeting reminder. Hit by an external cron (GitHub Actions, 5-min
 // schedule) since the Vercel Hobby plan only allows daily crons. ──
 async function sendMeetingReminders() {

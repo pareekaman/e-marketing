@@ -38,6 +38,10 @@
       "schedule": "30 4 * * *"
     },
     {
+      "path": "/api/cron/holiday-notice",
+      "schedule": "30 6 * * *"
+    },
+    {
       "path": "/api/cron/purge-deleted-records",
       "schedule": "0 20 * * *"
     },
