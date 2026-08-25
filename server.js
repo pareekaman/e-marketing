@@ -3233,13 +3233,16 @@ app.post('/api/users/bulk', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // Per-user permission overrides
-const VALID_UP_PAGES   = new Set(['dashboard','alltasks','approvals','mis','race','fms','fms-tasks','daily','clients','compliance','dailyreports','leaves','meetings','inventory','hrm','users','dms','paymentreq','feedback','creditcards','logs']);
+const VALID_UP_PAGES   = new Set(['dashboard','alltasks','approvals','mis','race','fms','fms-tasks','daily','clients','compliance','dailyreports','leaves','meetings','inventory','hrm','users','dms','paymentreq','feedback','creditcards','logs','leads']);
 // The edit_<page> keys carry the Access Control panel's "Editor" level for
 // features that have no individually gated buttons. They are stored now so the
 // choice survives; a page starts honouring it as soon as its controls are
 // wired to canDo('edit_<page>'). Keep this in sync with PERM_TREE in app.html.
 const VALID_UP_ACTIONS = new Set(['edit_task','delete_task','create_task','create_checklist','approve_revision','bulk_approve','transfer_task','reopen_task','delete_leave','set_plan','hrm_schedule','hrm_update_status',
-  'edit_dashboard','edit_mis','edit_race','edit_fms','edit_fms_tasks','edit_clients','edit_compliance','edit_dailyreports','edit_meetings','edit_inventory','edit_dms','edit_paymentreq','edit_feedback','edit_users','edit_creditcards','edit_logs']);
+  'edit_dashboard','edit_mis','edit_race','edit_fms','edit_fms_tasks','edit_clients','edit_compliance','edit_dailyreports','edit_meetings','edit_inventory','edit_dms','edit_paymentreq','edit_feedback','edit_users','edit_creditcards','edit_logs',
+  // Unlike most edit_<page> keys this one is genuinely enforced: every write
+  // route in routes/leads.js checks it, so View really is read-only there.
+  'edit_leads']);
 
 // ── Server-side mirror of the frontend's canSee() / canDo() ──────────────
 // Until this existed, `user_permissions` was write-only as far as the API was
@@ -8587,6 +8590,18 @@ require('./backend/routes/hrm')(app, {
   // deep. The offer-letter signature is read from <root>/public/signature.png,
   // so the root is passed in explicitly rather than guessed with '..'.
   appRoot: __dirname,
+});
+
+// Leads Enquiry — four Google Sheet sources, no database. Ported from the
+// standalone sales dashboard. Sits here rather than higher up because it needs
+// userCanSee/userCanDo, which are defined further down than the Sheets helpers.
+require('./backend/routes/leads')(app, {
+  requireAuth,
+  userCanSee,
+  userCanDo,
+  getSheetsClient,
+  extractSpreadsheetId,
+  idxToCol,
 });
 
 // ══════════════════════════════════════════════════════

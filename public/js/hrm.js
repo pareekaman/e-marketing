@@ -1131,7 +1131,11 @@ function navigate(page, el) {
     feedback: loadFeedbackAdmin,
     creditcards: loadCreditCards,
     paymentreq: initPaymentReqPage,
-    logs: loadLogs
+    logs: loadLogs,
+    // Loads the website source only; the other three sheets are fetched lazily
+    // by switchEnqSource() the first time their tab is picked, so opening the
+    // page does not pull four spreadsheets it may not need.
+    leads: loadEnquiries
   };
   const loaderFn = pageLoaders[page];
   if (typeof loaderFn === 'function') withPageLoader(loaderFn);

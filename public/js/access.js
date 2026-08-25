@@ -120,6 +120,12 @@ const PERM_TREE = [
   { page: 'feedback',     label: 'Escalation',     icon: '💬', enforced: false, actions: [
     { key: 'edit_feedback', label: 'Edit' },
   ]},
+  // enforced for real, unlike most edit_<page> rows: every write route in
+  // routes/leads.js checks canDo('edit_leads'), so View genuinely cannot change
+  // a lead's status or add a manual entry — it only reads the sheets.
+  { page: 'leads',        label: 'Leads Enquiry',  icon: '📇', enforced: true, actions: [
+    { key: 'edit_leads', label: 'Edit' },
+  ]},
   { page: 'users',        label: 'Users',          icon: '👤', enforced: false, actions: [
     { key: 'edit_users', label: 'Edit' },
   ]},
