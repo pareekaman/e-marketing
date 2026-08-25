@@ -99,7 +99,13 @@
 .src-dd-label{font-size:16px;font-weight:800;color:var(--foreground);letter-spacing:-.01em;flex:1;text-align:left;white-space:nowrap;}
 .src-dd-caret{color:var(--muted-foreground);flex:none;transition:transform .2s ease;}
 .src-dd-btn.open .src-dd-caret{transform:rotate(180deg);}
-.src-dd-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:296px;background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-lg,0 14px 38px rgba(0,0,0,.17));padding:6px;z-index:50;opacity:0;visibility:hidden;transform:translateY(-6px);transition:opacity .16s ease,transform .16s ease,visibility .16s;}
+.src-dd-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:296px;background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-lg,0 14px 38px rgba(0,0,0,.17));padding:6px;
+  /* 50 in the source app, which was the lowest z-index anywhere here and sat
+     under both .topbar (90) and .sidebar (200). Nothing overlaps it today, so it
+     looked fine — but it would lose the moment the page scrolled it under the
+     topbar. 300 clears the sidebar while staying below .modal-overlay (1000),
+     so an open menu can never paint over a dialog. */
+  z-index:300;opacity:0;visibility:hidden;transform:translateY(-6px);transition:opacity .16s ease,transform .16s ease,visibility .16s;}
 .src-dd-menu.open{opacity:1;visibility:visible;transform:translateY(0);}
 .src-dd-item{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:10px;cursor:pointer;transition:background .12s ease;}
 .src-dd-item:hover{background:color-mix(in srgb,var(--chart-1) 8%,transparent);}
