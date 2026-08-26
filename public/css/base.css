@@ -122,12 +122,10 @@ body{
 .dash-emp-filter-opt{padding:7px 10px;border-radius:6px;font-size:13px;color:#1e293b;cursor:pointer;white-space:nowrap;}
 .dash-emp-filter-opt:hover{background:#f1f5f9;}
 .dash-emp-filter-opt.selected{background:#eef2ff;color:#4f46e5;font-weight:600;}
-/* Trigger button for any native <select> upgraded via initCustomSelect() — its
-   list uses .dash-emp-filter-list so it renders as page content, never a native
-   popup painting over the sidebar. */
-.cselect-btn{padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;color:#1e293b;background:#fff;cursor:pointer;outline:none;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
-.cselect-btn:hover{border-color:#cbd5e1;}
-.cselect-btn .cselect-caret{opacity:.45;font-size:11px;}
+/* .cselect-btn lived here, styling initCustomSelect()'s trigger button. Both are
+   gone — see the note where initCustomSelect() used to be in hrm.js. The
+   .dash-emp-filter-* rules above stay: the dashboard employee filter still uses
+   them, and it is the one hand-built dropdown that survives. */
 
 .sidebar-logo{
   padding:16px 13px;border-bottom:1px solid rgba(255,255,255,.07);

@@ -88,10 +88,11 @@ function prPopulateBanks() {
   sel.innerHTML = '<option value="">— Select Bank —</option>' +
     banks.map(b => `<option value="${dtEscape(b)}">${dtEscape(b)}</option>`).join('') +
     '<option value="__other__">Other…</option>';
-  initCustomSelect('prBank');  // native popup paints over the sidebar
-  // prCard is deliberately NOT upgraded: prBankChange() shows and hides it with
-  // style.display to swap in a free-text input, and the helper keeps the <select>
-  // permanently hidden behind its button, so that toggle would stop working.
+  // No initCustomSelect() here — see loadFMSTasks(). app.html's searchable-select
+  // enhancer owns every <select>, and it hides its own wrapper when the <select>
+  // goes display:none, which took the custom button down with it. prCard is fine
+  // as it is: prBankChange() toggles its style.display to swap in a free-text
+  // input, and the enhancer mirrors that onto its wrapper, so the swap still works.
   document.getElementById('prCard').innerHTML = '<option value="">— Select Card —</option>';
   document.getElementById('prBankOther').style.display = 'none';
   document.getElementById('prCardOther').style.display = 'none';
@@ -323,7 +324,7 @@ function paApplyFilters() {
 function paResetFilters() {
   const ids = ['paFilterEmployee','paFilterDateFrom','paFilterDateTo','paFilterAmtMin','paFilterAmtMax'];
   ids.forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
-  document.getElementById('paFilterEmployee')?._cselectSync?.();
+  document.getElementById('paFilterEmployee')?._ssSync?.();
   paRenderApprovalRows(_paAllRows);
 }
 
@@ -449,7 +450,8 @@ async function loadPaymentApprovals() {
       const names = [...new Set(rows.map(r => r.name).filter(Boolean))].sort();
       const curVal = empSel.value;
       empSel.innerHTML = '<option value="">All Employees</option>' + names.map(n => `<option value="${dtEscape(n)}"${n===curVal?'selected':''}>${dtEscape(n)}</option>`).join('');
-      initCustomSelect('paFilterEmployee');  // custom dropdown — no native popup over the sidebar
+      // No initCustomSelect() here — see loadFMSTasks(). The searchable-select
+      // enhancer in app.html already owns this <select>.
     }
     paApplyFilters();
   } catch(e) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }

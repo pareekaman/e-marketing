@@ -81,14 +81,15 @@ function lvSyncTeamFilters() {
         sel.appendChild(opt);
       });
       if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
-      // Custom in-page dropdown so the list never paints over the sidebar.
-      initCustomSelect('lvUserFilter');
+      // No initCustomSelect() here — see loadFMSTasks(). app.html's searchable-select
+      // enhancer owns every <select>, and it hides its own wrapper when the <select>
+      // goes display:none, which took the custom button down with it.
     }
   }
 }
 
 function lvClearFilters() {
-  const sel = document.getElementById('lvUserFilter'); if (sel) { sel.value = 'all'; sel._cselectSync && sel._cselectSync(); }
+  const sel = document.getElementById('lvUserFilter'); if (sel) { sel.value = 'all'; sel._ssSync?.(); }
   const f = document.getElementById('lvDateFrom'); if (f) f.value = '';
   const t = document.getElementById('lvDateTo'); if (t) t.value = '';
   renderLeaves();

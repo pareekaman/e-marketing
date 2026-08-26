@@ -32,7 +32,10 @@ async function emp360InitPicker(){
     const sel = document.getElementById('empSelect');
     sel.innerHTML = '<option value="">— Select employee —</option>' +
       EMP360_USERS.map(u => `<option value="${u.id}">${dtEscape(u.name)}${u.department ? ' · ' + dtEscape(u.department) : ''}</option>`).join('');
-    initCustomSelect('empSelect');  // native popup paints over the sidebar
+    // No initCustomSelect() here — see loadFMSTasks(). app.html's searchable-select
+    // enhancer has already wrapped this <select>, and it hides its own wrapper
+    // when the <select> goes display:none, taking the custom button (built inside
+    // that wrapper) with it. The enhancer already keeps the list off the sidebar.
     // Default range = current month
     if (!document.getElementById('empFrom').value) emp360Preset('month', true);
   } catch(e) {

@@ -3877,6 +3877,9 @@
     const curText = () => { const o = sel.options[sel.selectedIndex]; return o ? o.textContent : ''; };
     const placeholder = () => { const o = sel.options[0]; return (o && o.value === '') ? o.textContent : 'Search…'; };
     function syncDisplay(){ if (document.activeElement !== input) { input.value = curText(); input.placeholder = placeholder(); } }
+    // Setting sel.value from code fires no 'change', so the input keeps showing the
+    // old label. Reset/clear buttons call this after assigning .value.
+    sel._ssSync = syncDisplay;
     function build(q){
       q = (q||'').toLowerCase().trim();
       filtered = Array.prototype.map.call(sel.options, (o,i)=>({o,i}))

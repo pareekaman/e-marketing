@@ -994,77 +994,28 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-// ── Reusable custom dropdown ─────────────────────────────────────────
-// Upgrade ANY native <select> into an in-page custom dropdown, for the same
-// reason the dashboard employee filter uses one: a native <select> popup always
-// paints above everything (including the sidebar) and can't be closed when the
-// sidebar slides over it. The <select> stays as the value store and still fires
-// 'change'; a styled button shows the current label and a div renders the list.
-// Idempotent — safe to call again after the <select>'s options are rebuilt.
-function initCustomSelect(selectId){
-  const sel = document.getElementById(selectId);
-  if (!sel) return;
-  // Already upgraded → just refresh the button label (options may have changed).
-  if (sel.dataset.cselect) { sel._cselectSync && sel._cselectSync(); return; }
-  sel.dataset.cselect = '1';
-  const styleAttr = sel.getAttribute('style') || '';
-  const fullWidth = /width\s*:\s*100%/.test(styleAttr);
-  // A select sized by a flex parent carries `flex` on the <select> itself — but
-  // that element is about to be hidden inside the wrapper, so the wrapper has to
-  // take the sizing over or the control collapses to the width of its label.
-  // Without this, upgrading a `flex:1` select visibly shrinks it.
-  const flexProp = (styleAttr.match(/(?:^|;)\s*flex\s*:\s*([^;]+)/) || [])[1];
-  const minWidth = (styleAttr.match(/min-width\s*:\s*([^;]+)/) || [])[1];
-  const stretch = fullWidth || !!flexProp;
-
-  const wrap = document.createElement('span');
-  wrap.style.cssText = stretch ? 'position:relative;display:block' : 'position:relative;display:inline-block';
-  if (flexProp) {
-    wrap.style.flex = flexProp.trim();
-    if (minWidth) wrap.style.minWidth = minWidth.trim();
-  }
-  sel.parentNode.insertBefore(wrap, sel);
-  wrap.appendChild(sel);
-  sel.style.display = 'none';
-  sel.tabIndex = -1;
-
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'cselect-btn';
-  if (stretch) { btn.style.width = '100%'; btn.style.justifyContent = 'space-between'; }
-  const list = document.createElement('div');
-  list.className = 'dash-emp-filter-list';
-  wrap.appendChild(btn);
-  wrap.appendChild(list);
-
-  const labelOf = () => { const o = sel.options[sel.selectedIndex]; return o ? o.textContent : ''; };
-  const sync = () => { btn.innerHTML = `<span>${dtEscape(labelOf())}</span><span class="cselect-caret">▾</span>`; };
-  sel._cselectSync = sync;
-  sync();
-
-  const outside = (e) => { if (!wrap.contains(e.target)) close(); };
-  function close(){ list.classList.remove('open'); document.removeEventListener('mousedown', outside); }
-  btn.addEventListener('click', (e) => {
-    e.preventDefault();
-    if (list.classList.contains('open')) { close(); return; }
-    list.innerHTML = Array.from(sel.options).map(o =>
-      `<div class="dash-emp-filter-opt${o.value === sel.value ? ' selected' : ''}" data-val="${dtEscape(o.value)}">${dtEscape(o.textContent)}</div>`
-    ).join('');
-    list.classList.add('open');
-    if (typeof closeSidebar === 'function') closeSidebar();
-    document.addEventListener('mousedown', outside);
-  });
-  list.addEventListener('click', (e) => {
-    const opt = e.target.closest('.dash-emp-filter-opt');
-    if (!opt) return;
-    sel.value = opt.dataset.val;
-    sync();
-    sel.dispatchEvent(new Event('change', { bubbles: true }));
-    close();
-  });
-  // Keep the label right if something sets sel.value + dispatches change directly.
-  sel.addEventListener('change', sync);
-}
+// initCustomSelect() used to live here — a helper that upgraded a native <select>
+// into an in-page button + list, so its popup could not paint over the sidebar.
+// It has been removed, and nothing should bring it back.
+//
+// app.html already ends with a searchable-select enhancer that owns EVERY
+// <select> on the page: it wraps each one in an .ss-wrap, puts a type-to-filter
+// input in its place, and draws the list as a fixed panel on <body>. That
+// already solves the sidebar problem — there is no native popup left to paint
+// over anything — and it adds search on top.
+//
+// Running both was not merely redundant, it blanked the control. The enhancer
+// watches the <select>'s style attribute and mirrors display:none onto its own
+// wrapper; initCustomSelect() began by setting exactly that, and built its
+// button INSIDE that wrapper, so button and input vanished together. The FMS
+// Tasks page rendered as a bare "Select FMS:" label; Employee 360, Leave
+// Tracker, prBank and the Payment Approvals filter lost their pickers the same
+// way.
+//
+// The dashboard employee filter is the one hand-built dropdown that survives,
+// because its markup keeps the button OUTSIDE the <select> — see
+// #dashEmpFilterWrap in app.html. That is the shape to copy if one is ever
+// needed again.
 
 // Close sidebar when user taps anywhere in main content area (mobile)
 document.addEventListener('DOMContentLoaded', () => {
