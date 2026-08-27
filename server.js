@@ -5604,6 +5604,9 @@ app.get('/api/cron/celebrations', async (req, res) => {
 // Sent only when tomorrow starts a run — if today is a holiday too, the notice
 // for this run already went out, so a four-day Diwali produces one message
 // rather than four.
+// Holds the start date of the run whose notice has already gone out.
+const HOLIDAY_NOTICE_KEY = 'holiday_notice_sent_run';
+
 async function sendHolidayNotice() {
   const [[{ today, tomorrow }]] = await db.query(
     `SELECT DATE_FORMAT(CURDATE(),'%Y-%m-%d') AS today,
@@ -5650,7 +5653,30 @@ async function sendHolidayNotice() {
     : `Hello Team,\nThe office will remain closed from ${fmt(run[0])} to ${fmt(run[run.length - 1])} for ${names}\n`
       + `We resume on ${fmt(resume)}.`;
 
+  // One notice per run, even if this is invoked twice. Vercel's Hobby plan does
+  // not fire crons at an exact minute, so a notice that has to go out on a
+  // particular day sometimes gets triggered by hand as well — and without this
+  // the group would receive the same message twice.
+  //
+  // The claim is an UPDATE rather than a read-then-write: a single UPDATE is
+  // atomic, so if the cron and a manual call land together exactly one of them
+  // sees affectedRows = 1 and sends. A read-then-write would let both through.
+  await db.query(`INSERT IGNORE INTO app_settings (key_name, value) VALUES (?, '')`, [HOLIDAY_NOTICE_KEY]);
+  const [claim] = await db.query(
+    `UPDATE app_settings SET value=? WHERE key_name=? AND value<>?`,
+    [run[0], HOLIDAY_NOTICE_KEY, run[0]]);
+  if (!claim.affectedRows) {
+    return { ok: true, sent: 0, quiet: true, reason: 'notice for this run already sent' };
+  }
+
   const result = await sendToReminderDestination(text);
+  // Release the claim if the send failed, or a provider hiccup would silently
+  // cost the team the whole notice — the holiday is tomorrow, there is no
+  // second chance later in the week.
+  if (!result || result.ok === false) {
+    await db.query(`UPDATE app_settings SET value='' WHERE key_name=? AND value=?`, [HOLIDAY_NOTICE_KEY, run[0]]);
+    return { ok: false, sent: 0, days: run.length, error: (result && result.error) || 'send failed', result };
+  }
   return { ok: true, sent: 1, days: run.length, resume, holidays: run.map(d => `${d} ${byDate.get(d)}`), result };
 }
 
