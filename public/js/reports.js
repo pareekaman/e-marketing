@@ -579,7 +579,10 @@ function drExportCSV(){
   if (!DR_DATA) { showToast('No data to export', 'error'); return; }
   const entries = drFilteredEntries();
   if (!entries.length) { showToast('No entries match the current filters', 'error'); return; }
-  const rows = [['Date', 'User', 'Email', 'Client', 'Department', 'Description', 'Minutes']];
+  // Hours alongside Minutes, because a 3-month pull is read in hours and nobody
+  // wants to divide a thousand rows by 60 in Excel. Two decimals, not the one the
+  // summary table shows: at entry level 45 min has to read 0.75, not 0.8.
+  const rows = [['Date', 'User', 'Email', 'Client', 'Department', 'Description', 'Minutes', 'Hours']];
   for (const e of entries) {
     rows.push([
       e.entry_date,
@@ -588,7 +591,8 @@ function drExportCSV(){
       (e.client_name||'').replace(/,/g,';'),
       (e.department||'').replace(/,/g,';'),
       (e.description||'').replace(/,/g,';').replace(/\n/g,' '),
-      e.duration_min
+      e.duration_min,
+      ((e.duration_min || 0) / 60).toFixed(2)
     ]);
   }
   const csv = rows.map(r => r.join(',')).join('\n');
@@ -597,6 +601,38 @@ function drExportCSV(){
   a.download = `daily_tasks_${DR_DATA.from || DR_DATA.month}_to_${DR_DATA.to || DR_DATA.month}.csv`;
   a.click();
   showToast('✅ CSV downloaded');
+}
+
+// The per-employee totals, which until now could only be read off the screen.
+// This is the one to pull for "every employee, last 3 months, with hours".
+//
+// Deliberately exports DR_DATA.summary rather than recomputing from the filtered
+// entries: it mirrors the summary table above, and that table is not touched by
+// the user / client / search controls either — those belong to the entries
+// section below it. So this button always covers everyone in the date range.
+function drExportSummaryCSV(){
+  if (!DR_DATA) { showToast('No data to export', 'error'); return; }
+  const summary = DR_DATA.summary || [];
+  if (!summary.length) { showToast('No submissions in this date range', 'error'); return; }
+  const rows = [['User', 'Email', 'Department', 'Days Filled', 'Total Tasks', 'Total Minutes', 'Hours', 'Avg Min/Day']];
+  for (const u of summary) {
+    rows.push([
+      (u.name||'').replace(/,/g,';'),
+      u.email,
+      (u.department||'').replace(/,/g,';'),
+      u.days_filled,
+      u.total_tasks,
+      u.total_minutes,
+      ((u.total_minutes || 0) / 60).toFixed(2),
+      u.days_filled > 0 ? Math.round(u.total_minutes / u.days_filled) : 0
+    ]);
+  }
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `daily_summary_${DR_DATA.from || DR_DATA.month}_to_${DR_DATA.to || DR_DATA.month}.csv`;
+  a.click();
+  showToast('✅ Summary CSV downloaded');
 }
 
 function drExportPDF(){

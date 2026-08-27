@@ -1054,7 +1054,8 @@
           <button class="dr-mini-btn" onclick="drClearRange()" title="Clear range and use month picker">↺ Reset</button>
         </div>
         <div class="dr-export-group">
-          <button class="dt-btn dt-btn-add" onclick="drExportCSV()">⬇ CSV</button>
+          <button class="dt-btn dt-btn-add" onclick="drExportCSV()" title="One row per task, honouring the filters below">⬇ Entries CSV</button>
+          <button class="dt-btn dt-btn-add" onclick="drExportSummaryCSV()" title="One row per employee, matching the summary table">⬇ Summary CSV</button>
           <button class="dt-btn dt-btn-submit" onclick="drExportPDF()">⬇ PDF</button>
         </div>
       </div>
