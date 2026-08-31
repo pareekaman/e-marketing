@@ -3275,7 +3275,14 @@ const SERVER_ROLE_DEFAULTS = {
   pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance','paymentreq','feedback','creditcards'],
           actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task'] },
   user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance','clients','paymentreq','feedback','creditcards'],
-          actions: ['create_task','edit_task','delete_task'] }
+          // transfer_task is a default for every user by decision (2026-08-31):
+          // handing your own task to someone else is not an elevated act, and
+          // POST /api/transfers already stops a user at their own tasks — the
+          // role check below it refuses anything not assigned to them, and the
+          // transfer only takes effect after an approval. Without this the
+          // modal opened, took a date range and a target, and only then
+          // answered "You do not have access to transfer tasks".
+          actions: ['create_task','edit_task','delete_task','transfer_task'] }
 };
 
 // Mirrors canSee()'s cascade exactly: an explicit user_permissions row wins
