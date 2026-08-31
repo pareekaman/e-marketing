@@ -177,14 +177,22 @@ app.post('/api/fms/fetch-headers', requireAuth, requireAdmin, async (req, res) =
     const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
     const spreadsheetId = extractSpreadsheetId(sheetId);
     const hRow = parseInt(headerRow) || 1;
-    // Fetch ONLY the header row — very fast even for 10000-row sheets
-    const range = sheetName ? `${sheetName}!${hRow}:${hRow}` : `${hRow}:${hRow}`;
+    // Fetch the header row and everything above it — still only a handful of
+    // rows, so just as fast on a 10000-row sheet. The rows above matter because
+    // house-format FMS sheets carry a Step banner / What / Who block there, and
+    // the add-FMS screen reads step names out of it to auto-fill the config.
+    // With headerRow=1 this is the single row it always was.
+    const range = sheetName ? `${sheetName}!1:${hRow}` : `1:${hRow}`;
     const response = await sheetsApi.spreadsheets.values.get({
       spreadsheetId, range,
       majorDimension: 'ROWS',
       valueRenderOption: 'UNFORMATTED_VALUE'
     });
-    const rawHeaders = (response.data.values || [[]])[0] || [];
+    const allRows = response.data.values || [];
+    // Merged banner cells report their value only in the merge's first column,
+    // which is the step's Plan column — exactly the index the client indexes by.
+    const metaRows = allRows.slice(0, Math.max(0, hRow - 1)).map(r => (r || []).map(c => String(c ?? '').trim()));
+    const rawHeaders = allRows[hRow - 1] || [];
     const headers = rawHeaders
       .map((h, i) => ({
         name: String(h ?? '').trim() || `COL_${idxToCol(i)}`,
@@ -192,7 +200,7 @@ app.post('/api/fms/fetch-headers', requireAuth, requireAdmin, async (req, res) =
         index: i
       }))
       .filter(h => String(h.name).trim().length > 0);
-    res.json({ headers });
+    res.json({ headers, metaRows });
   } catch (err) {
     if (err.code === 403) return res.status(400).json({ error: 'Access denied. Share sheet with service account.' });
     if (err.code === 404) return res.status(400).json({ error: 'Sheet not found. Check Sheet ID.' });

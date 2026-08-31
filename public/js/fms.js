@@ -595,6 +595,67 @@ function copyFMSEmail() {
   });
 }
 
+// Auto-fill the step config from a house-format FMS sheet.
+//
+// Those sheets repeat a Planned | Actual | Time Delay | Status block per step,
+// and carry the step's name in the metadata rows above the header row, so every
+// field the builder asks for can be derived instead of typed. Whatever cannot be
+// derived is left blank on purpose — the admin corrects it before saving.
+//
+// Returns null when the sheet has no Planned columns (i.e. it is not in the house
+// format), so the caller falls back to the old blank-steps behaviour.
+function fmsAutoDetectSteps(headers, metaRows) {
+  if (!Array.isArray(headers) || !headers.length) return null;
+  const meta = Array.isArray(metaRows) ? metaRows : [];
+
+  const byIndex = new Map(headers.map(h => [h.index, String(h.name || '').trim()]));
+  const nameAt = i => (byIndex.get(i) || '').toLowerCase();
+  const colOf  = i => (headers.find(h => h.index === i) || {}).col || '';
+
+  const planIdxs = headers.map(h => h.index)
+    .filter(i => nameAt(i) === 'planned' || nameAt(i) === 'plan')
+    .sort((a, b) => a - b);
+  if (!planIdxs.length) return null;
+
+  // Doer column is only filled when a header actually says "doer". Sheets that
+  // name it something else ("SC Name", "Sales Rep Name") are left blank rather
+  // than guessed at — a wrong doer column hides every row with no error shown.
+  const doerHdr = headers.find(h => h.index < planIdxs[0] && /doer/i.test(h.name || ''));
+
+  const STRUCTURAL = ['planned', 'plan', 'actual', 'time delay', 'status'];
+
+  return planIdxs.map((p, n) => {
+    const next = planIdxs[n + 1] === undefined ? Infinity : planIdxs[n + 1];
+
+    // Anything between this block and the next Planned that is not one of the
+    // four structural columns is a data-capture field belonging to this step.
+    const extraRows = headers
+      .filter(h => h.index > p && h.index < next && !STRUCTURAL.includes(String(h.name || '').trim().toLowerCase()))
+      .map(h => ({ col_letter: h.col, field_type: 'text', label: h.name, dropdown_options: '', required: 1 }));
+
+    // Step name comes from the metadata block. Row 1 is the Step1/Step2 banner,
+    // so prefer the rows beneath it (What / Who) and fall back to the banner.
+    let stepName = '';
+    for (let r = 1; r < meta.length && !stepName; r++) stepName = (meta[r] || [])[p] || '';
+    if (!stepName) stepName = (meta[0] || [])[p] || '';
+
+    return {
+      stepName: String(stepName).trim() || `Step ${n + 1}`,
+      doers: [],
+      planCol: colOf(p),
+      actualCol: nameAt(p + 1) === 'actual' ? colOf(p + 1) : '',
+      extraInput: extraRows.length ? 'yes' : 'no',
+      extraCol: '',
+      extraRows,
+      showCols: [],
+      // Left blank deliberately: on these sheets the delay column holds a
+      // formula, and any column named here is overwritten with free text.
+      delayReasonCol: '',
+      doerNameCol: doerHdr ? doerHdr.col : ''
+    };
+  });
+}
+
 async function proceedToStepsConfig() {
   closeModal('fmsShareModal');
   if (!fmsAllUsers.length) { const ur = await api('/api/users'); fmsAllUsers = Array.isArray(ur) ? ur : []; }
@@ -623,8 +684,18 @@ async function proceedToStepsConfig() {
       headerRow: fmsData.headerRow
     });
     fmsSheetHeaders = hRes.headers || [];
-    if (fmsSheetHeaders.length) showToast(`✅ ${fmsSheetHeaders.length} headers loaded!`);
-    else showToast('⚠️ No headers found','error');
+    // A house-format sheet describes its own steps, so start from that instead
+    // of the blank steps built above. Falls through to the old behaviour when
+    // the sheet has no Planned columns to read.
+    const detected = fmsAutoDetectSteps(fmsSheetHeaders, hRes.metaRows || []);
+    if (detected && detected.length) {
+      fmsSteps = detected;
+      showToast(`✅ ${detected.length} steps auto-filled from sheet — please review`);
+    } else if (fmsSheetHeaders.length) {
+      showToast(`✅ ${fmsSheetHeaders.length} headers loaded!`);
+    } else {
+      showToast('⚠️ No headers found','error');
+    }
   } catch(e) {
     showToast('⚠️ Headers fetch failed — using text input','error');
   }
@@ -748,7 +819,7 @@ function buildStepBoxHTML(idx) {
 
     <!-- Delay Reason Column -->
     <div class="form-group" style="margin:10px 0 0">
-      <label>Delay Reason Column <span style="color:#94a3b8;font-weight:400;font-size:11px">(jahan delay reason save ho)</span></label>
+      <label>Delay Reason Column <span style="color:#94a3b8;font-weight:400;font-size:11px">(column where the delay reason is saved)</span></label>
       ${headers.length ? `
       <select class="header-select" onchange="fmsSteps[${idx}].delayReasonCol=this.value">
         <option value="">-- None (don't save delay reason) --</option>
