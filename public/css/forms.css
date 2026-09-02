@@ -145,3 +145,25 @@
 .cm-worker-dept{font-size:10px;color:#64748b;background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:2px 6px;font-weight:600;}
 .cm-worker-hrs{font-size:13px;font-weight:700;color:#F39C12;white-space:nowrap;}
 
+
+/* ── Payment Request: department multi-picker ────────────────────────
+   A checkbox list in a popover rather than <select multiple>, which needs
+   ctrl-click to pick a second item and shows no running total. Chips in the
+   closed box mean the selection reads without opening anything. */
+.pr-dept-menu{
+  display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;
+  max-height:230px;overflow-y:auto;background:#fff;border:1px solid #e2e8f0;
+  border-radius:10px;box-shadow:0 10px 28px -6px rgba(15,23,42,.18);padding:6px;
+}
+.pr-dept-menu.open{display:block;}
+.pr-dept-opt{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;
+  font-size:13px;color:#1e293b;cursor:pointer;user-select:none;}
+.pr-dept-opt:hover{background:#f1f5f9;}
+.pr-dept-opt input{width:15px;height:15px;accent-color:#4f46e5;cursor:pointer;margin:0;flex-shrink:0;}
+.pr-dept-empty{padding:12px;text-align:center;font-size:12px;color:#94a3b8;}
+.pr-dept-chip{display:inline-flex;align-items:center;gap:6px;background:#eef2ff;color:#4338ca;
+  border:1px solid #c7d2fe;border-radius:7px;padding:3px 8px;font-size:12px;font-weight:600;
+  white-space:nowrap;line-height:1.5;}
+.pr-dept-chip button{border:none;background:none;color:#6366f1;cursor:pointer;font-size:14px;
+  line-height:1;padding:0;font-family:inherit;}
+.pr-dept-chip button:hover{color:#312e81;}

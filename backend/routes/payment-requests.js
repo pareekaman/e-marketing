@@ -111,6 +111,26 @@ app.post('/api/payment-requests', requireAuth, async (req, res) => {
     if (!me) return res.status(403).json({ error:'Access denied' });
     const { bank_name, card_number, amount, reason } = req.body;
     if (!bank_name || !card_number || !reason) return res.status(400).json({ error:'All fields required' });
+
+    // Departments the spend belongs to. Required on a real request, but NOT on
+    // the "__system__" sentinel rows below — those are the paid / cancelled /
+    // bill markers, they reuse this same route, and they carry no departments.
+    // Demanding one from them would break marking a payment done and uploading
+    // its bill.
+    //
+    // Names are sanitised rather than checked against the live department list:
+    // that list is assembled in server.js from users plus a few extras, and
+    // coupling to it would make a renamed department reject a submission. Cap
+    // the count and length so a hand-made request cannot store junk.
+    let departments = null;
+    if (bank_name !== '__system__') {
+      const raw = Array.isArray(req.body.departments) ? req.body.departments : [];
+      const clean = [...new Set(
+        raw.map(d => String(d || '').trim()).filter(d => d && d.length <= 100)
+      )].slice(0, 20);
+      if (!clean.length) return res.status(400).json({ error: 'Select at least one department' });
+      departments = JSON.stringify(clean);
+    }
     // Paid / cancelled / bill markers ride in on this same route as "__system__"
     // sentinel rows carrying the target request id in their reason. Marking a
     // request paid is the requester's own record-keeping step by design (see the
@@ -135,8 +155,8 @@ app.post('/api/payment-requests', requireAuth, async (req, res) => {
     }
     try {
       await db.query(
-        'INSERT INTO payment_requests (submitted_by, name, bank_name, card_number, amount, reason) VALUES (?,?,?,?,?,?)',
-        [req.session.userId, me.name, bank_name, card_number, parseFloat(amount)||0, reason]
+        'INSERT INTO payment_requests (submitted_by, name, bank_name, card_number, amount, reason, departments) VALUES (?,?,?,?,?,?,?)',
+        [req.session.userId, me.name, bank_name, card_number, parseFloat(amount)||0, reason, departments]
       );
     } catch(insertErr) {
       // Fallback if amount column not yet migrated (server not restarted)

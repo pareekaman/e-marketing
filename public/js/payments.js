@@ -183,6 +183,7 @@ async function prSubmit() {
   if (!card) { showToast('Enter card number', 'error'); return; }
   if (!amount || amount <= 0) { showToast('Enter amount', 'error'); document.getElementById('prAmount').focus(); return; }
   if (!reason) { showToast('Enter reason', 'error'); return; }
+  if (!_prDeptChosen.length) { showToast('Select at least one department', 'error'); return; }
 
   // Encode amount + currency inside reason
   const encodedReason = `[${_prCurrency}${amount.toFixed(2)}] ${reason}`;
@@ -203,7 +204,7 @@ async function prSubmit() {
       }
     }
 
-    const r = await api('/api/payment-requests', 'POST', { bank_name:bank, card_number:card, amount, reason: encodedReason });
+    const r = await api('/api/payment-requests', 'POST', { bank_name:bank, card_number:card, amount, reason: encodedReason, departments: _prDeptChosen });
     if (r.error) { showToast('Error: ' + r.error, 'error'); return; }
     showToast('✅ Request submitted!');
     document.getElementById('prBank').value = '';
@@ -215,6 +216,7 @@ async function prSubmit() {
     document.getElementById('prCardOther').value = '';
     document.getElementById('prAmount').value = '';
     document.getElementById('prReason').value = '';
+    prDeptSet([]);
     loadMyPaymentRequests();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
   finally {
@@ -249,6 +251,7 @@ async function loadMyPaymentRequests() {
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Card</th>
         <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Amount</th>
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Reason</th>
+        <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Department</th>
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Payment Status</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bill</th>
@@ -291,6 +294,7 @@ async function loadMyPaymentRequests() {
         <td style="padding:9px 14px;font-size:12px">${dtEscape(r.card_number)}</td>
         <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">${dispAmt?dispCur+Number(dispAmt).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
         <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:200px">${dtEscape(dispReason)}</td>
+        <td style="padding:9px 14px;max-width:190px">${prDeptCell(r)}</td>
         <td style="padding:9px 14px">${statusBadge(r.status)}</td>
         <td style="padding:9px 14px;text-align:center">${payStatusCell}</td>
         <td style="padding:9px 14px;text-align:center">${billCell}</td>
@@ -412,6 +416,7 @@ function paRenderApprovalRows(rows) {
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Card</th>
         <th style="padding:9px 14px;text-align:right;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Amount</th>
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Reason</th>
+        <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Department</th>
         <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Action</th>
         <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Bill</th>
@@ -425,6 +430,7 @@ function paRenderApprovalRows(rows) {
         <td style="padding:9px 14px;font-size:12px">${dtEscape(r.card_number)}</td>
         <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">${dispAmt?dispCur+Number(dispAmt).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
         <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:200px">${dtEscape(dispReason)}</td>
+        <td style="padding:9px 14px;max-width:190px">${prDeptCell(r)}</td>
         <td style="padding:9px 14px" id="paStatus-${r.id}">${statusBadge(r.status)}</td>
         <td style="padding:9px 14px;text-align:center" id="paAction-${r.id}">${actionCell}</td>
         <td style="padding:9px 14px;text-align:center">${paBillCell}</td>
@@ -500,3 +506,98 @@ async function prDeleteRequest(id) {
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
+
+// ── Payment Request: department multi-picker ────────────────────────────
+// A <select multiple> was the obvious choice and the wrong one — picking a
+// second item needs ctrl-click, and the closed control shows nothing useful.
+// This is a checkbox popover whose closed state shows the picks as chips.
+let _prDepts = [];          // every department the server knows about
+let _prDeptChosen = [];     // what this request has selected
+
+async function prLoadDepartments() {
+  if (_prDepts.length) return _prDepts;
+  try {
+    const list = await api('/api/departments');
+    _prDepts = Array.isArray(list) ? list : [];
+  } catch { _prDepts = []; }
+  return _prDepts;
+}
+
+// Departments are stored as a JSON array (payment_requests.departments). Rows
+// created before the column existed have null, and the sentinel marker rows
+// never carry one — both render as a dash rather than an empty cell, so the
+// column reads as "not recorded" instead of looking broken.
+function prDeptCell(r) {
+  let list = [];
+  try { const p = JSON.parse(r.departments || '[]'); if (Array.isArray(p)) list = p; } catch {}
+  if (!list.length) return '<span style="color:#cbd5e1">—</span>';
+  return list.map(d =>
+    `<span style="display:inline-block;background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:5px;padding:1px 6px;font-size:11px;font-weight:600;margin:1px 2px 1px 0;white-space:nowrap">${dtEscape(d)}</span>`
+  ).join('');
+}
+
+function prDeptRender() {
+  const box = document.getElementById('prDeptBox');
+  const ph  = document.getElementById('prDeptPlaceholder');
+  if (!box) return;
+  box.querySelectorAll('.pr-dept-chip').forEach(c => c.remove());
+  if (ph) ph.style.display = _prDeptChosen.length ? 'none' : '';
+  for (const d of _prDeptChosen) {
+    const chip = document.createElement('span');
+    chip.className = 'pr-dept-chip';
+    chip.textContent = d;
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.textContent = '×';
+    x.title = `Remove ${d}`;
+    // stopPropagation, or removing a chip also toggles the menu open.
+    x.onclick = e => { e.stopPropagation(); prDeptSet(_prDeptChosen.filter(v => v !== d)); };
+    chip.appendChild(x);
+    box.appendChild(chip);
+  }
+}
+
+function prDeptSet(next) {
+  _prDeptChosen = next;
+  prDeptRender();
+  const menu = document.getElementById('prDeptMenu');
+  if (menu) menu.querySelectorAll('input[type=checkbox]').forEach(cb => {
+    cb.checked = _prDeptChosen.includes(cb.value);
+  });
+}
+
+async function prDeptToggle(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('prDeptMenu');
+  if (!menu) return;
+  if (menu.classList.contains('open')) { menu.classList.remove('open'); return; }
+
+  const list = await prLoadDepartments();
+  menu.innerHTML = list.length
+    ? list.map(d => `
+        <label class="pr-dept-opt">
+          <input type="checkbox" value="${dtEscape(d)}" ${_prDeptChosen.includes(d) ? 'checked' : ''}>
+          ${dtEscape(d)}
+        </label>`).join('')
+    : '<div class="pr-dept-empty">No departments found</div>';
+
+  menu.onchange = ev => {
+    const cb = ev.target;
+    if (!cb || cb.type !== 'checkbox') return;
+    prDeptSet(cb.checked
+      ? [..._prDeptChosen, cb.value]
+      : _prDeptChosen.filter(v => v !== cb.value));
+  };
+  menu.onclick = ev => ev.stopPropagation();
+
+  menu.classList.add('open');
+  document.addEventListener('mousedown', prDeptOutside);
+}
+
+function prDeptOutside(e) {
+  const wrap = document.getElementById('prDeptWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('prDeptMenu')?.classList.remove('open');
+    document.removeEventListener('mousedown', prDeptOutside);
+  }
+}

@@ -315,6 +315,12 @@ function safeParseCC(text) {
     try { await db.query(`ALTER TABLE payment_requests ADD COLUMN amount DECIMAL(12,2) DEFAULT 0 AFTER card_number`); } catch(e) {}
     try { await db.query(`ALTER TABLE payment_requests ADD COLUMN payment_done TINYINT(1) DEFAULT 0 AFTER status`); } catch(e) {}
     try { await db.query(`ALTER TABLE payment_requests ADD COLUMN payment_done_at TIMESTAMP NULL AFTER payment_done`); } catch(e) {}
+    // Which departments the spend belongs to. A JSON array of names, because a
+    // single payment often covers more than one — the same shape extra_access
+    // and dates_json already use, so the house pattern is unchanged. Nullable:
+    // every row that existed before this column has no answer, and inventing
+    // one would be worse than showing a dash.
+    try { await db.query(`ALTER TABLE payment_requests ADD COLUMN departments TEXT DEFAULT NULL AFTER reason`); } catch(e) {}
     // Manual card list for Payment Request dropdown (independent of PDF uploads)
     await db.query(`CREATE TABLE IF NOT EXISTS pr_cards (
       id         INT AUTO_INCREMENT PRIMARY KEY,
