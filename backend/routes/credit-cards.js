@@ -321,6 +321,12 @@ function safeParseCC(text) {
     // every row that existed before this column has no answer, and inventing
     // one would be worse than showing a dash.
     try { await db.query(`ALTER TABLE payment_requests ADD COLUMN departments TEXT DEFAULT NULL AFTER reason`); } catch(e) {}
+    // cc_transactions.department holds one name per row no longer: a charge is
+    // often shared, so it now stores a JSON array. VARCHAR(100) could not fit
+    // two long names ("Website Design & Development" alone is 28), hence TEXT.
+    // Widening only — every existing row keeps its bare string, and the client
+    // reads both shapes, so nothing has to be migrated.
+    try { await db.query(`ALTER TABLE cc_transactions MODIFY COLUMN department TEXT`); } catch(e) {}
     // Manual card list for Payment Request dropdown (independent of PDF uploads)
     await db.query(`CREATE TABLE IF NOT EXISTS pr_cards (
       id         INT AUTO_INCREMENT PRIMARY KEY,

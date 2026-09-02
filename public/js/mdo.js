@@ -390,11 +390,17 @@ function ccBuildSummaryModal(si) {
     const amt = (parseFloat(rawAmt) || 0) * (isCredit ? -1 : 1);
     const deptLbl = row.querySelector('[id^="ccDeptLabel-"]');
     const ownLbl  = row.querySelector('[id^="ccOwnLabel-"]');
-    const dept = (deptLbl && deptLbl.style.color !== 'rgb(148, 163, 184)') ? deptLbl.textContent.trim() : '(unset)';
     const own  = (ownLbl  && ownLbl.style.color  !== 'rgb(148, 163, 184)') ? ownLbl.textContent.trim()  : '(unset)';
-    deptMap[dept] = deptMap[dept] || { count:0, amt:0, debit:0, credit:0 };
-    deptMap[dept].count++; deptMap[dept].amt += amt;
-    if (isCredit) deptMap[dept].credit += Math.abs(amt); else deptMap[dept].debit += amt;
+    const picked = ccDeptList(deptLbl && deptLbl.dataset.depts);
+    const depts  = picked.length ? picked : ['(unset)'];
+    // A shared charge is split evenly between its departments, so this column
+    // still totals the statement instead of counting the amount once each.
+    const share = amt / depts.length;
+    depts.forEach(dept => {
+      deptMap[dept] = deptMap[dept] || { count:0, amt:0, debit:0, credit:0 };
+      deptMap[dept].count++; deptMap[dept].amt += share;
+      if (isCredit) deptMap[dept].credit += Math.abs(share); else deptMap[dept].debit += share;
+    });
     ownMap[own]   = ownMap[own]   || { count:0, amt:0, debit:0, credit:0 };
     ownMap[own].count++;  ownMap[own].amt  += amt;
     if (isCredit) ownMap[own].credit += Math.abs(amt); else ownMap[own].debit += amt;
@@ -503,6 +509,46 @@ document.addEventListener('click', function(e) {
 
 // ── CC Department dropdown ────────────────────────────────
 let _ccDeptDropCtx = null;
+// Bulk picks, per statement index. Kept out of the DOM so the toolbar can be
+// re-rendered without losing what the user had already ticked.
+let _ccBulkDept = {};
+
+// One charge is often shared, so department now holds a JSON array of names.
+// Rows saved before that — and rows the statement parser writes — still hold a
+// bare name, so every read comes through here.
+function ccDeptList(raw) {
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s) return [];
+  if (s[0] === '[') {
+    try { const a = JSON.parse(s); if (Array.isArray(a)) return a.filter(Boolean); } catch(e) {}
+  }
+  return [s];
+}
+
+// What goes back to the server. An empty pick stays '' rather than '[]', so the
+// "has a department yet?" checks downstream keep reading false.
+function ccDeptStore(list) { return list.length ? JSON.stringify(list) : ''; }
+
+// Paints a row's button and parks the list on the element itself, because
+// ccBuildSummaryModal groups off the visible rows rather than off _ccData.
+function ccDeptPaint(si, oi, list) {
+  const label = document.getElementById(`ccDeptLabel-${si}-${oi}`);
+  if (!label) return;
+  label.textContent = list.length ? list.join(', ') : '— Dept —';
+  label.style.color = list.length ? '#0f172a' : '#94a3b8';
+  label.title = list.length > 1 ? list.join('\n') : '';
+  label.dataset.depts = JSON.stringify(list);
+}
+
+function ccDeptPaintBulk(si) {
+  const label = document.getElementById('ccBulkDeptLabel-' + si);
+  if (!label) return;
+  const sel = _ccBulkDept[si] || [];
+  label.textContent = !sel.length ? '— Dept —'
+    : (sel[0] === '__CLEAR__' ? '🗑 Clear Dept' : sel.join(', '));
+  label.style.color = sel.length ? '#0f172a' : '#94a3b8';
+}
 
 function ccDeptToggleDrop(bank, card, si, oi) {
   if (!ccCanEdit()) return;
@@ -510,9 +556,27 @@ function ccDeptToggleDrop(bank, card, si, oi) {
   if (_ccDeptDropCtx && _ccDeptDropCtx.si === si && _ccDeptDropCtx.oi === oi) {
     panel.style.display = 'none'; _ccDeptDropCtx = null; return;
   }
-  _ccDeptDropCtx = { bank, card, si, oi };
+  const t = _ccData[bank]?.[card]?.[si]?.transactions[oi];
+  _ccDeptDropCtx = { bank, card, si, oi, sel: ccDeptList(t && t.department) };
   ccDeptBuildPanel();
   const btn = document.getElementById(`ccDeptBtn-${si}-${oi}`);
+  if (btn) {
+    const rect = btn.getBoundingClientRect();
+    panel.style.left = rect.left + 'px';
+    panel.style.top = (rect.bottom + 4) + window.scrollY + 'px';
+  }
+  panel.style.display = 'block';
+}
+
+function ccDeptBulkToggleDrop(si) {
+  if (!ccCanEdit()) return;
+  const panel = document.getElementById('ccDeptDropPanel');
+  if (_ccDeptDropCtx && _ccDeptDropCtx.bulk && _ccDeptDropCtx.si === si) {
+    panel.style.display = 'none'; _ccDeptDropCtx = null; return;
+  }
+  _ccDeptDropCtx = { bulk: true, si, sel: (_ccBulkDept[si] || []).slice() };
+  ccDeptBuildPanel();
+  const btn = document.getElementById('ccBulkDeptBtn-' + si);
   if (btn) {
     const rect = btn.getBoundingClientRect();
     panel.style.left = rect.left + 'px';
@@ -524,39 +588,58 @@ function ccDeptToggleDrop(bank, card, si, oi) {
 function ccDeptBuildPanel() {
   const items = document.getElementById('ccDeptDropItems');
   if (!items) return;
-  const clearRow = `<div onclick="ccDeptClear()" style="padding:7px 14px;font-size:12px;color:#94a3b8;cursor:pointer;border-bottom:1px solid #f1f5f9;font-style:italic" onmouseover="this.style.background='#fef2f2';this.style.color='#ef4444'" onmouseout="this.style.background='';this.style.color='#94a3b8'">✕ &nbsp;Clear selection</div>`;
-  items.innerHTML = clearRow + _ccDepts.map(opt => {
-    const safe = jsArg(opt);
-    return `<div style="display:flex;align-items:center;padding:0 10px;cursor:pointer" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-      <span onclick="ccDeptSelectOption(${safe})" style="flex:1;font-size:12px;padding:7px 4px 7px 0;color:#0f172a">${dtEscape(opt)}</span>
-      <span onclick="ccDeptDeleteOption(${safe})" title="Remove" style="color:#cbd5e1;font-size:15px;font-weight:700;padding:2px 4px;cursor:pointer;border-radius:4px;line-height:1" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">×</span>
-    </div>`;
-  }).join('');
+  const sel  = (_ccDeptDropCtx && _ccDeptDropCtx.sel) || [];
+  const bulk = !!(_ccDeptDropCtx && _ccDeptDropCtx.bulk);
+  // Bulk needs a way to say "wipe the department on these rows", which is not the
+  // same as "pick nothing" — so there it is a sentinel option, not a reset link.
+  const topRow = bulk
+    ? ccDeptOptRow('__CLEAR__', '🗑 Clear Dept', sel.includes('__CLEAR__'), false)
+    : `<div onclick="ccDeptClear()" style="padding:7px 14px;font-size:12px;color:#94a3b8;cursor:pointer;border-bottom:1px solid #f1f5f9;font-style:italic" onmouseover="this.style.background='#fef2f2';this.style.color='#ef4444'" onmouseout="this.style.background='';this.style.color='#94a3b8'">✕ &nbsp;Clear selection</div>`;
+  items.innerHTML = topRow + _ccDepts.map(opt => ccDeptOptRow(opt, opt, sel.includes(opt), true)).join('');
   document.getElementById('ccDeptOtherBtn').style.display = '';
   document.getElementById('ccDeptOtherInputRow').style.display = 'none';
   const txt = document.getElementById('ccDeptPanelTxt'); if (txt) txt.value = '';
 }
 
-function ccDeptClear() {
-  if (!_ccDeptDropCtx) return;
-  const { bank, card, si, oi } = _ccDeptDropCtx;
-  ccUpdateField(bank, card, si, oi, 'department', '');
-  const label = document.getElementById(`ccDeptLabel-${si}-${oi}`);
-  if (label) { label.textContent = '— Dept —'; label.style.color = '#94a3b8'; }
-  document.getElementById('ccDeptDropPanel').style.display = 'none';
-  _ccDeptDropCtx = null;
-  ccRefreshSummaryIfOpen(si);
+function ccDeptOptRow(val, text, on, canDelete) {
+  const safe = jsArg(val);
+  const bg = on ? '#eef2ff' : 'transparent';
+  return `<div style="display:flex;align-items:center;padding:0 10px;cursor:pointer;background:${bg}" onmouseover="this.style.background='${on?'#e0e7ff':'#f8fafc'}'" onmouseout="this.style.background='${bg}'">
+      <span onclick="ccDeptToggleOption(${safe})" style="flex:1;font-size:12px;padding:7px 4px 7px 0;color:#0f172a;display:flex;align-items:center;gap:7px">
+        <span style="width:14px;height:14px;flex-shrink:0;border-radius:3px;border:1.5px solid ${on?'#4f46e5':'#cbd5e1'};background:${on?'#4f46e5':'#fff'};color:#fff;font-size:10px;line-height:12px;text-align:center">${on?'✓':''}</span>
+        <span style="flex:1;text-align:left">${dtEscape(text)}</span>
+      </span>
+      ${canDelete ? `<span onclick="ccDeptDeleteOption(${safe})" title="Remove" style="color:#cbd5e1;font-size:15px;font-weight:700;padding:2px 4px;cursor:pointer;border-radius:4px;line-height:1" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#cbd5e1'">×</span>` : ''}
+    </div>`;
 }
 
-function ccDeptSelectOption(val) {
+function ccDeptClear() {
   if (!_ccDeptDropCtx) return;
-  const { bank, card, si, oi } = _ccDeptDropCtx;
-  ccUpdateField(bank, card, si, oi, 'department', val);
-  const label = document.getElementById(`ccDeptLabel-${si}-${oi}`);
-  if (label) { label.textContent = val; label.style.color = '#0f172a'; }
-  document.getElementById('ccDeptDropPanel').style.display = 'none';
-  _ccDeptDropCtx = null;
-  ccRefreshSummaryIfOpen(si);
+  _ccDeptDropCtx.sel = [];
+  ccDeptCommit();
+  ccDeptBuildPanel();
+}
+
+// Ticking leaves the panel open — splitting a charge across two departments
+// should not cost two trips through the dropdown.
+function ccDeptToggleOption(val) {
+  if (!_ccDeptDropCtx) return;
+  const sel = _ccDeptDropCtx.sel;
+  if (sel.includes(val))        _ccDeptDropCtx.sel = sel.filter(d => d !== val);
+  else if (val === '__CLEAR__') _ccDeptDropCtx.sel = ['__CLEAR__'];
+  // "Clear Dept" and a real department cancel each other out.
+  else _ccDeptDropCtx.sel = sel.filter(d => d !== '__CLEAR__').concat(val);
+  ccDeptCommit();
+  ccDeptBuildPanel();
+}
+
+function ccDeptCommit() {
+  const ctx = _ccDeptDropCtx;
+  if (!ctx) return;
+  if (ctx.bulk) { _ccBulkDept[ctx.si] = ctx.sel; ccDeptPaintBulk(ctx.si); return; }
+  ccUpdateField(ctx.bank, ctx.card, ctx.si, ctx.oi, 'department', ccDeptStore(ctx.sel));
+  ccDeptPaint(ctx.si, ctx.oi, ctx.sel);
+  ccRefreshSummaryIfOpen(ctx.si);
 }
 
 async function ccDeptDeleteOption(val) {
@@ -566,6 +649,11 @@ async function ccDeptDeleteOption(val) {
     await fetch(`/api/credit-cards/departments/${encodeURIComponent(val)}`, { method:'DELETE', headers: token ? {'Authorization':'Bearer '+token} : {} });
     _ccDepts = _ccDepts.filter(d => d !== val);
   } catch(e) {}
+  // A department that no longer exists cannot stay ticked on the open row.
+  if (_ccDeptDropCtx && _ccDeptDropCtx.sel.includes(val)) {
+    _ccDeptDropCtx.sel = _ccDeptDropCtx.sel.filter(d => d !== val);
+    ccDeptCommit();
+  }
   ccDeptBuildPanel();
 }
 
@@ -579,27 +667,23 @@ async function ccDeptConfirmPanel() {
   if (!ccCanEdit()) return;
   const val = (document.getElementById('ccDeptPanelTxt')?.value || '').trim();
   if (!val || !_ccDeptDropCtx) return;
-  const { bank, card, si, oi } = _ccDeptDropCtx;
   try {
     const res = await api('/api/credit-cards/departments', 'POST', { name: val });
     if (res && res.error) { showToast(res.error, 'error'); return; }
     if (!_ccDepts.includes(val)) _ccDepts.push(val);
   } catch(e) { showToast('Error adding department', 'error'); return; }
-  ccUpdateField(bank, card, si, oi, 'department', val);
-  const label = document.getElementById(`ccDeptLabel-${si}-${oi}`);
-  if (label) { label.textContent = val; label.style.color = '#0f172a'; }
-  document.getElementById('ccDeptDropPanel').style.display = 'none';
-  _ccDeptDropCtx = null;
-  ccRefreshSummaryIfOpen(si);
+  ccDeptToggleOption(val);
 }
 
+// Both callers are the "new department" input, so this backs out of adding one
+// rather than closing the panel — there may still be more departments to tick.
 function ccDeptCancelPanel() {
-  document.getElementById('ccDeptDropPanel').style.display = 'none';
-  _ccDeptDropCtx = null;
+  ccDeptBuildPanel();
 }
 
 document.addEventListener('click', function(e) {
-  if (!e.target.closest('#ccDeptDropPanel') && !e.target.closest('[id^="ccDeptBtn-"]')) {
+  if (!e.target.closest('#ccDeptDropPanel') && !e.target.closest('[id^="ccDeptBtn-"]')
+      && !e.target.closest('[id^="ccBulkDeptBtn-"]')) {
     const panel = document.getElementById('ccDeptDropPanel');
     if (panel) { panel.style.display = 'none'; _ccDeptDropCtx = null; }
   }
@@ -976,8 +1060,9 @@ function ccToggleSummary(si) {
 function ccBulkApply(si, bank, card) {
   if (!ccCanEdit()) return;
   const ownVal  = document.getElementById('ccBulkOwn-'  + si)?.value || '';
-  const deptVal = document.getElementById('ccBulkDept-' + si)?.value || '';
-  if (!ownVal && !deptVal) { showToast('Select an Owner or Dept first', 'error'); return; }
+  const deptSel   = _ccBulkDept[si] || [];
+  const deptClear = deptSel[0] === '__CLEAR__';
+  if (!ownVal && !deptSel.length) { showToast('Select an Owner or Dept first', 'error'); return; }
   const tbody = document.getElementById('ccTxBody-' + si);
   if (!tbody) return;
   const checked = Array.from(document.querySelectorAll('.ccTxChk-' + si + ':checked'));
@@ -1000,14 +1085,12 @@ function ccBulkApply(si, bank, card) {
       const lbl = document.getElementById('ccOwnLabel-' + si + '-' + oi);
       if (lbl) { lbl.textContent = ownVal; lbl.style.color = '#0f172a'; }
     }
-    if (deptVal === '__CLEAR__') {
+    if (deptClear) {
       ccUpdateField(bank, card, si, oi, 'department', '');
-      const lbl = document.getElementById('ccDeptLabel-' + si + '-' + oi);
-      if (lbl) { lbl.textContent = '— Dept —'; lbl.style.color = '#94a3b8'; }
-    } else if (deptVal) {
-      ccUpdateField(bank, card, si, oi, 'department', deptVal);
-      const lbl = document.getElementById('ccDeptLabel-' + si + '-' + oi);
-      if (lbl) { lbl.textContent = deptVal; lbl.style.color = '#0f172a'; }
+      ccDeptPaint(si, oi, []);
+    } else if (deptSel.length) {
+      ccUpdateField(bank, card, si, oi, 'department', ccDeptStore(deptSel));
+      ccDeptPaint(si, oi, deptSel);
     }
     count++;
   });
@@ -1205,7 +1288,7 @@ async function ccOpenStatementDrive(bank, cardNum, stmtIdx, btn) {
         (t.description||'').substring(0,40),
         (isCredit?'+ ':'') + Math.abs(parseFloat(t.amount)||0).toLocaleString('en-IN',{minimumFractionDigits:2}),
         (t.expenses||'').substring(0,18),
-        (t.department||'').substring(0,20)
+        ccDeptList(t.department).join(', ').substring(0,20)
       ];
       x = L;
       rowData.forEach((val, i) => {
@@ -1283,7 +1366,7 @@ async function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
   const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
   if (!t) return;
   const owner = t.expenses || '';
-  const dept  = t.department || '';
+  const dept  = ccDeptList(t.department).join(', ');
   if (!owner || !dept) { showToast('Select Owner and Department first.', 'error'); return; }
 
   const btn = wrap?.querySelector(`button[onclick*="ccSaveToDrive('${bank}','${cardNum}',${stmtIdx},${txIdx})"]`);
@@ -1569,6 +1652,9 @@ function ccRenderStatements() {
   // feeds Bulk Apply), the owner/dept editors, upload-to-Drive and delete.
   const canEdit = ccCanEdit();
   const NCOLS   = canEdit ? 7 : 6;
+  // Statement indices restart at 0 for every card, so a pick left over from the
+  // last card would reappear here against unrelated rows.
+  _ccBulkDept = {};
 
   if (!stmts.length) {
     wrap.innerHTML = `<div style="text-align:center;padding:40px;color:#94a3b8;font-size:14px">No statements for this card yet.</div>`;
@@ -1758,11 +1844,11 @@ function ccRenderStatements() {
           <option value="__CLEAR__">🗑 Clear Owner</option>
           ${_CC_OWN_OPTIONS.map(o=>`<option value="${o.replace(/"/g,'&quot;')}">${dtEscape(o)}</option>`).join('')}
         </select>
-        <select id="ccBulkDept-${si}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;outline:none;font-family:inherit;background:#fff">
-          <option value="">— Dept —</option>
-          <option value="__CLEAR__">🗑 Clear Dept</option>
-          ${_ccDepts.map(d=>`<option value="${d.replace(/"/g,'&quot;')}">${dtEscape(d)}</option>`).join('')}
-        </select>
+        <div id="ccBulkDeptBtn-${si}" onclick="ccDeptBulkToggleDrop(${si})"
+          style="min-width:150px;padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:12px;cursor:pointer;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:6px;user-select:none">
+          <span id="ccBulkDeptLabel-${si}" style="color:#94a3b8;flex:1;text-align:left">— Dept —</span>
+          <span style="color:#94a3b8;font-size:10px">▾</span>
+        </div>
         <button onclick="ccBulkApply(${si},${safeBank},${safeCard})"
           style="padding:6px 14px;background:#4f46e5;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
           ✓ Apply
@@ -1807,10 +1893,7 @@ function ccRenderStatements() {
         const label = document.getElementById(`ccOwnLabel-${si}-${oi}`);
         if (label) { label.textContent = t.expenses; label.style.color = '#0f172a'; }
       }
-      if (t.department) {
-        const label = document.getElementById(`ccDeptLabel-${si}-${oi}`);
-        if (label) { label.textContent = t.department; label.style.color = '#0f172a'; }
-      }
+      if (t.department) ccDeptPaint(si, oi, ccDeptList(t.department));
     });
   });
 }
