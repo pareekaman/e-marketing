@@ -1,9 +1,18 @@
 name: Leave Tracker Reminder
 
-# Fires on the 3rd of every month at 12:00 PM IST (06:30 UTC)
+# Moved to vercel.json as a Vercel Cron on 2026-09-03. GitHub's scheduler was
+# the worse of the two on this project's own record: of the three monthly runs
+# it owed, it delivered two -- both roughly 3h20m late (1:15pm and 1:23pm for a
+# 10:00am schedule) -- and silently skipped 2026-09-03 entirely, which is a
+# whole month's reminder lost. Vercel's Hobby crons land inside an hour.
+#
+# The schedule trigger is removed rather than left alongside the Vercel one, so
+# the two cannot both fire and send the group a duplicate. Manual dispatch stays
+# for on-demand runs.
+#
+# (The old comment here claimed 12:00 PM IST / 06:30 UTC. It was wrong: the cron
+# was '30 4' = 04:30 UTC = 10:00 AM IST, which is what the run history shows.)
 on:
-  schedule:
-    - cron: '30 4 3 * *'
   workflow_dispatch: {}  # allow manual fire from Actions tab
 
 jobs:
