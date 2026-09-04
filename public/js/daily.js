@@ -308,6 +308,7 @@ async function loadTransferBadge() {
     document.querySelectorAll('.nav-transfer-badge').forEach(badge => {
       badge.textContent = d.count||0; badge.style.display = d.count>0 ? 'flex' : 'none';
     });
+    setApprovalTabBadge('apprTransferBadge', d.count);
   } catch(e) {}
 }
 
@@ -315,6 +316,7 @@ async function loadTransferApprovals() {
   const container = document.getElementById('transferApprovalsContent');
   if (!container) return;
   const transfers = await api('/api/transfers');
+  setApprovalTabBadge('apprTransferBadge', transfers.length);
   if (!transfers.length) { container.innerHTML=`<div class="empty">✅ No pending transfer requests!</div>`; return; }
   container.innerHTML = `
     <table>

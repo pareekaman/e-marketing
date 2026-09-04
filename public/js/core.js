@@ -354,6 +354,16 @@ async function init() {
   } catch(e) { console.error('Init error:', e); window.location.replace('/'); }
 }
 
+// Pending count on an Approvals page tab. Every tab's badge goes through this,
+// so a tab that has no pending items hides its badge instead of showing a 0.
+function setApprovalTabBadge(id, count) {
+  const badge = document.getElementById(id);
+  if (!badge) return;
+  const n = Number(count) || 0;
+  badge.textContent = n;
+  badge.style.display = n > 0 ? 'inline-block' : 'none';
+}
+
 // Set avatar in sidebar + profile page
 function setAvatarDisplay(imageData, initials) {
   const sidebar = document.getElementById('sidebarAvatar');

@@ -713,11 +713,7 @@ async function loadLeaveApprovals(){
     lvRegisterPool(rows);
 
     // Update tab badge
-    const tabBadge = document.getElementById('apprLeaveBadge');
-    if (tabBadge) {
-      if (rows.length > 0) { tabBadge.textContent = rows.length; tabBadge.style.display = 'inline-block'; }
-      else tabBadge.style.display = 'none';
-    }
+    setApprovalTabBadge('apprLeaveBadge', rows.length);
 
     if (!rows.length) {
       wrap.innerHTML = `<div class="empty" style="padding:36px">✅ No pending leave approvals!</div>`;

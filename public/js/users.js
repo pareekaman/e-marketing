@@ -288,18 +288,10 @@ async function loadApprovalBadge() {
       badge.style.display = 'none';
     }
   });
-  // Approvals page tab badge (leaves only)
-  const tabBadge = document.getElementById('apprLeaveBadge');
-  if (tabBadge) {
-    if (leaveCnt > 0) { tabBadge.textContent = leaveCnt; tabBadge.style.display = 'inline-block'; }
-    else tabBadge.style.display = 'none';
-  }
-  // WhatsApp tasks badge
-  const waTabBadge = document.getElementById('apprWaBadge');
-  if (waTabBadge) {
-    if (waCnt > 0) { waTabBadge.textContent = waCnt; waTabBadge.style.display = 'inline-block'; }
-    else waTabBadge.style.display = 'none';
-  }
+  // Approvals page tab badges
+  setApprovalTabBadge('apprTaskBadge', taskCnt);
+  setApprovalTabBadge('apprLeaveBadge', leaveCnt);
+  setApprovalTabBadge('apprWaBadge', waCnt);
   document.querySelectorAll('.nav-wa-badge').forEach(waDelegBadge => {
     if (waCnt > 0) { waDelegBadge.textContent = waCnt; waDelegBadge.style.display = 'flex'; }
     else waDelegBadge.style.display = 'none';
@@ -353,6 +345,7 @@ async function loadApprovals() {
 
   const approvals = await api('/api/approvals');
   const container = document.getElementById('approvalsContent');
+  setApprovalTabBadge('apprTaskBadge', approvals.length);
 
   if (!approvals.length) {
     container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">✅ No pending task approvals!</div>`;
