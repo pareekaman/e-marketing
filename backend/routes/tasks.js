@@ -600,8 +600,17 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     // waits for one. Revise is deliberately still allowed — that path carries
     // newDate and is one of the ways a date arrives. Applies to every role,
     // including admin and PC: the point is the record, not the permission.
+    // needsDueDate tells the caller this refusal has a cure it can offer on the
+    // spot — open the Set Due Date modal — instead of a dead-end alert. It is
+    // only true where PUT /api/tasks/:id/due-date would actually accept the
+    // answer: that route is delegation-only and 409s unless awaiting_due_date
+    // is still set, so a checklist row or a legacy date-less delegation row
+    // keeps the plain message rather than opening a modal that cannot save.
     if (status === 'completed' && !task.due_date) {
-      return res.status(400).json({ error: 'Set a due date before marking this task done.' });
+      return res.status(400).json({
+        error: 'Set a due date before marking this task done.',
+        needsDueDate: tt === 'delegation' && !!task.awaiting_due_date
+      });
     }
 
     // Reopening is a different permission from finishing, and only the reopen

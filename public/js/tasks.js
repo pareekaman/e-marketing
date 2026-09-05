@@ -812,6 +812,15 @@ function toggleBlock(header) { header.nextElementSibling.classList.toggle('open'
 // ══════════════════════════════════════════════════════
 async function updateStatus(id, status, from, type) {
   const r = await api(`/api/tasks/${id}/status`,'PUT',{status, type: type || dashType});
+  // "Set a due date first" is the one refusal the user can answer immediately.
+  // Only the Dashboard carried a Set-due-date button, so from All Tasks this
+  // was a dead end that sent them to another page and back. Ask for the date
+  // here instead, and finish the completion they already asked for once it is
+  // saved. Every other error stays the plain alert.
+  if (r.error && r.needsDueDate) {
+    openSetDueDate(id, '', { completeAfter: true, from, type });
+    return;
+  }
   if (r.error) { appAlert(r.error, 'Not allowed'); return; }
   if (r.needsApproval) {
     showToast('✅ Approval request sent to the assigner!');
@@ -1086,9 +1095,14 @@ async function openDelegate(prefill = {}) {
 }
 
 // Doer (or assigner/admin) sets the due date on a "doer-defines-date" task.
+// `opts` carries where the modal was opened from — the page to refresh, and
+// whether a Done click is waiting on this date. Omitting it keeps the original
+// Dashboard behaviour, which is what the Dashboard's own button still passes.
 let _setDueTaskId = null;
-function openSetDueDate(id, existingReason) {
+let _setDueCtx = {};
+function openSetDueDate(id, existingReason, opts) {
   _setDueTaskId = id;
+  _setDueCtx = opts || {};
   document.getElementById('setDueErr').style.display = 'none';
   const inp = document.getElementById('setDueInput');
   inp.value = '';
@@ -1120,10 +1134,18 @@ async function submitSetDueDate() {
     noDate ? { reason } : { date });
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
   closeModal('setDueDateModal');
+  const ctx = _setDueCtx; _setDueCtx = {};
   showToast(r.reasonSaved
     ? 'Reason saved — task still needs a due date before it can be marked done'
     : (r.effectiveDate ? `Due date set: ${fmtDate(r.effectiveDate)}` : 'Due date set'));
-  loadDashboard(true);
+  // A Done click was blocked on this date, and a real date has now arrived —
+  // finish it rather than making them click Done a second time. A reason is
+  // not a date, so that branch still leaves the task open, exactly as the
+  // server would if the completion were retried.
+  if (ctx.completeAfter && !r.reasonSaved) {
+    return updateStatus(_setDueTaskId, 'completed', ctx.from, ctx.type);
+  }
+  if (ctx.from && ctx.from !== 'dashboard') loadAllTasks(); else loadDashboard(true);
 }
 
 // When ticked, the doer will pick their own due date — disable the date field here.
