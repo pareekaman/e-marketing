@@ -548,8 +548,8 @@ function dtReadRows(){
     const dept = tr.querySelector('.dt-dept').value.trim();
     const desc = tr.querySelector('.dt-desc').value.trim();
     const time = parseInt(tr.querySelector('.dt-time').value) || 0;
-    if (!client || !desc || time <= 0) {
-      showToast('Each row needs Client, Description and Time (>0)','error');
+    if (!client || !dept || !desc || time <= 0) {
+      showToast('Each row needs Client, Department, Description and Time (>0)','error');
       return null;
     }
     out.push({ client, dept, desc, time });

@@ -7163,8 +7163,8 @@ app.post('/api/daily-tasks', requireAuth, async (req, res) => {
       const dept = (r.department || '').trim();
       const desc = (r.description || '').trim();
       const dur = parseInt(r.duration_min) || 0;
-      if (!client || !desc || dur <= 0) {
-        return res.status(400).json({ error: 'Each row needs client, description, and duration > 0' });
+      if (!client || !dept || !desc || dur <= 0) {
+        return res.status(400).json({ error: 'Each row needs client, department, description, and duration > 0' });
       }
       cleanRows.push([req.session.userId, entry_date, client, dept, desc, dur]);
     }
