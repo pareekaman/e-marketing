@@ -7147,11 +7147,18 @@ app.post('/api/daily-tasks', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Date and at least 1 row required' });
     }
 
-    // Date restriction: only today or yesterday
-    const today = new Date(); today.setHours(0,0,0,0);
-    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-    const todayStr = today.toISOString().split('T')[0];
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    // Date restriction: only today or yesterday, in IST — the same shift the
+    // rest of this file uses, because "today" has to mean the doer's today.
+    // It previously read `new Date(); setHours(0,0,0,0)` and then took
+    // `toISOString()`, which mixes the two clocks: setHours picks LOCAL
+    // midnight and toISOString reports it in UTC, so on any server east of
+    // UTC both strings came out a day early and the form's own "Today" option
+    // was refused. On Vercel (TZ=UTC) that cancelled out and hid the bug —
+    // except between 00:00 and 05:30 IST, when the UTC date is still
+    // yesterday's and a late-night filer was told today is not allowed.
+    const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
+    const todayStr = istNow.toISOString().split('T')[0];
+    const yesterdayStr = new Date(istNow.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     if (entry_date !== todayStr && entry_date !== yesterdayStr) {
       return res.status(400).json({ error: 'Only today or yesterday entries are allowed' });
     }
