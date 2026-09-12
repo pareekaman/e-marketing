@@ -1,7 +1,7 @@
 {
-  "name": "E-Marketing Task Manager",
-  "short_name": "Task Manager",
-  "description": "Task Manager + Daily Report — E-Marketing internal app",
+  "name": "E-Marketing ERP",
+  "short_name": "ERP",
+  "description": "E-Marketing ERP — Task Manager + Daily Report internal app",
   "start_url": "/app",
   "scope": "/",
   "display": "standalone",
