@@ -20,6 +20,7 @@ module.exports = function registerClientRoutes(app, deps) {
     archiveDeleted,
     userCanSee,
     userCanDo,
+    canViewBillingName,
     isHandlerOf,
     parseSystemLinks,
     sanitizeSystemLinks,
@@ -69,7 +70,7 @@ app.get('/api/clients', requireAuth, async (req, res) => {
     // keep offering every client.
     const scope = req.query.scope === 'master' ? await clientMasterScope(req) : null;
     const [rows] = await db.query(
-      `SELECT c.id, c.name, c.handler_id, c.logo_url, COALESCE(c.is_active,1) AS is_active,
+      `SELECT c.id, c.name, c.brand_name, c.billing_name, c.handler_id, c.logo_url, COALESCE(c.is_active,1) AS is_active,
               u.name AS handler_name,
               (SELECT GROUP_CONCAT(u2.name ORDER BY u2.name SEPARATOR '||')
                FROM client_handlers ch JOIN users u2 ON ch.user_id = u2.id
@@ -77,6 +78,11 @@ app.get('/api/clients', requireAuth, async (req, res) => {
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id
        ${scope ? `WHERE ${scope.sql}` : ''}
        ORDER BY c.name ASC`, scope ? scope.params : []);
+    // Billing Name is for named individuals only. Stripped here rather than
+    // hidden in the page, so it never reaches a browser that may not show it.
+    if (!(await canViewBillingName(req.session))) {
+      for (const r of rows) delete r.billing_name;
+    }
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -112,17 +118,30 @@ app.put('/api/clients/:id/logo', requireAuth, requireClientsEditor, async (req, 
 app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => {
   try {
     const name = (req.body.name || '').trim();
+    const brandName = (req.body.brand_name || '').trim();
+    const billingName = (req.body.billing_name || '').trim();
     const handlerRaw = req.body.handler_id;
     const handlerId = handlerRaw == null || handlerRaw === '' ? null : parseInt(handlerRaw, 10);
     const loginEmail = (req.body.login_email || '').trim().toLowerCase();
     const loginPassword = req.body.login_password || '';
     if (!name) return res.status(400).json({ error: 'Client name required' });
+    // Required on create only. Both columns are NULLable because every client
+    // that predates them has neither — see the migration notes in server.js.
+    if (!brandName) return res.status(400).json({ error: 'Brand name required' });
+    // Billing name is required only of the people who can actually see the
+    // field. Requiring it of everyone would have broken Add Client outright for
+    // the rest of the team: the input is not rendered for them, so they could
+    // never satisfy it. Their clients are created with none, and one of the
+    // named viewers fills it in from the detail page. A value sent by someone
+    // who may not see the field is dropped, not trusted.
+    const seesBilling = await canViewBillingName(req.session);
+    if (seesBilling && !billingName) return res.status(400).json({ error: 'Billing name required' });
     // Provisioning a login is optional. If asked, both fields must be present.
     if ((loginEmail && !loginPassword) || (!loginEmail && loginPassword)) {
       return res.status(400).json({ error: 'Both login email and password required to provision client login' });
     }
-    const [r] = await db.query('INSERT INTO clients (name, handler_id) VALUES (?, ?)',
-      [name, Number.isFinite(handlerId) ? handlerId : null]);
+    const [r] = await db.query('INSERT INTO clients (name, brand_name, billing_name, handler_id) VALUES (?, ?, ?, ?)',
+      [name, brandName, seesBilling ? billingName : null, Number.isFinite(handlerId) ? handlerId : null]);
     const newClientId = r.insertId;
     if (loginEmail && loginPassword) {
       try {
@@ -173,16 +192,30 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
       handlerOnly = true;
     }
     const name = req.body.name == null ? null : String(req.body.name).trim();
+    const brandName = req.body.brand_name == null ? null : String(req.body.brand_name).trim();
+    const billingName = req.body.billing_name == null ? null : String(req.body.billing_name).trim();
     const handlerRaw = req.body.handler_id;
     const handlerId = handlerRaw === undefined ? undefined
                     : (handlerRaw == null || handlerRaw === '') ? null
                     : parseInt(handlerRaw, 10);
     if (!handlerOnly && name === '') return res.status(400).json({ error: 'Client name cannot be empty' });
+    // Sending it blank is a mistake, not a way to clear it — but NOT sending it
+    // at all stays fine, which is what keeps the pre-column clients editable.
+    if (!handlerOnly && brandName === '') return res.status(400).json({ error: 'Brand name cannot be empty' });
+    // Writing the billing name needs the same grant as seeing it — otherwise
+    // anyone could set a field they are not allowed to read back.
+    const seesBilling = await canViewBillingName(req.session);
+    if (billingName !== null && !seesBilling) {
+      return res.status(403).json({ error: 'Not allowed to change the billing name' });
+    }
+    if (!handlerOnly && billingName === '') return res.status(400).json({ error: 'Billing name cannot be empty' });
     // Only update fields that were sent.
     const sets = [], params = [];
     // Structural fields — full editors only; a handler cannot rename/reassign.
     if (!handlerOnly) {
       if (name !== null) { sets.push('name=?'); params.push(name); }
+      if (brandName !== null) { sets.push('brand_name=?'); params.push(brandName); }
+      if (billingName !== null) { sets.push('billing_name=?'); params.push(billingName); }
       if (handlerId !== undefined) { sets.push('handler_id=?'); params.push(handlerId); }
     }
     // Active flag — a handler may retire their own client. Not structural: it
@@ -292,7 +325,7 @@ app.get('/api/clients/:id/stats', requireAuth, async (req, res) => {
   try {
     const id = req.params.id;
     const [[client]] = await db.query(
-      `SELECT c.id, c.name, c.handler_id, c.logo_url, c.system_links, c.whatsapp_group_id,
+      `SELECT c.id, c.name, c.brand_name, c.billing_name, c.handler_id, c.logo_url, c.system_links, c.whatsapp_group_id,
               u.name AS handler_name, u.email AS handler_email
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
@@ -376,9 +409,12 @@ app.get('/api/clients/:id/stats', requireAuth, async (req, res) => {
       .sort((a,b) => (b.created||'').localeCompare(a.created||''))
       .slice(0, 20);
 
+    const seesBilling = await canViewBillingName(req.session);
     res.json({
       client: {
-        id: client.id, name: client.name, logo_url: client.logo_url,
+        id: client.id, name: client.name, brand_name: client.brand_name,
+        ...(seesBilling ? { billing_name: client.billing_name } : {}),
+        logo_url: client.logo_url,
         handler_id: client.handler_id, handler_name: client.handler_name, handler_email: client.handler_email,
         system_links: client.system_links, whatsapp_group_id: client.whatsapp_group_id
       },

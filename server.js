@@ -1883,9 +1883,12 @@ app.get('/api/me', requireAuth, async (req, res) => {
       // too, and not something to fix by widening access on a guess.
       rows[0].canReviewMdoTasks  = (await readIdSetting('mdo_reviewer_ids')).includes(Number(req.session.userId));
       rows[0].canViewCreditCards = await canViewCreditCards(req.session);
+      rows[0].canViewBillingName = await canViewBillingName(req.session);
     } catch (e) {
       rows[0].canApprovePayments = false;
       rows[0].canReviewMdoTasks  = false; rows[0].canViewCreditCards = false;
+      // Fail closed — an error here must hide the field, never reveal it.
+      rows[0].canViewBillingName = false;
     }
     // When an admin is "viewing as" this user, expose who's really behind the wheel
     // so the UI can show an exit-impersonation banner.
@@ -4186,6 +4189,17 @@ const _clientsTableMigrationsPromise = (async () => {
     name VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  // Brand Name — the name the client trades under, which is often not the
+  // registered name in `name` (that one is UNIQUE and drives every picker in
+  // the app, so it cannot double as the brand). Required when adding a client,
+  // but NULLable on purpose: every client that existed before this column has
+  // no brand name, and forcing one here would block editing their links,
+  // WhatsApp group or active flag until someone filled it in.
+  await sa(`ALTER TABLE clients ADD COLUMN brand_name VARCHAR(255) DEFAULT NULL AFTER name`);
+  // Billing Name — the legal entity that goes on the invoice, which is often
+  // neither `name` nor `brand_name`. Same deal as brand_name: required when
+  // adding a client, NULLable so the clients that predate it stay editable.
+  await sa(`ALTER TABLE clients ADD COLUMN billing_name VARCHAR(255) DEFAULT NULL AFTER brand_name`);
   // Handler = the user (account manager) responsible for this client. Drives the
   // default doer in the "Delegate Task" shortcut on the Client Master row.
   await sa(`ALTER TABLE clients ADD COLUMN handler_id INT DEFAULT NULL AFTER name`);
@@ -6750,6 +6764,23 @@ function canEditCreditCards(session) {
   return session.role === 'admin';
 }
 
+// Billing Name access — read AND write, for the people in billing_name_viewer_ids
+// (seeded from PEOPLE_SETTINGS_BY_EMAIL) and nobody else.
+//
+// ⚠️ Unlike canViewCreditCards above, admin is deliberately NOT a free pass.
+// The ask was two named people, and admin is a role others hold or will hold;
+// letting it through would hand the field to every future admin without anyone
+// granting it. This is also why it is not a user_permissions action: the Access
+// Control panel refuses to render per-feature rows for an admin at all, so the
+// one grant that matters here could never have been ticked.
+//
+// Hiding it in the UI alone would be theatre — GET /api/clients would still
+// carry the value to anyone with DevTools — so the routes drop the column for
+// everyone else rather than relying on the page not to draw it.
+async function canViewBillingName(session) {
+  return (await readIdSetting('billing_name_viewer_ids')).includes(Number(session.userId));
+}
+
 // CREDIT CARDS routes now live in routes/credit-cards.js. The call sits exactly
 // where the routes did, so every binding passed in is in scope at the same
 // point it always was.
@@ -6791,6 +6822,17 @@ const PEOPLE_SETTINGS = {
   onboarding_owner_ids: ['Simran Gurnani'],
 };
 const PR_APPROVER_KEY = 'payment_approver_ids';
+
+// Same idea as PEOPLE_SETTINGS — a named set of people, resolved to ids once
+// and then stored in app_settings — but keyed on EMAIL rather than name.
+// Billing Name is a two-person field, so a near-miss matters: `users.name` is
+// free text that can be re-typed, duplicated between two people, or just held
+// in a different case, and a name that fails to match costs someone their
+// access silently. Email is unique in `users` and is what was actually handed
+// over for these two.
+const PEOPLE_SETTINGS_BY_EMAIL = {
+  billing_name_viewer_ids: ['mis2@e-marketing.io', 'khandelwal.nikita@e-marketing.io'],
+};
 
 async function readIdSetting(key) {
   try {
@@ -6836,6 +6878,23 @@ async function seedPaymentRoleIds() {
         `SELECT id, name FROM users WHERE name IN (${names.map(() => '?').join(',')})`, names);
       const ids = rows.map(r => r.id);
       const missing = names.filter(n => !rows.some(r => r.name === n));
+      await db.query('INSERT INTO app_settings (key_name, value) VALUES (?,?)', [key, JSON.stringify(ids)]);
+      console.log(`  ✅ ${key} seeded with ${ids.length} id(s)`
+        + (missing.length ? ` — NO USER MATCHED: ${missing.join(', ')}` : ''));
+    } catch (e) { console.log(`  ⚠️ ${key} seed skipped —`, e.code || e.message); }
+  }
+  // The email-keyed sets, same one-time shape. Matched case-insensitively
+  // because `users.email` is stored as typed and a capital letter must not be
+  // the reason someone loses access.
+  for (const [key, emails] of Object.entries(PEOPLE_SETTINGS_BY_EMAIL)) {
+    try {
+      const [[existing]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [key]);
+      if (existing) continue;
+      const lower = emails.map(e => e.toLowerCase());
+      const [rows] = await db.query(
+        `SELECT id, LOWER(email) AS email FROM users WHERE LOWER(email) IN (${lower.map(() => '?').join(',')})`, lower);
+      const ids = rows.map(r => r.id);
+      const missing = lower.filter(e => !rows.some(r => r.email === e));
       await db.query('INSERT INTO app_settings (key_name, value) VALUES (?,?)', [key, JSON.stringify(ids)]);
       console.log(`  ✅ ${key} seeded with ${ids.length} id(s)`
         + (missing.length ? ` — NO USER MATCHED: ${missing.join(', ')}` : ''));
@@ -7072,6 +7131,7 @@ require('./backend/routes/clients')(app, {
   archiveDeleted,
   userCanSee,
   userCanDo,
+  canViewBillingName,
   isHandlerOf,
   parseSystemLinks,
   sanitizeSystemLinks,

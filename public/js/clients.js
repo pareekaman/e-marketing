@@ -31,6 +31,12 @@ function cmInitials(name){
 // where it is rendered.
 function cmCanEdit(){ return canDo('edit_clients'); }
 
+// Billing Name is limited to the named people in billing_name_viewer_ids.
+// Deliberately NOT canDo(): that returns true for every admin, and the whole
+// point of this field is that a role does not carry it. The server strips the
+// column for everyone else anyway — this only decides whether to draw it.
+function cmCanSeeBilling(){ return !!ME && ME.canViewBillingName === true; }
+
 function cmApplyRoleControls(){
   const show = cmCanEdit() ? '' : 'none';
   const addBtn = document.getElementById('cmAddBtn');
@@ -293,6 +299,12 @@ function cmExportExcel() {
 function cmOpenAddModal() {
   document.getElementById('cmAddErr').style.display = 'none';
   document.getElementById('cmFormName').value = '';
+  document.getElementById('cmFormBrandName').value = '';
+  document.getElementById('cmFormBillingName').value = '';
+  // Hidden by default in the markup so it never flashes for the wrong person
+  // between page load and this running.
+  const billingGroup = document.getElementById('cmFormBillingNameGroup');
+  if (billingGroup) billingGroup.style.display = cmCanSeeBilling() ? '' : 'none';
   document.getElementById('cmFormLoginEmail').value = '';
   document.getElementById('cmFormLoginPassword').value = '';
 
@@ -329,7 +341,13 @@ function cmOpenAddModal() {
 function cmRenderList(){
   const wrap = document.getElementById('cmListWrap');
   const q = (document.getElementById('cmSearch')?.value || '').toLowerCase().trim();
-  const filtered = q ? CM_ALL.filter(c => (c.name || '').toLowerCase().includes(q)) : CM_ALL;
+  // Brand and billing names are searchable too — both are shown on the row, and
+  // the brand people recognise (or the entity on an invoice) is often the only
+  // name they think to type.
+  const filtered = q
+    ? CM_ALL.filter(c => ((c.name || '') + ' ' + (c.brand_name || '') + ' ' + (c.billing_name || ''))
+        .toLowerCase().includes(q))
+    : CM_ALL;
   document.getElementById('cmStatVisible').textContent = filtered.length;
 
   if (!CM_ALL.length) {
@@ -352,6 +370,15 @@ function cmRenderList(){
     const handlerLabel = handlerNames.length
       ? handlerNames.map(n => `<span style="font-size:11px;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:4px">👤 ${dtEscape(n)}</span>`).join('')
       : `<span style="font-size:11px;color:#94a3b8;background:#f1f5f9;padding:2px 8px;border-radius:10px;font-weight:600">No handler</span>`;
+    // Brand name is required on new clients but NULL on every client added
+    // before the column existed, so the segment drops out rather than showing
+    // an empty separator.
+    const brandBit = c.brand_name
+      ? ` · <span style="color:#7c3aed;font-weight:600">🏷 ${dtEscape(c.brand_name)}</span>`
+      : '';
+    const billingBit = (cmCanSeeBilling() && c.billing_name)
+      ? ` · <span style="color:#0369a1;font-weight:600">🧾 ${dtEscape(c.billing_name)}</span>`
+      : '';
     // is_active is absent on older rows — COALESCE'd to 1 server-side, so treat undefined as active.
     const isOn = c.is_active === undefined || !!Number(c.is_active);
     html += `<div class="cm-client-row${isOn ? '' : ' cm-inactive'}" data-cm-id="${c.id}" onclick="cmShowDetail(${c.id})">
@@ -359,7 +386,7 @@ function cmRenderList(){
           <div class="cm-avatar" style="${avatarStyle}">${initials}</div>
           <div class="cm-client-meta">
             <span class="cm-client-name">${safeName}</span>
-            <div class="cm-client-id">Client #${c.id} · ${handlerLabel}</div>
+            <div class="cm-client-id">Client #${c.id}${brandBit}${billingBit} · ${handlerLabel}</div>
           </div>
         </div>
         <div class="cm-client-actions">
@@ -722,6 +749,36 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>
 
+    <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div class="card-head-title">🏷 Brand Name <span style="font-weight:400;color:#94a3b8;font-size:12px">— the name this client trades under</span></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="text" id="cmBrandName_${id}" value="${dtEscape(client.brand_name || '')}"
+               placeholder="e.g. Acme"
+               style="flex:1;min-width:240px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px"/>
+        <button class="btn btn-primary" style="padding:7px 16px;font-size:12px" onclick="cmSaveBrandName(${id})">💾 Save</button>
+      </div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:7px">
+        Cannot be blanked out once set. Clients added before this field existed have none until you fill it in.
+      </div>
+    </div>
+
+    <div class="task-table-card" style="${cmCanEdit() && cmCanSeeBilling() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div class="card-head-title">🧾 Billing Name <span style="font-weight:400;color:#94a3b8;font-size:12px">— the entity this client is invoiced as</span></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="text" id="cmBillingName_${id}" value="${dtEscape(client.billing_name || '')}"
+               placeholder="e.g. Acme Private Limited"
+               style="flex:1;min-width:240px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px"/>
+        <button class="btn btn-primary" style="padding:7px 16px;font-size:12px" onclick="cmSaveBillingName(${id})">💾 Save</button>
+      </div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:7px">
+        Cannot be blanked out once set. Clients added before this field existed have none until you fill it in.
+      </div>
+    </div>
+
     <div class="task-table-card" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">📱 WhatsApp Group <span style="font-weight:400;color:#94a3b8;font-size:12px">— where this client's pending-task digest is sent</span></div>
@@ -791,6 +848,38 @@ async function cmSaveWaGroup(id){
   const r = await api('/api/clients/' + id, 'PUT', { whatsapp_group_id: input.value.trim() });
   if (r && r.error) { showToast(r.error, 'error'); return; }
   showToast(input.value.trim() ? '✅ WhatsApp group saved' : 'Digest switched off for this client');
+}
+
+// Save this client's brand name. Structural, like the client name — a handler
+// who is not a full editor never sees this card, because the server would drop
+// the field and answer {noop:true}, leaving the input showing a value that was
+// never written (the same trap the is_active toggle hit).
+async function cmSaveBrandName(id){
+  const input = document.getElementById('cmBrandName_' + id);
+  if (!input) return;
+  const value = input.value.trim();
+  if (!value) { showToast('Brand name cannot be empty', 'error'); return; }
+  const r = await api('/api/clients/' + id, 'PUT', { brand_name: value });
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  if (r && r.noop) { showToast('You do not have permission to change this client', 'error'); return; }
+  // Keep the cached list row in step so going back shows the new name without a reload.
+  const client = CM_ALL.find(c => String(c.id) === String(id));
+  if (client) client.brand_name = value;
+  showToast('✅ Brand name saved');
+}
+
+// Same shape as cmSaveBrandName — structural, full editors only.
+async function cmSaveBillingName(id){
+  const input = document.getElementById('cmBillingName_' + id);
+  if (!input) return;
+  const value = input.value.trim();
+  if (!value) { showToast('Billing name cannot be empty', 'error'); return; }
+  const r = await api('/api/clients/' + id, 'PUT', { billing_name: value });
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  if (r && r.noop) { showToast('You do not have permission to change this client', 'error'); return; }
+  const client = CM_ALL.find(c => String(c.id) === String(id));
+  if (client) client.billing_name = value;
+  showToast('✅ Billing name saved');
 }
 
 function cmAddLinkRow(){ CM_LINKS.push({ label:'', url:'', liveDate:'' }); cmRenderLinksRows(); }
@@ -1006,17 +1095,29 @@ async function cmAdd(){
   const err = document.getElementById('cmAddErr');
   err.style.display = 'none';
   const name = document.getElementById('cmFormName').value.trim();
+  const brand_name = document.getElementById('cmFormBrandName').value.trim();
+  const billing_name = document.getElementById('cmFormBillingName').value.trim();
   const handler_ids = [...document.querySelectorAll('.cmAddHandlerCb:checked')].map(cb => parseInt(cb.value));
   const handler_id = handler_ids[0] || null;
   const login_email = document.getElementById('cmFormLoginEmail').value.trim();
   const login_password = document.getElementById('cmFormLoginPassword').value;
   if (!name) { err.textContent = 'Client name required'; err.style.display = 'block'; return; }
+  if (!brand_name) { err.textContent = 'Brand name required'; err.style.display = 'block'; return; }
+  // Only demanded of the people who can see the input — the server applies the
+  // same rule, so everyone else creates the client with no billing name and one
+  // of the named viewers fills it in later.
+  if (cmCanSeeBilling() && !billing_name) { err.textContent = 'Billing name required'; err.style.display = 'block'; return; }
   if ((login_email && !login_password) || (!login_email && login_password)) {
     err.textContent = 'Fill both login email and password, or leave both blank';
     err.style.display = 'block'; return;
   }
   try {
-    const r = await api('/api/clients', 'POST', { name, handler_id, login_email, login_password });
+    const r = await api('/api/clients', 'POST', {
+      name, brand_name, handler_id, login_email, login_password,
+      // Omitted entirely for anyone who cannot see the field — the server would
+      // drop it anyway, but there is no reason to send a value it must ignore.
+      ...(cmCanSeeBilling() ? { billing_name } : {}),
+    });
     if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
     if (r.client_id && handler_ids.length > 0) {
       await api('/api/clients/' + r.client_id + '/handlers', 'PUT', { user_ids: handler_ids });
