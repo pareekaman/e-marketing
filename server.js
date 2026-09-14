@@ -6830,9 +6830,12 @@ const PR_APPROVER_KEY = 'payment_approver_ids';
 // joiner sharing a name with someone on a list like this would silently inherit
 // their access. An id cannot be typed into existence by a new hire.
 //
-// These are PRODUCTION ids. A different database (a local dev copy, say)
-// numbers its users differently, so the row is seeded only when absent —
-// set app_settings.billing_name_viewer_ids by hand there and it is left alone.
+// These are PRODUCTION ids, and this list is authoritative: the seeder writes
+// it over whatever app_settings holds whenever the two disagree. Editing the
+// row by hand therefore does not stick past the next cold start — change it
+// here. ⚠️ A different database (a local dev copy) numbers its users
+// differently, so these ids mean nothing there; give the local copy users with
+// these ids, or point the list elsewhere while testing.
 //
 //   6  Simran Gurnani      7  Abhishek Jain
 //   31 Nikita Khandelwal   41 Naman Gupta
@@ -6893,15 +6896,36 @@ async function seedPaymentRoleIds() {
   // still checked against `users`, not to change what is stored but so a wrong
   // or since-deleted id is visible at boot instead of quietly costing someone
   // their access, exactly as an unmatched name is above.
+  //
+  // ⚠️ Unlike the name-keyed sets above, these RECONCILE rather than seed once:
+  // if the stored row disagrees with the list here, the list here wins. A
+  // seed-once rule looks harmless and is not — the first version of this list
+  // held two people, the row was written on that deploy, and when it grew to
+  // four the new names silently never arrived, because the row already existed.
+  // The list lives in code, so code has to be the thing that decides.
   for (const [key, ids] of Object.entries(PEOPLE_SETTINGS_BY_ID)) {
     try {
       const [[existing]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [key]);
-      if (existing) continue;
+      const want = JSON.stringify(ids);
+      let had = null;
+      if (existing) {
+        // Compare as sets, not as text — a re-ordered or re-spaced row means
+        // the same thing and must not be rewritten (and logged) on every boot.
+        try {
+          const stored = JSON.parse(existing.value);
+          had = Array.isArray(stored) ? stored.map(Number).filter(Number.isFinite) : [];
+          const same = had.length === ids.length && ids.every(id => had.includes(id));
+          if (same) continue;
+        } catch { had = []; }
+      }
       const [rows] = await db.query(
         `SELECT id, name FROM users WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
       const missing = ids.filter(id => !rows.some(r => r.id === id));
-      await db.query('INSERT INTO app_settings (key_name, value) VALUES (?,?)', [key, JSON.stringify(ids)]);
-      console.log(`  ✅ ${key} seeded with ${ids.length} id(s) — ${rows.map(r => r.name).join(', ')}`
+      await db.query(
+        `INSERT INTO app_settings (key_name, value) VALUES (?,?)
+         ON DUPLICATE KEY UPDATE value = VALUES(value)`, [key, want]);
+      console.log(`  ✅ ${key} ${existing ? `updated ${JSON.stringify(had)} → ${want}` : `seeded with ${ids.length} id(s)`}`
+        + ` — ${rows.map(r => r.name).join(', ')}`
         + (missing.length ? ` — NO USER WITH ID: ${missing.join(', ')}` : ''));
     } catch (e) { console.log(`  ⚠️ ${key} seed skipped —`, e.code || e.message); }
   }
