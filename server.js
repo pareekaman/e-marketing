@@ -6765,14 +6765,15 @@ function canEditCreditCards(session) {
 }
 
 // Billing Name access — read AND write, for the people in billing_name_viewer_ids
-// (seeded from PEOPLE_SETTINGS_BY_EMAIL) and nobody else.
+// (seeded from PEOPLE_SETTINGS_BY_ID) and nobody else.
 //
 // ⚠️ Unlike canViewCreditCards above, admin is deliberately NOT a free pass.
-// The ask was two named people, and admin is a role others hold or will hold;
-// letting it through would hand the field to every future admin without anyone
-// granting it. This is also why it is not a user_permissions action: the Access
-// Control panel refuses to render per-feature rows for an admin at all, so the
-// one grant that matters here could never have been ticked.
+// The ask was four named people — and all four ARE admins, which is exactly why
+// the role cannot carry this: letting admin through would have singled out
+// nobody and handed the field to every future admin as well. This is also why
+// it is not a user_permissions action: the Access Control panel refuses to
+// render per-feature rows for an admin at all, so the grants that matter here
+// could never have been ticked.
 //
 // Hiding it in the UI alone would be theatre — GET /api/clients would still
 // carry the value to anyone with DevTools — so the routes drop the column for
@@ -6823,15 +6824,20 @@ const PEOPLE_SETTINGS = {
 };
 const PR_APPROVER_KEY = 'payment_approver_ids';
 
-// Same idea as PEOPLE_SETTINGS — a named set of people, resolved to ids once
-// and then stored in app_settings — but keyed on EMAIL rather than name.
-// Billing Name is a two-person field, so a near-miss matters: `users.name` is
-// free text that can be re-typed, duplicated between two people, or just held
-// in a different case, and a name that fails to match costs someone their
-// access silently. Email is unique in `users` and is what was actually handed
-// over for these two.
-const PEOPLE_SETTINGS_BY_EMAIL = {
-  billing_name_viewer_ids: ['mis2@e-marketing.io', 'khandelwal.nikita@e-marketing.io'],
+// Same idea as PEOPLE_SETTINGS — a fixed set of people stored in app_settings —
+// but written as USER IDS rather than names, and so seeded with no lookup at
+// all. `users.name` is free text: two people can hold the same one, and a new
+// joiner sharing a name with someone on a list like this would silently inherit
+// their access. An id cannot be typed into existence by a new hire.
+//
+// These are PRODUCTION ids. A different database (a local dev copy, say)
+// numbers its users differently, so the row is seeded only when absent —
+// set app_settings.billing_name_viewer_ids by hand there and it is left alone.
+//
+//   6  Simran Gurnani      7  Abhishek Jain
+//   31 Nikita Khandelwal   41 Naman Gupta
+const PEOPLE_SETTINGS_BY_ID = {
+  billing_name_viewer_ids: [6, 7, 31, 41],
 };
 
 async function readIdSetting(key) {
@@ -6883,21 +6889,20 @@ async function seedPaymentRoleIds() {
         + (missing.length ? ` — NO USER MATCHED: ${missing.join(', ')}` : ''));
     } catch (e) { console.log(`  ⚠️ ${key} seed skipped —`, e.code || e.message); }
   }
-  // The email-keyed sets, same one-time shape. Matched case-insensitively
-  // because `users.email` is stored as typed and a capital letter must not be
-  // the reason someone loses access.
-  for (const [key, emails] of Object.entries(PEOPLE_SETTINGS_BY_EMAIL)) {
+  // The id-keyed sets. Nothing to resolve — the ids go in as written. They are
+  // still checked against `users`, not to change what is stored but so a wrong
+  // or since-deleted id is visible at boot instead of quietly costing someone
+  // their access, exactly as an unmatched name is above.
+  for (const [key, ids] of Object.entries(PEOPLE_SETTINGS_BY_ID)) {
     try {
       const [[existing]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [key]);
       if (existing) continue;
-      const lower = emails.map(e => e.toLowerCase());
       const [rows] = await db.query(
-        `SELECT id, LOWER(email) AS email FROM users WHERE LOWER(email) IN (${lower.map(() => '?').join(',')})`, lower);
-      const ids = rows.map(r => r.id);
-      const missing = lower.filter(e => !rows.some(r => r.email === e));
+        `SELECT id, name FROM users WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
+      const missing = ids.filter(id => !rows.some(r => r.id === id));
       await db.query('INSERT INTO app_settings (key_name, value) VALUES (?,?)', [key, JSON.stringify(ids)]);
-      console.log(`  ✅ ${key} seeded with ${ids.length} id(s)`
-        + (missing.length ? ` — NO USER MATCHED: ${missing.join(', ')}` : ''));
+      console.log(`  ✅ ${key} seeded with ${ids.length} id(s) — ${rows.map(r => r.name).join(', ')}`
+        + (missing.length ? ` — NO USER WITH ID: ${missing.join(', ')}` : ''));
     } catch (e) { console.log(`  ⚠️ ${key} seed skipped —`, e.code || e.message); }
   }
   } catch (e) { console.log('  ⚠️ payment role seed skipped —', e.code || e.message); }
