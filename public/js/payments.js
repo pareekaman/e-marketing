@@ -237,6 +237,9 @@ async function loadMyPaymentRequests() {
     if (!Array.isArray(all)) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No requests</div>'; return; }
     const sentinels = all.filter(r => r.bank_name === '__system__');
     const rows = all.filter(r => r.bank_name !== '__system__');
+    // Kept so the edit modal can fill itself from the row already on screen
+    // instead of re-fetching one request.
+    _prMyRows = rows;
     if (!rows.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No requests</div>'; return; }
     const statusBadge = s => s==='approved'
       ? '<span style="background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">✅ Approved</span>'
@@ -295,7 +298,7 @@ async function loadMyPaymentRequests() {
         <td style="padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a">${dispAmt?dispCur+Number(dispAmt).toLocaleString('en-IN',{minimumFractionDigits:2}):'—'}</td>
         <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:200px">${dtEscape(dispReason)}</td>
         <td style="padding:9px 14px;max-width:190px">${prDeptCell(r)}</td>
-        <td style="padding:9px 14px">${statusBadge(r.status)}</td>
+        <td style="padding:9px 14px;white-space:nowrap">${statusBadge(r.status)}${r.status === 'pending' ? `<button onclick="prOpenEditModal(${r.id})" title="Edit this request" style="background:none;border:none;cursor:pointer;font-size:13px;line-height:1;padding:2px 4px;margin-left:6px;color:#64748b" onmouseover="this.style.color='#4f46e5'" onmouseout="this.style.color='#64748b'">✏️</button>` : ''}</td>
         <td style="padding:9px 14px;text-align:center">${payStatusCell}</td>
         <td style="padding:9px 14px;text-align:center">${billCell}</td>
       </tr>`;}).join('')}</tbody>
@@ -505,12 +508,124 @@ async function prDeleteRequest(id) {
     loadPaymentApprovals();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
-
+
 
 // ── Payment Request: department multi-picker ────────────────────────────
 // A <select multiple> was the obvious choice and the wrong one — picking a
 // second item needs ctrl-click, and the closed control shows nothing useful.
 // This is a checkbox popover whose closed state shows the picks as chips.
+// ── Edit a pending request ────────────────────────────────────────────────
+// The button only appears on pending rows, and a regular user's list only
+// contains their own — but neither is the guard. PUT /api/payment-requests/:id
+// re-checks ownership and status server-side; this is presentation.
+let _prMyRows = [];
+
+// Built fresh each time rather than reusing the create form: that form's
+// department picker is bound to fixed element ids and a module-level
+// selection, so a second live copy of it would fight the first over both.
+async function prOpenEditModal(id){
+  const r = _prMyRows.find(x => Number(x.id) === Number(id));
+  if (!r) { showToast('Request not found — refresh and try again', 'error'); return; }
+  if (r.status !== 'pending') { showToast(`Already ${r.status} — this request can no longer be edited`, 'error'); return; }
+  // Cached after the first call, so this is free on every open but one — and
+  // it means the picker is never empty just because the modal opened first.
+  await prLoadDepartments();
+
+  const parsed = prParseReason(r.reason);
+  const amount = parsed.amount != null ? parsed.amount : (parseFloat(r.amount) || 0);
+  const currency = parsed.currency || '₹';
+  const reason = parsed.amount != null ? parsed.reason : r.reason;
+  let chosen = [];
+  try { const p = JSON.parse(r.departments || '[]'); if (Array.isArray(p)) chosen = p; } catch {}
+
+  document.getElementById('prEditOverlay')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'prEditOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  const fld = 'width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;box-sizing:border-box';
+  const lbl = 'display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin:0 0 5px';
+  // A department the row already carries but the live list has since dropped
+  // (renamed, or its last user left) still has to appear, ticked — otherwise
+  // saving would quietly strip it.
+  const deptOptions = [...new Set([..._prDepts, ...chosen])].sort((a, b) => a.localeCompare(b));
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:20px 22px;width:460px;max-width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.25)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <h3 style="margin:0;font-size:16px;font-weight:700;color:#0f172a">✏️ Edit Payment Request</h3>
+        <button onclick="document.getElementById('prEditOverlay').remove()" style="background:none;border:none;font-size:20px;color:#94a3b8;cursor:pointer;line-height:1">×</button>
+      </div>
+      <div id="prEditErr" style="display:none;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px"></div>
+      <div style="margin-bottom:12px"><label style="${lbl}">Bank *</label>
+        <input type="text" id="prEditBank" value="${dtEscape(r.bank_name)}" style="${fld}"/></div>
+      <div style="margin-bottom:12px"><label style="${lbl}">Card *</label>
+        <input type="text" id="prEditCard" value="${dtEscape(r.card_number)}" style="${fld}"/></div>
+      <div style="display:flex;gap:10px;margin-bottom:12px">
+        <div style="width:90px"><label style="${lbl}">Currency</label>
+          <select id="prEditCurrency" style="${fld}">
+            ${['₹','$','€','£'].map(c => `<option value="${c}" ${c === currency ? 'selected' : ''}>${c}</option>`).join('')}
+          </select></div>
+        <div style="flex:1"><label style="${lbl}">Amount *</label>
+          <input type="number" id="prEditAmount" min="0.01" step="0.01" value="${Number(amount) || ''}" style="${fld}"/></div>
+      </div>
+      <div style="margin-bottom:12px"><label style="${lbl}">Reason *</label>
+        <textarea id="prEditReason" rows="3" style="${fld};resize:vertical">${dtEscape(reason)}</textarea></div>
+      <div style="margin-bottom:16px"><label style="${lbl}">Departments *</label>
+        <div style="border:1.5px solid #e2e8f0;border-radius:8px;padding:8px 10px;max-height:150px;overflow:auto">
+          ${deptOptions.length
+            ? deptOptions.map(d => `<label style="display:flex;align-items:center;gap:7px;font-size:13px;padding:3px 0;cursor:pointer">
+                <input type="checkbox" class="prEditDept" value="${dtEscape(d)}" ${chosen.includes(d) ? 'checked' : ''} style="width:14px;height:14px;accent-color:#4f46e5;cursor:pointer"/>
+                <span>${dtEscape(d)}</span></label>`).join('')
+            : '<div style="font-size:12px;color:#94a3b8">No departments available</div>'}
+        </div></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button onclick="document.getElementById('prEditOverlay').remove()" style="background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;color:#475569;cursor:pointer">Cancel</button>
+        <button id="prEditSaveBtn" onclick="prSaveEdit(${r.id})" style="background:#4f46e5;border:none;border-radius:8px;padding:8px 18px;font-size:13px;font-weight:600;color:#fff;cursor:pointer">Save Changes</button>
+      </div>
+    </div>`;
+  // Click the backdrop to dismiss, but not a click that started inside the card.
+  ov.addEventListener('mousedown', e => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+  document.getElementById('prEditBank').focus();
+}
+
+async function prSaveEdit(id){
+  const err = document.getElementById('prEditErr');
+  const fail = msg => { if (err) { err.textContent = msg; err.style.display = 'block'; } };
+  const bank = document.getElementById('prEditBank').value.trim();
+  const card = document.getElementById('prEditCard').value.trim();
+  const cur  = document.getElementById('prEditCurrency').value;
+  const amt  = parseFloat(document.getElementById('prEditAmount').value);
+  const why  = document.getElementById('prEditReason').value.trim();
+  const depts = [...document.querySelectorAll('.prEditDept:checked')].map(cb => cb.value);
+  if (err) err.style.display = 'none';
+  if (!bank) return fail('Enter bank name');
+  if (!card) return fail('Enter card number');
+  if (!Number.isFinite(amt) || amt <= 0) return fail('Enter a valid amount');
+  if (!why) return fail('Enter reason');
+  if (!depts.length) return fail('Select at least one department');
+
+  // The amount goes out twice on purpose — as a number, and encoded into the
+  // front of the reason exactly the way prSubmit() writes it on create. The
+  // table and the approval notification both read the encoded copy, so the two
+  // must be written from the same value.
+  const encodedReason = `[${cur}${amt.toFixed(2)}] ${why}`;
+  const btn = document.getElementById('prEditSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const r = await api('/api/payment-requests/' + id, 'PUT', {
+      bank_name: bank, card_number: card, amount: amt, reason: encodedReason, departments: depts
+    });
+    if (r && r.error) { fail(r.error); return; }
+    document.getElementById('prEditOverlay')?.remove();
+    showToast('✅ Request updated');
+    loadMyPaymentRequests();
+  } catch (e) {
+    fail('Could not save: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Changes'; }
+  }
+}
+
 let _prDepts = [];          // every department the server knows about
 let _prDeptChosen = [];     // what this request has selected
 

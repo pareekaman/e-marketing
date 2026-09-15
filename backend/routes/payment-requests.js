@@ -221,6 +221,77 @@ app.get('/api/payment-requests/my', requireAuth, async (req, res) => {
 });
 
 // PATCH /api/payment-requests/:id — approve or reject (admin + payment approvers)
+// PUT /api/payment-requests/:id — fix a request that was filled in wrong.
+//
+// Separate from the PATCH below on purpose. That route decides a request
+// (approve / reject) and is gated on isPaymentApprover; this one corrects the
+// contents of one still awaiting that decision, and answers to a different
+// question entirely — who owns the row. Folding both into PATCH would put two
+// unrelated permission models behind one endpoint, where widening either by
+// accident silently widens the other.
+//
+// Who: the submitter, for their own. An admin, for anyone's. Deliberately NOT
+// isPaymentApprover — approving somebody's spend is not the same right as
+// rewriting what they asked for, and an approver who wants a change can reject
+// and say why.
+//
+// When: only while status is 'pending'. Once a request is approved or
+// rejected the decision was made against these exact numbers, so the numbers
+// stop moving — a rejected one is corrected by submitting a fresh request, not
+// by editing history.
+app.put('/api/payment-requests/:id', requireAuth, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const [[row]] = await db.query(
+      'SELECT id, submitted_by, status, bank_name FROM payment_requests WHERE id=?', [id]);
+    if (!row) return res.status(404).json({ error: 'Payment request not found' });
+
+    // The paid / cancelled / bill markers are rows on this same table. They are
+    // not requests, carry no editable fields, and their `reason` is a parsed
+    // instruction — letting this route near one would corrupt the marker.
+    if (row.bank_name === '__system__') {
+      return res.status(400).json({ error: 'Not an editable request' });
+    }
+
+    const isOwner = Number(row.submitted_by) === Number(req.session.userId);
+    if (!isOwner && req.session.role !== 'admin') {
+      return res.status(403).json({ error: 'You can only edit your own payment requests' });
+    }
+    if (row.status !== 'pending') {
+      return res.status(400).json({ error: `Already ${row.status} — this request can no longer be edited` });
+    }
+
+    const { bank_name, card_number, amount, reason } = req.body;
+    const bank = String(bank_name || '').trim();
+    const card = String(card_number || '').trim();
+    const amt  = parseFloat(amount);
+    const why  = String(reason || '').trim();
+    if (!bank || !card || !why) return res.status(400).json({ error: 'All fields required' });
+    if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ error: 'Enter a valid amount' });
+
+    // Same sanitising as the create route — trimmed, de-duplicated, capped —
+    // and deliberately not validated against the live department list, so a
+    // renamed department never blocks a correction.
+    const raw = Array.isArray(req.body.departments) ? req.body.departments : [];
+    const departments = [...new Set(
+      raw.map(d => String(d || '').trim()).filter(d => d && d.length <= 100)
+    )].slice(0, 20);
+    if (!departments.length) return res.status(400).json({ error: 'Select at least one department' });
+
+    // ⚠️ The amount lives in TWO places: the `amount` column and, encoded with
+    // its currency, the front of `reason` as "[₹310.00] …". Display prefers the
+    // encoded copy and the approval notification parses it, so writing one
+    // without the other leaves the table and the email disagreeing about how
+    // much money this is. `reason` arrives already encoded from the client,
+    // exactly as it does on create; the column is written from the same number.
+    await db.query(
+      'UPDATE payment_requests SET bank_name=?, card_number=?, amount=?, reason=?, departments=? WHERE id=?',
+      [bank, card, amt, why, JSON.stringify(departments), id]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
   try {
     if (!(await isPaymentApprover(req.session))) return res.status(403).json({ error:'Access denied' });
