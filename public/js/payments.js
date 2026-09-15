@@ -530,6 +530,14 @@ async function prOpenEditModal(id){
   // Cached after the first call, so this is free on every open but one — and
   // it means the picker is never empty just because the modal opened first.
   await prLoadDepartments();
+  if (!_prCards.length) {
+    try { const c = await api('/api/payment-requests/cards'); if (Array.isArray(c)) _prCards = c; } catch {}
+  }
+  // The row's own bank has to be offered even when no saved card carries it —
+  // an older request, or one typed in as "Other" — or opening the modal would
+  // quietly blank a field the user never touched.
+  const bankOptions = [...new Set([..._prCards.map(c => c.bank_name), r.bank_name].filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
 
   const parsed = prParseReason(r.reason);
   const amount = parsed.amount != null ? parsed.amount : (parseFloat(r.amount) || 0);
@@ -556,9 +564,15 @@ async function prOpenEditModal(id){
       </div>
       <div id="prEditErr" style="display:none;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px"></div>
       <div style="margin-bottom:12px"><label style="${lbl}">Bank *</label>
-        <input type="text" id="prEditBank" value="${dtEscape(r.bank_name)}" style="${fld}"/></div>
+        <select id="prEditBank" onchange="prEditBankChange()" style="${fld}">
+          <option value="">— Select Bank —</option>
+          ${bankOptions.map(b => `<option value="${dtEscape(b)}" ${b === r.bank_name ? 'selected' : ''}>${dtEscape(b)}</option>`).join('')}
+          <option value="__other__">Other…</option>
+        </select>
+        <input type="text" id="prEditBankOther" placeholder="Enter bank name…" style="${fld};display:none;margin-top:6px"/></div>
       <div style="margin-bottom:12px"><label style="${lbl}">Card *</label>
-        <input type="text" id="prEditCard" value="${dtEscape(r.card_number)}" style="${fld}"/></div>
+        <select id="prEditCard" onchange="prEditCardChange()" style="${fld}"></select>
+        <input type="text" id="prEditCardOther" placeholder="Enter card number…" style="${fld};display:none;margin-top:6px"/></div>
       <div style="display:flex;gap:10px;margin-bottom:12px">
         <div style="width:90px"><label style="${lbl}">Currency</label>
           <select id="prEditCurrency" style="${fld}">
@@ -585,14 +599,80 @@ async function prOpenEditModal(id){
   // Click the backdrop to dismiss, but not a click that started inside the card.
   ov.addEventListener('mousedown', e => { if (e.target === ov) ov.remove(); });
   document.body.appendChild(ov);
+  // Fill the card list for the bank already selected, then restore the card
+  // this request was submitted with.
+  prEditBankChange(r.card_number);
   document.getElementById('prEditBank').focus();
+}
+
+// Mirrors prBankChange() for the edit modal, on its own element ids. The
+// create form's version cannot be reused: it hard-codes prBank / prCard, and
+// both forms can be on the page at once.
+//
+// `keepCard` is passed only when the modal first opens, to put the request's
+// existing card back. On a real bank change it is absent, so the card clears —
+// a card from the previous bank must not survive the switch.
+function prEditBankChange(keepCard){
+  const val   = document.getElementById('prEditBank').value;
+  const other = document.getElementById('prEditBankOther');
+  const cardSel   = document.getElementById('prEditCard');
+  const cardOther = document.getElementById('prEditCardOther');
+  if (!other || !cardSel || !cardOther) return;
+
+  if (val === '__other__') {
+    other.style.display = '';
+    other.focus();
+    // An unknown bank has no saved cards, so the card is always typed.
+    cardSel.style.display = 'none';
+    cardSel.innerHTML = '<option value="">— Select Card —</option>';
+    cardOther.style.display = '';
+    cardOther.value = keepCard || '';
+    return;
+  }
+  other.style.display = 'none';
+  other.value = '';
+  const cards = _prCards.filter(c => c.bank_name === val).map(c => c.card_number);
+  // Same reason as the bank list: keep the request's own card selectable even
+  // when it was never saved against this bank.
+  const options = [...new Set([...cards, ...(keepCard ? [keepCard] : [])])];
+  if (!options.length) {
+    cardSel.style.display = 'none';
+    cardSel.innerHTML = '<option value="">— Select Card —</option>';
+    cardOther.style.display = '';
+    cardOther.value = keepCard || '';
+    return;
+  }
+  cardSel.style.display = '';
+  cardOther.style.display = 'none';
+  cardOther.value = '';
+  cardSel.innerHTML = '<option value="">— Select Card —</option>'
+    + options.map(c => `<option value="${dtEscape(c)}" ${c === keepCard ? 'selected' : ''}>${dtEscape(c)}</option>`).join('')
+    + '<option value="__other__">+ Add more</option>';
+}
+
+function prEditCardChange(){
+  const val = document.getElementById('prEditCard').value;
+  const cardOther = document.getElementById('prEditCardOther');
+  if (!cardOther) return;
+  if (val === '__other__') { cardOther.style.display = ''; cardOther.value = ''; cardOther.focus(); }
+  else { cardOther.style.display = 'none'; cardOther.value = ''; }
 }
 
 async function prSaveEdit(id){
   const err = document.getElementById('prEditErr');
   const fail = msg => { if (err) { err.textContent = msg; err.style.display = 'block'; } };
-  const bank = document.getElementById('prEditBank').value.trim();
-  const card = document.getElementById('prEditCard').value.trim();
+  // Same resolution as prSubmit(): the select holds the value unless it says
+  // "Other", in which case the free-text box beside it does. The card falls
+  // through to text whenever the bank is unknown, because an unknown bank
+  // never has a card list to pick from.
+  const bankSel = document.getElementById('prEditBank').value;
+  const cardSel = document.getElementById('prEditCard').value;
+  const bank = bankSel === '__other__'
+    ? document.getElementById('prEditBankOther').value.trim()
+    : bankSel.trim();
+  const card = (bankSel === '__other__' || cardSel === '__other__' || !cardSel)
+    ? document.getElementById('prEditCardOther').value.trim()
+    : cardSel.trim();
   const cur  = document.getElementById('prEditCurrency').value;
   const amt  = parseFloat(document.getElementById('prEditAmount').value);
   const why  = document.getElementById('prEditReason').value.trim();
