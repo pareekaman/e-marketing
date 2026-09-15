@@ -352,17 +352,21 @@
         </div>
       </div>
       <div class="dash-perf-grid">
+        <!-- The wraps carry ids of their own because the chart renderer swaps
+             the canvas out for a message when there is nothing to draw. Found
+             by its canvas, the wrap would then be unfindable and the chart
+             could never come back. -->
         <div class="dash-perf-card">
           <h4>🥇 Top 5 Performers</h4>
-          <div class="perf-chart-wrap"><canvas id="dashTopChart"></canvas></div>
+          <div class="perf-chart-wrap" id="dashTopChartWrap"><canvas id="dashTopChart"></canvas></div>
         </div>
         <div class="dash-perf-card">
           <h4>🐢 Bottom 5 Performers</h4>
-          <div class="perf-chart-wrap"><canvas id="dashBottomChart"></canvas></div>
+          <div class="perf-chart-wrap" id="dashBottomChartWrap"><canvas id="dashBottomChart"></canvas></div>
         </div>
         <div class="dash-perf-card">
           <h4>🔥 Top 5 Most Active</h4>
-          <div class="perf-chart-wrap"><canvas id="dashActiveChart"></canvas></div>
+          <div class="perf-chart-wrap" id="dashActiveChartWrap"><canvas id="dashActiveChart"></canvas></div>
         </div>
       </div>
     </div>

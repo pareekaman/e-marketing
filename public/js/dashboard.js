@@ -179,6 +179,10 @@ async function loadDashboard(light = false) {
   }
 }
 
+// Fewest rankable people for "Bottom 5" to carry any meaning — see the note
+// where it is used.
+const BOTTOM_RANK_MIN_PEOPLE = 4;
+
 async function loadDashboardPerfCharts(){
   const isAdmin = ME && ME.role === 'admin';
   const isHod   = ME && ME.role === 'hod';
@@ -220,7 +224,18 @@ async function loadDashboardPerfCharts(){
   const bottomPool = racers.filter(r => r.overallScore !== null && r.overallScore !== undefined);
   const bottom = [...bottomPool].sort((a, b) => a.overallScore - b.overallScore).slice(0, 5);
   renderDashPerfChart('dashTopChart',    'top',    top.map(r => r.name),    top.map(r => parseInt(r.completedAll)||0), '#16a34a', 'Tasks completed', null, top.map(r => r.profileImage));
-  renderDashPerfChart('dashBottomChart', 'bottom', bottom.map(r => r.name), bottom.map(r => r.overallScore),           '#dc2626', 'Score', null, bottom.map(r => r.profileImage));
+  // Bottom ranks on score while Top ranks on tasks completed, so across a big
+  // team the two lists barely overlap. Across a small one they are the same
+  // few people in a different order — in the two-person AI department the same
+  // name led both charts — which says nothing and reads like a contradiction.
+  // Below the threshold the chart is replaced by a note; Top and Most Active
+  // still mean something at that size, so they are left alone.
+  if (bottomPool.length < BOTTOM_RANK_MIN_PEOPLE) {
+    renderPerfNote('dashBottomChart', 'bottom',
+      `Needs at least ${BOTTOM_RANK_MIN_PEOPLE} people to rank`);
+  } else {
+    renderDashPerfChart('dashBottomChart', 'bottom', bottom.map(r => r.name), bottom.map(r => r.overallScore), '#dc2626', 'Score', null, bottom.map(r => r.profileImage));
+  }
 
   // Most Active — composite engagement: active tasks + tasks delegated to others + revises triggered + leaves submitted.
   const active = (Array.isArray(activityData) ? activityData : [])
@@ -295,9 +310,30 @@ const perfAvatarPlugin = {
   }
 };
 
+// The wrap has to be findable even when it holds a message instead of a
+// canvas, or a chart that empties once can never be drawn again. This used to
+// look the wrap up through its canvas — twice, by two spellings of the same
+// query — so after the empty state replaced that canvas the lookup returned
+// null, the function bailed at the guard, and the branch below that puts the
+// canvas back was unreachable. The `Wrap` id is the stable handle; the
+// canvas's parent is kept as a fallback for markup that predates it.
+function perfChartWrap(canvasId){
+  return document.getElementById(canvasId + 'Wrap')
+      || document.getElementById(canvasId)?.parentElement
+      || null;
+}
+
+// Replaces a chart with a plain message — same slot, same styling as the
+// empty state, but says something of its own.
+function renderPerfNote(canvasId, key, text){
+  const wrap = perfChartWrap(canvasId);
+  if (!wrap) return;
+  if (dashPerfCharts[key]) { dashPerfCharts[key].destroy(); dashPerfCharts[key] = null; }
+  wrap.innerHTML = `<div class="perf-empty">${dtEscape(text)}</div>`;
+}
+
 function renderDashPerfChart(canvasId, key, labels, values, color, axisLabel, breakdown, images){
-  let wrap = document.getElementById(canvasId)?.parentElement;
-  if (!wrap) wrap = document.querySelector(`#${canvasId}`)?.parentElement;
+  const wrap = perfChartWrap(canvasId);
   if (!wrap) return;
   if (!labels.length) {
     wrap.innerHTML = '<div class="perf-empty">No data in this date range</div>';
