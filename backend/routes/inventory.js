@@ -141,9 +141,18 @@ app.put('/api/inventory/items/:id', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Delete item (admin only, only if not currently assigned)
+// Delete item (admin, or the Access Control panel's Admin level on this page;
+// only if not currently assigned)
+//
+// This was `role === 'admin'` alone. It stayed out of edit_inventory on
+// purpose — routing it through the Editor toggle would have handed a delete
+// button to every hod, who carries edit_inventory by role default. The new
+// admin_inventory key is the narrow way to grant it: nobody holds it unless
+// someone picked Admin for this page on that person's row.
 app.delete('/api/inventory/items/:id', requireAuth, async (req, res) => {
-  if (req.session.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (req.session.role !== 'admin' && !(await userCanDo(req.session, 'admin_inventory'))) {
+    return res.status(403).json({ error: 'Admin only' });
+  }
   try {
     const [[item]] = await db.query('SELECT * FROM inventory_items WHERE id=?', [req.params.id]);
     if (!item) return res.status(404).json({ error: 'Not found' });
@@ -213,7 +222,11 @@ app.post('/api/inventory/handover/:assignment_id', requireAuth, async (req, res)
     }
     const [[a]] = await db.query('SELECT * FROM inventory_assignments WHERE id=?', [req.params.assignment_id]);
     if (!a) return res.status(404).json({ error: 'Assignment not found' });
-    const isAdmin = ['admin','hod'].includes(req.session.role);
+    // Admin by role, or granted Admin on this page alone from Access Control.
+    // Both of the checks below ask the same question — is this person allowed
+    // to act on somebody else's equipment — so they read the same flag.
+    const isAdmin = ['admin','hod'].includes(req.session.role)
+      || await userCanDo(req.session, 'admin_inventory');
     if (!isAdmin && a.user_id !== req.session.userId) {
       return res.status(403).json({ error: 'You can only return equipment assigned to you' });
     }
@@ -254,5 +267,5 @@ app.post('/api/inventory/return/:assignment_id', requireAuth, async (req, res) =
     await db.query(`UPDATE inventory_items SET status=? WHERE id=?`, [mapped.itemStatus, a.item_id]);
     res.json({ ok: true, itemStatus: mapped.itemStatus });
   } catch (err) { res.status(500).json({ error: err.message }); }
-});
+});
 };

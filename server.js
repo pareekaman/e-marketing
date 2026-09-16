@@ -3245,7 +3245,17 @@ const VALID_UP_ACTIONS = new Set(['edit_task','delete_task','create_task','creat
   'edit_dashboard','edit_mis','edit_race','edit_fms','edit_fms_tasks','edit_clients','edit_compliance','edit_dailyreports','edit_meetings','edit_inventory','edit_dms','edit_paymentreq','edit_feedback','edit_users','edit_creditcards','edit_logs',
   // Unlike most edit_<page> keys this one is genuinely enforced: every write
   // route in routes/leads.js checks it, so View really is read-only there.
-  'edit_leads']);
+  'edit_leads',
+  // The Access Control panel's third level, "Admin" — one step above Editor,
+  // for the handful of things a page keeps behind `role === 'admin'`. It is a
+  // per-page grant, NOT the admin role: holding admin_inventory lets someone
+  // delete and retire equipment and nothing else, anywhere.
+  //
+  // ⚠️ Add a key here only once a route actually reads it. An admin_<page> key
+  // with nothing behind it puts a choice in the panel that cannot do anything,
+  // which is the trap the Race Tracker row had to be marked grantable:false to
+  // undo.
+  'admin_inventory']);
 
 // ── Server-side mirror of the frontend's canSee() / canDo() ──────────────
 // Until this existed, `user_permissions` was write-only as far as the API was

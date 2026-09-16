@@ -104,8 +104,14 @@ const PERM_TREE = [
   // userCanSee('inventory'), writes userCanDo('edit_inventory'). Deleting an
   // item stays admin-only on purpose: it was admin-only before, and routing it
   // through edit_inventory would have handed every hod the delete button.
+  // Admin adds the two things Editor deliberately leaves out: deleting an item
+  // outright, and returning/retiring equipment that is not the holder's own.
+  // Both were `role === 'admin'` checks in the routes; they now also accept
+  // this key, so the capability can be given to one person for this page alone.
   { page: 'inventory',    label: 'Inventory',      icon: '📦', enforced: true, actions: [
     { key: 'edit_inventory', label: 'Edit' },
+  ], adminActions: [
+    { key: 'admin_inventory', label: 'Delete & retire' },
   ]},
   { page: 'hrm',          label: 'HR Portal',      icon: '👥', enforced: true, actions: [
     { key: 'hrm_schedule',      label: 'Schedule' },
@@ -141,10 +147,16 @@ const PERM_TREE = [
     actions: [{ key: 'edit_logs', label: 'Edit' }] },
 ];
 
+// "Admin" is one step above Editor, for what a page keeps behind
+// `role === 'admin'`. It is a per-page grant and nothing more — Admin on
+// Inventory does not make anyone an admin anywhere else. It is offered ONLY on
+// pages that declare `adminActions`, because a level with no route reading it
+// would be a choice that cannot do anything (see the Race Tracker note below).
 const ACC_LEVELS = [
-  { key: 'none', label: 'No Access' },
-  { key: 'view', label: 'View' },
-  { key: 'edit', label: 'Editor' },
+  { key: 'none',  label: 'No Access' },
+  { key: 'view',  label: 'View' },
+  { key: 'edit',  label: 'Editor' },
+  { key: 'admin', label: 'Admin' },
 ];
 
 // Current level of one feature for one permission set.
@@ -156,6 +168,9 @@ function accLevelOf(perms, pg) {
   // page. Clamp to View. Nothing was ever written wrongly (accIsDirty compares
   // the working copy), but the display lied.
   if (pg.readOnly) return 'view';
+  // Admin is checked first: it implies Editor, so a set holding both must not
+  // read back as the lesser of the two.
+  if ((pg.adminActions || []).some(a => perms.actions.includes(a.key))) return 'admin';
   return pg.actions.some(a => perms.actions.includes(a.key)) ? 'edit' : 'view';
 }
 
@@ -163,11 +178,15 @@ function accLevelOf(perms, pg) {
 // set (e.g. edit_task but not delete_task, possible from the old checkbox UI)
 // reads back as "Editor" and is levelled up to the full set on the next save.
 function accSetLevel(perms, pg, level) {
+  const own = [...pg.actions, ...(pg.adminActions || [])].map(a => a.key);
   perms.pages   = perms.pages.filter(p => p !== pg.page);
-  perms.actions = perms.actions.filter(k => !pg.actions.some(a => a.key === k));
+  perms.actions = perms.actions.filter(k => !own.includes(k));
   if (level === 'none') return perms;
   perms.pages.push(pg.page);
-  if (level === 'edit') perms.actions.push(...pg.actions.map(a => a.key));
+  // Admin is Editor plus the admin-only keys — never the admin keys alone, or
+  // someone could delete equipment they are not allowed to edit.
+  if (level === 'edit' || level === 'admin') perms.actions.push(...pg.actions.map(a => a.key));
+  if (level === 'admin') perms.actions.push(...(pg.adminActions || []).map(a => a.key));
   return perms;
 }
 
@@ -358,7 +377,11 @@ function loadUserPerms(userId) {
     // is three GET routes and no writes at all — the synthetic edit_<page> key
     // exists only so a level is storable, and offering the choice invited an
     // admin to pick something that could never mean anything.
-    const levels = pg.readOnly ? ACC_LEVELS.filter(l => l.key !== 'edit') : ACC_LEVELS;
+    // Same reasoning as readOnly hiding Editor: Admin is offered only where a
+    // route actually reads an admin_<page> key, so the dropdown never shows a
+    // level that would save fine and change nothing.
+    const levels = ACC_LEVELS.filter(l =>
+      !(pg.readOnly && l.key === 'edit') && !(l.key === 'admin' && !(pg.adminActions || []).length));
     const opts = levels.map(l =>
       `<option value="${l.key}" ${l.key===lvl?'selected':''}>${l.label}</option>`).join('');
     const dim = lvl === 'none';
