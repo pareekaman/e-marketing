@@ -38,7 +38,8 @@ const invReturnReason = r =>
 // back, not that it's finished.
 const INV_HOLDER_REASONS = new Set(['offboarding', 'damaged']);
 
-// Get all items (admin/hod see all; others see only assigned to them)
+// Get all items. Anyone who may EDIT inventory sees the whole list; everyone
+// else sees only what is assigned to them.
 app.get('/api/inventory/items', requireAuth, async (req, res) => {
   try {
     // The read side of the same page. Every role default carries 'inventory', so
@@ -46,9 +47,17 @@ app.get('/api/inventory/items', requireAuth, async (req, res) => {
     // setting Inventory to No Access in the panel closes the API too, not just
     // the sidebar entry.
     if (!(await userCanSee(req.session, 'inventory'))) return res.status(403).json({ error: 'No access to Inventory' });
-    const isAdmin = ['admin','hod'].includes(req.session.role);
+    // This read used to be `['admin','hod'].includes(role)`, which left the
+    // panel's own grants half-wired: someone given Editor or Admin on this page
+    // could add, edit and assign equipment but the All Equipment tab still came
+    // back empty, because the list was scoped by role while the writes were
+    // scoped by permission. Anyone who may edit the inventory has to be able to
+    // see it — assigning an item means picking it out of the full list first.
+    // edit_inventory covers Admin too: that level writes both keys.
+    const seesAll = ['admin','hod'].includes(req.session.role)
+      || await userCanDo(req.session, 'edit_inventory');
     let rows;
-    if (isAdmin) {
+    if (seesAll) {
       [rows] = await db.query(`
         SELECT i.*, u.name AS assigned_to_name, u.id AS assigned_to_id,
                a.id AS assignment_id, a.assigned_at, a.handover_status, a.return_reason,
