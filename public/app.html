@@ -28,6 +28,7 @@
 <link rel="stylesheet" href="/css/overlays.css"/>
 <link rel="stylesheet" href="/css/leads.css"/>
 <link rel="stylesheet" href="/css/voice.css"/>
+<link rel="stylesheet" href="/css/notify.css"/>
 </head>
 <body>
 
@@ -262,6 +263,20 @@
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
     <div class="topbar-title" id="topbarTitle">Dashboard</div>
+    <!-- Notification bell. Sits outside #topbarActions on purpose — that block
+         is hidden for most roles, and everybody has their own notifications. -->
+    <div class="nt-bell-wrap" id="ntBellWrap">
+      <button class="nt-bell-btn" id="ntBellBtn" onclick="ntTogglePanel(event)" aria-label="Notifications">
+        🔔<span class="nt-badge" id="ntBadge" style="display:none">0</span>
+      </button>
+      <div class="nt-panel" id="ntPanel">
+        <div class="nt-panel-head">
+          <span>Notifications</span>
+          <button class="nt-mark" id="ntMarkAll" onclick="ntMarkAllRead()">Mark all read</button>
+        </div>
+        <div class="nt-panel-list" id="ntPanelList"></div>
+      </div>
+    </div>
     <div class="topbar-right" id="topbarActions" style="display:none;align-items:center;gap:8px">
       <span style="font-size:13px;color:#64748b;font-weight:600;white-space:nowrap">👁 Dashboard:</span>
       <select id="dashUserSwitcher" onchange="onDashUserSwitch(this.value)"
@@ -2895,6 +2910,25 @@
   </div>
 </div>
 
+<!-- ══════════════════════════════════════
+     NEW-TASK POPUP — opens by itself when work has been delegated to
+     you since you last looked. Dismissing it is what marks it read.
+══════════════════════════════════════ -->
+<div class="modal-overlay" id="newTaskModal">
+  <div class="modal nt-modal">
+    <div class="nt-head">
+      <span class="nt-bell">🔔</span>
+      <span id="ntCount"></span>
+    </div>
+    <p class="nt-sub">These were assigned to you while you were away.</p>
+    <div class="nt-list" id="ntList"></div>
+    <div class="modal-footer" style="justify-content:space-between;align-items:center">
+      <button class="btn btn-outline" onclick="ntDismiss(false)">Got it</button>
+      <button class="btn btn-primary" onclick="ntDismiss(true)">View my tasks</button>
+    </div>
+  </div>
+</div>
+
 <!-- Set Due Date (doer-defines-date delegation) -->
 <div class="modal-overlay" id="setDueDateModal">
   <div class="modal" style="max-width:380px">
@@ -3877,6 +3911,11 @@
 <script src="/js/portal.js"></script>
 <script src="/js/payments.js"></script>
 <script src="/js/mdo.js"></script>
+<!-- ⚠️ notify.js MUST load before meetings.js. meetings.js ends by calling
+     init(), and init() calls ntMaybeOpen() — loading it later leaves that
+     name undefined, and init()'s own catch turns the ReferenceError into a
+     redirect back to the login page. -->
+<script src="/js/notify.js"></script>
 <script src="/js/meetings.js"></script>
 <script src="/js/dms.js"></script>
 <script src="/js/leads.js"></script>

@@ -257,7 +257,14 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
       const dupId = await findRecentDuplicateTask('delegation_tasks', {
         desc, assignedTo: targetUser, assignedBy, clientId: enforcedClientId, dueDate: effectiveDate });
       if (dupId) return res.json({ success: true, duplicate: true, id: dupId });
-      await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,due_time,status,priority,approval,remarks,client_id,url,awaiting_due_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, dueTime, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0]);
+      // A task you hand to yourself is not news. Stamping seen_at at creation
+      // keeps it out of the new-task popup AND off the bell's unread count in
+      // one move, while still leaving the row in the bell's history where it
+      // belongs. ⚠️ Deliberately NOT applied to the three WhatsApp-bot
+      // approval inserts in server.js: those arrive from outside and the doer
+      // really has not seen them, whoever the row names as assigner.
+      const selfAssigned = String(assignedBy) === String(targetUser);
+      await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,due_time,status,priority,approval,remarks,client_id,url,awaiting_due_date,seen_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, dueTime, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0, selfAssigned ? new Date() : null]);
       // 📧 Send delegation email + 📱 WhatsApp (non-blocking — fire and forget)
       (async () => {
         const target = await getNotifyTarget(targetUser);
@@ -908,6 +915,140 @@ app.delete('/api/tasks/delete-by-date', requireAuth, requireAdmin, async (req, r
 // Read-only by decision: no Set-due-date control here. The date is the doer's
 // call, made from their own board; this is the view that stops the gap being
 // invisible, not a place to overrule them.
+// ══════════════════════════════════════════════════════
+// NEW-TASK POPUP — what this doer has been assigned and not yet seen
+//
+// The doer already gets an email on delegation, but nothing tells them
+// inside the app: they had to notice a new row on their own board. These
+// two routes back a popup that opens when they next open the ERP.
+//
+// ⚠️ Bounded by created_at, and that bound is load-bearing. Every row that
+// predates the seen_at column has seen_at NULL, so an unbounded query would
+// greet everyone with every task ever assigned to them on the first open
+// after deploy. A task older than the window is not news.
+const VD_UNSEEN_DAYS = 7;
+// How many the popup lists. The rest are counted, not printed — a modal is
+// not a task board, and a bulk CSV upload can land fifty rows on one doer.
+const VD_POPUP_SHOW = 5;
+
+app.get('/api/tasks/unseen', requireAuth, async (req, res) => {
+  try {
+    // Counted separately from the rows so the headline can say 23 while the
+    // list shows 5. `upto` is the cursor the dismissal marks against: every
+    // unseen row up to this instant was counted in `total`, so dismissing
+    // clears exactly what the popup claimed and nothing newer.
+    // ⚠️ Formatted in SQL, not handed back as a Date. mysql2 returns a JS Date
+    // that JSON-serialises to ISO-8601 with a Z, and MySQL rejects that on the
+    // way back in ("Incorrect datetime value") — which the browser swallows,
+    // leaving the popup to reopen every thirty seconds forever. The string
+    // form also dodges the timezone question entirely: it goes back exactly as
+    // the column stores it.
+    const [[agg]] = await db.query(
+      `SELECT COUNT(*) AS total, DATE_FORMAT(MAX(created_at),'%Y-%m-%d %H:%i:%s') AS upto
+         FROM delegation_tasks
+        WHERE assigned_to = ?
+          AND seen_at IS NULL
+          AND status IN ('pending','revised')
+          AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)`,
+      [req.session.userId, VD_UNSEEN_DAYS]);
+    const [rows] = await db.query(
+      `SELECT t.id, t.description, t.priority,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              t.awaiting_due_date,
+              DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i') AS assigned_at,
+              a.name AS assigned_by_name,
+              c.name AS client_name
+         FROM delegation_tasks t
+         LEFT JOIN users a   ON t.assigned_by = a.id
+         LEFT JOIN clients c ON t.client_id   = c.id
+        WHERE t.assigned_to = ?
+          AND t.seen_at IS NULL
+          AND t.status IN ('pending','revised')
+          AND t.created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+        ORDER BY t.created_at DESC
+        LIMIT ?`,
+      [req.session.userId, VD_UNSEEN_DAYS, VD_POPUP_SHOW]);
+    res.json({ tasks: rows, total: agg.total || 0, upto: agg.upto || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Backs the topbar bell. Same rows as /unseen but without the seen filter, so
+// the panel keeps showing what was already read — a notification list that
+// empties itself the moment you look at it is a list you cannot go back to.
+// `is_new` is what the panel highlights and what the badge counts.
+app.get('/api/tasks/notifications', requireAuth, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT t.id, t.description, t.priority, t.status,
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
+              t.awaiting_due_date,
+              DATE_FORMAT(t.created_at,'%Y-%m-%d %H:%i') AS assigned_at,
+              (t.seen_at IS NULL) AS is_new,
+              a.name AS assigned_by_name,
+              c.name AS client_name
+         FROM delegation_tasks t
+         LEFT JOIN users a   ON t.assigned_by = a.id
+         LEFT JOIN clients c ON t.client_id   = c.id
+        WHERE t.assigned_to = ?
+          AND t.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        ORDER BY t.created_at DESC
+        LIMIT 50`,
+      [req.session.userId]);
+    res.json({ items: rows, unread: rows.filter(r => r.is_new).length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Marks the popup's contents read. Scoped to the caller's own rows on the
+// server, not on the ids the client sends — a doer must not be able to clear
+// somebody else's notification by posting their task id.
+// Two modes. `ids` marks exactly those rows — the bell uses it when one
+// notification is clicked. `upto` marks every unseen row created at or
+// before that instant, which is what the popup's dismissal needs: it
+// announced a COUNT, not a list, so clearing only the five it printed would
+// bring the other eighteen straight back thirty seconds later.
+//
+// The cursor is what keeps that honest. A task delivered while the popup was
+// on screen is newer than `upto`, so it survives the dismissal and is
+// announced properly next time instead of being silently buried.
+app.post('/api/tasks/seen', requireAuth, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids.map(n => parseInt(n, 10)).filter(Number.isFinite)
+      : [];
+    // Only the exact shape /unseen hands out. Anything else is rejected rather
+    // than passed to MySQL to interpret.
+    const raw = req.body?.upto;
+    const upto = (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) ? raw : null;
+
+    if (upto) {
+      const [result] = await db.query(
+        `UPDATE delegation_tasks
+            SET seen_at = NOW()
+          WHERE assigned_to = ?
+            AND seen_at IS NULL
+            AND created_at <= ?`,
+        [req.session.userId, upto]);
+      return res.json({ marked: result.affectedRows });
+    }
+
+    if (!ids.length) return res.json({ marked: 0 });
+    const [result] = await db.query(
+      `UPDATE delegation_tasks
+          SET seen_at = NOW()
+        WHERE assigned_to = ?
+          AND seen_at IS NULL
+          AND id IN (${ids.map(() => '?').join(',')})`,
+      [req.session.userId, ...ids]);
+    res.json({ marked: result.affectedRows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/tasks/awaiting-date', requireAuth, async (req, res) => {
   try {
     const role = req.session.role;

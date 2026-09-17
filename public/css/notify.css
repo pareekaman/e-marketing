@@ -1,0 +1,57 @@
+/* ══════════════════════════════════════════════
+   NEW-TASK POPUP — what was delegated while you were away
+   ══════════════════════════════════════════════ */
+.nt-modal{max-width:520px;}
+.nt-head{display:flex;align-items:center;gap:10px;margin:-4px 0 4px;}
+.nt-bell{font-size:22px;line-height:1;}
+#ntCount{font-size:15px;font-weight:700;color:#1e293b;}
+.nt-sub{font-size:12px;color:#64748b;margin:0 0 14px;}
+
+.nt-list{max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:9px;margin-bottom:16px;}
+.nt-item{border:1px solid #e2e8f0;border-left:3px solid #4f46e5;border-radius:9px;padding:11px 13px;background:#fff;}
+.nt-item-top{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-bottom:6px;}
+.nt-desc{font-size:13.5px;color:#1e293b;font-weight:600;line-height:1.45;word-break:break-word;}
+.nt-by{font-size:11px;color:#94a3b8;margin-top:5px;}
+
+.nt-prio{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 8px;border-radius:20px;}
+.nt-prio-low{background:#f1f5f9;color:#64748b;}
+.nt-prio-medium{background:#dbeafe;color:#1d4ed8;}
+.nt-prio-high{background:#fef3c7;color:#b45309;}
+.nt-prio-urgent{background:#fee2e2;color:#b91c1c;}
+
+.nt-client{font-size:11px;font-weight:600;color:#4f46e5;background:#eef2ff;padding:2px 8px;border-radius:20px;}
+.nt-due{font-size:11px;font-weight:600;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;padding:2px 8px;border-radius:20px;}
+.nt-due-open{color:#b45309;background:#fffbeb;border-color:#fde68a;}
+
+/* ── Topbar bell + dropdown ───────────────────────────── */
+.nt-bell-wrap{position:relative;margin-left:auto;display:flex;align-items:center;}
+.nt-bell-btn{position:relative;border:1.5px solid #e2e8f0;background:#fff;border-radius:9px;padding:7px 11px;font-size:16px;line-height:1;cursor:pointer;transition:border-color .15s,box-shadow .15s;}
+.nt-bell-btn:hover{border-color:#c7d2fe;box-shadow:0 2px 8px rgba(79,70,229,.12);}
+.nt-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;background:#E74C3C;color:#fff;font:700 10px/18px 'Inter',sans-serif;border-radius:10px;text-align:center;box-shadow:0 0 0 2px #fff;}
+
+/* Anchored to the bell and floated above everything, so no ancestor's
+   overflow can clip it — same reasoning as the searchable-select panel. */
+.nt-panel{display:none;position:absolute;top:calc(100% + 8px);right:0;width:340px;max-height:420px;overflow-y:auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.16);z-index:9000;}
+.nt-panel.open{display:block;}
+.nt-panel-head{position:sticky;top:0;background:#fff;display:flex;justify-content:space-between;align-items:center;padding:12px 14px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;font-weight:700;color:#1e293b;}
+.nt-mark{border:0;background:none;color:#4f46e5;font:600 11px 'Inter',sans-serif;cursor:pointer;padding:2px 4px;}
+.nt-mark:hover{text-decoration:underline;}
+.nt-mark:disabled{color:#cbd5e1;cursor:default;text-decoration:none;}
+.nt-panel-list{padding:6px;}
+
+.nt-row{padding:10px 11px;border-radius:9px;cursor:pointer;transition:background .13s;}
+.nt-row:hover{background:#f8fafc;}
+.nt-row + .nt-row{border-top:1px solid #f1f5f9;}
+.nt-row-new{background:#eef2ff;}
+.nt-row-new:hover{background:#e0e7ff;}
+.nt-row-desc{font-size:13px;font-weight:600;color:#1e293b;line-height:1.4;word-break:break-word;}
+.nt-row-meta{font-size:11px;color:#94a3b8;margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.nt-dot{width:7px;height:7px;border-radius:50%;background:#4f46e5;flex:0 0 auto;}
+.nt-empty{padding:26px 14px;text-align:center;font-size:12px;color:#94a3b8;}
+
+@media(max-width:600px){
+  .nt-list{max-height:260px;}
+  .nt-desc{font-size:13px;}
+  .nt-panel{width:calc(100vw - 32px);right:-8px;}
+}
+.nt-more{padding:9px 13px;margin-top:2px;border:1px dashed #cbd5e1;border-radius:9px;font-size:12px;color:#64748b;text-align:center;}

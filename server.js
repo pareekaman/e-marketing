@@ -538,6 +538,19 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE delegation_tasks ADD COLUMN client_ask_by DATETIME DEFAULT NULL AFTER client_ask`);
   // Client portal delegation form offers an 'urgent' priority tier above 'high'.
   await sa(`ALTER TABLE delegation_tasks MODIFY COLUMN priority ENUM('low','medium','high','urgent') DEFAULT 'low'`);
+  // When the doer was shown this task in the new-task popup. NULL means they
+  // have not seen it yet, which is the whole query behind that popup.
+  //
+  // Tracked per task rather than as one "last seen" stamp on the user: two
+  // tasks can arrive while the app is open, and a single dismissal must not
+  // silently bury the one that was never read. Only the doer's own view sets
+  // it, so an assigner opening the task leaves it unseen for the doer.
+  //
+  // Rows that predate this column stay NULL, so the first run after deploy
+  // would otherwise announce every open task ever assigned. The unseen query
+  // is bounded by created_at for exactly that reason — see /api/tasks/unseen.
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN seen_at DATETIME DEFAULT NULL AFTER created_at`);
+  await sa(`ALTER TABLE delegation_tasks ADD INDEX idx_unseen (assigned_to, seen_at)`);
   // Sub-tasks — follow-up asks nested under a delegation task (e.g. client says
   // "make a dashboard" then later "change its color") instead of a brand-new task.
   await sa(`CREATE TABLE IF NOT EXISTS task_subtasks (

@@ -349,8 +349,23 @@ async function init() {
     if (window._badgeTimer2) clearInterval(window._badgeTimer2);
     window._badgeTimer1 = setInterval(loadApprovalBadge, 30000);
     window._badgeTimer2 = setInterval(loadTransferBadge, 30000);
+    // New-task popup rides the same 30-second tick, so work delegated while
+    // the app is already open surfaces without waiting for a reload. It
+    // no-ops while the popup is showing, so the poll cannot stack a copy.
+    // Guarded because init() runs from the end of meetings.js, so anything
+    // whose <script> tag sits after that one is not defined yet. notify.js
+    // is loaded before it for exactly this reason; the guard means a future
+    // reorder degrades to "no popup" instead of bouncing everyone to login,
+    // which is what init()'s catch does with a ReferenceError.
+    if (typeof ntTick === 'function') {
+      if (window._badgeTimer3) clearInterval(window._badgeTimer3);
+      window._badgeTimer3 = setInterval(ntTick, 30000);
+    }
     // Monday weekly check-in — fire-and-forget; modal opens if needed.
     mwMaybeOpen();
+    // Same shape: silent. Refreshes the bell and opens the popup if there is
+    // something the doer has not been shown yet.
+    if (typeof ntTick === 'function') ntTick();
   } catch(e) { console.error('Init error:', e); window.location.replace('/'); }
 }
 
