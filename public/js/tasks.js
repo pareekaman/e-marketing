@@ -1064,6 +1064,9 @@ async function transferToday(userId) {
 // ══════════════════════════════════════════════════════
 async function openDelegate(prefill = {}) {
   document.getElementById('delegateErr').style.display='none';
+  // Clears the last dictation and its chips, so a reopened form never shows
+  // what the previous task was filled from.
+  if (typeof vdResetVoice === 'function') vdResetVoice();
   document.getElementById('dDesc').value='';
   document.getElementById('dUrl').value='';
   document.getElementById('dRemarks').value='';

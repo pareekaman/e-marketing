@@ -27,6 +27,7 @@
 <link rel="stylesheet" href="/css/mobile.css"/>
 <link rel="stylesheet" href="/css/overlays.css"/>
 <link rel="stylesheet" href="/css/leads.css"/>
+<link rel="stylesheet" href="/css/voice.css"/>
 </head>
 <body>
 
@@ -2800,6 +2801,23 @@
 <div class="modal-overlay" id="delegateModal">
   <div class="modal">
     <h3>+ Delegate Task</h3>
+    <!-- Voice fill — dictate the task and let the parser fill the form.
+         Nothing is submitted from here; the assigner still reviews the
+         fields and presses Assign. -->
+    <div class="vd-bar" id="vdBar">
+      <button type="button" class="vd-mic" id="vdMicBtn" onclick="vdToggleRecording()">
+        <span class="vd-mic-icon">🎤</span><span id="vdMicLabel">Speak Task</span>
+      </button>
+      <div class="vd-hint" id="vdHint">Say the task, who it is for, and when it is due.</div>
+      <!-- Naming the fields out loud parses far more reliably than free
+           speech, so the frame is shown rather than left to be discovered. -->
+      <div class="vd-template">Template — <em>“Delegate a task to <b>name</b>, the task will be <b>task</b>, the due date will be <b>date</b>, priority will be <b>level</b>, client name is <b>client</b>.”</em></div>
+    </div>
+    <div class="vd-panel" id="vdPanel">
+      <div class="vd-transcript" id="vdTranscript" data-placeholder="Your words will appear here…"></div>
+      <div class="vd-summary" id="vdSummary"></div>
+      <div class="vd-error" id="vdError" style="display:none"></div>
+    </div>
     <div class="alert error" id="delegateErr"></div>
     <div class="form-row">
       <div class="form-group">
@@ -3862,6 +3880,7 @@
 <script src="/js/meetings.js"></script>
 <script src="/js/dms.js"></script>
 <script src="/js/leads.js"></script>
+<script src="/js/voice-delegate.js"></script>
 
 <!-- ── Searchable select: turns every <select> into a type-to-filter dropdown.
      The native <select> stays the source of truth (existing code reads/sets .value

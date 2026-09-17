@@ -1,0 +1,43 @@
+/* ══════════════════════════════════════════════
+   VOICE DELEGATE — mic control inside the Delegate Task modal
+   ══════════════════════════════════════════════ */
+.vd-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 14px;padding:10px 12px;background:linear-gradient(135deg,#eef2ff,#f5f3ff);border:1px solid #e0e7ff;border-radius:10px;}
+.vd-mic{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border:none;border-radius:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:transform .15s,box-shadow .15s,background .2s;box-shadow:0 2px 8px rgba(79,70,229,.25);}
+.vd-mic:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(79,70,229,.35);}
+.vd-mic:disabled{background:#cbd5e1;box-shadow:none;cursor:not-allowed;transform:none;}
+.vd-mic.recording{background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 2px 8px rgba(220,38,38,.3);animation:vdPulse 1.4s ease-in-out infinite;}
+@keyframes vdPulse{0%,100%{box-shadow:0 2px 8px rgba(220,38,38,.3);}50%{box-shadow:0 2px 18px rgba(220,38,38,.6);}}
+.vd-mic-icon{font-size:15px;line-height:1;}
+
+.vd-hint{flex:1;min-width:150px;font-size:11px;color:#6366f1;font-weight:500;line-height:1.4;}
+.vd-template{flex-basis:100%;font-size:11px;color:#64748b;line-height:1.5;border-top:1px dashed #d9def5;padding-top:7px;margin-top:1px;}
+.vd-template b{color:#4f46e5;font-weight:600;}
+.vd-template em{font-style:normal;color:#475569;}
+
+/* Live transcript + what the parser made of it. Hidden until first use. */
+.vd-panel{display:none;margin:-6px 0 14px;}
+.vd-panel.open{display:block;}
+.vd-transcript{min-height:38px;padding:10px 12px;background:#fff;border:1.5px solid #e0e7ff;border-radius:8px;font-size:13px;line-height:1.5;color:#1e293b;}
+.vd-transcript:empty::before{content:attr(data-placeholder);color:#94a3b8;}
+.vd-transcript.listening{border-color:#f87171;background:#fef2f2;}
+.vd-interim{color:#94a3b8;}
+
+.vd-summary{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.vd-summary:empty{display:none;}
+.vd-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;}
+.vd-chip-ok{background:#dcfce7;color:#15803d;}
+.vd-chip-miss{background:#fef3c7;color:#b45309;}
+.vd-chip-warn{background:#fee2e2;color:#b91c1c;}
+
+.vd-error{margin-top:8px;padding:8px 11px;background:#fef2f2;border:1px solid #fecaca;border-radius:7px;font-size:12px;color:#b91c1c;}
+
+/* A field the parser filled flashes once, so it is obvious which boxes
+   moved and which were already there. */
+@keyframes vdFlash{0%{background:#ede9fe;}100%{background:#fff;}}
+.vd-filled{animation:vdFlash 1.1s ease-out;}
+
+@media(max-width:600px){
+  .vd-bar{gap:8px;}
+  .vd-hint{order:3;flex-basis:100%;min-width:0;}
+  .vd-mic{flex:1;justify-content:center;}
+}
