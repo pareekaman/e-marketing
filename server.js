@@ -6284,10 +6284,6 @@ async function buildDepartmentPendingDigest(dept) {
   const noDate   = r => !!r.awaiting_due_date || !r.due_date;
   const overdue  = r => !noDate(r) && toISO(r.due_date) < today;
   const dueToday = r => !noDate(r) && toISO(r.due_date) === today;
-  // DD/MM/YYYY with slashes, matching every other WhatsApp message this app
-  // sends. The `fmtIN` in the pending-summary builder is local to it.
-  const fmtDMY = d => (d || '').split('-').reverse().join('/');
-  const when = r => (r.awaiting_due_date ? 'date not set' : (r.due_date ? fmtDMY(toISO(r.due_date)) : 'no date'));
 
   // ⚠️ Task descriptions are free text and real ones are nothing like test
   // ones. Production rows carry multi-line specs, numbered lists, blank lines
@@ -6298,57 +6294,86 @@ async function buildDepartmentPendingDigest(dept) {
   //     marker, so ONE unbalanced asterisk re-formats the rest of the message
   // Hence: newlines collapse to " / ", formatting characters are stripped, and
   // anything long is cut. This is a nudge; the task itself lives in the app.
-  const DESC_MAX = 100;
-  const cleanDesc = s => {
+  // Shorter than it first was: with the date now leading the line and the
+  // client trailing it, a 100-character description pushed every line into a
+  // second and third wrap on a phone, which is what "mix match" looked like.
+  const DESC_MAX = 62;
+  const cleanDesc = (s, max = DESC_MAX) => {
     let one = String(s || '—')
       .replace(/\s*[\r\n]+\s*/g, ' / ')
       .replace(/[*_~`]/g, '')
       .replace(/\s+/g, ' ')
       .replace(/(\s*\/\s*)+/g, ' / ')
       .trim();
-    if (one.length > DESC_MAX) one = one.slice(0, DESC_MAX - 1).trimEnd() + '…';
+    if (one.length > max) one = one.slice(0, max - 1).trimEnd() + '…';
     return one || '—';
   };
 
-  let msg = `Hello,\n\n*${dept} — Pending Tasks*\n_${fmtDMY(today)}, 9:30 AM_\n`;
-  let totalPending = 0, totalOverdue = 0, totalUndated = 0, allClear = 0;
+  // Day and month only. The year is appended just when it is not the current
+  // one, so a task left over from last year cannot read as a recent date.
+  const thisYear = today.slice(0, 4);
+  const shortDate = d => {
+    const [y, m, dd] = toISO(d).split('-');
+    return dd + '/' + m + (y === thisYear ? '' : '/' + y.slice(2));
+  };
 
-  for (const p of people) {
-    const mine = rows.filter(r => r.assigned_to === p.id);
-    totalPending += mine.length;
-    if (!mine.length) {
-      allClear++;
-      msg += `\n*${p.name}* — nothing pending. Well done! 🎉\n`;
-      continue;
+  // The date leads every line, which is the whole readability change. Before
+  // this it sat at the END, after a description of arbitrary length, so no two
+  // lines ended in the same place and nothing could be scanned down a column.
+  // Each person's work is then split under its own status heading, so overdue
+  // and upcoming never share a run of lines.
+  function compose(upcomingCap) {
+    let msg = `Hello,\n\n*${dept} — Pending Tasks*\n_${shortDate(today)} · 9:30 AM_\n`;
+    let pending = 0, od = 0, und = 0, clear = 0;
+
+    for (const p of people) {
+      const mine = rows.filter(r => r.assigned_to === p.id);
+      pending += mine.length;
+      if (!mine.length) {
+        clear++;
+        msg += `\n*${p.name}* — nothing pending. Well done! 🎉\n`;
+        continue;
+      }
+      const late    = mine.filter(overdue);
+      const now     = mine.filter(dueToday);
+      const undated = mine.filter(noDate);
+      const soon    = mine.filter(r => !overdue(r) && !dueToday(r) && !noDate(r));
+      od += late.length;
+      und += undated.length;
+
+      msg += `\n*${p.name}* — ${mine.length} pending\n`;
+      const line = (t, when) => ' ' + when + '  ' + cleanDesc(t.description) +
+        (t.client_name ? ` (${cleanDesc(t.client_name, 22)})` : '') + '\n';
+
+      if (late.length)    { msg += `\n ⏰ _Overdue (${late.length})_\n`;      for (const t of late)    msg += line(t, shortDate(t.due_date)); }
+      if (now.length)     { msg += `\n 🔴 _Due today (${now.length})_\n`;     for (const t of now)     msg += line(t, shortDate(t.due_date)); }
+      // "To be set by doer" is what the app calls this everywhere else — the
+      // Delegate form's tickbox, the All Tasks row, the pending summary.
+      if (undated.length) { msg += `\n ⚠️ _Due date to be set by doer (${undated.length})_\n`; for (const t of undated) msg += line(t, '  —  '); }
+      if (soon.length) {
+        msg += `\n 📅 _Upcoming (${soon.length})_\n`;
+        const show = upcomingCap ? soon.slice(0, upcomingCap) : soon;
+        for (const t of show) msg += line(t, shortDate(t.due_date));
+        if (soon.length > show.length) msg += `      +${soon.length - show.length} more\n`;
+      }
     }
-    const late    = mine.filter(overdue);
-    const now     = mine.filter(dueToday);
-    const undated = mine.filter(noDate);
-    totalOverdue += late.length;
-    totalUndated += undated.length;
 
-    const flags = [];
-    if (late.length)    flags.push(`${late.length} overdue`);
-    if (undated.length) flags.push(`${undated.length} awaiting a due date`);
-    // Saying so beats a bare count with nothing under it, which reads like
-    // the message failed rather than like there is genuinely nothing to do.
-    if (!flags.length && !now.length) flags.push('none due yet');
-    msg += `\n*${p.name}* — ${mine.length} pending${flags.length ? ', ' + flags.join(', ') : ''}\n`;
-
-    for (const t of late)    msg += `  • ${cleanDesc(t.description)} — ${when(t)} (overdue)${t.client_name ? ' · ' + t.client_name : ''}\n`;
-    for (const t of now)     msg += `  • ${cleanDesc(t.description)} — due today${t.client_name ? ' · ' + t.client_name : ''}\n`;
-    // "To be set by doer" is what the app calls this everywhere else — the
-    // Delegate form's tickbox, the All Tasks row, the pending summary. The
-    // message uses the same words rather than inventing "no due date set".
-    for (const t of undated) msg += `  • ${cleanDesc(t.description)} — ⚠️ due date to be set by doer${t.client_name ? ' · ' + t.client_name : ''}\n`;
-    // Work dated beyond today is NOT mentioned at all — not listed, not even
-    // counted on its own line. A 9:30 message answers "what has to move
-    // today", and a task due on the 30th has no business in it. The per-person
-    // total in the header still accounts for it, and All Tasks holds the rest.
+    msg += `\n━━━━━━━━━━━━\n_${pending} pending · ${od} overdue · ${und} undated · ${clear} of ${people.length} all clear_`;
+    return { msg, counts: { people: people.length, pending, overdue: od, undated: und, allClear: clear } };
   }
 
-  msg += `\n_${totalPending} pending · ${totalOverdue} overdue · ${totalUndated} undated · ${allClear} of ${people.length} all clear_`;
-  return { msg, counts: { people: people.length, pending: totalPending, overdue: totalOverdue, undated: totalUndated, allClear } };
+  // ⚠️ Listing every upcoming task is what the user asked for, and it is also
+  // what puts this message closest to WhatsApp's ~4096 limit — the production
+  // set already renders around 3,000. Past the limit WhatsApp truncates at a
+  // point nobody chooses, which could cut mid-person and hide overdue work.
+  // So if the message grows, the UPCOMING lists shrink first: they are the
+  // least urgent thing in it, and the ones dropped are still counted.
+  let built = compose(0);
+  for (const cap of [12, 8, 5, 3, 1]) {
+    if (built.msg.length <= 3900) break;
+    built = compose(cap);
+  }
+  return built;
 }
 
 async function sendDepartmentPendingDigest(opts = {}) {
