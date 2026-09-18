@@ -6374,6 +6374,30 @@ app.get('/api/department-digest/preview', requireAuth, requireAdmin, async (req,
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 
+// Sends today's real digest to ONE personal number. Exists because the only
+// other way to see the live message on a phone is to let the 9:30 cron post
+// it to the whole team group — so checking it meant an audience.
+//
+// ⚠️ Refuses anything that looks like a group JID. This route is for a
+// personal handset; the group has its own scheduled send and must not be
+// reachable from a URL an admin can open by hand.
+app.get('/api/department-digest/send-test', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const raw = String(req.query.to || '');
+    if (raw.includes('@')) return res.status(400).json({ error: 'Group ids are not allowed here — personal numbers only' });
+    const to = raw.replace(/\D/g, '');
+    if (!to) return res.status(400).json({ error: 'Pass ?to=<10-digit number>' });
+
+    const dept = req.query.dept || DEPT_DIGEST_DEPARTMENT;
+    const built = await buildDepartmentPendingDigest(dept);
+    if (!built.msg) return res.json({ ok: true, skipped: true, reason: built.reason });
+
+    // sendWhatsApp, not the raw sender: it is the one that adds the 91 prefix.
+    const r = await sendWhatsApp(to, built.msg);
+    res.json({ ok: !!r.ok, to, dept, counts: built.counts, result: r });
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
 app.get('/api/cron/department-pending-digest', async (req, res) => {
   const authHeader = req.headers['authorization'] || '';
   const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
