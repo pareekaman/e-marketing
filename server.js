@@ -6294,10 +6294,15 @@ async function buildDepartmentPendingDigest(dept) {
   //     marker, so ONE unbalanced asterisk re-formats the rest of the message
   // Hence: newlines collapse to " / ", formatting characters are stripped, and
   // anything long is cut. This is a nudge; the task itself lives in the app.
-  // Shorter than it first was: with the date now leading the line and the
-  // client trailing it, a 100-character description pushed every line into a
-  // second and third wrap on a phone, which is what "mix match" looked like.
-  const DESC_MAX = 62;
+  // High enough that a real task reads in full. It was 62 for a while, to stop
+  // lines wrapping on a phone — but a task cut mid-sentence cannot be acted on
+  // at all, which is worse than a line that wraps. Real descriptions here run
+  // to about 190 characters; this only catches a runaway one.
+  //
+  // ⚠️ Full descriptions cost length, and length is finite. The 3,900-character
+  // guard below absorbs it by shrinking the UPCOMING lists, so the trade when
+  // the message grows is fewer upcoming rows, never a half-written task.
+  const DESC_MAX = 220;
   const cleanDesc = (s, max = DESC_MAX) => {
     let one = String(s || '—')
       .replace(/\s*[\r\n]+\s*/g, ' / ')
@@ -6342,18 +6347,24 @@ async function buildDepartmentPendingDigest(dept) {
       und += undated.length;
 
       msg += `\n*${p.name}* — ${mine.length} pending\n`;
-      const line = (t, when) => ' ' + when + '  ' + cleanDesc(t.description) +
+      // Every section prints in full. A shorter cut for UPCOMING was tried and
+      // dropped: the task that prompted this — "All leads generated from
+      // IndiaMART…" — is itself upcoming, so trimming that section left the
+      // exact complaint unfixed. A half-written task cannot be acted on
+      // whenever it is due.
+      const line = (t, when, max) => ' ' + when + '  ' + cleanDesc(t.description, max) +
         (t.client_name ? ` (${cleanDesc(t.client_name, 22)})` : '') + '\n';
+      const FULL = DESC_MAX, BRIEF = DESC_MAX;
 
-      if (late.length)    { msg += `\n ⏰ _Overdue (${late.length})_\n`;      for (const t of late)    msg += line(t, shortDate(t.due_date)); }
-      if (now.length)     { msg += `\n 🔴 _Due today (${now.length})_\n`;     for (const t of now)     msg += line(t, shortDate(t.due_date)); }
+      if (late.length)    { msg += `\n ⏰ _Overdue (${late.length})_\n`;      for (const t of late)    msg += line(t, shortDate(t.due_date), FULL); }
+      if (now.length)     { msg += `\n 🔴 _Due today (${now.length})_\n`;     for (const t of now)     msg += line(t, shortDate(t.due_date), FULL); }
       // "To be set by doer" is what the app calls this everywhere else — the
       // Delegate form's tickbox, the All Tasks row, the pending summary.
-      if (undated.length) { msg += `\n ⚠️ _Due date to be set by doer (${undated.length})_\n`; for (const t of undated) msg += line(t, '  —  '); }
+      if (undated.length) { msg += `\n ⚠️ _Due date to be set by doer (${undated.length})_\n`; for (const t of undated) msg += line(t, '  —  ', FULL); }
       if (soon.length) {
         msg += `\n 📅 _Upcoming (${soon.length})_\n`;
         const show = upcomingCap ? soon.slice(0, upcomingCap) : soon;
-        for (const t of show) msg += line(t, shortDate(t.due_date));
+        for (const t of show) msg += line(t, shortDate(t.due_date), BRIEF);
         if (soon.length > show.length) msg += `      +${soon.length - show.length} more\n`;
       }
     }
