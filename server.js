@@ -6229,6 +6229,145 @@ app.get('/api/cron/handler-leave-notice', async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════
+// DEPARTMENT PENDING DIGEST — one 9:30 AM group message per department
+//
+// The existing pending summary goes to a personal number and lists every
+// task in full. This is the opposite shape on purpose: it goes to a team
+// GROUP, and it answers "what has to move today", not "what exists".
+//
+// So only work that is overdue or due today is named. Anything further out
+// is counted in the header and left there — a message people read every
+// morning stops being read the day it turns into a ledger.
+//
+// ⚠️ Everyone in the department is listed, including the people with
+// nothing outstanding, who are named and congratulated. That is the whole
+// reason it goes to a group instead of to each person privately, and it was
+// the user's explicit call.
+// ══════════════════════════════════════════════════════
+const DEPT_DIGEST_GROUP_ID  = process.env.DEPT_DIGEST_GROUP_ID  || '120363429914318374@g.us';
+const DEPT_DIGEST_DEPARTMENT = process.env.DEPT_DIGEST_DEPARTMENT || 'Business Automation';
+
+async function buildDepartmentPendingDigest(dept) {
+  // Matching is exact but forgiving of case and padding: `users.department`
+  // collates as utf8mb4_0900_ai_ci, so 'BUSINESS AUTOMATION' as typed in the
+  // picker already equals 'Business Automation'; TRIM covers stray spaces.
+  const [people] = await db.query(
+    `SELECT id, name FROM users
+      WHERE TRIM(department) = ? AND role <> 'client' AND client_id IS NULL
+      ORDER BY name`, [dept]);
+  if (!people.length) return { msg: null, reason: `no users in department "${dept}"`, people: 0 };
+
+  const [rows] = await db.query(
+    `SELECT t.id, t.description, t.due_date, t.awaiting_due_date, t.assigned_to,
+            c.name AS client_name
+       FROM delegation_tasks t
+       JOIN users u ON t.assigned_to = u.id
+       LEFT JOIN clients c ON t.client_id = c.id
+      WHERE TRIM(u.department) = ?
+        AND t.status IN ('pending','revised')
+      ORDER BY t.due_date IS NULL, t.due_date, t.id`, [dept]);
+
+  // mysql2 returns a JS Date for DATE columns, and String(date) is
+  // "Sat Sep 19 …", not ISO — so every comparison goes through this.
+  const toISO = d => {
+    if (!d) return null;
+    const x = new Date(d);
+    return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+  };
+  // Same IST shift the off-day check uses — the server clock is UTC on Vercel,
+  // and "overdue" has to mean overdue in Indian office hours.
+  const today = new Date(Date.now() + (5.5 * 60 * 60 * 1000)).toISOString().split('T')[0];
+  // A task nobody has dated is the easiest one to lose: it sorts nowhere, it
+  // never becomes overdue, and an earlier draft counted it in the header and
+  // then never printed it. It gets named here alongside the late ones.
+  const noDate   = r => !!r.awaiting_due_date || !r.due_date;
+  const overdue  = r => !noDate(r) && toISO(r.due_date) < today;
+  const dueToday = r => !noDate(r) && toISO(r.due_date) === today;
+  // DD/MM/YYYY with slashes, matching every other WhatsApp message this app
+  // sends. The `fmtIN` in the pending-summary builder is local to it.
+  const fmtDMY = d => (d || '').split('-').reverse().join('/');
+  const when = r => (r.awaiting_due_date ? 'date not set' : (r.due_date ? fmtDMY(toISO(r.due_date)) : 'no date'));
+
+  let msg = `Hello,\n\n*${dept} — Pending Tasks*\n_${fmtDMY(today)}, 9:30 AM_\n`;
+  let totalPending = 0, totalOverdue = 0, totalUndated = 0, allClear = 0;
+
+  for (const p of people) {
+    const mine = rows.filter(r => r.assigned_to === p.id);
+    totalPending += mine.length;
+    if (!mine.length) {
+      allClear++;
+      msg += `\n*${p.name}* — nothing pending. Well done! 🎉\n`;
+      continue;
+    }
+    const late    = mine.filter(overdue);
+    const now     = mine.filter(dueToday);
+    const undated = mine.filter(noDate);
+    totalOverdue += late.length;
+    totalUndated += undated.length;
+
+    const flags = [];
+    if (late.length)    flags.push(`${late.length} overdue`);
+    if (undated.length) flags.push(`${undated.length} awaiting a due date`);
+    // Saying so beats a bare count with nothing under it, which reads like
+    // the message failed rather than like there is genuinely nothing to do.
+    if (!flags.length && !now.length) flags.push('none due yet');
+    msg += `\n*${p.name}* — ${mine.length} pending${flags.length ? ', ' + flags.join(', ') : ''}\n`;
+
+    for (const t of late)    msg += `  • ${t.description || '—'} — ${when(t)} (overdue)${t.client_name ? ' · ' + t.client_name : ''}\n`;
+    for (const t of now)     msg += `  • ${t.description || '—'} — due today${t.client_name ? ' · ' + t.client_name : ''}\n`;
+    // "To be set by doer" is what the app calls this everywhere else — the
+    // Delegate form's tickbox, the All Tasks row, the pending summary. The
+    // message uses the same words rather than inventing "no due date set".
+    for (const t of undated) msg += `  • ${t.description || '—'} — ⚠️ due date to be set by doer${t.client_name ? ' · ' + t.client_name : ''}\n`;
+    // Work dated beyond today is NOT mentioned at all — not listed, not even
+    // counted on its own line. A 9:30 message answers "what has to move
+    // today", and a task due on the 30th has no business in it. The per-person
+    // total in the header still accounts for it, and All Tasks holds the rest.
+  }
+
+  msg += `\n_${totalPending} pending · ${totalOverdue} overdue · ${totalUndated} undated · ${allClear} of ${people.length} all clear_`;
+  return { msg, counts: { people: people.length, pending: totalPending, overdue: totalOverdue, undated: totalUndated, allClear } };
+}
+
+async function sendDepartmentPendingDigest(opts = {}) {
+  const dept = opts.dept || DEPT_DIGEST_DEPARTMENT;
+  // Same guard the other summaries use — silent on Sundays and holidays.
+  if (!opts.force) {
+    const off = await getTodayOffIST();
+    if (off.off) return { ok: true, skipped: true, date: off.today, reason: off.reason };
+  }
+  const built = await buildDepartmentPendingDigest(dept);
+  if (!built.msg) return { ok: true, skipped: true, reason: built.reason };
+  if (opts.preview) return { ok: true, preview: true, message: built.msg, counts: built.counts };
+  const r = await sendWhatsAppRaw(DEPT_DIGEST_GROUP_ID, built.msg);
+  return { ok: true, dept, group: DEPT_DIGEST_GROUP_ID, counts: built.counts, result: r };
+}
+
+// Lets an admin read today's message without waiting for 9:30, and without
+// sending anything to the group.
+app.get('/api/department-digest/preview', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    res.json(await sendDepartmentPendingDigest({
+      dept: req.query.dept || undefined, preview: true, force: true }));
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
+app.get('/api/cron/department-pending-digest', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: department-pending-digest');
+    res.json(await sendDepartmentPendingDigest({ force: req.query.force === '1' }));
+  } catch (err) {
+    console.error('Cron department-pending-digest error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.get('/api/cron/client-pending-digest', async (req, res) => {
   const authHeader = req.headers['authorization'] || '';
   const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
