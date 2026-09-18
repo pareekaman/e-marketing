@@ -6289,6 +6289,27 @@ async function buildDepartmentPendingDigest(dept) {
   const fmtDMY = d => (d || '').split('-').reverse().join('/');
   const when = r => (r.awaiting_due_date ? 'date not set' : (r.due_date ? fmtDMY(toISO(r.due_date)) : 'no date'));
 
+  // ⚠️ Task descriptions are free text and real ones are nothing like test
+  // ones. Production rows carry multi-line specs, numbered lists, blank lines
+  // and stray markdown, none of which survive contact with a WhatsApp bullet:
+  //   • a newline breaks the bullet apart, and a blank line inside one reads
+  //     as the start of somebody else's section
+  //   • a leading '*' — common in these descriptions — is WhatsApp's own bold
+  //     marker, so ONE unbalanced asterisk re-formats the rest of the message
+  // Hence: newlines collapse to " / ", formatting characters are stripped, and
+  // anything long is cut. This is a nudge; the task itself lives in the app.
+  const DESC_MAX = 100;
+  const cleanDesc = s => {
+    let one = String(s || '—')
+      .replace(/\s*[\r\n]+\s*/g, ' / ')
+      .replace(/[*_~`]/g, '')
+      .replace(/\s+/g, ' ')
+      .replace(/(\s*\/\s*)+/g, ' / ')
+      .trim();
+    if (one.length > DESC_MAX) one = one.slice(0, DESC_MAX - 1).trimEnd() + '…';
+    return one || '—';
+  };
+
   let msg = `Hello,\n\n*${dept} — Pending Tasks*\n_${fmtDMY(today)}, 9:30 AM_\n`;
   let totalPending = 0, totalOverdue = 0, totalUndated = 0, allClear = 0;
 
@@ -6314,12 +6335,12 @@ async function buildDepartmentPendingDigest(dept) {
     if (!flags.length && !now.length) flags.push('none due yet');
     msg += `\n*${p.name}* — ${mine.length} pending${flags.length ? ', ' + flags.join(', ') : ''}\n`;
 
-    for (const t of late)    msg += `  • ${t.description || '—'} — ${when(t)} (overdue)${t.client_name ? ' · ' + t.client_name : ''}\n`;
-    for (const t of now)     msg += `  • ${t.description || '—'} — due today${t.client_name ? ' · ' + t.client_name : ''}\n`;
+    for (const t of late)    msg += `  • ${cleanDesc(t.description)} — ${when(t)} (overdue)${t.client_name ? ' · ' + t.client_name : ''}\n`;
+    for (const t of now)     msg += `  • ${cleanDesc(t.description)} — due today${t.client_name ? ' · ' + t.client_name : ''}\n`;
     // "To be set by doer" is what the app calls this everywhere else — the
     // Delegate form's tickbox, the All Tasks row, the pending summary. The
     // message uses the same words rather than inventing "no due date set".
-    for (const t of undated) msg += `  • ${t.description || '—'} — ⚠️ due date to be set by doer${t.client_name ? ' · ' + t.client_name : ''}\n`;
+    for (const t of undated) msg += `  • ${cleanDesc(t.description)} — ⚠️ due date to be set by doer${t.client_name ? ' · ' + t.client_name : ''}\n`;
     // Work dated beyond today is NOT mentioned at all — not listed, not even
     // counted on its own line. A 9:30 message answers "what has to move
     // today", and a task due on the 30th has no business in it. The per-person
