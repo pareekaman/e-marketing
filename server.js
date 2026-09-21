@@ -6354,7 +6354,12 @@ async function buildDepartmentPendingDigest(dept) {
       und += undated.length;
 
       msg += `\n*${p.name}* — ${mine.length} pending\n`;
-      const line = (t, when, max) => ' ' + when + '  ' + cleanDesc(t.description, max) +
+      // Numbered 1..N across this person's whole block — overdue through
+      // upcoming share one running count, so "task 3" means the same thing
+      // whether it is read off the message or read back over WhatsApp/a
+      // call, and the last number always matches the "N pending" above it.
+      let n = 0;
+      const line = (t, when, max) => ' ' + (++n) + '. ' + when + '  ' + cleanDesc(t.description, max) +
         (t.client_name ? ` (${cleanDesc(t.client_name, 22)})` : '') + '\n';
 
       if (late.length)    { msg += `\n ⏰ _Overdue (${late.length})_\n`;      for (const t of late)    msg += line(t, shortDate(t.due_date), DESC_MAX); }
