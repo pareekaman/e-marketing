@@ -6256,7 +6256,7 @@ async function buildDepartmentPendingDigest(dept) {
     `SELECT id, name FROM users
       WHERE TRIM(department) = ? AND role <> 'client' AND client_id IS NULL
       ORDER BY name`, [dept]);
-  if (!people.length) return { msg: null, reason: `no users in department "${dept}"`, people: 0 };
+  if (!people.length) return { parts: [], reason: `no users in department "${dept}"` };
 
   const [rows] = await db.query(
     `SELECT t.id, t.description, t.due_date, t.awaiting_due_date, t.assigned_to,
@@ -6299,9 +6299,9 @@ async function buildDepartmentPendingDigest(dept) {
   // at all, which is worse than a line that wraps. Real descriptions here run
   // to about 190 characters; this only catches a runaway one.
   //
-  // ⚠️ Full descriptions cost length, and length is finite. The 3,900-character
-  // guard below absorbs it by shrinking the UPCOMING lists, so the trade when
-  // the message grows is fewer upcoming rows, never a half-written task.
+  // ⚠️ Full descriptions cost length, and length is finite — see the headcount
+  // split and the per-part cascade further down for how that is kept from
+  // ever exceeding WhatsApp's limit.
   const DESC_MAX = 220;
   const cleanDesc = (s, max = DESC_MAX) => {
     let one = String(s || '—')
@@ -6327,11 +6327,18 @@ async function buildDepartmentPendingDigest(dept) {
   // lines ended in the same place and nothing could be scanned down a column.
   // Each person's work is then split under its own status heading, so overdue
   // and upcoming never share a run of lines.
-  function compose(upcomingCap) {
-    let msg = `Hello,\n\n*${dept} — Pending Tasks*\n_${shortDate(today)} · 9:30 AM_\n`;
+  //
+  // peopleSubset: which people this ONE message covers — see the split below.
+  // upcomingCap: null shows every upcoming row; a number shows that many and
+  // counts the rest; 0 shows none and counts all of them.
+  // actionMax: the length cap on OVERDUE / DUE TODAY / UNDATED rows — the
+  // ones that are supposed to always read in full. It only ever drops below
+  // DESC_MAX as the last lever in the per-part cascade below.
+  function compose(peopleSubset, partLabel, upcomingCap, actionMax) {
+    let msg = `Hello,\n\n*${dept} — Pending Tasks*${partLabel ? ` _(${partLabel})_` : ''}\n_${shortDate(today)} · 9:30 AM_\n`;
     let pending = 0, od = 0, und = 0, clear = 0;
 
-    for (const p of people) {
+    for (const p of peopleSubset) {
       const mine = rows.filter(r => r.assigned_to === p.id);
       pending += mine.length;
       if (!mine.length) {
@@ -6347,44 +6354,89 @@ async function buildDepartmentPendingDigest(dept) {
       und += undated.length;
 
       msg += `\n*${p.name}* — ${mine.length} pending\n`;
-      // Every section prints in full. A shorter cut for UPCOMING was tried and
-      // dropped: the task that prompted this — "All leads generated from
-      // IndiaMART…" — is itself upcoming, so trimming that section left the
-      // exact complaint unfixed. A half-written task cannot be acted on
-      // whenever it is due.
       const line = (t, when, max) => ' ' + when + '  ' + cleanDesc(t.description, max) +
         (t.client_name ? ` (${cleanDesc(t.client_name, 22)})` : '') + '\n';
-      const FULL = DESC_MAX, BRIEF = DESC_MAX;
 
-      if (late.length)    { msg += `\n ⏰ _Overdue (${late.length})_\n`;      for (const t of late)    msg += line(t, shortDate(t.due_date), FULL); }
-      if (now.length)     { msg += `\n 🔴 _Due today (${now.length})_\n`;     for (const t of now)     msg += line(t, shortDate(t.due_date), FULL); }
+      if (late.length)    { msg += `\n ⏰ _Overdue (${late.length})_\n`;      for (const t of late)    msg += line(t, shortDate(t.due_date), actionMax); }
+      if (now.length)     { msg += `\n 🔴 _Due today (${now.length})_\n`;     for (const t of now)     msg += line(t, shortDate(t.due_date), actionMax); }
       // "To be set by doer" is what the app calls this everywhere else — the
       // Delegate form's tickbox, the All Tasks row, the pending summary.
-      if (undated.length) { msg += `\n ⚠️ _Due date to be set by doer (${undated.length})_\n`; for (const t of undated) msg += line(t, '  —  ', FULL); }
+      if (undated.length) { msg += `\n ⚠️ _Due date to be set by doer (${undated.length})_\n`; for (const t of undated) msg += line(t, '  —  ', actionMax); }
       if (soon.length) {
         msg += `\n 📅 _Upcoming (${soon.length})_\n`;
-        const show = upcomingCap ? soon.slice(0, upcomingCap) : soon;
-        for (const t of show) msg += line(t, shortDate(t.due_date), BRIEF);
+        const show = upcomingCap === null ? soon : soon.slice(0, upcomingCap);
+        for (const t of show) msg += line(t, shortDate(t.due_date), Math.min(actionMax, 70));
         if (soon.length > show.length) msg += `      +${soon.length - show.length} more\n`;
       }
     }
 
-    msg += `\n━━━━━━━━━━━━\n_${pending} pending · ${od} overdue · ${und} undated · ${clear} of ${people.length} all clear_`;
-    return { msg, counts: { people: people.length, pending, overdue: od, undated: und, allClear: clear } };
+    msg += `\n━━━━━━━━━━━━\n_${pending} pending · ${od} overdue · ${und} undated · ${clear} of ${peopleSubset.length} all clear_`;
+    return { msg, counts: { people: peopleSubset.length, pending, overdue: od, undated: und, allClear: clear } };
   }
 
-  // ⚠️ Listing every upcoming task is what the user asked for, and it is also
-  // what puts this message closest to WhatsApp's ~4096 limit — the production
-  // set already renders around 3,000. Past the limit WhatsApp truncates at a
-  // point nobody chooses, which could cut mid-person and hide overdue work.
-  // So if the message grows, the UPCOMING lists shrink first: they are the
-  // least urgent thing in it, and the ones dropped are still counted.
-  let built = compose(0);
-  for (const cap of [12, 8, 5, 3, 1]) {
-    if (built.msg.length <= 3900) break;
-    built = compose(cap);
+  // A message that fails to send tells NOBODY anything, which is worse than
+  // any of the shrinking this does on the way down — so this cascade is a
+  // guarantee for ONE part, not a best effort, and the final step cannot
+  // fail to fit. Kept as a safety net UNDER the headcount split below: the
+  // split is what normally keeps a message small, this is what stops a
+  // single half from overflowing on its own if its workload is unusually
+  // heavy.
+  //
+  // ⚠️ 2026-09-21: production sent a whole-department message that only ever
+  // shrank the UPCOMING list, on the reasoning that overdue/today/undated
+  // must always read in full. That held on an ordinary day and stopped
+  // holding the day overdue + undated alone (17 rows, verbose real
+  // descriptions, 8 people in ONE message) exceeded 4096 by themselves —
+  // upcoming was already empty and there was nothing left to shrink. Waumfy
+  // rejected the whole send with `400 Message too long`, and the department
+  // got NOTHING. The fix the user asked for is the headcount split below,
+  // not a smarter shrink — half the people is roughly half the content,
+  // by construction, independent of how verbose any one person's backlog is.
+  function buildGuaranteedPart(peopleSubset, partLabel) {
+    const WA_LIMIT = 4096;
+    const SAFETY = 3900;   // margin below WA_LIMIT — headroom for the footer/counts changing between draft and final render
+    let built = compose(peopleSubset, partLabel, null, DESC_MAX);
+
+    if (built.msg.length > SAFETY) {
+      for (const cap of [12, 8, 5, 3, 1, 0]) {
+        built = compose(peopleSubset, partLabel, cap, DESC_MAX);
+        if (built.msg.length <= SAFETY) break;
+      }
+    }
+    if (built.msg.length > SAFETY) {
+      for (const max of [140, 100, 70, 50]) {
+        built = compose(peopleSubset, partLabel, 0, max);
+        if (built.msg.length <= SAFETY) break;
+      }
+    }
+    // Should not be reachable at any team size this app has seen even for
+    // ONE half — it would take dozens of overdue tasks on one half with
+    // 50-character descriptions. Kept anyway: "cannot send" is not an
+    // acceptable failure mode here.
+    if (built.msg.length > WA_LIMIT) {
+      const cut = built.msg.slice(0, WA_LIMIT - 60).replace(/\s+\S*$/, '');
+      built = { msg: cut + '\n\n…truncated — open All Tasks for the rest', counts: built.counts };
+    }
+    return built;
   }
-  return built;
+
+  // Two messages by headcount, split down the middle — 4 and 4 for an
+  // 8-person department. This is the user's own fix for the overflow, in
+  // place of trying to out-guess it with cleverer shrinking: half the people
+  // is a hard, predictable ceiling on how much any one message can hold,
+  // whatever any individual's backlog looks like. A department of one person
+  // gets a single plain message — splitting one person in half is meaningless,
+  // and the "(Part 1/2)" label would only be confusing on its own.
+  if (people.length <= 1) return { parts: [buildGuaranteedPart(people, null)] };
+
+  const mid = Math.ceil(people.length / 2);
+  const first = people.slice(0, mid), second = people.slice(mid);
+  return {
+    parts: [
+      buildGuaranteedPart(first, `Part 1/2 — ${first.length} of ${people.length}`),
+      buildGuaranteedPart(second, `Part 2/2 — ${second.length} of ${people.length}`)
+    ]
+  };
 }
 
 async function sendDepartmentPendingDigest(opts = {}) {
@@ -6395,10 +6447,22 @@ async function sendDepartmentPendingDigest(opts = {}) {
     if (off.off) return { ok: true, skipped: true, date: off.today, reason: off.reason };
   }
   const built = await buildDepartmentPendingDigest(dept);
-  if (!built.msg) return { ok: true, skipped: true, reason: built.reason };
-  if (opts.preview) return { ok: true, preview: true, message: built.msg, counts: built.counts };
-  const r = await sendWhatsAppRaw(DEPT_DIGEST_GROUP_ID, built.msg);
-  return { ok: true, dept, group: DEPT_DIGEST_GROUP_ID, counts: built.counts, result: r };
+  if (!built.parts.length) return { ok: true, skipped: true, reason: built.reason };
+  if (opts.preview) {
+    return { ok: true, preview: true, parts: built.parts.map(p => ({ message: p.msg, counts: p.counts })) };
+  }
+  // Sent one after another, not in parallel — two messages landing in the
+  // same second reads as a duplicate before anyone has opened either one.
+  // The 2s gap is ours; Waumfy's own per-message queue delay (seen at 106s
+  // live) still applies on top and is outside this app's control.
+  const results = [];
+  for (let i = 0; i < built.parts.length; i++) {
+    const part = built.parts[i];
+    const r = await sendWhatsAppRaw(DEPT_DIGEST_GROUP_ID, part.msg);
+    results.push({ counts: part.counts, result: r });
+    if (i < built.parts.length - 1) await new Promise(res => setTimeout(res, 2000));
+  }
+  return { ok: results.every(r => r.result && r.result.ok), dept, group: DEPT_DIGEST_GROUP_ID, parts: results };
 }
 
 // Lets an admin read today's message without waiting for 9:30, and without
@@ -6426,11 +6490,17 @@ app.get('/api/department-digest/send-test', requireAuth, requireAdmin, async (re
 
     const dept = req.query.dept || DEPT_DIGEST_DEPARTMENT;
     const built = await buildDepartmentPendingDigest(dept);
-    if (!built.msg) return res.json({ ok: true, skipped: true, reason: built.reason });
+    if (!built.parts.length) return res.json({ ok: true, skipped: true, reason: built.reason });
 
     // sendWhatsApp, not the raw sender: it is the one that adds the 91 prefix.
-    const r = await sendWhatsApp(to, built.msg);
-    res.json({ ok: !!r.ok, to, dept, counts: built.counts, result: r });
+    const results = [];
+    for (let i = 0; i < built.parts.length; i++) {
+      const part = built.parts[i];
+      const r = await sendWhatsApp(to, part.msg);
+      results.push({ counts: part.counts, result: r });
+      if (i < built.parts.length - 1) await new Promise(res2 => setTimeout(res2, 2000));
+    }
+    res.json({ ok: results.every(r => r.result && r.result.ok), to, dept, parts: results });
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 
