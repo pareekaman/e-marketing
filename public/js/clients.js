@@ -1238,6 +1238,21 @@ async function cmSaveHandlers(id) {
     const r = await api('/api/clients/' + id + '/handlers', 'PUT', { user_ids: checked });
     if (r.error) { showToast(r.error, 'error'); return; }
     showToast('✅ Handlers saved');
+    // Same reason cmSaveBrandName / cmToggleActive do this — keep the cached
+    // list row in step so Back shows the new handlers without a reload. This
+    // one was missing it: the detail view re-fetched and looked right, but
+    // CM_ALL (what the list renders from) still held what was there at page
+    // load, so the list only caught up on a hard refresh. Computed from
+    // CM_USERS (already loaded) the same way the server derives
+    // all_handler_names / handler_departments from client_handlers.
+    const client = CM_ALL.find(c => String(c.id) === String(id));
+    if (client) {
+      const handlers = checked.map(uid => CM_USERS.find(u => String(u.id) === String(uid))).filter(Boolean);
+      client.all_handler_names = handlers.map(u => u.name).join('||') || null;
+      client.handler_departments = [...new Set(handlers.map(u => (u.department || '').trim()).filter(Boolean))].sort().join('||') || null;
+      client.handler_id = checked[0] || null;
+      client.handler_name = handlers[0] ? handlers[0].name : null;
+    }
     cmShowDetail(id);
   } catch(e) { showToast('Save failed', 'error'); }
 }
