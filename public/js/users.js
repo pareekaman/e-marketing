@@ -153,9 +153,50 @@ function readExtraAccessFromForm() {
   return [...document.querySelectorAll('#uExtraAccessGrid .u-extra-access:checked')].map(el => el.value);
 }
 
+// Departments are not their own table — every list of them in this app
+// (this picker, Client Master's handler-department filter, the Add Client
+// handler dropdown) is derived the same way: distinct, non-empty
+// users.department values, off whichever user list is already loaded.
+// _usersMap already holds every user by the time this runs (populated at
+// Users-page load), so no extra fetch is needed here.
+function uDeptList() {
+  return [...new Set(Object.values(_usersMap).map(u => (u.department || '').trim()).filter(Boolean))].sort();
+}
+
+// selected: the department to preselect — '' for a blank Add User form, or
+// the user's current department when editing. A value that exists in the
+// list selects normally; one that does not (a department only that one
+// legacy row still carries) falls back to the free-text box rather than
+// silently dropping it, so editing an old user never erases their department
+// just by opening the form.
+function uPopulateDeptSelect(selected) {
+  const sel = document.getElementById('uDeptSelect');
+  const txt = document.getElementById('uDepartment');
+  if (!sel || !txt) return;
+  const depts = uDeptList();
+  sel.innerHTML = '<option value="">— Select Department —</option>' +
+    depts.map(d => `<option value="${dtEscape(d)}">${dtEscape(d)}</option>`).join('') +
+    '<option value="__new__">+ Add New Department</option>';
+  const val = (selected || '').trim();
+  if (!val) { sel.value = ''; txt.style.display = 'none'; txt.value = ''; }
+  else if (depts.includes(val)) { sel.value = val; txt.style.display = 'none'; txt.value = val; }
+  else { sel.value = '__new__'; txt.style.display = ''; txt.value = val; }
+}
+
+// Picking an existing department copies it straight into #uDepartment, which
+// stays the single value saveUser() actually reads — the select is only how
+// it gets set. "+ Add New Department" reveals the text box instead.
+function uDeptSelectChange() {
+  const sel = document.getElementById('uDeptSelect');
+  const txt = document.getElementById('uDepartment');
+  if (sel.value === '__new__') { txt.style.display = ''; txt.value = ''; txt.focus(); }
+  else { txt.style.display = 'none'; txt.value = sel.value; }
+}
+
 function openAddUser() {
   document.getElementById('userModalTitle').textContent='Add User';
   ['editUserId','uName','uEmail','uNotifEmail','uPhone','uDepartment','uPosition','uPassword','uBirthday','uJoiningDate'].forEach(id=>document.getElementById(id).value='');
+  uPopulateDeptSelect('');
   // Position is not stored on the user — it only feeds the WhatsApp welcome
   // announcement, so it shows on Add and stays hidden on Edit.
   document.getElementById('uPositionGroup').style.display='';
@@ -180,7 +221,7 @@ function openEditUser(id) {
   document.getElementById('uEmail').value=u.email||'';
   document.getElementById('uNotifEmail').value=u.notification_email||'';
   document.getElementById('uPhone').value=u.phone||'';
-  document.getElementById('uDepartment').value=u.department||'';
+  uPopulateDeptSelect(u.department||'');
   document.getElementById('uPosition').value='';
   document.getElementById('uPositionGroup').style.display='none';
   // The API returns these as full ISO timestamps, which a date input cannot

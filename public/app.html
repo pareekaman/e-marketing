@@ -3398,7 +3398,19 @@
       <div class="form-group"><label>Phone Number</label><input type="tel" id="uPhone" placeholder="Enter phone number"/></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Department</label><input type="text" id="uDepartment" placeholder="e.g. Sales, Production"/></div>
+      <div class="form-group">
+        <label>Department</label>
+        <select id="uDeptSelect" onchange="uDeptSelectChange()">
+          <option value="">— Select Department —</option>
+          <option value="__new__">+ Add New Department</option>
+        </select>
+        <!-- Same id the rest of this file already reads/writes (openEditUser,
+             saveUser, openAddUser's reset list) — kept as the one place the
+             value actually lives, so none of that code needed to change.
+             Hidden unless "+ Add New Department" is picked, or an existing
+             user's department is not (yet) in the dropdown's known list. -->
+        <input type="text" id="uDepartment" placeholder="Type new department name" style="display:none;margin-top:8px" oninput="document.getElementById('uDeptSelect').value='__new__'"/>
+      </div>
       <div class="form-group" id="uPositionGroup"><label>Position <span style="color:#94a3b8;font-weight:400;font-size:11px">(only for the team welcome message)</span></label><input type="text" id="uPosition" placeholder="e.g. Video Editor, SEO Executive"/></div>
     </div>
     <div class="form-row">
