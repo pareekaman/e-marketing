@@ -6328,13 +6328,13 @@ async function buildDepartmentPendingDigest(dept) {
   // Each person's work is then split under its own status heading, so overdue
   // and upcoming never share a run of lines.
   //
-  // peopleSubset: which people this ONE message covers — see the split below.
-  // upcomingCap: null shows every upcoming row; a number shows that many and
-  // counts the rest; 0 shows none and counts all of them.
-  // actionMax: the length cap on OVERDUE / DUE TODAY / UNDATED rows — the
-  // ones that are supposed to always read in full. It only ever drops below
-  // DESC_MAX as the last lever in the per-part cascade below.
-  function compose(peopleSubset, partLabel, upcomingCap, actionMax) {
+  // peopleSubset: which people this ONE message covers — see the headcount
+  // split below. Every section — overdue, due today, undated, upcoming —
+  // prints EVERY row at the same DESC_MAX length, deliberately with no
+  // per-section cap. The split is what keeps the message small; nothing in
+  // here shrinks anything, on the user's explicit call: the whole reason to
+  // split by headcount was so upcoming (or anything else) never has to be.
+  function compose(peopleSubset, partLabel) {
     let msg = `Hello,\n\n*${dept} — Pending Tasks*${partLabel ? ` _(${partLabel})_` : ''}\n_${shortDate(today)} · 9:30 AM_\n`;
     let pending = 0, od = 0, und = 0, clear = 0;
 
@@ -6357,16 +6357,20 @@ async function buildDepartmentPendingDigest(dept) {
       const line = (t, when, max) => ' ' + when + '  ' + cleanDesc(t.description, max) +
         (t.client_name ? ` (${cleanDesc(t.client_name, 22)})` : '') + '\n';
 
-      if (late.length)    { msg += `\n ⏰ _Overdue (${late.length})_\n`;      for (const t of late)    msg += line(t, shortDate(t.due_date), actionMax); }
-      if (now.length)     { msg += `\n 🔴 _Due today (${now.length})_\n`;     for (const t of now)     msg += line(t, shortDate(t.due_date), actionMax); }
+      if (late.length)    { msg += `\n ⏰ _Overdue (${late.length})_\n`;      for (const t of late)    msg += line(t, shortDate(t.due_date), DESC_MAX); }
+      if (now.length)     { msg += `\n 🔴 _Due today (${now.length})_\n`;     for (const t of now)     msg += line(t, shortDate(t.due_date), DESC_MAX); }
       // "To be set by doer" is what the app calls this everywhere else — the
       // Delegate form's tickbox, the All Tasks row, the pending summary.
-      if (undated.length) { msg += `\n ⚠️ _Due date to be set by doer (${undated.length})_\n`; for (const t of undated) msg += line(t, '  —  ', actionMax); }
+      if (undated.length) { msg += `\n ⚠️ _Due date to be set by doer (${undated.length})_\n`; for (const t of undated) msg += line(t, '  —  ', DESC_MAX); }
+      // Every upcoming row, same DESC_MAX as every other section — this used
+      // to be capped shorter twice (once as BRIEF=70, once again by accident
+      // while building the headcount split), and both times it recreated the
+      // exact complaint that started this whole feature: a real task ("All
+      // leads generated from IndiaMART…") is itself upcoming, and cutting it
+      // short there is exactly as unreadable as cutting an overdue one short.
       if (soon.length) {
         msg += `\n 📅 _Upcoming (${soon.length})_\n`;
-        const show = upcomingCap === null ? soon : soon.slice(0, upcomingCap);
-        for (const t of show) msg += line(t, shortDate(t.due_date), Math.min(actionMax, 70));
-        if (soon.length > show.length) msg += `      +${soon.length - show.length} more\n`;
+        for (const t of soon) msg += line(t, shortDate(t.due_date), DESC_MAX);
       }
     }
 
@@ -6393,31 +6397,27 @@ async function buildDepartmentPendingDigest(dept) {
   // not a smarter shrink — half the people is roughly half the content,
   // by construction, independent of how verbose any one person's backlog is.
   function buildGuaranteedPart(peopleSubset, partLabel) {
+    // ⚠️ 2026-09-21: this used to shrink upcoming first and only then, as a
+    // last resort, the actionable descriptions — the whole point of the
+    // headcount split above was to make that unnecessary, and the user's own
+    // words on it: "upcoming task shrink nahi karne the kyuki maine 2
+    // messages isliye karwaye hai". So every part is built FULL — every
+    // upcoming row, every description at DESC_MAX — with nothing shrunk on
+    // the way there. Do not reintroduce an upcoming-count or description-
+    // length cascade here; that is exactly what splitting was meant to avoid.
     const WA_LIMIT = 4096;
-    const SAFETY = 3900;   // margin below WA_LIMIT — headroom for the footer/counts changing between draft and final render
-    let built = compose(peopleSubset, partLabel, null, DESC_MAX);
+    const built = compose(peopleSubset, partLabel);
+    if (built.msg.length <= WA_LIMIT) return built;
 
-    if (built.msg.length > SAFETY) {
-      for (const cap of [12, 8, 5, 3, 1, 0]) {
-        built = compose(peopleSubset, partLabel, cap, DESC_MAX);
-        if (built.msg.length <= SAFETY) break;
-      }
-    }
-    if (built.msg.length > SAFETY) {
-      for (const max of [140, 100, 70, 50]) {
-        built = compose(peopleSubset, partLabel, 0, max);
-        if (built.msg.length <= SAFETY) break;
-      }
-    }
-    // Should not be reachable at any team size this app has seen even for
-    // ONE half — it would take dozens of overdue tasks on one half with
-    // 50-character descriptions. Kept anyway: "cannot send" is not an
-    // acceptable failure mode here.
-    if (built.msg.length > WA_LIMIT) {
-      const cut = built.msg.slice(0, WA_LIMIT - 60).replace(/\s+\S*$/, '');
-      built = { msg: cut + '\n\n…truncated — open All Tasks for the rest', counts: built.counts };
-    }
-    return built;
+    // Only reachable if one half's workload is so heavy that even a full,
+    // uncapped half exceeds the limit on its own — halving 128 uniformly
+    // verbose tasks was enough to hit this in testing, so it is a real floor,
+    // not a hypothetical one. A message that fails to send outright (Waumfy's
+    // `400 Message too long`) tells the department nothing, which is worse
+    // than a visible, honest truncation note — so this is the one place
+    // content still gets cut, and only when the split alone was not enough.
+    const cut = built.msg.slice(0, WA_LIMIT - 60).replace(/\s+\S*$/, '');
+    return { msg: cut + '\n\n…truncated — open All Tasks for the rest', counts: built.counts };
   }
 
   // Two messages by headcount, split down the middle — 4 and 4 for an
