@@ -74,7 +74,15 @@ app.get('/api/clients', requireAuth, async (req, res) => {
               u.name AS handler_name,
               (SELECT GROUP_CONCAT(u2.name ORDER BY u2.name SEPARATOR '||')
                FROM client_handlers ch JOIN users u2 ON ch.user_id = u2.id
-               WHERE ch.client_id = c.id) AS all_handler_names
+               WHERE ch.client_id = c.id) AS all_handler_names,
+              -- Distinct departments across every handler on this client, by id —
+              -- not by matching all_handler_names back to a name, which breaks on
+              -- two people sharing a name. client_handlers always carries the
+              -- primary handler too (PUT /api/clients/:id/handlers inserts it
+              -- before syncing c.handler_id), so this alone is the full set.
+              (SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(u2.department),'') ORDER BY TRIM(u2.department) SEPARATOR '||')
+               FROM client_handlers ch JOIN users u2 ON ch.user_id = u2.id
+               WHERE ch.client_id = c.id) AS handler_departments
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id
        ${scope ? `WHERE ${scope.sql}` : ''}
        ORDER BY c.name ASC`, scope ? scope.params : []);

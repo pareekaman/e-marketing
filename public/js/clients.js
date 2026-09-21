@@ -62,6 +62,7 @@ async function loadClients(){
     CM_USERS = Array.isArray(users) ? users : [];
     document.getElementById('cmStatTotal').textContent = CM_ALL.length;
     cmApplyRoleControls();
+    cmPopulateDeptFilter();
     cmRenderList();
   } catch(e) {
     wrap.innerHTML = '<div class="empty">Failed to load clients</div>';
@@ -338,16 +339,38 @@ function cmOpenAddModal() {
   setTimeout(() => document.getElementById('cmFormName')?.focus(), 0);
 }
 
+// Same department list the handler picker inside Add Client already builds
+// from CM_USERS — kept separate rather than shared, since that one filters
+// which HANDLERS are offered and this one filters which CLIENTS are shown,
+// and the two lists happening to match today is not a reason to couple them.
+function cmPopulateDeptFilter(){
+  const sel = document.getElementById('cmDeptFilter');
+  if (!sel) return;
+  const prev = sel.value;
+  const depts = [...new Set(CM_USERS.filter(u => u.role !== 'client').map(u => u.department || '').filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">All Departments</option>' +
+    depts.map(d => `<option value="${dtEscape(d)}">${dtEscape(d)}</option>`).join('');
+  // Reselect what was chosen before a reload, if that department still exists.
+  if (prev && depts.includes(prev)) sel.value = prev;
+}
+
 function cmRenderList(){
   const wrap = document.getElementById('cmListWrap');
   const q = (document.getElementById('cmSearch')?.value || '').toLowerCase().trim();
+  const dept = document.getElementById('cmDeptFilter')?.value || '';
   // Brand and billing names are searchable too — both are shown on the row, and
   // the brand people recognise (or the entity on an invoice) is often the only
   // name they think to type.
-  const filtered = q
+  let filtered = q
     ? CM_ALL.filter(c => ((c.name || '') + ' ' + (c.brand_name || '') + ' ' + (c.billing_name || ''))
         .toLowerCase().includes(q))
     : CM_ALL;
+  // A client can carry several handlers from different departments (the same
+  // multi-handler model the detail view already manages) — it matches the
+  // filter if ANY of them is in the chosen department, not only the primary.
+  if (dept) {
+    filtered = filtered.filter(c => (c.handler_departments || '').split('||').includes(dept));
+  }
   document.getElementById('cmStatVisible').textContent = filtered.length;
 
   if (!CM_ALL.length) {
@@ -355,7 +378,7 @@ function cmRenderList(){
     return;
   }
   if (!filtered.length) {
-    wrap.innerHTML = '<div class="empty">No clients match your search.</div>';
+    wrap.innerHTML = `<div class="empty">No clients match ${q && dept ? 'your search and department filter' : q ? 'your search' : 'that department'}.</div>`;
     return;
   }
 
