@@ -1130,13 +1130,19 @@ async function cmAdd(){
   // same rule, so everyone else creates the client with no billing name and one
   // of the named viewers fills it in later.
   if (cmCanSeeBilling() && !billing_name) { err.textContent = 'Billing name required'; err.style.display = 'block'; return; }
+  // A handler is the only thing that gives a client a department — there is no
+  // department field of its own, the Client Master filter reads it off whoever
+  // manages the client. Optional handlers left 19 of 20 clients in this test
+  // set unfindable by any department filter, so this is required now, not a
+  // suggestion.
+  if (!handler_ids.length) { err.textContent = 'Select at least one handler'; err.style.display = 'block'; return; }
   if ((login_email && !login_password) || (!login_email && login_password)) {
     err.textContent = 'Fill both login email and password, or leave both blank';
     err.style.display = 'block'; return;
   }
   try {
     const r = await api('/api/clients', 'POST', {
-      name, brand_name, handler_id, login_email, login_password,
+      name, brand_name, handler_id, handler_ids, login_email, login_password,
       // Omitted entirely for anyone who cannot see the field — the server would
       // drop it anyway, but there is no reason to send a value it must ignore.
       ...(cmCanSeeBilling() ? { billing_name } : {}),
