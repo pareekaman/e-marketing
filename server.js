@@ -2145,7 +2145,13 @@ app.get('/api/approvals', requireAuth, async (req, res) => {
     let whereClause, params;
     if (isAdminOrPC) { whereClause = `WHERE ta.status='pending'`; params = []; }
     else { whereClause = `WHERE ta.requested_to=? AND ta.status='pending'`; params = [req.session.userId]; }
-    const [rows] = await db.query(`SELECT ta.*,DATE_FORMAT(ta.new_date,'%Y-%m-%d') AS reviseToDate,COALESCE(u1.name,'(deleted)') AS requestedByName,COALESCE(u2.name,'(deleted)') AS requestedToName,COALESCE(dt.description,ct.description) AS description,dt.approval AS taskApproval,DATE_FORMAT(COALESCE(dt.due_date,ct.due_date),'%Y-%m-%d') AS currentDue FROM task_approvals ta LEFT JOIN users u1 ON ta.requested_by=u1.id LEFT JOIN users u2 ON ta.requested_to=u2.id LEFT JOIN delegation_tasks dt ON ta.task_id=dt.id AND ta.task_type='delegation' LEFT JOIN checklist_tasks ct ON ta.task_id=ct.id AND ta.task_type='checklist' ${whereClause} ORDER BY ta.created_at DESC`, params);
+    // requested_to on this row IS the task's own assigned_by — see the two
+    // INSERT INTO task_approvals sites in backend/routes/tasks.js, both of
+    // which set it to `task.assigned_by`. So requestedToName already answers
+    // "who delegated this", it just was not being rendered on the page yet.
+    // client_id lives on whichever of delegation_tasks/checklist_tasks this
+    // row is for, same COALESCE pattern the rest of the query already uses.
+    const [rows] = await db.query(`SELECT ta.*,DATE_FORMAT(ta.new_date,'%Y-%m-%d') AS reviseToDate,COALESCE(u1.name,'(deleted)') AS requestedByName,COALESCE(u2.name,'(deleted)') AS requestedToName,COALESCE(dt.description,ct.description) AS description,dt.approval AS taskApproval,DATE_FORMAT(COALESCE(dt.due_date,ct.due_date),'%Y-%m-%d') AS currentDue,cl.name AS clientName FROM task_approvals ta LEFT JOIN users u1 ON ta.requested_by=u1.id LEFT JOIN users u2 ON ta.requested_to=u2.id LEFT JOIN delegation_tasks dt ON ta.task_id=dt.id AND ta.task_type='delegation' LEFT JOIN checklist_tasks ct ON ta.task_id=ct.id AND ta.task_type='checklist' LEFT JOIN clients cl ON cl.id=COALESCE(dt.client_id,ct.client_id) ${whereClause} ORDER BY ta.created_at DESC`, params);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

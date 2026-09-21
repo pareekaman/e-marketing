@@ -360,12 +360,14 @@ async function loadApprovals() {
       <div class="flat-tasks-table">
         <table>
           <thead><tr>
-            <th>Employee</th><th>Task</th><th>Action Requested</th><th>Requested On</th><th>Approve / Reject</th>
+            <th>Employee</th><th>Delegated By</th><th>Client</th><th>Task</th><th>Action Requested</th><th>Requested On</th><th>Approve / Reject</th>
           </tr></thead>
           <tbody>
             ${approvals.map(a => `
               <tr>
                 <td style="font-weight:600">${a.requestedByName}</td>
+                <td style="color:#475569">${esc(a.requestedToName||'—')}</td>
+                <td style="color:#475569">${esc(a.clientName||'—')}</td>
                 <td>${esc(a.description||'—')}</td>
                 <td><span class="status-badge ${a.action_type}">${a.action_type==='completed'?'✅ Mark Complete':'🔄 Revision'}</span>${a.action_type==='revised' && a.reviseToDate ? `<div style="font-size:11px;color:#64748b;margin-top:3px">${a.currentDue?fmtDate(a.currentDue)+' → ':''}<b style="color:#9d174d">${fmtDate(a.reviseToDate)}</b></div>` : ''}</td>
                 <td style="color:#64748b;font-size:12px">${new Date(a.created_at).toLocaleDateString('en-IN')}</td>
