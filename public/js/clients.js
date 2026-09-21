@@ -383,7 +383,12 @@ function cmRenderList(){
   }
 
   let html = '';
-  for (const c of filtered) {
+  // 1-based position in the FILTERED list, not CM_ALL — so it always reads
+  // as a clean 1, 2, 3… for whatever is actually on screen, search and/or
+  // department filter applied or not, rather than jumping straight to
+  // whatever index a client happened to have in the unfiltered list.
+  filtered.forEach((c, i) => {
+    const serial = i + 1;
     const safeName = dtEscape(c.name);
     const initials = dtEscape(cmInitials(c.name));
     const avatarStyle = cmAvatarStyle(c.name);
@@ -406,6 +411,7 @@ function cmRenderList(){
     const isOn = c.is_active === undefined || !!Number(c.is_active);
     html += `<div class="cm-client-row${isOn ? '' : ' cm-inactive'}" data-cm-id="${c.id}" onclick="cmShowDetail(${c.id})">
         <div class="cm-client-info">
+          <span style="width:26px;flex:0 0 auto;text-align:right;font-size:12px;font-weight:600;color:#94a3b8">${serial}</span>
           <div class="cm-avatar" style="${avatarStyle}">${initials}</div>
           <div class="cm-client-meta">
             <span class="cm-client-name">${safeName}</span>
@@ -424,7 +430,7 @@ function cmRenderList(){
           <span class="cm-client-arrow">›</span>
         </div>
       </div>`;
-  }
+  });
   wrap.innerHTML = html;
 }
 
