@@ -1163,8 +1163,14 @@ async function openDelegate(prefill = {}) {
   // Client dropdown — pulls from Client Master. The list stays complete on
   // purpose; only the order changes, so the clients you handle come first.
   // Handle none and it is the plain alphabetical list it has always been.
+  // An inactive client is never lifted, even one of your own — closed work has
+  // no business at the top of the list. It keeps the alphabetical place it
+  // always had, down among the rest.
   const myClients = [], otherClients = [];
-  for (const c of (clients || [])) (c.is_my_client ? myClients : otherClients).push(c);
+  for (const c of (clients || [])) {
+    const active = c.is_active === undefined || !!Number(c.is_active);
+    (c.is_my_client && active ? myClients : otherClients).push(c);
+  }
   const clientOpts = myClients.concat(otherClients)
     .map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
   document.getElementById('dClient').innerHTML = '<option value="">— Select Client —</option>' + clientOpts;
