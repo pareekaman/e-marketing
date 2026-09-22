@@ -1062,8 +1062,85 @@ async function transferToday(userId) {
 // ══════════════════════════════════════════════════════
 // DELEGATE MODAL
 // ══════════════════════════════════════════════════════
+
+// One card per task. Only the first carries the dDate/dPriority/dDesc ids:
+// voice fill writes to those by name, so duplicating them would send a second
+// dictation into whichever card the browser happened to return first.
+function dTaskRowHtml(first) {
+  const id = n => first ? ' id="' + n + '"' : '';
+  return `
+    <div data-task-row style="border:1.5px solid #e2e8f0;border-radius:10px;padding:12px 14px 0;margin-bottom:12px;background:#fafbfc">
+      <div style="display:flex;align-items:center;justify-content:space-between;height:18px">
+        <span data-task-label style="font-size:11px;font-weight:700;color:#64748b;letter-spacing:.04em"></span>
+        <button type="button" data-task-remove onclick="dRemoveTaskRow(this)" title="Remove this task"
+          style="display:none;background:none;border:none;color:#94a3b8;font-size:17px;line-height:1;cursor:pointer;padding:0 4px;border-radius:6px">&times;</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Due Date</label>
+          <input type="date" data-f="date"${id('dDate')}/>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:12px;color:#475569;font-weight:500;cursor:pointer">
+            <input type="checkbox" data-f="doerSets"${id('dDoerSetsDate')} onchange="onDoerSetsDateChange(this)" style="width:auto;margin:0"/>
+            Doer-defined due date
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Priority</label>
+          <select data-f="priority"${id('dPriority')}>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <textarea data-f="desc"${id('dDesc')} placeholder="Enter task description…"></textarea>
+      </div>
+    </div>`;
+}
+
+function dTaskRows() {
+  return Array.from(document.querySelectorAll('#dTaskRows [data-task-row]'));
+}
+
+// Numbering and the remove buttons would only be noise on a single card, so
+// both follow the current count instead of being baked into the markup.
+function dSyncTaskRows() {
+  const rows = dTaskRows();
+  const many = rows.length > 1;
+  rows.forEach((r, i) => {
+    r.querySelector('[data-task-label]').textContent = many ? 'TASK ' + (i + 1) : '';
+    r.querySelector('[data-task-remove]').style.display = many ? '' : 'none';
+  });
+}
+
+function dResetTaskRows() {
+  document.getElementById('dTaskRows').innerHTML = dTaskRowHtml(true);
+  dSyncTaskRows();
+}
+
+function dAddTaskRow() {
+  document.getElementById('dTaskRows').insertAdjacentHTML('beforeend', dTaskRowHtml(false));
+  const row = dTaskRows().pop();
+  const today = new Date().toISOString().split('T')[0];
+  const d = row.querySelector('[data-f="date"]');
+  d.value = today; d.min = today;
+  dSyncTaskRows();
+  row.querySelector('[data-f="desc"]').focus();
+}
+
+function dRemoveTaskRow(btn) {
+  btn.closest('[data-task-row]').remove();
+  dSyncTaskRows();
+}
+
 async function openDelegate(prefill = {}) {
   document.getElementById('delegateErr').style.display='none';
+  // First, because every field the resets below reach for lives inside task
+  // card one, and that card does not exist until this builds it.
+  dResetTaskRows();
   // Clears the last dictation and its chips, so a reopened form never shows
   // what the previous task was filled from.
   if (typeof vdResetVoice === 'function') vdResetVoice();
@@ -1157,9 +1234,12 @@ async function submitSetDueDate() {
 }
 
 // When ticked, the doer will pick their own due date — disable the date field here.
-function onDoerSetsDateChange() {
-  const on = document.getElementById('dDoerSetsDate').checked;
-  const d = document.getElementById('dDate');
+// `cb` is the checkbox that fired, so the right card is affected. Voice fill
+// calls this with no argument, which still means card one.
+function onDoerSetsDateChange(cb) {
+  const row = (cb || document.getElementById('dDoerSetsDate')).closest('[data-task-row]');
+  const on = row.querySelector('[data-f="doerSets"]').checked;
+  const d = row.querySelector('[data-f="date"]');
   d.disabled = on;
   if (on) d.value = '';
   else if (!d.value) d.value = new Date().toISOString().split('T')[0];
@@ -1194,42 +1274,74 @@ function onDelegateApproverChange() {
 async function saveDelegate() {
   const err = document.getElementById('delegateErr');
   err.style.display='none';
+  const fail = m => { err.textContent = m; err.style.display = 'block'; };
   const doer = document.getElementById('dDoer').value;
-  const date = document.getElementById('dDate').value;
-  const desc = document.getElementById('dDesc').value.trim();
-  const priority = document.getElementById('dPriority').value;
   const approval = document.getElementById('dApproval').value;
   const remarks = document.getElementById('dRemarks').value.trim();
   const url = document.getElementById('dUrl').value.trim() || null;
   const approver = approval === 'yes' ? document.getElementById('dApprover').value : '';
   const client_id = document.getElementById('dClient').value || null;
-  const doerSetsDueDate = document.getElementById('dDoerSetsDate').checked;
-  if (!doer) { err.textContent='Please select a doer'; err.style.display='block'; return; }
-  if (!doerSetsDueDate && !date) { err.textContent='Please select a date'; err.style.display='block'; return; }
-  if (!desc) { err.textContent='Description is required'; err.style.display='block'; return; }
-  if (!client_id) { err.textContent='Please select a client'; err.style.display='block'; return; }
-  if (approval === 'yes' && !approver) { err.textContent='Please select an approver'; err.style.display='block'; return; }
+  if (!doer) return fail('Please select a doer');
+  if (!client_id) return fail('Please select a client');
+  if (approval === 'yes' && !approver) return fail('Please select an approver');
+  // Every card becomes its own task; the fields above are shared by all of them.
+  const rows = dTaskRows();
+  const tasks = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const t = {
+      row,
+      date: row.querySelector('[data-f="date"]').value,
+      desc: row.querySelector('[data-f="desc"]').value.trim(),
+      priority: row.querySelector('[data-f="priority"]').value,
+      doerSetsDueDate: row.querySelector('[data-f="doerSets"]').checked
+    };
+    // Naming a card number only helps when there is more than one to tell apart.
+    const which = rows.length > 1 ? ' for task ' + (i + 1) : '';
+    if (!t.doerSetsDueDate && !t.date) return fail('Please select a date' + which);
+    if (!t.desc) return fail('Description is required' + which);
+    tasks.push(t);
+  }
   // Lock the button for the round-trip. Without this a second tap on a slow
   // connection created a second identical task, and the doer then saw the same
   // task again after finishing the first one.
   const btn = document.getElementById('delegateSubmitBtn');
   const btnLabel = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = 'Assigning…'; }
-  let r;
+  let failed = null;
   try {
-    r = await api('/api/tasks','POST',{type:'delegation',desc,assignedTo:doer,date,priority,approval,approver,remarks,client_id,url,doerSetsDueDate});
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = tasks.length > 1 ? `Assigning ${i + 1}/${tasks.length}…` : 'Assigning…';
+      }
+      const r = await api('/api/tasks','POST',{type:'delegation',desc:t.desc,assignedTo:doer,date:t.date,priority:t.priority,approval,approver,remarks,client_id,url,doerSetsDueDate:t.doerSetsDueDate});
+      if (r.error) { failed = r.error; break; }
+      t.res = r;
+    }
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
   }
-  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
-  if (r.duplicate) { closeModal('delegateModal'); showToast('That task was already created a moment ago — not duplicated.'); loadDashboard(true); return; }
+  const done = tasks.filter(t => t.res);
+  if (failed) {
+    // Clear away the cards that did land. Pressing Assign again with them still
+    // on screen would create those tasks a second time.
+    done.forEach(t => t.row.remove());
+    dSyncTaskRows();
+    if (done.length) loadDashboard(true);
+    return fail(done.length
+      ? `${done.length} of ${tasks.length} created — the next one failed: ${failed}`
+      : failed);
+  }
   closeModal('delegateModal');
-  if (doerSetsDueDate) {
-    showToast('Task delegated! Doer will set their due date.');
-  } else if (r.adjusted) {
-    showToast(`Task delegated! 📅 Moved to ${r.effectiveDate} (holiday/week-off)`);
+  if (tasks.length > 1) {
+    showToast(`${tasks.length} tasks delegated!`);
   } else {
-    showToast('Task delegated successfully!');
+    const r = tasks[0].res;
+    if (r.duplicate) showToast('That task was already created a moment ago — not duplicated.');
+    else if (tasks[0].doerSetsDueDate) showToast('Task delegated! Doer will set their due date.');
+    else if (r.adjusted) showToast(`Task delegated! 📅 Moved to ${r.effectiveDate} (holiday/week-off)`);
+    else showToast('Task delegated successfully!');
   }
   loadDashboard(true);
 }
