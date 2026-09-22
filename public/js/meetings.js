@@ -4,6 +4,7 @@
 let _mtgClientsCache = null;
 let _mtgUsersCache = null;
 let _mtgEditing = null;
+let _mtgSeriesRemaining = 0; // scheduled occurrences left in the open meeting's series
 let _mtgMonthAnchor = null; // month-anchor Date (1st of viewed month)
 let _mtgDayAnchor   = null; // currently focused day in the right-pane timeline
 let _mtgMonthCache = {};
@@ -470,6 +471,7 @@ async function _mtgEnsureUsers() {
 
 async function openMeetingModal(id, prefillStart) {
   _mtgEditing = id || null;
+  _mtgSeriesRemaining = 0;
   document.getElementById('mtgEditId').value = id || '';
   document.getElementById('meetingModalTitle').textContent = id ? 'Edit Meeting' : 'Schedule Meeting';
   document.getElementById('mtgDeleteBtn').style.display = id ? 'inline-block' : 'none';
@@ -530,6 +532,7 @@ async function openMeetingModal(id, prefillStart) {
       mtgRecalcEnd();
       const attSet = new Set((m.attendees||[]).map(a => String(a.id)));
       attEl.querySelectorAll('[data-att]').forEach(cb => { cb.checked = attSet.has(cb.value); });
+      _mtgSeriesRemaining = m.series_remaining || 0;
     }
   }
   document.getElementById('meetingModal').classList.add('open');
@@ -805,11 +808,28 @@ async function markMeetingDone(id) {
 async function deleteMeeting() {
   const id = document.getElementById('mtgEditId').value;
   if (!id) return;
-  if (!await appConfirm('Cancel this meeting? An email notification will go out.', 'Cancel Meeting?')) return;
+  let scope = 'one';
+  // A recurring meeting is stored as one independent row per date, so cancelling
+  // "this one" leaves every later date standing. Offer the whole tail in one go.
+  if (_mtgSeriesRemaining > 1) {
+    const choice = await _showAppPrompt({
+      title: 'Cancel Meeting?',
+      message: `This meeting repeats — ${_mtgSeriesRemaining} occurrences are still scheduled from this date onwards. Cancel only this one, or all of them?`,
+      buttons: [
+        { label: 'Keep All',      className: 'btn btn-outline', value: '' },
+        { label: 'Only This One', className: 'btn btn-outline', value: 'one' },
+        { label: `Cancel All ${_mtgSeriesRemaining}`, className: 'btn btn-danger', value: 'following' }
+      ]
+    });
+    if (!choice) return;
+    scope = choice;
+  } else if (!await appConfirm('Cancel this meeting? An email notification will go out.', 'Cancel Meeting?')) {
+    return;
+  }
   try {
-    const r = await api(`/api/meetings/${id}`, 'DELETE');
+    const r = await api(`/api/meetings/${id}?scope=${scope}`, 'DELETE');
     if (r?.error) { showToast(r.error); return; }
-    showToast('Meeting cancelled · email sent');
+    showToast(r?.cancelled > 1 ? `${r.cancelled} meetings cancelled · email sent` : 'Meeting cancelled · email sent');
     closeModal('meetingModal');
     _mtgMonthCache = {};
     _mtgTaskCache = {};

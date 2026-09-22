@@ -95,7 +95,7 @@ app.get('/api/meetings/:id', requireAuth, async (req, res) => {
               DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS meeting_date,
               TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
               TIME_FORMAT(m.end_time,'%H:%i')   AS end_time,
-              m.meet_link, m.status,
+              m.meet_link, m.status, m.recurrence_group_id,
               c.name AS client_name, u.name AS organizer_name
        FROM meetings m
        LEFT JOIN clients c ON m.client_id = c.id
@@ -106,6 +106,17 @@ app.get('/api/meetings/:id', requireAuth, async (req, res) => {
       `SELECT u.id, u.name, u.email FROM meeting_attendees ma
        JOIN users u ON ma.user_id = u.id WHERE ma.meeting_id = ?`, [req.params.id]);
     m.attendees = atts;
+    // How many occurrences of this series are still standing from this date on.
+    // The cancel prompt needs it to offer taking the whole tail down at once —
+    // without it a mis-set recurrence costs up to 120 individual cancellations.
+    m.series_remaining = 0;
+    if (m.recurrence_group_id) {
+      const [[c]] = await db.query(
+        `SELECT COUNT(*) AS n FROM meetings
+         WHERE recurrence_group_id = ? AND meeting_date >= ? AND status = 'scheduled'`,
+        [m.recurrence_group_id, m.meeting_date]);
+      m.series_remaining = c.n;
+    }
     res.json(m);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -257,17 +268,34 @@ app.put('/api/meetings/:id/status', requireAuth, async (req, res) => {
 });
 
 // Cancel (soft) — status flips to cancelled, notification fires.
+// scope=following cancels every later occurrence of the same recurring series
+// too. A recurrence is stored as one independent row per date, so without this
+// a series set up by mistake takes one cancellation per row to undo.
 app.delete('/api/meetings/:id', requireAuth, async (req, res) => {
   try {
     const id = req.params.id;
-    const [[existing]] = await db.query('SELECT organizer_id FROM meetings WHERE id=?', [id]);
+    const [[existing]] = await db.query(
+      `SELECT organizer_id, recurrence_group_id,
+              DATE_FORMAT(meeting_date,'%Y-%m-%d') AS meeting_date
+       FROM meetings WHERE id=?`, [id]);
     if (!existing) return res.status(404).json({ error: 'not found' });
     if (existing.organizer_id !== req.session.userId && req.session.role !== 'admin') {
       return res.status(403).json({ error: 'only organizer or admin can cancel' });
     }
-    await db.query("UPDATE meetings SET status='cancelled' WHERE id=?", [id]);
+    let cancelled = 1;
+    if (req.query.scope === 'following' && existing.recurrence_group_id) {
+      const [r] = await db.query(
+        `UPDATE meetings SET status='cancelled'
+         WHERE recurrence_group_id = ? AND meeting_date >= ? AND status = 'scheduled'`,
+        [existing.recurrence_group_id, existing.meeting_date]);
+      cancelled = r.affectedRows;
+    } else {
+      await db.query("UPDATE meetings SET status='cancelled' WHERE id=?", [id]);
+    }
+    // One notification for the whole batch — cancelling 90 rows should not mean
+    // 90 emails landing on every attendee.
     sendMeetingNotification(id, 'cancelled').catch(e => console.error('notify err:', e.message));
-    res.json({ ok: true });
+    res.json({ ok: true, cancelled });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 };
