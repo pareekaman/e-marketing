@@ -82,10 +82,20 @@ app.get('/api/clients', requireAuth, async (req, res) => {
               -- before syncing c.handler_id), so this alone is the full set.
               (SELECT GROUP_CONCAT(DISTINCT NULLIF(TRIM(u2.department),'') ORDER BY TRIM(u2.department) SEPARATOR '||')
                FROM client_handlers ch JOIN users u2 ON ch.user_id = u2.id
-               WHERE ch.client_id = c.id) AS handler_departments
+               WHERE ch.client_id = c.id) AS handler_departments,
+              -- Whether the caller handles this client, by the same rule as
+              -- clientMasterScope. The delegation picker orders their own
+              -- clients first with it; matching all_handler_names against a
+              -- name instead would break on two people sharing one.
+              -- <=> not =, or a client with no primary handler yields NULL
+              -- rather than 0 and the column stops being a clean boolean.
+              (c.handler_id <=> ?
+               OR EXISTS (SELECT 1 FROM client_handlers ch
+                          WHERE ch.client_id = c.id AND ch.user_id = ?)) AS is_my_client
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id
        ${scope ? `WHERE ${scope.sql}` : ''}
-       ORDER BY c.name ASC`, scope ? scope.params : []);
+       ORDER BY c.name ASC`,
+      [req.session.userId, req.session.userId, ...(scope ? scope.params : [])]);
     // Billing Name is for named individuals only. Stripped here rather than
     // hidden in the page, so it never reaches a browser that may not show it.
     if (!(await canViewBillingName(req.session))) {

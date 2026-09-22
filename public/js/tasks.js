@@ -1083,8 +1083,13 @@ async function openDelegate(prefill = {}) {
   const opts = (users || []).map(u=>`<option value="${u.id}" data-email="${dtEscape(u.email||'')}">${u.name}</option>`).join('');
   document.getElementById('dDoer').innerHTML='<option value="">Select Doer</option>'+opts;
   document.getElementById('dApprover').innerHTML='<option value="">Select Approver</option>'+opts;
-  // Client dropdown — pulls from Client Master
-  const clientOpts = (clients || []).map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+  // Client dropdown — pulls from Client Master. The list stays complete on
+  // purpose; only the order changes, so the clients you handle come first.
+  // Handle none and it is the plain alphabetical list it has always been.
+  const myClients = [], otherClients = [];
+  for (const c of (clients || [])) (c.is_my_client ? myClients : otherClients).push(c);
+  const clientOpts = myClients.concat(otherClients)
+    .map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
   document.getElementById('dClient').innerHTML = '<option value="">— Select Client —</option>' + clientOpts;
   // Hidden by default — only shown when Approval Required = Yes
   document.getElementById('dApproverGroup').style.display = 'none';
