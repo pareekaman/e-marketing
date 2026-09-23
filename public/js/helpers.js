@@ -432,6 +432,11 @@ function renderMIS(data) {
     const barWidth = Math.abs(score);
     const barColor = score === 0 ? '#94a3b8' : score < 0 ? '#ef4444' : '#10b981';
     const scoreLabel = score === 0 ? '✅ Perfect' : score < 0 ? '⚠️ Needs Improvement' : '✅ Good';
+    // Weekly pledge vs what was achieved (the Employee 360 figures, averaged over
+    // the weeks in range). Actual goes green when it met or beat the pledge.
+    const wk = v => v == null ? '—' : Number(v).toFixed(1);
+    const actualTone = (r.planned == null || r.actual == null) ? 'color:#475569'
+      : r.actual >= r.planned ? 'color:#16a34a' : 'color:#dc2626';
 
     return `<tr style="cursor:pointer" onclick="openMISDetail(${jsArg(r.userId||r.id)},${jsArg(r.name)})" title="Click to see task details">
       <td>
@@ -442,6 +447,8 @@ function renderMIS(data) {
       <td style="color:#10b981;font-weight:600">${r.completed}</td>
       ${misType==='delegation' ? `<td style="color:#f59e0b;font-weight:600">${r.revised||0}</td>` : ''}
       <td style="color:#dc2626;font-weight:600">${r.delayed||0}</td>
+      <td style="color:#475569;font-weight:600">${wk(r.planned)}</td>
+      <td style="${actualTone};font-weight:700">${wk(r.actual)}</td>
       <td>
         <div class="${scoreClass}" style="font-size:14px;font-weight:700">${score.toFixed(1)}%</div>
         <div style="font-size:10px;color:#94a3b8;margin-top:1px">${scoreLabel}</div>
@@ -457,13 +464,14 @@ function renderMIS(data) {
       <table>
         <thead><tr>
           <th>Name <span style="font-weight:400;color:#94a3b8;font-size:10px">(click for details)</span></th>
-          <th>Total</th><th>Pending</th><th>Completed</th>${misType==='delegation'?'<th>Revised</th>':''}<th>Delayed</th><th>Score %</th>
+          <th>Total</th><th>Pending</th><th>Completed</th>${misType==='delegation'?'<th>Revised</th>':''}<th>Delayed</th><th title="Score committed in the Monday check-in">Planned</th><th title="Weekly score achieved, as on Employee 360">Actual</th><th>Score %</th>
         </tr></thead>
         <tbody>${tableRows}</tbody>
       </table>
     </div>
     <div style="font-size:12px;color:#94a3b8;margin-top:10px;padding:0 4px">
-      * Score: 0% = All completed | Negative = Pending/delayed tasks reduce score
+      * Score: 0% = All completed | Negative = Pending/delayed tasks reduce score<br>
+      * Planned / Actual: weekly score committed in the Monday check-in vs achieved, across delegation and checklist together, averaged over the weeks in this range. Only work due up to yesterday is scored.
     </div>`;
 }
 

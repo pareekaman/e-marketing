@@ -2279,6 +2279,10 @@ app.get('/api/mis', requireAuth, requireMisViewer, async (req, res) => {
   try {
     const { start, end } = req.query;
     if (!start || !end) return res.status(400).json({ error: 'Dates required' });
+    // Shape-checked, not just present: the weekly loop below walks Mondays up
+    // to `end` by string comparison and would never stop on a malformed one.
+    const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v);
+    if (!isDate(start) || !isDate(end)) return res.status(400).json({ error: 'Dates must be YYYY-MM-DD' });
     const isHod = req.session.role === 'hod';
     // Department filter for HOD
     let deptFilter = '';
@@ -2297,7 +2301,29 @@ app.get('/api/mis', requireAuth, requireMisViewer, async (req, res) => {
     });
     const [delRows] = await db.query(`SELECT u.id AS userId,u.name,COUNT(*) AS total,SUM(CASE WHEN t.status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS completed,SUM(CASE WHEN t.status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN t.status='pending' AND t.due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue FROM delegation_tasks t JOIN users u ON t.assigned_to=u.id WHERE t.due_date BETWEEN ? AND ? AND u.role <> 'client' AND u.client_id IS NULL ${deptFilter} GROUP BY u.id,u.name ORDER BY u.name`, deptParams);
     const [chlRows] = await db.query(`SELECT u.id AS userId,u.name,COUNT(*) AS total,SUM(CASE WHEN t.status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS completed,0 AS revised,SUM(CASE WHEN t.status='pending' AND t.due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue FROM checklist_tasks t JOIN users u ON t.assigned_to=u.id WHERE t.due_date BETWEEN ? AND ? AND u.role <> 'client' AND u.client_id IS NULL ${deptFilter} GROUP BY u.id,u.name ORDER BY u.name`, deptParams);
-    res.json({ delegation: calc(delRows), checklist: calc(chlRows) });
+    // Weekly planned vs actual next to each row: the same per-week figures
+    // Employee 360 shows, averaged over every week the range touches, so a
+    // one-week range reads exactly as that week does on Employee 360. Both
+    // cover delegation + checklist together — the pledge is one number for
+    // all of a person's work — so they are the same on either tab.
+    const ids = [...new Set([...delRows, ...chlRows].map(r => r.userId))];
+    const mondays = [];
+    for (let m = istMondayOf(new Date(start + 'T00:00:00Z')); m <= end; m = addDays(m, 7)) mondays.push(m);
+    const istToday = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const weeks = await weeklyPlanVsActual(ids, mondays, addDays(istToday, -1), istToday);
+    // Weeks with nothing to average (no pledge, no task due yet) are skipped,
+    // not counted as 0 — 0 is a perfect score here, not an absent one.
+    const avg = xs => {
+      const v = xs.filter(x => x != null);
+      return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 10) / 10 : null;
+    };
+    const planOf = {};
+    for (const u of ids) {
+      const ws = mondays.map(m => weeks[u][m]);
+      planOf[u] = { planned: avg(ws.map(w => w.committed)), actual: avg(ws.map(w => w.achieved)) };
+    }
+    const withPlan = rows => rows.map(r => ({ ...r, ...planOf[r.userId] }));
+    res.json({ delegation: withPlan(calc(delRows)), checklist: withPlan(calc(chlRows)) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -3803,6 +3829,63 @@ function scoreFor(total, pending, overdue, revised) {
   overdue = parseInt(overdue)||0; revised = parseInt(revised)||0;
   if (total <= 0) return null;
   return Math.max(-100, Math.round((0 - (pending/total)*100 - (overdue/total)*50 - (revised/total)*25)*10)/10);
+}
+
+// Planned vs achieved, week by week, for several employees in one pass.
+// Employee 360 and MIS both read this so the two pages can never disagree
+// about a week.
+//   committed - what the employee pledged at that Monday's check-in, or null
+//   achieved  - scoreFor over delegation + checklist tasks due that week,
+//               counted only up to `cutoff` so work not due yet is not scored
+// `mondays` must be ascending and consecutive. Every requested user/Monday
+// pair gets an entry, empty or not.
+async function weeklyPlanVsActual(userIds, mondays, cutoff, istToday) {
+  const out = {};
+  for (const u of userIds) {
+    out[u] = {};
+    for (const m of mondays) out[u][m] = { committed: null, achieved: null, total: 0, pending: 0, overdue: 0, revised: 0 };
+  }
+  if (!userIds.length || !mondays.length) return out;
+  const rangeStart = mondays[0];
+  const rangeEnd = addDays(mondays[mondays.length - 1], 6);
+  const scoredEnd = rangeEnd < cutoff ? rangeEnd : cutoff;
+  const uph = userIds.map(() => '?').join(',');
+  const [plans] = await db.query(
+    `SELECT employee_id AS uid, DATE_FORMAT(start_date,'%Y-%m-%d') AS mon, user_committed_score
+       FROM week_plans WHERE employee_id IN (${uph}) AND start_date IN (${mondays.map(() => '?').join(',')})`,
+    [...userIds, ...mondays]);
+  for (const r of plans) {
+    const w = out[r.uid] && out[r.uid][r.mon];
+    if (w) w.committed = r.user_committed_score == null ? null : Number(r.user_committed_score);
+  }
+  // Bucket each task by the Monday of its due date (WEEKDAY: Mon=0).
+  const wkExpr = `DATE_FORMAT(DATE_SUB(due_date, INTERVAL WEEKDAY(due_date) DAY),'%Y-%m-%d')`;
+  // Sequential, not Promise.all: production runs close to max_user_connections.
+  for (const [table, revisedCol] of [
+    ['delegation_tasks', "SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END)"],
+    ['checklist_tasks', '0'],
+  ]) {
+    const [rows] = await db.query(
+      `SELECT assigned_to AS uid, ${wkExpr} AS wk, COUNT(*) AS total,
+         SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
+         ${revisedCol} AS revised,
+         SUM(CASE WHEN status='pending' AND due_date<? THEN 1 ELSE 0 END) AS overdue
+       FROM ${table} WHERE assigned_to IN (${uph}) AND due_date BETWEEN ? AND ?
+       GROUP BY uid, wk`, [istToday, ...userIds, rangeStart, scoredEnd]);
+    for (const r of rows) {
+      const w = out[r.uid] && out[r.uid][r.wk];
+      if (!w) continue;
+      w.total += Number(r.total) || 0;
+      w.pending += Number(r.pending) || 0;
+      w.overdue += Number(r.overdue) || 0;
+      w.revised += Number(r.revised) || 0;
+    }
+  }
+  for (const u of userIds) for (const m of mondays) {
+    const w = out[u][m];
+    w.achieved = scoreFor(w.total, w.pending, w.overdue, w.revised);
+  }
+  return out;
 }
 
 // Aggregates last/this-week numbers for ONE user (the caller).
@@ -7940,45 +8023,11 @@ app.get('/api/compliance/employee/:id', requireAuth, requireComplianceViewer, as
       for (let m = firstMon; m <= to; m = addDays(m, 7)) mondays.push(m);
       // Include one week before the first as the regression baseline.
       const baselineMon = addDays(firstMon, -7);
-      const allMons = [baselineMon, ...mondays];
-      const rangeStart = baselineMon;
-      const rangeEnd = mondays.length ? addDays(mondays[mondays.length - 1], 6) : addDays(baselineMon, 6);
-      // A week still running is scored on the days that have actually passed.
-      // The row keeps its full Mon-Sun label; only what gets counted shrinks.
-      const scoredRangeEnd = rangeEnd < cutoff ? rangeEnd : cutoff;
-      const [planRows] = await db.query(
-        `SELECT DATE_FORMAT(start_date,'%Y-%m-%d') AS mon, user_committed_score
-           FROM week_plans WHERE employee_id=? AND start_date IN (${allMons.map(()=>'?').join(',')})`,
-        [id, ...allMons]);
-      const committedBy = {};
-      for (const r of planRows) committedBy[r.mon] = r.user_committed_score == null ? null : Number(r.user_committed_score);
-      // Achieved score per week — bucket tasks by their Monday (WEEKDAY: Mon=0), 2 grouped queries.
-      const wkExpr = `DATE_FORMAT(DATE_SUB(due_date, INTERVAL WEEKDAY(due_date) DAY),'%Y-%m-%d')`;
-      const [delWk] = await db.query(
-        `SELECT ${wkExpr} AS wk, COUNT(*) AS total,
-          SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
-          SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END) AS revised,
-          SUM(CASE WHEN status='pending' AND due_date<? THEN 1 ELSE 0 END) AS overdue
-         FROM delegation_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ? GROUP BY wk`, [istToday, id, rangeStart, scoredRangeEnd]);
-      const [chlWk] = await db.query(
-        `SELECT ${wkExpr} AS wk, COUNT(*) AS total,
-          SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
-          SUM(CASE WHEN status='pending' AND due_date<? THEN 1 ELSE 0 END) AS overdue
-         FROM checklist_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ? GROUP BY wk`, [istToday, id, rangeStart, scoredRangeEnd]);
-      const agg = {};
-      const bump = (wk, t, p, o, r) => { const a = agg[wk] || (agg[wk] = { total:0, pending:0, overdue:0, revised:0 }); a.total+=t; a.pending+=p; a.overdue+=o; a.revised+=r; };
-      for (const r of delWk) bump(r.wk, N(r.total), N(r.pending), N(r.overdue), N(r.revised));
-      for (const r of chlWk) bump(r.wk, N(r.total), N(r.pending), N(r.overdue), 0);
-      const achievedBy = {};
-      for (const wkMon of allMons) {
-        const a = agg[wkMon];
-        achievedBy[wkMon] = a ? scoreFor(a.total, a.pending, a.overdue, a.revised) : null;
-      }
+      const byWeek = (await weeklyPlanVsActual([id], [baselineMon, ...mondays], cutoff, istToday))[id];
       for (const wkMon of mondays) {
-        const committed = wkMon in committedBy ? committedBy[wkMon] : null;
-        const achieved = achievedBy[wkMon];
-        const prevAchieved = achievedBy[addDays(wkMon, -7)];
-        const wAgg = agg[wkMon] || { total: 0, pending: 0, revised: 0 };
+        const { committed, achieved } = byWeek[wkMon];
+        const prevAchieved = byWeek[addDays(wkMon, -7)].achieved;
+        const wAgg = byWeek[wkMon];
         weekly.push({
           weekStart: wkMon, weekEnd: addDays(wkMon, 6),
           committed, achieved,
