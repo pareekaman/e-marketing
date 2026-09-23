@@ -1645,30 +1645,105 @@ function downloadFile(content, filename) {
   a.click();
 }
 
+// A real CSV reader: a quoted field may hold commas, line breaks and "" for a
+// quote, which is exactly what a spreadsheet writes for a description with a
+// comma in it. Splitting each line on ',' cut such a description into pieces
+// and turned every piece into a task of its own.
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = '', quoted = false;
+  text = text.replace(/^\uFEFF/, '');
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c !== '"') field += c;
+      else if (text[i + 1] === '"') { field += '"'; i++; }
+      else quoted = false;
+    } else if (c === '"') quoted = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); rows.push(row); row = []; field = '';
+    } else field += c;
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows.map(r => r.map(s => s.trim())).filter(r => r.some(Boolean));
+}
+
+// YYYY-MM-DD as the sample file has it, or month-first M/D/YYYY or M/D/YY as a
+// spreadsheet exports it. Anything else is refused rather than guessed: the
+// server stores a date it cannot read as 0000-00-00.
+function csvDate(s) {
+  let m = (s || '').match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/), y, mo, d;
+  if (m) [, y, mo, d] = m;
+  else if ((m = (s || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})$/))) {
+    [, mo, d, y] = m;
+    if (y.length === 2) y = '20' + y;
+  } else return null;
+  const iso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const dt = new Date(iso + 'T00:00:00Z');
+  return !isNaN(dt) && dt.toISOString().slice(0, 10) === iso ? iso : null;
+}
+
 async function uploadCSV() {
   const file = document.getElementById('bulkFile').files[0];
   if (!file) { showToast('Please select a CSV file','error'); return; }
-  const text = await file.text();
-  const lines = text.trim().split('\n').slice(1);
-  if (!lines.length) { showToast('CSV is empty','error'); return; }
-  // Fetch users + clients once
+  const rows = parseCsv(await file.text());
+  if (rows.length < 2) { showToast('CSV is empty','error'); return; }
+  // Columns are found by header name, so a sheet may leave optional columns
+  // out or put them in any order. They used to be read by position, which on a
+  // five-column sheet turned the client name into the task description.
+  const head = rows[0].map(h => h.toLowerCase().replace(/\s+/g, '_'));
+  const missing = ['doer_email', 'due_date', 'description'].filter(n => !head.includes(n));
+  if (missing.length) {
+    appAlert(`The CSV header has no ${missing.join(', ')} column. Download the sample to see the column names.`, 'Cannot read this CSV');
+    return;
+  }
+  const get = (r, name) => { const i = head.indexOf(name); return i < 0 ? '' : (r[i] || ''); };
   const [allUsers, allClients] = await Promise.all([api('/api/users'), api('/api/clients')]);
+  // Spaces are ignored when matching a client, so "E-Marketing (Operation)"
+  // still finds "E-Marketing(Operation)" instead of dropping the row.
+  const clientKey = s => (s || '').toLowerCase().replace(/\s+/g, '');
   const clientByName = {};
-  (allClients || []).forEach(c => { clientByName[c.name.toLowerCase().trim()] = c.id; });
-  let count = 0, skipped = 0;
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const [doer_email,approver_email,due_date,priority,approval,description,remarks,client_name] = line.split(',').map(s=>s.trim());
-    if (!doer_email||!description) { skipped++; continue; }
-    const doer = allUsers.find(u=>u.email===doer_email);
-    if (!doer) { skipped++; continue; }
-    const client_id = client_name ? (clientByName[client_name.toLowerCase()] || null) : null;
-    await api('/api/tasks','POST',{type:'delegation',desc:description,assignedTo:doer.id,approverEmail:approver_email,date:due_date,priority,approval,remarks,client_id});
+  (allClients || []).forEach(c => { clientByName[clientKey(c.name)] = c.id; });
+  const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
+  // A row that cannot be read is left out and reported, never saved half-right.
+  const problems = [];
+  let count = 0;
+  for (let n = 1; n < rows.length; n++) {
+    const r = rows[n];
+    const email = get(r, 'doer_email').toLowerCase();
+    const description = get(r, 'description');
+    const rawDate = get(r, 'due_date');
+    const date = csvDate(rawDate);
+    const priority = get(r, 'priority').toLowerCase() || 'low';
+    const clientName = get(r, 'client_name');
+    const client_id = clientName ? clientByName[clientKey(clientName)] : null;
+    const doer = (allUsers || []).find(u => (u.email || '').toLowerCase() === email);
+    const why = !email ? 'no doer_email'
+      : !doer ? `no user with the email ${email}`
+      : !description ? 'no description'
+      : !date ? `due date "${rawDate}" is not a date — use YYYY-MM-DD or MM/DD/YYYY`
+      : !PRIORITIES.includes(priority) ? `priority "${priority}" should be low, medium, high or urgent`
+      : (clientName && !client_id) ? `no client named "${clientName}"`
+      : '';
+    // Row numbers as the spreadsheet shows them: the header is row 1.
+    if (why) { problems.push(`Row ${n + 1}: ${why}`); continue; }
+    const res = await api('/api/tasks', 'POST', {
+      type: 'delegation', desc: description, assignedTo: doer.id,
+      approverEmail: get(r, 'approver_email'), date, priority,
+      approval: get(r, 'approval').toLowerCase() === 'yes' ? 'yes' : 'no',
+      remarks: get(r, 'remarks'), client_id
+    });
+    if (res && res.error) { problems.push(`Row ${n + 1}: ${res.error}`); continue; }
     count++;
   }
-  showToast(`✅ ${count} tasks uploaded! ${skipped?`(${skipped} skipped)`:''}`);
-  closeModal('delegateModal');
-  loadDashboard(true);
+  if (count) { closeModal('delegateModal'); loadDashboard(true); }
+  if (problems.length) {
+    appAlert(`${count} task${count === 1 ? '' : 's'} created. ${problems.length} row${problems.length === 1 ? ' was' : 's were'} not:\n\n${problems.join('\n')}`, 'Bulk upload');
+  } else {
+    showToast(`✅ ${count} tasks uploaded!`);
+  }
 }
 
 async function uploadCSVC() {
