@@ -908,7 +908,7 @@ function renderDashTable(tasks, type) {
     return `<tr onclick="window._dashTaskMap[${t.id}]&&openTaskDetail(window._dashTaskMap[${t.id}])" style="cursor:pointer" title="Click to view details">
       <td style="white-space:nowrap">${typeBadge(t)}</td>
       <td style="max-width:240px;word-break:break-word">${esc(t.description||t.desc)}</td>
-      <td>${(isAdmin||isPC)?t.assignedToName:t.assignedByName}</td>
+      <td>${esc((isAdmin||isPC)?t.assignedToName:t.assignedByName)}</td>
       <td>${awaitingDate
             ? `<span style="font-size:10px;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fde68a;white-space:nowrap">🗓 Awaiting date</span>`
               // The doer's answer to "why not yet" belongs in the column that is

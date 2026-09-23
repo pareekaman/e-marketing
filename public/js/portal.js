@@ -303,7 +303,7 @@ async function cpOpenDelegate() {
   // Populate the handler dropdown with ALL of this client's handlers, so the
   // client can pick which one to send the task to. Defaults to the primary.
   const sel = document.getElementById('cpDelHandler');
-  sel.innerHTML = `<option value="${_cpMe.handler_id}">${(_cpMe.handler_name || 'Handler')}</option>`;
+  sel.innerHTML = `<option value="${_cpMe.handler_id}">${esc(_cpMe.handler_name || 'Handler')}</option>`;
   try {
     const r = await api('/api/client-portal/handlers');
     const handlers = (r && Array.isArray(r.handlers)) ? r.handlers : [];
