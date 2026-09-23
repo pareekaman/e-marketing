@@ -7483,18 +7483,10 @@ app.get('/api/feedback', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Delete a feedback entry (admin/pc only).
-app.delete('/api/feedback/:id', requireAuth, async (req, res) => {
-  try {
-    if (!['admin','pc'].includes(req.session.role)) return res.status(403).json({ error: 'Access denied' });
-    const [doomed] = await db.query('SELECT * FROM client_feedback WHERE id=?', [parseInt(req.params.id)]);
-    await archiveDeleted('client_feedback', doomed, req, {
-      summary: r => `Feedback (${r.rating ?? '?'}★): ${r.description || ''}`,
-    });
-    await db.query('DELETE FROM client_feedback WHERE id=?', [parseInt(req.params.id)]);
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
+// There is deliberately no staff route for deleting feedback. It is the
+// client's own word about the team, so only the client who gave it may take it
+// back (DELETE /api/client-portal/feedback/:id below). A staff delete existed
+// until 2026-09-23 and let admin/PC remove an escalation about themselves.
 
 // Client: get own feedback history.
 app.get('/api/client-portal/feedback', requireAuth, async (req, res) => {

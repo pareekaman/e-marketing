@@ -488,7 +488,6 @@ async function loadFeedbackAdmin() {
                 <div style="font-size:20px;color:${ratingColor(f.rating)};letter-spacing:1px">${stars(f.rating)}</div>
                 <div style="font-size:11px;color:#94a3b8;margin-top:2px">${f.rating}/5</div>
               </div>
-              <button onclick="deleteFeedback(${f.id})" title="Delete" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:16px;padding:2px 5px;border-radius:6px;line-height:1;transition:color .15s,background .15s" onmouseover="this.style.color='#dc2626';this.style.background='#fee2e2'" onmouseout="this.style.color='#94a3b8';this.style.background='none'">🗑</button>
             </div>
           </div>
           ${f.description ? `<div style="font-size:13px;color:#374151;background:#f8fafc;border-radius:8px;padding:10px 12px;margin-bottom:12px;line-height:1.5">"${dtEscape(f.description)}"</div>` : ''}
@@ -501,15 +500,6 @@ async function loadFeedbackAdmin() {
   } catch(e) {
     wrap.innerHTML = `<div class="empty" style="color:#dc2626">Failed to load: ${e.message}</div>`;
   }
-}
-
-async function deleteFeedback(id) {
-  if (!await appConfirm('This feedback will be permanently deleted.', 'Delete Feedback?')) return;
-  const r = await api(`/api/feedback/${id}`, 'DELETE');
-  if (r.error) { showToast(r.error, 'error'); return; }
-  const card = document.getElementById(`fb-card-${id}`);
-  if (card) card.remove();
-  showToast('Feedback deleted');
 }
 
 // ══════════════════════════════════════════════════════
