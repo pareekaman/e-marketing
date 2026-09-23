@@ -410,7 +410,7 @@ async function loadApprovals() {
                 <td style="color:#475569">${esc(a.requestedToName||'—')}</td>
                 <td style="color:#475569">${esc(a.clientName||'—')}</td>
                 <td>${esc(a.description||'—')}</td>
-                <td><span class="status-badge ${a.action_type}">${a.action_type==='completed'?'✅ Mark Complete':'🔄 Revision'}</span>${a.action_type==='revised' && a.reviseToDate ? `<div style="font-size:11px;color:#64748b;margin-top:3px">${a.currentDue?fmtDate(a.currentDue)+' → ':''}<b style="color:#9d174d">${fmtDate(a.reviseToDate)}</b></div>` : ''}</td>
+                <td><span class="status-badge ${a.action_type}">${a.action_type==='completed'?'✅ Mark Complete':'🔄 Revision'}</span>${a.action_type==='revised' && a.reviseToDate ? `<div style="font-size:11px;color:#64748b;margin-top:3px">${a.currentDue?fmtDate(a.currentDue)+' → ':''}<b style="color:#9d174d">${fmtDate(a.reviseToDate)}</b></div>` : ''}${a.note ? `<div style="font-size:12px;color:#334155;margin-top:5px;max-width:280px;white-space:pre-wrap;word-break:break-word"><span style="color:#64748b;font-weight:600">Reason:</span> ${esc(a.note)}</div>` : ''}</td>
                 <td style="color:#64748b;font-size:12px">${new Date(a.created_at).toLocaleDateString('en-IN')}</td>
                 <td>
                   <button class="action-btn done" onclick="handleApproval(${a.id},'approved')">Approve</button>
@@ -424,7 +424,7 @@ async function loadApprovals() {
 }
 
 async function approveAllRevises() {
-  if (!await appConfirm('Saare pending revise requests approve kar dein? (proposed dates apply ho jayengi)')) return;
+  if (!await appConfirm('Approve all pending revise requests? The proposed due dates will be applied.')) return;
   const r = await api('/api/approvals/approve-all-revises', 'POST', {});
   if (r.error) { showToast(r.error, 'error'); return; }
   showToast(`✅ ${r.approved||0} revise request approved`);
