@@ -46,7 +46,13 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     const role = req.session.role;
     const isAdmin = role === 'admin';
     const isHod = role === 'hod';
-    const { type, mine } = req.query;
+    const { mine } = req.query;
+    // `type` is written into the SELECT below as a string literal, so it must be
+    // one of the two known values — anything else would be pasted into the SQL.
+    const type = req.query.type || 'delegation';
+    if (type !== 'delegation' && type !== 'checklist') {
+      return res.status(400).json({ error: 'Invalid task type' });
+    }
     const isMine = (mine === '1' || mine === 'true');
     const isClientTasks = (req.query.clients === '1');
     const table = getTable(type || 'delegation');
