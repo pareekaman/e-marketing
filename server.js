@@ -7764,6 +7764,18 @@ app.get('/api/compliance/employee/:id', requireAuth, requireComplianceViewer, as
     const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
     const from = isDate(req.query.from) ? req.query.from : defaultFrom;
     const to   = isDate(req.query.to)   ? req.query.to   : defaultTo;
+    // Everything scored below stops at YESTERDAY. Work that is not due yet is
+    // not a failure: counting it let a task due on Friday drag Tuesday's score
+    // down, and made every score sag at the start of a month and recover on its
+    // own by the end. Today is left out as well, so a score cannot drift during
+    // the day as tasks due today get ticked off. The displayed counts use the
+    // same cutoff — a score you cannot check against the numbers beside it is
+    // worse than a wrong one. IST like the window above, because the database's
+    // own CURDATE() is UTC and would shift this for the first 5.5 hours of every
+    // day. A window that already ends in the past keeps its own end date.
+    const istToday = ist.toISOString().split('T')[0];
+    const cutoff = addDays(istToday, -1);
+    const scoredTo = to < cutoff ? to : cutoff;
 
     const [[user]] = await db.query(
       `SELECT id, name, email, role, COALESCE(department,'—') AS department,
@@ -7779,14 +7791,14 @@ app.get('/api/compliance/employee/:id', requireAuth, requireComplianceViewer, as
         SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending,
         SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
         SUM(CASE WHEN status='revised'   THEN 1 ELSE 0 END) AS revised,
-        SUM(CASE WHEN status='pending' AND due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
-       FROM delegation_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ?`, [id, from, to]);
+        SUM(CASE WHEN status='pending' AND due_date<? THEN 1 ELSE 0 END) AS overdue
+       FROM delegation_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ?`, [istToday, id, from, scoredTo]);
     const [[chl]] = await db.query(
       `SELECT COUNT(*) AS total,
         SUM(CASE WHEN status='pending'   THEN 1 ELSE 0 END) AS pending,
         SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
-        SUM(CASE WHEN status='pending' AND due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
-       FROM checklist_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ?`, [id, from, to]);
+        SUM(CASE WHEN status='pending' AND due_date<? THEN 1 ELSE 0 END) AS overdue
+       FROM checklist_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ?`, [istToday, id, from, scoredTo]);
     const delegation = { total: N(del.total), pending: N(del.pending), completed: N(del.completed), revised: N(del.revised), overdue: N(del.overdue) };
     const checklist  = { total: N(chl.total), pending: N(chl.pending), completed: N(chl.completed), revised: 0, overdue: N(chl.overdue) };
 
@@ -7794,12 +7806,13 @@ app.get('/api/compliance/employee/:id', requireAuth, requireComplianceViewer, as
     const [[dr]] = await db.query(
       `SELECT COUNT(*) AS entries, COALESCE(SUM(duration_min),0) AS minutes,
               COUNT(DISTINCT entry_date) AS days_filled
-       FROM daily_tasks WHERE user_id=? AND entry_date BETWEEN ? AND ?`, [id, from, to]);
+       FROM daily_tasks WHERE user_id=? AND entry_date BETWEEN ? AND ?`, [id, from, scoredTo]);
     const holidaysSet = await loadHolidaysSet();
     let workingDays = 0;
     {
       let cur = new Date(from + 'T00:00:00Z');
-      const endU = new Date(to + 'T00:00:00Z');
+      // Days still to come are not days someone failed to file a report for.
+      const endU = new Date(scoredTo + 'T00:00:00Z');
       let guard = 0;
       while (cur <= endU && guard++ < 1000) {
         const ds = cur.toISOString().split('T')[0];
@@ -7868,11 +7881,11 @@ app.get('/api/compliance/employee/:id', requireAuth, requireComplianceViewer, as
         SUM(CASE WHEN status='scheduled' THEN 1 ELSE 0 END) AS scheduled,
         SUM(CASE WHEN status='done'      THEN 1 ELSE 0 END) AS done,
         SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) AS cancelled
-       FROM meetings WHERE organizer_id=? AND meeting_date BETWEEN ? AND ?`, [id, from, to]);
+       FROM meetings WHERE organizer_id=? AND meeting_date BETWEEN ? AND ?`, [id, from, scoredTo]);
     const [[ma]] = await db.query(
       `SELECT COUNT(DISTINCT m.id) AS total
        FROM meetings m JOIN meeting_attendees mt ON mt.meeting_id=m.id
-       WHERE mt.user_id=? AND m.meeting_date BETWEEN ? AND ?`, [id, from, to]);
+       WHERE mt.user_id=? AND m.meeting_date BETWEEN ? AND ?`, [id, from, scoredTo]);
     const [mtgRecent] = await db.query(
       `SELECT m.id, m.title, m.status,
               DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS meeting_date,
@@ -7930,6 +7943,9 @@ app.get('/api/compliance/employee/:id', requireAuth, requireComplianceViewer, as
       const allMons = [baselineMon, ...mondays];
       const rangeStart = baselineMon;
       const rangeEnd = mondays.length ? addDays(mondays[mondays.length - 1], 6) : addDays(baselineMon, 6);
+      // A week still running is scored on the days that have actually passed.
+      // The row keeps its full Mon-Sun label; only what gets counted shrinks.
+      const scoredRangeEnd = rangeEnd < cutoff ? rangeEnd : cutoff;
       const [planRows] = await db.query(
         `SELECT DATE_FORMAT(start_date,'%Y-%m-%d') AS mon, user_committed_score
            FROM week_plans WHERE employee_id=? AND start_date IN (${allMons.map(()=>'?').join(',')})`,
@@ -7942,13 +7958,13 @@ app.get('/api/compliance/employee/:id', requireAuth, requireComplianceViewer, as
         `SELECT ${wkExpr} AS wk, COUNT(*) AS total,
           SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
           SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END) AS revised,
-          SUM(CASE WHEN status='pending' AND due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
-         FROM delegation_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ? GROUP BY wk`, [id, rangeStart, rangeEnd]);
+          SUM(CASE WHEN status='pending' AND due_date<? THEN 1 ELSE 0 END) AS overdue
+         FROM delegation_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ? GROUP BY wk`, [istToday, id, rangeStart, scoredRangeEnd]);
       const [chlWk] = await db.query(
         `SELECT ${wkExpr} AS wk, COUNT(*) AS total,
           SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
-          SUM(CASE WHEN status='pending' AND due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
-         FROM checklist_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ? GROUP BY wk`, [id, rangeStart, rangeEnd]);
+          SUM(CASE WHEN status='pending' AND due_date<? THEN 1 ELSE 0 END) AS overdue
+         FROM checklist_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ? GROUP BY wk`, [istToday, id, rangeStart, scoredRangeEnd]);
       const agg = {};
       const bump = (wk, t, p, o, r) => { const a = agg[wk] || (agg[wk] = { total:0, pending:0, overdue:0, revised:0 }); a.total+=t; a.pending+=p; a.overdue+=o; a.revised+=r; };
       for (const r of delWk) bump(r.wk, N(r.total), N(r.pending), N(r.overdue), N(r.revised));
