@@ -1157,7 +1157,7 @@ async function openDelegate(prefill = {}) {
   const [users, clients] = await Promise.all([api('/api/users'), api('/api/clients')]);
   // Cache for email lookup in onDelegateApproverChange()
   window._delegateUsers = users || [];
-  const opts = (users || []).map(u=>`<option value="${u.id}" data-email="${dtEscape(u.email||'')}">${u.name}</option>`).join('');
+  const opts = (users || []).map(u=>`<option value="${u.id}" data-email="${dtEscape(u.email||'')}">${esc(u.name)}</option>`).join('');
   document.getElementById('dDoer').innerHTML='<option value="">Select Doer</option>'+opts;
   document.getElementById('dApprover').innerHTML='<option value="">Select Approver</option>'+opts;
   // Client dropdown — pulls from Client Master. The list stays complete on

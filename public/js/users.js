@@ -406,7 +406,7 @@ async function loadApprovals() {
           <tbody>
             ${approvals.map(a => `
               <tr>
-                <td style="font-weight:600">${a.requestedByName}</td>
+                <td style="font-weight:600">${esc(a.requestedByName)}</td>
                 <td style="color:#475569">${esc(a.requestedToName||'—')}</td>
                 <td style="color:#475569">${esc(a.clientName||'—')}</td>
                 <td>${esc(a.description||'—')}</td>
@@ -477,10 +477,10 @@ async function loadWaDelegations() {
             <tr>
               <td style="max-width:220px;font-size:13px">${esc(r.description||'—')}</td>
               <td style="font-weight:600;font-size:13px">
-                ${r.sender_name ? `${r.sender_name}<br>` : ''}
-                <span style="color:#64748b;font-size:11px">${r.sender_phone||'—'}</span>
+                ${r.sender_name ? `${esc(r.sender_name)}<br>` : ''}
+                <span style="color:#64748b;font-size:11px">${esc(r.sender_phone||'—')}</span>
               </td>
-              <td style="font-size:13px">${r.assignedToName||'—'}</td>
+              <td style="font-size:13px">${esc(r.assignedToName||'—')}</td>
               <td style="font-size:12px;color:#64748b">${r.due_date ? fmtDate(r.due_date) : '—'}</td>
               <td><span class="status-badge ${r.priority||'low'}" style="font-size:10px;text-transform:capitalize">${r.priority||'low'}</span></td>
               <td style="font-size:12px;color:#64748b;max-width:150px">${esc(r.remarks||'—')}</td>

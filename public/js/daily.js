@@ -325,9 +325,9 @@ async function loadTransferApprovals() {
         ${transfers.map(t=>`<tr>
           <td style="font-size:12px;max-width:180px">${esc(t.description)}</td>
           <td><span class="status-badge pending" style="font-size:10px">${t.task_type}</span></td>
-          <td style="font-weight:600">${t.fromUserName}</td>
-          <td style="color:#7c3aed;font-weight:600">${t.toUserName}</td>
-          <td style="color:#64748b;font-size:12px">${t.requestedByName}</td>
+          <td style="font-weight:600">${esc(t.fromUserName)}</td>
+          <td style="color:#7c3aed;font-weight:600">${esc(t.toUserName)}</td>
+          <td style="color:#64748b;font-size:12px">${esc(t.requestedByName)}</td>
           <td style="color:#64748b;font-size:12px">${new Date(t.created_at).toLocaleDateString('en-IN')}</td>
           <td>
             <button class="action-btn done" onclick="handleTransfer(${t.id},'approved')">✅ Approve</button>

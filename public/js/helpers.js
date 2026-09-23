@@ -503,7 +503,7 @@ async function openMISDetail(userId, userName) {
   const taskRows = (data.tasks||[]).map(t => `
     <tr>
       <td>${esc(t.description)}</td>
-      <td style="color:#64748b;font-size:12px">${t.assigned_by_name||'—'}</td>
+      <td style="color:#64748b;font-size:12px">${esc(t.assigned_by_name||'—')}</td>
       <td style="white-space:nowrap;font-size:12px">${fmtDate(t.due_date)}</td>
       <td><span class="status-badge ${t.status}">${t.status==='revised'?'Revision Requested':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
       ${t.status==='pending' && t.due_date < new Date().toISOString().split('T')[0]

@@ -111,7 +111,7 @@ function renderRaceTracker(data) {
           <div class="race-track-lane"></div>
           <div class="race-track-finish"></div>
           <div class="race-runner ${runnerClass}" style="left:${pct}%" title="${score > 0 ? '+' : ''}${score.toFixed(1)}%">
-            <span class="race-runner-initials">${initials}</span>
+            <span class="race-runner-initials">${esc(initials)}</span>
             ${car}
           </div>
         </div>
@@ -323,7 +323,7 @@ function showFMSStep(idx) {
 function showFMSStepData(steps, idx) {
   const s = steps[idx];
   if (!s) return;
-  const doerNames = (s.doers||[]).map(d=>d.name).join(', ') || '—';
+  const doerNames = esc((s.doers||[]).map(d=>d.name).join(', ') || '—');
   const extraRowsHtml = s.extraInput==='yes' ? `
     <div style="margin-top:12px">
       <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">Extra Input Rows:</div>
@@ -1410,7 +1410,7 @@ function buildFMSTrain(steps, sheet) {
            title="${isMine ? 'Click to view tasks' : 'Not your step'}">
         <div class="fms-coach-num">Step ${s.step_order}</div>
         <div class="fms-coach-name">${esc(s.step_name)}</div>
-        <div class="fms-coach-doers">👤 ${doerNames}</div>
+        <div class="fms-coach-doers">👤 ${esc(doerNames)}</div>
         ${isMine ? '<div style="font-size:9px;margin-top:4px;opacity:.7">▶ Click to open</div>' : '<div style="font-size:9px;margin-top:4px;opacity:.5">🔒 Not assigned</div>'}
       </div>
       ${i < steps.length - 1 ? '<div class="fms-coach-connector"></div>' : ''}`;
@@ -1500,7 +1500,7 @@ async function loadFMSTaskRows() {
       ${colKeys.map(k => `<td>${row.data[k] || '—'}</td>`).join('')}
       <td>
         <span class="fms-status-badge">⏳ Pending</span>
-        ${row.rowDoerName && r.isAdmin ? `<br><span style="font-size:10px;color:#64748b;margin-top:4px;display:inline-block">→ ${row.rowDoerName}</span>` : ''}
+        ${row.rowDoerName && r.isAdmin ? `<br><span style="font-size:10px;color:#64748b;margin-top:4px;display:inline-block">→ ${esc(row.rowDoerName)}</span>` : ''}
       </td>
     </tr>`).join('');
 
