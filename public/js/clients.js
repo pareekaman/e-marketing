@@ -396,7 +396,7 @@ function cmRenderList(){
       ? c.all_handler_names.split('||')
       : (c.handler_name ? [c.handler_name] : []);
     const handlerLabel = handlerNames.length
-      ? handlerNames.map(n => `<span style="font-size:11px;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:4px">👤 ${dtEscape(n)}</span>`).join('')
+      ? handlerNames.map(n => `<span style="display:inline-block;white-space:nowrap;font-size:11px;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:4px">👤 ${dtEscape(n)}</span>`).join('')
       : `<span style="font-size:11px;color:#94a3b8;background:#f1f5f9;padding:2px 8px;border-radius:10px;font-weight:600">No handler</span>`;
     // Brand name is required on new clients but NULL on every client added
     // before the column existed, so the segment drops out rather than showing
@@ -728,7 +728,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
           </div>
         </div>
       </div>
-      <div style="margin-top:14px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;flex-wrap:wrap">
+      <div class="cm-detail-bar" style="margin-top:14px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;flex-wrap:wrap">
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:10px 14px;border-radius:8px">
           <label style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Range</label>
           <input type="date" id="cmDetailFrom" value="${range.from || ''}" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff;outline:none"/>
@@ -748,7 +748,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
+    <div class="cm-detail-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
       ${statCard('Total Tasks', tasksTotal, '#4f46e5', `${del.total||0} delegation · ${chl.total||0} checklist`)}
       ${statCard('Pending', pendingTotal, '#ef4444', overdueTotal > 0 ? `${overdueTotal} overdue` : 'On track')}
       ${statCard('Completed', completedTotal, '#10b981', `${completionPct}% completion rate`)}

@@ -217,8 +217,25 @@
   .cp-filter-row input,.cp-filter-row select{min-width:0;width:100%;}
 
   /* ── Client Master ── */
-  .cm-add-row{flex-direction:column;align-items:stretch;width:100%;}
+  /* The primary action takes its own line; the secondary ones share the next,
+     instead of three full-width buttons stacked down the screen. */
+  .cm-add-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;}
+  .cm-add-row .cm-btn-primary{grid-column:1 / -1;}
   .cm-add-row input,.cm-add-row .cm-btn-primary,.cm-add-row .cm-btn-ghost{width:100%;}
+  /* A client row becomes two lines: who, then what you can do with it. The
+     action group refuses to shrink, so on one line it took ~290px of a phone
+     and left the client's name 0px wide. The arrow goes — the row is the tap
+     target. Handler chips wrap onto several lines, hence the line-height. */
+  .cm-client-row{flex-wrap:wrap;row-gap:10px;padding:12px;}
+  .cm-client-info{flex:1 1 100%;gap:10px;}
+  .cm-client-actions{flex:1 1 100%;justify-content:space-between;}
+  .cm-client-arrow{display:none;}
+  .cm-client-id{line-height:1.9;}
+  /* Detail view. Both carry inline grid styles, hence !important. The range
+     picker and the login box sat side by side and squeezed "No login set"
+     onto three lines; the five stat cards ran one per row down the screen. */
+  .cm-detail-bar{grid-template-columns:1fr !important;}
+  .cm-detail-stats{grid-template-columns:1fr 1fr !important;gap:10px !important;}
   .cm-toolbar{flex-direction:column;align-items:stretch;}
   .cm-search{width:100%;}
   .cm-header{flex-direction:column;align-items:stretch;}
