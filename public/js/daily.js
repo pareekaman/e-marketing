@@ -340,7 +340,15 @@ async function loadTransferApprovals() {
 
 async function handleTransfer(id, action) {
   const note = action === 'rejected' ? prompt('Reason (optional):') : '';
-  await api(`/api/transfers/${id}`,'PUT',{ action, note: note||'' });
+  const r = await api(`/api/transfers/${id}`,'PUT',{ action, note: note||'' });
+  // The server can refuse (already decided, out of date, other department) —
+  // show that, not a success toast for a change that did not happen.
+  if (r && r.error) {
+    showToast(r.error, 'error');
+    loadTransferApprovals();
+    loadTransferBadge();
+    return;
+  }
   showToast(action === 'approved' ? '✅ Transfer approved!' : '❌ Transfer rejected!');
   loadTransferApprovals();
   loadTransferBadge();

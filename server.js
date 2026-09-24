@@ -3720,11 +3720,26 @@ app.put('/api/transfers/:id', requireAuth, requireAdminOrHod, async (req, res) =
       return res.status(409).json({ error: `This transfer was already ${tr.status}` });
     }
 
-    await db.query('UPDATE task_transfers SET status=?, note=? WHERE id=?', [action, note||'', req.params.id]);
+    // The check above is a read; the conditional write is what makes the decision
+    // one-time when two people act at the same moment.
+    const [claim] = await db.query(
+      `UPDATE task_transfers SET status=?, note=? WHERE id=? AND status='pending'`, [action, note||'', req.params.id]);
+    if (!claim.affectedRows) return res.status(409).json({ error: 'This transfer was already decided' });
 
     if (action === 'approved') {
       const table = getTable(tr.task_type);
-      await db.query(`UPDATE ${table} SET assigned_to=? WHERE id=?`, [tr.to_user, tr.task_id]);
+      // Move the task only if it is still with the person who asked to hand it
+      // over. If it was reassigned (or deleted) since, approving this old request
+      // would silently take it away from whoever holds it now — so the transfer
+      // goes back to pending and the approver is told to reject it instead.
+      const [moved] = await db.query(
+        `UPDATE ${table} SET assigned_to=? WHERE id=? AND assigned_to=?`, [tr.to_user, tr.task_id, tr.from_user]);
+      if (!moved.affectedRows) {
+        await db.query(`UPDATE task_transfers SET status='pending', note=? WHERE id=?`, [tr.note || '', req.params.id]);
+        return res.status(409).json({
+          error: 'This task is no longer with the person who asked to transfer it — the request is out of date. Reject it instead.'
+        });
+      }
       // The one change that moves a task to a different person, and until now
       // it left nothing behind: "my task went to someone else" was unanswerable.
       const [names] = await db.query('SELECT id, name FROM users WHERE id IN (?,?)', [tr.from_user, tr.to_user]);
