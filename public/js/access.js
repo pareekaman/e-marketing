@@ -79,9 +79,12 @@ const PERM_TREE = [
   { page: 'fms',          label: 'FMS Admin',      icon: '📋', enforced: false, actions: [
     { key: 'edit_fms', label: 'Edit' },
   ]},
+  // Admin adds what the admin role gets here: every FMS sheet, every step and
+  // every row regardless of doer, and marking any step done.
   { page: 'fms-tasks',    label: 'FMS Tasks',      icon: '📝', enforced: false,
     note: 'Also shows automatically for anyone assigned as an FMS doer, even on No Access',
-    actions: [{ key: 'edit_fms_tasks', label: 'Edit' }] },
+    actions: [{ key: 'edit_fms_tasks', label: 'Edit' }],
+    adminActions: [{ key: 'admin_fms_tasks', label: 'Every FMS, every step' }] },
   { page: 'daily',        label: 'Daily Task',     icon: '📅', enforced: true, actions: [
     { key: 'create_task',      label: 'Delegate' },
     { key: 'create_checklist', label: 'Checklist' },

@@ -12,6 +12,7 @@ module.exports = function registerFmsRoutes(app, deps) {
     db,
     requireAuth,
     requireAdmin,
+    userCanDo,
     archiveDeleted,
     colToIdx,
     idxToCol,
@@ -244,7 +245,10 @@ app.get('/api/fms/:id/sync', requireAuth, requireAdmin, async (req, res) => {
 app.get('/api/fms-tasks', requireAuth, async (req, res) => {
   try {
     const uid = req.session.userId;
-    const isAdmin = req.session.role === 'admin';
+    // Admin here means the role, or FMS Tasks at the "Admin" level in Access
+    // Control (admin_fms_tasks) — userCanDo says yes to every admin. The same
+    // test opens every sheet, every step and every row in the routes below.
+    const isAdmin = await userCanDo(req.session, 'admin_fms_tasks');
     let list;
     if (isAdmin) {
       [list] = await db.query('SELECT * FROM fms_sheets ORDER BY created_at DESC');
@@ -299,7 +303,7 @@ async function expandDropdownUserTokens(optionsStr) {
 app.get('/api/fms-tasks/:id', requireAuth, async (req, res) => {
   try {
     const uid = req.session.userId;
-    const isAdmin = req.session.role === 'admin';
+    const isAdmin = await userCanDo(req.session, 'admin_fms_tasks');
     const [sheets] = await db.query('SELECT * FROM fms_sheets WHERE id=?', [req.params.id]);
     if (!sheets[0]) return res.status(404).json({ error: 'FMS not found' });
     const [steps] = await db.query('SELECT * FROM fms_steps WHERE fms_id=? ORDER BY step_order ASC', [req.params.id]);
@@ -322,7 +326,7 @@ app.get('/api/fms-tasks/:id', requireAuth, async (req, res) => {
 // Get pending rows for a step (plan filled, actual empty)
 app.get('/api/fms-tasks/:fmsId/steps/:stepId/rows', requireAuth, async (req, res) => {
   try {
-    const isAdmin = req.session.role === 'admin';
+    const isAdmin = await userCanDo(req.session, 'admin_fms_tasks');
     const [sheets] = await db.query('SELECT * FROM fms_sheets WHERE id=?', [req.params.fmsId]);
     if (!sheets[0]) return res.status(404).json({ error: 'FMS not found' });
     const sheet = sheets[0];
@@ -439,7 +443,7 @@ app.post('/api/fms-tasks/:fmsId/steps/:stepId/done', requireAuth, async (req, re
     // A step with NO doer rows stays open to everyone, exactly as today. Closing
     // that case would silently make such steps admin-only, and steps are
     // configured in the FMS Admin screen where leaving doers empty is allowed.
-    if (req.session.role !== 'admin') {
+    if (!(await userCanDo(req.session, 'admin_fms_tasks'))) {
       const [[doers]] = await db.query(
         'SELECT COUNT(*) AS total, SUM(user_id = ?) AS mine FROM fms_step_doers WHERE step_id = ?',
         [req.session.userId, step.id]);
