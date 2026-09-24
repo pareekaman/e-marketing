@@ -113,9 +113,13 @@ const PERM_TREE = [
   ], adminActions: [
     { key: 'admin_inventory', label: 'Delete & retire' },
   ]},
+  // Admin adds deleting a candidate, which was admin-only and stays so for
+  // everyone until someone is given this level.
   { page: 'hrm',          label: 'HR Portal',      icon: '👥', enforced: true, actions: [
     { key: 'hrm_schedule',      label: 'Schedule' },
     { key: 'hrm_update_status', label: 'Status' },
+  ], adminActions: [
+    { key: 'admin_hrm', label: 'Delete candidates' },
   ]},
   { page: 'dms',          label: 'DMS',            icon: '🗂️', enforced: false, actions: [
     { key: 'edit_dms', label: 'Edit' },

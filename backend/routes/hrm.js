@@ -1062,8 +1062,10 @@ app.put('/api/hrm/candidates/:id', requireAuth, async (req, res) => {
 });
 
 // Delete a candidate. Archived to deleted_records first (recoverable), never a
-// bare hard delete. Admin only.
-app.delete('/api/hrm/candidates/:id', requireAuth, requireAdmin, async (req, res) => {
+// bare hard delete. Admins, or anyone given HR Portal at the "Admin" level in
+// Access Control (admin_hrm) — userCanDo already answers yes for every admin.
+app.delete('/api/hrm/candidates/:id', requireAuth, async (req, res) => {
+  if (!(await userCanDo(req.session, 'admin_hrm'))) return res.status(403).json({ error: 'Admin only' });
   try {
     const id = parseInt(req.params.id, 10);
     const [[row]] = await db.query('SELECT * FROM hrm_candidates WHERE id=?', [id]);

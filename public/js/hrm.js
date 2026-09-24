@@ -133,7 +133,7 @@ function renderHrmRows(list) {
             ${joiningCell}
             <button class="hrm-ico" title="View details" onclick="openHrmDetailsModal(${c.id})">👁️</button>
             ${canDo('hrm_schedule') ? `<button class="hrm-ico hrm-ico-edit" title="Edit candidate" onclick="openHrmEditModal(${c.id})">✏️</button>` : ''}
-            ${ME.role === 'admin' ? `<button class="hrm-ico hrm-ico-del" title="Delete candidate" onclick="hrmDeleteCandidate(${c.id})">🗑️</button>` : ''}
+            ${canDo('admin_hrm') ? `<button class="hrm-ico hrm-ico-del" title="Delete candidate" onclick="hrmDeleteCandidate(${c.id})">🗑️</button>` : ''}
           </div>
         </div>
       </td>
