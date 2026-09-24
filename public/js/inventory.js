@@ -147,7 +147,11 @@ function invCard(item, isAdmin) {
     if (item.handover_status === 'pending_handover' && item.assignment_id) {
       actions += `<button class="action-btn done" onclick="openInvReturnModal(${item.assignment_id},${jsArg(item.name)},${jsArg(item.return_reason||'')})">Mark Returned</button>`;
     }
-    actions += `<button class="action-btn delete" onclick="deleteInvItem(${item.id})">Delete</button>`;
+    // Deleting needs the page's Admin level, not Editor — the route checks
+    // admin_inventory, so drawing it for every editor only produced a 403.
+    if (canDo('admin_inventory')) {
+      actions += `<button class="action-btn delete" onclick="deleteInvItem(${item.id})">Delete</button>`;
+    }
   } else if (_invTab === 'mine' && item.handover_status === 'active' && item.assignment_id) {
     // The holder can only raise the intent to give it back — confirming actual
     // receipt stays with the custodian, so no Mark Returned here. Once it is
