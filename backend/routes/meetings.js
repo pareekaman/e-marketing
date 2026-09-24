@@ -15,6 +15,7 @@ module.exports = function registerMeetingRoutes(app, deps) {
   const {
     db,
     requireAuth,
+    userCanDo,
     buildMeetingSlots,
     createGoogleMeetLink,
     sendMeetingNotification,
@@ -222,8 +223,9 @@ app.put('/api/meetings/:id', requireAuth, async (req, res) => {
     const { title, agenda, client_id, meeting_date, start_time, end_time, meet_link, attendee_ids } = req.body;
     const [[existing]] = await db.query('SELECT organizer_id, meeting_date, start_time, end_time FROM meetings WHERE id=?', [id]);
     if (!existing) return res.status(404).json({ error: 'not found' });
-    // Only organizer or admin can edit.
-    if (existing.organizer_id !== req.session.userId && req.session.role !== 'admin') {
+    // Only the organizer, or an admin — the role, or Scheduler at the "Admin"
+    // level in Access Control (admin_meetings); userCanDo says yes to every admin.
+    if (existing.organizer_id !== req.session.userId && !(await userCanDo(req.session, 'admin_meetings'))) {
       return res.status(403).json({ error: 'only organizer or admin can edit' });
     }
     const rescheduled = (meeting_date && meeting_date !== String(existing.meeting_date).slice(0,10))
@@ -259,7 +261,7 @@ app.put('/api/meetings/:id/status', requireAuth, async (req, res) => {
     if (!['scheduled', 'done', 'cancelled'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
     const [[existing]] = await db.query('SELECT organizer_id FROM meetings WHERE id=?', [id]);
     if (!existing) return res.status(404).json({ error: 'not found' });
-    if (existing.organizer_id !== req.session.userId && req.session.role !== 'admin') {
+    if (existing.organizer_id !== req.session.userId && !(await userCanDo(req.session, 'admin_meetings'))) {
       return res.status(403).json({ error: 'only organizer or admin can change status' });
     }
     await db.query('UPDATE meetings SET status=? WHERE id=?', [status, id]);
@@ -279,7 +281,7 @@ app.delete('/api/meetings/:id', requireAuth, async (req, res) => {
               DATE_FORMAT(meeting_date,'%Y-%m-%d') AS meeting_date
        FROM meetings WHERE id=?`, [id]);
     if (!existing) return res.status(404).json({ error: 'not found' });
-    if (existing.organizer_id !== req.session.userId && req.session.role !== 'admin') {
+    if (existing.organizer_id !== req.session.userId && !(await userCanDo(req.session, 'admin_meetings'))) {
       return res.status(403).json({ error: 'only organizer or admin can cancel' });
     }
     let cancelled = 1;

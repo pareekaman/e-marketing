@@ -97,8 +97,13 @@ const PERM_TREE = [
   { page: 'leaves',       label: 'Leave Tracker',  icon: '🏖️', enforced: false, actions: [
     { key: 'delete_leave', label: 'Delete' },
   ]},
+  // Admin adds editing, completing and cancelling a meeting somebody else
+  // organised — organiser-or-admin before. It reaches only meetings the person
+  // can see at all, i.e. ones they were invited to.
   { page: 'meetings',     label: 'Scheduler',      icon: '📆', enforced: false, actions: [
     { key: 'edit_meetings', label: 'Edit' },
+  ], adminActions: [
+    { key: 'admin_meetings', label: 'Edit & cancel any meeting' },
   ]},
   // enforced:true — the server really asks for these now. Reads check
   // userCanSee('inventory'), writes userCanDo('edit_inventory'). Deleting an

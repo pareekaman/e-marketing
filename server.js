@@ -3324,7 +3324,7 @@ const VALID_UP_ACTIONS = new Set(['edit_task','delete_task','create_task','creat
   // with nothing behind it puts a choice in the panel that cannot do anything,
   // which is the trap the Race Tracker row had to be marked grantable:false to
   // undo.
-  'admin_inventory', 'admin_hrm']);
+  'admin_inventory', 'admin_hrm', 'admin_meetings']);
 
 // ── Server-side mirror of the frontend's canSee() / canDo() ──────────────
 // Until this existed, `user_permissions` was write-only as far as the API was
@@ -9191,6 +9191,7 @@ async function sendMeetingNotification(meetingId, action) {
 require('./backend/routes/meetings')(app, {
   db,
   requireAuth,
+  userCanDo,
   buildMeetingSlots,
   createGoogleMeetLink,
   sendMeetingNotification,
