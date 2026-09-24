@@ -8598,14 +8598,24 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
                        apInfo?.department === myInfo.department;
       if (!samedept) return res.status(403).json({ error: 'Not authorized to act on this request' });
     }
+    // The admin pass above would otherwise let an admin approve their own leave
+    // (or Extra Working, which is paid time). The approvals list never offers a
+    // person their own request; this closes the direct-API route to it.
+    if (action === 'approve' && Number(lr.user_id) === Number(uid)) {
+      return res.status(403).json({ error: 'You cannot approve your own request' });
+    }
 
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
-    await db.query(
+    // `AND status='pending'`: the check near the top is a read, so two approvers
+    // (or a double click) could both pass it. Only the first write lands; the
+    // second gets "Already decided" and sends no second email.
+    const [upd] = await db.query(
       `UPDATE leave_requests
          SET status=?, approver_id=?, approver_note=?, decided_at=NOW()
-       WHERE id=?`,
+       WHERE id=? AND status='pending'`,
       [newStatus, uid, (note || '').trim() || null, id]
     );
+    if (!upd.affectedRows) return res.status(409).json({ error: 'Already decided' });
 
     // Notify requester — email + WhatsApp
     const typeLabel = ({full_day:'Full Day Leave',half_day:'Half Day Leave',work_from_home:'Work From Home',extra_working:'Extra Working'})[lr.leave_type];
