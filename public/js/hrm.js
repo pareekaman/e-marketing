@@ -110,7 +110,7 @@ function renderHrmRows(list) {
         <div class="hrm-act">
           <div class="hrm-act-verbs">
             ${canUpdate ? `<button class="hrm-btn hrm-btn-update" onclick="openHrmStatusModal(${c.id})">Update</button>` : '<span class="hrm-closed">Closed</span>'}
-            ${(c.status === 'Selected' || c.status === 'Offer Sent' || c.status === 'Offer Letter Sent')
+            ${canDo('hrm_update_status')
               ? `<button class="hrm-btn hrm-btn-email" onclick="openEmailModal(${c.id})">📧 Email</button>`
               : ''}
           </div>
