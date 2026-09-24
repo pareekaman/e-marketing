@@ -94,8 +94,12 @@ const PERM_TREE = [
   { page: 'dailyreports', label: 'Daily Reports',  icon: '📈', enforced: false, grantable: false, locked: true,
     note: 'Admin only by design (every endpoint behind it is admin-gated) — not grantable here',
     actions: [{ key: 'edit_dailyreports', label: 'Edit' }] },
+  // Admin adds the whole team's leaves, deleting any leave (approved ones too)
+  // and deciding any pending one — what the admin role gets on this page.
   { page: 'leaves',       label: 'Leave Tracker',  icon: '🏖️', enforced: false, actions: [
     { key: 'delete_leave', label: 'Delete' },
+  ], adminActions: [
+    { key: 'admin_leaves', label: 'All leaves, delete & decide any' },
   ]},
   // Admin adds editing, completing and cancelling a meeting somebody else
   // organised — organiser-or-admin before. It reaches only meetings the person

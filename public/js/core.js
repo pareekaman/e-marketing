@@ -287,7 +287,7 @@ async function init() {
     }
 
     // Leave Tracker — team tab for roles with leave oversight
-    if (canSee('leaves') && (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc' || ME.canViewAllLeaves)) {
+    if (canSee('leaves') && (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc' || ME.canViewAllLeaves || canDo('admin_leaves'))) {
       const tTeam = document.getElementById('lvTabTeam');
       if (tTeam) tTeam.style.display = 'flex';
     }

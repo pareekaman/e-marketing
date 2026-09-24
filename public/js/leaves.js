@@ -59,7 +59,7 @@ async function loadLeaves(){
 }
 
 function lvCanFilterTeam() {
-  return ME && (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc' || ME.canViewAllLeaves);
+  return ME && (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc' || ME.canViewAllLeaves || canDo('admin_leaves'));
 }
 
 function lvSyncTeamFilters() {
@@ -279,7 +279,7 @@ function lvItemHtml(r) {
   }).join(' · ');
   const countLabel = dates.length > 1
     ? `<span style="color:#94a3b8;font-weight:500"> · ${dates.length} day${dates.length===1?'':'s'}</span>` : '';
-  const canDelete = (r.user_id === ME.id && r.status === 'pending') || ME.role === 'admin';
+  const canDelete = (r.user_id === ME.id && r.status === 'pending') || canDo('admin_leaves');
   return `<div class="lv-item">
     <div class="lv-item-main">
       <div class="lv-item-row1">

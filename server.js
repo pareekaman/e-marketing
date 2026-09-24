@@ -3324,7 +3324,7 @@ const VALID_UP_ACTIONS = new Set(['edit_task','delete_task','create_task','creat
   // with nothing behind it puts a choice in the panel that cannot do anything,
   // which is the trap the Race Tracker row had to be marked grantable:false to
   // undo.
-  'admin_inventory', 'admin_hrm', 'admin_meetings']);
+  'admin_inventory', 'admin_hrm', 'admin_meetings', 'admin_leaves']);
 
 // ── Server-side mirror of the frontend's canSee() / canDo() ──────────────
 // Until this existed, `user_permissions` was write-only as far as the API was
@@ -8347,7 +8347,9 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
     } else if (scope === 'team') {
       // Pull current user once so we can apply leave-viewer override and HOD dept-scoping.
       const [[me]] = await db.query('SELECT name, role, department, extra_access FROM users WHERE id=?', [uid]);
-      if (role === 'admin' || isLeaveReportViewer(me)) {
+      // Everyone: admins, the leave-report viewers, and anyone given Leave
+      // Tracker at the "Admin" level in Access Control (admin_leaves).
+      if (role === 'admin' || isLeaveReportViewer(me) || await userCanDo(req.session, 'admin_leaves')) {
         // no filter — all
       } else if (role === 'hod') {
         if (me?.department) {
@@ -8658,9 +8660,9 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
     if (lr.status !== 'pending') return res.status(400).json({ error: 'Already decided' });
 
     const uid = req.session.userId;
-    const role = req.session.role;
-    // Allow: admin always, assigned approver, OR any HOD in same department as the assigned approver
-    if (lr.approver_id !== uid && role !== 'admin') {
+    // Allow: admin always (the role, or Leave Tracker at "Admin" — admin_leaves),
+    // assigned approver, OR any HOD in same department as the assigned approver
+    if (lr.approver_id !== uid && !(await userCanDo(req.session, 'admin_leaves'))) {
       const [[myInfo]] = await db.query(
         'SELECT department, COALESCE(user_role, role) AS user_role FROM users WHERE id=?', [uid]);
       const [[apInfo]] = await db.query(
@@ -8724,16 +8726,16 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Delete own pending leave (or admin force-delete)
+// Delete own pending leave, or force-delete any leave as an admin (the role, or
+// Leave Tracker at "Admin" — admin_leaves).
 app.delete('/api/leaves/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const uid = req.session.userId;
-    const role = req.session.role;
     const [rows] = await db.query('SELECT * FROM leave_requests WHERE id=?', [id]);
     const lr = rows[0];
     if (!lr) return res.status(404).json({ error: 'Not found' });
-    if (role !== 'admin' && (lr.user_id !== uid || lr.status !== 'pending')) {
+    if ((lr.user_id !== uid || lr.status !== 'pending') && !(await userCanDo(req.session, 'admin_leaves'))) {
       return res.status(403).json({ error: 'Cannot delete this request' });
     }
     await archiveDeleted('leave_requests', lr, req, {
