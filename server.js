@@ -2172,6 +2172,10 @@ app.get('/api/approvals/count', requireAuth, async (req, res) => {
 app.put('/api/approvals/:id', requireAuth, async (req, res) => {
   try {
     const { action, note } = req.body;
+    // Anything else used to be written into task_approvals.status as-is, and the
+    // "rejected" branch below then cleared the task's waiting flag — so a bad
+    // value made the request silently vanish.
+    if (action !== 'approved' && action !== 'rejected') return res.status(400).json({ error: 'Invalid action' });
     const role = req.session.role;
     const [rows] = await db.query(`SELECT *, DATE_FORMAT(new_date,'%Y-%m-%d') AS new_date_fmt FROM task_approvals WHERE id=?`, [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Approval not found' });
@@ -2191,25 +2195,37 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
         });
       }
     }
-    await db.query('UPDATE task_approvals SET status=?,note=? WHERE id=?', [action, note||'', req.params.id]);
+    // Claim the request first, and only while it is still pending: a double
+    // click, a second approver, or a rejected revise approved later from a stale
+    // screen must not touch the task (that last one would push the due date).
+    const [claim] = await db.query(
+      `UPDATE task_approvals SET status=?,note=? WHERE id=? AND status='pending'`, [action, note||'', req.params.id]);
+    if (!claim.affectedRows) return res.status(409).json({ error: 'This request has already been decided' });
     const table = getTable(appr.task_type);
-    if (action === 'approved') {
-      // Revise approved → push the held new date now. Other actions just set status.
-      if (appr.action_type === 'revised' && appr.new_date_fmt) {
-        await db.query(`UPDATE ${table} SET status='pending',waiting_approval=0,due_date=? WHERE id=?`, [appr.new_date_fmt, appr.task_id]);
-      } else if (appr.action_type === 'revised') {
-        await db.query(`UPDATE ${table} SET status='pending',waiting_approval=0 WHERE id=?`, [appr.task_id]);
-      } else if (appr.task_type === 'delegation') {
-        // Stamp completed_at here too — approving a completion is the moment
-        // the task actually closes.
-        await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,completed_at=IF(?='completed',NOW(),NULL) WHERE id=?`,
-          [appr.action_type, appr.action_type, appr.task_id]);
+    try {
+      if (action === 'approved') {
+        // Revise approved → push the held new date now. Other actions just set status.
+        if (appr.action_type === 'revised' && appr.new_date_fmt) {
+          await db.query(`UPDATE ${table} SET status='pending',waiting_approval=0,due_date=? WHERE id=?`, [appr.new_date_fmt, appr.task_id]);
+        } else if (appr.action_type === 'revised') {
+          await db.query(`UPDATE ${table} SET status='pending',waiting_approval=0 WHERE id=?`, [appr.task_id]);
+        } else if (appr.task_type === 'delegation') {
+          // Stamp completed_at here too — approving a completion is the moment
+          // the task actually closes.
+          await db.query(`UPDATE ${table} SET status=?,waiting_approval=0,completed_at=IF(?='completed',NOW(),NULL) WHERE id=?`,
+            [appr.action_type, appr.action_type, appr.task_id]);
+        } else {
+          await db.query(`UPDATE ${table} SET status=?,waiting_approval=0 WHERE id=?`, [appr.action_type, appr.task_id]);
+        }
       } else {
-        await db.query(`UPDATE ${table} SET status=?,waiting_approval=0 WHERE id=?`, [appr.action_type, appr.task_id]);
+        // Rejected → drop the waiting flag; due_date and status stay unchanged.
+        await db.query(`UPDATE ${table} SET waiting_approval=0 WHERE id=?`, [appr.task_id]);
       }
-    } else {
-      // Rejected → drop the waiting flag; due_date and status stay unchanged.
-      await db.query(`UPDATE ${table} SET waiting_approval=0 WHERE id=?`, [appr.task_id]);
+    } catch (taskErr) {
+      // The task write failed after the claim — put the request back to pending
+      // so it can be decided again, rather than leave it decided on paper only.
+      await db.query(`UPDATE task_approvals SET status='pending',note=? WHERE id=?`, [appr.note || '', req.params.id]).catch(() => {});
+      throw taskErr;
     }
     logTaskActivity({
       taskId: appr.task_id, taskType: appr.task_type,
@@ -2235,16 +2251,24 @@ app.post('/api/approvals/approve-all-revises', requireAuth, requireAdminOrPC, as
       // back to pending by this bulk sweep — that would look exactly like "my
       // finished task came back". Clear the stale request and leave the task alone.
       const [[cur]] = await db.query(`SELECT status FROM ${table} WHERE id=?`, [a.task_id]);
-      if (!cur) { await db.query(`UPDATE task_approvals SET status='approved' WHERE id=?`, [a.id]); continue; }
+      // Every write below is conditional on the request still being pending, so
+      // a single approve/reject landing during the sweep is never overridden.
+      if (!cur) { await db.query(`UPDATE task_approvals SET status='approved' WHERE id=? AND status='pending'`, [a.id]); continue; }
       if (cur.status === 'completed') {
-        await db.query(`UPDATE task_approvals SET status='approved', note=CONCAT(COALESCE(note,''),' [skipped — task already completed]') WHERE id=?`, [a.id]);
-        logTaskActivity({ taskId: a.task_id, taskType: a.task_type, oldStatus: 'completed', newStatus: 'completed',
+        const [skip] = await db.query(`UPDATE task_approvals SET status='approved', note=CONCAT(COALESCE(note,''),' [skipped — task already completed]') WHERE id=? AND status='pending'`, [a.id]);
+        if (skip.affectedRows) logTaskActivity({ taskId: a.task_id, taskType: a.task_type, oldStatus: 'completed', newStatus: 'completed',
           changedBy: req.session.userId, source: 'bulk-revise-skipped', note: 'stale revise cleared, task left completed' });
         continue;
       }
-      if (a.nd) await db.query(`UPDATE ${table} SET status='pending', waiting_approval=0, due_date=? WHERE id=?`, [a.nd, a.task_id]);
-      else      await db.query(`UPDATE ${table} SET status='pending', waiting_approval=0 WHERE id=?`, [a.task_id]);
-      await db.query(`UPDATE task_approvals SET status='approved' WHERE id=?`, [a.id]);
+      const [claim] = await db.query(`UPDATE task_approvals SET status='approved' WHERE id=? AND status='pending'`, [a.id]);
+      if (!claim.affectedRows) continue;
+      try {
+        if (a.nd) await db.query(`UPDATE ${table} SET status='pending', waiting_approval=0, due_date=? WHERE id=?`, [a.nd, a.task_id]);
+        else      await db.query(`UPDATE ${table} SET status='pending', waiting_approval=0 WHERE id=?`, [a.task_id]);
+      } catch (taskErr) {
+        await db.query(`UPDATE task_approvals SET status='pending' WHERE id=?`, [a.id]).catch(() => {});
+        throw taskErr;
+      }
       logTaskActivity({ taskId: a.task_id, taskType: a.task_type, oldStatus: cur.status, newStatus: 'pending',
         changedBy: req.session.userId, source: 'bulk-revise-approve', note: a.nd ? `due -> ${a.nd}` : null });
       approved++;
