@@ -426,7 +426,7 @@ function cmRenderList(){
             <span class="cm-switch-track"></span>
             <span class="cm-switch-label">${isOn ? 'Active' : 'Inactive'}</span>
           </span>
-          ${ME.role === 'admin' ? `<button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},'${safeName}')">Remove</button>` : ''}
+          ${ME.role === 'admin' ? `<button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},${jsArg(c.name)})">Remove</button>` : ''}
           <span class="cm-client-arrow">›</span>
         </div>
       </div>`;
@@ -741,7 +741,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
           ${(s.login && s.login.provisioned)
             ? `<span style="font-size:11px;color:#1e40af;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Login</span>
                <span style="font-size:12px;color:#1e293b;font-weight:600">${dtEscape(s.login.email)}</span>
-               <button class="btn btn-outline" style="padding:5px 10px;font-size:11px" onclick="cmOpenLoginModal(${id}, '${dtEscape(s.login.email)}')">Reset</button>`
+               <button class="btn btn-outline" style="padding:5px 10px;font-size:11px" onclick="cmOpenLoginModal(${id}, ${jsArg(s.login.email)})">Reset</button>`
             : `<span style="font-size:11px;color:#1e40af;font-weight:700;text-transform:uppercase;letter-spacing:.4px">No login set</span>
                <button class="btn btn-primary" style="padding:5px 12px;font-size:12px" onclick="cmOpenLoginModal(${id}, '')">＋ Provision</button>`}
         </div>

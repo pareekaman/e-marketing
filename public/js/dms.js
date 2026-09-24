@@ -178,7 +178,7 @@ function dmsRenderDepts(depts, clientId, hasDriveFolder) {
   }
   el.innerHTML = depts.map(d => `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f8fafc;border-radius:8px;margin-bottom:8px">
-      <button onclick="dmsBrowseFolder('${d.drive_folder_id}','${dtEscape(d.department_name)}')"
+      <button onclick="dmsBrowseFolder(${jsArg(d.drive_folder_id)},${jsArg(d.department_name)})"
         style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#334155;padding:0">
         <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
         ${dtEscape(d.department_name)}

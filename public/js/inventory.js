@@ -139,20 +139,20 @@ function invCard(item, isAdmin) {
   let actions = '';
   if (isAdmin) {
     if (item.status === 'available') {
-      actions += `<button class="action-btn edit" onclick="openInvAssignModal(${item.id},'${esc(item.name)}')">Assign</button>`;
+      actions += `<button class="action-btn edit" onclick="openInvAssignModal(${item.id},${jsArg(item.name)})">Assign</button>`;
     }
     if (item.handover_status === 'active' && item.assignment_id) {
-      actions += `<button class="action-btn revise" onclick="openInvHandoverModal(${item.assignment_id},'${esc(item.name)}','${esc(item.assigned_to_name||'')}')">Handover</button>`;
+      actions += `<button class="action-btn revise" onclick="openInvHandoverModal(${item.assignment_id},${jsArg(item.name)},${jsArg(item.assigned_to_name||'')})">Handover</button>`;
     }
     if (item.handover_status === 'pending_handover' && item.assignment_id) {
-      actions += `<button class="action-btn done" onclick="openInvReturnModal(${item.assignment_id},'${esc(item.name)}','${esc(item.return_reason||'')}')">Mark Returned</button>`;
+      actions += `<button class="action-btn done" onclick="openInvReturnModal(${item.assignment_id},${jsArg(item.name)},${jsArg(item.return_reason||'')})">Mark Returned</button>`;
     }
     actions += `<button class="action-btn delete" onclick="deleteInvItem(${item.id})">Delete</button>`;
   } else if (_invTab === 'mine' && item.handover_status === 'active' && item.assignment_id) {
     // The holder can only raise the intent to give it back — confirming actual
     // receipt stays with the custodian, so no Mark Returned here. Once it is
     // pending, the card shows the badge and no button.
-    actions += `<button class="action-btn revise" onclick="requestInvReturn(${item.assignment_id},'${esc(item.name)}')">Return</button>`;
+    actions += `<button class="action-btn revise" onclick="requestInvReturn(${item.assignment_id},${jsArg(item.name)})">Return</button>`;
   }
 
   return `<div onclick="openInvDetailModal(${item.id})" title="Click for full details"
@@ -224,9 +224,9 @@ function renderAssignmentsTable(el) {
         ? '<span style="color:#94a3b8">Returned</span>'
         : '<span style="color:#10b981">Active</span>') + reasonTag;
     const btnReturn = a.handover_status === 'pending_handover'
-      ? `<button class="action-btn done" onclick="openInvReturnModal(${a.id},'${esc(a.item_name||'')}','${esc(a.return_reason||'')}')">Mark Returned</button>` : '';
+      ? `<button class="action-btn done" onclick="openInvReturnModal(${a.id},${jsArg(a.item_name||'')},${jsArg(a.return_reason||'')})">Mark Returned</button>` : '';
     const btnHandover = a.handover_status === 'active'
-      ? `<button class="action-btn revise" onclick="openInvHandoverModal(${a.id},'${esc(a.item_name||'')}','${esc(a.user_name||'')}')">Handover</button>` : '';
+      ? `<button class="action-btn revise" onclick="openInvHandoverModal(${a.id},${jsArg(a.item_name||'')},${jsArg(a.user_name||'')})">Handover</button>` : '';
     const photo = a.photo
       ? `<img src="${esc(a.photo)}" onclick="viewInvPhoto(${jsArg(a.photo)})"
            style="width:36px;height:36px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #e2e8f0">`

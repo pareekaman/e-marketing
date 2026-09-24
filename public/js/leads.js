@@ -656,7 +656,6 @@ function openEnqDetail(i) {
     const opts = [...ENQ_STATUSES];
     if (!opts.some(o => o.toLowerCase() === curStatus.toLowerCase())) opts.unshift(curStatus);
     const statusOptions = opts.map(o => `<option${o.toLowerCase() === curStatus.toLowerCase() ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('');
-    const eid = escapeHtml(r.enquiry_id || '');
     const remarks = parseRemarks(r.notes);
     const histLabel = `Remark History (${remarks.length})`;
 
@@ -668,7 +667,7 @@ function openEnqDetail(i) {
             <label style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.3px">Status</label>
             <select id="enqEditStatus" style="width:100%;margin-top:4px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;background:var(--card);color:var(--foreground);outline:none">${statusOptions}</select>
           </div>
-          <button class="btn btn-primary" style="height:38px" onclick="saveEnquiryUpdate('${eid}')">💾 Save</button>
+          <button class="btn btn-primary" style="height:38px" onclick="saveEnquiryUpdate(${jsArg(r.enquiry_id || '')})">💾 Save</button>
         </div>
         <div style="margin-top:10px">
           <label style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.3px">Add Remark</label>
@@ -976,14 +975,13 @@ function openMetaLeadDetail(i) {
   const curStatus = (r.lead_status || '').trim() || 'CREATED';
   const opts = [...META_LEAD_STATUSES]; if (!opts.some(o => o.toLowerCase() === curStatus.toLowerCase())) opts.unshift(curStatus);
   const statusOptions = opts.map(o => `<option${o.toLowerCase() === curStatus.toLowerCase() ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('');
-  const lid = escapeHtml(r.id || '');
   const remarks = parseRemarks(r.remark);
   const histLabel = `Remark History (${remarks.length})`;
   const editBlock = `<div style="background:var(--muted);border-radius:10px;padding:12px 14px;margin-bottom:14px">
     <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
       <div style="flex:1;min-width:150px"><label style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.3px">Status</label>
         <select id="mlEditStatus" style="width:100%;margin-top:4px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;background:var(--card);color:var(--foreground);outline:none">${statusOptions}</select></div>
-      <button class="btn btn-primary" style="height:38px" onclick="saveMetaLeadUpdate('${lid}')">💾 Save</button>
+      <button class="btn btn-primary" style="height:38px" onclick="saveMetaLeadUpdate(${jsArg(r.id || '')})">💾 Save</button>
     </div>
     <div style="margin-top:10px"><label style="font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.3px">Add Remark</label>
       <textarea id="mlEditRemark" rows="2" placeholder="Add a note (call result, follow-up, etc.)" style="width:100%;margin-top:4px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;background:var(--card);color:var(--foreground);outline:none;resize:vertical;box-sizing:border-box"></textarea></div>
