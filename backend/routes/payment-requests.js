@@ -290,10 +290,14 @@ app.put('/api/payment-requests/:id', requireAuth, async (req, res) => {
     // without the other leaves the table and the email disagreeing about how
     // much money this is. `reason` arrives already encoded from the client,
     // exactly as it does on create; the column is written from the same number.
-    await db.query(
-      'UPDATE payment_requests SET bank_name=?, card_number=?, amount=?, reason=?, departments=? WHERE id=?',
+    // `AND status='pending'` closes the gap between the check above and this
+    // write: an approval landing in between must not let the numbers change
+    // under a decision that has already been made.
+    const [upd] = await db.query(
+      "UPDATE payment_requests SET bank_name=?, card_number=?, amount=?, reason=?, departments=? WHERE id=? AND status='pending'",
       [bank, card, amt, why, JSON.stringify(departments), id]
     );
+    if (!upd.affectedRows) return res.status(409).json({ error: 'This request was just decided and can no longer be edited' });
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -303,10 +307,22 @@ app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
     if (!(await isPaymentApprover(req.session))) return res.status(403).json({ error:'Access denied' });
     const { status } = req.body;
     if (!['approved','rejected'].includes(status)) return res.status(400).json({ error:'Invalid status' });
-    await db.query(
-      'UPDATE payment_requests SET status=?, reviewed_at=NOW() WHERE id=?',
+    const [[row]] = await db.query(
+      'SELECT submitted_by, bank_name FROM payment_requests WHERE id=?', [req.params.id]);
+    if (!row || row.bank_name === '__system__') return res.status(404).json({ error: 'Payment request not found' });
+    // Nobody approves their own spend — another approver has to. Rejecting your
+    // own request (withdrawing it) stays allowed.
+    if (status === 'approved' && Number(row.submitted_by) === Number(req.session.userId)) {
+      return res.status(403).json({ error: 'You cannot approve your own payment request — another approver has to' });
+    }
+    // Only a pending request is decided, and only once: a double click or a
+    // second approver acting on a stale screen changes nothing and sends no
+    // second notification.
+    const [upd] = await db.query(
+      "UPDATE payment_requests SET status=?, reviewed_at=NOW() WHERE id=? AND status='pending'",
       [status, req.params.id]
     );
+    if (!upd.affectedRows) return res.status(409).json({ error: 'This request has already been decided' });
     res.json({ success: true });
     // WhatsApp notification is fire-and-forget, matching the pattern used for other
     // approval flows (mdo-tasks, leave requests, meetings) — the approve/reject

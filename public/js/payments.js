@@ -371,8 +371,12 @@ function paRenderApprovalRows(rows) {
         : (isDone && r.status === 'approved'
           ? `<button onclick="prOpenBillModal(${r.id})" style="background:none;border:none;color:#f59e0b;font-size:12px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline">Upload Bill</button>`
           : `<span style="color:#94a3b8;font-size:12px">—</span>`));
+    // No Approve on your own request — the server refuses it too; another
+    // approver has to. Reject (withdrawing it) stays.
+    const isOwnRequest = String(r.submitted_by) === String(ME.id);
+    const approveBtn = isOwnRequest ? '' : `<button onclick="prReview(${r.id},'approved')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;margin-right:6px">✅ Approve</button>`;
     const actionCell = r.status==='pending'
-      ? `<button onclick="prReview(${r.id},'approved')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;margin-right:6px">✅ Approve</button><button onclick="prReview(${r.id},'rejected')" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">❌ Reject</button>`
+      ? `${approveBtn}<button onclick="prReview(${r.id},'rejected')" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">❌ Reject</button>`
       : isDone ? `<span style="font-size:12px;font-weight:700;color:#16a34a">Payment Done</span>`
       : isCancelled ? `<span style="font-size:12px;font-weight:700;color:#dc2626">Cancelled<br><span style="font-weight:400;font-size:11px;color:#64748b">${dtEscape(cancelReason)}</span></span>`
       : '—';
@@ -488,7 +492,13 @@ async function prReview(id, status) {
     </span>`;
   }
   try {
-    await api(`/api/payment-requests/${id}`, 'PATCH', { status });
+    const r = await api(`/api/payment-requests/${id}`, 'PATCH', { status });
+    if (r && r.error) {
+      showToast(r.error, 'error');
+      loadPaymentApprovals();
+      loadPaymentApprovalsBadge();
+      return;
+    }
     showToast(status==='approved' ? '✅ Request approved!' : '❌ Request rejected!');
     loadPaymentApprovals();
     loadPaymentApprovalsBadge();
