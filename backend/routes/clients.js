@@ -119,7 +119,7 @@ app.put('/api/clients/:id/logo', requireAuth, requireClientsEditor, async (req, 
     let { logo } = req.body;
     if (logo === undefined) return res.status(400).json({ error: 'logo field required (string or null)' });
     if (logo !== null && typeof logo === 'string') {
-      if (!/^data:image\/(png|jpe?g|webp|gif);base64,/.test(logo)) {
+      if (!/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/]*={0,2}$/.test(logo)) {
         return res.status(400).json({ error: 'logo must be a data:image/* base64 URL' });
       }
       if (logo.length > 1_500_000) return res.status(413).json({ error: 'Logo too large — keep under 1 MB after resize' });

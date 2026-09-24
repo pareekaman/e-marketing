@@ -76,7 +76,7 @@ function cpRenderHtml(s) {
   const initials = dtEscape(cmInitials(client.name || 'C'));
   const avatarStyle = cmAvatarStyle(client.name || 'C');
   const avatarHtml = client.logo_url
-    ? `<img src="${client.logo_url}" alt="${dtEscape(client.name)}" style="width:72px;height:72px;border-radius:18px;object-fit:cover;box-shadow:0 6px 18px rgba(0,0,0,.12);flex-shrink:0;background:#fff"/>`
+    ? `<img src="${dtEscape(client.logo_url)}" alt="${dtEscape(client.name)}" style="width:72px;height:72px;border-radius:18px;object-fit:cover;box-shadow:0 6px 18px rgba(0,0,0,.12);flex-shrink:0;background:#fff"/>`
     : `<div style="width:72px;height:72px;border-radius:18px;${avatarStyle};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:26px;box-shadow:0 6px 18px rgba(0,0,0,.12);flex-shrink:0">${initials}</div>`;
 
   // Time-of-day greeting (IST).

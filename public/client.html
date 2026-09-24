@@ -444,7 +444,7 @@ function cpRenderHtml(s){
   const initials = dtEscape(cpInitials(client.name || 'C'));
   const avatarStyle = cpAvatarStyle(client.name || 'C');
   const avatarHtml = client.logo_url
-    ? `<img src="${client.logo_url}" alt="${dtEscape(client.name)}" style="width:54px;height:54px;border-radius:14px;object-fit:cover;box-shadow:0 4px 12px rgba(0,0,0,.12);flex-shrink:0;background:#fff"/>`
+    ? `<img src="${dtEscape(client.logo_url)}" alt="${dtEscape(client.name)}" style="width:54px;height:54px;border-radius:14px;object-fit:cover;box-shadow:0 4px 12px rgba(0,0,0,.12);flex-shrink:0;background:#fff"/>`
     : `<div style="width:54px;height:54px;border-radius:14px;${avatarStyle};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:21px;box-shadow:0 4px 12px rgba(0,0,0,.12);flex-shrink:0">${initials}</div>`;
   const istHour = (new Date(Date.now() + (5.5*60*60*1000))).getUTCHours();
   const greeting = istHour < 12 ? 'Good morning' : istHour < 17 ? 'Good afternoon' : 'Good evening';
@@ -792,7 +792,7 @@ function cpRenderProfile(s, me){
   const initials = dtEscape(cpInitials(client.name || me.name || 'C'));
   const avatarStyle = cpAvatarStyle(client.name || 'C');
   const logo = client.logo_url
-    ? `<img src="${client.logo_url}" style="width:64px;height:64px;border-radius:14px;object-fit:cover;background:#fff;flex-shrink:0"/>`
+    ? `<img src="${dtEscape(client.logo_url)}" style="width:64px;height:64px;border-radius:14px;object-fit:cover;background:#fff;flex-shrink:0"/>`
     : `<div style="width:64px;height:64px;border-radius:14px;${avatarStyle};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:24px;flex-shrink:0">${initials}</div>`;
   const detail = (label, value) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid #f1f5f9">
     <span style="font-size:12px;color:#64748b;font-weight:600">${label}</span>

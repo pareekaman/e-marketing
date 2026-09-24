@@ -3423,10 +3423,22 @@ app.patch('/api/users/:id/role', requireAuth, requireAdmin, async (req, res) => 
 // ══════════════════════════════════════════════════════
 // PROFILE
 // ══════════════════════════════════════════════════════
+// The photo is stored as the data: URL the browser's FileReader produced, and
+// the race tracker writes it into an <img src>. Any image type is allowed, as
+// is application/octet-stream (what FileReader reports for a photo whose type
+// the browser does not know, e.g. HEIC on Windows) — but after the comma only
+// base64 characters, so the value can never carry markup. Empty clears it.
+function isStorableProfileImage(v) {
+  if (v === null || v === '') return true;
+  return typeof v === 'string' &&
+    /^data:(image\/[A-Za-z0-9.+-]+|application\/octet-stream);base64,[A-Za-z0-9+/]*={0,2}$/.test(v);
+}
 app.put('/api/profile', requireAuth, async (req, res) => {
   try {
     const uid = req.session.userId;
     const { name, email, notification_email, phone, birthday, joining_date, currentPassword, newPassword, profileImage } = req.body;
+    // Checked before any write, so a bad photo cannot leave the other fields half-saved.
+    if (profileImage !== undefined && !isStorableProfileImage(profileImage)) return res.status(400).json({ error: 'Profile photo must be an image file' });
     if (currentPassword) {
       const [rows] = await db.query('SELECT password FROM users WHERE id=?', [uid]);
       if (!bcrypt.compareSync(currentPassword, rows[0].password)) return res.status(400).json({ error: 'Current password is incorrect' });
@@ -3443,6 +3455,7 @@ app.put('/api/profile', requireAuth, async (req, res) => {
 
 app.post('/api/profile/image', requireAuth, async (req, res) => {
   try {
+    if (!isStorableProfileImage(req.body.image)) return res.status(400).json({ error: 'Profile photo must be an image file' });
     await db.query('UPDATE users SET profile_image=? WHERE id=?', [req.body.image||null, req.session.userId]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

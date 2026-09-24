@@ -85,7 +85,7 @@ function renderRaceTracker(data) {
     // Rank circle = profile photo (with a small rank badge), else the medal/number.
     const rankCircle = emp.profileImage
       ? `<div class="race-rank ${rankClass}" style="padding:0;overflow:visible;position:relative;background:none">
-           <img src="${emp.profileImage}" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;display:block;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.18)"/>
+           <img src="${esc(emp.profileImage)}" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;display:block;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.18)"/>
            <span style="position:absolute;bottom:-3px;right:-3px;background:#1e293b;color:#fff;font-size:9px;font-weight:800;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;padding:0 3px;line-height:1">${rankBadge}</span>
          </div>`
       : `<div class="race-rank ${rankClass}">${rankBadge}</div>`;

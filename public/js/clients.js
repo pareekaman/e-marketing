@@ -662,7 +662,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
   const initials = dtEscape(cmInitials(client.name || 'C'));
   const avatarStyle = cmAvatarStyle(client.name || 'C');
   const logoBlock = client.logo_url
-    ? `<img src="${client.logo_url}" alt="${dtEscape(client.name)}" style="width:60px;height:60px;border-radius:12px;object-fit:cover;border:1px solid #e2e8f0;flex-shrink:0"/>`
+    ? `<img src="${dtEscape(client.logo_url)}" alt="${dtEscape(client.name)}" style="width:60px;height:60px;border-radius:12px;object-fit:cover;border:1px solid #e2e8f0;flex-shrink:0"/>`
     : `<div style="width:60px;height:60px;border-radius:12px;${avatarStyle};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:22px;flex-shrink:0">${initials}</div>`;
   const logoBtns = client.logo_url
     ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="document.getElementById('cmLogoInput_${client.id}').click()">Change</button>
