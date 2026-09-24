@@ -278,7 +278,7 @@ async function loadFMSAdmin() {
   emptyEl.style.display = 'none';
   // ✅ Use fms_name if available, else sheet_name
   tabsEl.innerHTML = sheets.map(s => `
-    <div class="fms-name-tab ${fmsActiveId===s.id?'active':''}" onclick="loadFMSDetail(${s.id})">${s.fms_name||s.sheet_name}</div>
+    <div class="fms-name-tab ${fmsActiveId===s.id?'active':''}" onclick="loadFMSDetail(${s.id})">${esc(s.fms_name||s.sheet_name)}</div>
   `).join('');
 
   if (!fmsActiveId && sheets.length) loadFMSDetail(sheets[0].id);
@@ -299,7 +299,7 @@ async function loadFMSDetail(id) {
 
   // Sheet info bar
   document.getElementById('fmsSheetInfoText').innerHTML =
-    `<strong>${sheet.sheet_name}</strong> &nbsp;·&nbsp; Sheet ID: <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;font-size:12px">${sheet.sheet_id}</code> &nbsp;·&nbsp; Header Row: ${sheet.header_row}`;
+    `<strong>${esc(sheet.sheet_name)}</strong> &nbsp;·&nbsp; Sheet ID: <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;font-size:12px">${esc(sheet.sheet_id)}</code> &nbsp;·&nbsp; Header Row: ${sheet.header_row}`;
 
   // Step tabs
   const stepTabsEl = document.getElementById('fmsStepTabs');
@@ -327,7 +327,7 @@ function showFMSStepData(steps, idx) {
   const extraRowsHtml = s.extraInput==='yes' ? `
     <div style="margin-top:12px">
       <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px">Extra Input Rows:</div>
-      ${(s.extraRows||[]).map(r=>`<div style="font-size:13px;padding:4px 0;color:#374151">• ${r.row_label||'(unnamed)'}</div>`).join('')}
+      ${(s.extraRows||[]).map(r=>`<div style="font-size:13px;padding:4px 0;color:#374151">• ${esc(r.row_label||'(unnamed)')}</div>`).join('')}
     </div>` : '';
 
   document.getElementById('fmsStepContent').innerHTML = `
@@ -503,7 +503,7 @@ async function syncFMSData() {
   }
 
   const headerBadges = r.headers.map(h=>
-    `<span style="background:#eff6ff;color:#1d4ed8;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:600">${h}</span>`
+    `<span style="background:#eff6ff;color:#1d4ed8;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:600">${esc(h)}</span>`
   ).join(' ');
 
   syncEl.style.cssText='display:block;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;margin-top:14px';
@@ -522,8 +522,8 @@ async function syncFMSData() {
     <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px;margin-top:8px;text-transform:uppercase;letter-spacing:.4px">All Data (${r.sample.length} rows):</div>
     <div style="overflow-x:auto;max-height:300px;overflow-y:auto">
       <table style="font-size:12px;border-collapse:collapse;width:100%">
-        <thead><tr>${r.headers.map(h=>`<th style="padding:4px 8px;background:#e8f5e9;border:1px solid #bbf7d0;text-align:left;font-weight:600;white-space:nowrap">${h}</th>`).join('')}</tr></thead>
-        <tbody>${r.sample.map(row=>`<tr>${r.headers.map((_,ci)=>`<td style="padding:4px 8px;border:1px solid #e2e8f0;color:#374151;white-space:nowrap">${row[ci]||'—'}</td>`).join('')}</tr>`).join('')}</tbody>
+        <thead><tr>${r.headers.map(h=>`<th style="padding:4px 8px;background:#e8f5e9;border:1px solid #bbf7d0;text-align:left;font-weight:600;white-space:nowrap">${esc(h)}</th>`).join('')}</tr></thead>
+        <tbody>${r.sample.map(row=>`<tr>${r.headers.map((_,ci)=>`<td style="padding:4px 8px;border:1px solid #e2e8f0;color:#374151;white-space:nowrap">${esc(row[ci]||'—')}</td>`).join('')}</tr>`).join('')}</tbody>
       </table>
     </div>` : ''}
   `;
@@ -1357,7 +1357,7 @@ async function loadFMSTasks() {
   }
 
   sel.innerHTML = '<option value="">-- Select an FMS --</option>' +
-    list.map(f => `<option value="${f.id}">${f.fms_name || f.sheet_name}</option>`).join('');
+    list.map(f => `<option value="${f.id}">${esc(f.fms_name || f.sheet_name)}</option>`).join('');
 
   // Auto-select first
   if (list.length === 1) {
@@ -1419,7 +1419,7 @@ function buildFMSTrain(steps, sheet) {
   const engine = `
     <div class="fms-train-engine">
       🚂
-      <div style="font-size:9px;margin-top:4px;opacity:.7;max-width:70px;text-align:center;word-break:break-word">${(document.getElementById('fmsTasksSelect').selectedOptions[0]?.text || '').substring(0,12)}</div>
+      <div style="font-size:9px;margin-top:4px;opacity:.7;max-width:70px;text-align:center;word-break:break-word">${esc((document.getElementById('fmsTasksSelect').selectedOptions[0]?.text || '').substring(0,12))}</div>
     </div>
     <div class="fms-coach-connector"></div>`;
 
@@ -1497,7 +1497,7 @@ async function loadFMSTaskRows() {
       <td>
         <button class="fms-done-btn" onclick="openFMSDoneModal(${ri})">✅ Done</button>
       </td>
-      ${colKeys.map(k => `<td>${row.data[k] || '—'}</td>`).join('')}
+      ${colKeys.map(k => `<td>${esc(row.data[k] || '—')}</td>`).join('')}
       <td>
         <span class="fms-status-badge">⏳ Pending</span>
         ${row.rowDoerName && r.isAdmin ? `<br><span style="font-size:10px;color:#64748b;margin-top:4px;display:inline-block">→ ${esc(row.rowDoerName)}</span>` : ''}
@@ -1509,7 +1509,7 @@ async function loadFMSTaskRows() {
       <table>
         <thead><tr>
           <th>Action</th>
-          ${colKeys.map(k => `<th>${k}</th>`).join('')}
+          ${colKeys.map(k => `<th>${esc(k)}</th>`).join('')}
           <th>Status</th>
         </tr></thead>
         <tbody>${tableRows}</tbody>
@@ -1535,7 +1535,7 @@ function openFMSDoneModal(rowIdx) {
   // Show row data
   const colKeys = Object.keys(row.data);
   document.getElementById('fmsDoneRowPreview').innerHTML = colKeys.map(k =>
-    `<div style="display:flex;gap:8px;margin-bottom:4px"><span style="font-size:11px;font-weight:600;color:#64748b;min-width:120px;flex-shrink:0">${k}</span><span style="color:#1e293b">${row.data[k]||'—'}</span></div>`
+    `<div style="display:flex;gap:8px;margin-bottom:4px"><span style="font-size:11px;font-weight:600;color:#64748b;min-width:120px;flex-shrink:0">${esc(k)}</span><span style="color:#1e293b">${esc(row.data[k]||'—')}</span></div>`
   ).join('');
 
   // Set plan display
@@ -1602,7 +1602,7 @@ function openFMSDoneModal(rowIdx) {
       }
       const requiredTag = fmsExtraIsRequired(r, i) ? FMS_EXTRA_REQ_TAG : FMS_EXTRA_OPT_TAG;
       return `<div style="margin-bottom:12px">
-        <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px">${label} <span id="fmsExtraReq_${i}">${requiredTag}</span> <span style="color:#94a3b8;font-weight:400">(COL ${r.col_letter})</span></label>
+        <label style="font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px">${esc(label)} <span id="fmsExtraReq_${i}">${requiredTag}</span> <span style="color:#94a3b8;font-weight:400">(COL ${r.col_letter})</span></label>
         ${inputHtml}
       </div>`;
     }).join('');
