@@ -146,6 +146,12 @@ app.post('/api/payment-requests', requireAuth, async (req, res) => {
       if (!m || card_number !== `__${m[1]}__`) {
         return res.status(400).json({ error: 'Malformed payment marker' });
       }
+      // A bill marker carries a Google Drive file id after the request id, and
+      // the Payments screens build a Drive link from it — so accept only an id's
+      // characters, never markup that would end up inside that link.
+      if (m[1] === 'bill' && !/^__bill__:\d+:[A-Za-z0-9_-]{10,200}$/.test(String(reason))) {
+        return res.status(400).json({ error: 'Malformed payment marker' });
+      }
       const [[target]] = await db.query('SELECT submitted_by FROM payment_requests WHERE id=?', [m[2]]);
       if (!target) return res.status(404).json({ error: 'Payment request not found' });
       if (Number(target.submitted_by) !== Number(req.session.userId)

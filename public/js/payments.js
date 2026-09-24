@@ -271,7 +271,7 @@ async function loadMyPaymentRequests() {
         const billSentinel = billSentinels[0];
         const billFileId = billSentinel ? billSentinel.reason.replace('__bill__:' + String(r.id) + ':', '') : null;
         const billCell = billFileId
-          ? `<span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap"><a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" style="display:inline-flex;align-items:center;gap:4px;background:#fff;color:#16a34a;border:1.5px solid #16a34a;border-radius:7px;padding:4px 11px;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer">👁 View</a><button onclick="prOpenBillModal(${r.id})" title="Change Bill" style="display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #cbd5e1;border-radius:7px;cursor:pointer;color:#64748b;font-size:13px;padding:4px 7px;line-height:1">🔄</button></span>`
+          ? `<span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap"><a href="https://drive.google.com/file/d/${esc(encodeURIComponent(billFileId))}/view" target="_blank" style="display:inline-flex;align-items:center;gap:4px;background:#fff;color:#16a34a;border:1.5px solid #16a34a;border-radius:7px;padding:4px 11px;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer">👁 View</a><button onclick="prOpenBillModal(${r.id})" title="Change Bill" style="display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #cbd5e1;border-radius:7px;cursor:pointer;color:#64748b;font-size:13px;padding:4px 7px;line-height:1">🔄</button></span>`
           : (_prBillUploading.has(r.id)
             ? `<span style="color:#64748b;font-size:12px;font-weight:600">Processing…</span>`
             : (isDone && r.status === 'approved'
@@ -365,7 +365,7 @@ function paRenderApprovalRows(rows) {
     const billSentinel = billSentinels[0];
     const billFileId = billSentinel ? billSentinel.reason.replace('__bill__:' + String(r.id) + ':', '') : null;
     const paBillCell = billFileId
-      ? `<a href="https://drive.google.com/file/d/${billFileId}/view" target="_blank" style="display:inline-flex;align-items:center;gap:4px;background:#fff;color:#16a34a;border:1.5px solid #16a34a;border-radius:7px;padding:4px 11px;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;white-space:nowrap">👁 View</a>`
+      ? `<a href="https://drive.google.com/file/d/${esc(encodeURIComponent(billFileId))}/view" target="_blank" style="display:inline-flex;align-items:center;gap:4px;background:#fff;color:#16a34a;border:1.5px solid #16a34a;border-radius:7px;padding:4px 11px;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;white-space:nowrap">👁 View</a>`
       : (_prBillUploading.has(r.id)
         ? `<span style="color:#64748b;font-size:12px;font-weight:600">Processing…</span>`
         : (isDone && r.status === 'approved'
