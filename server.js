@@ -4838,11 +4838,20 @@ function waDelegationPage(title, message, isSuccess) {
 
 // POST /api/wa-bot/task
 // Called by the WhatsApp bot when a user delegates a task via voice/text.
-// Auth: X-Bot-Key header (set BOT_API_KEY in .env; default: emk_bot_2026)
+// Auth: X-Bot-Key header matching the BOT_API_KEY env var.
+//
+// There is deliberately no fallback key. The old default sat in the source and
+// in git history, so anyone who had seen the code could post tasks under any
+// name. With BOT_API_KEY unset the route is closed. (As of 2026-09-24 it is
+// unset in production and the route is unused there: production's `tasks`
+// table has no approval_token column, so its INSERT could never succeed — the
+// live bot flow is the MDO queue, which writes to the table directly.)
 app.post('/api/wa-bot/task', async (req, res) => {
   try {
-    const botKey = req.headers['x-bot-key'] || req.body.bot_key;
-    if (!botKey || botKey !== (process.env.BOT_API_KEY || 'emk_bot_2026')) {
+    const expected = Buffer.from(process.env.BOT_API_KEY || '');
+    const given = Buffer.from(String(req.headers['x-bot-key'] || req.body.bot_key || ''));
+    if (!expected.length || given.length !== expected.length ||
+        !require('crypto').timingSafeEqual(given, expected)) {
       return res.status(401).json({ error: 'Invalid bot key' });
     }
 
