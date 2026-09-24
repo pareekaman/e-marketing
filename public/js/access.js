@@ -94,8 +94,12 @@ const PERM_TREE = [
   // enforced:true — Client Master's five write routes ask for edit_clients via
   // requireClientsEditor, and cmCanEdit() in the UI asks the same key. Deleting
   // a client stays admin-only and is gated where its button is rendered.
+  // Admin adds deleting a client. The Credentials Vault is not part of it —
+  // it holds client passwords and stays with the admin role alone.
   { page: 'clients',      label: 'Client Master',  icon: '🏢', enforced: true, actions: [
     { key: 'edit_clients', label: 'Edit' },
+  ], adminActions: [
+    { key: 'admin_clients', label: 'Delete clients' },
   ]},
   // readOnly — every /api/compliance route is a GET. There is nothing on this
   // page to edit, so the dropdown offers No Access / View only. enforced:true

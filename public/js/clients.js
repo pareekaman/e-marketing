@@ -426,7 +426,7 @@ function cmRenderList(){
             <span class="cm-switch-track"></span>
             <span class="cm-switch-label">${isOn ? 'Active' : 'Inactive'}</span>
           </span>
-          ${ME.role === 'admin' ? `<button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},${jsArg(c.name)})">Remove</button>` : ''}
+          ${canDo('admin_clients') ? `<button class="cm-client-del" onclick="event.stopPropagation();cmDelete(${c.id},${jsArg(c.name)})">Remove</button>` : ''}
           <span class="cm-client-arrow">›</span>
         </div>
       </div>`;

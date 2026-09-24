@@ -316,7 +316,11 @@ app.put('/api/clients/:id/handlers', requireAuth, requireClientsEditor, async (r
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/clients/:id', requireAuth, requireAdmin, async (req, res) => {
+// Deleting a client: admins, or Client Master at the "Admin" level in Access
+// Control (admin_clients) — userCanDo says yes to every admin. The credential
+// vault below stays requireAdmin; it holds client passwords.
+app.delete('/api/clients/:id', requireAuth, async (req, res) => {
+  if (!(await userCanDo(req.session, 'admin_clients'))) return res.status(403).json({ error: 'Admin only' });
   try {
     const [doomed] = await db.query('SELECT * FROM clients WHERE id=?', [req.params.id]);
     await archiveDeleted('clients', doomed, req, { summary: r => `Client: ${r.name || ''}` });
