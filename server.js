@@ -3330,7 +3330,7 @@ const VALID_UP_ACTIONS = new Set(['edit_task','delete_task','create_task','creat
   // with nothing behind it puts a choice in the panel that cannot do anything,
   // which is the trap the Race Tracker row had to be marked grantable:false to
   // undo.
-  'admin_inventory', 'admin_hrm', 'admin_meetings', 'admin_leaves', 'admin_paymentreq', 'admin_approvals']);
+  'admin_inventory', 'admin_hrm', 'admin_meetings', 'admin_leaves', 'admin_paymentreq', 'admin_approvals', 'admin_tasks']);
 
 // ── Server-side mirror of the frontend's canSee() / canDo() ──────────────
 // Until this existed, `user_permissions` was write-only as far as the API was
@@ -3523,7 +3523,7 @@ app.delete('/api/comments/:id', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query('SELECT * FROM task_comments WHERE id=?', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
-    if (Number(rows[0].user_id) !== Number(req.session.userId) && req.session.role !== 'admin') return res.status(403).json({ error: 'Not allowed' });
+    if (Number(rows[0].user_id) !== Number(req.session.userId) && !(await userCanDo(req.session, 'admin_tasks'))) return res.status(403).json({ error: 'Not allowed' });
     await archiveDeleted('task_comments', rows[0], req, { summary: r => `Comment: ${r.comment || ''}` });
     await db.query('DELETE FROM task_comments WHERE id=?', [req.params.id]);
     res.json({ success: true });

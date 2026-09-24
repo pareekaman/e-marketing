@@ -40,10 +40,16 @@ const PERM_TREE = [
   { page: 'dashboard',    label: 'Dashboard',      icon: '🏠', enforced: false, locked: true,
     note: 'Always on — this is the landing page every user falls back to',
     actions: [{ key: 'edit_dashboard', label: 'Edit' }] },
+  // Admin adds the admin view of tasks: everyone's tasks, editing, deleting and
+  // changing the status of any of them without an approval, setting any due
+  // date, deleting any sub-task or comment, the Awaiting Date list. The
+  // company-wide bulk deletes stay admin-only on purpose.
   { page: 'alltasks',     label: 'All Tasks',      icon: '✅', enforced: true, actions: [
     { key: 'edit_task',    label: 'Edit' },
     { key: 'delete_task',  label: 'Delete' },
     { key: 'reopen_task',  label: 'Reopen' },
+  ], adminActions: [
+    { key: 'admin_tasks', label: 'Any task, any status' },
   ]},
   // Admin adds what admin/PC get here: every pending approval, deciding any of
   // them, Approve all revises, and every transfer (no own-department limit).

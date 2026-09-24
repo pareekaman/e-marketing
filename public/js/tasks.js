@@ -48,7 +48,7 @@ async function loadAllTasks() {
   // department, a hod only their own (the route enforces both); PC and plain
   // users do not get it, so the tab stays hidden for them.
   const awaitingTab = document.getElementById('tasksTabAwaiting');
-  if (awaitingTab) awaitingTab.style.display = (isAdmin || isHod) ? '' : 'none';
+  if (awaitingTab) awaitingTab.style.display = (isAdmin || isHod || canDo('admin_tasks')) ? '' : 'none';
 
   // Show doer filter + date range to everyone on desktop (employee dropdown
   // stays "All Employees" for non-admin/PC since backend scopes to own tasks).
@@ -130,7 +130,7 @@ async function loadAllTasks() {
       allTasks = data.tasks || [];
     }
     allTasks = allTasks.filter(t => String(t.assigned_by) === String(ME.id));
-  } else if (isAdmin || isHod || ME.role==='pc') {
+  } else if (isAdmin || isHod || ME.role==='pc' || canDo('admin_tasks')) {
     (data.grouped||[]).forEach(g => {
       g.tasks.forEach(t => allTasks.push(t));
     });
@@ -142,7 +142,7 @@ async function loadAllTasks() {
 
   // Admin / PC desktop: populate doer dropdown — skip for FMS (rows lack user IDs;
   // keeping the dropdown from delegation/checklist load so the user can still filter server-side).
-  if ((isAdmin || isPC) && isDesktop && tasksType !== 'fms') {
+  if ((isAdmin || isPC || canDo('admin_tasks')) && isDesktop && tasksType !== 'fms') {
     const userSel = document.getElementById('tasksUserFilter');
     if (userSel) {
       const prevVal = userSel.value;
@@ -163,7 +163,7 @@ async function loadAllTasks() {
   }
 
   // Admin / PC: float own tasks to the top — latest due-date first within each bucket.
-  if (isAdmin || isPC) {
+  if (isAdmin || isPC || canDo('admin_tasks')) {
     const myId = String(ME.id);
     allTasks.sort((a, b) => {
       const aMine = String(a.assigned_to) === myId ? 0 : 1;
@@ -381,7 +381,7 @@ function tgSetAll(open) {
 }
 
 function renderTasksTable() {
-  const isAdmin = ME.role==='admin' || ME.role==='hod'; // HOD gets admin-like view
+  const isAdmin = ME.role==='admin' || ME.role==='hod' || canDo('admin_tasks'); // HOD gets admin-like view
   const isPC    = ME.role==='pc';
   const useGroupView = isAdmin || isPC; // PC also sees everyone's tasks, group it too.
   const search = (document.getElementById('taskSearch')?.value||'').toLowerCase();

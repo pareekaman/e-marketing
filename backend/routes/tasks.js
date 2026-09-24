@@ -46,6 +46,10 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     const role = req.session.role;
     const isAdmin = role === 'admin';
     const isHod = role === 'hod';
+    // All Tasks at the "Admin" level in Access Control: the admin view of every
+    // task. Role tests stay beside it everywhere in this file — PC and HOD hold
+    // their powers by role and do not hold the key.
+    const taskAdmin = await userCanDo(req.session, 'admin_tasks');
     const { mine } = req.query;
     // `type` is written into the SELECT below as a string literal, so it must be
     // one of the two known values — anything else would be pasted into the SQL.
@@ -68,11 +72,11 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     } else if (isClientTasks) {
       // "Client Tasks" tab — delegation tasks whose DOER is a client login.
       // Managers see them all; a regular handler sees only what they delegated.
-      if (!(isAdmin || isHod || role === 'pc')) {
+      if (!(isAdmin || isHod || role === 'pc' || taskAdmin)) {
         where += ' AND t.assigned_by = ?';
         params.push(uid);
       }
-    } else if (isAdmin || role === 'pc') {
+    } else if (isAdmin || role === 'pc' || taskAdmin) {
       // Admin/PC — see everything
     } else if (isHod) {
       // HOD — tasks belonging to users in their department
@@ -123,7 +127,7 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     if (isMine) {
       return res.json({ tasks });
     }
-    if (isAdmin || isHod || role === 'pc') {
+    if (isAdmin || isHod || role === 'pc' || taskAdmin) {
       const grouped = {};
       tasks.forEach(t => {
         if (!grouped[t.assigned_to]) grouped[t.assigned_to] = { userId: t.assigned_to, name: t.assignedToName, tasks: [] };
@@ -350,7 +354,7 @@ app.put('/api/tasks/:id/due-date', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Pick a due date, or say why one cannot be set yet.' });
     }
     const uid = req.session.userId;
-    const isPrivileged = req.session.role === 'admin' || req.session.role === 'pc';
+    const isPrivileged = req.session.role === 'admin' || req.session.role === 'pc' || await userCanDo(req.session, 'admin_tasks');
     const [rows] = await db.query('SELECT * FROM delegation_tasks WHERE id=?', [parseInt(req.params.id, 10)]);
     const task = rows[0];
     if (!task) return res.status(404).json({ error: 'Task not found' });
@@ -476,7 +480,7 @@ app.put('/api/tasks/:id/client-ask', requireAuth, async (req, res) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
 
     const role = req.session.role;
-    const privileged = role === 'admin' || role === 'hod' || role === 'pc';
+    const privileged = role === 'admin' || role === 'hod' || role === 'pc' || await userCanDo(req.session, 'admin_tasks');
     // The doer is the one who knows what is missing; the assigner may also note it.
     if (!privileged && Number(task.assigned_to) !== Number(req.session.userId)
                     && Number(task.assigned_by) !== Number(req.session.userId)) {
@@ -514,7 +518,7 @@ app.delete('/api/subtasks/:id', requireAuth, async (req, res) => {
     const id = parseInt(req.params.id, 10);
     const [[sub]] = await db.query('SELECT * FROM task_subtasks WHERE id=?', [id]);
     if (!sub) return res.status(404).json({ error: 'Sub-task not found' });
-    const isPrivileged = req.session.role === 'admin' || req.session.role === 'pc';
+    const isPrivileged = req.session.role === 'admin' || req.session.role === 'pc' || await userCanDo(req.session, 'admin_tasks');
     if (sub.created_by !== req.session.userId && !isPrivileged) return res.status(403).json({ error: 'Not allowed' });
     await archiveDeleted('task_subtasks', sub, req, { summary: r => `Sub-task: ${r.description || ''}` });
     await db.query('DELETE FROM task_subtasks WHERE id=?', [id]);
@@ -576,7 +580,7 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     const isAdmin = req.session.role === 'admin';
     const isPC = req.session.role === 'pc';
     const uid = req.session.userId;
-    const isPrivileged = isAdmin || isPC;
+    const isPrivileged = isAdmin || isPC || await userCanDo(req.session, 'admin_tasks');
     const [rows] = await db.query(`SELECT * FROM ${table} WHERE id=?`, [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Task not found' });
     const task = rows[0];
@@ -742,7 +746,7 @@ app.get('/api/tasks/:id/detail', requireAuth, async (req, res) => {
     if (!rows[0]) return res.status(404).json({ error: 'Task not found' });
     // Admin/HOD see anything; otherwise only the assigner can pull a task's detail (needed for self-edit).
     const role = req.session.role;
-    if (role !== 'admin' && role !== 'hod' && role !== 'pc') {
+    if (role !== 'admin' && role !== 'hod' && role !== 'pc' && !(await userCanDo(req.session, 'admin_tasks'))) {
       if (Number(rows[0].assigned_by) !== Number(req.session.userId) && Number(rows[0].assigned_to) !== Number(req.session.userId)) {
         return res.status(403).json({ error: 'Not allowed' });
       }
@@ -762,7 +766,7 @@ function parseDueTime(raw) {
 }
 
 async function canModifyTask(req, taskId, type) {
-  if (req.session.role === 'admin' || req.session.role === 'hod') return true;
+  if (req.session.role === 'admin' || req.session.role === 'hod' || await userCanDo(req.session, 'admin_tasks')) return true;
   const [rows] = await db.query(
     `SELECT assigned_by FROM ${getTable(type||'delegation')} WHERE id=?`, [taskId]
   );
@@ -1058,10 +1062,11 @@ app.post('/api/tasks/seen', requireAuth, async (req, res) => {
 app.get('/api/tasks/awaiting-date', requireAuth, async (req, res) => {
   try {
     const role = req.session.role;
-    if (role !== 'admin' && role !== 'hod') return res.status(403).json({ error: 'Admin or HOD only' });
+    const taskAdmin = await userCanDo(req.session, 'admin_tasks');
+    if (role !== 'admin' && role !== 'hod' && !taskAdmin) return res.status(403).json({ error: 'Admin or HOD only' });
     const params = [];
     let deptClause = '';
-    if (role === 'hod') {
+    if (role === 'hod' && !taskAdmin) {
       // Same scoping rule as MIS: a hod sees their own department and nothing
       // else. Fails closed — a hod with no department on their row sees none.
       const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [req.session.userId]);
