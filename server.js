@@ -2135,10 +2135,16 @@ async function canSeeTask(req, taskId, taskType) {
 // ══════════════════════════════════════════════════════
 // APPROVALS
 // ══════════════════════════════════════════════════════
+// Admin or PC by role, or Approvals at the "Admin" level in Access Control
+// (admin_approvals). The role test stays: PC holds these powers today and does
+// not hold the key, so dropping it would take them away.
+async function seesAllApprovals(session) {
+  return session.role === 'admin' || session.role === 'pc' || await userCanDo(session, 'admin_approvals');
+}
+
 app.get('/api/approvals', requireAuth, async (req, res) => {
   try {
-    const role = req.session.role;
-    const isAdminOrPC = role === 'admin' || role === 'pc';
+    const isAdminOrPC = await seesAllApprovals(req.session);
     // Everyone sees the approvals routed to THEM (the task's assigner). Admin/PC
     // see ALL pending approvals so nothing is ever stuck — e.g. requests routed to
     // a client (no approvals screen) or to a missing/invalid assigner.
@@ -2160,7 +2166,7 @@ app.get('/api/approvals/count', requireAuth, async (req, res) => {
   try {
     // Count approvals waiting on THIS user; admin/PC count ALL pending so orphaned
     // ones (client-routed or missing assigner) surface instead of getting stuck.
-    const isAdminOrPC = req.session.role === 'admin' || req.session.role === 'pc';
+    const isAdminOrPC = await seesAllApprovals(req.session);
     const sql = isAdminOrPC
       ? `SELECT COUNT(*) AS count FROM task_approvals WHERE status='pending'`
       : `SELECT COUNT(*) AS count FROM task_approvals WHERE requested_to=? AND status='pending'`;
@@ -2176,12 +2182,11 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
     // "rejected" branch below then cleared the task's waiting flag — so a bad
     // value made the request silently vanish.
     if (action !== 'approved' && action !== 'rejected') return res.status(400).json({ error: 'Invalid action' });
-    const role = req.session.role;
     const [rows] = await db.query(`SELECT *, DATE_FORMAT(new_date,'%Y-%m-%d') AS new_date_fmt FROM task_approvals WHERE id=?`, [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Approval not found' });
     const appr = rows[0];
-    // PC and admin can approve any; others only their own
-    const canApprove = role === 'admin' || role === 'pc' || appr.requested_to === req.session.userId;
+    // PC and admin (or admin_approvals) can approve any; others only their own
+    const canApprove = appr.requested_to === req.session.userId || await seesAllApprovals(req.session);
     if (!canApprove) return res.status(403).json({ error: 'Not allowed' });
     // Same sub-task rule as PUT /api/tasks/:id/status — re-checked here because
     // the client can add a sub-task after completion was requested, and
@@ -2239,7 +2244,8 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
 
 // Bulk-approve ALL pending revise requests (admin/PC). Applies each held new date
 // to its task and clears the waiting flag — clears orphaned/stuck revises in one go.
-app.post('/api/approvals/approve-all-revises', requireAuth, requireAdminOrPC, async (req, res) => {
+app.post('/api/approvals/approve-all-revises', requireAuth, async (req, res) => {
+  if (!(await seesAllApprovals(req.session))) return res.status(403).json({ error: 'Admin or PC only' });
   try {
     const [pending] = await db.query(
       `SELECT id, task_id, task_type, DATE_FORMAT(new_date,'%Y-%m-%d') AS nd
@@ -3324,7 +3330,7 @@ const VALID_UP_ACTIONS = new Set(['edit_task','delete_task','create_task','creat
   // with nothing behind it puts a choice in the panel that cannot do anything,
   // which is the trap the Race Tracker row had to be marked grantable:false to
   // undo.
-  'admin_inventory', 'admin_hrm', 'admin_meetings', 'admin_leaves', 'admin_paymentreq']);
+  'admin_inventory', 'admin_hrm', 'admin_meetings', 'admin_leaves', 'admin_paymentreq', 'admin_approvals']);
 
 // ── Server-side mirror of the frontend's canSee() / canDo() ──────────────
 // Until this existed, `user_permissions` was write-only as far as the API was
@@ -3610,14 +3616,24 @@ app.get('/api/transfers/pending-tasks', requireAuth, async (req, res) => {
 });
 
 // GET — Pending transfers for approval (admin sees all, HOD sees dept)
-app.get('/api/transfers', requireAuth, requireAdminOrHod, async (req, res) => {
+// Transfers keep their role gate (admin, hod, pc — what requireAdminOrHod
+// admitted) and add Approvals at the "Admin" level. That level also lifts an
+// HOD's own-department limit, as it does everywhere else on this page.
+async function transferAccess(session) {
+  const full = await userCanDo(session, 'admin_approvals');
+  return { allowed: full || ['admin', 'hod', 'pc'].includes(session.role), full };
+}
+
+app.get('/api/transfers', requireAuth, async (req, res) => {
+  const acc = await transferAccess(req.session);
+  if (!acc.allowed) return res.status(403).json({ error: 'Admin or HOD only' });
   try {
     const uid = req.session.userId;
     const role = req.session.role;
     let deptFilter = '';
     let params = [];
 
-    if (role === 'hod') {
+    if (role === 'hod' && !acc.full) {
       const [me] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
       const dept = me[0]?.department || '';
       // HOD sees transfers of users in their department
@@ -3654,12 +3670,13 @@ app.get('/api/transfers', requireAuth, requireAdminOrHod, async (req, res) => {
 });
 
 // GET — Transfer count for badge
-app.get('/api/transfers/count', requireAuth, requireAdminOrHod, async (req, res) => {
+app.get('/api/transfers/count', requireAuth, async (req, res) => {
+  const acc = await transferAccess(req.session);
+  if (!acc.allowed) return res.status(403).json({ error: 'Admin or HOD only' });
   try {
     const uid = req.session.userId;
-    const role = req.session.role;
     let count = 0;
-    if (role === 'admin') {
+    if (acc.full) {
       const [r] = await db.query(`SELECT COUNT(*) AS c FROM task_transfers WHERE status='pending'`);
       count = r[0].c;
     } else {
@@ -3677,7 +3694,9 @@ app.get('/api/transfers/count', requireAuth, requireAdminOrHod, async (req, res)
 });
 
 // PUT — Approve or reject transfer
-app.put('/api/transfers/:id', requireAuth, requireAdminOrHod, async (req, res) => {
+app.put('/api/transfers/:id', requireAuth, async (req, res) => {
+  const acc = await transferAccess(req.session);
+  if (!acc.allowed) return res.status(403).json({ error: 'Admin or HOD only' });
   try {
     const { action, note } = req.body;
     // The comment here used to say 'approved' | 'rejected' and nothing enforced
@@ -3702,7 +3721,7 @@ app.put('/api/transfers/:id', requireAuth, requireAdminOrHod, async (req, res) =
     // Ordered before the pending check on purpose: an HOD with no business here
     // should be turned away without being told whether the transfer is still
     // open or how it was decided.
-    if (req.session.role === 'hod') {
+    if (req.session.role === 'hod' && !acc.full) {
       const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [req.session.userId]);
       const dept = me?.department || '';
       const [parties] = await db.query(

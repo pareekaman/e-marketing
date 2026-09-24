@@ -363,7 +363,7 @@ function switchApprovalTab(tab, el) {
 
 async function loadApprovals() {
   // Show Transfer tab for admin/HOD/PC
-  if (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc') {
+  if (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc' || canDo('admin_approvals')) {
     document.getElementById('apprTabTransfer').style.display = 'block';
   }
   // WhatsApp Tasks tab — disabled (feature postponed)
@@ -392,7 +392,7 @@ async function loadApprovals() {
     container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">✅ No pending task approvals!</div>`;
   } else {
     const reviseCount = approvals.filter(a => a.action_type === 'revised').length;
-    const bulkBtn = (reviseCount > 0 && (ME.role === 'admin' || ME.role === 'pc'))
+    const bulkBtn = (reviseCount > 0 && (ME.role === 'admin' || ME.role === 'pc' || canDo('admin_approvals')))
       ? `<div style="margin-bottom:12px;display:flex;justify-content:flex-end">
            <button class="btn btn-primary" onclick="approveAllRevises()">✅ Approve all ${reviseCount} revise request${reviseCount>1?'s':''}</button>
          </div>`

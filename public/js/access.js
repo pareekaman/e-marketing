@@ -45,9 +45,13 @@ const PERM_TREE = [
     { key: 'delete_task',  label: 'Delete' },
     { key: 'reopen_task',  label: 'Reopen' },
   ]},
+  // Admin adds what admin/PC get here: every pending approval, deciding any of
+  // them, Approve all revises, and every transfer (no own-department limit).
   { page: 'approvals',    label: 'Approvals',      icon: '☑️', enforced: false, actions: [
     { key: 'approve_revision', label: 'Approve' },
     { key: 'bulk_approve',     label: 'Bulk' },
+  ], adminActions: [
+    { key: 'admin_approvals', label: 'All approvals & transfers' },
   ]},
   // readOnly — every /api/mis route is a GET, so there is nothing here to edit.
   // enforced because the five reads now go through requireMisViewer, which keeps
