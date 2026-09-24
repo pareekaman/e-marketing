@@ -22,8 +22,8 @@ async function initPaymentReqPage() {
   const listTitle = document.getElementById('prMyListTitle');
   if (listTitle) listTitle.textContent = ME.role === 'admin' ? 'All Requests' : 'My Requests';
   loadMyPaymentRequests();
-  // Show card management panel for all admins
-  if (ME.role === 'admin') {
+  // Card management panel — admins, and Payment Request at the "Admin" level.
+  if (canDo('admin_paymentreq')) {
     const wrap = document.getElementById('prManageCardsWrap');
     if (wrap) wrap.style.display = '';
     prRenderCardList();
@@ -200,7 +200,7 @@ async function prSubmit() {
       if (!cr.error) {
         const fresh = await api('/api/payment-requests/cards');
         if (Array.isArray(fresh)) { _prCards = fresh; prPopulateBanks(); }
-        if (ME.role === 'admin') prRenderCardList();
+        if (canDo('admin_paymentreq')) prRenderCardList();
       }
     }
 
@@ -380,7 +380,12 @@ function paRenderApprovalRows(rows) {
       : isDone ? `<span style="font-size:12px;font-weight:700;color:#16a34a">Payment Done</span>`
       : isCancelled ? `<span style="font-size:12px;font-weight:700;color:#dc2626">Cancelled<br><span style="font-weight:400;font-size:11px;color:#64748b">${dtEscape(cancelReason)}</span></span>`
       : '—';
-    const deleteBtn = `<button onclick="prDeleteRequest(${r.id})" title="Delete" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:16px;line-height:1;padding:2px 4px;border-radius:4px" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#cbd5e1'">🗑</button>`;
+    // Deleting was drawn for every payment approver, but the route only ever
+    // let admins through — the rest got "Access denied". It now follows the
+    // same key as the route.
+    const deleteBtn = canDo('admin_paymentreq')
+      ? `<button onclick="prDeleteRequest(${r.id})" title="Delete" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:16px;line-height:1;padding:2px 4px;border-radius:4px" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#cbd5e1'">🗑</button>`
+      : '';
     return { r, i, dispAmt, dispCur, dispReason, isDone, isCancelled, cancelReason, paBillCell, actionCell, deleteBtn };
   });
 

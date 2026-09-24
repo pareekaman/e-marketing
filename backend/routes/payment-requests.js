@@ -20,6 +20,7 @@ module.exports = function registerPaymentRequestRoutes(app, deps) {
     db,
     requireAuth,
     requireAdmin,
+    userCanDo,
     archiveDeleted,
     emailUserWaText,
     isPaymentApprover,
@@ -45,10 +46,12 @@ app.get('/api/payment-requests/cards', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/payment-requests/cards — add card (Naman only)
+// POST /api/payment-requests/cards — add card. Admins, or Payment Request at
+// the "Admin" level in Access Control (admin_paymentreq); userCanDo says yes
+// to every admin. The same key opens the other admin-only routes in this file.
 app.post('/api/payment-requests/cards', requireAuth, async (req, res) => {
   try {
-    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
+    if (!(await userCanDo(req.session, 'admin_paymentreq'))) return res.status(403).json({ error:'Access denied' });
     const { bank_name, card_number } = req.body;
     if (!bank_name || !card_number) return res.status(400).json({ error:'bank_name and card_number required' });
     await db.query('INSERT IGNORE INTO pr_cards (bank_name, card_number) VALUES (?,?)', [bank_name.trim(), card_number.trim()]);
@@ -56,10 +59,10 @@ app.post('/api/payment-requests/cards', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// DELETE /api/payment-requests/cards/:id — remove card (Naman only, pr_cards only)
+// DELETE /api/payment-requests/cards/:id — remove card (pr_cards only)
 app.delete('/api/payment-requests/cards/:id', requireAuth, async (req, res) => {
   try {
-    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
+    if (!(await userCanDo(req.session, 'admin_paymentreq'))) return res.status(403).json({ error:'Access denied' });
     const [doomed] = await db.query('SELECT * FROM pr_cards WHERE id=?', [req.params.id]);
     await archiveDeleted('pr_cards', doomed, req, {
       summary: r => `PR card: ${r.bank_name || ''} ${r.card_number || ''}`,
@@ -94,7 +97,7 @@ function prSummary(r) {
 
 app.delete('/api/payment-requests/:id', requireAuth, async (req, res) => {
   try {
-    if (req.session.role !== 'admin') return res.status(403).json({ error:'Access denied' });
+    if (!(await userCanDo(req.session, 'admin_paymentreq'))) return res.status(403).json({ error:'Access denied' });
     const id = req.params.id;
     const [doomed] = await db.query(
       'SELECT * FROM payment_requests WHERE id=? OR (bank_name=\'__system__\' AND reason LIKE ?)', [id, `%:${id}%`]);
@@ -260,7 +263,7 @@ app.put('/api/payment-requests/:id', requireAuth, async (req, res) => {
     }
 
     const isOwner = Number(row.submitted_by) === Number(req.session.userId);
-    if (!isOwner && req.session.role !== 'admin') {
+    if (!isOwner && !(await userCanDo(req.session, 'admin_paymentreq'))) {
       return res.status(403).json({ error: 'You can only edit your own payment requests' });
     }
     if (row.status !== 'pending') {

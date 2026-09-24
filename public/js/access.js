@@ -133,8 +133,12 @@ const PERM_TREE = [
   { page: 'dms',          label: 'DMS',            icon: '🗂️', enforced: false, actions: [
     { key: 'edit_dms', label: 'Edit' },
   ]},
+  // Admin adds the company card list, deleting any request and correcting
+  // someone else's pending one. Approving stays with the payment-approver list.
   { page: 'paymentreq',   label: 'Payment Request', icon: '💰', enforced: false, actions: [
     { key: 'edit_paymentreq', label: 'Edit' },
+  ], adminActions: [
+    { key: 'admin_paymentreq', label: 'Cards, delete & edit any' },
   ]},
   { page: 'feedback',     label: 'Escalation',     icon: '💬', enforced: false, actions: [
     { key: 'edit_feedback', label: 'Edit' },
