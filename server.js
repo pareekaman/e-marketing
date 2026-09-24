@@ -4780,6 +4780,39 @@ app.get('/api/test-whatsapp', requireAuth, requireAdmin, async (req, res) => {
 // → approved tasks move to delegation_tasks → sender gets WhatsApp notification
 // ══════════════════════════════════════════════════════
 
+// Text from a WhatsApp-bot task (its description) is shown on the approve/deny
+// result page, which is served from this app's own origin.
+function waHtmlText(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// Decide a WhatsApp-bot task exactly once. The status flips first, and only
+// from pending — so a double click, a link opened twice, or the link and the
+// app racing each other cannot create a second delegation task. Returns the
+// delegation task id on approve, 0 on deny, or null when it was already
+// decided. If creating the delegation task fails, the claim is undone.
+async function waDecideTask(row, action) {
+  const [claim] = await db.query(
+    `UPDATE tasks SET status=? WHERE id=? AND status='pending'`, [action, row.id]);
+  if (!claim.affectedRows) return null;
+  if (action !== 'approved') return 0;
+  try {
+    const [ins] = await db.query(
+      `INSERT INTO delegation_tasks
+         (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [row.description, row.assigned_to, row.assigned_by, row.due_date,
+       'pending', row.priority, 'no', row.remarks, row.client_id, row.url,
+       row.due_date ? 0 : 1]
+    );
+    await db.query(`UPDATE tasks SET approved_task_id=? WHERE id=?`, [ins.insertId, row.id]);
+    return ins.insertId;
+  } catch (e) {
+    await db.query(`UPDATE tasks SET status='pending' WHERE id=?`, [row.id]).catch(() => {});
+    throw e;
+  }
+}
+
 function waDelegationPage(title, message, isSuccess) {
   const color = isSuccess ? '#27ae60' : '#e74c3c';
   const icon  = isSuccess ? '✅' : '❌';
@@ -4866,20 +4899,9 @@ app.get('/api/wa-delegation/approve/:token', async (req, res) => {
     if (row.status === 'approved') return res.send(waDelegationPage('Already Approved ✅', 'This task was already approved and added to the system.', true));
     if (row.status === 'denied')   return res.send(waDelegationPage('Already Denied', 'This task was already denied.', false));
 
-    // Move task into delegation_tasks
-    const [ins] = await db.query(
-      `INSERT INTO delegation_tasks
-         (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [row.description, row.assigned_to, row.assigned_by, row.due_date,
-       'pending', row.priority, 'no', row.remarks, row.client_id, row.url,
-       row.due_date ? 0 : 1]
-    );
-
-    await db.query(
-      `UPDATE tasks SET status='approved', approved_task_id=? WHERE id=?`,
-      [ins.insertId, row.id]
-    );
+    // Move task into delegation_tasks — once, even if the link is opened twice at once.
+    const created = await waDecideTask(row, 'approved');
+    if (created === null) return res.send(waDelegationPage('Already Decided', 'This task was already approved or denied.', true));
 
     // Notify the sender via WhatsApp
     if (row.sender_phone) {
@@ -4889,7 +4911,7 @@ app.get('/api/wa-delegation/approve/:token', async (req, res) => {
     }
 
     return res.send(waDelegationPage('Task Approved ✅',
-      `Task has been approved and added to the delegation system.<br><br><em>"${row.description}"</em>`, true));
+      `Task has been approved and added to the delegation system.<br><br><em>"${waHtmlText(row.description)}"</em>`, true));
   } catch (err) {
     console.error('wa-delegation approve err:', err.message);
     return res.status(500).send(waDelegationPage('Error', 'Something went wrong. Please try again.', false));
@@ -4908,7 +4930,9 @@ app.get('/api/wa-delegation/deny/:token', async (req, res) => {
     if (row.status === 'approved') return res.send(waDelegationPage('Already Approved ✅', 'This task was already approved and added to the system.', true));
     if (row.status === 'denied')   return res.send(waDelegationPage('Already Denied', 'This task was already denied.', false));
 
-    await db.query(`UPDATE tasks SET status='denied' WHERE id=?`, [row.id]);
+    if ((await waDecideTask(row, 'denied')) === null) {
+      return res.send(waDelegationPage('Already Decided', 'This task was already approved or denied.', false));
+    }
 
     // Notify the sender via WhatsApp
     if (row.sender_phone) {
@@ -4917,7 +4941,7 @@ app.get('/api/wa-delegation/deny/:token', async (req, res) => {
     }
 
     return res.send(waDelegationPage('Task Denied ❌',
-      `Task has been denied.<br><br><em>"${row.description}"</em>`, false));
+      `Task has been denied.<br><br><em>"${waHtmlText(row.description)}"</em>`, false));
   } catch (err) {
     console.error('wa-delegation deny err:', err.message);
     return res.status(500).send(waDelegationPage('Error', 'Something went wrong. Please try again.', false));
@@ -4987,19 +5011,10 @@ app.put('/api/wa-delegation/:id', requireAuth, async (req, res) => {
     if (!row) return res.status(404).json({ error: 'Not found' });
     if (row.status !== 'pending') return res.status(400).json({ error: `Already ${row.status}` });
 
+    if ((await waDecideTask(row, action)) === null) {
+      return res.status(409).json({ error: 'This task was already decided' });
+    }
     if (action === 'approved') {
-      const [ins] = await db.query(
-        `INSERT INTO delegation_tasks
-           (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-        [row.description, row.assigned_to, row.assigned_by, row.due_date,
-         'pending', row.priority, 'no', row.remarks, row.client_id, row.url,
-         row.due_date ? 0 : 1]
-      );
-      await db.query(
-        `UPDATE tasks SET status='approved', approved_task_id=? WHERE id=?`,
-        [ins.insertId, row.id]
-      );
       // Notify the sender
       if (row.sender_phone) {
         const msg = `✅ *Task Approved!*\n\nYour task has been approved and added to the system.\n\n📋 *Task:* ${row.description}` +
@@ -5007,7 +5022,6 @@ app.put('/api/wa-delegation/:id', requireAuth, async (req, res) => {
         notifyBotSender(row.sender_phone, 'Task Approved', msg);
       }
     } else {
-      await db.query(`UPDATE tasks SET status='denied' WHERE id=?`, [row.id]);
       if (row.sender_phone) {
         const msg = `❌ *Task Not Approved*\n\nYour task was reviewed and was not approved.\n\n📋 *Task:* ${row.description}`;
         notifyBotSender(row.sender_phone, 'Task Not Approved', msg);
@@ -7426,28 +7440,37 @@ app.patch('/api/mdo-tasks/:id', requireAuth, async (req, res) => {
     const [[assignedByUser]] = await db.query('SELECT id, phone FROM users WHERE name=?', [assignedByName]);
 
     let delegationTaskId = null;
+    if (status === 'Approved' && (!assignedToUser || !assignedByUser)) {
+      const missing = !assignedToUser ? `Assigned To ("${task.assigned_to}")` : `Assigned By ("${assignedByName}")`;
+      return res.status(400).json({ error: `Cannot approve — no matching user found for ${missing}` });
+    }
+    // Claim the row first, and only from Pending (the one state the MDO list
+    // offers buttons for): a double click or a second admin must not create a
+    // second delegation task or send the emails again, and a Rejected row must
+    // not turn into a live task later.
+    const [claim] = await db.query(
+      `UPDATE tasks SET status=?, updated_timestamp=NOW() WHERE id=? AND status='Pending'`, [status, req.params.id]);
+    if (!claim.affectedRows) return res.status(409).json({ error: 'This task was already decided' });
     if (status === 'Approved') {
-      if (!assignedToUser || !assignedByUser) {
-        const missing = !assignedToUser ? `Assigned To ("${task.assigned_to}")` : `Assigned By ("${assignedByName}")`;
-        return res.status(400).json({ error: `Cannot approve — no matching user found for ${missing}` });
-      }
       const dueDate = task.target_date || task.due_date;
       const validPriorities = ['low','medium','high','urgent'];
       const priority = validPriorities.includes(String(task.priority || '').toLowerCase()) ? String(task.priority).toLowerCase() : 'low';
-      const [ins] = await db.query(
-        `INSERT INTO delegation_tasks
-           (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-        [task.task_description || task.description || '', assignedToUser.id, assignedByUser.id, dueDate || null,
-         'pending', priority, 'no', task.remarks || null, task.client_id || null, task.url || null, dueDate ? 0 : 1]
-      );
-      delegationTaskId = ins.insertId;
+      try {
+        const [ins] = await db.query(
+          `INSERT INTO delegation_tasks
+             (description,assigned_to,assigned_by,due_date,status,priority,approval,remarks,client_id,url,awaiting_due_date)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+          [task.task_description || task.description || '', assignedToUser.id, assignedByUser.id, dueDate || null,
+           'pending', priority, 'no', task.remarks || null, task.client_id || null, task.url || null, dueDate ? 0 : 1]
+        );
+        delegationTaskId = ins.insertId;
+        await db.query(`UPDATE tasks SET approved_task_id=? WHERE id=?`, [delegationTaskId, req.params.id]);
+      } catch (e) {
+        // Could not create the task — hand the row back to Pending so it can be retried.
+        await db.query(`UPDATE tasks SET status=? WHERE id=?`, [task.status, req.params.id]).catch(() => {});
+        throw e;
+      }
     }
-
-    await db.query(
-      `UPDATE tasks SET status=?, updated_timestamp=NOW()${delegationTaskId ? ', approved_task_id=?' : ''} WHERE id=?`,
-      delegationTaskId ? [status, delegationTaskId, req.params.id] : [status, req.params.id]
-    );
     const approverName = String(req.session.name || '').toUpperCase();
     const dueDate = task.target_date || task.due_date;
     const dueDateStr = dueDate ? new Date(dueDate).toLocaleDateString('en-IN') : '—';

@@ -62,7 +62,14 @@ async function mdoReviewTask(id, status) {
     </span>`;
   }
   try {
-    await api(`/api/mdo-tasks/${id}`, 'PATCH', { status });
+    const r = await api(`/api/mdo-tasks/${id}`, 'PATCH', { status });
+    // The server can refuse (already decided, no matching user) — say so
+    // instead of toasting a success that did not happen.
+    if (r && r.error) {
+      showToast(r.error, 'error');
+      loadMdoApprovals();
+      return;
+    }
     showToast(status==='Approved' ? '✅ Task approved!' : '❌ Task rejected!');
     loadMdoApprovals();
   } catch(e) {
