@@ -9319,6 +9319,7 @@ require('./backend/routes/chatbot')(app, {
   requireAuth,
   requireAdminOrHod,
   userCanSee,
+  userCanDo,
   scoreFor,
   istMondayOf,
   addDays,

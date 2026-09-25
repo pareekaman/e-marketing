@@ -37,6 +37,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
     requireAuth,
     requireAdminOrHod,
     userCanSee,
+    userCanDo,
     scoreFor,
     istMondayOf,
     addDays,
@@ -70,6 +71,8 @@ module.exports = function registerChatbotRoutes(app, deps) {
   // count that looks like an answer to the question asked.
   const COMPLETED_WORDS = ['completed', 'complete', 'done', 'finished', 'closed'];
   const MEETING_WORDS = ['meeting', 'meetings', 'meet'];
+  const INVENTORY_WORDS = ['inventory', 'equipment', 'asset', 'assets', 'device', 'devices', 'laptop',
+    'mobile', 'sim', 'charger', 'keyboard', 'mouse', 'saman', 'samaan', 'saamaan', 'saaman'];
   const UNSUPPORTED = [
     'report', 'rank',
     'attendance', 'holiday', 'salary',
@@ -629,6 +632,37 @@ module.exports = function registerChatbotRoutes(app, deps) {
     };
   }
 
+  // ── Inventory ────────────────────────────────────────
+  // What someone holds right now: assignments that are active or waiting for
+  // handover, as on the Inventory page's assignment list. That list is
+  // edit_inventory only, so the same key gates this (or asking about oneself,
+  // which My Equipment already shows). No period — it is the current state.
+  async function inventoryFor(userId) {
+    const [rows] = await db.query(
+      `SELECT i.name, i.type, i.brand, i.model, i.serial_number, a.handover_status,
+              DATE_FORMAT(a.assigned_at,'%Y-%m-%d') AS since
+         FROM inventory_assignments a JOIN inventory_items i ON i.id = a.item_id
+        WHERE a.user_id = ? AND a.handover_status IN ('active','pending_handover')
+        ORDER BY a.assigned_at ASC`, [userId]);
+    return rows;
+  }
+
+  function inventoryReply(name, rows) {
+    if (!rows.length) return { reply: `${name} has no equipment assigned right now.` };
+    return {
+      reply: `${name} has ${rows.length} item${rows.length === 1 ? '' : 's'} assigned right now.`,
+      sections: [{
+        title: 'Equipment',
+        items: rows.map(r => ({
+          title: [r.name, [r.brand, r.model].filter(Boolean).join(' ')].filter(Boolean).join(' — '),
+          meta: [r.type, r.serial_number && `S/N ${r.serial_number}`, `since ${dmy(r.since)}`,
+            r.handover_status === 'pending_handover' && 'handover pending'].filter(Boolean).join(' · '),
+        })),
+        more: 0,
+      }],
+    };
+  }
+
   app.post('/api/chatbot/ask', requireAuth, requireAdminOrHod, async (req, res) => {
     try {
       const message = String(req.body?.message || '').slice(0, MAX_MESSAGE);
@@ -651,7 +685,8 @@ module.exports = function registerChatbotRoutes(app, deps) {
       const asks = list => list.some(w => msgWords.has(w) && !nameWords.has(w));
       // What is being asked. Extra working is checked before leave because
       // both are filed on the Leave Tracker and people call it "extra leave".
-      const intent = asks(EXTRA_WORDS) ? 'extra'
+      const intent = asks(INVENTORY_WORDS) ? 'inventory'
+        : asks(EXTRA_WORDS) ? 'extra'
         : asks(LEAVE_WORDS) ? 'leave'
         : asks(COMPLIANCE_WORDS) || (asks(NOT_WORDS) && asks(FILL_WORDS)) ? 'compliance'
         : asks(MEETING_WORDS) ? 'meetings'
@@ -667,6 +702,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
         compliance: `Compliance of ${n} ${period && period.phrase}`,
         completed: `Completed tasks of ${n} ${period && period.phrase}`,
         meetings: `Meetings of ${n} ${period && period.phrase}`,
+        inventory: `Equipment of ${n}`,
         mis: `MIS score of ${n} ${period && period.phrase}`,
         pending: `Pending tasks of ${n}`,
       })[intent];
@@ -709,6 +745,12 @@ module.exports = function registerChatbotRoutes(app, deps) {
           suggestions: [`Pending tasks of ${person.name}`, `MIS score of ${person.name} this week`,
             `Leaves of ${person.name} this month`, `Extra working of ${person.name} this month`],
         });
+      }
+      if (intent === 'inventory') {
+        if (person.id !== req.session.userId && !(await userCanDo(req.session, 'edit_inventory'))) {
+          return res.json({ reply: 'You don\'t have access to other people\'s equipment (Inventory).' });
+        }
+        return res.json(inventoryReply(person.name, await inventoryFor(person.id)));
       }
       if (intent === 'meetings') {
         if (!(await userCanSee(req.session, 'compliance')) || !(await canViewComplianceEmployee(req, person.id))) {
