@@ -69,10 +69,11 @@ module.exports = function registerChatbotRoutes(app, deps) {
   // "completed tasks of Naman" gets an honest "not yet" rather than a pending
   // count that looks like an answer to the question asked.
   const COMPLETED_WORDS = ['completed', 'complete', 'done', 'finished', 'closed'];
+  const MEETING_WORDS = ['meeting', 'meetings', 'meet'];
   const UNSUPPORTED = [
     'report', 'rank',
     'attendance', 'holiday', 'salary',
-    'fms', 'meeting', 'meetings', 'client', 'clients',
+    'fms', 'client', 'clients',
   ];
   // Time words make sense for an MIS score but not for pending tasks, which
   // are a count of right now: "pending last week" would otherwise be answered
@@ -574,6 +575,60 @@ module.exports = function registerChatbotRoutes(app, deps) {
     };
   }
 
+  // ── Meetings ─────────────────────────────────────────
+  // The same counts and list as Employee 360's Meetings block: organized
+  // (by status) and attended, by meeting_date. The Scheduler page shows
+  // each person only their own meetings, but Employee 360 shows anyone's to
+  // a compliance viewer, so this is gated the same way as compliance.
+  async function meetingsFor(userId, start, end) {
+    const [[mo]] = await db.query(
+      `SELECT COUNT(*) AS total,
+         SUM(CASE WHEN status='scheduled' THEN 1 ELSE 0 END) AS scheduled,
+         SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS done,
+         SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) AS cancelled
+        FROM meetings WHERE organizer_id = ? AND meeting_date BETWEEN ? AND ?`, [userId, start, end]);
+    const [[ma]] = await db.query(
+      `SELECT COUNT(DISTINCT m.id) AS total
+         FROM meetings m JOIN meeting_attendees mt ON mt.meeting_id = m.id
+        WHERE mt.user_id = ? AND m.organizer_id <> ? AND m.meeting_date BETWEEN ? AND ?`, [userId, userId, start, end]);
+    const [list] = await db.query(
+      `SELECT m.title, m.status, DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS d,
+              TIME_FORMAT(m.start_time,'%H:%i') AS t, c.name AS client_name,
+              CASE WHEN m.organizer_id = ? THEN 'Organizer' ELSE 'Attendee' END AS role
+         FROM meetings m LEFT JOIN clients c ON m.client_id = c.id
+        WHERE (m.organizer_id = ? OR EXISTS (SELECT 1 FROM meeting_attendees mt WHERE mt.meeting_id = m.id AND mt.user_id = ?))
+          AND m.meeting_date BETWEEN ? AND ?
+        ORDER BY m.meeting_date ASC, m.start_time ASC`, [userId, userId, userId, start, end]);
+    const n = v => parseInt(v) || 0;
+    return {
+      organized: { total: n(mo.total), scheduled: n(mo.scheduled), done: n(mo.done), cancelled: n(mo.cancelled) },
+      attended: n(ma.total),
+      list,
+    };
+  }
+
+  function meetingsReply(name, period, m) {
+    const when = periodText(period);
+    if (!m.list.length) return { reply: `${name} had no meetings ${when}.` };
+    const o = m.organized;
+    const parts = [];
+    if (o.done) parts.push(`${o.done} done`);
+    if (o.scheduled) parts.push(`${o.scheduled} scheduled`);
+    if (o.cancelled) parts.push(`${o.cancelled} cancelled`);
+    return {
+      reply: `${name} had ${m.list.length} meeting${m.list.length === 1 ? '' : 's'} ${when}: ` +
+        `organized ${o.total}${parts.length ? ` (${parts.join(', ')})` : ''}, attended ${m.attended}.`,
+      sections: [{
+        title: `Meetings (${m.list.length})`,
+        items: m.list.slice(0, SECTION_LIMIT).map(x => ({
+          title: x.title,
+          meta: [`${dmy(x.d)} ${x.t}`, x.client_name, x.role, x.status].filter(Boolean).join(' · '),
+        })),
+        more: Math.max(0, m.list.length - SECTION_LIMIT),
+      }],
+    };
+  }
+
   app.post('/api/chatbot/ask', requireAuth, requireAdminOrHod, async (req, res) => {
     try {
       const message = String(req.body?.message || '').slice(0, MAX_MESSAGE);
@@ -599,6 +654,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
       const intent = asks(EXTRA_WORDS) ? 'extra'
         : asks(LEAVE_WORDS) ? 'leave'
         : asks(COMPLIANCE_WORDS) || (asks(NOT_WORDS) && asks(FILL_WORDS)) ? 'compliance'
+        : asks(MEETING_WORDS) ? 'meetings'
         : asks(COMPLETED_WORDS) ? 'completed'
         : asks(DAILY_WORDS) ? 'daily'
         : asks(MIS_WORDS) ? 'mis'
@@ -610,6 +666,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
         daily: `Daily task hours of ${n} ${period && period.phrase}`,
         compliance: `Compliance of ${n} ${period && period.phrase}`,
         completed: `Completed tasks of ${n} ${period && period.phrase}`,
+        meetings: `Meetings of ${n} ${period && period.phrase}`,
         mis: `MIS score of ${n} ${period && period.phrase}`,
         pending: `Pending tasks of ${n}`,
       })[intent];
@@ -652,6 +709,12 @@ module.exports = function registerChatbotRoutes(app, deps) {
           suggestions: [`Pending tasks of ${person.name}`, `MIS score of ${person.name} this week`,
             `Leaves of ${person.name} this month`, `Extra working of ${person.name} this month`],
         });
+      }
+      if (intent === 'meetings') {
+        if (!(await userCanSee(req.session, 'compliance')) || !(await canViewComplianceEmployee(req, person.id))) {
+          return res.json({ reply: `You don't have access to ${person.name}'s meetings.` });
+        }
+        return res.json(meetingsReply(person.name, period, await meetingsFor(person.id, period.start, period.end)));
       }
       if (intent === 'completed') {
         return res.json(completedReply(person.name, period, await completedFor(person.id, period.start, period.end)));
