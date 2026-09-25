@@ -60,9 +60,9 @@ module.exports = function registerChatbotRoutes(app, deps) {
 
   // Any of these picks the kind of question.
   const MIS_WORDS = ['mis', 'score', 'scores', 'performance', 'rating'];
-  const LEAVE_WORDS = ['leave', 'leaves', 'chutti', 'chhutti', 'chuttiyan', 'chhuttiyan', 'chuttiya', 'wfh'];
+  const LEAVE_WORDS = ['leave', 'leaves', 'chutti', 'chhutti', 'chuttiyan', 'chhuttiyan', 'chuttiya', 'wfh', 'half', 'halfday'];
   const EXTRA_WORDS = ['extra', 'overtime'];
-  const DAILY_WORDS = ['daily', 'ghante', 'hours', 'hour', 'timesheet'];
+  const DAILY_WORDS = ['daily', 'ghante', 'hours', 'hour', 'timesheet', 'kiya', 'kiye', 'report'];
   // Compliance = which working days the Daily Task was not filled. Needs
   // either a compliance word or "not filled" in some form, because "kitne
   // ghante daily task bhara" (hours logged) also contains "bhara".
@@ -73,13 +73,20 @@ module.exports = function registerChatbotRoutes(app, deps) {
   // Words that ask for something this version cannot answer yet. Checked so
   // "completed tasks of Naman" gets an honest "not yet" rather than a pending
   // count that looks like an answer to the question asked.
-  const COMPLETED_WORDS = ['completed', 'complete', 'done', 'finished', 'closed'];
+  const COMPLETED_WORDS = ['completed', 'complete', 'done', 'finished', 'closed', 'poora', 'pura', 'pure', 'poore'];
+  const PROFILE_WORDS = ['who', 'kaun', 'profile', 'department', 'dept', 'role', 'designation', 'joining', 'details'];
+  const PENDING_WORDS = ['pending', 'baki', 'baaki', 'bacha', 'bache', 'remaining', 'overdue', 'due',
+    'task', 'tasks', 'kaam', 'work', 'status'];
+  // Words that carry no question of their own, in English and Hinglish.
+  const FILLER_WORDS = new Set(['ka', 'ki', 'ke', 'ko', 'kya', 'hai', 'hain', 'h', 'batao', 'bata', 'bataiye',
+    'show', 'tell', 'me', 'mujhe', 'of', 'for', 'the', 'a', 'please', 'plz', 'pls', 'kitne', 'kitna', 'kitni',
+    'how', 'many', 'much', 'what', 'is', 'are', 'about', 'check', 'do', 'dikhao', 'maanke', 'chalo', 'woh', 'unke', 'uske']);
   const MEETING_WORDS = ['meeting', 'meetings', 'meet'];
   const INVENTORY_WORDS = ['inventory', 'equipment', 'asset', 'assets', 'device', 'devices', 'laptop',
     'mobile', 'sim', 'charger', 'keyboard', 'mouse', 'saman', 'samaan', 'saamaan', 'saaman'];
   const PAYMENT_WORDS = ['payment', 'payments', 'reimbursement', 'expense', 'expenses', 'kharcha'];
   const UNSUPPORTED = [
-    'report', 'rank',
+    'rank',
     'attendance', 'holiday', 'salary',
     'fms', 'client', 'clients',
   ];
@@ -477,7 +484,8 @@ module.exports = function registerChatbotRoutes(app, deps) {
     const byDay = sumBy('d');
     const days = byDay.length;
     return {
-      reply: `${name} logged ${hm(total)} of daily tasks ${when}, on ${days} day${days === 1 ? '' : 's'}` +
+      reply: `${name} logged ${hm(total)} of daily tasks ${when}` +
+        (period.start === period.end ? '' : `, on ${days} day${days === 1 ? '' : 's'}`) +
         ` (${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}).`,
       sections: [
         { title: 'By client', items: byClient.slice(0, SECTION_LIMIT).map(([c, m]) => ({ title: `${c || '(no client)'} — ${hm(m)}`, meta: '' })),
@@ -787,10 +795,15 @@ module.exports = function registerChatbotRoutes(app, deps) {
         : asks(COMPLIANCE_WORDS) || (asks(NOT_WORDS) && asks(FILL_WORDS)) ? 'compliance'
         : asks(MEETING_WORDS) ? 'meetings'
         : asks(COMPLETED_WORDS) ? 'completed'
-        : asks(DAILY_WORDS) ? 'daily'
         : asks(MIS_WORDS) ? 'mis'
+        : asks(DAILY_WORDS) ? 'daily'
+        : asks(PROFILE_WORDS) ? 'profile'
+        // "Naman ke tasks last week": pending is a count of right now, so a
+        // task question with a period is answered as tasks due in that period.
+        : (asks(TIME_WORDS) || explicitDates(msgNorm.split(' ')).length || FULL_MONTHS.some(m => msgWords.has(m))) && asks(PENDING_WORDS) ? 'completed'
         : 'pending';
-      const period = intent === 'pending' ? null : parsePeriod(msgNorm, intent === 'mis' ? 'week' : 'month');
+      const period = intent === 'pending' || intent === 'profile' ? null
+        : parsePeriod(msgNorm, intent === 'mis' ? 'week' : 'month');
       const askFor = n => ({
         extra: `Extra working of ${n} ${period && period.phrase}`,
         leave: `Leaves of ${n} ${period && period.phrase}`,
@@ -802,6 +815,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
         payments: `Payment requests of ${n} ${period && period.phrase}`,
         mis: `MIS score of ${n} ${period && period.phrase}`,
         pending: `Pending tasks of ${n}`,
+        profile: `Who is ${n}`,
       })[intent];
       const hasDate = explicitDates(msgNorm.split(' ')).length > 0 || FULL_MONTHS.some(m => msgWords.has(m));
 
@@ -836,11 +850,32 @@ module.exports = function registerChatbotRoutes(app, deps) {
       }
 
       const person = matches[0];
-      if (asks(UNSUPPORTED) || (intent === 'pending' && (asks(TIME_WORDS) || hasDate))) {
+      // Pending is the fallback, so it must be earned: a pending/task word, or
+      // nothing but the name and filler ("Naman Gupta?"). Anything else —
+      // "naman gupta ki position kya hai" — is a question the bot does not
+      // know, and answering it with a pending count would be a wrong answer.
+      const leftover = [...msgWords].filter(w => !nameWords.has(w) && !FILLER_WORDS.has(w)
+        && !GREETING_WORDS.has(w) && !GREETING_RE.test(w));
+      const unknownQuestion = intent === 'pending' && leftover.length > 0 && !asks(PENDING_WORDS);
+      if (unknownQuestion || asks(UNSUPPORTED) || (intent === 'pending' && (asks(TIME_WORDS) || hasDate))) {
         return res.json({
           reply: 'I can\'t answer that yet.\n' + HELP,
           suggestions: [`Pending tasks of ${person.name}`, `MIS score of ${person.name} this week`,
             `Leaves of ${person.name} this month`, `Extra working of ${person.name} this month`],
+        });
+      }
+      if (intent === 'profile') {
+        // Directory facts only — the same fields the Users list gives every
+        // dropdown in the app (name, department, role).
+        const [[u]] = await db.query(
+          `SELECT name, department, COALESCE(user_role, role) AS role,
+                  DATE_FORMAT(joining_date,'%d-%m-%Y') AS joined
+             FROM users WHERE id = ?`, [person.id]);
+        const roleName = { admin: 'Admin', hod: 'HOD', pc: 'PC', user: 'Employee' }[u.role] || u.role;
+        const parts = [u.department && `${u.department} department`, roleName, u.joined && `joined ${u.joined}`].filter(Boolean);
+        return res.json({
+          reply: `${u.name}${parts.length ? ' — ' + parts.join(' · ') : ''}.`,
+          suggestions: [`Pending tasks of ${u.name}`, `MIS score of ${u.name} this week`, `Leaves of ${u.name} this month`],
         });
       }
       if (intent === 'payments') {
