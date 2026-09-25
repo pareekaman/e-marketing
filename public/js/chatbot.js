@@ -143,7 +143,7 @@ function cbMount() {
   document.body.appendChild(fab);
   document.body.appendChild(panel);
 
-  cbAddMsg('cb-bot', 'Hi! Ask me about someone\'s pending tasks, completed tasks, MIS score, leaves, extra working, daily task hours, compliance, meetings, equipment or payment requests. Add a date range if you like.\nFor example:\n"How many tasks are pending for Naman Gupta?"\n"Naman Gupta\'s MIS score last week"\n"Naman Gupta\'s leaves from 1 Sep to 15 Sep"');
+  cbAddMsg('cb-bot', 'Hi! Ask about anyone\'s tasks, MIS, leaves, meetings and more.\nFor example: "Naman Gupta\'s leaves last month"');
 }
 
 // Wait for init() to fill ME, then mount only for the roles the API allows.
