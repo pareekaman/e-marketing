@@ -13,11 +13,20 @@
 
 const CB_ROLES = ['admin', 'hod', 'pc'];
 
-// Robot face, used on the floating button and as the header avatar. A fixed
+// Robot face, used on the floating button and as the header avatar: a white
+// head with an antenna, a dark visor, glowing eyes and a smile. A fixed
 // literal, so writing it with innerHTML carries nothing from the server.
-const CB_ROBOT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-  '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/>' +
-  '<path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>';
+const CB_ROBOT_SVG = '<svg viewBox="0 0 64 64" aria-hidden="true">' +
+  '<line x1="32" y1="7" x2="32" y2="15" stroke="#fff" stroke-width="3" stroke-linecap="round"/>' +
+  '<circle cx="32" cy="7" r="4" fill="#fde047"/>' +
+  '<rect x="5" y="26" width="6" height="12" rx="3" fill="#e0e7ff"/>' +
+  '<rect x="53" y="26" width="6" height="12" rx="3" fill="#e0e7ff"/>' +
+  '<rect x="10" y="15" width="44" height="36" rx="13" fill="#fff"/>' +
+  '<rect x="16" y="22" width="32" height="22" rx="9" fill="#1e1b4b"/>' +
+  '<circle cx="25" cy="31" r="4" fill="#67e8f9"/><circle cx="39" cy="31" r="4" fill="#67e8f9"/>' +
+  '<circle cx="26.3" cy="29.7" r="1.3" fill="#fff"/><circle cx="40.3" cy="29.7" r="1.3" fill="#fff"/>' +
+  '<path d="M26 38 q6 4 12 0" stroke="#67e8f9" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
+  '<rect x="22" y="53" width="20" height="6" rx="3" fill="#e0e7ff"/></svg>';
 let _cbBusy = false;
 
 function cbEl(tag, cls, text) {
