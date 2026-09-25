@@ -42,6 +42,25 @@ function cbAddSuggestions(list) {
   log.scrollTop = log.scrollHeight;
 }
 
+// The task list under a reply: one heading per section (Overdue, Due today…),
+// each task as its description plus a grey line of type / due date / assigner.
+function cbAddSections(msg, sections) {
+  for (const s of sections) {
+    const sec = cbEl('div', 'cb-sec');
+    sec.appendChild(cbEl('div', 'cb-sec-title' + (s.title.startsWith('Overdue') ? ' cb-late' : ''), s.title));
+    for (const it of s.items || []) {
+      const row = cbEl('div', 'cb-task');
+      row.appendChild(cbEl('div', 'cb-task-title', it.title));
+      row.appendChild(cbEl('div', 'cb-task-meta', it.meta));
+      sec.appendChild(row);
+    }
+    if (s.more) sec.appendChild(cbEl('div', 'cb-more', `+ ${s.more} more`));
+    msg.appendChild(sec);
+  }
+  const log = document.getElementById('cbLog');
+  log.scrollTop = log.scrollHeight;
+}
+
 async function cbAsk(text) {
   text = String(text || '').trim();
   if (!text || _cbBusy) return;
@@ -53,7 +72,8 @@ async function cbAsk(text) {
   typing.remove();
   if (r.error) cbAddMsg('cb-err', r.error);
   else {
-    cbAddMsg('cb-bot', r.reply || '');
+    const msg = cbAddMsg('cb-bot', r.reply || '');
+    if (Array.isArray(r.sections)) cbAddSections(msg, r.sections);
     if (Array.isArray(r.suggestions) && r.suggestions.length) cbAddSuggestions(r.suggestions);
   }
   _cbBusy = false;

@@ -59,45 +59,70 @@ module.exports = function registerChatbotRoutes(app, deps) {
     return rows;
   }
 
-  async function pendingFor(userId) {
-    const counts = {};
-    for (const [key, table] of [['delegation', 'delegation_tasks'], ['checklist', 'checklist_tasks']]) {
-      const [[r]] = await db.query(
-        `SELECT
-           SUM(CASE WHEN due_date IS NULL OR due_date <= CURDATE() THEN 1 ELSE 0 END) AS pending,
-           SUM(CASE WHEN due_date < CURDATE() THEN 1 ELSE 0 END) AS overdue,
-           SUM(CASE WHEN due_date = CURDATE() THEN 1 ELSE 0 END) AS today,
-           SUM(CASE WHEN due_date > CURDATE() THEN 1 ELSE 0 END) AS upcoming
-         FROM ${table} WHERE assigned_to = ? AND status = 'pending'`, [userId]);
-      counts[key] = {
-        pending: parseInt(r.pending) || 0,
-        overdue: parseInt(r.overdue) || 0,
-        today: parseInt(r.today) || 0,
-        upcoming: parseInt(r.upcoming) || 0,
-      };
+  // Each section lists at most this many tasks and says how many more there
+  // are, so a long checklist backlog cannot turn one reply into a wall.
+  const SECTION_LIMIT = 10;
+  const MAX_DESC = 120;
+
+  // Every pending task of one person. Checklist rows due later are left out:
+  // recurring checklists are created weeks ahead, and listing them would bury
+  // the work that is actually due. Delegation tasks due later are kept, as
+  // their own "Due later" section.
+  async function pendingTasksFor(userId) {
+    const rows = [];
+    for (const [type, table] of [['Delegation', 'delegation_tasks'], ['Checklist', 'checklist_tasks']]) {
+      const [r] = await db.query(
+        `SELECT t.description, DATE_FORMAT(t.due_date, '%d-%m-%Y') AS due,
+                DATEDIFF(CURDATE(), t.due_date) AS late, u.name AS by_name
+         FROM ${table} t LEFT JOIN users u ON u.id = t.assigned_by
+         WHERE t.assigned_to = ? AND t.status = 'pending'
+         ${type === 'Checklist' ? 'AND (t.due_date IS NULL OR t.due_date <= CURDATE())' : ''}
+         ORDER BY t.due_date IS NULL, t.due_date ASC`, [userId]);
+      for (const x of r) rows.push({ ...x, type });
     }
-    return counts;
+    rows.sort((a, b) => (b.late ?? -1e9) - (a.late ?? -1e9));
+    return rows;
   }
 
-  function pendingReply(name, c) {
-    const total = c.delegation.pending + c.checklist.pending;
-    const overdue = c.delegation.overdue + c.checklist.overdue;
-    const today = c.delegation.today + c.checklist.today;
-    const plural = n => n === 1 ? 'task' : 'tasks';
-    if (!total) {
-      let msg = `${name} has no pending tasks.`;
-      if (c.delegation.upcoming) msg += `\n${c.delegation.upcoming} delegation ${plural(c.delegation.upcoming)} due later.`;
-      return msg;
-    }
-    const lines = [
-      `${name} has ${total} pending ${plural(total)}.`,
-      `• Delegation: ${c.delegation.pending}`,
-      `• Checklist: ${c.checklist.pending}`,
+  function taskItem(t) {
+    const desc = String(t.description || '(no description)').trim();
+    const meta = [t.type];
+    if (t.due) meta.push('Due ' + t.due);
+    if (t.late > 0) meta.push(`${t.late} day${t.late === 1 ? '' : 's'} late`);
+    if (t.by_name) meta.push('by ' + t.by_name);
+    return { title: desc.length > MAX_DESC ? desc.slice(0, MAX_DESC - 1) + '…' : desc, meta: meta.join(' · ') };
+  }
+
+  function pendingReply(name, rows) {
+    const groups = [
+      ['Overdue', rows.filter(t => t.late > 0)],
+      ['Due today', rows.filter(t => t.late === 0)],
+      ['No due date', rows.filter(t => t.late == null)],
+      ['Due later', rows.filter(t => t.late < 0)],
     ];
-    if (overdue) lines.push(`• Overdue: ${overdue}`);
-    if (today) lines.push(`• Due today: ${today}`);
-    if (c.delegation.upcoming) lines.push(`Also ${c.delegation.upcoming} delegation ${plural(c.delegation.upcoming)} due later.`);
-    return lines.join('\n');
+    const due = rows.filter(t => t.late == null || t.late >= 0);
+    const deleg = due.filter(t => t.type === 'Delegation').length;
+    const plural = n => n === 1 ? 'task' : 'tasks';
+    const later = groups[3][1].length;
+
+    let reply;
+    if (!due.length) {
+      reply = `${name} has no pending tasks.`;
+      if (later) reply += ` ${later} delegation ${plural(later)} due later.`;
+    } else {
+      reply = `${name} has ${due.length} pending ${plural(due.length)}` +
+        ` (${deleg} delegation, ${due.length - deleg} checklist).`;
+      const overdue = groups[0][1].length;
+      if (overdue) reply += ` ${overdue} overdue.`;
+    }
+    const sections = groups
+      .filter(([, list]) => list.length)
+      .map(([title, list]) => ({
+        title: `${title} (${list.length})`,
+        items: list.slice(0, SECTION_LIMIT).map(taskItem),
+        more: Math.max(0, list.length - SECTION_LIMIT),
+      }));
+    return { reply, sections };
   }
 
   app.post('/api/chatbot/ask', requireAuth, requireAdminOrHod, async (req, res) => {
@@ -134,8 +159,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
           suggestions: [`Pending tasks of ${person.name}`],
         });
       }
-      const counts = await pendingFor(person.id);
-      res.json({ reply: pendingReply(person.name, counts) });
+      res.json(pendingReply(person.name, await pendingTasksFor(person.id)));
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 

@@ -21,6 +21,16 @@
 .cb-err{align-self:flex-start;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;}
 .cb-typing{color:#94a3b8;font-style:italic;}
 
+/* Task list inside a bot reply. white-space reset: the bubble is pre-line. */
+.cb-bot:has(.cb-sec){max-width:100%;width:100%;}
+.cb-sec{margin-top:10px;white-space:normal;}
+.cb-sec-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#64748b;margin-bottom:4px;}
+.cb-sec-title.cb-late{color:#dc2626;}
+.cb-task{padding:6px 0;border-top:1px solid #f1f5f9;}
+.cb-task-title{font-size:13px;color:#1e293b;line-height:1.4;}
+.cb-task-meta{font-size:11px;color:#94a3b8;margin-top:2px;}
+.cb-more{font-size:11px;color:#6366f1;font-weight:500;padding-top:4px;}
+
 .cb-sugs{display:flex;flex-wrap:wrap;gap:6px;align-self:flex-start;max-width:100%;}
 .cb-sug{padding:5px 10px;border:1px solid #c7d2fe;border-radius:16px;background:#eef2ff;color:var(--accent,#4f46e5);font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;}
 .cb-sug:hover{background:#e0e7ff;}
