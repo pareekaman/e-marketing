@@ -107,7 +107,7 @@ function cbMount() {
   const head = cbEl('div', 'cb-head');
   const titles = cbEl('div');
   titles.appendChild(cbEl('div', 'cb-title', 'Task Assistant'));
-  titles.appendChild(cbEl('div', 'cb-sub', 'Tasks, MIS, leaves and extra working'));
+  titles.appendChild(cbEl('div', 'cb-sub', 'Ask about anyone\'s work'));
   const close = cbEl('button', 'cb-close', '×');
   close.type = 'button';
   close.setAttribute('aria-label', 'Close');
@@ -143,7 +143,7 @@ function cbMount() {
   document.body.appendChild(fab);
   document.body.appendChild(panel);
 
-  cbAddMsg('cb-bot', 'Hi! Ask me about someone\'s work. For example:\n"How many tasks are pending for Naman Gupta?"\n"Naman Gupta\'s MIS score last week"\n"Naman Gupta\'s leaves from 1 Sep to 15 Sep"\n"Naman Gupta\'s extra working last month"');
+  cbAddMsg('cb-bot', 'Hi! Ask me about someone\'s pending tasks, completed tasks, MIS score, leaves, extra working, daily task hours, compliance, meetings, equipment or payment requests. Add a date range if you like.\nFor example:\n"How many tasks are pending for Naman Gupta?"\n"Naman Gupta\'s MIS score last week"\n"Naman Gupta\'s leaves from 1 Sep to 15 Sep"');
 }
 
 // Wait for init() to fill ME, then mount only for the roles the API allows.

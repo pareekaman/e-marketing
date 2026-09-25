@@ -45,12 +45,13 @@ module.exports = function registerChatbotRoutes(app, deps) {
     isUserOffOn,
     loadHolidaysSet,
     canViewComplianceEmployee,
+    isPaymentApprover,
   } = deps;
 
   const MAX_MESSAGE = 300;
-  const HELP = 'Ask me about someone\'s tasks, for example:\n' +
+  const HELP = 'Ask me about someone\'s pending tasks, completed tasks, MIS score, leaves, ' +
+    'extra working, daily task hours, compliance, meetings, equipment or payment requests. For example:\n' +
     '"How many tasks are pending for Naman Gupta?"\n' +
-    '"Naman Gupta\'s MIS score last week"\n' +
     '"Naman Gupta\'s leaves from 1 Sep to 15 Sep"\n' +
     '"Naman Gupta\'s extra working last month"';
 
@@ -73,6 +74,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
   const MEETING_WORDS = ['meeting', 'meetings', 'meet'];
   const INVENTORY_WORDS = ['inventory', 'equipment', 'asset', 'assets', 'device', 'devices', 'laptop',
     'mobile', 'sim', 'charger', 'keyboard', 'mouse', 'saman', 'samaan', 'saamaan', 'saaman'];
+  const PAYMENT_WORDS = ['payment', 'payments', 'reimbursement', 'expense', 'expenses', 'kharcha'];
   const UNSUPPORTED = [
     'report', 'rank',
     'attendance', 'holiday', 'salary',
@@ -295,7 +297,9 @@ module.exports = function registerChatbotRoutes(app, deps) {
   }
   // The period as it reads inside a sentence: "in last month (01-08-2026 to
   // 31-08-2026)", "from 01-09-2026 to 15-09-2026", "on 08-09-2026".
-  const periodText = (p, prep = 'in') => p.label ? `${prep} ${p.label} (${dmy(p.start)} to ${dmy(p.end)})`
+  const periodText = (p, prep = 'in') =>
+    (p.label === 'today' || p.label === 'yesterday') ? `${p.label} (${dmy(p.start)})`
+    : p.label ? `${prep} ${p.label} (${dmy(p.start)} to ${dmy(p.end)})`
     : p.start === p.end ? `on ${dmy(p.start)}` : `from ${dmy(p.start)} to ${dmy(p.end)}`;
 
   async function misFor(userId, start, end) {
@@ -663,6 +667,79 @@ module.exports = function registerChatbotRoutes(app, deps) {
     };
   }
 
+  // ── Payment requests ─────────────────────────────────
+  // Requests someone raised in the period (by created_at). Two quirks of the
+  // table, both handled the way the Payment Request page handles them:
+  //   - the amount usually rides inside the reason as "[₹500.00] Software"
+  //     (prParseReason in public/js/payments.js); the amount column is the
+  //     fallback for rows without that prefix;
+  //   - "paid" and "cancelled" are separate rows under bank_name '__system__'
+  //     whose reason is "__paid__:<id>" / "__cancelled__:<id>".
+  // The full list is isPaymentApprover only, so that gates this; anyone can
+  // ask about their own, which /api/payment-requests/my already shows them.
+  function parseAmount(raw, column) {
+    const s = String(raw || '');
+    if (s.charAt(0) === '[') {
+      const close = s.indexOf('] ');
+      if (close > 1) {
+        const inner = s.slice(1, close);
+        const num = parseFloat(inner.slice(1).replace(/,/g, ''));
+        if (!isNaN(num) && num >= 0) return { amount: num, currency: inner.charAt(0), reason: s.slice(close + 2) };
+      }
+    }
+    const col = parseFloat(column);
+    return { amount: col > 0 ? col : null, currency: '₹', reason: s };
+  }
+
+  async function paymentsFor(userId, start, end) {
+    const [rows] = await db.query(
+      `SELECT id, reason, amount, status, payment_done, DATE_FORMAT(created_at,'%Y-%m-%d') AS d
+         FROM payment_requests
+        WHERE submitted_by = ? AND bank_name <> '__system__' AND DATE(created_at) BETWEEN ? AND ?
+        ORDER BY created_at ASC`, [userId, start, end]);
+    const [marks] = await db.query(
+      `SELECT reason FROM payment_requests WHERE bank_name = '__system__'`);
+    const paid = new Set(), cancelled = new Set();
+    for (const m of marks) {
+      const x = /^__(paid|cancelled)__:(\d+)/.exec(m.reason || '');
+      if (x) (x[1] === 'paid' ? paid : cancelled).add(Number(x[2]));
+    }
+    return rows.map(r => ({
+      ...r, ...parseAmount(r.reason, r.amount),
+      paid: !!r.payment_done || paid.has(r.id),
+      cancelled: cancelled.has(r.id),
+    }));
+  }
+
+  function paymentsReply(name, period, rows) {
+    const when = periodText(period);
+    if (!rows.length) return { reply: `${name} raised no payment requests ${when}.` };
+    const money = (cur, n) => cur + n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+    const count = s => rows.filter(r => r.status === s).length;
+    const totals = {};
+    for (const r of rows) if (r.amount != null && r.status !== 'rejected' && !r.cancelled) totals[r.currency] = (totals[r.currency] || 0) + r.amount;
+    const totalText = Object.entries(totals).map(([c, n]) => money(c, n)).join(' + ');
+    const parts = [['approved', count('approved')], ['pending', count('pending')], ['rejected', count('rejected')]]
+      .filter(([, n]) => n).map(([s, n]) => `${n} ${s}`);
+    return {
+      reply: `${name} raised ${rows.length} payment request${rows.length === 1 ? '' : 's'} ${when}` +
+        `${parts.length ? ` (${parts.join(', ')})` : ''}.` +
+        (totalText ? ` Total ${totalText}, not counting rejected or cancelled.` : ''),
+      sections: [{
+        title: 'Requests',
+        items: rows.slice(0, SECTION_LIMIT).map(r => {
+          const reason = String(r.reason || '').trim();
+          return {
+            title: (r.amount != null ? money(r.currency, r.amount) + ' — ' : '') +
+              (reason.length > MAX_DESC ? reason.slice(0, MAX_DESC - 1) + '…' : reason),
+            meta: [dmy(r.d), r.cancelled ? 'cancelled' : r.status, r.paid && 'paid'].filter(Boolean).join(' · '),
+          };
+        }),
+        more: Math.max(0, rows.length - SECTION_LIMIT),
+      }],
+    };
+  }
+
   app.post('/api/chatbot/ask', requireAuth, requireAdminOrHod, async (req, res) => {
     try {
       const message = String(req.body?.message || '').slice(0, MAX_MESSAGE);
@@ -685,7 +762,8 @@ module.exports = function registerChatbotRoutes(app, deps) {
       const asks = list => list.some(w => msgWords.has(w) && !nameWords.has(w));
       // What is being asked. Extra working is checked before leave because
       // both are filed on the Leave Tracker and people call it "extra leave".
-      const intent = asks(INVENTORY_WORDS) ? 'inventory'
+      const intent = asks(PAYMENT_WORDS) ? 'payments'
+        : asks(INVENTORY_WORDS) ? 'inventory'
         : asks(EXTRA_WORDS) ? 'extra'
         : asks(LEAVE_WORDS) ? 'leave'
         : asks(COMPLIANCE_WORDS) || (asks(NOT_WORDS) && asks(FILL_WORDS)) ? 'compliance'
@@ -703,6 +781,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
         completed: `Completed tasks of ${n} ${period && period.phrase}`,
         meetings: `Meetings of ${n} ${period && period.phrase}`,
         inventory: `Equipment of ${n}`,
+        payments: `Payment requests of ${n} ${period && period.phrase}`,
         mis: `MIS score of ${n} ${period && period.phrase}`,
         pending: `Pending tasks of ${n}`,
       })[intent];
@@ -741,10 +820,16 @@ module.exports = function registerChatbotRoutes(app, deps) {
       const person = matches[0];
       if (asks(UNSUPPORTED) || (intent === 'pending' && (asks(TIME_WORDS) || hasDate))) {
         return res.json({
-          reply: 'I can\'t answer that yet. For now I can show someone\'s pending tasks, MIS score, leaves or extra working.',
+          reply: 'I can\'t answer that yet.\n' + HELP,
           suggestions: [`Pending tasks of ${person.name}`, `MIS score of ${person.name} this week`,
             `Leaves of ${person.name} this month`, `Extra working of ${person.name} this month`],
         });
+      }
+      if (intent === 'payments') {
+        if (person.id !== req.session.userId && !(await isPaymentApprover(req.session))) {
+          return res.json({ reply: 'Only an admin or a payment approver can see other people\'s payment requests.' });
+        }
+        return res.json(paymentsReply(person.name, period, await paymentsFor(person.id, period.start, period.end)));
       }
       if (intent === 'inventory') {
         if (person.id !== req.session.userId && !(await userCanDo(req.session, 'edit_inventory'))) {

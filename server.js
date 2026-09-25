@@ -9327,6 +9327,7 @@ require('./backend/routes/chatbot')(app, {
   isUserOffOn,
   loadHolidaysSet,
   canViewComplianceEmployee,
+  isPaymentApprover,
 });
 
 // ══════════════════════════════════════════════════════
