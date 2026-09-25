@@ -26,9 +26,17 @@ module.exports = function registerChatbotRoutes(app, deps) {
   const HELP = 'Ask me about someone\'s pending tasks, for example:\n"How many tasks are pending for Naman Gupta?"';
 
   // Words that ask for something this version cannot answer yet. Checked so
-  // "completed tasks of Naman" gets an honest "not yet" rather than a
-  // pending count that looks like an answer to the question asked.
-  const UNSUPPORTED = ['completed', 'complete', 'done', 'finished', 'closed'];
+  // "completed tasks of Naman" or "Rahul's MIS score last week" gets an honest
+  // "not yet" rather than a pending count that looks like an answer to the
+  // question asked. Time words are here too: there is no date filter, so
+  // "pending last week" would otherwise be answered as "pending now".
+  const UNSUPPORTED = [
+    'completed', 'complete', 'done', 'finished', 'closed',
+    'mis', 'score', 'scores', 'performance', 'rating', 'report', 'rank',
+    'leave', 'leaves', 'attendance', 'holiday', 'salary',
+    'fms', 'meeting', 'meetings', 'client', 'clients',
+    'last', 'yesterday', 'week', 'month', 'kal', 'pichle', 'pichhle',
+  ];
 
   const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -153,9 +161,10 @@ module.exports = function registerChatbotRoutes(app, deps) {
       }
 
       const person = matches[0];
-      if (UNSUPPORTED.some(w => msgWords.has(w))) {
+      const nameWords = new Set(norm(person.name).split(' '));
+      if (UNSUPPORTED.some(w => msgWords.has(w) && !nameWords.has(w))) {
         return res.json({
-          reply: `For now I can only count pending tasks.`,
+          reply: `I can't answer that yet. For now I can only show someone's current pending tasks.`,
           suggestions: [`Pending tasks of ${person.name}`],
         });
       }
