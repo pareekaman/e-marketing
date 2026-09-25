@@ -13,20 +13,33 @@
 
 const CB_ROLES = ['admin', 'hod', 'pc'];
 
-// Robot face, used on the floating button and as the header avatar: a white
-// head with an antenna, a dark visor, glowing eyes and a smile. A fixed
-// literal, so writing it with innerHTML carries nothing from the server.
-const CB_ROBOT_SVG = '<svg viewBox="0 0 64 64" aria-hidden="true">' +
-  '<line x1="32" y1="7" x2="32" y2="15" stroke="#fff" stroke-width="3" stroke-linecap="round"/>' +
-  '<circle cx="32" cy="7" r="4" fill="#fde047"/>' +
-  '<rect x="5" y="26" width="6" height="12" rx="3" fill="#e0e7ff"/>' +
-  '<rect x="53" y="26" width="6" height="12" rx="3" fill="#e0e7ff"/>' +
-  '<rect x="10" y="15" width="44" height="36" rx="13" fill="#fff"/>' +
-  '<rect x="16" y="22" width="32" height="22" rx="9" fill="#1e1b4b"/>' +
-  '<circle cx="25" cy="31" r="4" fill="#67e8f9"/><circle cx="39" cy="31" r="4" fill="#67e8f9"/>' +
-  '<circle cx="26.3" cy="29.7" r="1.3" fill="#fff"/><circle cx="40.3" cy="29.7" r="1.3" fill="#fff"/>' +
-  '<path d="M26 38 q6 4 12 0" stroke="#67e8f9" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
-  '<rect x="22" y="53" width="20" height="6" rx="3" fill="#e0e7ff"/></svg>';
+// Robot face, used on the floating button and as the header avatar: a glossy
+// blue head with a ball antenna and ear pods, a dark screen, white eyes and a
+// smile. The eyes and antenna carry classes that chatbot.css animates (blink,
+// wiggle). A fixed literal apart from the id prefix, so writing it with
+// innerHTML carries nothing from the server. The prefix keeps the gradient
+// ids unique, since the robot appears twice on the page.
+function cbRobotSvg(p) {
+  return '<svg viewBox="0 0 64 64" aria-hidden="true">' +
+    '<defs>' +
+      `<linearGradient id="${p}b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5fd0ff"/><stop offset="1" stop-color="#0a8fe0"/></linearGradient>` +
+      `<linearGradient id="${p}s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f3947"/><stop offset="1" stop-color="#1b222c"/></linearGradient>` +
+    '</defs>' +
+    '<g class="cb-antenna">' +
+      `<rect x="30.5" y="9" width="3" height="8" rx="1.5" fill="url(#${p}b)"/>` +
+      `<circle cx="32" cy="8" r="5" fill="url(#${p}b)"/>` +
+      '<circle cx="30.4" cy="6.4" r="1.6" fill="#fff" opacity=".55"/>' +
+    '</g>' +
+    `<rect x="3" y="27" width="9" height="15" rx="4.5" fill="url(#${p}b)"/>` +
+    `<rect x="52" y="27" width="9" height="15" rx="4.5" fill="url(#${p}b)"/>` +
+    `<rect x="8" y="16" width="48" height="38" rx="15" fill="url(#${p}b)"/>` +
+    '<path d="M16 20 q10 -3 22 -2" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".45"/>' +
+    `<rect x="14" y="22" width="36" height="27" rx="10" fill="url(#${p}s)"/>` +
+    '<ellipse class="cb-eye" cx="25" cy="33" rx="3.6" ry="4.3" fill="#fff"/>' +
+    '<ellipse class="cb-eye" cx="39" cy="33" rx="3.6" ry="4.3" fill="#fff"/>' +
+    '<path d="M26.5 41 q5.5 3.6 11 0" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
+    '</svg>';
+}
 let _cbBusy = false;
 
 function cbEl(tag, cls, text) {
@@ -111,7 +124,7 @@ function cbMount() {
   fab.type = 'button';
   fab.title = 'Task Assistant';
   fab.setAttribute('aria-label', 'Open Task Assistant');
-  fab.innerHTML = CB_ROBOT_SVG;
+  fab.innerHTML = cbRobotSvg('cbF');
   fab.onclick = () => cbToggle();
 
   const panel = cbEl('div', 'cb-panel');
@@ -122,7 +135,7 @@ function cbMount() {
   const head = cbEl('div', 'cb-head');
   const brand = cbEl('div', 'cb-brand');
   const avatar = cbEl('div', 'cb-avatar');
-  avatar.innerHTML = CB_ROBOT_SVG;
+  avatar.innerHTML = cbRobotSvg('cbA');
   brand.appendChild(avatar);
   const titles = cbEl('div');
   brand.appendChild(titles);

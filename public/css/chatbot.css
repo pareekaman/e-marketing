@@ -1,17 +1,28 @@
 /* ══════════════════════════════════════════════
    TASK ASSISTANT — floating chat box (Admin / HOD / PC)
    ══════════════════════════════════════════════ */
-.cb-fab{position:fixed;right:24px;bottom:24px;z-index:900;width:58px;height:58px;border:none;border-radius:50%;background:linear-gradient(135deg,var(--accent-light,#6366f1),var(--accent,#4f46e5));color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(79,70,229,.35);transition:transform .15s,box-shadow .15s;}
-.cb-fab:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(79,70,229,.45);}
-.cb-fab svg{width:38px;height:38px;}
+/* White button so the blue robot stands out; the robot floats gently,
+   blinks and wiggles its antenna, and tilts on hover. */
+.cb-fab{position:fixed;right:24px;bottom:24px;z-index:900;width:64px;height:64px;border:1px solid #e0f2fe;border-radius:50%;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 22px rgba(10,143,224,.30);transition:transform .2s,box-shadow .2s;}
+.cb-fab:hover{transform:scale(1.07);box-shadow:0 10px 26px rgba(10,143,224,.42);}
+.cb-fab svg{width:50px;height:50px;animation:cbFloat 3s ease-in-out infinite;transition:transform .25s;}
+.cb-fab:hover svg{transform:rotate(-10deg);animation-play-state:paused;}
+.cb-eye{transform-box:fill-box;transform-origin:center;animation:cbBlink 4.5s infinite;}
+.cb-antenna{transform-box:view-box;transform-origin:32px 17px;animation:cbWiggle 3s ease-in-out infinite;}
+@keyframes cbFloat{0%,100%{transform:translateY(1.5px);}50%{transform:translateY(-2.5px);}}
+@keyframes cbBlink{0%,91%,100%{transform:scaleY(1);}94%{transform:scaleY(.12);}}
+@keyframes cbWiggle{0%,60%,100%{transform:rotate(0);}70%{transform:rotate(-12deg);}80%{transform:rotate(10deg);}90%{transform:rotate(-5deg);}}
+@media (prefers-reduced-motion:reduce){
+  .cb-fab svg,.cb-eye,.cb-antenna{animation:none;}
+}
 
-.cb-panel{position:fixed;right:24px;bottom:94px;z-index:901;width:420px;max-width:calc(100vw - 32px);height:600px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 16px 40px rgba(15,23,42,.18);display:none;flex-direction:column;overflow:hidden;font-family:'Inter',sans-serif;}
+.cb-panel{position:fixed;right:24px;bottom:100px;z-index:901;width:420px;max-width:calc(100vw - 32px);height:600px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 16px 40px rgba(15,23,42,.18);display:none;flex-direction:column;overflow:hidden;font-family:'Inter',sans-serif;}
 .cb-panel.open{display:flex;}
 
 .cb-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:linear-gradient(135deg,var(--accent-light,#6366f1),var(--accent,#4f46e5));color:#fff;}
 .cb-brand{display:flex;align-items:center;gap:10px;}
-.cb-avatar{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.cb-avatar svg{width:30px;height:30px;}
+.cb-avatar{width:40px;height:40px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 6px rgba(15,23,42,.18);}
+.cb-avatar svg{width:32px;height:32px;}
 .cb-title{font-size:14px;font-weight:600;}
 .cb-sub{font-size:11px;opacity:.85;margin-top:1px;}
 .cb-close{background:none;border:none;color:#fff;font-size:20px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:6px;}
@@ -46,6 +57,7 @@
 
 /* Clear of the fixed bottom tab bar on phones. */
 @media (max-width:768px){
-  .cb-fab{right:16px;bottom:calc(76px + env(safe-area-inset-bottom,0px));width:54px;height:54px;}
+  .cb-fab{right:16px;bottom:calc(76px + env(safe-area-inset-bottom,0px));width:58px;height:58px;}
+  .cb-fab svg{width:44px;height:44px;}
   .cb-panel{right:16px;left:16px;width:auto;max-width:none;bottom:calc(132px + env(safe-area-inset-bottom,0px));height:auto;max-height:calc(100vh - 180px);min-height:320px;}
 }
