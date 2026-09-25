@@ -9,8 +9,9 @@
 // Who can ask about whom mirrors GET /api/tasks:
 //   admin / pc — everyone
 //   hod        — people in their own department
-// A name outside that scope is simply never matched, so the bot cannot be
-// used to read anyone the asker could not already see on the Tasks page.
+// A name outside that scope is never matched, so the bot cannot be used to
+// read anyone the asker could not already see on the Tasks page. An HOD who
+// names someone from another department gets a reply saying so.
 //
 // "Pending" is the dashboard's definition, so the two numbers agree:
 // status 'pending' AND (no due date OR due today or earlier). Delegation
@@ -463,6 +464,25 @@ module.exports = function registerChatbotRoutes(app, deps) {
         pending: `Pending tasks of ${n}`,
       })[intent];
       const hasDate = explicitDates(msgNorm.split(' ')).length > 0 || FULL_MONTHS.some(m => msgWords.has(m));
+
+      // An HOD who names someone from another department is told so. The
+      // name is scored against everyone, not just the department: "Naman
+      // Jain" from an HOD whose department has only Naman Gupta must not
+      // fall back to a partial match on "Naman" and answer about the wrong
+      // person. If anyone outside the department matches better than the
+      // best match inside it, the question is about that outsider.
+      if (req.session.role === 'hod') {
+        const [everyone] = await db.query(
+          `SELECT id, name FROM users WHERE role <> 'client' AND client_id IS NULL`);
+        const bestAnywhere = Math.max(0, ...everyone.map(u => scoreUser(msgNorm, msgWords, u)));
+        if (bestAnywhere > best) {
+          const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [req.session.userId]);
+          const dept = me?.department ? ` (${me.department})` : '';
+          return res.json({
+            reply: `As an HOD, you can ask only about yourself and the employees of your department${dept}.`,
+          });
+        }
+      }
 
       if (!matches.length) {
         return res.json({ reply: 'I couldn\'t find a person\'s name in that.\n' + HELP });
