@@ -41,6 +41,7 @@ function cbRobotSvg(p) {
     '</svg>';
 }
 let _cbBusy = false;
+const CB_TYPING_MS = 4000;
 
 function cbEl(tag, cls, text) {
   const el = document.createElement(tag);
@@ -121,9 +122,16 @@ async function cbAsk(text) {
   _cbBusy = true;
   document.getElementById('cbSend').disabled = true;
   cbAddMsg('cb-me', text);
-  const typing = cbAddMsg('cb-bot cb-typing', 'Checking…');
+  // Three bouncing dots, shown for a fixed 4 seconds so the bot reads as
+  // typing a reply; the request runs in parallel and a slower one is waited on.
+  const typing = cbAddMsg('cb-bot cb-typing', '');
+  typing.setAttribute('aria-label', 'Typing');
+  for (let i = 0; i < 3; i++) typing.appendChild(cbEl('span', 'cb-dot'));
   const chat = _cbChat;
-  const r = await api('/api/chatbot/ask', 'POST', { message: text });
+  const [r] = await Promise.all([
+    api('/api/chatbot/ask', 'POST', { message: text }),
+    new Promise(done => setTimeout(done, CB_TYPING_MS)),
+  ]);
   if (chat !== _cbChat) return;   // the chat was closed and cleared meanwhile
   typing.row.remove();
   if (r.error) cbAddMsg('cb-err', r.error);
