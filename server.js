@@ -9311,6 +9311,14 @@ require('./backend/routes/leads')(app, {
   idxToCol,
 });
 
+// Task Assistant — rule-based chat box that answers "how many tasks are
+// pending for <name>" for Admin / HOD / PC. No AI; see the file header.
+require('./backend/routes/chatbot')(app, {
+  db,
+  requireAuth,
+  requireAdminOrHod,
+});
+
 // ══════════════════════════════════════════════════════
 // LOGS — deleted-records archive viewer + restore (admin only)
 // ══════════════════════════════════════════════════════
