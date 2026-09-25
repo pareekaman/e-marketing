@@ -12,6 +12,12 @@
 // ══════════════════════════════════════════════════════
 
 const CB_ROLES = ['admin', 'hod', 'pc'];
+
+// Robot face, used on the floating button and as the header avatar. A fixed
+// literal, so writing it with innerHTML carries nothing from the server.
+const CB_ROBOT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/>' +
+  '<path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>';
 let _cbBusy = false;
 
 function cbEl(tag, cls, text) {
@@ -96,7 +102,7 @@ function cbMount() {
   fab.type = 'button';
   fab.title = 'Task Assistant';
   fab.setAttribute('aria-label', 'Open Task Assistant');
-  fab.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  fab.innerHTML = CB_ROBOT_SVG;
   fab.onclick = () => cbToggle();
 
   const panel = cbEl('div', 'cb-panel');
@@ -105,14 +111,19 @@ function cbMount() {
   panel.setAttribute('aria-label', 'Task Assistant');
 
   const head = cbEl('div', 'cb-head');
+  const brand = cbEl('div', 'cb-brand');
+  const avatar = cbEl('div', 'cb-avatar');
+  avatar.innerHTML = CB_ROBOT_SVG;
+  brand.appendChild(avatar);
   const titles = cbEl('div');
+  brand.appendChild(titles);
   titles.appendChild(cbEl('div', 'cb-title', 'Task Assistant'));
   titles.appendChild(cbEl('div', 'cb-sub', 'Ask about anyone\'s work'));
   const close = cbEl('button', 'cb-close', '×');
   close.type = 'button';
   close.setAttribute('aria-label', 'Close');
   close.onclick = () => cbToggle(false);
-  head.appendChild(titles);
+  head.appendChild(brand);
   head.appendChild(close);
 
   const log = cbEl('div', 'cb-log');
