@@ -122,7 +122,9 @@ async function cbAsk(text) {
   document.getElementById('cbSend').disabled = true;
   cbAddMsg('cb-me', text);
   const typing = cbAddMsg('cb-bot cb-typing', 'Checking…');
+  const chat = _cbChat;
   const r = await api('/api/chatbot/ask', 'POST', { message: text });
+  if (chat !== _cbChat) return;   // the chat was closed and cleared meanwhile
   typing.row.remove();
   if (r.error) cbAddMsg('cb-err', r.error);
   else {
@@ -135,11 +137,28 @@ async function cbAsk(text) {
   document.getElementById('cbInput').focus();
 }
 
+// Closing the panel wipes the conversation, so the next open starts fresh
+// with only the greeting.
 function cbToggle(open) {
   const panel = document.getElementById('cbPanel');
   const show = open == null ? !panel.classList.contains('open') : open;
   panel.classList.toggle('open', show);
   if (show) document.getElementById('cbInput').focus();
+  else cbReset();
+}
+
+const CB_GREETING = 'Hello! Welcome to the E-Marketing chatbot. How may I help you?';
+// Bumped on every reset; a reply that comes back after the chat was cleared
+// sees a different number and is dropped instead of landing in the new chat.
+let _cbChat = 0;
+
+function cbReset() {
+  _cbChat++;
+  _cbBusy = false;
+  document.getElementById('cbLog').replaceChildren();
+  document.getElementById('cbInput').value = '';
+  document.getElementById('cbSend').disabled = false;
+  cbAddMsg('cb-bot', CB_GREETING);
 }
 
 function cbMount() {
@@ -202,7 +221,7 @@ function cbMount() {
   document.body.appendChild(fab);
   document.body.appendChild(panel);
 
-  cbAddMsg('cb-bot', 'Hello! Welcome to the E-Marketing chatbot. How may I help you?');
+  cbAddMsg('cb-bot', CB_GREETING);
 }
 
 // Wait for init() to fill ME, then mount only for the roles the API allows.
