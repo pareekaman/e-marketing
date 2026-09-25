@@ -754,9 +754,13 @@ module.exports = function registerChatbotRoutes(app, deps) {
       // rather than "I couldn't find a person's name".
       if ([...msgWords].every(w => GREETING_WORDS.has(w) || GREETING_RE.test(w))) {
         const thanks = [...msgWords].some(w => w.startsWith('thank') || w === 'thx' || w === 'shukriya' || w === 'dhanyawad');
+        // The name is read fresh rather than from the token, which keeps the
+        // name the user had when they signed in.
+        const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+        const name = me && me.name ? ' ' + me.name : '';
         return res.json({
           reply: thanks ? 'You\'re welcome! Ask me anything else about your team\'s work.'
-            : 'Hello! Welcome to the E-Marketing chatbot. How may I help you?\n' +
+            : `Hello${name}! Welcome to the E-Marketing chatbot. How may I help you?\n` +
               'You can ask about anyone\'s tasks, MIS, leaves, meetings and more. For example: "How many tasks are pending for Naman Gupta?"',
         });
       }

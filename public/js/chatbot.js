@@ -147,7 +147,11 @@ function cbToggle(open) {
   else cbReset();
 }
 
-const CB_GREETING = 'Hello! Welcome to the E-Marketing chatbot. How may I help you?';
+// Greets the signed-in person by name; written with textContent like every message.
+const cbGreeting = () => {
+  const name = typeof ME !== 'undefined' && ME && ME.name ? ' ' + ME.name : '';
+  return `Hello${name}! Welcome to the E-Marketing chatbot. How may I help you?`;
+};
 // Bumped on every reset; a reply that comes back after the chat was cleared
 // sees a different number and is dropped instead of landing in the new chat.
 let _cbChat = 0;
@@ -158,7 +162,7 @@ function cbReset() {
   document.getElementById('cbLog').replaceChildren();
   document.getElementById('cbInput').value = '';
   document.getElementById('cbSend').disabled = false;
-  cbAddMsg('cb-bot', CB_GREETING);
+  cbAddMsg('cb-bot', cbGreeting());
 }
 
 function cbMount() {
@@ -221,7 +225,7 @@ function cbMount() {
   document.body.appendChild(fab);
   document.body.appendChild(panel);
 
-  cbAddMsg('cb-bot', CB_GREETING);
+  cbAddMsg('cb-bot', cbGreeting());
 }
 
 // Wait for init() to fill ME, then mount only for the roles the API allows.
