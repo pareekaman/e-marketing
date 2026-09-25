@@ -55,6 +55,10 @@ module.exports = function registerChatbotRoutes(app, deps) {
     '"Naman Gupta\'s leaves from 1 Sep to 15 Sep"\n' +
     '"Naman Gupta\'s extra working last month"';
 
+  const GREETING_WORDS = new Set(['hi', 'hii', 'hiii', 'hello', 'helo', 'hey', 'heyy', 'namaste', 'namaskar',
+    'good', 'morning', 'afternoon', 'evening', 'there', 'bot', 'chatbot', 'ji', 'sir',
+    'thanks', 'thank', 'you', 'thankyou', 'thx', 'shukriya', 'dhanyawad', 'ok', 'okay']);
+
   // Any of these picks the kind of question.
   const MIS_WORDS = ['mis', 'score', 'scores', 'performance', 'rating'];
   const LEAVE_WORDS = ['leave', 'leaves', 'chutti', 'chhutti', 'chuttiyan', 'chhuttiyan', 'chuttiya', 'wfh'];
@@ -746,6 +750,17 @@ module.exports = function registerChatbotRoutes(app, deps) {
       const msgNorm = norm(message);
       if (!msgNorm) return res.json({ reply: HELP });
       const msgWords = new Set(msgNorm.split(' '));
+
+      // A message made only of greeting or thanks words gets a greeting back
+      // rather than "I couldn't find a person's name".
+      if ([...msgWords].every(w => GREETING_WORDS.has(w))) {
+        const thanks = [...msgWords].some(w => w.startsWith('thank') || w === 'thx' || w === 'shukriya' || w === 'dhanyawad');
+        return res.json({
+          reply: thanks ? 'You\'re welcome! Ask me anything else about your team\'s work.'
+            : 'Hello! Welcome to the E-Marketing chatbot. How may I help you?\n' +
+              'You can ask about anyone\'s tasks, MIS, leaves, meetings and more. For example: "Naman Gupta\'s leaves last month"',
+        });
+      }
 
       const users = await usersInScope(req.session);
       let best = 0;

@@ -143,7 +143,7 @@ function cbMount() {
   document.body.appendChild(fab);
   document.body.appendChild(panel);
 
-  cbAddMsg('cb-bot', 'Hi! Ask about anyone\'s tasks, MIS, leaves, meetings and more.\nFor example: "Naman Gupta\'s leaves last month"');
+  cbAddMsg('cb-bot', 'Hello! Welcome to the E-Marketing chatbot. How may I help you?');
 }
 
 // Wait for init() to fill ME, then mount only for the roles the API allows.
