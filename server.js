@@ -9312,11 +9312,17 @@ require('./backend/routes/leads')(app, {
 });
 
 // Task Assistant — rule-based chat box that answers "how many tasks are
-// pending for <name>" for Admin / HOD / PC. No AI; see the file header.
+// pending for <name>" and "<name>'s MIS score last week" for Admin / HOD / PC.
+// No AI; see the file header.
 require('./backend/routes/chatbot')(app, {
   db,
   requireAuth,
   requireAdminOrHod,
+  userCanSee,
+  scoreFor,
+  istMondayOf,
+  addDays,
+  weeklyPlanVsActual,
 });
 
 // ══════════════════════════════════════════════════════

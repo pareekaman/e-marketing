@@ -51,7 +51,7 @@ function cbAddSections(msg, sections) {
     for (const it of s.items || []) {
       const row = cbEl('div', 'cb-task');
       row.appendChild(cbEl('div', 'cb-task-title', it.title));
-      row.appendChild(cbEl('div', 'cb-task-meta', it.meta));
+      if (it.meta) row.appendChild(cbEl('div', 'cb-task-meta', it.meta));
       sec.appendChild(row);
     }
     if (s.more) sec.appendChild(cbEl('div', 'cb-more', `+ ${s.more} more`));
@@ -107,7 +107,7 @@ function cbMount() {
   const head = cbEl('div', 'cb-head');
   const titles = cbEl('div');
   titles.appendChild(cbEl('div', 'cb-title', 'Task Assistant'));
-  titles.appendChild(cbEl('div', 'cb-sub', 'Ask about anyone\'s pending tasks'));
+  titles.appendChild(cbEl('div', 'cb-sub', 'Pending tasks and MIS scores'));
   const close = cbEl('button', 'cb-close', '×');
   close.type = 'button';
   close.setAttribute('aria-label', 'Close');
@@ -143,7 +143,7 @@ function cbMount() {
   document.body.appendChild(fab);
   document.body.appendChild(panel);
 
-  cbAddMsg('cb-bot', 'Hi! Type a person\'s name to see how many tasks they have pending.\nFor example: "How many tasks are pending for Naman Gupta?"');
+  cbAddMsg('cb-bot', 'Hi! Ask me about someone\'s tasks. For example:\n"How many tasks are pending for Naman Gupta?"\n"Naman Gupta\'s MIS score last week"');
 }
 
 // Wait for init() to fill ME, then mount only for the roles the API allows.
