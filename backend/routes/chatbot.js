@@ -54,6 +54,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
   const MIS_WORDS = ['mis', 'score', 'scores', 'performance', 'rating'];
   const LEAVE_WORDS = ['leave', 'leaves', 'chutti', 'chhutti', 'chuttiyan', 'chhuttiyan', 'chuttiya', 'wfh'];
   const EXTRA_WORDS = ['extra', 'overtime'];
+  const DAILY_WORDS = ['daily', 'ghante', 'hours', 'hour', 'timesheet'];
 
   // Words that ask for something this version cannot answer yet. Checked so
   // "completed tasks of Naman" gets an honest "not yet" rather than a pending
@@ -430,6 +431,42 @@ module.exports = function registerChatbotRoutes(app, deps) {
     return { reply, sections };
   }
 
+  // ── Daily Task hours ─────────────────────────────────
+  // What someone logged on the Daily Task page, by client and by day. The
+  // app shows other people's daily tasks only on Daily Reports, whose routes
+  // are requireAdmin, so this answers for an admin only.
+  async function dailyFor(userId, start, end) {
+    const [rows] = await db.query(
+      `SELECT DATE_FORMAT(entry_date,'%Y-%m-%d') AS d, client_name, duration_min
+         FROM daily_tasks WHERE user_id = ? AND entry_date BETWEEN ? AND ?
+        ORDER BY entry_date ASC, id ASC`, [userId, start, end]);
+    return rows;
+  }
+
+  function dailyReply(name, period, rows) {
+    const when = periodText(period);
+    if (!rows.length) return { reply: `${name} logged no daily tasks ${when}.` };
+    const sumBy = key => {
+      const m = new Map();
+      for (const r of rows) m.set(r[key], (m.get(r[key]) || 0) + (parseInt(r.duration_min) || 0));
+      return [...m.entries()];
+    };
+    const total = rows.reduce((a, r) => a + (parseInt(r.duration_min) || 0), 0);
+    const byClient = sumBy('client_name').sort((a, b) => b[1] - a[1]);
+    const byDay = sumBy('d');
+    const days = byDay.length;
+    return {
+      reply: `${name} logged ${hm(total)} of daily tasks ${when}, on ${days} day${days === 1 ? '' : 's'}` +
+        ` (${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}).`,
+      sections: [
+        { title: 'By client', items: byClient.slice(0, SECTION_LIMIT).map(([c, m]) => ({ title: `${c || '(no client)'} — ${hm(m)}`, meta: '' })),
+          more: Math.max(0, byClient.length - SECTION_LIMIT) },
+        { title: 'By day', items: byDay.slice(0, SECTION_LIMIT).map(([d, m]) => ({ title: `${dmy(d)} — ${hm(m)}`, meta: '' })),
+          more: Math.max(0, days - SECTION_LIMIT) },
+      ],
+    };
+  }
+
   app.post('/api/chatbot/ask', requireAuth, requireAdminOrHod, async (req, res) => {
     try {
       const message = String(req.body?.message || '').slice(0, MAX_MESSAGE);
@@ -454,12 +491,14 @@ module.exports = function registerChatbotRoutes(app, deps) {
       // both are filed on the Leave Tracker and people call it "extra leave".
       const intent = asks(EXTRA_WORDS) ? 'extra'
         : asks(LEAVE_WORDS) ? 'leave'
+        : asks(DAILY_WORDS) ? 'daily'
         : asks(MIS_WORDS) ? 'mis'
         : 'pending';
       const period = intent === 'pending' ? null : parsePeriod(msgNorm, intent === 'mis' ? 'week' : 'month');
       const askFor = n => ({
         extra: `Extra working of ${n} ${period && period.phrase}`,
         leave: `Leaves of ${n} ${period && period.phrase}`,
+        daily: `Daily task hours of ${n} ${period && period.phrase}`,
         mis: `MIS score of ${n} ${period && period.phrase}`,
         pending: `Pending tasks of ${n}`,
       })[intent];
@@ -502,6 +541,13 @@ module.exports = function registerChatbotRoutes(app, deps) {
           suggestions: [`Pending tasks of ${person.name}`, `MIS score of ${person.name} this week`,
             `Leaves of ${person.name} this month`, `Extra working of ${person.name} this month`],
         });
+      }
+      if (intent === 'daily') {
+        // Anyone can read their own — the Daily Task page shows it to them.
+        if (req.session.role !== 'admin' && person.id !== req.session.userId) {
+          return res.json({ reply: 'Only an admin can see other people\'s daily tasks (Daily Reports).' });
+        }
+        return res.json(dailyReply(person.name, period, await dailyFor(person.id, period.start, period.end)));
       }
       if (intent === 'leave') {
         const days = await leaveDaysFor(person.id, period.start, period.end, ['full_day', 'half_day', 'work_from_home']);
