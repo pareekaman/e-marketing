@@ -758,7 +758,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
         return res.json({
           reply: thanks ? 'You\'re welcome! Ask me anything else about your team\'s work.'
             : 'Hello! Welcome to the E-Marketing chatbot. How may I help you?\n' +
-              'You can ask about anyone\'s tasks, MIS, leaves, meetings and more. For example: "Naman Gupta\'s leaves last month"',
+              'You can ask about anyone\'s tasks, MIS, leaves, meetings and more. For example: "How many tasks are pending for Naman Gupta?"',
         });
       }
 
