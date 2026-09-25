@@ -9323,6 +9323,9 @@ require('./backend/routes/chatbot')(app, {
   istMondayOf,
   addDays,
   weeklyPlanVsActual,
+  isUserOffOn,
+  loadHolidaysSet,
+  canViewComplianceEmployee,
 });
 
 // ══════════════════════════════════════════════════════

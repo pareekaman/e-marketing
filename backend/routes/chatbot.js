@@ -41,6 +41,9 @@ module.exports = function registerChatbotRoutes(app, deps) {
     istMondayOf,
     addDays,
     weeklyPlanVsActual,
+    isUserOffOn,
+    loadHolidaysSet,
+    canViewComplianceEmployee,
   } = deps;
 
   const MAX_MESSAGE = 300;
@@ -55,6 +58,12 @@ module.exports = function registerChatbotRoutes(app, deps) {
   const LEAVE_WORDS = ['leave', 'leaves', 'chutti', 'chhutti', 'chuttiyan', 'chhuttiyan', 'chuttiya', 'wfh'];
   const EXTRA_WORDS = ['extra', 'overtime'];
   const DAILY_WORDS = ['daily', 'ghante', 'hours', 'hour', 'timesheet'];
+  // Compliance = which working days the Daily Task was not filled. Needs
+  // either a compliance word or "not filled" in some form, because "kitne
+  // ghante daily task bhara" (hours logged) also contains "bhara".
+  const COMPLIANCE_WORDS = ['compliance', 'missed', 'miss', 'skipped'];
+  const NOT_WORDS = ['nahi', 'nhi', 'not', 'nahin'];
+  const FILL_WORDS = ['bhara', 'bhari', 'bhare', 'fill', 'filled'];
 
   // Words that ask for something this version cannot answer yet. Checked so
   // "completed tasks of Naman" gets an honest "not yet" rather than a pending
@@ -467,6 +476,49 @@ module.exports = function registerChatbotRoutes(app, deps) {
     };
   }
 
+  // ── Compliance (Daily Task filled on each working day?) ──
+  // The same day rules as /api/compliance/last7: off days come from
+  // isUserOffOn (Sundays, last Saturday, holidays), days before joining and
+  // full-day leave that is not rejected are not expected. Today counts only
+  // once it is filled, since the day is not over.
+  async function complianceFor(userId, start, end) {
+    const [[u]] = await db.query(
+      `SELECT id, DATE_FORMAT(joining_date,'%Y-%m-%d') AS joining_date FROM users WHERE id = ?`, [userId]);
+    const [filledRows] = await db.query(
+      `SELECT DISTINCT DATE_FORMAT(entry_date,'%Y-%m-%d') AS d FROM daily_tasks
+        WHERE user_id = ? AND entry_date BETWEEN ? AND ?`, [userId, start, end]);
+    const filled = new Set(filledRows.map(r => r.d));
+    const leave = new Set((await leaveDaysFor(userId, start, end, ['full_day'])).map(d => d.date));
+    const holidays = await loadHolidaysSet();
+    const today = istToday();
+    const out = { expected: 0, filled: [], missed: [], leave: [], off: 0 };
+    for (let d = start, i = 0; d <= end && i < 400; d = addDays(d, 1), i++) {
+      if (u && u.joining_date && d < u.joining_date) continue;
+      if (isUserOffOn(u, d, holidays)) { out.off++; continue; }
+      if (filled.has(d)) { out.expected++; out.filled.push(d); continue; }
+      if (leave.has(d)) { out.leave.push(d); continue; }
+      if (d === today) continue;
+      out.expected++;
+      out.missed.push(d);
+    }
+    return out;
+  }
+
+  function complianceReply(name, period, c) {
+    const when = periodText(period);
+    if (!c.expected) return { reply: `${name} had no working days to fill ${when}.` };
+    const pct = Math.round(c.filled.length / c.expected * 100);
+    const sections = [];
+    if (c.missed.length) sections.push({ title: `Not filled (${c.missed.length})`, items: [{ title: dateList(c.missed, 20), meta: '' }], more: 0 });
+    if (c.leave.length) sections.push({ title: `On leave (${c.leave.length})`, items: [{ title: dateList(c.leave, 20), meta: '' }], more: 0 });
+    return {
+      reply: `${name} filled the Daily Task on ${c.filled.length} of ${c.expected} working days ${when} (${pct}%).` +
+        (c.missed.length ? ` Missed ${c.missed.length}.` : ' No days missed.') +
+        '\nSundays, the last Saturday, holidays and full-day leave are not counted.',
+      sections,
+    };
+  }
+
   app.post('/api/chatbot/ask', requireAuth, requireAdminOrHod, async (req, res) => {
     try {
       const message = String(req.body?.message || '').slice(0, MAX_MESSAGE);
@@ -491,6 +543,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
       // both are filed on the Leave Tracker and people call it "extra leave".
       const intent = asks(EXTRA_WORDS) ? 'extra'
         : asks(LEAVE_WORDS) ? 'leave'
+        : asks(COMPLIANCE_WORDS) || (asks(NOT_WORDS) && asks(FILL_WORDS)) ? 'compliance'
         : asks(DAILY_WORDS) ? 'daily'
         : asks(MIS_WORDS) ? 'mis'
         : 'pending';
@@ -499,6 +552,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
         extra: `Extra working of ${n} ${period && period.phrase}`,
         leave: `Leaves of ${n} ${period && period.phrase}`,
         daily: `Daily task hours of ${n} ${period && period.phrase}`,
+        compliance: `Compliance of ${n} ${period && period.phrase}`,
         mis: `MIS score of ${n} ${period && period.phrase}`,
         pending: `Pending tasks of ${n}`,
       })[intent];
@@ -541,6 +595,14 @@ module.exports = function registerChatbotRoutes(app, deps) {
           suggestions: [`Pending tasks of ${person.name}`, `MIS score of ${person.name} this week`,
             `Leaves of ${person.name} this month`, `Extra working of ${person.name} this month`],
         });
+      }
+      if (intent === 'compliance') {
+        // Gated like the Compliance page: the 'compliance' page permission,
+        // then canViewComplianceEmployee (admin anyone, HOD/PC own department).
+        if (!(await userCanSee(req.session, 'compliance')) || !(await canViewComplianceEmployee(req, person.id))) {
+          return res.json({ reply: `You don't have access to ${person.name}'s compliance.` });
+        }
+        return res.json(complianceReply(person.name, period, await complianceFor(person.id, period.start, period.end)));
       }
       if (intent === 'daily') {
         // Anyone can read their own — the Daily Task page shows it to them.
