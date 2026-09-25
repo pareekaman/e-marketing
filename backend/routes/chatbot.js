@@ -49,15 +49,14 @@ module.exports = function registerChatbotRoutes(app, deps) {
   } = deps;
 
   const MAX_MESSAGE = 300;
-  const HELP = 'Ask me about someone\'s pending tasks, completed tasks, MIS score, leaves, ' +
-    'extra working, daily task hours, compliance, meetings, equipment or payment requests. For example:\n' +
-    '"How many tasks are pending for Naman Gupta?"\n' +
-    '"Naman Gupta\'s leaves from 1 Sep to 15 Sep"\n' +
-    '"Naman Gupta\'s extra working last month"';
+  const HELP = 'I can tell you about anyone\'s tasks, MIS, leaves, meetings and more.\n' +
+    'For example: "How many tasks are pending for Naman Gupta?"';
 
   const GREETING_WORDS = new Set(['hi', 'hii', 'hiii', 'hello', 'helo', 'hey', 'heyy', 'namaste', 'namaskar',
     'good', 'morning', 'afternoon', 'evening', 'there', 'bot', 'chatbot', 'ji', 'sir',
     'thanks', 'thank', 'you', 'thankyou', 'thx', 'shukriya', 'dhanyawad', 'ok', 'okay']);
+  // The ways "hi" and "hello" actually get typed: hlo, hii, helloo, hey, hy, hai.
+  const GREETING_RE = /^(?:h+i+|h+y+|h+a+i+|h+e+y+|h+e*l+o+|h+e+l+o+w*|hel+o+w+)$/;
 
   // Any of these picks the kind of question.
   const MIS_WORDS = ['mis', 'score', 'scores', 'performance', 'rating'];
@@ -753,7 +752,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
 
       // A message made only of greeting or thanks words gets a greeting back
       // rather than "I couldn't find a person's name".
-      if ([...msgWords].every(w => GREETING_WORDS.has(w))) {
+      if ([...msgWords].every(w => GREETING_WORDS.has(w) || GREETING_RE.test(w))) {
         const thanks = [...msgWords].some(w => w.startsWith('thank') || w === 'thx' || w === 'shukriya' || w === 'dhanyawad');
         return res.json({
           reply: thanks ? 'You\'re welcome! Ask me anything else about your team\'s work.'
