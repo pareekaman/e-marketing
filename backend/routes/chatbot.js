@@ -68,8 +68,9 @@ module.exports = function registerChatbotRoutes(app, deps) {
   // Words that ask for something this version cannot answer yet. Checked so
   // "completed tasks of Naman" gets an honest "not yet" rather than a pending
   // count that looks like an answer to the question asked.
+  const COMPLETED_WORDS = ['completed', 'complete', 'done', 'finished', 'closed'];
   const UNSUPPORTED = [
-    'completed', 'complete', 'done', 'finished', 'closed', 'report', 'rank',
+    'report', 'rank',
     'attendance', 'holiday', 'salary',
     'fms', 'meeting', 'meetings', 'client', 'clients',
   ];
@@ -519,6 +520,60 @@ module.exports = function registerChatbotRoutes(app, deps) {
     };
   }
 
+  // ── Completed tasks ──────────────────────────────────
+  // Tasks due in the period and how many are completed — the same base the
+  // MIS page counts from (due_date in range). Delegation rows also carry
+  // completed_at, so each one says whether it was finished on time.
+  async function completedFor(userId, start, end) {
+    const out = {};
+    for (const [key, table] of [['delegation', 'delegation_tasks'], ['checklist', 'checklist_tasks']]) {
+      const [[r]] = await db.query(
+        `SELECT COUNT(*) AS total, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS done
+           FROM ${table} WHERE assigned_to = ? AND due_date BETWEEN ? AND ?`, [userId, start, end]);
+      out[key] = { total: parseInt(r.total) || 0, done: parseInt(r.done) || 0 };
+    }
+    const [list] = await db.query(
+      `SELECT description, DATE_FORMAT(due_date,'%Y-%m-%d') AS due,
+              DATE_FORMAT(completed_at,'%Y-%m-%d') AS done_on
+         FROM delegation_tasks
+        WHERE assigned_to = ? AND status = 'completed' AND due_date BETWEEN ? AND ?
+        ORDER BY due_date ASC`, [userId, start, end]);
+    out.list = list;
+    return out;
+  }
+
+  function completedReply(name, period, c) {
+    const when = periodText(period);
+    const total = c.delegation.total + c.checklist.total;
+    const done = c.delegation.done + c.checklist.done;
+    if (!total) return { reply: `${name} had no tasks due ${when}.` };
+    const late = c.list.filter(t => t.done_on && t.done_on > t.due).length;
+    const sections = [{
+      title: 'Summary',
+      items: [
+        { title: `Delegation: ${c.delegation.done} of ${c.delegation.total} completed`, meta: c.list.length ? `${c.list.length - late} on time · ${late} late` : '' },
+        { title: `Checklist: ${c.checklist.done} of ${c.checklist.total} completed`, meta: '' },
+      ],
+      more: 0,
+    }];
+    if (c.list.length) {
+      sections.push({
+        title: `Delegation tasks completed (${c.list.length})`,
+        items: c.list.slice(0, SECTION_LIMIT).map(t => {
+          const desc = String(t.description || '(no description)').trim();
+          const meta = [`Due ${dmy(t.due)}`];
+          if (t.done_on) meta.push(`done ${dmy(t.done_on)}${t.done_on > t.due ? ' (late)' : ''}`);
+          return { title: desc.length > MAX_DESC ? desc.slice(0, MAX_DESC - 1) + '…' : desc, meta: meta.join(' · ') };
+        }),
+        more: Math.max(0, c.list.length - SECTION_LIMIT),
+      });
+    }
+    return {
+      reply: `${name} completed ${done} of ${total} tasks due ${when}.`,
+      sections,
+    };
+  }
+
   app.post('/api/chatbot/ask', requireAuth, requireAdminOrHod, async (req, res) => {
     try {
       const message = String(req.body?.message || '').slice(0, MAX_MESSAGE);
@@ -544,6 +599,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
       const intent = asks(EXTRA_WORDS) ? 'extra'
         : asks(LEAVE_WORDS) ? 'leave'
         : asks(COMPLIANCE_WORDS) || (asks(NOT_WORDS) && asks(FILL_WORDS)) ? 'compliance'
+        : asks(COMPLETED_WORDS) ? 'completed'
         : asks(DAILY_WORDS) ? 'daily'
         : asks(MIS_WORDS) ? 'mis'
         : 'pending';
@@ -553,6 +609,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
         leave: `Leaves of ${n} ${period && period.phrase}`,
         daily: `Daily task hours of ${n} ${period && period.phrase}`,
         compliance: `Compliance of ${n} ${period && period.phrase}`,
+        completed: `Completed tasks of ${n} ${period && period.phrase}`,
         mis: `MIS score of ${n} ${period && period.phrase}`,
         pending: `Pending tasks of ${n}`,
       })[intent];
@@ -595,6 +652,9 @@ module.exports = function registerChatbotRoutes(app, deps) {
           suggestions: [`Pending tasks of ${person.name}`, `MIS score of ${person.name} this week`,
             `Leaves of ${person.name} this month`, `Extra working of ${person.name} this month`],
         });
+      }
+      if (intent === 'completed') {
+        return res.json(completedReply(person.name, period, await completedFor(person.id, period.start, period.end)));
       }
       if (intent === 'compliance') {
         // Gated like the Compliance page: the 'compliance' page permission,
