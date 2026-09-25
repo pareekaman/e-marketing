@@ -29,14 +29,26 @@
 .cb-close:hover{background:rgba(255,255,255,.15);}
 
 .cb-log{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px;background:#f8fafc;}
-.cb-msg{max-width:85%;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.5;white-space:pre-line;word-wrap:break-word;}
-.cb-bot{align-self:flex-start;background:#fff;border:1px solid #e2e8f0;color:#1e293b;border-bottom-left-radius:4px;}
-.cb-me{align-self:flex-end;background:var(--accent,#4f46e5);color:#fff;border-bottom-right-radius:4px;}
-.cb-err{align-self:flex-start;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;}
+/* One line = avatar + bubble. Bot on the left with the E-Marketing logo,
+   the asker on the right with their photo or a person icon. */
+.cb-row{display:flex;align-items:flex-end;gap:8px;max-width:92%;}
+.cb-row-bot{align-self:flex-start;}
+.cb-row-me{align-self:flex-end;flex-direction:row-reverse;}
+.cb-row-bot:has(.cb-sec){width:92%;}
+.cb-av{width:30px;height:30px;border-radius:50%;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;}
+.cb-av-bot{background:#fff;border:1px solid #e2e8f0;padding:3px;}
+.cb-av-bot img{width:100%;height:100%;object-fit:contain;}
+.cb-av-me{background:#e0e7ff;color:var(--accent,#4f46e5);}
+.cb-av-me img{width:100%;height:100%;object-fit:cover;}
+.cb-av-me svg{width:18px;height:18px;}
+.cb-msg{min-width:0;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.5;white-space:pre-line;word-wrap:break-word;}
+.cb-bot{background:#fff;border:1px solid #e2e8f0;color:#1e293b;border-bottom-left-radius:4px;}
+.cb-me{background:var(--accent,#4f46e5);color:#fff;border-bottom-right-radius:4px;}
+.cb-err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;}
 .cb-typing{color:#94a3b8;font-style:italic;}
 
 /* Task list inside a bot reply. white-space reset: the bubble is pre-line. */
-.cb-bot:has(.cb-sec){max-width:100%;width:100%;}
+.cb-bot:has(.cb-sec){flex:1;}
 .cb-sec{margin-top:10px;white-space:normal;}
 .cb-sec-title{font-size:12px;font-weight:700;color:#64748b;margin-bottom:4px;}
 .cb-sec-title.cb-late{color:#dc2626;}
@@ -45,7 +57,7 @@
 .cb-task-meta{font-size:11px;color:#94a3b8;margin-top:2px;}
 .cb-more{font-size:11px;color:#6366f1;font-weight:500;padding-top:4px;}
 
-.cb-sugs{display:flex;flex-wrap:wrap;gap:6px;align-self:flex-start;max-width:100%;}
+.cb-sugs{display:flex;flex-wrap:wrap;gap:6px;align-self:flex-start;margin-left:38px;max-width:calc(100% - 38px);}
 .cb-sug{padding:5px 10px;border:1px solid #c7d2fe;border-radius:16px;background:#eef2ff;color:var(--accent,#4f46e5);font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;}
 .cb-sug:hover{background:#e0e7ff;}
 

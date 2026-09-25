@@ -49,10 +49,36 @@ function cbEl(tag, cls, text) {
   return el;
 }
 
+const CB_PERSON_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
+  '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5z"/></svg>';
+
+// The round picture beside a message: the E-Marketing logo for the bot, and
+// for the asker their profile photo, or a person icon when they have none.
+function cbAvatar(mine) {
+  const av = cbEl('div', 'cb-av ' + (mine ? 'cb-av-me' : 'cb-av-bot'));
+  const photo = mine ? (typeof ME !== 'undefined' && ME && ME.profile_image) : '/emarketing-logo.png';
+  if (photo) {
+    const img = document.createElement('img');
+    img.src = photo;
+    img.alt = '';
+    av.appendChild(img);
+  } else {
+    av.innerHTML = CB_PERSON_SVG;
+  }
+  return av;
+}
+
+// Adds one message with its avatar and returns the bubble, so a reply's task
+// list can be appended into it. bubble.row is the whole line, for removal.
 function cbAddMsg(cls, text) {
   const log = document.getElementById('cbLog');
+  const mine = cls.split(' ').includes('cb-me');
+  const row = cbEl('div', 'cb-row ' + (mine ? 'cb-row-me' : 'cb-row-bot'));
   const el = cbEl('div', 'cb-msg ' + cls, text);
-  log.appendChild(el);
+  row.appendChild(cbAvatar(mine));
+  row.appendChild(el);
+  el.row = row;
+  log.appendChild(row);
   log.scrollTop = log.scrollHeight;
   return el;
 }
@@ -97,7 +123,7 @@ async function cbAsk(text) {
   cbAddMsg('cb-me', text);
   const typing = cbAddMsg('cb-bot cb-typing', 'Checking…');
   const r = await api('/api/chatbot/ask', 'POST', { message: text });
-  typing.remove();
+  typing.row.remove();
   if (r.error) cbAddMsg('cb-err', r.error);
   else {
     const msg = cbAddMsg('cb-bot', r.reply || '');
