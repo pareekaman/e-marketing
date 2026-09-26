@@ -750,6 +750,13 @@ async function reminderSendNow(){
       return;
     }
 
+    // Sundays, the last Saturday and holidays: the server sends nothing and says
+    // why. There is no name list on that answer, so it must be handled first.
+    if (r.skipped) {
+      box.className = 'dr-reminder-result';
+      box.innerHTML = `<h4>⏸ Not sent — today is an off day</h4><div>${dtEscape(r.reason || 'Reminders are skipped today.')}</div>`;
+      return;
+    }
     box.className = 'dr-reminder-result success';
     if (r.allDone) {
       box.innerHTML = `<h4>✅ Sent — Everyone filled!</h4><div>All eligible users have filled today's report. "All done" message sent to group.</div>`;
