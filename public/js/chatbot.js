@@ -158,7 +158,8 @@ function cbToggle(open) {
 // Greets the signed-in person by name; written with textContent like every message.
 const cbGreeting = () => {
   const name = typeof ME !== 'undefined' && ME && ME.name ? ' ' + ME.name : '';
-  return `Hello${name}! Welcome to the E-Marketing chatbot. How may I help you?`;
+  // ‑ is a non-breaking hyphen, so "E-Marketing" never splits across lines.
+  return `Hello${name}! Welcome to the E‑Marketing chatbot. How may I help you?`;
 };
 // Bumped on every reset; a reply that comes back after the chat was cleared
 // sees a different number and is dropped instead of landing in the new chat.

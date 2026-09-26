@@ -768,7 +768,8 @@ module.exports = function registerChatbotRoutes(app, deps) {
         const name = me && me.name ? ' ' + me.name : '';
         return res.json({
           reply: thanks ? 'You\'re welcome! Ask me anything else about your team\'s work.'
-            : `Hello${name}! Welcome to the E-Marketing chatbot. How may I help you?\n` +
+            // ‑: non-breaking hyphen, keeps "E-Marketing" on one line.
+            : `Hello${name}! Welcome to the E‑Marketing chatbot. How may I help you?\n` +
               'You can ask about anyone\'s tasks, MIS, leaves, meetings and more. For example: "How many tasks are pending for Naman Gupta?"',
         });
       }
