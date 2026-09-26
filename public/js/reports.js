@@ -733,15 +733,16 @@ async function reminderPreview(){
   }
 }
 
-async function reminderSendNow(){
-  if (!await appConfirm('Send the daily reminder WhatsApp now?\n\nThis will message the group with names of users who haven\'t filled today\'s report.', 'Send Reminder')) return;
+async function reminderSendNow(force){
+  // force: the admin already saw the off-day message and pressed Send anyway.
+  if (!force && !await appConfirm('Send the daily reminder WhatsApp now?\n\nThis will message the group with names of users who haven\'t filled today\'s report.', 'Send Reminder')) return;
 
   const box = document.getElementById('reminderResult');
   box.style.display = 'block';
   box.className = 'dr-reminder-result';
   box.innerHTML = '<i>Sending…</i>';
   try {
-    const r = await api('/api/daily-reminder/send', 'POST', {});
+    const r = await api('/api/daily-reminder/send', 'POST', force ? { force: true } : {});
     if (r.error) throw new Error(r.error);
 
     if (!r.ok) {
@@ -753,8 +754,14 @@ async function reminderSendNow(){
     // Sundays, the last Saturday and holidays: the server sends nothing and says
     // why. There is no name list on that answer, so it must be handled first.
     if (r.skipped) {
+      // Show what would have gone out, and let the admin send it anyway.
+      const pv = await api('/api/daily-reminder/send', 'POST', { dryRun: true });
       box.className = 'dr-reminder-result';
-      box.innerHTML = `<h4>⏸ Not sent — today is an off day</h4><div>${dtEscape(r.reason || 'Reminders are skipped today.')}</div>`;
+      box.innerHTML = `<h4>⏸ Not sent — today is an off day</h4>
+        <div>${dtEscape(r.reason || 'Reminders are skipped today.')}</div>
+        ${pv && pv.message ? `<div style="margin-top:10px"><b>This is the message that would go to the group:</b></div>
+          <pre style="white-space:pre-wrap;font-family:inherit;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin:6px 0 10px">${dtEscape(pv.message)}</pre>
+          <button class="btn btn-primary" onclick="reminderSendNow(true)">📤 Send anyway</button>` : ''}`;
       return;
     }
     box.className = 'dr-reminder-result success';

@@ -5080,12 +5080,19 @@ async function sendToReminderDestination(text) {
   return sendWhatsApp(dest, text);
 }
 
-async function buildAndSendReminder() {
+// force  — an admin chose to send on an off day anyway (manual Send Now only;
+//          the cron never passes it).
+// dryRun — build the exact message and return it without sending, so the page
+//          can show what would go out before the admin decides.
+async function buildAndSendReminder({ force = false, dryRun = false } = {}) {
   // Sunday + holidays: don't send anything at all (not even a "holiday" group message).
   const off = await getTodayOffIST();
-  if (off.off) return { ok: true, skipped: true, date: off.today, reason: off.reason };
+  if (off.off && !force && !dryRun) return { ok: true, skipped: true, date: off.today, reason: off.reason };
   const today = off.today;
-  const holidaysSet = off.holidaysSet;
+  const holidaysSet = off.holidaysSet || await loadHolidaysSet();
+  // isUserOffOn only knows company-wide off days, so on an off day it would
+  // drop everyone. When the day itself is off, that check has nothing to add.
+  const skipDayOff = off.off;
 
   // Get all users — excluding CXO department + flagged users (case-insensitive).
   // role='client' users are external client logins, not team members, so they
@@ -5104,7 +5111,7 @@ async function buildAndSendReminder() {
   const eligible = users.filter(u =>
     !EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase()) &&
     !u.exclude_from_reminder &&
-    !isUserOffOn(u, today, holidaysSet) &&
+    (skipDayOff || !isUserOffOn(u, today, holidaysSet)) &&
     !onLeave.has(u.id)
   );
 
@@ -5127,6 +5134,7 @@ async function buildAndSendReminder() {
   if (!missingNames.length) {
     // Everyone (eligible) has filled — send a "all done" or skip
     const allDoneMsg = `Hello,\n\nGreat news! ✅ Everyone has filled today's Daily Task report.\n\nThanks team!`;
+    if (dryRun) return { ok: true, dryRun: true, allDone: true, missingCount: 0, message: allDoneMsg, date: today, offReason: off.off ? off.reason : null };
     const sendRes = await sendToReminderDestination(allDoneMsg);
     return { ok: true, allDone: true, missingCount: 0, send: sendRes, date: today };
   }
@@ -5137,6 +5145,7 @@ async function buildAndSendReminder() {
   message += missingNames.join("\n");
   message += "\n\nPlease update today's report.";
 
+  if (dryRun) return { ok: true, dryRun: true, date: today, missingCount: missingNames.length, missingNames, message, offReason: off.off ? off.reason : null };
   const sendRes = await sendToReminderDestination(message);
   return {
     ok: sendRes.ok,
@@ -5151,7 +5160,7 @@ async function buildAndSendReminder() {
 // ── Manual trigger (admin button) ────────────────────────
 app.post('/api/daily-reminder/send', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const result = await buildAndSendReminder();
+    const result = await buildAndSendReminder({ force: req.body?.force === true, dryRun: req.body?.dryRun === true });
     res.json(result);
   } catch (err) {
     console.error('Manual reminder error:', err);
