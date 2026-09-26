@@ -40,7 +40,10 @@ module.exports = function registerLeadsRoutes(app, deps) {
   const ENQUIRIES_SHEET_ID  = process.env.ENQUIRIES_SHEET_ID  || '1GD-gmK4JcK8KsXUf5W_ZBeVPg0o0Yh6vb5E1qv5d2vQ';
   const ENQUIRIES_TAB       = process.env.ENQUIRIES_TAB       || 'Enquiries';
   const META_LEADS_SHEET_ID = process.env.META_LEADS_SHEET_ID || '1YZa2efJg_7UpX8GclWFO4Fod0wEnSTbSLeervZJA-Bc';
-  const META_LEADS_TAB      = process.env.META_LEADS_TAB      || 'Website with otp';
+  const META_LEADS_TAB      = process.env.META_LEADS_TAB      || 'eMark | Clothing Brands | 25 Sep 26';
+  // A1 notation needs a tab name with spaces or symbols wrapped in single quotes
+  // (a quote inside the name is doubled), or `Tab!C5` fails to parse.
+  const META_LEADS_REF      = `'${META_LEADS_TAB.replace(/'/g, "''")}'`;
   const GADS_SHEET_ID       = process.env.GADS_SHEET_ID       || '1yL6PlGqM1XkiWGOq161f9u4HWSOqmDp03VGRGQ92qeI';
   const GADS_TAB            = process.env.GADS_TAB            || 'Leads';
   const MANUAL_SHEET_ID     = process.env.MANUAL_SHEET_ID     || '1m8-AbxLza21Vj8Q184k9fcZdm0KqbpMad88IyZ-rZh4';
@@ -158,7 +161,7 @@ module.exports = function registerLeadsRoutes(app, deps) {
       const sheetsApi = await getSheetsClient(READ_SCOPE);
       const resp = await sheetsApi.spreadsheets.values.get({
         spreadsheetId: extractSpreadsheetId(META_LEADS_SHEET_ID),
-        range: META_LEADS_TAB,
+        range: META_LEADS_REF,
       });
       const values = resp.data.values || [];
       if (!values.length) return res.json(emptyPayload());
@@ -190,7 +193,7 @@ module.exports = function registerLeadsRoutes(app, deps) {
 
       const sheetsApi = await getSheetsClient(WRITE_SCOPE);
       const spreadsheetId = extractSpreadsheetId(META_LEADS_SHEET_ID);
-      const resp = await sheetsApi.spreadsheets.values.get({ spreadsheetId, range: META_LEADS_TAB });
+      const resp = await sheetsApi.spreadsheets.values.get({ spreadsheetId, range: META_LEADS_REF });
       const values = resp.data.values || [];
       if (!values.length) return res.status(404).json({ error: 'Sheet is empty' });
 
@@ -207,8 +210,8 @@ module.exports = function registerLeadsRoutes(app, deps) {
       if (rowNum < 0) return res.status(404).json({ error: 'Lead not found in the sheet' });
 
       const data = [];
-      if (statusCol >= 0 && status !== undefined) data.push({ range: `${META_LEADS_TAB}!${idxToCol(statusCol)}${rowNum}`, values: [[status]] });
-      if (remarkCol >= 0 && remark !== undefined) data.push({ range: `${META_LEADS_TAB}!${idxToCol(remarkCol)}${rowNum}`, values: [[remark]] });
+      if (statusCol >= 0 && status !== undefined) data.push({ range: `${META_LEADS_REF}!${idxToCol(statusCol)}${rowNum}`, values: [[status]] });
+      if (remarkCol >= 0 && remark !== undefined) data.push({ range: `${META_LEADS_REF}!${idxToCol(remarkCol)}${rowNum}`, values: [[remark]] });
       if (!data.length) return res.json({ ok: true });
 
       await sheetsApi.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: 'USER_ENTERED', data } });
