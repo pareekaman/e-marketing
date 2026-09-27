@@ -3860,10 +3860,25 @@ app.post('/api/week-plan', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'You do not have access to set the weekly plan' });
   }
   try {
-    const { employeeId, startDate, targetCount, hodId, improvementPct } = req.body;
+    const { employeeId, startDate, improvementPct } = req.body;
     if (!employeeId || !startDate) {
       return res.status(400).json({ error: 'employeeId and startDate required' });
     }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(startDate))) return res.status(400).json({ error: 'Invalid start date' });
+    // Same audience as the Set Plan picker: an admin may plan for anyone;
+    // anyone else only for people in their own department, not themselves.
+    // The plan is always credited to whoever sets it — hodId from the body
+    // was trusted, so a plan could be booked to another HOD.
+    if (req.session.role !== 'admin') {
+      const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [req.session.userId]);
+      const [[emp]] = await db.query('SELECT department FROM users WHERE id=?', [employeeId]);
+      if (Number(employeeId) === Number(req.session.userId) || !me?.department || !emp || emp.department !== me.department) {
+        return res.status(403).json({ error: 'You can only set plans for your own department' });
+      }
+    }
+    req.body.hodId = req.session.userId;
+    req.body.targetCount = Number.isFinite(Number(req.body.targetCount)) ? Number(req.body.targetCount) : 0;
+    const { targetCount, hodId } = req.body;
     const impPct = (improvementPct !== undefined && improvementPct !== null && improvementPct !== '') ? parseInt(improvementPct) : null;
     // Upsert: insert or update if same employee+startDate exists
     await db.query(
@@ -3920,10 +3935,17 @@ app.post('/api/week-plan', requireAuth, async (req, res) => {
 
 app.get('/api/week-plan', requireAuth, requireAdminOrHod, async (req, res) => {
   try {
+    // An HOD/PC sees their own department's plans; an admin sees all.
+    let deptFilter = '', params = [];
+    if (req.session.role !== 'admin') {
+      const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [req.session.userId]);
+      deptFilter = 'WHERE u.department = ?'; params = [me?.department || '\u0000'];
+    }
     const [rows] = await db.query(
       `SELECT wp.*, u.name as employee_name FROM week_plans wp
        JOIN users u ON u.id = wp.employee_id
-       ORDER BY wp.start_date DESC LIMIT 50`
+       ${deptFilter}
+       ORDER BY wp.start_date DESC LIMIT 50`, params
     );
     res.json(rows);
   } catch (e) {
