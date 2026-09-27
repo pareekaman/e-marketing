@@ -107,6 +107,26 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// Most routes answer a failure with { error: err.message }, which for a 500
+// means raw MySQL / Google / driver text — table and column names, SQL, the
+// database user — shown to whoever triggered it, clients included. For a 5xx
+// only, anyone but an admin now gets a plain message and the real one goes
+// to the server log; admins keep seeing it so they can diagnose. 4xx
+// messages ("Already decided", "Invalid date"…) are the app talking to the
+// user and pass through untouched. req.session is read when the response is
+// sent, i.e. after requireAuth has run.
+app.use('/api', (req, res, next) => {
+  const json = res.json.bind(res);
+  res.json = body => {
+    if (res.statusCode >= 500 && body && typeof body === 'object' && req.session?.role !== 'admin') {
+      console.error(`${res.statusCode} ${req.method} ${req.originalUrl}:`, body.error || body);
+      body = { ok: false, error: 'Something went wrong — please try again' };
+    }
+    return json(body);
+  };
+  next();
+});
+
 app.use('/api', async (req, res, next) => {
   try {
     await _startupMigrationsPromise;
