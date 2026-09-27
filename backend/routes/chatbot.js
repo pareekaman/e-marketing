@@ -54,7 +54,9 @@ module.exports = function registerChatbotRoutes(app, deps) {
 
   const GREETING_WORDS = new Set(['hi', 'hii', 'hiii', 'hello', 'helo', 'hey', 'heyy', 'namaste', 'namaskar',
     'good', 'morning', 'afternoon', 'evening', 'there', 'bot', 'chatbot', 'ji', 'sir',
-    'thanks', 'thank', 'you', 'thankyou', 'thx', 'shukriya', 'dhanyawad', 'ok', 'okay']);
+    'thanks', 'thank', 'you', 'thankyou', 'thx', 'shukriya', 'dhanyawad', 'ok', 'okay', 'so', 'much', 'very', 'lot', 'alot', 'bahut', 'bohot', 'great', 'nice', 'cool', 'got', 'it', 'u', 'ty', 'tq', 'tysm', 'thnx', 'thanx']);
+  // Topics a follow-up may carry over from the previous answer.
+  const TOPICS = new Set(['pending', 'mis', 'leave', 'extra', 'daily', 'compliance', 'completed', 'meetings', 'inventory', 'payments', 'profile']);
   // The ways "hi" and "hello" actually get typed: hlo, hii, helloo, hey, hy, hai.
   const GREETING_RE = /^(?:h+i+|h+y+|h+a+i+|h+e+y+|h+e*l+o+|h+e+l+o+w*|hel+o+w+)$/;
 
@@ -96,11 +98,140 @@ module.exports = function registerChatbotRoutes(app, deps) {
     return best;
   }
 
+  // "mere / my / apne" — the asker is the person. "uska / his / unke" — the
+  // person from the previous answer.
+  const SELF_WORDS = new Set(['my', 'mine', 'mera', 'mere', 'meri', 'myself', 'apna', 'apne', 'apni', 'khud', 'main', 'maine']);
+  const PRONOUN_WORDS = new Set(['uska', 'uski', 'uske', 'unka', 'unki', 'unke', 'iska', 'iski', 'iske', 'inka', 'inki', 'inke',
+    'usne', 'unhone', 'isne', 'his', 'her', 'their', 'him', 'them', 'he', 'she', 'they']);
+  // Questions about everyone at once.
+  const TEAM_WORDS = ['team', 'sab', 'sabke', 'sabka', 'sabki', 'sabhi', 'everyone', 'everybody', 'all', 'employees',
+    'kiske', 'kiska', 'kiski', 'whose', 'who', 'kaun', 'koi', 'anyone', 'anybody', 'kon', 'sabse', 'most', 'zyada', 'jyada', 'maximum', 'highest', 'top', 'staff', 'log', 'logo', 'logon'];
+  // Everyday words that are not names — part of the vocabulary so a
+  // follow-up made of them alone ("aur last month?") is recognised as one.
+  const COMMON_WORDS = ['aur', 'and', 'bhi', 'also', 'se', 'tak', 'to', 'from', 'till', 'until', 'on', 'in', 'at', 'ne', 'li',
+    'le', 'liya', 'lee', 'di', 'diya', 'hua', 'hui', 'hue', 'hoga', 'thi', 'tha', 'the', 'hai', 'hain', 'was', 'were', 'did',
+    'does', 'has', 'have', 'had', 'get', 'give', 'find', 'list', 'count', 'number', 'total', 'this', 'that', 'is', 'last',
+    'next', 'previous', 'week', 'month', 'year', 'today', 'aaj', 'yesterday', 'kal', 'din', 'days', 'day', 'ko', 'wala',
+    'wali', 'wale', 'kab', 'kyun', 'kin', 'dino', 'kis', 'kaunse', 'konse', 'kinhe', 'why', 'when', 'which', 'kaunsa', 'kaunsi', 'kaise', 'how', 'kitna', 'kitni', 'kitne',
+    'abhi', 'now', 'ab', 'mahina', 'mahine', 'hafte', 'hafta', 'saal', 'se', 'ka', 'ki', 'ke', 'with', 'by', 'an', 'or',
+    'ya', 'please', 'plz', 'batao', 'bata', 'bataiye', 'dikhao', 'tell', 'show', 'give', 'me', 'hlo', 'kr', 'kar', 'karo', 'karna'];
+
+  let _vocab = null;
+  function vocab() {
+    if (_vocab) return _vocab;
+    _vocab = new Set([
+      ...MIS_WORDS, ...LEAVE_WORDS, ...EXTRA_WORDS, ...DAILY_WORDS, ...COMPLIANCE_WORDS, ...NOT_WORDS, ...FILL_WORDS,
+      ...COMPLETED_WORDS, ...MEETING_WORDS, ...INVENTORY_WORDS, ...PAYMENT_WORDS, ...PROFILE_WORDS, ...PENDING_WORDS,
+      ...UNSUPPORTED, ...TIME_WORDS, ...NAV_WORDS, ...TEAM_WORDS, ...COMMON_WORDS,
+      ...FILLER_WORDS, ...GREETING_WORDS, ...SELF_WORDS, ...PRONOUN_WORDS,
+      ...Object.keys(MONTHS), ...Object.keys(WEEKDAYS),
+      ...PAGES.flatMap(p => p[2].flatMap(k => k.split(' '))),
+    ]);
+    return _vocab;
+  }
+  const VOCAB = { has: w => vocab().has(w) };
+
+  // A word the bot does not know is swapped for the nearest one it does:
+  // one slip for short words, two for long ones ("pendng" → pending,
+  // "meetng" → meeting, "compliace" → compliance). Short words are left alone
+  // — at three letters almost everything is one slip from something.
+  function correctWord(w) {
+    if (w.length < 4 || /\d/.test(w) || vocab().has(w)) return w;
+    const max = w.length >= 7 ? 2 : 1;
+    let bestWord = w, bestD = max + 1;
+    for (const v of vocab()) {
+      if (v.length < 4 || Math.abs(v.length - w.length) > max) continue;
+      const d = editDistance(w, v, max);
+      if (d < bestD || (d === bestD && v[0] === w[0] && bestWord[0] !== w[0])) { bestD = d; bestWord = v; }
+    }
+    return bestD <= max ? bestWord : w;
+  }
+
+  // The second topic a question named, if any, as a suggestion builder.
+  // Pairs that are one question rather than two ("daily task nahi bhara",
+  // "extra leave", "completed tasks") are not counted.
+  function secondTopic(asks, intent) {
+    const topics = [
+      ['pending', () => asks(['pending', 'baki', 'baaki', 'bacha', 'bache', 'remaining', 'overdue']), n => `Pending tasks of ${n}`],
+      ['leave', () => asks(LEAVE_WORDS), n => `Leaves of ${n} this month`],
+      ['extra', () => asks(EXTRA_WORDS), n => `Extra working of ${n} this month`],
+      ['mis', () => asks(MIS_WORDS), n => `MIS score of ${n} this week`],
+      ['meetings', () => asks(MEETING_WORDS), n => `Meetings of ${n} this month`],
+      ['inventory', () => asks(INVENTORY_WORDS), n => `Equipment of ${n}`],
+      ['payments', () => asks(PAYMENT_WORDS), n => `Payment requests of ${n} this month`],
+    ];
+    const skip = { compliance: ['pending'], extra: ['leave'], completed: ['pending'] };
+    for (const [key, test, build] of topics) {
+      if (key === intent || (skip[intent] || []).includes(key)) continue;
+      if (test()) return build;
+    }
+    return null;
+  }
+
+  // Pending tasks across everyone in scope, most first — same definition as
+  // one person's pending (due today or earlier, or no date).
+  async function teamPendingReply(users) {
+    const ids = users.map(u => u.id);
+    if (!ids.length) return { reply: 'There is no one in your team to show.' };
+    const counts = new Map(ids.map(id => [id, { pending: 0, overdue: 0 }]));
+    for (const table of ['delegation_tasks', 'checklist_tasks']) {
+      const [rows] = await db.query(
+        `SELECT assigned_to AS id,
+                SUM(CASE WHEN due_date IS NULL OR due_date <= CURDATE() THEN 1 ELSE 0 END) AS pending,
+                SUM(CASE WHEN due_date < CURDATE() THEN 1 ELSE 0 END) AS overdue
+           FROM ${table} WHERE status = 'pending' AND assigned_to IN (${ids.map(() => '?').join(',')})
+          GROUP BY assigned_to`, ids);
+      for (const r of rows) {
+        const c = counts.get(r.id);
+        if (c) { c.pending += parseInt(r.pending) || 0; c.overdue += parseInt(r.overdue) || 0; }
+      }
+    }
+    const list = users.map(u => ({ name: u.name, ...counts.get(u.id) })).filter(x => x.pending > 0)
+      .sort((a, b) => b.pending - a.pending || b.overdue - a.overdue || a.name.localeCompare(b.name));
+    if (!list.length) return { reply: 'No one in your team has pending tasks.' };
+    const total = list.reduce((a, x) => a + x.pending, 0);
+    return {
+      reply: `${list.length} ${list.length === 1 ? 'person has' : 'people have'} pending tasks, ${total} in all. ${list[0].name} has the most (${list[0].pending}).`,
+      sections: [{
+        title: 'Pending by person',
+        items: list.slice(0, 15).map(x => ({ title: `${x.name} — ${x.pending}`, meta: x.overdue ? `${x.overdue} overdue` : '' })),
+        more: Math.max(0, list.length - 15),
+      }],
+      suggestions: list.slice(0, 3).map(x => `Pending tasks of ${x.name}`),
+    };
+  }
+
+  // Who is on leave (full day, half day or WFH, not rejected) in a period,
+  // across everyone in scope — "aaj kaun chutti par hai", "who was on leave
+  // last week". Same day rules as one person's leave.
+  async function teamLeaveReply(users, period) {
+    const when = periodText(period);
+    const out = [];
+    for (const u of users) {
+      const days = await leaveDaysFor(u.id, period.start, period.end, ['full_day', 'half_day', 'work_from_home']);
+      if (days.length) out.push({ u, days });
+    }
+    if (!out.length) return { reply: `No one in your team is on leave ${when}.` };
+    const label = { full_day: 'full day', half_day: 'half day', work_from_home: 'WFH' };
+    return {
+      reply: `${out.length} ${out.length === 1 ? 'person is' : 'people are'} on leave ${when}.`,
+      sections: [{
+        title: 'On leave',
+        items: out.slice(0, 20).map(({ u, days }) => ({
+          title: u.name,
+          meta: days.slice(0, 6).map(d => `${shortDate(d.date)} ${label[d.type] || d.type}${d.status === 'pending' ? ' (waiting)' : ''}`).join(', ')
+            + (days.length > 6 ? ` +${days.length - 6} more` : ''),
+        })),
+        more: Math.max(0, out.length - 20),
+      }],
+    };
+  }
+
   // Any of these picks the kind of question.
-  const MIS_WORDS = ['mis', 'score', 'scores', 'performance', 'rating'];
-  const LEAVE_WORDS = ['leave', 'leaves', 'chutti', 'chhutti', 'chuttiyan', 'chhuttiyan', 'chuttiya', 'wfh', 'half', 'halfday'];
-  const EXTRA_WORDS = ['extra', 'overtime'];
-  const DAILY_WORDS = ['daily', 'ghante', 'hours', 'hour', 'timesheet', 'kiya', 'kiye', 'report'];
+  const MIS_WORDS = ['mis', 'score', 'scores', 'performance', 'rating', 'efficiency', 'progress'];
+  const LEAVE_WORDS = ['leave', 'leaves', 'chutti', 'chhutti', 'chuttiyan', 'chhuttiyan', 'chuttiya', 'wfh', 'half', 'halfday', 'home', 'absent', 'off'];
+  const EXTRA_WORDS = ['extra', 'overtime', 'ot'];
+  const DAILY_WORDS = ['daily', 'ghante', 'hours', 'hour', 'timesheet', 'kiya', 'kiye', 'report', 'time'];
   // Compliance = which working days the Daily Task was not filled. Needs
   // either a compliance word or "not filled" in some form, because "kitne
   // ghante daily task bhara" (hours logged) also contains "bhara".
@@ -112,6 +243,18 @@ module.exports = function registerChatbotRoutes(app, deps) {
   // "completed tasks of Naman" gets an honest "not yet" rather than a pending
   // count that looks like an answer to the question asked.
   const COMPLETED_WORDS = ['completed', 'complete', 'done', 'finished', 'closed', 'poora', 'pura', 'pure', 'poore'];
+  const STRICT_PENDING = ['pending', 'baki', 'baaki', 'bacha', 'bache', 'remaining', 'overdue'];
+  // Requests to change something. The bot only looks things up, so these get
+  // a plain "I can't make changes" instead of an answer that looks like one.
+  const ACTION_WORDS = ['delete', 'remove', 'assign', 'create', 'add', 'update', 'edit', 'change', 'modify', 'cancel',
+    'send', 'transfer', 'delegate', 'hatao', 'hata', 'bhejo', 'bhej', 'banao', 'bana', 'daalo', 'dalo', 'likho', 'reassign'];
+  // A request, not a question: an imperative ("karo", "kar do") or "can you"
+  // around a word that changes something. "complete kar diye" (past tense)
+  // is a question and is not caught: only imperatives count for those words.
+  const IMPERATIVE_WORDS = ['karo', 'kardo', 'krdo', 'kro', 'karwao', 'kijiye', 'kariye', 'karna'];
+  const CAN_WORDS = ['can', 'could', 'sakte', 'sakti', 'sakta'];
+  const APPROVE_WORDS = ['approve', 'reject'];
+  const SET_WORDS = ['approve', 'reject', 'mark', 'complete', 'done', 'schedule', 'book', 'set', 'fix', 'arrange', 'lagao', 'rakho'];
   const PROFILE_WORDS = ['who', 'kaun', 'profile', 'department', 'dept', 'role', 'designation', 'joining', 'details'];
   const PENDING_WORDS = ['pending', 'baki', 'baaki', 'bacha', 'bache', 'remaining', 'overdue', 'due',
     'task', 'tasks', 'kaam', 'work', 'status'];
@@ -119,12 +262,12 @@ module.exports = function registerChatbotRoutes(app, deps) {
   const FILLER_WORDS = new Set(['ka', 'ki', 'ke', 'ko', 'kya', 'hai', 'hain', 'h', 'batao', 'bata', 'bataiye',
     'show', 'tell', 'me', 'mujhe', 'of', 'for', 'the', 'a', 'please', 'plz', 'pls', 'kitne', 'kitna', 'kitni',
     'how', 'many', 'much', 'what', 'is', 'are', 'about', 'check', 'do', 'dikhao', 'maanke', 'chalo', 'woh', 'unke', 'uske']);
-  const MEETING_WORDS = ['meeting', 'meetings', 'meet'];
+  const MEETING_WORDS = ['meeting', 'meetings', 'meet', 'schedule', 'calendar'];
   const INVENTORY_WORDS = ['inventory', 'equipment', 'asset', 'assets', 'device', 'devices', 'laptop',
     'mobile', 'sim', 'charger', 'keyboard', 'mouse', 'saman', 'samaan', 'saamaan', 'saaman'];
   const PAYMENT_WORDS = ['payment', 'payments', 'reimbursement', 'expense', 'expenses', 'kharcha'];
   const UNSUPPORTED = [
-    'rank',
+    'rank', 'birthday', 'bday', 'janamdin', 'anniversary', 'phone', 'contact', 'email', 'address', 'whatsapp', 'salary',
     'attendance', 'holiday', 'salary',
     'fms', 'client', 'clients',
   ];
@@ -143,11 +286,32 @@ module.exports = function registerChatbotRoutes(app, deps) {
     const full = norm(user.name);
     if (!full) return 0;
     if ((' ' + msgNorm + ' ').includes(' ' + full + ' ')) return 1000 + full.length;
+    // Each name word found exactly counts 1; one typed with a single slip
+    // ("gupt", "namann") counts 0.9, so an exact match always wins a tie.
     let hits = 0;
     for (const w of full.split(' ')) {
-      if (w.length >= 3 && msgWords.has(w)) hits++;
+      if (w.length < 3) continue;
+      if (msgWords.has(w)) hits += 1;
+      else if (w.length >= 4 && [...msgWords].some(m => m.length >= 4 && m[0] === w[0] && editDistance(m, w) <= 1)) hits += 0.9;
     }
     return hits;
+  }
+
+  // Levenshtein distance, stopping early once it passes `max`.
+  function editDistance(a, b, max = 2) {
+    if (Math.abs(a.length - b.length) > max) return max + 1;
+    let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+      const cur = [i];
+      let rowMin = i;
+      for (let j = 1; j <= b.length; j++) {
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        if (cur[j] < rowMin) rowMin = cur[j];
+      }
+      if (rowMin > max) return max + 1;
+      prev = cur;
+    }
+    return prev[b.length];
   }
 
   async function usersInScope(session) {
@@ -319,8 +483,10 @@ module.exports = function registerChatbotRoutes(app, deps) {
       let start = ds[0], end = ds[ds.length - 1];
       // "15 sep se aaj tak" — one date plus today.
       if (found.length === 1 && has('(?:today|aaj|now|abhi)')) end = today;
+      // A range that has not started yet (a future year was typed) is
+      // flagged, so the answer says so instead of quietly showing today.
+      if (start > today) return { ...range(start, end), future: true };
       if (end > today) end = today;
-      if (start > end) start = end;
       return range(start, end);
     }
     const month = FULL_MONTHS.find(m => words.includes(m));
@@ -362,6 +528,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
     if (has(THIS + ' ' + YEAR)) return range(today.slice(0, 4) + '-01-01', today, 'this year');
     if (has('(?:yesterday)')) return range(addDays(today, -1), addDays(today, -1), 'yesterday');
     if (has('(?:today|aaj)')) return range(today, today, 'today');
+    if (fallback === 'today') return range(today, today, 'today');
     return fallback === 'month'
       ? range(firstOfMonth, today, 'this month')
       : range(thisMon, today, 'this week');
@@ -667,7 +834,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
       });
     }
     return {
-      reply: `${name} completed ${done} of ${total} tasks due ${when}.`,
+      reply: `${name} had ${total} task${total === 1 ? '' : 's'} due ${when}: ${done} completed, ${total - done} still pending.`,
       sections,
     };
   }
@@ -853,6 +1020,16 @@ module.exports = function registerChatbotRoutes(app, deps) {
         });
       }
 
+      // "delete naman's tasks", "naman ko task assign karo", "approve karo":
+      // the bot reads, it never writes.
+      const first = msgNorm.split(' ')[0];
+      const imperative = IMPERATIVE_WORDS.some(w => msgWords.has(w)) || (msgWords.has('kar') && msgWords.has('do'));
+      if (ACTION_WORDS.some(w => msgWords.has(w)) || APPROVE_WORDS.includes(first) || first === 'mark'
+          || (imperative && SET_WORDS.some(w => msgWords.has(w)))
+          || (CAN_WORDS.some(w => msgWords.has(w)) && APPROVE_WORDS.some(w => msgWords.has(w)))) {
+        return res.json({ reply: 'I can only look things up, not make changes. Please do that from the app itself.\n' + HELP });
+      }
+
       const users = await usersInScope(req.session);
       let best = 0;
       let matches = [];
@@ -863,41 +1040,13 @@ module.exports = function registerChatbotRoutes(app, deps) {
       }
 
       // The question is judged on the words that are not part of a matched
-      // name, so a person called "Naman Score" is not an MIS question.
+      // name, so a person called "Naman Score" is not an MIS question. Words
+      // are spell-corrected against the bot's own vocabulary first, so
+      // "pendng", "leav" and "meetng" are understood; name words never are.
       const nameWords = new Set(matches.flatMap(u => norm(u.name).split(' ')));
-      const asks = list => list.some(w => msgWords.has(w) && !nameWords.has(w));
-      // What is being asked. Extra working is checked before leave because
-      // both are filed on the Leave Tracker and people call it "extra leave".
-      const intent = asks(PAYMENT_WORDS) ? 'payments'
-        : asks(INVENTORY_WORDS) ? 'inventory'
-        : asks(EXTRA_WORDS) ? 'extra'
-        : asks(LEAVE_WORDS) ? 'leave'
-        : asks(COMPLIANCE_WORDS) || (asks(NOT_WORDS) && asks(FILL_WORDS)) ? 'compliance'
-        : asks(MEETING_WORDS) ? 'meetings'
-        : asks(COMPLETED_WORDS) ? 'completed'
-        : asks(MIS_WORDS) ? 'mis'
-        : asks(DAILY_WORDS) ? 'daily'
-        : asks(PROFILE_WORDS) ? 'profile'
-        // "Naman ke tasks last week": pending is a count of right now, so a
-        // task question with a period is answered as tasks due in that period.
-        : (asks(TIME_WORDS) || explicitDates(msgNorm.split(' ')).length || FULL_MONTHS.some(m => msgWords.has(m))) && asks(PENDING_WORDS) ? 'completed'
-        : 'pending';
-      const period = intent === 'pending' || intent === 'profile' ? null
-        : parsePeriod(msgNorm, intent === 'mis' ? 'week' : 'month');
-      const askFor = n => ({
-        extra: `Extra working of ${n} ${period && period.phrase}`,
-        leave: `Leaves of ${n} ${period && period.phrase}`,
-        daily: `Daily task hours of ${n} ${period && period.phrase}`,
-        compliance: `Compliance of ${n} ${period && period.phrase}`,
-        completed: `Completed tasks of ${n} ${period && period.phrase}`,
-        meetings: `Meetings of ${n} ${period && period.phrase}`,
-        inventory: `Equipment of ${n}`,
-        payments: `Payment requests of ${n} ${period && period.phrase}`,
-        mis: `MIS score of ${n} ${period && period.phrase}`,
-        pending: `Pending tasks of ${n}`,
-        profile: `Who is ${n}`,
-      })[intent];
-      const hasDate = explicitDates(msgNorm.split(' ')).length > 0 || FULL_MONTHS.some(m => msgWords.has(m));
+      const allNameTokens = new Set(users.flatMap(u => norm(u.name).split(' ')));
+      const fixed = new Set([...msgWords].map(w => nameWords.has(w) || allNameTokens.has(w) ? w : correctWord(w)));
+      const asks = list => list.some(w => fixed.has(w) && !nameWords.has(w));
 
       // Finding a page of the app. Taken when a page is named with a "where /
       // open / tab" word and either no person is named or "tab"/"page" makes
@@ -922,12 +1071,14 @@ module.exports = function registerChatbotRoutes(app, deps) {
       // Jain" from an HOD whose department has only Naman Gupta must not
       // fall back to a partial match on "Naman" and answer about the wrong
       // person. If anyone outside the department matches better than the
-      // best match inside it, the question is about that outsider.
+      // best match inside it, the question is about that outsider. This runs
+      // before the "mere"/follow-up fallbacks below, so an outsider's name
+      // can never be answered as the asker or as the previous person.
       if (req.session.role === 'hod') {
         const [everyone] = await db.query(
           `SELECT id, name FROM users WHERE role <> 'client' AND client_id IS NULL`);
         const bestAnywhere = Math.max(0, ...everyone.map(u => scoreUser(msgNorm, msgWords, u)));
-        if (bestAnywhere > best) {
+        if (bestAnywhere > best && bestAnywhere >= 1) {
           const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [req.session.userId]);
           const dept = me?.department ? ` (${me.department})` : '';
           return res.json({
@@ -936,7 +1087,88 @@ module.exports = function registerChatbotRoutes(app, deps) {
         }
       }
 
+      // Team questions: "kiske sabse zyada pending hai", "team ke pending",
+      // "sabke pending tasks". Answered for pending tasks across everyone the
+      // asker may see; other topics are asked one person at a time.
+      if (!matches.length && asks(TEAM_WORDS)) {
+        if (asks(LEAVE_WORDS) && !asks(EXTRA_WORDS)) {
+          const p = parsePeriod(msgNorm, 'today');
+          return res.json(await teamLeaveReply(users, p));
+        }
+        if (asks(MIS_WORDS) || asks(EXTRA_WORDS) || asks(MEETING_WORDS) || asks(DAILY_WORDS) || asks(COMPLETED_WORDS)) {
+          return res.json({ reply: 'For the whole team I can show pending tasks and who is on leave. For anything else, ask about one person, for example "Naman Gupta\'s leaves last month".',
+            suggestions: ['Pending tasks of the team'] });
+        }
+        return res.json(await teamPendingReply(users));
+      }
+
+      // Who the question is about when no name is typed:
+      //   "mere kitne task pending hai" / "my leaves"  → the asker;
+      //   "aur uski leave?" right after a question about Naman → Naman again.
+      // A follow-up is taken only with a pronoun, or when every word is one
+      // the bot knows — an unknown word may be a name it could not match, and
+      // answering that as the previous person would be the wrong person. The
+      // id comes from the browser, so it must still be in the asker's scope.
+      let personFrom = 'name';
       if (!matches.length) {
+        const unknown = [...fixed].filter(w => !VOCAB.has(w) && !/^\d+$/.test(w));
+        const ctxId = Number(req.body?.context);
+        const ctx = ctxId ? users.find(u => u.id === ctxId) : null;
+        // Self needs no unknown-word check: nothing in the message matched
+        // any name in scope, and an HOD naming an outsider was stopped above.
+        if ([...msgWords].some(w => SELF_WORDS.has(w))) {
+          const me = users.find(u => u.id === req.session.userId);
+          if (me) { matches = [me]; personFrom = 'self'; }
+        } else if (ctx && ([...msgWords].some(w => PRONOUN_WORDS.has(w)) || !unknown.length)) {
+          matches = [ctx]; personFrom = 'context';
+        }
+      }
+      // What is being asked. Extra working is checked before leave because
+      // both are filed on the Leave Tracker and people call it "extra leave".
+      const hasDateWords = explicitDates(msgNorm.split(' ')).length > 0 || FULL_MONTHS.some(m => msgWords.has(m))
+        || Object.keys(WEEKDAYS).some(d => msgWords.has(d));
+      const intent = asks(PAYMENT_WORDS) ? 'payments'
+        : asks(INVENTORY_WORDS) ? 'inventory'
+        : asks(EXTRA_WORDS) ? 'extra'
+        : asks(LEAVE_WORDS) ? 'leave'
+        : asks(COMPLIANCE_WORDS) || (asks(NOT_WORDS) && asks(FILL_WORDS)) ? 'compliance'
+        : asks(MEETING_WORDS) ? 'meetings'
+        // "pending ... kab tak complete honge" is still a pending question:
+        // an explicit pending word, with no period, beats "complete".
+        : asks(STRICT_PENDING) && !asks(TIME_WORDS) && !hasDateWords ? 'pending'
+        : asks(COMPLETED_WORDS) ? 'completed'
+        : asks(MIS_WORDS) ? 'mis'
+        : asks(DAILY_WORDS) ? 'daily'
+        : asks(PROFILE_WORDS) ? 'profile'
+        // "Naman ke tasks last week": pending is a count of right now, so a
+        // task question with a period is answered as tasks due in that period.
+        : (asks(TIME_WORDS) || explicitDates(msgNorm.split(' ')).length || FULL_MONTHS.some(m => msgWords.has(m))) && asks(PENDING_WORDS) ? 'completed'
+        // A follow-up that names no topic ("last month?") keeps the previous
+        // one. The browser sends it back; only known topics are accepted.
+        : personFrom === 'context' && TOPICS.has(req.body?.topic) && !asks(PENDING_WORDS) ? req.body.topic
+        : 'pending';
+      const period = intent === 'pending' || intent === 'profile' ? null
+        : parsePeriod(msgNorm, intent === 'mis' ? 'week' : 'month');
+      const askFor = n => ({
+        extra: `Extra working of ${n} ${period && period.phrase}`,
+        leave: `Leaves of ${n} ${period && period.phrase}`,
+        daily: `Daily task hours of ${n} ${period && period.phrase}`,
+        compliance: `Compliance of ${n} ${period && period.phrase}`,
+        completed: `Completed tasks of ${n} ${period && period.phrase}`,
+        meetings: `Meetings of ${n} ${period && period.phrase}`,
+        inventory: `Equipment of ${n}`,
+        payments: `Payment requests of ${n} ${period && period.phrase}`,
+        mis: `MIS score of ${n} ${period && period.phrase}`,
+        pending: `Pending tasks of ${n}`,
+        profile: `Who is ${n}`,
+      })[intent];
+      const hasDate = explicitDates(msgNorm.split(' ')).length > 0 || FULL_MONTHS.some(m => msgWords.has(m));
+
+      if (!matches.length) {
+        // "uski meetings" with no one asked about before: say what is missing.
+        if ([...msgWords].some(w => PRONOUN_WORDS.has(w))) {
+          return res.json({ reply: 'Who do you mean? Please type the person\'s name, for example "Naman Gupta\'s meetings last week".' });
+        }
         return res.json({ reply: 'I couldn\'t find a person\'s name in that.\n' + HELP });
       }
       if (matches.length > 1) {
@@ -948,19 +1180,34 @@ module.exports = function registerChatbotRoutes(app, deps) {
       }
 
       const person = matches[0];
+      // Every answer about one person says who, so the browser can send it back
+      // as the context of a follow-up ("aur uski leave?"). A question that
+      // also named a second topic ("leave aur pending") gets that one offered
+      // as a one-click suggestion rather than silently dropped.
+      const second = secondTopic(asks, intent);
+      const reply = obj => {
+        const out = { ...obj, person: { id: person.id, name: person.name }, topic: intent };
+        if (second && !out.suggestions) out.suggestions = [second(person.name)];
+        return res.json(out);
+      };
       // Pending is the fallback, so it must be earned: a pending/task word, or
       // nothing but the name and filler ("Naman Gupta?"). Anything else —
       // "naman gupta ki position kya hai" — is a question the bot does not
       // know, and answering it with a pending count would be a wrong answer.
-      const leftover = [...msgWords].filter(w => !nameWords.has(w) && !FILLER_WORDS.has(w)
-        && !GREETING_WORDS.has(w) && !GREETING_RE.test(w));
+      const leftover = [...fixed].filter(w => !nameWords.has(w) && !FILLER_WORDS.has(w)
+        && !GREETING_WORDS.has(w) && !GREETING_RE.test(w) && !SELF_WORDS.has(w) && !PRONOUN_WORDS.has(w));
       const unknownQuestion = intent === 'pending' && leftover.length > 0 && !asks(PENDING_WORDS);
-      if (unknownQuestion || asks(UNSUPPORTED) || (intent === 'pending' && (asks(TIME_WORDS) || hasDate))) {
-        return res.json({
+      // "mobile number" is contact details, not the mobile phone in Inventory.
+      const contactAsk = /\b(mobile|phone|contact|whatsapp|cell)\s+(no|number|num|nmbr)\b/.test(msgNorm);
+      if (unknownQuestion || contactAsk || asks(UNSUPPORTED) || (intent === 'pending' && (asks(TIME_WORDS) || hasDate))) {
+        return reply({
           reply: 'I can\'t answer that yet.\n' + HELP,
           suggestions: [`Pending tasks of ${person.name}`, `MIS score of ${person.name} this week`,
             `Leaves of ${person.name} this month`, `Extra working of ${person.name} this month`],
         });
+      }
+      if (period && period.future) {
+        return reply({ reply: `${periodText(period).replace(/^from /, 'From ').replace(/^on /, 'On ')} is still ahead, so there is nothing to show yet.` });
       }
       if (intent === 'profile') {
         // Directory facts only — the same fields the Users list gives every
@@ -971,63 +1218,63 @@ module.exports = function registerChatbotRoutes(app, deps) {
              FROM users WHERE id = ?`, [person.id]);
         const roleName = { admin: 'Admin', hod: 'HOD', pc: 'PC', user: 'Employee' }[u.role] || u.role;
         const parts = [u.department && `${u.department} department`, roleName, u.joined && `joined ${u.joined}`].filter(Boolean);
-        return res.json({
+        return reply({
           reply: `${u.name}${parts.length ? ' — ' + parts.join(' · ') : ''}.`,
           suggestions: [`Pending tasks of ${u.name}`, `MIS score of ${u.name} this week`, `Leaves of ${u.name} this month`],
         });
       }
       if (intent === 'payments') {
         if (person.id !== req.session.userId && !(await isPaymentApprover(req.session))) {
-          return res.json({ reply: 'Only an admin or a payment approver can see other people\'s payment requests.' });
+          return reply({ reply: 'Only an admin or a payment approver can see other people\'s payment requests.' });
         }
-        return res.json(paymentsReply(person.name, period, await paymentsFor(person.id, period.start, period.end)));
+        return reply(paymentsReply(person.name, period, await paymentsFor(person.id, period.start, period.end)));
       }
       if (intent === 'inventory') {
         if (person.id !== req.session.userId && !(await userCanDo(req.session, 'edit_inventory'))) {
-          return res.json({ reply: 'You don\'t have access to other people\'s equipment (Inventory).' });
+          return reply({ reply: 'You don\'t have access to other people\'s equipment (Inventory).' });
         }
-        return res.json(inventoryReply(person.name, await inventoryFor(person.id)));
+        return reply(inventoryReply(person.name, await inventoryFor(person.id)));
       }
       if (intent === 'meetings') {
         if (!(await userCanSee(req.session, 'compliance')) || !(await canViewComplianceEmployee(req, person.id))) {
-          return res.json({ reply: `You don't have access to ${person.name}'s meetings.` });
+          return reply({ reply: `You don't have access to ${person.name}'s meetings.` });
         }
-        return res.json(meetingsReply(person.name, period, await meetingsFor(person.id, period.start, period.end)));
+        return reply(meetingsReply(person.name, period, await meetingsFor(person.id, period.start, period.end)));
       }
       if (intent === 'completed') {
-        return res.json(completedReply(person.name, period, await completedFor(person.id, period.start, period.end)));
+        return reply(completedReply(person.name, period, await completedFor(person.id, period.start, period.end)));
       }
       if (intent === 'compliance') {
         // Gated like the Compliance page: the 'compliance' page permission,
         // then canViewComplianceEmployee (admin anyone, HOD/PC own department).
         if (!(await userCanSee(req.session, 'compliance')) || !(await canViewComplianceEmployee(req, person.id))) {
-          return res.json({ reply: `You don't have access to ${person.name}'s compliance.` });
+          return reply({ reply: `You don't have access to ${person.name}'s compliance.` });
         }
-        return res.json(complianceReply(person.name, period, await complianceFor(person.id, period.start, period.end)));
+        return reply(complianceReply(person.name, period, await complianceFor(person.id, period.start, period.end)));
       }
       if (intent === 'daily') {
         // Anyone can read their own — the Daily Task page shows it to them.
         if (req.session.role !== 'admin' && person.id !== req.session.userId) {
-          return res.json({ reply: 'Only an admin can see other people\'s daily tasks (Daily Reports).' });
+          return reply({ reply: 'Only an admin can see other people\'s daily tasks (Daily Reports).' });
         }
-        return res.json(dailyReply(person.name, period, await dailyFor(person.id, period.start, period.end)));
+        return reply(dailyReply(person.name, period, await dailyFor(person.id, period.start, period.end)));
       }
       if (intent === 'leave') {
         const days = await leaveDaysFor(person.id, period.start, period.end, ['full_day', 'half_day', 'work_from_home']);
-        return res.json(leaveReply(person.name, period, days));
+        return reply(leaveReply(person.name, period, days));
       }
       if (intent === 'extra') {
         const days = await leaveDaysFor(person.id, period.start, period.end, ['extra_working']);
-        return res.json(extraReply(person.name, period, days));
+        return reply(extraReply(person.name, period, days));
       }
       if (intent === 'mis') {
         const role = req.session.role;
         if (!((role === 'admin' || role === 'hod') && await userCanSee(req.session, 'mis'))) {
-          return res.json({ reply: 'You don\'t have access to MIS reports.' });
+          return reply({ reply: 'You don\'t have access to MIS reports.' });
         }
-        return res.json(misReply(person.name, period, await misFor(person.id, period.start, period.end)));
+        return reply(misReply(person.name, period, await misFor(person.id, period.start, period.end)));
       }
-      res.json(pendingReply(person.name, await pendingTasksFor(person.id)));
+      reply(pendingReply(person.name, await pendingTasksFor(person.id)));
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 

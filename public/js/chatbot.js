@@ -151,11 +151,12 @@ async function cbAsk(text) {
   for (let i = 0; i < 3; i++) typing.appendChild(cbEl('span', 'cb-dot'));
   const chat = _cbChat;
   const [r] = await Promise.all([
-    api('/api/chatbot/ask', 'POST', { message: text }),
+    api('/api/chatbot/ask', 'POST', { message: text, context: _cbContext, topic: _cbTopic }),
     new Promise(done => setTimeout(done, CB_TYPING_MS)),
   ]);
   if (chat !== _cbChat) return;   // the chat was closed and cleared meanwhile
   typing.row.remove();
+  if (r.person && r.person.id) { _cbContext = r.person.id; _cbTopic = r.topic || null; }
   if (r.error) cbAddMsg('cb-err', r.error);
   else {
     const msg = cbAddMsg('cb-bot', r.reply || '');
@@ -187,9 +188,15 @@ const cbGreeting = () => {
 // Bumped on every reset; a reply that comes back after the chat was cleared
 // sees a different number and is dropped instead of landing in the new chat.
 let _cbChat = 0;
+// The person the last answer was about, sent with the next question so a
+// follow-up like "aur uski leave?" knows who "uski" is. The server re-checks it.
+let _cbContext = null;
+let _cbTopic = null;
 
 function cbReset() {
   _cbChat++;
+  _cbContext = null;
+  _cbTopic = null;
   _cbBusy = false;
   document.getElementById('cbLog').replaceChildren();
   document.getElementById('cbInput').value = '';
