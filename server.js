@@ -56,6 +56,38 @@ app.use(helmet({
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Per-IP limits on the routes anyone can reach without logging in. Each
+// request that gets through costs database work, and the production database
+// has a hard connection cap, so a flood here could take the whole app down.
+// `countOnly` makes a limiter count only responses with those statuses: the
+// office shares one public IP, so login counts failures alone and a morning
+// rush of correct logins can never trip it.
+// Memory is per server instance (serverless instances do not share it), so
+// this blunts bursts rather than enforcing an exact global number.
+function ipLimit({ windowMs, max, countOnly, message }) {
+  const hits = new Map();
+  return (req, res, next) => {
+    const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+    const now = Date.now();
+    let e = hits.get(ip);
+    if (!e || now - e.start > windowMs) { e = { start: now, n: 0 }; hits.set(ip, e); }
+    if (hits.size > 5000) for (const [k, v] of hits) if (now - v.start > windowMs) hits.delete(k);
+    if (e.n >= max) {
+      const mins = Math.max(1, Math.ceil((e.start + windowMs - now) / 60000));
+      return res.status(429).json({ error: `${message} Try again in ${mins} minute${mins === 1 ? '' : 's'}.` });
+    }
+    if (!countOnly) e.n++;
+    else res.on('finish', () => { if (countOnly.includes(res.statusCode)) e.n++; });
+    next();
+  };
+}
+app.post('/api/login', ipLimit({ windowMs: 15 * 60 * 1000, max: 30, countOnly: [401],
+  message: 'Too many failed logins from this network.' }));
+app.post('/api/forgot-password', ipLimit({ windowMs: 15 * 60 * 1000, max: 10,
+  message: 'Too many password reset requests from this network.' }));
+app.post('/api/reset-password', ipLimit({ windowMs: 15 * 60 * 1000, max: 20, countOnly: [400, 401, 403],
+  message: 'Too many reset attempts from this network.' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ══════════════════════════════════════════════════════
