@@ -9587,6 +9587,21 @@ app.get('/app', (req, res) => res.sendFile(path.join(__dirname, 'public', 'app.h
 // team-app bundle. Role gate happens client-side in client.html via /api/me.
 app.get('/client', (req, res) => res.sendFile(path.join(__dirname, 'public', 'client.html')));
 
+// Last-resort error handler. Without it an error thrown by middleware — an
+// upload over multer's size limit, a malformed JSON body — reached Express's
+// default handler and came back as an HTML page (with a stack trace outside
+// production), which the app's api() could only show as "HTTP 500".
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err instanceof multer.MulterError) {
+    const tooBig = err.code === 'LIMIT_FILE_SIZE';
+    return res.status(tooBig ? 413 : 400).json({ error: tooBig ? 'File is too large' : `Upload rejected: ${err.message}` });
+  }
+  const status = Number(err.status || err.statusCode) || 500;
+  if (status >= 500) console.error('Unhandled error on', req.method, req.originalUrl, err);
+  res.status(status).json({ error: status < 500 && err.expose ? err.message : (status < 500 ? 'Bad request' : 'Something went wrong — please try again') });
+});
+
 // ══════════════════════════════════════════════════════
 // EXPORT FOR VERCEL (serverless) + LISTEN FOR LOCAL DEV
 // ══════════════════════════════════════════════════════
