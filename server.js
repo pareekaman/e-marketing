@@ -4432,40 +4432,6 @@ app.get('/api/mis/fms-detail', requireAuth, requireMisViewer, async (req, res) =
 });
 
 // ══════════════════════════════════════════════════════
-// DEBUG ENDPOINT (remove after fixing)
-// ══════════════════════════════════════════════════════
-app.get('/api/debug', requireAuth, requireAdmin, async (req, res) => {
-  const result = { time: new Date().toISOString(), env: {}, db: {}, tables: {} };
-  result.env = {
-    NODE_ENV: process.env.NODE_ENV || '(not set)',
-    DB_HOST: process.env.DB_HOST || 'localhost (default)',
-    DB_USER: process.env.DB_USER || 'root (default)',
-    DB_NAME: process.env.DB_NAME || 'emarketing_task_manager (default)',
-    PORT: process.env.PORT || '3000 (default)',
-  };
-  try {
-    await db.query('SELECT 1');
-    result.db.connected = true;
-    const counts = ['users','delegation_tasks','checklist_tasks','fms_sheets'];
-    for (const t of counts) {
-      try {
-        const [[row]] = await db.query(`SELECT COUNT(*) AS c FROM ${t}`);
-        result.tables[t] = row.c;
-      } catch(e) { result.tables[t] = 'ERROR: ' + e.message; }
-    }
-    // Show users with their roles and departments
-    try {
-      const [users] = await db.query('SELECT id, name, role, department FROM users ORDER BY role, name');
-      result.users = users;
-    } catch(e) { result.users = 'ERROR: ' + e.message; }
-  } catch(e) {
-    result.db.connected = false;
-    result.db.error = e.message;
-  }
-  res.json(result);
-});
-
-// ══════════════════════════════════════════════════════
 // PAGES
 // ══════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════
@@ -9706,7 +9672,7 @@ if (process.env.VERCEL || process.env.NOW_REGION) {
 } else {
   app.listen(PORT, () => {
     console.log(`\n  ✦ E-Marketing Task Manager: http://localhost:${PORT}`);
-    console.log(`  Login: naman@local.com / test@123\n`);
+    console.log('');
   });
   module.exports = app;
 }

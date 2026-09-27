@@ -8,6 +8,10 @@ name: Pending Task Summary
 on:
   workflow_dispatch: {}  # allow manual fire from the Actions tab
 
+# These jobs only curl an app URL with CRON_SECRET; they need no GitHub
+# token scopes at all.
+permissions: {}
+
 jobs:
   summary:
     runs-on: ubuntu-latest
