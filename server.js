@@ -7201,6 +7201,31 @@ app.get('/api/client-portal/handlers', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Who a client's escalation may be about and who may receive it — the same
+// people /api/client-portal/handlers offers in the form: the client's handlers
+// (subject), and the fixed recipients plus the HODs of those handlers'
+// departments (recipients). Anything else in a request is not from the form.
+async function portalFeedbackAudience(clientId) {
+  const [handlers] = await db.query(
+    `SELECT ch.user_id AS id, u.department FROM client_handlers ch JOIN users u ON ch.user_id=u.id
+      WHERE ch.client_id=? AND u.role != 'client'`, [clientId]);
+  const depts = [...new Set(handlers.map(h => h.department).filter(Boolean))];
+  const recipients = new Set();
+  if (depts.length) {
+    const [hods] = await db.query(
+      `SELECT id FROM users WHERE department IN (${depts.map(() => '?').join(',')}) AND (user_role='hod' OR role='hod')`, depts);
+    hods.forEach(h => recipients.add(String(h.id)));
+  }
+  const [fixed] = await db.query(
+    `SELECT id FROM users WHERE name IN ('Abhishek Jain','Simran Gurnani') AND role != 'client'`);
+  fixed.forEach(f => recipients.add(String(f.id)));
+  return { handlerIds: new Set(handlers.map(h => String(h.id))), recipientIds: recipients };
+}
+function portalFeedbackRecipients(raw, allowed) {
+  const list = (Array.isArray(raw) ? raw : String(raw || '').split(',')).map(x => String(x).trim()).filter(Boolean);
+  return list.filter(id => allowed.has(id)).join(',');
+}
+
 // Submit feedback from client portal.
 app.post('/api/client-portal/feedback', requireAuth, async (req, res) => {
   try {
@@ -7211,7 +7236,10 @@ app.post('/api/client-portal/feedback', requireAuth, async (req, res) => {
     if (!employee_id || !rating) return res.status(400).json({ error: 'Employee and rating are required' });
     const r = parseInt(rating);
     if (r < 1 || r > 5) return res.status(400).json({ error: 'Rating must be between 1 and 5' });
-    const recipientsStr = Array.isArray(recipients) ? recipients.join(',') : (recipients || '');
+    const aud = await portalFeedbackAudience(u.client_id);
+    if (!aud.handlerIds.has(String(employee_id))) return res.status(400).json({ error: 'Choose one of your handlers' });
+    const recipientsStr = portalFeedbackRecipients(recipients, aud.recipientIds);
+    if (!recipientsStr) return res.status(400).json({ error: 'Please select at least one recipient.' });
     await db.query(
       'INSERT INTO client_feedback (client_id, employee_id, rating, description, recipients) VALUES (?, ?, ?, ?, ?)',
       [u.client_id, parseInt(employee_id), r, (description || '').trim(), recipientsStr]);
@@ -7717,7 +7745,8 @@ app.put('/api/client-portal/feedback/:id', requireAuth, async (req, res) => {
     const { rating, description, recipients } = req.body;
     const r = parseInt(rating);
     if (!r || r < 1 || r > 5) return res.status(400).json({ error: 'Rating must be 1–5' });
-    const recipientsStr = Array.isArray(recipients) ? recipients.join(',') : (recipients || '');
+    const recipientsStr = portalFeedbackRecipients(recipients, (await portalFeedbackAudience(u.client_id)).recipientIds);
+    if (!recipientsStr) return res.status(400).json({ error: 'Please select at least one recipient.' });
     const [result] = await db.query(
       'UPDATE client_feedback SET rating=?, description=?, recipients=? WHERE id=? AND client_id=?',
       [r, (description || '').trim(), recipientsStr, parseInt(req.params.id), u.client_id]);
