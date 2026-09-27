@@ -98,11 +98,17 @@ function prSummary(r) {
 app.delete('/api/payment-requests/:id', requireAuth, async (req, res) => {
   try {
     if (!(await userCanDo(req.session, 'admin_paymentreq'))) return res.status(403).json({ error:'Access denied' });
-    const id = req.params.id;
+    const id = String(parseInt(req.params.id, 10));
+    if (id === 'NaN') return res.status(400).json({ error: 'Invalid id' });
+    // This request's own markers only. The old `LIKE '%:<id>%'` also matched
+    // other requests' markers — deleting request 1 wiped the paid/bill markers
+    // of 10–19, 100+… (and any bill id containing ":1").
+    const mine = `bank_name='__system__' AND (reason IN (?,?) OR reason LIKE ? OR reason LIKE ?)`;
+    const mineParams = [`__paid__:${id}`, `__cancelled__:${id}`, `__cancelled__:${id}:%`, `__bill__:${id}:%`];
     const [doomed] = await db.query(
-      'SELECT * FROM payment_requests WHERE id=? OR (bank_name=\'__system__\' AND reason LIKE ?)', [id, `%:${id}%`]);
+      `SELECT * FROM payment_requests WHERE id=? OR (${mine})`, [id, ...mineParams]);
     await archiveDeleted('payment_requests', doomed, req, { summary: prSummary });
-    await db.query('DELETE FROM payment_requests WHERE id=? OR (bank_name=\'__system__\' AND reason LIKE ?)', [id, `%:${id}%`]);
+    await db.query(`DELETE FROM payment_requests WHERE id=? OR (${mine})`, [id, ...mineParams]);
     res.json({ success:true });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -133,6 +139,15 @@ app.post('/api/payment-requests', requireAuth, async (req, res) => {
       )].slice(0, 20);
       if (!clean.length) return res.status(400).json({ error: 'Select at least one department' });
       departments = JSON.stringify(clean);
+      // The same amount checks the edit route has, and the "[₹X.XX]" prefix the
+      // form writes into reason must carry the same number — the approval email
+      // and the Payments screens read the prefix, the column holds the amount.
+      const amt = parseFloat(amount);
+      if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ error: 'Enter a valid amount' });
+      const pre = /^\[\D{0,4}?([\d,]+(?:\.\d+)?)\]/.exec(String(reason));
+      if (pre && Math.abs(parseFloat(pre[1].replace(/,/g, '')) - amt) > 0.005) {
+        return res.status(400).json({ error: 'Amount does not match the request' });
+      }
     }
     // Paid / cancelled / bill markers ride in on this same route as "__system__"
     // sentinel rows carrying the target request id in their reason. Marking a
@@ -155,8 +170,17 @@ app.post('/api/payment-requests', requireAuth, async (req, res) => {
       if (m[1] === 'bill' && !/^__bill__:\d+:[A-Za-z0-9_-]{10,200}$/.test(String(reason))) {
         return res.status(400).json({ error: 'Malformed payment marker' });
       }
-      const [[target]] = await db.query('SELECT submitted_by FROM payment_requests WHERE id=?', [m[2]]);
-      if (!target) return res.status(404).json({ error: 'Payment request not found' });
+      const [[target]] = await db.query('SELECT submitted_by, status, bank_name FROM payment_requests WHERE id=?', [m[2]]);
+      if (!target || target.bank_name === '__system__') return res.status(404).json({ error: 'Payment request not found' });
+      // Same rule as the screen, which offers Paid / Cancel / Upload Bill only on
+      // an approved request, and Paid / Cancel only until one of them is set.
+      if (target.status !== 'approved') return res.status(400).json({ error: 'Only an approved request can be marked' });
+      if (m[1] !== 'bill') {
+        const [[done]] = await db.query(
+          `SELECT COUNT(*) AS n FROM payment_requests WHERE bank_name='__system__' AND (reason IN (?,?) OR reason LIKE ?)`,
+          [`__paid__:${m[2]}`, `__cancelled__:${m[2]}`, `__cancelled__:${m[2]}:%`]);
+        if (Number(done?.n || 0)) return res.status(409).json({ error: 'This payment is already marked paid or cancelled' });
+      }
       if (Number(target.submitted_by) !== Number(req.session.userId)
           && !(await isPaymentApprover(req.session))) {
         return res.status(403).json({ error: 'You can only update your own payment requests' });
@@ -168,7 +192,10 @@ app.post('/api/payment-requests', requireAuth, async (req, res) => {
         [req.session.userId, me.name, bank_name, card_number, parseFloat(amount)||0, reason, departments]
       );
     } catch(insertErr) {
-      // Fallback if amount column not yet migrated (server not restarted)
+      // Fallback if amount column not yet migrated (server not restarted) — and
+      // only then: any other failure used to be retried without amount and
+      // departments, saving a request with neither.
+      if (insertErr.code !== 'ER_BAD_FIELD_ERROR') throw insertErr;
       await db.query(
         'INSERT INTO payment_requests (submitted_by, name, bank_name, card_number, reason) VALUES (?,?,?,?,?)',
         [req.session.userId, me.name, bank_name, card_number, reason]
