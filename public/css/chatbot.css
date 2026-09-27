@@ -65,6 +65,8 @@
 .cb-sugs{display:flex;flex-wrap:wrap;gap:6px;align-self:flex-start;margin-left:38px;max-width:calc(100% - 38px);}
 .cb-sug{padding:5px 10px;border:1px solid #c7d2fe;border-radius:16px;background:#eef2ff;color:var(--accent,#4f46e5);font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;}
 .cb-sug:hover{background:#e0e7ff;}
+.cb-open{background:var(--accent,#4f46e5);border-color:var(--accent,#4f46e5);color:#fff;font-weight:600;}
+.cb-open:hover{background:var(--accent-dark,#4338ca);}
 
 .cb-form{display:flex;gap:8px;padding:10px;border-top:1px solid #e2e8f0;background:#fff;}
 .cb-input{flex:1;min-width:0;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;}

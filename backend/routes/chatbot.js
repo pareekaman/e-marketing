@@ -58,6 +58,44 @@ module.exports = function registerChatbotRoutes(app, deps) {
   // The ways "hi" and "hello" actually get typed: hlo, hii, helloo, hey, hy, hai.
   const GREETING_RE = /^(?:h+i+|h+y+|h+a+i+|h+e+y+|h+e*l+o+|h+e+l+o+w*|hel+o+w+)$/;
 
+  // App pages the bot can point to, with the words people use for them. The
+  // longest matching phrase wins, so "fms admin" beats "fms".
+  const PAGES = [
+    ['dashboard', 'Dashboard', ['dashboard', 'home']],
+    ['alltasks', 'All Tasks', ['all tasks', 'all task', 'task list', 'delegation', 'checklist']],
+    ['approvals', 'Approvals', ['approval', 'approvals']],
+    ['daily', 'Daily Task', ['daily task', 'daily tasks']],
+    ['fms-tasks', 'FMS Tasks', ['fms', 'fms task', 'fms tasks']],
+    ['fms', 'FMS Admin', ['fms admin']],
+    ['race', 'Race Tracker', ['race', 'race tracker']],
+    ['meetings', 'Scheduler', ['scheduler', 'meeting', 'meetings', 'calendar']],
+    ['users', 'Users', ['users', 'user list', 'employees']],
+    ['hrm', 'HR Portal', ['hr portal', 'hrm', 'hr', 'recruitment', 'candidate', 'candidates']],
+    ['leaves', 'Leave Tracker', ['leave tracker', 'leave', 'leaves', 'chutti']],
+    ['compliance', 'Compliance', ['compliance']],
+    ['mis', 'MIS Report', ['mis', 'mis report']],
+    ['dailyreports', 'Daily Reports', ['daily report', 'daily reports']],
+    ['creditcards', 'Credit Card Statement', ['credit card', 'credit cards', 'card statement']],
+    ['paymentreq', 'Payment Request', ['payment request', 'payment requests', 'payment']],
+    ['clients', 'Client Master', ['client master', 'clients', 'client']],
+    ['dms', 'DMS', ['dms', 'documents', 'drive']],
+    ['inventory', 'Inventory', ['inventory', 'equipment']],
+    ['feedback', 'Escalation', ['escalation', 'escalations', 'feedback']],
+    ['logs', 'Logs', ['logs', 'deleted records']],
+    ['leads', 'Leads Enquiry', ['leads', 'lead', 'enquiry', 'enquiries']],
+    ['profile', 'Profile', ['profile', 'my profile', 'password']],
+  ];
+  // "Where is the FMS tab", "leave tracker kahan hai", "open inventory".
+  const NAV_WORDS = ['where', 'kahan', 'kaha', 'kidhar', 'open', 'kholo', 'khol', 'tab', 'page', 'section', 'navigate', 'milega'];
+  function pageIn(msgNorm) {
+    const hay = ' ' + msgNorm + ' ';
+    let best = null, len = 0;
+    for (const [page, label, keys] of PAGES) {
+      for (const k of keys) if (k.length > len && hay.includes(' ' + k + ' ')) { best = { page, label, key: k }; len = k.length; }
+    }
+    return best;
+  }
+
   // Any of these picks the kind of question.
   const MIS_WORDS = ['mis', 'score', 'scores', 'performance', 'rating'];
   const LEAVE_WORDS = ['leave', 'leaves', 'chutti', 'chhutti', 'chuttiyan', 'chhuttiyan', 'chuttiya', 'wfh', 'half', 'halfday'];
@@ -206,6 +244,15 @@ module.exports = function registerChatbotRoutes(app, deps) {
   const FULL_MONTHS = ['january', 'february', 'march', 'april', 'june', 'july',
     'august', 'september', 'october', 'november', 'december'];
   const pad = n => String(n).padStart(2, '0');
+  const WEEKDAYS = {
+    sunday: 0, ravivar: 0, itwar: 0, itvar: 0,
+    monday: 1, somvar: 1, somwar: 1,
+    tuesday: 2, mangalvar: 2, mangalwar: 2,
+    wednesday: 3, budhvar: 3, budhwar: 3,
+    thursday: 4, guruvar: 4, guruwar: 4,
+    friday: 5, shukravar: 5, shukrawar: 5,
+    saturday: 6, shanivar: 6, shaniwar: 6,
+  };
 
   // A real calendar date as YYYY-MM-DD, or null ("31 02 2026" is not one).
   function ymdOf(y, m, d) {
@@ -291,6 +338,20 @@ module.exports = function registerChatbotRoutes(app, deps) {
     const WEEK = '(?:week|hafte|hafta)';
     const MONTH = '(?:month|mahine|mahina)';
     const YEAR = '(?:year|saal)';
+
+    // A weekday: "last monday" / "pichle somvar" is the most recent one
+    // before today; a bare "monday" / "somvar ko" may be today itself.
+    const dayIdx = words.findIndex(w => w in WEEKDAYS);
+    if (dayIdx >= 0) {
+      const want = WEEKDAYS[words[dayIdx]];
+      const past = dayIdx > 0 && new RegExp('^' + PAST + '$').test(words[dayIdx - 1]);
+      const dow = new Date(today + 'T00:00:00Z').getUTCDay();
+      let back = (dow - want + 7) % 7;
+      if (past && back === 0) back = 7;
+      const d = addDays(today, -back);
+      return range(d, d);
+    }
+
     if (has(PAST + ' ' + WEEK)) return range(addDays(thisMon, -7), addDays(thisMon, -1), 'last week');
     if (has(PAST + ' ' + MONTH)) {
       const end = addDays(firstOfMonth, -1);
@@ -465,7 +526,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
   // are requireAdmin, so this answers for an admin only.
   async function dailyFor(userId, start, end) {
     const [rows] = await db.query(
-      `SELECT DATE_FORMAT(entry_date,'%Y-%m-%d') AS d, client_name, duration_min
+      `SELECT DATE_FORMAT(entry_date,'%Y-%m-%d') AS d, client_name, department, description, duration_min
          FROM daily_tasks WHERE user_id = ? AND entry_date BETWEEN ? AND ?
         ORDER BY entry_date ASC, id ASC`, [userId, start, end]);
     return rows;
@@ -483,6 +544,24 @@ module.exports = function registerChatbotRoutes(app, deps) {
     const byClient = sumBy('client_name').sort((a, b) => b[1] - a[1]);
     const byDay = sumBy('d');
     const days = byDay.length;
+    // One day is the daily report itself: every entry with what was done,
+    // not just the totals.
+    if (period.start === period.end) {
+      return {
+        reply: `${name} logged ${hm(total)} of daily tasks ${when} (${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}).`,
+        sections: [{
+          title: 'Daily report',
+          items: rows.slice(0, 25).map(r => {
+            const desc = String(r.description || '').trim();
+            return {
+              title: `${r.client_name || '(no client)'} — ${hm(parseInt(r.duration_min) || 0)}`,
+              meta: [r.department, desc.length > 200 ? desc.slice(0, 199) + '…' : desc].filter(Boolean).join(' · '),
+            };
+          }),
+          more: Math.max(0, rows.length - 25),
+        }],
+      };
+    }
     return {
       reply: `${name} logged ${hm(total)} of daily tasks ${when}` +
         (period.start === period.end ? '' : `, on ${days} day${days === 1 ? '' : 's'}`) +
@@ -819,6 +898,24 @@ module.exports = function registerChatbotRoutes(app, deps) {
         profile: `Who is ${n}`,
       })[intent];
       const hasDate = explicitDates(msgNorm.split(' ')).length > 0 || FULL_MONTHS.some(m => msgWords.has(m));
+
+      // Finding a page of the app. Taken when a page is named with a "where /
+      // open / tab" word and either no person is named or "tab"/"page" makes
+      // it plain the page is meant ("where is naman's leave" stays a person
+      // question). The button only asks the browser to open it; the page's
+      // own access check still decides.
+      const navPage = asks(NAV_WORDS) ? pageIn(msgNorm) : null;
+      // "fms admin kidhar": "admin" also matches the user "Naman Admin", but
+      // every name word in the message sits inside the page's own phrase.
+      const nameInPage = navPage && matches.length && [...msgWords]
+        .filter(w => nameWords.has(w))
+        .every(w => navPage.key.split(' ').includes(w));
+      if (navPage && (!matches.length || nameInPage || msgWords.has('tab') || msgWords.has('page'))) {
+        return res.json({
+          reply: `${navPage.label} is in the menu on the left (under More on a phone). Tap below to open it.`,
+          open: navPage,
+        });
+      }
 
       // An HOD who names someone from another department is told so. The
       // name is scored against everyone, not just the department: "Naman

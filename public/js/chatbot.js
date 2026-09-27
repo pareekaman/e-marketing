@@ -97,6 +97,28 @@ function cbAddSuggestions(list) {
   log.scrollTop = log.scrollHeight;
 }
 
+// "Open <page>" under a where-is answer. A page whose sidebar entry is hidden
+// for this user is one they cannot use, so they are told instead; navigate()
+// keeps its own role checks either way.
+function cbAddOpenButton(open) {
+  const log = document.getElementById('cbLog');
+  const wrap = cbEl('div', 'cb-sugs');
+  const b = cbEl('button', 'cb-sug cb-open', `Open ${open.label}`);
+  b.type = 'button';
+  b.onclick = () => {
+    const nav = document.getElementById('nav-' + open.page);
+    // The item's own display, not visibility: on a phone the whole sidebar is
+    // hidden, but the pages in it are still ones the user may open.
+    const hidden = nav && getComputedStyle(nav).display === 'none';
+    if (hidden) { cbAddMsg('cb-bot', `You don't have access to ${open.label}.`); return; }
+    if (typeof navigate === 'function') navigate(open.page, nav || undefined);
+    if (window.matchMedia('(max-width:768px)').matches) document.getElementById('cbPanel').classList.remove('open');
+  };
+  wrap.appendChild(b);
+  log.appendChild(wrap);
+  log.scrollTop = log.scrollHeight;
+}
+
 // The task list under a reply: one heading per section (Overdue, Due today…),
 // each task as its description plus a grey line of type / due date / assigner.
 function cbAddSections(msg, sections) {
@@ -139,6 +161,7 @@ async function cbAsk(text) {
     const msg = cbAddMsg('cb-bot', r.reply || '');
     if (Array.isArray(r.sections)) cbAddSections(msg, r.sections);
     if (Array.isArray(r.suggestions) && r.suggestions.length) cbAddSuggestions(r.suggestions);
+    if (r.open && r.open.page) cbAddOpenButton(r.open);
   }
   _cbBusy = false;
   document.getElementById('cbSend').disabled = false;
