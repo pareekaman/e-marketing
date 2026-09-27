@@ -126,7 +126,11 @@ const CC_OPENAI_MODEL = process.env.OPENAI_MODEL   || 'gpt-4.1-mini';
 
 async function pdfToBase64Images(pdfBuffer, password = '') {
   const data       = new Uint8Array(pdfBuffer);
-  const loadParams = { data };
+  // isEvalSupported:false closes CVE-2024-4367 in this pdfjs-dist (3.x): a
+  // crafted font could otherwise run code through new Function() on the
+  // server. The fix upstream is pdfjs 4.2+, a breaking upgrade; this flag
+  // only switches glyph drawing to the interpreted path, same output.
+  const loadParams = { data, isEvalSupported: false };
   if (password) loadParams.password = password;
   const doc      = await pdfjsLib.getDocument(loadParams).promise;
   const numPages = Math.min(doc.numPages, 8); // CC statements never need more than 8 pages
