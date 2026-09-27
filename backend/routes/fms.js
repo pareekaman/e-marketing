@@ -299,6 +299,22 @@ async function expandDropdownUserTokens(optionsStr) {
   return out.join(',');
 }
 
+// The step rule the Done route has always used, shared with the read routes:
+// FMS-tasks admins may act on any step; anyone else only on a step they are a
+// doer of — except a step with no doers at all, which stays open to everyone.
+async function fmsCanUseStep(session, stepId) {
+  if (await userCanDo(session, 'admin_fms_tasks')) return true;
+  const [[d]] = await db.query(
+    'SELECT COUNT(*) AS total, SUM(user_id = ?) AS mine FROM fms_step_doers WHERE step_id = ?',
+    [session.userId, stepId]);
+  return Number(d?.total || 0) === 0 || Number(d?.mine || 0) > 0;
+}
+
+// A value typed by a doer is written with USER_ENTERED so dates and numbers
+// parse as before; a leading "=" would make it a live formula (IMPORTRANGE,
+// HYPERLINK…), so it is written as text instead.
+const fmsSafeCellValue = v => (typeof v === 'string' && v.trim().startsWith('=')) ? "'" + v : v;
+
 // Get FMS steps for tasks view
 app.get('/api/fms-tasks/:id', requireAuth, async (req, res) => {
   try {
@@ -306,6 +322,13 @@ app.get('/api/fms-tasks/:id', requireAuth, async (req, res) => {
     const isAdmin = await userCanDo(req.session, 'admin_fms_tasks');
     const [sheets] = await db.query('SELECT * FROM fms_sheets WHERE id=?', [req.params.id]);
     if (!sheets[0]) return res.status(404).json({ error: 'FMS not found' });
+    // Same audience as the FMS list: admins, or a doer on any step of this FMS.
+    if (!isAdmin) {
+      const [[mine]] = await db.query(
+        `SELECT COUNT(*) AS n FROM fms_steps fst JOIN fms_step_doers fsd ON fsd.step_id=fst.id WHERE fst.fms_id=? AND fsd.user_id=?`,
+        [req.params.id, uid]);
+      if (!Number(mine?.n || 0)) return res.status(403).json({ error: 'This FMS is not assigned to you' });
+    }
     const [steps] = await db.query('SELECT * FROM fms_steps WHERE fms_id=? ORDER BY step_order ASC', [req.params.id]);
     for (const step of steps) {
       const [doers] = await db.query(`SELECT fsd.user_id,u.name FROM fms_step_doers fsd JOIN users u ON fsd.user_id=u.id WHERE fsd.step_id=?`, [step.id]);
@@ -333,6 +356,7 @@ app.get('/api/fms-tasks/:fmsId/steps/:stepId/rows', requireAuth, async (req, res
     const [steps] = await db.query('SELECT * FROM fms_steps WHERE id=? AND fms_id=?', [req.params.stepId, req.params.fmsId]);
     if (!steps[0]) return res.status(404).json({ error: 'Step not found' });
     const step = steps[0];
+    if (!(await fmsCanUseStep(req.session, step.id))) return res.status(403).json({ error: 'This FMS step is not assigned to you' });
 
     // Get current user's name for doer filtering
     const [[currentUser]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
@@ -443,25 +467,54 @@ app.post('/api/fms-tasks/:fmsId/steps/:stepId/done', requireAuth, async (req, re
     // A step with NO doer rows stays open to everyone, exactly as today. Closing
     // that case would silently make such steps admin-only, and steps are
     // configured in the FMS Admin screen where leaving doers empty is allowed.
-    if (!(await userCanDo(req.session, 'admin_fms_tasks'))) {
-      const [[doers]] = await db.query(
-        'SELECT COUNT(*) AS total, SUM(user_id = ?) AS mine FROM fms_step_doers WHERE step_id = ?',
-        [req.session.userId, step.id]);
-      if (Number(doers?.total || 0) > 0 && !Number(doers?.mine || 0)) {
-        return res.status(403).json({ error: 'This FMS step is not assigned to you' });
-      }
+    const isAdmin = await userCanDo(req.session, 'admin_fms_tasks');
+    if (!(await fmsCanUseStep(req.session, step.id))) {
+      return res.status(403).json({ error: 'This FMS step is not assigned to you' });
     }
 
     const actualCol = (step.actual_col||'').toUpperCase();
     if (!actualCol) return res.status(400).json({ error: 'Actual column not configured for this step' });
 
+    // The row must be a data row — never the header or anything above it, and
+    // never a range smuggled into the A1 reference.
+    const rowNum = Number(rowNumber);
+    const headerRow = Number(sheet.header_row || 1);
+    if (!Number.isInteger(rowNum) || rowNum <= headerRow) return res.status(400).json({ error: 'Invalid row' });
+    // Extra inputs may only go to the columns configured for this step.
+    const [extraCfg] = await db.query('SELECT col_letter FROM fms_extra_rows WHERE step_id=?', [step.id]);
+    const allowedExtra = new Set(extraCfg.map(r => String(r.col_letter || '').toUpperCase()).filter(Boolean));
+    const extras = Array.isArray(extraInputs) ? extraInputs : [];
+    if (extras.some(ei => ei && ei.colLetter && !allowedExtra.has(String(ei.colLetter).toUpperCase()))) {
+      return res.status(400).json({ error: 'That field is not part of this step' });
+    }
+
     const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
     const spreadsheetId = extractSpreadsheetId(sheet.sheet_id);
     const tabName = sheet.sheet_name || 'Sheet1';
 
+    // Re-read the row: it must still be pending (plan set, actual empty), and a
+    // non-admin may only close a row the list showed them — theirs by the doer
+    // name column, the same exact, case-insensitive match the rows route uses.
+    {
+      const planIdx = colToIdx(step.plan_col), actualIdx = colToIdx(step.actual_col);
+      const doerIdx = step.doer_name_col ? colToIdx(step.doer_name_col) : -1;
+      const lastCol = idxToCol(Math.max(planIdx, actualIdx, doerIdx, 0));
+      const got = await sheetsApi.spreadsheets.values.get({ spreadsheetId, range: `${tabName}!A${rowNum}:${lastCol}${rowNum}` });
+      const row = (got.data.values || [])[0] || [];
+      const blank = v => !String(v || '').replace(/[\s​-‍﻿]+/g, '');
+      if (planIdx >= 0 && blank(row[planIdx])) return res.status(400).json({ error: 'This row has no plan date — nothing to mark done' });
+      if (!blank(row[actualIdx])) return res.status(409).json({ error: 'This row is already marked done' });
+      if (!isAdmin && doerIdx >= 0) {
+        const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+        if (String(row[doerIdx] || '').trim().toLowerCase() !== String(me?.name || '').trim().toLowerCase()) {
+          return res.status(403).json({ error: 'This row is assigned to someone else' });
+        }
+      }
+    }
+
     await sheetsApi.spreadsheets.values.update({
       spreadsheetId,
-      range: `${tabName}!${actualCol}${rowNumber}`,
+      range: `${tabName}!${actualCol}${rowNum}`,
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: [[fullTimestamp]] }
     });
@@ -470,21 +523,21 @@ app.post('/api/fms-tasks/:fmsId/steps/:stepId/done', requireAuth, async (req, re
       const drCol = step.delay_reason_col.toUpperCase();
       await sheetsApi.spreadsheets.values.update({
         spreadsheetId,
-        range: `${tabName}!${drCol}${rowNumber}`,
+        range: `${tabName}!${drCol}${rowNum}`,
         valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [[delayReason]] }
+        requestBody: { values: [[fmsSafeCellValue(delayReason)]] }
       });
     }
 
     // Write extra input values to their respective columns
-    if (extraInputs && extraInputs.length) {
-      for (const ei of extraInputs) {
+    if (extras.length) {
+      for (const ei of extras) {
         if (ei.colLetter && ei.value !== undefined && ei.value !== '') {
           await sheetsApi.spreadsheets.values.update({
             spreadsheetId,
-            range: `${tabName}!${ei.colLetter.toUpperCase()}${rowNumber}`,
+            range: `${tabName}!${String(ei.colLetter).toUpperCase()}${rowNum}`,
             valueInputOption: 'USER_ENTERED',
-            requestBody: { values: [[ei.value]] }
+            requestBody: { values: [[fmsSafeCellValue(ei.value)]] }
           });
         }
       }
@@ -497,7 +550,7 @@ app.post('/api/fms-tasks/:fmsId/steps/:stepId/done', requireAuth, async (req, re
       if (doerName) {
         await sheetsApi.spreadsheets.values.update({
           spreadsheetId,
-          range: `${tabName}!${step.doer_name_col.toUpperCase()}${rowNumber}`,
+          range: `${tabName}!${step.doer_name_col.toUpperCase()}${rowNum}`,
           valueInputOption: 'USER_ENTERED',
           requestBody: { values: [[doerName]] }
         });
