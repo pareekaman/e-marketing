@@ -1029,12 +1029,18 @@ async function loadComments(taskId, taskType) {
   container.scrollTop = container.scrollHeight;
 }
 
+let _commentSending = false;
 async function addComment() {
   const taskId = document.getElementById('commentTaskId').value;
   const taskType = document.getElementById('commentTaskType').value;
   const comment = document.getElementById('commentInput').value.trim();
-  if (!comment) return;
-  await api('/api/comments','POST',{taskId, taskType, comment});
+  if (!comment || _commentSending) return; // Enter + Send, or a double click, posted it twice
+  _commentSending = true;
+  let r;
+  try { r = await api('/api/comments','POST',{taskId, taskType, comment}); }
+  finally { _commentSending = false; }
+  // Keep the text when the save failed, instead of clearing it as if it had worked.
+  if (r && r.error) { showToast(r.error, 'error'); return; }
   document.getElementById('commentInput').value = '';
   await loadComments(taskId, taskType);
 }

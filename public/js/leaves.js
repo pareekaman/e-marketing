@@ -582,6 +582,7 @@ function lvExtraDelRow(key, idx){
   lvRenderSelectedList();
 }
 
+let _lvSaving = false;
 async function saveLeave(){
   const errBox = document.getElementById('leaveErr');
   errBox.style.display = 'none';
@@ -633,9 +634,16 @@ async function saveLeave(){
     dates.push(item);
   }
 
-  const r = await api('/api/leaves', 'POST', {
-    leave_type: LEAVE_PICKED_TYPE, dates, reason
-  });
+  // A second click while the first request is still in flight used to file
+  // the same leave twice.
+  if (_lvSaving) return;
+  _lvSaving = true;
+  let r;
+  try {
+    r = await api('/api/leaves', 'POST', {
+      leave_type: LEAVE_PICKED_TYPE, dates, reason
+    });
+  } finally { _lvSaving = false; }
   if (r.error) return showErr(r.error);
   closeModal('leaveModal');
   showToast('✅ Leave request submitted for approval');
