@@ -1023,8 +1023,17 @@ async function requireAuth(req, res, next) {
     impersonatedBy: decoded.impersonatedBy || null,
     impersonatorName: decoded.impersonatorName || null
   };
+  // A client login is an outsider. It may use only what the client portal
+  // (client.html) calls; every staff API — the staff directory, the client
+  // list, meetings, HR, cards — is refused, including routes added later.
+  if (role === 'client' && !CLIENT_ALLOWED_API.test(req.originalUrl.split('?')[0])) {
+    return res.status(403).json({ error: 'Not available for client logins' });
+  }
   next();
 }
+// Everything client.html calls: /api/me, /api/tasks and /api/tasks/:id/…,
+// /api/client-portal/…, /api/logout. Keep in step with client.html.
+const CLIENT_ALLOWED_API = /^\/api\/(me|logout|tasks(\/.*)?|client-portal(\/.*)?)$/;
 function requireAdmin(req, res, next) {
   if (req.session.role === 'admin') return next();
   res.status(403).json({ error: 'Admin only' });
