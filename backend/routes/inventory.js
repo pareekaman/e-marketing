@@ -140,6 +140,15 @@ app.put('/api/inventory/items/:id', requireAuth, async (req, res) => {
   if (!(await userCanDo(req.session, 'edit_inventory'))) return res.status(403).json({ error: 'You do not have edit access to Inventory' });
   try {
     const { name, brand, model, serial_number, photo, item_condition, status, notes } = req.body;
+    // Status belongs to assign/return. Here it may only move between the
+    // off-hand states, and never while someone holds the item — flipping an
+    // assigned item to "available" let it be assigned to a second person.
+    if (status) {
+      if (!['available', 'damaged', 'retired'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+      const [[held]] = await db.query(
+        `SELECT COUNT(*) AS n FROM inventory_assignments WHERE item_id=? AND handover_status IN ('active','pending_handover')`, [req.params.id]);
+      if (Number(held?.n || 0)) return res.status(400).json({ error: 'This item is with someone — return it before changing its status' });
+    }
     await db.query(
       `UPDATE inventory_items SET name=COALESCE(?,name), brand=COALESCE(?,brand), model=COALESCE(?,model),
        serial_number=COALESCE(?,serial_number), photo=COALESCE(?,photo), item_condition=COALESCE(?,item_condition),
@@ -188,10 +197,20 @@ app.post('/api/inventory/assign', requireAuth, async (req, res) => {
     const [[item]] = await db.query('SELECT status FROM inventory_items WHERE id=?', [item_id]);
     if (!item) return res.status(404).json({ error: 'Item not found' });
     if (item.status === 'assigned') return res.status(400).json({ error: 'Item already assigned' });
-    await db.query(
-      `INSERT INTO inventory_assignments (item_id, user_id, assigned_by) VALUES (?,?,?)`,
-      [item_id, user_id, req.session.userId]);
-    await db.query(`UPDATE inventory_items SET status='assigned' WHERE id=?`, [item_id]);
+    // Claim the item first, and only from available: a double click or two
+    // people assigning at once must not give one item two holders, and a
+    // damaged/retired item is not handed out.
+    const [claim] = await db.query(
+      `UPDATE inventory_items SET status='assigned' WHERE id=? AND status='available'`, [item_id]);
+    if (!claim.affectedRows) return res.status(400).json({ error: 'Item is not available to assign' });
+    try {
+      await db.query(
+        `INSERT INTO inventory_assignments (item_id, user_id, assigned_by) VALUES (?,?,?)`,
+        [item_id, user_id, req.session.userId]);
+    } catch (e) {
+      await db.query(`UPDATE inventory_items SET status='available' WHERE id=?`, [item_id]).catch(() => {});
+      throw e;
+    }
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -270,9 +289,14 @@ app.post('/api/inventory/return/:assignment_id', requireAuth, async (req, res) =
     if (!mapped) return res.status(400).json({ error: 'A valid return reason is required' });
     const [[a]] = await db.query('SELECT * FROM inventory_assignments WHERE id=?', [req.params.assignment_id]);
     if (!a) return res.status(404).json({ error: 'Assignment not found' });
-    await db.query(
-      `UPDATE inventory_assignments SET handover_status='returned', returned_at=NOW(), return_reason=? WHERE id=?`,
+    // Only a live assignment can be returned, and only once: returning an old
+    // one again used to flip the item back to available while its current
+    // holder still had it.
+    const [upd] = await db.query(
+      `UPDATE inventory_assignments SET handover_status='returned', returned_at=NOW(), return_reason=?
+        WHERE id=? AND handover_status IN ('active','pending_handover')`,
       [reason, req.params.assignment_id]);
+    if (!upd.affectedRows) return res.status(400).json({ error: 'This assignment was already returned' });
     await db.query(`UPDATE inventory_items SET status=? WHERE id=?`, [mapped.itemStatus, a.item_id]);
     res.json({ ok: true, itemStatus: mapped.itemStatus });
   } catch (err) { res.status(500).json({ error: err.message }); }
