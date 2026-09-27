@@ -5479,6 +5479,42 @@ async function notifyPurviOfNewMdoTasks() {
 // on the Hobby plan; use a frequent external pinger like GitHub Actions for
 // near-real-time checks, same as /api/cron/meeting-reminder).
 // Protected by CRON_SECRET (Authorization: Bearer ...).
+// ── Run each message-sending cron at most once per IST hour ────────────
+// A second trigger — Vercel firing twice, an overlapping pinger, a re-run —
+// used to post the whole batch again to client groups and inboxes. Before a
+// listed job runs, it claims (job, IST date+hour) in cron_runs; a later
+// trigger in the same hour gets 200 "skipped" and sends nothing. Twice-a-day
+// jobs (pending-summary) fall in different hours, so both still run.
+// ?force=1 (manual Send Now) skips the claim. A run that ends in 5xx gives
+// its claim back so it can be retried. Any doubt → run, as before.
+const CRON_ONCE_PER_HOUR = new Set(['pending-summary', 'pending-reminder', 'daily-reminder', 'celebrations',
+  'client-completed-digest', 'handler-leave-notice', 'department-pending-digest', 'client-pending-digest',
+  'due-date-reminder', 'leave-tracker-reminder']);
+let _cronRunsReady = null;
+app.use('/api/cron/', async (req, res, next) => {
+  const job = req.path.replace(/^\/+|\/+$/g, '');
+  if (!CRON_ONCE_PER_HOUR.has(job) || req.query.force === '1') return next();
+  if (!process.env.CRON_SECRET || (req.headers.authorization || '') !== `Bearer ${process.env.CRON_SECRET}`) return next(); // route answers 401
+  try {
+    if (!_cronRunsReady) _cronRunsReady = db.query(`CREATE TABLE IF NOT EXISTS cron_runs (
+      job VARCHAR(64) NOT NULL, slot VARCHAR(16) NOT NULL, ran_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (job, slot)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(e => { _cronRunsReady = null; throw e; });
+    await _cronRunsReady;
+    const slot = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 13); // IST 'YYYY-MM-DDTHH'
+    const [claim] = await db.query('INSERT IGNORE INTO cron_runs (job, slot) VALUES (?, ?)', [job, slot]);
+    if (!claim.affectedRows) {
+      console.log(`  ⏭ Cron ${job} already ran for ${slot} IST — skipped`);
+      return res.json({ ok: true, skipped: `already ran for ${slot} IST` });
+    }
+    res.on('finish', () => {
+      if (res.statusCode >= 500) db.query('DELETE FROM cron_runs WHERE job=? AND slot=?', [job, slot]).catch(() => {});
+    });
+  } catch (e) {
+    console.error('cron once-per-hour check failed, running anyway:', e.message);
+  }
+  next();
+});
+
 app.get('/api/cron/mdo-new-task-notify', async (req, res) => {
   const authHeader = req.headers.authorization || '';
   const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
