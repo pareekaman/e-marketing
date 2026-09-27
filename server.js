@@ -3514,6 +3514,14 @@ app.put('/api/profile', requireAuth, async (req, res) => {
     const { name, email, notification_email, phone, birthday, joining_date, currentPassword, newPassword, profileImage } = req.body;
     // Checked before any write, so a bad photo cannot leave the other fields half-saved.
     if (profileImage !== undefined && !isStorableProfileImage(profileImage)) return res.status(400).json({ error: 'Profile photo must be an image file' });
+    // The login email is what "forgot password" sends the reset code to, so
+    // changing it without the password would let a stolen session take the
+    // account over for good. Unchanged email → no password needed, as before.
+    const [[cur]] = await db.query('SELECT email FROM users WHERE id=?', [uid]);
+    const emailChanged = String(email || '').trim().toLowerCase() !== String(cur?.email || '').trim().toLowerCase();
+    if (emailChanged && !currentPassword) {
+      return res.status(400).json({ error: 'Enter your current password to change your login email' });
+    }
     if (currentPassword) {
       const [rows] = await db.query('SELECT password FROM users WHERE id=?', [uid]);
       if (!bcrypt.compareSync(currentPassword, rows[0].password)) return res.status(400).json({ error: 'Current password is incorrect' });
