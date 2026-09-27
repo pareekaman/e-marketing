@@ -7239,9 +7239,8 @@ app.get('/api/client-portal/handlers', requireAuth, async (req, res) => {
       const [hods] = await db.query(`SELECT id, name FROM users WHERE department=? AND (user_role='hod' OR role='hod')`, [dept]);
       if (hods.length) hodMap[dept] = hods;
     }
-    // Fixed recipients: Abhishek Jain and Simran Gurnani
-    const [fixedRows] = await db.query(
-      `SELECT id, name FROM users WHERE name IN ('Abhishek Jain','Simran Gurnani') AND role != 'client'`);
+    // Fixed recipients (feedback_fixed_ids)
+    const fixedRows = await feedbackFixedUsers();
     res.json({ handlers, hodMap, fixedRecipients: fixedRows });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -7261,9 +7260,7 @@ async function portalFeedbackAudience(clientId) {
       `SELECT id FROM users WHERE department IN (${depts.map(() => '?').join(',')}) AND (user_role='hod' OR role='hod')`, depts);
     hods.forEach(h => recipients.add(String(h.id)));
   }
-  const [fixed] = await db.query(
-    `SELECT id FROM users WHERE name IN ('Abhishek Jain','Simran Gurnani') AND role != 'client'`);
-  fixed.forEach(f => recipients.add(String(f.id)));
+  (await feedbackFixedUsers()).forEach(f => recipients.add(String(f.id)));
   return { handlerIds: new Set(handlers.map(h => String(h.id))), recipientIds: recipients };
 }
 function portalFeedbackRecipients(raw, allowed) {
@@ -7494,6 +7491,10 @@ const PEOPLE_SETTINGS = {
   wa_task_approver_ids: ['Naman Gupta'],
   mdo_reviewer_ids:     ['Purvi Saini'],
   onboarding_owner_ids: ['Simran Gurnani'],
+  // Always-copied recipients of client escalations, who may also open the
+  // Feedback page. Was matched by name at every request, so anyone later
+  // renamed to (or hired as) one of these names inherited the access.
+  feedback_fixed_ids:   ['Abhishek Jain', 'Simran Gurnani'],
 };
 const PR_APPROVER_KEY = 'payment_approver_ids';
 
@@ -7533,6 +7534,17 @@ async function isPaymentApprover(session) {
 // is empty or every id has since been deleted — callers already treat a missing
 // phone as "skip the send", which is the same outcome the name lookup gave when
 // it matched nothing, except this way the reason is visible in the settings row.
+// The feedback fixed recipients by id; if the setting has not been seeded
+// yet (or resolved to nobody) fall back to the old name match, so nobody
+// loses access in between.
+async function feedbackFixedUsers() {
+  const byId = await usersForSetting('feedback_fixed_ids', 'id, name');
+  if (byId.length) return byId.filter(u => u);
+  const [rows] = await db.query(
+    `SELECT id, name FROM users WHERE name IN ('Abhishek Jain','Simran Gurnani') AND role != 'client'`);
+  return rows;
+}
+
 async function usersForSetting(key, cols = 'id, name, phone') {
   const ids = await readIdSetting(key);
   if (!ids.length) return [];
@@ -7733,10 +7745,8 @@ app.get('/api/feedback/access', requireAuth, async (req, res) => {
     if (!me) return res.json({ canAccess: false });
     const isAdmin = me.role === 'admin' || me.user_role === 'admin';
     const isHod = me.user_role === 'hod' || me.role === 'hod';
-    const [[fixed]] = await db.query(
-      `SELECT id FROM users WHERE id=? AND name IN ('Abhishek Jain','Simran Gurnani')`,
-      [req.session.userId]);
-    res.json({ canAccess: isAdmin || isHod || !!fixed });
+    const fixed = (await feedbackFixedUsers()).some(u => Number(u.id) === Number(req.session.userId));
+    res.json({ canAccess: isAdmin || isHod || fixed });
   } catch (err) { res.status(500).json({ canAccess: false }); }
 });
 
