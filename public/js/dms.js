@@ -610,7 +610,6 @@ async function dmsUploadPicked(input) {
     if (session?.error) { statusEl.style.color = '#dc2626'; statusEl.textContent = session.error; return; }
 
     const CHUNK = 4 * 1024 * 1024; // 4 MiB — must be a multiple of 256 KiB per Drive's resumable-upload spec (except the final chunk)
-    const token = localStorage.getItem('authToken') || '';
     const chunkUrl = `/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/upload-chunk?uploadUrl=${encodeURIComponent(session.uploadUrl)}`;
     let offset = 0;
     while (offset < file.size) {
@@ -620,7 +619,6 @@ async function dmsUploadPicked(input) {
         headers: {
           'Content-Range': `bytes ${offset}-${end - 1}/${file.size}`,
           'Content-Type': 'application/octet-stream',
-          ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
         },
         body: file.slice(offset, end),
       });

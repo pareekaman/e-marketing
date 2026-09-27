@@ -652,8 +652,7 @@ function ccDeptCommit() {
 async function ccDeptDeleteOption(val) {
   if (!ccCanEdit()) return;
   try {
-    const token = localStorage.getItem('authToken') || '';
-    await fetch(`/api/credit-cards/departments/${encodeURIComponent(val)}`, { method:'DELETE', headers: token ? {'Authorization':'Bearer '+token} : {} });
+    await fetch(`/api/credit-cards/departments/${encodeURIComponent(val)}`, { method:'DELETE' });
     _ccDepts = _ccDepts.filter(d => d !== val);
   } catch(e) {}
   // A department that no longer exists cannot stay ticked on the open row.
@@ -912,10 +911,8 @@ async function _ccDoUpload(password) {
     const fd = new FormData();
     fd.append('pdf', file);
     if (password) fd.append('password', password);
-    const token = localStorage.getItem('authToken') || '';
     const r = await fetch('/api/credit-cards/upload-pdf', {
       method: 'POST',
-      headers: token ? { 'Authorization': 'Bearer ' + token } : {},
       body: fd
     });
     const data = await r.json();
@@ -1026,10 +1023,9 @@ async function ccUploadBill(bank, card, si, oi, txnId, input) {
     if (!driveResult.fileId) throw new Error(driveResult.error || 'Drive upload failed');
 
     // Save only the fileId to server (lightweight request)
-    const token = localStorage.getItem('authToken') || '';
     const saveResp = await fetch(`/api/credit-cards/transaction/${txnId}/bill`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization':'Bearer '+token} : {}) },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fileId: driveResult.fileId })
     });
     const saveResult = await saveResp.json();
@@ -1153,8 +1149,7 @@ async function ccDeleteStatement(bank, cardNum, stmtIdx) {
   const label = stmt?.statement_date ? `Statement: ${stmt.statement_date}` : 'this statement';
   if (!await appConfirm(`${label} and all its transactions will be permanently deleted.`, 'Delete Statement?')) return;
   if (stmt?.id) {
-    const token = localStorage.getItem('authToken') || '';
-    await fetch(`/api/credit-cards/statement/${stmt.id}`, { method:'DELETE', headers: token ? {'Authorization':'Bearer '+token} : {} });
+    await fetch(`/api/credit-cards/statement/${stmt.id}`, { method:'DELETE' });
   }
   // Reload fresh data from server so card tabs always reflect actual DB state
   try {
@@ -1176,8 +1171,7 @@ async function ccDeleteTransaction(bank, cardNum, stmtIdx, txIdx) {
   if (!ccCanEdit()) return;
   const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
   if (t?.id) {
-    const token = localStorage.getItem('authToken') || '';
-    await fetch(`/api/credit-cards/transaction/${t.id}`, { method:'DELETE', headers: token ? {'Authorization':'Bearer '+token} : {} });
+    await fetch(`/api/credit-cards/transaction/${t.id}`, { method:'DELETE' });
   }
   _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions.splice(txIdx, 1);
   ccRenderStatements();
@@ -1412,10 +1406,9 @@ async function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
     doc.save(filename);
 
     // ── 3. Save row to Sheet + upload PDF to Drive ────────
-    const token = localStorage.getItem('authToken') || '';
     const resp = await fetch('/api/credit-cards/drive-upload', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization':'Bearer '+token} : {}) },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         date: t.date||'', description: t.description||'',
         amount: t.amount||'', type: t.txn_type||'',
@@ -1451,10 +1444,9 @@ function ccUpdateField(bank, cardNum, stmtIdx, txIdx, field, val) {
     const key = `${t.id}`;
     clearTimeout(_ccUpdateTimer[key]);
     _ccUpdateTimer[key] = setTimeout(async () => {
-      const token = localStorage.getItem('authToken') || '';
       await fetch(`/api/credit-cards/transaction/${t.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type':'application/json', ...(token ? {'Authorization':'Bearer '+token} : {}) },
+        headers: { 'Content-Type':'application/json' },
         body: JSON.stringify({ expenses: t.expenses, department: t.department })
       });
     }, 800);

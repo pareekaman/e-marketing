@@ -260,9 +260,8 @@ function showConfirm(msg, onConfirm){
 }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 async function api(url, method='GET', body=null){
-  const token = localStorage.getItem('authToken');
+  // Authenticated by the httpOnly session cookie alone (credentials:'include').
   const opts = { method, headers: {'Content-Type':'application/json'}, credentials:'include' };
-  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
   if (body)  opts.body = JSON.stringify(body);
   // Same hardening as the staff app: a dropped connection or a non-JSON error page
   // used to throw out of here and leave the click doing nothing at all.

@@ -851,8 +851,6 @@ async function openFinalOfferExactPdf() {
   showToast('Rendering exact PDF…');
   try {
     const headers = { 'Content-Type': 'application/json' };
-    const token = localStorage.getItem('authToken');
-    if (token) headers['Authorization'] = 'Bearer ' + token;
     const resp = await fetch('/api/hrm/final-offer-render', {
       method: 'POST', headers, credentials: 'include',
       body: JSON.stringify(f)

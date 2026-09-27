@@ -170,9 +170,10 @@ let _dashDateSortState = 0;
 // ══════════════════════════════════════════════════════
 async function init() {
   try {
-    const token = localStorage.getItem('authToken');
+    // The session is the httpOnly cookie. Clear any token an older version of
+    // the login page left in localStorage, where page scripts could read it.
+    localStorage.removeItem('authToken');
     const headers = {'Content-Type': 'application/json'};
-    if (token) headers['Authorization'] = 'Bearer ' + token;
     const r = await fetch('/api/me', { credentials: 'include', headers });
     if (!r.ok) {
       localStorage.removeItem('authToken');

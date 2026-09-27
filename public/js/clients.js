@@ -1103,12 +1103,10 @@ function cmDmsUploadFile(folderId, clientId) {
     if (!file) return;
     var fd = new FormData();
     fd.append('file', file);
-    var token = localStorage.getItem('authToken') || '';
     showToast('Uploading "' + file.name + '"…');
     try {
       var res = await fetch('/api/clients/' + clientId + '/dms/folders/' + folderId + '/upload', {
         method: 'POST',
-        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
         body: fd
       });
       var data = await res.json();

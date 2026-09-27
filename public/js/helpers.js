@@ -2,9 +2,8 @@
 // HELPERS
 // ══════════════════════════════════════════════════════
 async function api(url,method='GET',body=null) {
-  const token = localStorage.getItem('authToken');
+  // Authenticated by the httpOnly session cookie alone (credentials:'include').
   const opts={method, headers:{'Content-Type':'application/json'}, credentials:'include'};
-  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
   if (body) opts.body=JSON.stringify(body);
   // A dropped connection used to throw straight out of here. Callers invoked from
   // an inline onclick never caught it, so the click silently did nothing: no error,
