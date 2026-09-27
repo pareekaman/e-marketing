@@ -879,7 +879,9 @@ app.delete('/api/tasks/user/:userId', requireAuth, requireAdmin, async (req, res
 // Transfer pending tasks to today
 app.put('/api/tasks/user/:userId/transfer-today', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    // IST today — the UTC date is still yesterday before 05:30 IST, which moved
+    // every pending task to yesterday and made it overdue at once.
+    const today = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
     const { type } = req.query;
     const table = getTable(type || 'delegation');
     // Read them first: this is one blanket UPDATE with no confirmation and no

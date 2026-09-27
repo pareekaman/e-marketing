@@ -2528,7 +2528,9 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
     const isHod = role === 'hod';
     const filterEmployee = req.query.employee;
 
-    const today = new Date().toISOString().split('T')[0];
+    // IST, not the server's UTC — between 00:00 and 05:30 IST the UTC date is
+    // still yesterday, so yesterday's plan dates were not flagged late.
+    const today = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     // Determine which user IDs to show
     let targetUserIds = null; // null = all (admin)
@@ -6860,12 +6862,13 @@ app.get('/api/cron/due-date-reminder', async (req, res) => {
 
 // ── Leave Tracker Reminder helper ──
 async function sendLeaveTrackerReminder() {
-  const now = new Date();
+  // Month and year as of IST (read with getUTC* on the shifted time).
+  const now = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const lastMonthIndex = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+  const lastMonthIndex = now.getUTCMonth() === 0 ? 11 : now.getUTCMonth() - 1;
   const lastMonthName = monthNames[lastMonthIndex];
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const yyyy = now.getFullYear();
+  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const yyyy = now.getUTCFullYear();
   const msg = `Hello Everyone 👋,\nPlease update the leave tracker for the month of ${lastMonthName} in the Task Manager app by 05/${mm}/${yyyy}.\nThank You.`;
   await sendWhatsAppRaw('919602694444-1618492040@g.us', msg);
   console.log('Leave tracker reminder sent:', msg);
@@ -7858,7 +7861,7 @@ app.get('/api/departments', requireAuth, async (req, res) => {
 // Check if current user already submitted for given date (default today)
 app.get('/api/daily-tasks/status', requireAuth, async (req, res) => {
   try {
-    const date = req.query.date || new Date().toISOString().split('T')[0];
+    const date = req.query.date || new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
     const [[{ cnt }]] = await db.query(
       'SELECT COUNT(*) AS cnt FROM daily_tasks WHERE user_id=? AND entry_date=?',
       [req.session.userId, date]
@@ -7979,12 +7982,11 @@ async function getComplianceScope(req) {
 
 app.get('/api/compliance/last7', requireAuth, requireComplianceViewer, async (req, res) => {
   try {
-    // Last 7 days inclusive of today
+    // Last 7 days inclusive of today — IST days, like every other report here.
     const dates = [];
+    const istNow = Date.now() + 5.5 * 60 * 60 * 1000;
     for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      dates.push(d.toISOString().split('T')[0]);
+      dates.push(new Date(istNow - i * 86400000).toISOString().split('T')[0]);
     }
 
     const scope = await getComplianceScope(req);
@@ -8362,8 +8364,8 @@ app.get('/api/daily-tasks/report', requireAuth, requireAdmin, async (req, res) =
       fromDate = req.query.from;
       toDate   = req.query.to;
     } else {
-      const now = new Date();
-      const month = req.query.month || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+      const now = new Date(Date.now() + 5.5 * 60 * 60 * 1000); // IST month
+      const month = req.query.month || `${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
       if (!/^\d{4}-\d{2}$/.test(month)) {
         return res.status(400).json({ error: 'Invalid month format. Use YYYY-MM' });
       }
