@@ -1706,6 +1706,17 @@ async function uploadCSV() {
     return;
   }
   const get = (r, name) => { const i = head.indexOf(name); return i < 0 ? '' : (r[i] || ''); };
+  // Rows are sent one by one, so a big sheet takes a while. Show progress on
+  // the button and ignore further clicks until it finishes — a second click
+  // used to start the whole upload again and create every task twice.
+  if (_csvUploading) return;
+  _csvUploading = true;
+  const btn = document.querySelector('[onclick="uploadCSV()"]');
+  const btnText = btn ? btn.innerHTML : '';
+  const progress = (done, total) => { if (btn) btn.innerHTML = `⏳ Uploading ${done} / ${total}…`; };
+  if (btn) btn.disabled = true;
+  progress(0, rows.length - 1);
+  try {
   const [allUsers, allClients] = await Promise.all([api('/api/users'), api('/api/clients')]);
   // Spaces are ignored when matching a client, so "E-Marketing (Operation)"
   // still finds "E-Marketing(Operation)" instead of dropping the row.
@@ -1717,6 +1728,7 @@ async function uploadCSV() {
   const problems = [];
   let count = 0;
   for (let n = 1; n < rows.length; n++) {
+    progress(n, rows.length - 1);
     const r = rows[n];
     const email = get(r, 'doer_email').toLowerCase();
     const description = get(r, 'description');
@@ -1750,7 +1762,12 @@ async function uploadCSV() {
   } else {
     showToast(`✅ ${count} tasks uploaded!`);
   }
+  } finally {
+    _csvUploading = false;
+    if (btn) { btn.disabled = false; btn.innerHTML = btnText; }
+  }
 }
+let _csvUploading = false;
 
 async function uploadCSVC() {
   const file = document.getElementById('bulkFileC').files[0];
