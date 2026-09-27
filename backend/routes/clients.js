@@ -776,6 +776,10 @@ app.post('/api/clients/:id/dms/folders/:folderId/upload-chunk', requireAuth, req
     const uploadUrl = req.query.uploadUrl;
     const contentRange = req.headers['content-range'];
     if (!uploadUrl || !contentRange) return res.status(400).json({ error: 'uploadUrl and Content-Range required' });
+    // The URL comes from the browser but is fetched by the server, with the
+    // response echoed back — so only a Drive resumable-upload URL (the kind
+    // upload-session hands out) is accepted, never an arbitrary host.
+    if (!_dmsIsDriveUploadUrl(uploadUrl)) return res.status(400).json({ error: 'Invalid upload session URL' });
     const chunk = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
     const fetchFn = global.fetch || (await import('node-fetch')).default;
     const driveRes = await fetchFn(uploadUrl, {
@@ -794,6 +798,13 @@ app.post('/api/clients/:id/dms/folders/:folderId/upload-chunk', requireAuth, req
     res.json({ success: true, ...file });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+function _dmsIsDriveUploadUrl(u) {
+  try {
+    const p = new URL(u);
+    return p.protocol === 'https:' && p.hostname === 'www.googleapis.com' && p.pathname.startsWith('/upload/drive/');
+  } catch { return false; }
+}
 
 async function _dmsValidFolderIds(clientId) {
   const [[clientRow]] = await db.query('SELECT drive_folder_id FROM clients WHERE id=?', [clientId]);
@@ -839,6 +850,9 @@ app.patch('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, r
       return res.json({ success: true });
     }
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    // The folder check alone let any fileId ride along — including another
+    // client's file. The file itself must sit under this client's folders too.
+    if (!(await _dmsCanAccessFolder(id, fileId))) return res.status(403).json({ error: 'File does not belong to this client' });
     const drive = await getDriveClient();
     await drive.files.update({ fileId, requestBody: { name }, supportsAllDrives: true });
     await _dmsLogActivity(fileId, 'renamed', name, req, id);
@@ -864,6 +878,7 @@ app.delete('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, 
       return res.json({ success: true });
     }
     if (!(await _dmsCanAccessFolder(id, folderId))) return res.status(403).json({ error: 'Folder does not belong to this client' });
+    if (!(await _dmsCanAccessFolder(id, fileId))) return res.status(403).json({ error: 'File does not belong to this client' });
     const drive = await getDriveClient();
     let name = null;
     try { const meta = await drive.files.get({ fileId, fields: 'name', supportsAllDrives: true }); name = meta.data.name; } catch {}
