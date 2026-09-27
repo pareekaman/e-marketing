@@ -3734,12 +3734,7 @@ app.get('/api/transfers', requireAuth, async (req, res) => {
       ORDER BY tt.created_at DESC`, params);
 
     // Attach task description
-    for (const r of rows) {
-      const table = getTable(r.task_type);
-      const [t] = await db.query(`SELECT description, DATE_FORMAT(due_date,'%Y-%m-%d') AS due_date FROM ${table} WHERE id=?`, [r.task_id]);
-      r.description = t[0]?.description || '—';
-      r.due_date = t[0]?.due_date || '—';
-    }
+    await attachTransferTasks(rows, true);
 
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -3851,6 +3846,26 @@ app.put('/api/transfers/:id', requireAuth, async (req, res) => {
 });
 
 // GET — My sent transfer requests (for users to track)
+// Fills description (and due_date) on transfer rows with one query per task
+// table instead of one per row — the lists ran a query for every transfer.
+async function attachTransferTasks(rows, withDue) {
+  for (const type of ['delegation', 'checklist']) {
+    const ids = [...new Set(rows.filter(r => getTable(r.task_type) === getTable(type)).map(r => r.task_id))];
+    const byId = {};
+    if (ids.length) {
+      const [tasks] = await db.query(
+        `SELECT id, description, DATE_FORMAT(due_date,'%Y-%m-%d') AS due_date FROM ${getTable(type)} WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
+      tasks.forEach(t => { byId[t.id] = t; });
+    }
+    for (const r of rows) {
+      if (getTable(r.task_type) !== getTable(type)) continue;
+      const t = byId[r.task_id];
+      r.description = t?.description || '—';
+      if (withDue) r.due_date = t?.due_date || '—';
+    }
+  }
+}
+
 app.get('/api/transfers/my', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(`
@@ -3860,11 +3875,7 @@ app.get('/api/transfers/my', requireAuth, async (req, res) => {
       JOIN users ut ON tt.to_user = ut.id
       WHERE tt.requested_by=?
       ORDER BY tt.created_at DESC LIMIT 20`, [req.session.userId]);
-    for (const r of rows) {
-      const table = getTable(r.task_type);
-      const [t] = await db.query(`SELECT description FROM ${table} WHERE id=?`, [r.task_id]);
-      r.description = t[0]?.description || '—';
-    }
+    await attachTransferTasks(rows, false);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
