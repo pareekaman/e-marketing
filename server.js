@@ -2024,7 +2024,6 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
     const isHod = role === 'hod';
     const isPC = role === 'pc';
     const filterEmployee = req.query.employee;
-    const hodDept = req.query.hodDept || '';
     // PC date range filter — default to today if not provided
     const dateFrom = req.query.dateFrom || '';
     const dateTo   = req.query.dateTo   || '';
@@ -2039,12 +2038,11 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
       // HOD cannot drill into a single employee — they always see their whole
       // department's aggregate. Only admin (and PC) may switch the view, so the
       // `employee` query param is intentionally ignored here.
-      // Fetch the HOD's department from the DB — don't rely on the query param
-      let resolvedDept = hodDept;
-      if (!resolvedDept) {
-        const [meRow] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
-        resolvedDept = meRow[0]?.department || '';
-      }
+      // The department always comes from the HOD's own users row. The ?hodDept
+      // param the dashboard sends is the same value, but trusting it let an HOD
+      // read any department just by editing the URL.
+      const [meRow] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
+      const resolvedDept = meRow[0]?.department || '';
       if (!resolvedDept) {
         // No department set — fall back to just their own tasks
         userFilter = 'AND t.assigned_to = ?'; params = [uid];
@@ -2540,7 +2538,13 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
       const [me] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
       const dept = me[0]?.department || '';
       if (filterEmployee && filterEmployee !== 'all') {
-        targetUserIds = [parseInt(filterEmployee)];
+        // An HOD may pick one person, but only from their own department (or themselves).
+        const empId = parseInt(filterEmployee);
+        const [[emp]] = await db.query('SELECT department FROM users WHERE id=?', [empId]);
+        if (empId !== Number(uid) && !(dept && emp && emp.department === dept)) {
+          return res.status(403).json({ error: 'You can only view your own department' });
+        }
+        targetUserIds = [empId];
       } else {
         const [deptUsers] = await db.query('SELECT id FROM users WHERE department=? AND role NOT IN (?,?)', [dept, 'admin', 'hod']);
         targetUserIds = deptUsers.map(u => u.id);
