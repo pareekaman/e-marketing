@@ -337,7 +337,9 @@ function hrmBuildFinalOfferHtml(candidateName, candidatePosition, joiningFmt, sa
   // clause 3 states the ANNUAL CTC, so multiply by 12 when the value is
   // numeric. Non-numeric input (e.g. "6 LPA") is used as-is in both places.
   const _salNum = parseFloat(String(salary || '').replace(/,/g, ''));
-  const annualCtc = (Number.isFinite(_salNum) && _salNum > 0) ? String(_salNum * 12) : (salary || '');
+  // Rounded to paise: a salary like 18500.35 × 12 printed "222004.19999999998"
+  // in the letter. Whole-rupee salaries come out exactly as before.
+  const annualCtc = (Number.isFinite(_salNum) && _salNum > 0) ? String(Math.round(_salNum * 12 * 100) / 100) : (salary || '');
   // "a"/"an" before the position, by pronunciation: vowel-letter words get
   // "an"; all-caps acronyms go by the first letter's NAME (M = "em" -> "an
   // MIS Analyst", C = "see" -> "a CA").
