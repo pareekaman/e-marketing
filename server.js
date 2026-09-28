@@ -8254,7 +8254,10 @@ app.get('/api/compliance/employee/:id', requireAuth, requireComplianceViewer, as
         ? r1(clamp((checklist.completed / checklist.total) * 100 - (checklist.overdue / checklist.total) * 30))
         : null,
       dailyReport: dailyReport.workingDays > 0 ? r1(clamp(dailyReport.fillPct)) : null,
-      meetings: meetings.organized.total > 0 ? r1(clamp((meetings.organized.done / meetings.organized.total) * 100)) : null,
+      // A cancelled meeting was called off, not missed, so it is left out of the
+      // count altogether; only meetings that were meant to happen are scored.
+      meetings: (meetings.organized.total - meetings.organized.cancelled) > 0
+        ? r1(clamp((meetings.organized.done / (meetings.organized.total - meetings.organized.cancelled)) * 100)) : null,
       clients: clients.total > 0 ? r1(clamp((clients.active / clients.total) * 100)) : null
     };
     const weights = { delegation: 30, checklist: 25, dailyReport: 20, meetings: 15, clients: 10 };
