@@ -105,7 +105,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
     'usne', 'unhone', 'isne', 'his', 'her', 'their', 'him', 'them', 'he', 'she', 'they']);
   // Questions about everyone at once.
   const TEAM_WORDS = ['team', 'sab', 'sabke', 'sabka', 'sabki', 'sabhi', 'everyone', 'everybody', 'all', 'employees',
-    'kiske', 'kiska', 'kiski', 'whose', 'who', 'kaun', 'koi', 'anyone', 'anybody', 'kon', 'sabse', 'most', 'zyada', 'jyada', 'maximum', 'highest', 'top', 'staff', 'log', 'logo', 'logon'];
+    'kiske', 'kiska', 'kiski', 'whose', 'who', 'kaun', 'koi', 'anyone', 'anybody', 'kon', 'jis', 'jisne', 'jinhone', 'jinhe', 'jinka', 'kisne', 'kinhone', 'names', 'naam', 'list', 'sabse', 'most', 'zyada', 'jyada', 'maximum', 'highest', 'top', 'staff', 'log', 'logo', 'logon'];
   // Everyday words that are not names — part of the vocabulary so a
   // follow-up made of them alone ("aur last month?") is recognised as one.
   const COMMON_WORDS = ['aur', 'and', 'bhi', 'also', 'se', 'tak', 'to', 'from', 'till', 'until', 'on', 'in', 'at', 'ne', 'li',
@@ -223,6 +223,46 @@ module.exports = function registerChatbotRoutes(app, deps) {
             + (days.length > 6 ? ` +${days.length - 6} more` : ''),
         })),
         more: Math.max(0, out.length - 20),
+      }],
+    };
+  }
+
+  // Who did not fill the Daily Task in a period — "jis jis ne last saturday
+  // ko daily report fill nahi ki". Same day rules as one person's compliance,
+  // limited to the people the asker may see on the Compliance page.
+  async function teamComplianceReply(users, period, req) {
+    const when = periodText(period);
+    const holidays = await loadHolidaysSet();
+    let working = false;
+    for (let d = period.start, i = 0; d <= period.end && i < 400; d = addDays(d, 1), i++) {
+      if (!isUserOffOn(null, d, holidays)) { working = true; break; }
+    }
+    if (!working) {
+      const cap = s => s[0].toUpperCase() + s.slice(1);
+      const subject = period.start === period.end
+        ? (period.label ? `${cap(period.label)} (${dmy(period.start)}) was an off day` : `${dmy(period.start)} was an off day`)
+        : `${cap(when)} had only off days`;
+      return { reply: `${subject} (Sunday, last Saturday or a holiday), so no one had to fill the Daily Task.` };
+    }
+    const missed = [];
+    let checked = 0;
+    for (const u of users) {
+      if (!(await canViewComplianceEmployee(req, u.id))) continue;
+      checked++;
+      const c = await complianceFor(u.id, period.start, period.end);
+      if (c.missed.length) missed.push({ u, days: c.missed });
+    }
+    if (!missed.length) return { reply: `Everyone filled the Daily Task ${when} (${checked} ${checked === 1 ? 'person' : 'people'} checked).` };
+    missed.sort((a, b) => b.days.length - a.days.length || a.u.name.localeCompare(b.u.name));
+    return {
+      reply: `${missed.length} of ${checked} ${checked === 1 ? 'person' : 'people'} did not fill the Daily Task ${when}.`,
+      sections: [{
+        title: 'Not filled',
+        items: missed.slice(0, 30).map(({ u, days }) => ({
+          title: u.name,
+          meta: period.start === period.end ? '' : `${days.length} day${days.length === 1 ? '' : 's'}: ${dateList(days, 8)}`,
+        })),
+        more: Math.max(0, missed.length - 30),
       }],
     };
   }
@@ -529,6 +569,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
     if (has('(?:yesterday)')) return range(addDays(today, -1), addDays(today, -1), 'yesterday');
     if (has('(?:today|aaj)')) return range(today, today, 'today');
     if (fallback === 'today') return range(today, today, 'today');
+    if (fallback === 'yesterday') return range(addDays(today, -1), addDays(today, -1), 'yesterday');
     return fallback === 'month'
       ? range(firstOfMonth, today, 'this month')
       : range(thisMon, today, 'this week');
@@ -1091,6 +1132,12 @@ module.exports = function registerChatbotRoutes(app, deps) {
       // "sabke pending tasks". Answered for pending tasks across everyone the
       // asker may see; other topics are asked one person at a time.
       if (!matches.length && asks(TEAM_WORDS)) {
+        if (asks(COMPLIANCE_WORDS) || (asks(NOT_WORDS) && asks(FILL_WORDS))) {
+          if (!(await userCanSee(req.session, 'compliance'))) {
+            return res.json({ reply: 'You don\'t have access to Compliance.' });
+          }
+          return res.json(await teamComplianceReply(users, parsePeriod(msgNorm, 'yesterday'), req));
+        }
         if (asks(LEAVE_WORDS) && !asks(EXTRA_WORDS)) {
           const p = parsePeriod(msgNorm, 'today');
           return res.json(await teamLeaveReply(users, p));
