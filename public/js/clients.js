@@ -274,9 +274,8 @@ async function cvDelete(id){
 
 function cmExportExcel() {
   if (!CM_ALL || !CM_ALL.length) { showToast('No clients to export', 'error'); return; }
-  // Respect the active search filter so the export matches what's on screen.
-  const q = (document.getElementById('cmSearch')?.value || '').toLowerCase().trim();
-  const list = q ? CM_ALL.filter(c => (c.name || '').toLowerCase().includes(q)) : CM_ALL;
+  const list = cmFilteredClients();
+  if (!list.length) { showToast('No clients to export', 'error'); return; }
   // CSV cell escaping — wrap in quotes, double any inner quotes.
   const cell = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
   const header = ['#', 'Client Name', 'Handler', 'Client ID'];
@@ -370,8 +369,9 @@ function cmSetStatus(s){
   cmRenderList();
 }
 
-function cmRenderList(){
-  const wrap = document.getElementById('cmListWrap');
+// Search + department + status card. The list and the Excel export both read
+// this, so the download always matches what is on screen.
+function cmFilteredClients(){
   const q = (document.getElementById('cmSearch')?.value || '').toLowerCase().trim();
   const dept = document.getElementById('cmDeptFilter')?.value || '';
   // Brand and billing names are searchable too — both are shown on the row, and
@@ -388,6 +388,14 @@ function cmRenderList(){
     filtered = filtered.filter(c => (c.handler_departments || '').split('||').includes(dept));
   }
   if (CM_STATUS) filtered = filtered.filter(c => cmIsActive(c) === (CM_STATUS === 'active'));
+  return filtered;
+}
+
+function cmRenderList(){
+  const wrap = document.getElementById('cmListWrap');
+  const q = (document.getElementById('cmSearch')?.value || '').toLowerCase().trim();
+  const dept = document.getElementById('cmDeptFilter')?.value || '';
+  const filtered = cmFilteredClients();
   document.getElementById('cmStatVisible').textContent = filtered.length;
 
   if (!CM_ALL.length) {
@@ -395,7 +403,7 @@ function cmRenderList(){
     return;
   }
   if (!filtered.length) {
-    wrap.innerHTML = `<div class="empty">No clients match ${q && dept ? 'your search and department filter' : q ? 'your search' : 'that department'}.</div>`;
+    wrap.innerHTML = `<div class="empty">No ${CM_STATUS ? CM_STATUS + ' ' : ''}clients match${q && dept ? ' your search and department filter' : q ? ' your search' : dept ? ' that department' : ''}.</div>`;
     return;
   }
 
