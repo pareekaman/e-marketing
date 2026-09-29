@@ -1137,6 +1137,22 @@ function dAddTaskRow() {
   row.querySelector('[data-f="desc"]').focus();
 }
 
+// Copies the last card (date, doer-defined tick, priority and description) so
+// a run of similar tasks only needs the differing bits edited.
+function dDuplicateTaskRow() {
+  const src = dTaskRows().pop();
+  const val = f => src.querySelector('[data-f="' + f + '"]');
+  dAddTaskRow();
+  const row = dTaskRows().pop();
+  const get = f => row.querySelector('[data-f="' + f + '"]');
+  get('doerSets').checked = val('doerSets').checked;
+  onDoerSetsDateChange(get('doerSets'));
+  if (!val('doerSets').checked) get('date').value = val('date').value;
+  get('priority').value = val('priority').value;
+  get('desc').value = val('desc').value;
+  get('desc').focus();
+}
+
 function dRemoveTaskRow(btn) {
   btn.closest('[data-task-row]').remove();
   dSyncTaskRows();
