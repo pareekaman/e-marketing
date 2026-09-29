@@ -815,9 +815,17 @@
           <div class="cm-sub">Manage the client list used across Daily Task and Delegation forms.</div>
         </div>
         <div class="cm-stats">
-          <div class="cm-stat">
+          <div class="cm-stat cm-stat-pick is-sel" data-status="" onclick="cmSetStatus('')" title="Show all clients">
             <div class="cm-stat-val" id="cmStatTotal">—</div>
-            <div class="cm-stat-label">Total Clients</div>
+            <div class="cm-stat-label">All Clients</div>
+          </div>
+          <div class="cm-stat cm-stat-pick" data-status="active" onclick="cmSetStatus('active')" title="Show active clients only">
+            <div class="cm-stat-val" id="cmStatActive" style="color:#16a34a">—</div>
+            <div class="cm-stat-label">Active</div>
+          </div>
+          <div class="cm-stat cm-stat-pick" data-status="inactive" onclick="cmSetStatus('inactive')" title="Show inactive clients only">
+            <div class="cm-stat-val" id="cmStatInactive" style="color:#64748b">—</div>
+            <div class="cm-stat-label">Inactive</div>
           </div>
           <div class="cm-stat">
             <div class="cm-stat-val" id="cmStatVisible">—</div>

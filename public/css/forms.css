@@ -79,6 +79,9 @@
 .cm-sub{color:#64748b;font-size:13px;margin-top:4px;}
 .cm-stats{display:flex;gap:10px;flex-wrap:wrap;}
 .cm-stat{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 16px;min-width:120px;}
+.cm-stat-pick{cursor:pointer;transition:border-color .15s,box-shadow .15s;}
+.cm-stat-pick:hover{border-color:#cbd5e1;}
+.cm-stat-pick.is-sel{border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,.18);background:#fff;}
 .cm-stat-val{font-size:20px;font-weight:700;color:#0f172a;line-height:1.1;}
 .cm-stat-label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-top:3px;font-weight:600;}
 

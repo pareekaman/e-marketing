@@ -60,14 +60,13 @@ async function loadClients(){
     const [clients, users] = await Promise.all([api('/api/clients?scope=master'), api('/api/users')]);
     CM_ALL = Array.isArray(clients) ? clients : [];
     CM_USERS = Array.isArray(users) ? users : [];
-    document.getElementById('cmStatTotal').textContent = CM_ALL.length;
+    cmUpdateStatusCounts();
     cmApplyRoleControls();
     cmPopulateDeptFilter();
     cmRenderList();
   } catch(e) {
     wrap.innerHTML = '<div class="empty">Failed to load clients</div>';
-    document.getElementById('cmStatTotal').textContent = '0';
-    document.getElementById('cmStatVisible').textContent = '0';
+    ['cmStatTotal', 'cmStatActive', 'cmStatInactive', 'cmStatVisible'].forEach(id => document.getElementById(id).textContent = '0');
   }
 }
 
@@ -354,6 +353,23 @@ function cmPopulateDeptFilter(){
   if (prev && depts.includes(prev)) sel.value = prev;
 }
 
+// is_active is COALESCE'd to 1 server-side, so undefined counts as active.
+function cmIsActive(c){ return c.is_active === undefined || !!Number(c.is_active); }
+
+// The All / Active / Inactive cards are both counts and a filter.
+let CM_STATUS = '';
+function cmUpdateStatusCounts(){
+  const active = CM_ALL.filter(cmIsActive).length;
+  document.getElementById('cmStatTotal').textContent = CM_ALL.length;
+  document.getElementById('cmStatActive').textContent = active;
+  document.getElementById('cmStatInactive').textContent = CM_ALL.length - active;
+}
+function cmSetStatus(s){
+  CM_STATUS = s;
+  document.querySelectorAll('.cm-stat-pick').forEach(el => el.classList.toggle('is-sel', el.dataset.status === s));
+  cmRenderList();
+}
+
 function cmRenderList(){
   const wrap = document.getElementById('cmListWrap');
   const q = (document.getElementById('cmSearch')?.value || '').toLowerCase().trim();
@@ -371,6 +387,7 @@ function cmRenderList(){
   if (dept) {
     filtered = filtered.filter(c => (c.handler_departments || '').split('||').includes(dept));
   }
+  if (CM_STATUS) filtered = filtered.filter(c => cmIsActive(c) === (CM_STATUS === 'active'));
   document.getElementById('cmStatVisible').textContent = filtered.length;
 
   if (!CM_ALL.length) {
@@ -450,6 +467,7 @@ async function cmToggleActive(id, makeActive){
     if (r && r.noop) throw new Error('You do not have permission to change this client');
     const client = CM_ALL.find(c => String(c.id) === String(id));
     if (client) client.is_active = makeActive;
+    cmUpdateStatusCounts();
     if (sw) {
       const on = !!makeActive;
       sw.classList.toggle('is-on', on);
