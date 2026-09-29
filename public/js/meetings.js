@@ -477,11 +477,14 @@ async function openMeetingModal(id, prefillStart) {
   document.getElementById('mtgDeleteBtn').style.display = id ? 'inline-block' : 'none';
   document.getElementById('mtgDoneBtn').style.display = 'none';
 
-  // Populate dropdowns from cache
+  // Populate dropdowns from cache. Clients are refetched on every open so a
+  // client switched active/inactive in Client Master shows up (or drops out)
+  // straight away; only active ones are offered.
+  _mtgClientsCache = null;
   await Promise.all([_mtgEnsureClients(), _mtgEnsureUsers()]);
   const clientSel = document.getElementById('mtgClient');
   clientSel.innerHTML = '<option value="">— None —</option>' +
-    _mtgClientsCache.map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+    _mtgClientsCache.filter(isActiveClient).map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
   // Explicit reset — browsers retain the previously-selected <select> .value
   // across innerHTML rebuilds if the new option list still contains it, so a
   // brand-new meeting was silently inheriting the last-picked client.
@@ -521,6 +524,10 @@ async function openMeetingModal(id, prefillStart) {
       document.getElementById('mtgDoneBtn').style.display = (m.status === 'scheduled') ? 'inline-block' : 'none';
       document.getElementById('mtgFormDate').value = m.meeting_date || '';
       mtgSetStartTime(m.start_time || '10:00', { silent: true });
+      // A meeting already tied to a now-inactive client keeps that client.
+      const own = m.client_id && !clientSel.querySelector(`option[value="${m.client_id}"]`)
+        && _mtgClientsCache.find(c => String(c.id) === String(m.client_id));
+      if (own) clientSel.insertAdjacentHTML('beforeend', `<option value="${own.id}">${dtEscape(own.name)}</option>`);
       clientSel.value = m.client_id || '';
       const dur = (() => {
         const [sh,sm] = (m.start_time||'10:00').split(':').map(Number);

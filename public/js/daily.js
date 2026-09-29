@@ -482,7 +482,9 @@ async function dtCheckLockAndRender(){
 
 function dtClientOptions(selected){
   let html = '<option value="">--select--</option>';
+  // Active clients only, but a row that already names an inactive one keeps it.
   for (const c of DT_CLIENTS) {
+    if (!isActiveClient(c) && selected !== c.name) continue;
     const sel = (selected === c.name) ? 'selected' : '';
     html += `<option value="${dtEscape(c.name)}" ${sel}>${dtEscape(c.name)}</option>`;
   }
@@ -496,6 +498,10 @@ function dtDeptOptions(selected){
   }
   return html;
 }
+// Pickers offer active clients only. is_active is COALESCE'd to 1 server-side,
+// so a row without it counts as active. Read fresh on every open, so a client
+// switched in Client Master drops in or out the next time a form opens.
+function isActiveClient(c){ return c.is_active === undefined || !!Number(c.is_active); }
 function dtEscape(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function dtAddRow(prefill){

@@ -941,8 +941,11 @@ async function openEditTask(id, type) {
   document.getElementById('editTDesc').value = t.description || '';
   document.getElementById('editTDate').value = t.due_date || '';
   document.getElementById('editTRemarks').value = t.remarks || '';
+  // Active clients only, plus the task's own client even if it has since gone
+  // inactive, so opening the editor never silently clears it.
   document.getElementById('editTClient').innerHTML = '<option value="">— No Client —</option>' +
-    (clients || []).map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+    (clients || []).filter(c => isActiveClient(c) || String(c.id) === String(t.client_id))
+      .map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
   document.getElementById('editTClient').value = t.client_id ? String(t.client_id) : '';
   document.getElementById('editTaskErr').style.display = 'none';
 
@@ -1182,16 +1185,11 @@ async function openDelegate(prefill = {}) {
   const opts = (users || []).map(u=>`<option value="${u.id}" data-email="${dtEscape(u.email||'')}">${esc(u.name)}</option>`).join('');
   document.getElementById('dDoer').innerHTML='<option value="">Select Doer</option>'+opts;
   document.getElementById('dApprover').innerHTML='<option value="">Select Approver</option>'+opts;
-  // Client dropdown — pulls from Client Master. The list stays complete on
-  // purpose; only the order changes, so the clients you handle come first.
-  // Handle none and it is the plain alphabetical list it has always been.
-  // An inactive client is never lifted, even one of your own — closed work has
-  // no business at the top of the list. It keeps the alphabetical place it
-  // always had, down among the rest.
+  // Client dropdown — pulls from Client Master, active clients only. The
+  // clients you handle come first; the rest follow alphabetically.
   const myClients = [], otherClients = [];
-  for (const c of (clients || [])) {
-    const active = c.is_active === undefined || !!Number(c.is_active);
-    (c.is_my_client && active ? myClients : otherClients).push(c);
+  for (const c of (clients || []).filter(isActiveClient)) {
+    (c.is_my_client ? myClients : otherClients).push(c);
   }
   const clientOpts = myClients.concat(otherClients)
     .map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
@@ -1393,7 +1391,7 @@ async function openChecklist() {
   document.getElementById('cDoer').innerHTML='<option value="">Select Employee</option>'+
     users.map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('');
   document.getElementById('cClient').innerHTML='<option value="">Select Client</option>'+
-    (clients || []).map(c=>`<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+    (clients || []).filter(isActiveClient).map(c=>`<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
 
   ['cFrequency','cDate','cEndDate','cDesc'].forEach(id=>{
     document.getElementById(id).onchange = updateChecklistPreview;
