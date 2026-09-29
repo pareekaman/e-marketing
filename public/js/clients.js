@@ -278,8 +278,12 @@ function cmExportExcel() {
   if (!list.length) { showToast('No clients to export', 'error'); return; }
   // CSV cell escaping — wrap in quotes, double any inner quotes.
   const cell = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-  const header = ['#', 'Client Name', 'Handler', 'Client ID'];
-  const rows = list.map((c, i) => [i + 1, c.name || '', c.handler_name || '', c.id]);
+  // Billing Name only for its named viewers (the server strips it for everyone
+  // else anyway); the column is left out entirely rather than shipped blank.
+  const bill = cmCanSeeBilling();
+  const header = ['#', 'Client Name', ...(bill ? ['Billing Name'] : []), 'Handler', 'Client ID', 'Status'];
+  const rows = list.map((c, i) => [i + 1, c.name || '', ...(bill ? [c.billing_name || ''] : []),
+    c.handler_name || '', c.id, cmIsActive(c) ? 'Active' : 'Inactive']);
   // BOM so Excel reads UTF-8 (handles ₹, accents, etc.) correctly.
   const csv = '﻿' + [header, ...rows].map(r => r.map(cell).join(',')).join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
