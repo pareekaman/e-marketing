@@ -178,7 +178,14 @@ function applyAppTheme(theme) {
   try { localStorage.setItem('appTheme', t); } catch (e) {}
   if (window.ThemeDecor) ThemeDecor.apply(t); // festival decoration layer, js/themes/
 }
+// Someone who leaves the app open all day still picks up a theme the admin changed:
+// on coming back to the tab, re-check at most every 5 minutes.
+let _themeCheckedAt = Date.now();
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && typeof ME !== 'undefined' && ME && Date.now() - _themeCheckedAt > 300000) loadAppTheme();
+});
 async function loadAppTheme() {
+  _themeCheckedAt = Date.now();
   try {
     const r = await fetch('/api/theme', { credentials: 'include' });
     if (r.ok) applyAppTheme((await r.json()).theme);
@@ -205,6 +212,7 @@ async function init() {
     // Client logins belong on the dedicated /client page, not the team app.
     if (ME.role === 'client') { window.location.replace('/client'); return; }
     loadAppTheme();
+    if (ME.role === 'admin') showThemeTab();
     const initials = ME.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
     document.getElementById('sidebarName').textContent = ME.name;
     const roleLabel = ME.role==='admin' ? '👑 Admin' : ME.role==='hod' ? '🏢 HOD' : ME.role==='pc' ? '🖥️ PC' : ME.role==='client' ? '🏢 Client' : '👤 Employee';

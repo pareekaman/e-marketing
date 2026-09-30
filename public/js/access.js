@@ -19,7 +19,10 @@ function switchUsersTab(tab, el) {
   document.getElementById('usersSubPanel-users').style.display  = tab === 'users'  ? 'block' : 'none';
   document.getElementById('usersSubPanel-access').style.display = tab === 'access' ? 'block' : 'none';
   document.getElementById('usersTabActions').style.display      = tab === 'users'  ? 'flex'  : 'none';
+  const themePanel = document.getElementById('usersSubPanel-theme');
+  if (themePanel) themePanel.style.display = tab === 'theme' ? 'block' : 'none';
   if (tab === 'access') renderAccessMatrix();
+  if (tab === 'theme') renderThemePicker();
 }
 
 // Access Control feature list. Each feature gets three levels — No Access /

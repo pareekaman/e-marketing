@@ -30,6 +30,7 @@
 <link rel="stylesheet" href="/css/voice.css"/>
 <link rel="stylesheet" href="/css/notify.css"/>
 <link rel="stylesheet" href="/css/chatbot.css"/>
+<link rel="stylesheet" href="/css/theme-picker.css"/>
 <link rel="stylesheet" href="/css/themes/dussehra.css"/>
 <link rel="stylesheet" href="/css/themes/holi.css"/>
 <link rel="stylesheet" href="/css/themes/diwali.css"/>
@@ -461,6 +462,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
           <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:5px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
           Access Control
         </div>
+        <div class="tab" id="usersSubTab-theme" style="display:none" onclick="switchUsersTab('theme',this)">🎨 Theme</div>
       </div>
       <!-- Users tab actions -->
       <div id="usersTabActions" style="display:flex;gap:8px;align-items:center">
@@ -490,6 +492,11 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
     <!-- Access Control sub-panel -->
     <div id="usersSubPanel-access" style="display:none">
       <div id="accessMatrix"><div class="empty">Loading…</div></div>
+    </div>
+
+    <!-- Theme sub-panel (admins only, see js/themes/picker.js) -->
+    <div id="usersSubPanel-theme" style="display:none">
+      <div id="themePicker"></div>
     </div>
   </div>
 
@@ -3914,6 +3921,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
 </div>
 
 <script src="/js/themes/decor-core.js"></script>
+<script src="/js/themes/picker.js"></script>
 <script src="/js/core.js"></script>
 <script src="/js/access.js"></script>
 <script src="/js/inventory.js"></script>
