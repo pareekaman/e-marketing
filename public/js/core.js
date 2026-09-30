@@ -168,6 +168,22 @@ let _dashDateSortState = 0;
 // ══════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════
+// Festival theme: <html data-theme> drives css/themes.css. "normal" removes the
+// attribute. The value is cached so the next page load paints it immediately
+// (see the inline script in app.html).
+function applyAppTheme(theme) {
+  const t = /^[a-z]+$/.test(theme || '') ? theme : 'normal';
+  if (t === 'normal') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+  try { localStorage.setItem('appTheme', t); } catch (e) {}
+}
+async function loadAppTheme() {
+  try {
+    const r = await fetch('/api/theme', { credentials: 'include' });
+    if (r.ok) applyAppTheme((await r.json()).theme);
+  } catch (e) {}
+}
+
 async function init() {
   try {
     // The session is the httpOnly cookie. Clear any token an older version of
@@ -187,6 +203,7 @@ async function init() {
     if (!ME || !ME.id) { window.location.replace('/'); return; }
     // Client logins belong on the dedicated /client page, not the team app.
     if (ME.role === 'client') { window.location.replace('/client'); return; }
+    loadAppTheme();
     const initials = ME.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
     document.getElementById('sidebarName').textContent = ME.name;
     const roleLabel = ME.role==='admin' ? '👑 Admin' : ME.role==='hod' ? '🏢 HOD' : ME.role==='pc' ? '🖥️ PC' : ME.role==='client' ? '🏢 Client' : '👤 Employee';

@@ -1,0 +1,7 @@
+/* ══════════════════════════════════════════════════════
+   Festival themes
+   The admin picks one company-wide theme (GET/PUT /api/theme). The app sets
+   <html data-theme="..."> and each block below overrides only CSS variables.
+   "normal" has no block on purpose: with no data-theme rules the app looks
+   exactly as it always has.
+   ══════════════════════════════════════════════════════ */

@@ -30,6 +30,12 @@
 <link rel="stylesheet" href="/css/voice.css"/>
 <link rel="stylesheet" href="/css/notify.css"/>
 <link rel="stylesheet" href="/css/chatbot.css"/>
+<link rel="stylesheet" href="/css/themes.css"/>
+<script>
+/* Apply the last-seen festival theme before first paint so there is no flash;
+   core.js confirms it against /api/theme once the session is known. */
+try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) && _t !== 'normal') document.documentElement.setAttribute('data-theme', _t); } catch (e) {}
+</script>
 </head>
 <body>
 
