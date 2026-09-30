@@ -9069,6 +9069,30 @@ function nextWorkingDay(user, fromDateStr, holidaysSet) {
   return _toDateStr(fromDateStr); // fallback
 }
 
+// Festival theme — one company-wide value in app_settings, changed by admins.
+const APP_THEMES = ['normal', 'dussehra', 'holi', 'diwali', 'christmas'];
+const APP_THEME_KEY = 'active_theme';
+
+app.get('/api/theme', requireAuth, async (req, res) => {
+  try {
+    const [[row]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [APP_THEME_KEY]);
+    const theme = row && APP_THEMES.includes(row.value) ? row.value : 'normal';
+    res.json({ theme, themes: APP_THEMES });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/theme', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const theme = req.body && req.body.theme;
+    if (!APP_THEMES.includes(theme)) return res.status(400).json({ error: 'Unknown theme' });
+    await db.query(
+      'INSERT INTO app_settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+      [APP_THEME_KEY, theme]
+    );
+    res.json({ success: true, theme });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/holidays', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(`
