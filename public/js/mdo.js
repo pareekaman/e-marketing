@@ -965,8 +965,14 @@ async function _ccDoUpload(password) {
     if (dd) dd.value = data.bankName;
     ccRenderDetail();
     const n = data.transactionsAdded;
-    if (status) { status.innerHTML = `<span style="color:#16a34a">✅ ${dtEscape(data.bankName)} (${dtEscape(data.cardNumber)}): ${n} transaction${n!==1?'s':''} added</span>`; setTimeout(()=>{ status.innerHTML=''; }, 8000); }
-    showToast(`${data.bankName}: ${n} transactions imported`);
+    // A re-upload syncs the statement — say what changed, not just what was added
+    const parts = [`${n} added`];
+    if (data.transactionsUpdated) parts.push(`${data.transactionsUpdated} corrected`);
+    if (data.transactionsRemoved) parts.push(`${data.transactionsRemoved} duplicate${data.transactionsRemoved!==1?'s':''} removed`);
+    const summary = parts.join(', ');
+    const kept = data.staleKept ? ` — ${data.staleKept} old row${data.staleKept!==1?'s':''} kept because this upload does not match the statement total; please review` : '';
+    if (status) { status.innerHTML = `<span style="color:#16a34a">✅ ${dtEscape(data.bankName)} (${dtEscape(data.cardNumber)}): ${summary}</span>${kept ? `<span style="color:#d97706">${kept}</span>` : ''}`; setTimeout(()=>{ status.innerHTML=''; }, kept ? 15000 : 8000); }
+    showToast(`${data.bankName}: ${summary}`);
   } catch(e) {
     if (status) status.innerHTML = `<span style="color:#dc2626">❌ ${e.message}</span>`;
   }

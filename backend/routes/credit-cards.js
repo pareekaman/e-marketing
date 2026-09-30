@@ -672,7 +672,7 @@ async function matchExistingCard(bankName, cardNumber) {
   return hit ? hit.card_number : cardNumber;
 }
 
-async function saveCCToDb(parsed) {
+async function saveCCToDb(parsed, req) {
   const { bankName, statementDate, paymentDueDate, payableAmount, minAmountDue, statementPeriod, transactions } = parsed;
   // The AI masks the same card differently between uploads (558983XXXXXX6349 vs
   // 558983XXXXXXXX6349, ...0073 vs ...73) — reuse the bank's existing card that matches
@@ -682,25 +682,65 @@ async function saveCCToDb(parsed) {
   await db.query(`INSERT IGNORE INTO cc_statements (card_id,statement_date,payment_due_date,payable_amount,min_amount_due,statement_period) VALUES (?,?,?,?,?,?)`,
     [card.id, statementDate, paymentDueDate, payableAmount, minAmountDue, statementPeriod]);
   const [[stmt]] = await db.query('SELECT id FROM cc_statements WHERE card_id=? AND statement_date<=>?', [card.id, statementDate]);
-  // Identical rows can be real (two same-day markup fees of the same amount), so
-  // match by count: insert only as many copies as the statement doesn't hold yet
   if (parsed.prevBalance != null)
     await db.query('UPDATE cc_statements SET prev_balance=? WHERE id=?', [parsed.prevBalance, stmt.id]);
-  let added = 0;
-  const seenInUpload = new Map();
+
+  // Re-uploading a statement syncs it. Each new row claims one stored row of the
+  // same amount within 3 days (older uploads misread some dates and descriptions),
+  // preferring the same date, then a row that already has Owner/Dept/bill, then
+  // the same description — and the stored row is corrected in place, so that
+  // metadata stays attached. Identical rows are real (two same-day fees), hence
+  // one-to-one claiming, not dedupe.
+  const [existing] = await db.query('SELECT * FROM cc_transactions WHERE statement_id=? ORDER BY id', [stmt.id]);
+  const iso = d => d instanceof Date ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : (d ? String(d).slice(0,10) : null);
+  const days = (a, b) => (a && b) ? Math.abs(new Date(a) - new Date(b)) / 86400000 : Infinity;
+  const pool = existing.map(e => ({ ...e, d: iso(e.txn_date), amt: parseFloat(e.amount), taken: false }));
+  const hasMeta = e => !!(e.expenses || e.department || e.bill_drive_id);
+  const claim = t => {
+    let best = null, bestScore = -1;
+    for (const e of pool) {
+      if (e.taken || e.amt !== t.amount || days(e.d, t.txn_date) > 3) continue;
+      const score = (e.d === t.txn_date ? 4 : 0) + (hasMeta(e) ? 2 : 0) + (e.description === t.description ? 1 : 0);
+      if (score > bestScore) { best = e; bestScore = score; }
+    }
+    if (best) best.taken = true;
+    return best;
+  };
+  let added = 0, updated = 0, removed = 0;
   for (const t of transactions) {
-    const key = `${t.txn_date}|${t.description}|${t.amount}|${t.txn_type||'debit'}`;
-    const nth = (seenInUpload.get(key) || 0) + 1;
-    seenInUpload.set(key, nth);
-    const [[{ cnt }]] = await db.query('SELECT COUNT(*) AS cnt FROM cc_transactions WHERE statement_id=? AND txn_date<=>? AND description=? AND amount=? AND txn_type=?',
-      [stmt.id, t.txn_date, t.description, t.amount, t.txn_type||'debit']);
-    if (cnt < nth) {
+    const type = t.txn_type || 'debit';
+    const e = claim(t);
+    if (e) {
+      if (e.d !== t.txn_date || e.description !== t.description || e.txn_type !== type) {
+        await db.query('UPDATE cc_transactions SET txn_date=?, description=?, txn_type=? WHERE id=?',
+          [t.txn_date, t.description, type, e.id]);
+        updated++;
+      }
+    } else {
       await db.query('INSERT INTO cc_transactions (statement_id,txn_date,description,amount,txn_type) VALUES (?,?,?,?,?)',
-        [stmt.id, t.txn_date, t.description, t.amount, t.txn_type||'debit']);
+        [stmt.id, t.txn_date, t.description, t.amount, type]);
       added++;
     }
   }
-  return { statementId:stmt.id, addedTransactions:added };
+  // Stored rows nothing claimed are stale (duplicates from older uploads). Remove
+  // them only when this upload reconciles with the statement's own totals —
+  // otherwise the new extraction may itself be short, so keep everything.
+  const dr = transactions.filter(t => t.txn_type !== 'credit').reduce((a, t) => a + t.amount, 0);
+  const cr = transactions.filter(t => t.txn_type === 'credit').reduce((a, t) => a + t.amount, 0);
+  const reconciles = parsed.prevBalance != null && payableAmount
+    && Math.abs(parsed.prevBalance + dr - cr - payableAmount) <= 1;
+  const stale = pool.filter(e => !e.taken);
+  if (reconciles && stale.length) {
+    const ids = stale.map(e => e.id);
+    const [doomed] = await db.query('SELECT * FROM cc_transactions WHERE id IN (?)', [ids]);
+    await archiveDeleted('cc_transactions', doomed, req, {
+      summary: r => `CC txn (stale on re-upload): ${r.description || ''} ${r.amount ?? ''}`,
+    });
+    await db.query('DELETE FROM cc_transactions WHERE id IN (?)', [ids]);
+    removed = ids.length;
+  }
+  return { statementId:stmt.id, addedTransactions:added, updatedTransactions:updated, removedTransactions:removed,
+           staleKept: reconciles ? 0 : stale.length, reconciles: !!reconciles };
 }
 
 // POST /api/credit-cards/upload-pdf
@@ -742,7 +782,7 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
     const prevRaw = String((raw.fields || raw)['Previous Balance'] ?? '').trim();
     parsed.prevBalance = /\d/.test(prevRaw) ? parseCCAmount(prevRaw) * (/^-|cr\b/i.test(prevRaw) ? -1 : 1) : null;
 
-    const saved = await saveCCToDb(parsed);
+    const saved = await saveCCToDb(parsed, req);
     // Upload original PDF to Drive (best-effort — statement data already saved)
     let driveFileId = null;
     try {
@@ -761,7 +801,7 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
         await db.query('UPDATE cc_statements SET drive_file_id=? WHERE id=?', [driveFileId, saved.statementId]);
       }
     } catch(e) { console.error('Drive upload failed:', e.message); }
-    res.json({ success:true, bankName:parsed.bankName, cardNumber:parsed.cardNumber, statementDate:parsed.statementDate, transactionsAdded:saved.addedTransactions, totalTransactions:parsed.transactions.length, statementId:saved.statementId, driveFileId });
+    res.json({ success:true, bankName:parsed.bankName, cardNumber:parsed.cardNumber, statementDate:parsed.statementDate, transactionsAdded:saved.addedTransactions, transactionsUpdated:saved.updatedTransactions, transactionsRemoved:saved.removedTransactions, staleKept:saved.staleKept, totalTransactions:parsed.transactions.length, statementId:saved.statementId, driveFileId });
   } catch(err) {
     if (err.name === 'PasswordException') {
       const wrongPwd = err.code === 2;
