@@ -37,10 +37,45 @@ ThemeDecor.register('christmas', function (d) {
   for (i = 0; i < 70; i++) flakes.push({ x: Math.random(), y: Math.random(), r: d.rand(1.2, 3.4), vy: d.rand(22, 55), ph: d.rand(0, 6.28) });
   var t = 0;
 
+  // Gifts: thrown from Santa's right mitten when that arm swings up in the dance (the wave at 28%
+  // and 36% of the 12s routine, the punch at 88% and 96%). They arc away, bounce once, and fade.
+  var gifts = [], lastPhase = 0, THROWS = [0.28, 0.36, 0.88, 0.96];
+  var GIFT = [['#EF4444', '#FDE047'], ['#22C55E', '#FFFFFF'], ['#3B82F6', '#FDE047'], ['#A855F7', '#FFFFFF'], ['#F59E0B', '#DC2626']];
+  var mitten = document.querySelector('.td-santa .sd-arm-r circle');
+  function dancePhase() {
+    var a = document.getAnimations().filter(function (x) { return x.animationName === 'sd-arm-r'; })[0];
+    return a && a.currentTime != null ? (a.currentTime % 12000) / 12000 : -1;
+  }
+  function throwGift(w, h) {
+    var r = mitten.getBoundingClientRect(), c = d.pick(GIFT);
+    gifts.push({ x: r.left + r.width / 2, y: r.top + r.height / 2, vx: d.rand(220, 420), vy: -d.rand(420, 560), a: 0, va: d.rand(4, 9),
+                 s: d.rand(20, 28), c: c[0], rb: c[1], floor: h - d.rand(8, 40), bounced: false, life: 1 });
+  }
+  function drawGift(ctx, g) {
+    var s = g.s;
+    ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(g.a); ctx.globalAlpha = g.life;
+    ctx.fillStyle = g.c; ctx.fillRect(-s / 2, -s / 2, s, s);
+    ctx.fillStyle = g.rb; ctx.fillRect(-s * 0.1, -s / 2, s * 0.2, s); ctx.fillRect(-s / 2, -s * 0.1, s, s * 0.2);
+    ctx.beginPath(); ctx.ellipse(-s * 0.18, -s / 2 - 3, s * 0.18, s * 0.12, -0.5, 0, 6.2832); ctx.ellipse(s * 0.18, -s / 2 - 3, s * 0.18, s * 0.12, 0.5, 0, 6.2832); ctx.fill();
+    ctx.restore();
+  }
+
   return {
     scale: 0.75, // flakes are small and crisp, so this one keeps more resolution
     frame: function (ctx, dt, w, h) {
       t += dt;
+      var ph = dancePhase();
+      if (ph >= 0 && mitten) {
+        THROWS.forEach(function (p) { if ((lastPhase < p && ph >= p) || (lastPhase > ph && ph >= p && p < 0.05)) throwGift(w, h); });
+        lastPhase = ph;
+      }
+      for (var gi = gifts.length - 1; gi >= 0; gi--) {
+        var g = gifts[gi];
+        g.vy += 900 * dt; g.x += g.vx * dt; g.y += g.vy * dt; g.a += g.va * dt;
+        if (g.y > g.floor) { g.y = g.floor; if (!g.bounced) { g.vy *= -0.4; g.vx *= 0.5; g.va *= 0.4; g.bounced = true; } else { g.vy = 0; g.vx *= 0.9; g.va = 0; g.life -= 1.2 * dt; } }
+        if (g.life <= 0 || g.x > w + 40) { gifts.splice(gi, 1); continue; }
+        drawGift(ctx, g);
+      }
       ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(100,130,175,.55)'; ctx.lineWidth = 1; ctx.globalAlpha = 0.95;
       for (var j = 0; j < flakes.length; j++) {
         var f = flakes[j];
