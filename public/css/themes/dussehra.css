@@ -6,3 +6,9 @@
   --accent-rgb:185,28,28; --accent-light-rgb:220,38,38;
   --page-bg:#FBF1E6; --sidebar-top:#3B0D0D; --sidebar-bottom:#260707;
 }
+
+/* Decoration (js/themes/dussehra.js) */
+.td-ravan { left:70px; bottom:0; width:128px; opacity:.96; transform-origin:50% 100%; will-change:transform;
+  filter:drop-shadow(0 4px 6px rgba(0,0,0,.25)); animation:td-sway 6s ease-in-out infinite; }
+@keyframes td-sway { 0%,100% { transform:rotate(-1.4deg); } 50% { transform:rotate(1.4deg); } }
+@media (prefers-reduced-motion: reduce) { .td-ravan { animation:none; } }

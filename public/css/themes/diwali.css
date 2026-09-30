@@ -6,3 +6,14 @@
   --accent-rgb:194,65,12; --accent-light-rgb:234,88,12;
   --page-bg:#FDF5E6; --sidebar-top:#2D1240; --sidebar-bottom:#1C0B2B;
 }
+
+/* Decoration (js/themes/diwali.js) */
+.td-rangoli { left:70px; bottom:8px; width:140px; opacity:.92; will-change:transform; animation:td-spin 120s linear infinite; }
+@keyframes td-spin { to { transform:rotate(360deg); } }
+.td-diya { bottom:8px; width:46px; filter:drop-shadow(0 3px 4px rgba(0,0,0,.25)); }
+.td-diya-1 { left:222px; }
+.td-diya-2 { left:274px; }
+.td-flame { transform-box:fill-box; transform-origin:50% 100%; animation:td-flicker 1.1s ease-in-out infinite alternate; }
+.td-diya-2 .td-flame { animation-delay:.4s; }
+@keyframes td-flicker { from { transform:scale(1,.9) skewX(-3deg); opacity:.88; } to { transform:scale(1.06,1.08) skewX(3deg); opacity:1; } }
+@media (prefers-reduced-motion: reduce) { .td-rangoli, .td-flame { animation:none; } }

@@ -176,6 +176,7 @@ function applyAppTheme(theme) {
   if (t === 'normal') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', t);
   try { localStorage.setItem('appTheme', t); } catch (e) {}
+  if (window.ThemeDecor) ThemeDecor.apply(t); // festival decoration layer, js/themes/
 }
 async function loadAppTheme() {
   try {
