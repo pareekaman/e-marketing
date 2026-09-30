@@ -4090,8 +4090,8 @@
 <!-- Payment Bill Upload Modal -->
 <div id="prBillOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1001;align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:16px;padding:28px 28px 22px;width:min(440px,94vw);box-shadow:0 12px 40px rgba(0,0,0,.2)">
-    <h3 style="margin:0 0 4px;font-size:18px;color:#0f172a">Mark Payment Done</h3>
-    <p style="margin:0 0 18px;font-size:13px;color:#64748b">Optionally upload the bill/receipt before marking as paid</p>
+    <h3 id="prBillTitle" style="margin:0 0 4px;font-size:18px;color:#0f172a">Mark Payment Done</h3>
+    <p id="prBillSubtitle" style="margin:0 0 18px;font-size:13px;color:#64748b">Optionally upload the bill/receipt before marking as paid</p>
     <div id="prBillDropzone" onclick="document.getElementById('prBillFileInput').click()" style="border:2px dashed #cbd5e1;border-radius:10px;padding:22px 16px;text-align:center;cursor:pointer;transition:border-color .2s;background:#f8fafc" onmouseover="this.style.borderColor='#6366f1'" onmouseout="this.style.borderColor='#cbd5e1'">
       <div id="prBillPreview" style="display:none;margin-bottom:10px"><img id="prBillImg" style="max-height:160px;max-width:100%;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.12)"></div>
       <div id="prBillPrompt" style="color:#94a3b8;font-size:14px">📎 &nbsp; Click to choose transaction image or PDF</div>

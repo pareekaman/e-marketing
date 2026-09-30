@@ -84,11 +84,22 @@ async function mdoReviewTask(id, status) {
 
 let _prBillPendingId = null;
 let _prBillFile = null;
+// true when opened from "Upload Bill" / "Change Bill" on a row that is already
+// paid — then the modal only attaches the bill, it must not post __paid__ again
+// (the server refuses a second paid marker, which used to abort the upload)
+let _prBillOnly = false;
 const _prBillUploading = new Set();
 
-function prOpenBillModal(id) {
+function prOpenBillModal(id, billOnly = false) {
   _prBillPendingId = id;
   _prBillFile = null;
+  _prBillOnly = !!billOnly;
+  document.getElementById('prBillTitle').textContent = billOnly ? 'Upload Bill' : 'Mark Payment Done';
+  document.getElementById('prBillSubtitle').textContent = billOnly
+    ? 'Choose the bill/receipt for this payment'
+    : 'Optionally upload the bill/receipt before marking as paid';
+  document.getElementById('prBillSubmitBtn').textContent = billOnly ? 'Upload Bill' : 'Upload & Mark Done';
+  document.getElementById('prBillSubmitBtn').disabled = false;
   document.getElementById('prBillFileInput').value = '';
   document.getElementById('prBillPreview').style.display = 'none';
   document.getElementById('prBillPrompt').style.display = '';
@@ -157,11 +168,18 @@ async function prBillSubmit() {
   if (submitBtn) submitBtn.disabled = true;
 
   try {
-    // 1. Mark as done sentinel
-    const s = await api('/api/payment-requests', 'POST', {
-      bank_name: '__system__', card_number: '__paid__', reason: '__paid__:' + id
-    });
-    if (s && s.error) { showToast('Error: ' + s.error, 'error'); if (submitBtn) submitBtn.disabled = false; return; }
+    if (_prBillOnly && !_prBillFile) {
+      showToast('Choose a bill file first', 'error');
+      if (submitBtn) submitBtn.disabled = false;
+      return;
+    }
+    // 1. Mark as done sentinel — skipped when the row is already paid
+    if (!_prBillOnly) {
+      const s = await api('/api/payment-requests', 'POST', {
+        bank_name: '__system__', card_number: '__paid__', reason: '__paid__:' + id
+      });
+      if (s && s.error) { showToast('Error: ' + s.error, 'error'); if (submitBtn) submitBtn.disabled = false; return; }
+    }
 
     // 2. Capture file refs BEFORE closing modal (prCloseBillModal nulls them)
     const billFile = _prBillFile;
@@ -170,7 +188,7 @@ async function prBillSubmit() {
     loadMyPaymentRequests();
 
     if (billFile && PR_BILL_SCRIPT_URL && !PR_BILL_SCRIPT_URL.includes('PLACEHOLDER')) {
-      showToast('✅ Payment done! Uploading bill');
+      showToast(_prBillOnly ? 'Uploading bill…' : '✅ Payment done! Uploading bill');
       _prBillUploading.add(id);
       loadMyPaymentRequests();
       // fire-and-forget
