@@ -82,42 +82,108 @@ ThemeDecor.register('dussehra', function (d) {
     '<circle cx="52" cy="101" r="5.5" fill="#9B2C1B"/>' +
     heads + '</svg>';
 
-  // Ram is drawn facing left and mirrored inside the SVG itself (the matrix below), so he always
-  // faces Ravan whatever the stylesheet does.
+  // Shri Ram, drawn facing right (towards Ravan) — no flipping anywhere. Two poses, switched by
+  // setPose(): .td-aim (bow drawn, calm face) and .td-cheer (bow raised high, fist up, beaming),
+  // which he takes while Ravan burns. Parts with class td-nock / td-sd / td-sr belong to aiming.
+  // Small straight strokes use flat colours: an objectBoundingBox gradient on a perfectly
+  // horizontal or vertical line has no box and would not paint at all.
   var ram =
-    '<svg viewBox="-30 0 190 250" xmlns="http://www.w3.org/2000/svg"><g transform="matrix(-1 0 0 1 130 0)">' +
-    // legs, dhoti and feet
-    '<rect x="72" y="214" width="12" height="26" fill="#3B82C4"/><rect x="92" y="214" width="12" height="26" fill="#3B82C4"/>' +
-    '<rect x="68" y="238" width="18" height="8" rx="3" fill="#7C4A1E"/><rect x="90" y="238" width="18" height="8" rx="3" fill="#7C4A1E"/>' +
-    '<polygon points="70,156 106,156 112,222 64,222" fill="#FACC15" stroke="#A16207" stroke-width="1.2"/>' +
-    '<path d="M70 158 L106 158" stroke="#DC2626" stroke-width="4"/>' +
-    // quiver behind the shoulder
-    '<rect x="98" y="78" width="12" height="54" rx="3" transform="rotate(14 104 105)" fill="#7C4A1E" stroke="#3B2410" stroke-width="1"/>' +
-    '<path d="M108 76 l-3 -9 M113 78 l0 -10 M118 80 l3 -9" stroke="#DC2626" stroke-width="2.4" stroke-linecap="round"/>' +
-    // torso, sash, garland
-    '<rect x="70" y="92" width="36" height="66" rx="7" fill="#3B82C4" stroke="#1E4E8C" stroke-width="1.2"/>' +
-    '<path d="M72 96 L104 148" stroke="#FACC15" stroke-width="6"/>' +
-    '<path d="M74 94 Q88 118 102 94" fill="none" stroke="#F472B6" stroke-width="4" stroke-dasharray="1 5" stroke-linecap="round"/>' +
-    // back arm (draws the string) and front arm (holds the bow)
-    '<path d="M98 104 L108 118 L86 126" fill="none" stroke="#3B82C4" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>' +
-    '<path d="M76 104 L10 125" stroke="#3B82C4" stroke-width="11" stroke-linecap="round"/>' +
-    // bow and string (drawn, and at rest after a shot)
-    '<path d="M32 38 Q-16 125 32 212" fill="none" stroke="#6B3E14" stroke-width="5" stroke-linecap="round"/>' +
-    '<path class="td-sd" d="M32 38 L86 126 L32 212" fill="none" stroke="#F3F4F6" stroke-width="1.6"/>' +
-    '<path class="td-sr" d="M32 38 L32 212" fill="none" stroke="#F3F4F6" stroke-width="1.6" visibility="hidden"/>' +
-    '<circle cx="8" cy="125" r="6" fill="#4A90D9"/>' +
-    // the arrow on his string
-    '<g class="td-nock"><path d="M86 126 L-22 125" stroke="#8B5A2B" stroke-width="3"/>' +
-    '<polygon points="-26,125 -13,119 -13,131" fill="#FDE68A" stroke="#B45309" stroke-width=".8"/>' +
-    '<polygon points="82,126 92,120 88,126 92,132" fill="#DC2626"/></g>' +
-    // head, crown, face
-    '<circle cx="90" cy="72" r="17" fill="#4A90D9" stroke="#1E4E8C" stroke-width="1.2"/>' +
-    '<polygon points="72,58 76,34 83,48 90,28 97,48 104,34 108,58" fill="#F5C518" stroke="#8A5A00" stroke-width="1.2"/><circle cx="90" cy="45" r="3.4" fill="#DC2626"/>' +
-    '<ellipse cx="82" cy="70" rx="3.4" ry="2.4" fill="#fff"/><circle cx="81.4" cy="70" r="1.5" fill="#111"/>' +
-    '<path d="M76 63 L86 64" stroke="#111" stroke-width="1.8" stroke-linecap="round"/>' +
-    '<path d="M83 80 Q88 83 93 80" stroke="#1E3A8A" stroke-width="1.6" fill="none" stroke-linecap="round"/>' +
-    '<path d="M87 56 V62" stroke="#DC2626" stroke-width="2" stroke-linecap="round"/>' +
-    '</g></svg>';
+    '<svg viewBox="0 0 200 260" xmlns="http://www.w3.org/2000/svg"><defs>' +
+    '<radialGradient id="tdRamHalo"><stop offset="0" stop-color="#FFF6D5"/><stop offset=".55" stop-color="#FFD54F" stop-opacity=".7"/><stop offset="1" stop-color="#FFB300" stop-opacity="0"/></radialGradient>' +
+    '<linearGradient id="tdRamSkin" gradientUnits="userSpaceOnUse" x1="60" y1="20" x2="150" y2="250"><stop offset="0" stop-color="#5B9BE6"/><stop offset="1" stop-color="#2C5DA8"/></linearGradient>' +
+    '<linearGradient id="tdRamGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF1A8"/><stop offset=".5" stop-color="#F5C518"/><stop offset="1" stop-color="#C98A06"/></linearGradient>' +
+    '<linearGradient id="tdRamSilk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FDE047"/><stop offset="1" stop-color="#EAB308"/></linearGradient>' +
+    '<linearGradient id="tdRamScarf" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FB923C"/><stop offset="1" stop-color="#DC2626"/></linearGradient>' +
+    '</defs>' +
+    // halo behind the head
+    '<circle cx="85" cy="54" r="35" fill="url(#tdRamHalo)"/>' +
+    '<circle cx="85" cy="54" r="27" fill="none" stroke="#F59E0B" stroke-width="1.2" stroke-opacity=".5"/>' +
+    // long hair down the back, quiver with fletchings over the shoulder, saffron scarf streaming back
+    '<path d="M71 48 C61 62 61 84 56 104 C64 101 69 92 72 82 C74 74 73 62 77 54 Z" fill="#1C1917"/>' +
+    '<g transform="rotate(-22 60 100)"><rect x="54" y="70" width="13" height="60" rx="4" fill="#7C2D12" stroke="#431407" stroke-width="1"/>' +
+    '<rect x="54" y="80" width="13" height="4" fill="url(#tdRamGold)"/><rect x="54" y="118" width="13" height="4" fill="url(#tdRamGold)"/>' +
+    '<path d="M57 70 l-2 -12 l4 5 z M61 70 l0 -13 l3 6 z M65 70 l2 -12 l1 7 z" fill="#DC2626"/></g>' +
+    '<path d="M77 92 C53 96 39 120 31 152 C45 136 59 118 83 106 Z" fill="url(#tdRamScarf)"/>' +
+    // legs in an archer's stance, feet, anklets
+    '<path d="M62 190 L51 244" stroke="url(#tdRamSkin)" stroke-width="11" stroke-linecap="round"/>' +
+    '<path d="M112 190 L123 244" stroke="url(#tdRamSkin)" stroke-width="11" stroke-linecap="round"/>' +
+    '<ellipse cx="54" cy="250" rx="10" ry="4.2" fill="#2C5DA8"/><ellipse cx="128" cy="250" rx="11" ry="4.2" fill="#2C5DA8"/>' +
+    '<path d="M46 240 H58 M116 240 H128" stroke="#F5C518" stroke-width="3" stroke-linecap="round"/>' +
+    // far arm: held out to the bow (aim) or raised with it (cheer); behind the body
+    '<g class="td-aim"><path d="M92 96 L153 94" stroke="url(#tdRamSkin)" stroke-width="9" stroke-linecap="round"/>' +
+    '<path d="M110 91 V100 M144 89.8 V98.8" stroke="#F5C518" stroke-width="3"/></g>' +
+    '<g class="td-cheer" style="display:none"><path d="M94 94 L124 40" stroke="url(#tdRamSkin)" stroke-width="9" stroke-linecap="round"/>' +
+    '<path d="M100.6 72.9 L108.4 77.3 M115.6 45.9 L123.4 50.3" stroke="#F5C518" stroke-width="3"/></g>' +
+    // torso and neck
+    '<path d="M69 90 Q85 83 100 90 L101 118 Q99 134 96 142 L72 142 Q67 128 68 112 Z" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width="1"/>' +
+    '<path d="M77 108 Q87 114 96 106" fill="none" stroke="#1E3F73" stroke-opacity=".35" stroke-width="1.2"/>' +
+    '<path d="M80 72 L80 88 L90 88 L90 72 Z" fill="url(#tdRamSkin)"/>' +
+    // sacred thread, gold necklace, garland of flowers
+    '<path d="M74 92 L99 138" stroke="#F8FAFC" stroke-width="1.3"/>' +
+    '<path d="M73 93 Q85 112 99 93" fill="none" stroke="#F5C518" stroke-width="2.4"/><circle cx="86" cy="104" r="2.6" fill="#DC2626" stroke="#F5C518" stroke-width="1"/>' +
+    '<path d="M71 95 Q86 146 101 95" fill="none" stroke="#F472B6" stroke-width="3.4" stroke-dasharray="0.1 5" stroke-linecap="round"/>' +
+    '<path d="M71 95 Q86 146 101 95" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-dasharray="0.1 5" stroke-dashoffset="2.5" stroke-linecap="round"/>' +
+    // yellow silk dhoti with a red border, red-and-gold waist sash
+    '<path d="M69 142 H101 L124 194 Q116 200 106 198 L86 166 L70 200 Q58 200 50 194 Z" fill="url(#tdRamSilk)" stroke="#A16207" stroke-width="1"/>' +
+    '<path d="M52 192 Q60 197 70 197 M106 195 Q115 197 122 192" stroke="#DC2626" stroke-width="3" fill="none"/>' +
+    '<path d="M78 150 L74 186 M92 150 L100 182" stroke="#CA8A04" stroke-width="1" fill="none" opacity=".7"/>' +
+    '<path d="M68 136 H102 V146 H68 Z" fill="#DC2626"/><path d="M68 136.8 H102 M68 145.2 H102" stroke="#F5C518" stroke-width="1.6"/>' +
+    '<path d="M92 146 Q96 160 90 172 Q98 162 97 147 Z" fill="#DC2626"/>' +
+    // aiming: the Kodanda bow (curled, gold-banded), its string, the arrow, and both hands
+    '<g class="td-aim">' +
+    '<path d="M138 24 Q170 93 138 162" fill="none" stroke="#7C2D12" stroke-width="4.6" stroke-linecap="round"/>' +
+    '<path d="M138 24 Q140 16 147 14 M138 162 Q140 170 147 172" fill="none" stroke="#7C2D12" stroke-width="3.2" stroke-linecap="round"/>' +
+    '<path d="M143.5 42 l4 -2 M143.5 144 l4 2" stroke="#F5C518" stroke-width="3" stroke-linecap="round"/>' +
+    '<path class="td-sd" d="M139 25 L100 89 L139 161" fill="none" stroke="#F8FAFC" stroke-width="1.3"/>' +
+    '<path class="td-sr" d="M139 25 L139 161" fill="none" stroke="#F8FAFC" stroke-width="1.3" visibility="hidden"/>' +
+    '<g class="td-nock"><path d="M100 89 H186" stroke="#8B5A2B" stroke-width="2.6"/>' +
+    '<polygon points="199,89 185,83 188,89 185,95" fill="url(#tdRamGold)" stroke="#B45309" stroke-width=".8"/>' +
+    '<path d="M101 89 l8 -6 h6 l-6 6 z M101 89 l8 6 h6 l-6 -6 z" fill="#DC2626"/><path d="M104 89 l5 -3.5 M104 89 l5 3.5" stroke="#fff" stroke-width="1"/></g>' +
+    '<rect x="150" y="87" width="7" height="14" rx="2" fill="url(#tdRamGold)"/>' +
+    '<circle cx="153" cy="94" r="5.2" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width=".8"/>' +
+    '<path d="M80 95 L56 86 L100 89" fill="none" stroke="url(#tdRamSkin)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M65.8 84.9 L62.6 93.3 M92.3 84 L91.7 93" stroke="#F5C518" stroke-width="3"/>' +
+    '<circle cx="100" cy="89" r="5" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width=".8"/></g>' +
+    // cheering: the bow held high, the other fist raised
+    '<g class="td-cheer" style="display:none">' +
+    '<path d="M116 -10 Q132 38 116 86" fill="none" stroke="#7C2D12" stroke-width="4.6" stroke-linecap="round"/>' +
+    '<path d="M116 -10 Q118 -18 125 -20 M116 86 Q118 94 125 96" fill="none" stroke="#7C2D12" stroke-width="3.2" stroke-linecap="round"/>' +
+    '<path d="M117 -9 L117 85" stroke="#F8FAFC" stroke-width="1.3"/>' +
+    '<rect x="121" y="31" width="7" height="14" rx="2" fill="url(#tdRamGold)"/>' +
+    '<circle cx="124" cy="38" r="5.2" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width=".8"/>' +
+    '<path d="M78 96 L63 74 L61 46" fill="none" stroke="url(#tdRamSkin)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M56.6 52 L65.6 51.4" stroke="#F5C518" stroke-width="3"/>' +
+    '<circle cx="61" cy="42" r="5.6" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width=".8"/></g>' +
+    // head, hair at the side, ear with a gold earring
+    '<ellipse cx="85" cy="60" rx="15" ry="16.5" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width="1"/>' +
+    '<path d="M70.5 52 C68.5 62 70 70 76 75 C72.5 65 73.5 57 78 51 Z" fill="#1C1917"/>' +
+    '<ellipse cx="76.5" cy="62" rx="3" ry="4.2" fill="#3F7ACB" stroke="#1E3F73" stroke-width=".8"/>' +
+    '<circle cx="76.5" cy="71" r="3.4" fill="url(#tdRamGold)" stroke="#B45309" stroke-width=".7"/><circle cx="76.5" cy="71" r="1.2" fill="#DC2626"/>' +
+    // calm, focused face while aiming...
+    '<g class="td-aim">' +
+    '<path d="M86 52 Q91 49.5 96.5 51.5" fill="none" stroke="#111827" stroke-width="1.6" stroke-linecap="round"/>' +
+    '<path d="M86.5 58 Q91.5 54.5 96.5 58 Q91.5 60.5 86.5 58 Z" fill="#fff"/><circle cx="92.8" cy="57.8" r="1.6" fill="#111827"/>' +
+    '<path d="M86 57.6 Q91.5 54 97 57.6" fill="none" stroke="#111827" stroke-width="1.1"/>' +
+    '<path d="M91 70.5 Q94 72 97 70" fill="none" stroke="#7F1D1D" stroke-width="1.4" stroke-linecap="round"/></g>' +
+    // ...and beaming while Ravan burns: smiling eye, raised brow, rosy cheek, open smile
+    '<g class="td-cheer" style="display:none">' +
+    '<path d="M85.5 50 Q91 46.5 96.5 49.5" fill="none" stroke="#111827" stroke-width="1.6" stroke-linecap="round"/>' +
+    '<path d="M86.5 58.5 Q91.5 53.5 96.5 58.5" fill="none" stroke="#111827" stroke-width="1.8" stroke-linecap="round"/>' +
+    '<circle cx="93.5" cy="64.5" r="2.6" fill="#F472B6" opacity=".55"/>' +
+    '<path d="M88.5 68.5 Q94 76.5 99.5 68 Q94 71 88.5 68.5 Z" fill="#7F1D1D"/>' +
+    '<path d="M90 69.2 Q94 71.3 98 68.8" fill="none" stroke="#fff" stroke-width="1.1"/></g>' +
+    // nose, tilak
+    '<path d="M99.5 57.5 Q102.5 63 98.8 65.8" fill="none" stroke="#1E3F73" stroke-width="1.2" stroke-linecap="round"/>' +
+    '<path d="M90 46.5 L91 51 Q92 52 93 51 L94 46.5" fill="none" stroke="#fff" stroke-width="1.3"/><path d="M92 47 V51" stroke="#DC2626" stroke-width="1.3"/>' +
+    // tall gold crown (mukut) with jewels and a finial
+    '<path d="M71 44 L74 21 Q85.5 11 97 21 L100 44 Z" fill="url(#tdRamGold)" stroke="#B45309" stroke-width="1"/>' +
+    '<path d="M73 31 H98 M72 38 H99" stroke="#B45309" stroke-width="1" opacity=".55"/>' +
+    '<rect x="69" y="40" width="33" height="6" rx="2" fill="url(#tdRamGold)" stroke="#B45309" stroke-width="1"/>' +
+    '<circle cx="85.5" cy="27.5" r="3.2" fill="#DC2626" stroke="#fff" stroke-width=".8"/>' +
+    '<circle cx="78" cy="34.5" r="1.8" fill="#16A34A"/><circle cx="93" cy="34.5" r="1.8" fill="#16A34A"/><circle cx="85.5" cy="43" r="1.6" fill="#DC2626"/>' +
+    '<path d="M85.5 13 V4" stroke="#F5C518" stroke-width="2.4" stroke-linecap="round"/>' +
+    '<circle cx="85.5" cy="12" r="3" fill="url(#tdRamGold)" stroke="#B45309" stroke-width=".7"/>' +
+    '</svg>';
 
   // Arrows in flight. Each has its tip at a known point (tip) so it can be flown tip-first.
   var ARROW = {
@@ -168,6 +234,12 @@ ThemeDecor.register('dussehra', function (d) {
 
   function wait(ms) { return new Promise(function (res) { timers.push(setTimeout(res, ms)); }); }
 
+  // Ram aiming (bow drawn) or cheering (bow raised, beaming). display, not visibility, so no
+  // part of the hidden pose can show through (setBow sets visibility on the aiming parts).
+  function setPose(cheer) {
+    [].forEach.call(ramEl.querySelectorAll('.td-aim'), function (g) { g.style.display = cheer ? 'none' : ''; });
+    [].forEach.call(ramEl.querySelectorAll('.td-cheer'), function (g) { g.style.display = cheer ? '' : 'none'; });
+  }
   function setBow(el, drawn) {
     el.querySelector('.td-nock').style.visibility = drawn ? '' : 'hidden';
     el.querySelector('.td-sd').style.visibility = drawn ? '' : 'hidden';
@@ -346,6 +418,7 @@ ThemeDecor.register('dussehra', function (d) {
     await wait(380); if (dead) return;
     ravEl.className = 'td-item td-ravan td-burn';
     burn = { until: performance.now() + 3400, x: spot.x };
+    setPose(true); ramEl.classList.add('td-joy'); // Ram raises his bow and beams as Ravan burns
     await wait(1300); if (dead) return;
     ravEl.className = 'td-item td-ravan td-fall';
     blast(spot.x, spot.y - 90);
@@ -359,13 +432,14 @@ ThemeDecor.register('dussehra', function (d) {
     // 4. Victory, then five seconds of crackers before Ravan rises for the next round.
     await wait(300); if (dead) return;
     setBow(ramEl, true);
-    ramEl.classList.add('td-win');
+    ramEl.classList.remove('td-joy'); ramEl.classList.add('td-win');
     showLabel(spot);
     celebrate = true; rocketIn = 0.3;
     await wait(5000); if (dead) return;
     celebrate = false;
     hideLabel();
     ramEl.classList.remove('td-win');
+    setPose(false);
     [].forEach.call(ravEl.querySelectorAll('.td-lodged'), function (a) { a.remove(); });
     setBow(ravEl, true);
     ravEl.style.display = '';
@@ -379,6 +453,7 @@ ThemeDecor.register('dussehra', function (d) {
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     showLabel(labelSpot());
     ravEl.style.display = 'none';
+    setPose(true);
   } else {
     round(true);
   }

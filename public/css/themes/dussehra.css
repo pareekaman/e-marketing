@@ -10,9 +10,16 @@
 /* Decoration (js/themes/dussehra.js): Shri Ram bottom-left, Ravan bottom-right (left of the
    chatbot button). Placement and looks live here; the story itself is in the JS file.
    Ram faces right inside his own SVG, so .td-ram must not be flipped here. */
-.td-ram { left:74px; bottom:0; width:112px; filter:drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+.td-ram { left:74px; bottom:0; width:130px; transition:translate .3s var(--ease);
+  filter:drop-shadow(0 0 6px rgba(255,193,7,.45)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+/* The sidebar widens from 60px to 232px on hover and sits above this layer: step aside with it. */
+.sidebar:hover ~ #themeDecor .td-ram { translate:172px 0; }
+/* hopping with joy while Ravan burns, then the victory hops; a brighter glow throughout */
+.td-ram.td-joy { animation:td-hop .42s cubic-bezier(.3,.7,.4,1) 6 alternate; }
+@keyframes td-hop { from { transform:translateY(0); } to { transform:translateY(-9px); } }
 .td-ram.td-win { animation:td-win .55s ease-out 2; }
 @keyframes td-win { 0%,100% { transform:translateY(0); } 40% { transform:translateY(-10px); } }
+.td-ram.td-joy, .td-ram.td-win { filter:drop-shadow(0 0 12px rgba(255,200,40,.9)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
 
 .td-ravan { right:104px; bottom:0; width:138px; transform-origin:50% 100%; will-change:transform;
   filter:drop-shadow(0 0 10px rgba(220,38,38,.55)) drop-shadow(0 4px 6px rgba(0,0,0,.3)); animation:td-menace 3.2s ease-in-out infinite; }
@@ -55,4 +62,4 @@
 .td-hd.td-hd-out { animation:td-hd-out .4s ease-in forwards; }
 @keyframes td-hd-out { from { opacity:1; transform:translateX(50%) scale(1); } to { opacity:0; transform:translateX(50%) translateY(8px) scale(.8); } }
 
-@media (prefers-reduced-motion: reduce) { .td-ravan, .td-ram.td-win, .td-hd { animation:none; } }
+@media (prefers-reduced-motion: reduce) { .td-ravan, .td-ram.td-joy, .td-ram.td-win, .td-hd { animation:none; } .td-ram { transition:none; } }
