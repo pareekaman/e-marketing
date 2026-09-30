@@ -145,6 +145,53 @@ async function pdfToBase64Images(pdfBuffer, password = '') {
   return imgs;
 }
 
+// The PDF's own text layer, rebuilt into lines (top to bottom, left to right).
+// Reading digits off page images drops or mangles some (69,882 → 6,982); the
+// text layer has them exactly. Scanned PDFs have none and return ''.
+async function pdfToText(pdfBuffer, password = '') {
+  const loadParams = { data: new Uint8Array(pdfBuffer), isEvalSupported: false };
+  if (password) loadParams.password = password;
+  const doc   = await pdfjsLib.getDocument(loadParams).promise;
+  const pages = [];
+  for (let p = 1; p <= Math.min(doc.numPages, 8); p++) {
+    const page = await doc.getPage(p);
+    const { items } = await page.getTextContent();
+    // Some banks (RBL) mark credits only by a green amount, which text can't
+    // carry — render the page and tag text items whose ink is mostly green
+    const viewport = page.getViewport({ scale: 1 });
+    const canvas   = createCanvas(viewport.width, viewport.height);
+    const ctx      = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const isGreen = it => {
+      const [x0, y0] = viewport.convertToViewportPoint(it.transform[4], it.transform[5]);
+      const w = Math.max(1, Math.ceil(it.width)), h = Math.max(1, Math.ceil(it.height || 8));
+      const x = Math.max(0, Math.floor(x0)), y = Math.max(0, Math.floor(y0 - h));
+      if (x >= canvas.width || y >= canvas.height) return false;
+      const px = ctx.getImageData(x, y, Math.min(w, canvas.width - x), Math.min(h, canvas.height - y)).data;
+      let ink = 0, green = 0;
+      for (let i = 0; i < px.length; i += 4) {
+        const [r, g, b] = [px[i], px[i + 1], px[i + 2]];
+        if (r > 225 && g > 225 && b > 225) continue; // background
+        ink++;
+        if (g > r + 40 && g > b + 20) green++;
+      }
+      return ink > 0 && green / ink > 0.4;
+    };
+    const lines = new Map();
+    for (const it of items) {
+      if (!it.str || !it.str.trim()) continue;
+      const y = Math.round(it.transform[5] / 3) * 3; // items within 3pt share a line
+      if (!lines.has(y)) lines.set(y, []);
+      lines.get(y).push({ x: it.transform[4], s: it.str.trim() + (isGreen(it) ? ' [green]' : '') });
+    }
+    const text = [...lines.entries()].sort((a, b) => b[0] - a[0])
+      .map(([, row]) => row.sort((a, b) => a.x - b.x).map(r => r.s).join('  '))
+      .join('\n');
+    pages.push(`--- Page ${p} ---\n${text}`);
+  }
+  return pages.join('\n\n');
+}
+
 const CC_EXTRACT_PROMPT = `You are a careful OCR and data-extraction engine reading a credit card statement PDF.
 Return ONLY valid JSON — no markdown fences, no extra text.
 
@@ -157,7 +204,8 @@ Output structure:
     "Billing Period": "...",
     "Total Amount Due": "12345.67",
     "Minimum Due": "1234.56",
-    "Due Date": "DD/MM/YYYY"
+    "Due Date": "DD/MM/YYYY",
+    "Previous Balance": "12345.67"
   },
   "transactions": [
     {"date":"DD/MM/YYYY","description":"...","amount":"1234.56","type":"Dr or Cr"}
@@ -166,9 +214,13 @@ Output structure:
 
 Rules for ALL banks:
 - "type" must be exactly "Dr" for debits, "Cr" for credits/payments
+- A "+" in a Rewards / reward-points column (e.g. "+ 168") is points earned, NOT a credit marker — judge Dr/Cr only from the amount itself
+- Mark as "Cr" any row whose amount is shown with a "+" sign, green amount, "Cr"/"CR" suffix, or that is a payment, cashback, refund or reversal credit (e.g. "10% Swiggy CashBack", EMI conversion credit). A row explicitly named "..._Reversal" of a cashback is a debit ("Dr") unless it shows "+" or "Cr".
+- Extract EVERY transaction row from EVERY page, in order. Never skip or merge rows — two rows with the same date, description and amount (e.g. an EMI debit and its matching credit, or two identical cashbacks) are BOTH real and must BOTH be listed.
 - "amount" must be numeric string only, no currency symbols
 - "transactions" must always be present ([] if none found)
 - All dates in DD/MM/YYYY format
+- "Previous Balance" is the balance carried in from the last statement, from the account summary — labelled e.g. "Last Bill Amount" (RBL), "Previous Statement Dues" / "Opening Balance" (HDFC), "Previous Balance" (Axis, ICICI, SBI, SCB), "Opening Balance" (AMEX). Numeric only; prefix "-" if it is a credit balance; "" if not printed
 
 ════ HDFC BANK field names in the PDF: ════
   Credit Card No.  ← "Credit Card Number" or "Card Number"
@@ -261,6 +313,8 @@ function safeParseCC(text) {
     try { await db.query(`ALTER TABLE cc_statements ADD COLUMN pdf_data LONGBLOB DEFAULT NULL`); } catch(e) { /* already exists */ }
     // Add drive_file_id column for Google Drive storage
     try { await db.query(`ALTER TABLE cc_statements ADD COLUMN drive_file_id VARCHAR(200) DEFAULT NULL`); } catch(e) { /* already exists */ }
+    // Previous balance as printed on the statement — lets the UI check rows against Total Payable
+    try { await db.query(`ALTER TABLE cc_statements ADD COLUMN prev_balance DECIMAL(12,2) DEFAULT NULL`); } catch(e) { /* already exists */ }
     // Add bill_drive_id column on cc_transactions for per-transaction bill PDF
     try { await db.query(`ALTER TABLE cc_transactions ADD COLUMN bill_drive_id VARCHAR(200) DEFAULT NULL`); } catch(e) { /* already exists */ }
     await db.query(`CREATE TABLE IF NOT EXISTS cc_transactions (
@@ -370,16 +424,46 @@ function parseCCAmount(str) {
   return parseFloat(String(str||'').replace(/[^0-9.]/g,'')) || 0;
 }
 
-// Deduplicate transactions: same date+amount → keep the one with the longest description
-function dedupeTxns(txns) {
-  const seen = new Map();
-  for (const t of txns) {
-    const key = `${t.txn_date}|${t.amount}|${t.txn_type}`;
-    const existing = seen.get(key);
-    if (!existing || String(t.description||'').length > String(existing.description||'').length)
-      seen.set(key, t);
+// The AI doesn't reliably honour the [green] tags pdfToText adds (and misreads
+// HDFC's "+ 168" reward points as credit signs), so on a statement that colours
+// its credits green, colour decides: for each dated amount in the text, that
+// many matching rows are credits and the rest are debits
+function applyGreenCredits(transactions, pdfText) {
+  const MON = { jan:'01', feb:'02', mar:'03', apr:'04', may:'05', jun:'06', jul:'07', aug:'08', sep:'09', oct:'10', nov:'11', dec:'12' };
+  const lineDate = line => {
+    let m = line.match(/\b(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*,?\s+(\d{4})\b/i);
+    if (m) return `${m[3]}-${MON[m[2].toLowerCase()]}-${m[1].padStart(2,'0')}`;
+    m = line.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
+    return m ? `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}` : null;
+  };
+  const green = new Map(), seen = new Set();
+  for (const line of String(pdfText||'').split('\n')) {
+    const date = lineDate(line);
+    if (!date) continue;
+    for (const m of line.matchAll(/(\d[\d,]*\.\d{2})( \[green\])?/g)) {
+      const key = `${date}|${parseCCAmount(m[1])}`;
+      seen.add(key);
+      if (m[2]) green.set(key, (green.get(key) || 0) + 1);
+    }
   }
-  return Array.from(seen.values());
+  if (!green.size) return transactions; // not a colour-coded statement — keep the AI's types
+  const done = new Map();
+  for (const t of transactions) {
+    const key = `${t.txn_date}|${t.amount}`;
+    if (!seen.has(key)) continue; // row not found in the text — leave it alone
+    const n = done.get(key) || 0;
+    done.set(key, n + 1);
+    t.txn_type = n < (green.get(key) || 0) ? 'credit' : 'debit';
+  }
+  return transactions;
+}
+
+// Credit if the AI said "Cr", or the description is a cashback/refund
+// (the AI sometimes marks those "Dr"); reversals stay as the AI typed them
+function isCCCredit(t) {
+  if (String(t.type||'').trim().toLowerCase() === 'cr') return true;
+  const desc = String(t.description||'').toLowerCase();
+  return /cash\s*back|refund/.test(desc) && !/reversal/.test(desc);
 }
 
 function parseAmexCC(j, txns) {
@@ -402,13 +486,13 @@ function parseAmexCC(j, txns) {
   const payable    = parseCCAmount(f['Closing Balance Rs'] || f['Total Amount Due'] || f['New Balance']);
   const minDue     = parseCCAmount(f['Minimum Payment Rs'] || f['Minimum Due'] || f['Minimum Amount Due'] || f['Minimum Payment']);
   const period     = f['Statement Period'] || f['Billing Period'] || f['For the period'] || '';
-  const transactions = dedupeTxns((txns || []).map(t => {
-    const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
+  const transactions = (txns || []).map(t => {
+    const isCredit = isCCCredit(t);
     const amount   = parseCCAmount(t.amount);
     if (!amount) return null;
     const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]) || parseCCDateLong(t.date);
     return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
-  }).filter(Boolean));
+  }).filter(Boolean);
   return { bankName:'AMEX', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
@@ -421,13 +505,13 @@ function parseHdfcCC(j, txns) {
   const payable    = parseCCAmount(f['Total Amount Due']);
   const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Amount Due']);
   const period     = f['Billing Period'] || '';
-  const transactions = dedupeTxns((txns || []).map(t => {
-    const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
+  const transactions = (txns || []).map(t => {
+    const isCredit = isCCCredit(t);
     const amount   = parseCCAmount(t.amount);
     if (!amount) return null;
     const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]);
     return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
-  }).filter(Boolean));
+  }).filter(Boolean);
   return { bankName:'HDFC', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
@@ -441,13 +525,13 @@ function parseAxisCC(j, txns) {
   const payable    = parseCCAmount(f['Total Amount Due'] || f['Total Payment Due'] || f['Payable Amount']);
   const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Amount Due'] || f['Minimum Payment Due']);
   const period     = f['Billing Period'] || f['Statement Period'] || '';
-  const transactions = dedupeTxns((txns || []).map(t => {
-    const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
+  const transactions = (txns || []).map(t => {
+    const isCredit = isCCCredit(t);
     const amount   = parseCCAmount(t.amount);
     if (!amount) return null;
     const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]);
     return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
-  }).filter(Boolean));
+  }).filter(Boolean);
   return { bankName:'AXIS', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
@@ -460,13 +544,13 @@ function parseRblCC(j, txns) {
   const payable    = parseCCAmount(f['Total Amount Due'] || f['Payable Amount']);
   const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Amount Due'] || f['Minimum Payment Due']);
   const period     = f['Billing Period'] || f['Statement Period'] || '';
-  const transactions = dedupeTxns((txns || []).map(t => {
-    const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
+  const transactions = (txns || []).map(t => {
+    const isCredit = isCCCredit(t);
     const amount   = parseCCAmount(t.amount);
     if (!amount) return null;
     const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]);
     return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
-  }).filter(Boolean));
+  }).filter(Boolean);
   return { bankName:'RBL Bank', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
@@ -479,13 +563,13 @@ function parseIciciCC(j, txns) {
   const payable    = parseCCAmount(f['Total Amount Due'] || f['Total Amount due'] || f['Payable Amount']);
   const minDue     = parseCCAmount(f['Minimum Due'] || f['Minimum Amount Due'] || f['Minimum Amount due']);
   const period     = f['Billing Period'] || f['Statement Period'] || '';
-  const transactions = dedupeTxns((txns || []).map(t => {
-    const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
+  const transactions = (txns || []).map(t => {
+    const isCredit = isCCCredit(t);
     const amount   = parseCCAmount(t.amount);
     if (!amount) return null;
     const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]);
     return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
-  }).filter(Boolean));
+  }).filter(Boolean);
   return { bankName:'ICICI', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
@@ -504,13 +588,13 @@ function parseSbiCC(j, txns) {
   const minDue     = parseCCAmount(f['**Minimum Amount Due'] || f['Minimum Amount Due'] || f['Minimum Due']);
   // SBI PDF header: "for Statement Period"
   const period     = f['for Statement Period'] || f['Statement Period'] || f['Billing Period'] || '';
-  const transactions = dedupeTxns((txns || []).map(t => {
-    const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
+  const transactions = (txns || []).map(t => {
+    const isCredit = isCCCredit(t);
     const amount   = parseCCAmount(t.amount);
     if (!amount) return null;
     const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]);
     return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
-  }).filter(Boolean));
+  }).filter(Boolean);
   return { bankName:'SBI', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
@@ -529,13 +613,13 @@ function parseScbCC(j, txns) {
   const minDue     = parseCCAmount(f['Minimum Payment Due (INR)'] || f['Minimum Payment Due'] || f['Minimum Due'] || f['Minimum Amount Due']);
   // SCB PDF: "Statement Period"
   const period     = f['Statement Period'] || f['Billing Period'] || '';
-  const transactions = dedupeTxns((txns || []).map(t => {
-    const isCredit = String(t.type||'').trim().toLowerCase() === 'cr';
+  const transactions = (txns || []).map(t => {
+    const isCredit = isCCCredit(t);
     const amount   = parseCCAmount(t.amount);
     if (!amount) return null;
     const txn_date = parseCCDateDMY(String(t.date || '').split(' ')[0]) || parseCCDateLong(t.date);
     return { txn_date, description: String(t.description || '').trim(), amount, txn_type: isCredit ? 'credit' : 'debit' };
-  }).filter(Boolean));
+  }).filter(Boolean);
   return { bankName:'SCB', cardNumber, statementDate:stmtDate, paymentDueDate:dueDate, payableAmount:payable, minAmountDue:minDue, statementPeriod:period, transactions };
 }
 
@@ -567,18 +651,50 @@ function parseCCJson(extracted, filename) {
   return { bankName:bank, cardNumber:'Unknown Card', statementDate:null, paymentDueDate:null, payableAmount:0, minAmountDue:0, statementPeriod:'', transactions:[] };
 }
 
+// Same card if the visible trailing digits agree (the shorter tail, at least 2)
+// and, when both show a leading run of digits, those agree too
+function sameMaskedCard(a, b) {
+  const tailA = (String(a).match(/(\d+)\D*$/) || [])[1] || '';
+  const tailB = (String(b).match(/(\d+)\D*$/) || [])[1] || '';
+  const n = Math.min(tailA.length, tailB.length, 4);
+  if (n < 2 || tailA.slice(-n) !== tailB.slice(-n)) return false;
+  const headA = (String(a).match(/^\D*(\d+)/) || [])[1] || '';
+  const headB = (String(b).match(/^\D*(\d+)/) || [])[1] || '';
+  if (headA === tailA || headB === tailB) return true; // one side shows no leading digits
+  const m = Math.min(headA.length, headB.length);
+  return headA.slice(0, m) === headB.slice(0, m);
+}
+
+async function matchExistingCard(bankName, cardNumber) {
+  const [cards] = await db.query('SELECT card_number FROM cc_cards WHERE bank_name=?', [bankName]);
+  if (cards.some(c => c.card_number === cardNumber)) return cardNumber;
+  const hit = cards.find(c => sameMaskedCard(c.card_number, cardNumber));
+  return hit ? hit.card_number : cardNumber;
+}
+
 async function saveCCToDb(parsed) {
-  const { bankName, cardNumber, statementDate, paymentDueDate, payableAmount, minAmountDue, statementPeriod, transactions } = parsed;
+  const { bankName, statementDate, paymentDueDate, payableAmount, minAmountDue, statementPeriod, transactions } = parsed;
+  // The AI masks the same card differently between uploads (558983XXXXXX6349 vs
+  // 558983XXXXXXXX6349, ...0073 vs ...73) — reuse the bank's existing card that matches
+  const cardNumber = await matchExistingCard(bankName, parsed.cardNumber);
   await db.query('INSERT IGNORE INTO cc_cards (bank_name,card_number) VALUES (?,?)', [bankName, cardNumber]);
   const [[card]] = await db.query('SELECT id FROM cc_cards WHERE bank_name=? AND card_number=?', [bankName, cardNumber]);
   await db.query(`INSERT IGNORE INTO cc_statements (card_id,statement_date,payment_due_date,payable_amount,min_amount_due,statement_period) VALUES (?,?,?,?,?,?)`,
     [card.id, statementDate, paymentDueDate, payableAmount, minAmountDue, statementPeriod]);
   const [[stmt]] = await db.query('SELECT id FROM cc_statements WHERE card_id=? AND statement_date<=>?', [card.id, statementDate]);
+  // Identical rows can be real (two same-day markup fees of the same amount), so
+  // match by count: insert only as many copies as the statement doesn't hold yet
+  if (parsed.prevBalance != null)
+    await db.query('UPDATE cc_statements SET prev_balance=? WHERE id=?', [parsed.prevBalance, stmt.id]);
   let added = 0;
+  const seenInUpload = new Map();
   for (const t of transactions) {
-    const [[ex]] = await db.query('SELECT id FROM cc_transactions WHERE statement_id=? AND txn_date<=>? AND description=? AND amount=?',
-      [stmt.id, t.txn_date, t.description, t.amount]);
-    if (!ex) {
+    const key = `${t.txn_date}|${t.description}|${t.amount}|${t.txn_type||'debit'}`;
+    const nth = (seenInUpload.get(key) || 0) + 1;
+    seenInUpload.set(key, nth);
+    const [[{ cnt }]] = await db.query('SELECT COUNT(*) AS cnt FROM cc_transactions WHERE statement_id=? AND txn_date<=>? AND description=? AND amount=? AND txn_type=?',
+      [stmt.id, t.txn_date, t.description, t.amount, t.txn_type||'debit']);
+    if (cnt < nth) {
       await db.query('INSERT INTO cc_transactions (statement_id,txn_date,description,amount,txn_type) VALUES (?,?,?,?,?)',
         [stmt.id, t.txn_date, t.description, t.amount, t.txn_type||'debit']);
       added++;
@@ -599,7 +715,17 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
     // Convert each PDF page to PNG, then send all pages as images to OpenAI
     const pdfPassword = req.body.password || '';
     const pageImages = await pdfToBase64Images(req.file.buffer, pdfPassword);
+    let pdfText = '';
+    try { pdfText = await pdfToText(req.file.buffer, pdfPassword); } catch (e) { console.error('PDF text layer failed:', e.message); }
     const content = [{ type: 'input_text', text: CC_EXTRACT_PROMPT }];
+    if (pdfText.replace(/--- Page \d+ ---/g, '').trim()) {
+      content.push({ type: 'input_text', text:
+        'TEXT LAYER of the same PDF, extracted exactly. Take every amount, date and description from this text '
+        + '(it is exact; the images may blur digits). Use the page images only for layout and for Dr/Cr cues that '
+        + 'text cannot carry (green amounts, "+" signs, CR columns). A value tagged [green] is printed in green on the '
+        + 'statement, which means a credit ("Cr"). Every transaction line in this text must appear '
+        + 'in your output — including repeated identical lines.\n\n' + pdfText });
+    }
     for (const b64 of pageImages) {
       content.push({ type: 'input_image', image_url: `data:image/jpeg;base64,${b64}` });
     }
@@ -612,6 +738,9 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
     const raw    = safeParseCC(aiResp.output_text);
     const parsed = parseCCJson(raw, req.file.originalname);
     if (parsed.bankName === 'Unknown') return res.status(422).json({ error:'Bank not detected. Supported: AMEX, HDFC, RBL Bank, ICICI, AXIS, SBI, SCB' });
+    applyGreenCredits(parsed.transactions, pdfText);
+    const prevRaw = String((raw.fields || raw)['Previous Balance'] ?? '').trim();
+    parsed.prevBalance = /\d/.test(prevRaw) ? parseCCAmount(prevRaw) * (/^-|cr\b/i.test(prevRaw) ? -1 : 1) : null;
 
     const saved = await saveCCToDb(parsed);
     // Upload original PDF to Drive (best-effort — statement data already saved)
@@ -648,7 +777,8 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
     if (!(await canViewCreditCards(req.session))) return res.status(403).json({ error:'Access denied' });
     const [cards] = await db.query('SELECT * FROM cc_cards ORDER BY bank_name,card_number');
     const [stmts] = await db.query('SELECT * FROM cc_statements ORDER BY statement_date DESC');
-    const [txns]  = await db.query('SELECT * FROM cc_transactions ORDER BY txn_date');
+    // id breaks ties so same-day rows keep the statement's printed order
+    const [txns]  = await db.query('SELECT * FROM cc_transactions ORDER BY txn_date, id');
     const result = {};
     for (const card of cards) {
       if (!result[card.bank_name]) result[card.bank_name] = {};
@@ -660,10 +790,12 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
         payment_due_date: s.payment_due_date ? s.payment_due_date.toISOString().substring(0,10) : '',
         payable_amount:   parseFloat(s.payable_amount)||0,
         min_amount_due:   parseFloat(s.min_amount_due)||0,
+        prev_balance:     s.prev_balance == null ? null : parseFloat(s.prev_balance),
         statement_period: s.statement_period||'',
         pdf_url: s.drive_file_id ? `https://drive.google.com/file/d/${s.drive_file_id}/view` : null,
-        transactions: (() => {
-          const raw = txns.filter(t => t.statement_id === s.id).map(t => ({
+        // Every stored row is shown — identical rows can be real (saveCCToDb
+        // inserts by count, so re-uploads never double them)
+        transactions: txns.filter(t => t.statement_id === s.id).map(t => ({
             id:          t.id,
             date:        t.txn_date ? t.txn_date.toISOString().substring(0,10) : '',
             description: t.description||'',
@@ -672,19 +804,7 @@ app.get('/api/credit-cards/data', requireAuth, async (req, res) => {
             expenses:     t.expenses||'',
             department:   t.department||'',
             bill_drive_id: t.bill_drive_id||null
-          }));
-          // Dedup by date+amount+type — keep row with longest description (or any saved expenses/dept)
-          const seen = new Map();
-          for (const t of raw) {
-            const key = `${t.date}|${t.amount}|${t.txn_type}`;
-            const ex = seen.get(key);
-            const prefer = !ex
-              || (t.expenses || t.department)                             // prefer saved metadata
-              || t.description.length > ex.description.length;           // else prefer longer desc
-            if (prefer) seen.set(key, t);
-          }
-          return Array.from(seen.values());
-        })()
+          }))
       }));
     }
     res.json(result);
@@ -844,5 +964,5 @@ app.post('/api/credit-cards/drive-upload', requireAuth, async (req, res) => {
     }
     res.json({ success: true });
   } catch(err) { res.status(500).json({ error: err.message }); }
-});
+});
 };

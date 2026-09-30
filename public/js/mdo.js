@@ -921,9 +921,18 @@ async function _ccDoUpload(password) {
       const wrongMsg = data.error === 'PDF_WRONG_PASSWORD' ? '<span style="color:#dc2626">❌ Wrong password.</span> ' : '';
       if (status) status.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px">
         ${wrongMsg}<span style="color:#d97706">🔒 PDF is password protected. Enter password:</span>
-        <input type="password" id="ccPdfPwdRetry" placeholder="Enter PDF password"
-          style="padding:5px 10px;border:1px solid #d97706;border-radius:6px;font-size:12px;width:160px;outline:none"
-          onkeydown="if(event.key==='Enter')ccRetryWithPassword()">
+        <span style="position:relative;display:inline-flex;align-items:center">
+          <input type="password" id="ccPdfPwdRetry" placeholder="Enter PDF password"
+            style="padding:5px 30px 5px 10px;border:1px solid #d97706;border-radius:6px;font-size:12px;width:160px;outline:none"
+            onkeydown="if(event.key==='Enter')ccRetryWithPassword()">
+          <button type="button" title="Show password" aria-label="Show password"
+            onclick="const i=document.getElementById('ccPdfPwdRetry');const show=i.type==='password';i.type=show?'text':'password';this.querySelector('.eye-on').style.display=show?'none':'';this.querySelector('.eye-off').style.display=show?'':'none';this.title=this.ariaLabel=show?'Hide password':'Show password';i.focus();"
+            onmouseover="this.style.color='#475569'" onmouseout="this.style.color='#94a3b8'"
+            style="position:absolute;right:6px;display:flex;align-items:center;background:none;border:none;cursor:pointer;padding:2px;color:#94a3b8">
+            <svg class="eye-on" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="eye-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 19c-6.5 0-10-7-10-7a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+          </button>
+        </span>
         <button onclick="ccRetryWithPassword()"
           style="padding:5px 12px;background:#d97706;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">
           Unlock & Upload
@@ -1816,7 +1825,8 @@ function ccRenderStatements() {
       ${(() => {
         const purchases   = allTxns.filter(t=>t.txn_type!=='credit').reduce((a,t)=>a+(parseFloat(t.amount)||0),0);
         const payments    = allTxns.filter(t=>t.txn_type==='credit').reduce((a,t)=>a+(parseFloat(t.amount)||0),0);
-        const prevBal     = curPayable - purchases + payments;
+        // Printed previous balance when the statement gave one, else back-derived
+        const prevBal     = s.prev_balance != null ? s.prev_balance : curPayable - purchases + payments;
         const fmt = v => '₹' + Math.abs(v).toLocaleString('en-IN',{minimumFractionDigits:2});
         const cell = (label, val, color, op) =>
           `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 16px;flex:1;min-width:0">
@@ -1879,6 +1889,24 @@ function ccRenderStatements() {
               <td style="padding:9px 12px;font-size:13px;font-weight:800;color:#dc2626;text-align:right">₹${txSum.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
               <td colspan="3"></td>
             </tr>
+            ${s.prev_balance != null ? (() => {
+              // Reconcile every row (not just the filtered ones) against Total Payable;
+              // banks round the printed total, so ₹1 either way still counts as a match
+              const f = v => (v < 0 ? '−₹' : '₹') + Math.abs(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+              const dr = allTxns.filter(t=>t.txn_type!=='credit').reduce((a,t)=>a+(parseFloat(t.amount)||0),0);
+              const cr = allTxns.filter(t=>t.txn_type==='credit').reduce((a,t)=>a+(parseFloat(t.amount)||0),0);
+              const net = s.prev_balance + dr - cr;
+              const ok  = Math.abs(net - curPayable) <= 1;
+              return `<tr style="background:${ok ? '#f0fdf4' : '#fef2f2'}">
+                <td colspan="${NCOLS}" style="padding:9px 12px;font-size:12px;color:#334155">
+                  Prev. Balance ${f(s.prev_balance)} + Purchases ${f(dr)} − Payments ${f(cr)} =
+                  <b>${f(net)}</b>
+                  ${ok
+                    ? `<span style="color:#16a34a;font-weight:700;margin-left:6px">✓ matches Total Payable ${f(curPayable)}</span>`
+                    : `<span style="color:#dc2626;font-weight:700;margin-left:6px">⚠ does not match Total Payable ${f(curPayable)} (off by ${f(net - curPayable)}) — some rows may be missing or have the wrong type</span>`}
+                </td>
+              </tr>`;
+            })() : ''}
           </tfoot>` : ''}
         </table>
       </div>
