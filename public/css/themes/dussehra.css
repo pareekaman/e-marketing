@@ -7,8 +7,13 @@
   --page-bg:#FBF1E6; --sidebar-top:#3B0D0D; --sidebar-bottom:#260707;
 }
 
-/* Decoration (js/themes/dussehra.js) */
-.td-ravan { left:70px; bottom:0; width:128px; opacity:.96; transform-origin:50% 100%; will-change:transform;
-  filter:drop-shadow(0 4px 6px rgba(0,0,0,.25)); animation:td-sway 6s ease-in-out infinite; }
-@keyframes td-sway { 0%,100% { transform:rotate(-1.4deg); } 50% { transform:rotate(1.4deg); } }
-@media (prefers-reduced-motion: reduce) { .td-ravan { animation:none; } }
+/* Decoration (js/themes/dussehra.js): Shri Ram bottom-left shooting across the page at
+   Ravan bottom-right (left of the chatbot button). Arrows fly across the whole page. */
+.td-ram { left:74px; bottom:0; width:112px; transform:scaleX(-1); filter:drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+.td-ravan { right:104px; bottom:0; width:138px; transform-origin:50% 100%; will-change:transform;
+  filter:drop-shadow(0 0 10px rgba(220,38,38,.55)) drop-shadow(0 4px 6px rgba(0,0,0,.3)); animation:td-menace 3.2s ease-in-out infinite; }
+@keyframes td-menace { 0%,100% { transform:rotate(-1.6deg) scale(1); } 50% { transform:rotate(1.6deg) scale(1.03); } }
+.td-ravan.td-hit { animation:td-recoil .38s ease-out; }
+@keyframes td-recoil { 0% { transform:translateX(0) rotate(0); } 30% { transform:translateX(10px) rotate(4deg); filter:brightness(1.8) drop-shadow(0 0 14px #ff3b1a); } 100% { transform:translateX(0) rotate(0); } }
+.td-arrow { width:64px; will-change:transform; }
+@media (prefers-reduced-motion: reduce) { .td-ravan, .td-ravan.td-hit { animation:none; } }
