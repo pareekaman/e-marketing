@@ -18,5 +18,7 @@
 
 /* Decoration (js/themes/holi.js) */
 .td-splat { width:112px; opacity:.85; }
-.td-splat-1 { left:66px; bottom:0; transform:rotate(-8deg); }
+.td-splat-1 { left:66px; bottom:0; transform:rotate(-8deg); transition:translate .3s var(--ease); }
+/* The sidebar widens from 60px to 232px on hover and sits above this layer: step aside with it. */
+.sidebar:hover ~ #themeDecor .td-splat-1 { translate:172px 0; }
 .td-splat-2 { right:110px; bottom:-14px; transform:rotate(12deg); }

@@ -16,4 +16,7 @@
 .td-flame { transform-box:fill-box; transform-origin:50% 100%; animation:td-flicker 1.1s ease-in-out infinite alternate; }
 .td-diya-2 .td-flame { animation-delay:.4s; }
 @keyframes td-flicker { from { transform:scale(1,.9) skewX(-3deg); opacity:.88; } to { transform:scale(1.06,1.08) skewX(3deg); opacity:1; } }
-@media (prefers-reduced-motion: reduce) { .td-rangoli, .td-flame { animation:none; } }
+/* The sidebar widens from 60px to 232px on hover and sits above this layer: step aside with it. */
+.td-rangoli, .td-diya { transition:translate .3s var(--ease); }
+.sidebar:hover ~ #themeDecor .td-rangoli, .sidebar:hover ~ #themeDecor .td-diya { translate:172px 0; }
+@media (prefers-reduced-motion: reduce) { .td-rangoli, .td-flame { animation:none; } .td-rangoli, .td-diya { transition:none; } }
