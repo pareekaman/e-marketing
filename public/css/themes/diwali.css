@@ -20,3 +20,25 @@
 .td-rangoli, .td-diya { transition:translate .3s var(--ease); }
 .sidebar:hover ~ #themeDecor .td-rangoli, .sidebar:hover ~ #themeDecor .td-diya { translate:172px 0; }
 @media (prefers-reduced-motion: reduce) { .td-rangoli, .td-flame { animation:none; } .td-rangoli, .td-diya { transition:none; } }
+
+/* Lighting: string lights (jhalar) along the top — a wire and four bulb layers that light up in turn */
+.td-jhalar { position:absolute; left:60px; right:0; top:0; height:26px; }
+.td-jhalar i { position:absolute; inset:0; background-repeat:repeat-x; background-size:96px 26px; will-change:opacity; }
+.td-jhalar .w { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='26'%3E%3Cpath d='M0 2 Q48 12 96 2' fill='none' stroke='%237C2D12' stroke-width='1.3'/%3E%3C/svg%3E"); }
+.td-jhalar .b1 { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='26'%3E%3Ccircle cx='12' cy='11.2' r='8' fill='%23FFC107' fill-opacity='.18'/%3E%3Ccircle cx='12' cy='11.2' r='5.5' fill='%23FFC107' fill-opacity='.35'/%3E%3Crect x='10.5' y='4.2' width='3' height='3' fill='%23334155'/%3E%3Cellipse cx='12' cy='11.2' rx='3' ry='4.2' fill='%23FFC107'/%3E%3Cellipse cx='11' cy='9.7' rx='1' ry='1.5' fill='white' fill-opacity='.7'/%3E%3C/svg%3E"); animation:td-chase 1.2s ease-in-out infinite; }
+.td-jhalar .b2 { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='26'%3E%3Ccircle cx='36' cy='13.7' r='8' fill='%23E91E63' fill-opacity='.18'/%3E%3Ccircle cx='36' cy='13.7' r='5.5' fill='%23E91E63' fill-opacity='.35'/%3E%3Crect x='34.5' y='6.7' width='3' height='3' fill='%23334155'/%3E%3Cellipse cx='36' cy='13.7' rx='3' ry='4.2' fill='%23E91E63'/%3E%3Cellipse cx='35' cy='12.2' rx='1' ry='1.5' fill='white' fill-opacity='.7'/%3E%3C/svg%3E"); animation:td-chase 1.2s ease-in-out .3s infinite; }
+.td-jhalar .b3 { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='26'%3E%3Ccircle cx='60' cy='13.7' r='8' fill='%2322C55E' fill-opacity='.18'/%3E%3Ccircle cx='60' cy='13.7' r='5.5' fill='%2322C55E' fill-opacity='.35'/%3E%3Crect x='58.5' y='6.7' width='3' height='3' fill='%23334155'/%3E%3Cellipse cx='60' cy='13.7' rx='3' ry='4.2' fill='%2322C55E'/%3E%3Cellipse cx='59' cy='12.2' rx='1' ry='1.5' fill='white' fill-opacity='.7'/%3E%3C/svg%3E"); animation:td-chase 1.2s ease-in-out .6s infinite; }
+.td-jhalar .b4 { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='26'%3E%3Ccircle cx='84' cy='11.2' r='8' fill='%23FF6D00' fill-opacity='.18'/%3E%3Ccircle cx='84' cy='11.2' r='5.5' fill='%23FF6D00' fill-opacity='.35'/%3E%3Crect x='82.5' y='4.2' width='3' height='3' fill='%23334155'/%3E%3Cellipse cx='84' cy='11.2' rx='3' ry='4.2' fill='%23FF6D00'/%3E%3Cellipse cx='83' cy='9.7' rx='1' ry='1.5' fill='white' fill-opacity='.7'/%3E%3C/svg%3E"); animation:td-chase 1.2s ease-in-out .9s infinite; }
+@keyframes td-chase { 0%,100% { opacity:.3; } 50% { opacity:1; } }
+/* sky lantern swinging at the top right, in the margin beside the search box */
+.td-lantern { top:0; right:6px; width:40px; transform-origin:50% 0; filter:drop-shadow(0 0 10px rgba(255,160,0,.7));
+  animation:td-swing 3.4s ease-in-out infinite alternate; }
+@keyframes td-swing { from { transform:rotate(-5deg); } to { transform:rotate(5deg); } }
+.td-lglow { animation:td-lglow 1.3s ease-in-out infinite alternate; }
+@keyframes td-lglow { from { opacity:.55; } to { opacity:1; } }
+.td-tassel { transform-box:fill-box; transform-origin:50% 0; animation:td-tassel 1.1s ease-in-out infinite alternate; }
+@keyframes td-tassel { from { transform:skewX(-10deg); } to { transform:skewX(10deg); } }
+/* the diyas' halo breathes */
+.td-glow { transform-box:fill-box; transform-origin:center; animation:td-glow 1.6s ease-in-out infinite alternate; }
+@keyframes td-glow { from { opacity:.45; transform:scale(.9); } to { opacity:1; transform:scale(1.2); } }
+@media (prefers-reduced-motion: reduce) { .td-jhalar i, .td-lantern, .td-lglow, .td-tassel, .td-glow { animation:none; } }
