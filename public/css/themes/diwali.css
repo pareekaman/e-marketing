@@ -42,3 +42,11 @@
 .td-glow { transform-box:fill-box; transform-origin:center; animation:td-glow 1.6s ease-in-out infinite alternate; }
 @keyframes td-glow { from { opacity:.45; transform:scale(.9); } to { opacity:1; transform:scale(1.2); } }
 @media (prefers-reduced-motion: reduce) { .td-jhalar i, .td-lantern, .td-lglow, .td-tassel, .td-glow { animation:none; } }
+/* "शुभ दीपावली" above the rangoli; Devanagari needs a system font, Inter has none */
+.td-greet { position:absolute; left:78px; bottom:156px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
+  color:#fff; padding:7px 14px; border-radius:999px; background:linear-gradient(135deg,#F59E0B,#C2410C 60%,#BE185D);
+  box-shadow:0 0 0 2px rgba(255,255,255,.75), 0 0 18px rgba(255,170,0,.7); transition:translate .3s var(--ease);
+  animation:td-greet 2.4s ease-in-out infinite alternate; }
+@keyframes td-greet { from { transform:translateY(0); box-shadow:0 0 0 2px rgba(255,255,255,.75), 0 0 10px rgba(255,170,0,.45); } to { transform:translateY(-4px); box-shadow:0 0 0 2px rgba(255,255,255,.75), 0 0 22px rgba(255,170,0,.9); } }
+.sidebar:hover ~ #themeDecor .td-greet { translate:172px 0; }
+@media (prefers-reduced-motion: reduce) { .td-greet { animation:none; transition:none; } }

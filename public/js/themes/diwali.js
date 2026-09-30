@@ -42,6 +42,12 @@ ThemeDecor.register('diwali', function (d) {
   jhalar.innerHTML = '<i class="w"></i><i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i>';
   d.layer.appendChild(jhalar);
 
+  // The greeting, in Hindi as asked for, above the rangoli.
+  var greet = document.createElement('div');
+  greet.className = 'td-item td-greet';
+  greet.textContent = '🪔 शुभ दीपावली';
+  d.layer.appendChild(greet);
+
   // A paper sky lantern (akash kandil) swinging at the top right, glowing from inside.
   var tassels = '';
   ['#F5C518', '#DC2626', '#E91E63', '#DC2626', '#F5C518'].forEach(function (c, i) {
