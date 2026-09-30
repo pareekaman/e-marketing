@@ -8,7 +8,7 @@
 }
 
 /* Decoration (js/themes/diwali.js) */
-.td-rangoli { left:70px; bottom:8px; width:140px; opacity:.92; will-change:transform; animation:td-spin 120s linear infinite; }
+.td-rangoli { left:70px; bottom:8px; width:150px; filter:drop-shadow(0 3px 6px rgba(0,0,0,.2)); }
 @keyframes td-spin { to { transform:rotate(360deg); } }
 .td-diya { bottom:8px; width:46px; filter:drop-shadow(0 3px 4px rgba(0,0,0,.25)); }
 .td-diya-1 { left:222px; }
@@ -50,3 +50,10 @@
 @keyframes td-greet { from { transform:translateY(0); box-shadow:0 0 0 2px rgba(255,255,255,.75), 0 0 10px rgba(255,170,0,.45); } to { transform:translateY(-4px); box-shadow:0 0 0 2px rgba(255,255,255,.75), 0 0 22px rgba(255,170,0,.9); } }
 .sidebar:hover ~ #themeDecor .td-greet { translate:172px 0; }
 @media (prefers-reduced-motion: reduce) { .td-greet { animation:none; transition:none; } }
+/* rangoli layers turn at their own pace, outer and inner against the middle; the lotus breathes */
+.td-rg-out, .td-rg-mid, .td-rg-in { transform-box:view-box; transform-origin:100px 100px; }
+.td-rg-out { animation:td-spin 40s linear infinite; }
+.td-rg-mid { animation:td-spin 26s linear infinite reverse; }
+.td-rg-in { animation:td-spin 14s linear infinite, td-bloom 2.2s ease-in-out infinite alternate; }
+@keyframes td-bloom { from { scale:.92; } to { scale:1.08; } }
+@media (prefers-reduced-motion: reduce) { .td-rg-out, .td-rg-mid, .td-rg-in { animation:none; } }

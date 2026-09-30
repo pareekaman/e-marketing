@@ -1,25 +1,40 @@
 /* Diwali decoration: a rangoli in the corner, two flickering diyas, and crackers bursting overhead. */
 ThemeDecor.register('diwali', function (d) {
+  // A layered rangoli: a lotus at the heart, rings of petals in rangoli colours, four small diyas at
+  // the quarters, and dotted borders. The layers are separate groups (.td-rg-*) so they can turn
+  // at different speeds and in opposite directions.
   function rangoli() {
-    var rings = [
-      { n: 16, r: 80, rx: 8, ry: 20, col: '#E91E63' },
-      { n: 12, r: 62, rx: 9, ry: 20, col: '#FF9800' },
-      { n: 12, r: 46, rx: 8, ry: 16, col: '#FFEB3B' },
-      { n: 8,  r: 30, rx: 8, ry: 14, col: '#26C6DA' }
-    ];
+    function ring(n, fn) { var s = ''; for (var i = 0; i < n; i++) s += fn(i * 360 / n); return s; }
+    function rot(a, inner) { return '<g transform="rotate(' + a + ' 100 100)">' + inner + '</g>'; }
+    var petal = function (r, len, w, col, edge) {
+      return '<path d="M100 ' + (100 - r) + ' Q' + (100 + w) + ' ' + (100 - r - len / 2) + ' 100 ' + (100 - r - len) +
+             ' Q' + (100 - w) + ' ' + (100 - r - len / 2) + ' 100 ' + (100 - r) + ' Z" fill="' + col + '" stroke="' + edge + '" stroke-width="1"/>';
+    };
+    var dots = function (n, r, rad, col) {
+      return ring(n, function (a) { return rot(a, '<circle cx="100" cy="' + (100 - r) + '" r="' + rad + '" fill="' + col + '"/>'); });
+    };
     var s = '<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">';
-    s += '<circle cx="100" cy="100" r="97" fill="#FFF8E1" fill-opacity="0.55" stroke="#E91E63" stroke-width="1.5"/>';
-    rings.forEach(function (g) {
-      for (var i = 0; i < g.n; i++) {
-        s += '<ellipse cx="100" cy="' + (100 - g.r) + '" rx="' + g.rx + '" ry="' + g.ry + '" fill="' + g.col + '" stroke="#fff" stroke-width="1" ' +
-             'transform="rotate(' + (i * 360 / g.n) + ' 100 100)"/>';
-      }
-    });
-    for (var k = 0; k < 24; k++) {
-      var a = k * Math.PI / 12;
-      s += '<circle cx="' + (100 + 92 * Math.sin(a)).toFixed(1) + '" cy="' + (100 - 92 * Math.cos(a)).toFixed(1) + '" r="2.6" fill="#7B1FA2"/>';
-    }
-    s += '<circle cx="100" cy="100" r="13" fill="#7B1FA2"/><circle cx="100" cy="100" r="6" fill="#FFF8E1"/></svg>';
+    // base: a soft cream disc with a magenta rim and a white dotted border
+    s += '<circle cx="100" cy="100" r="98" fill="#FFF3D6" fill-opacity=".85" stroke="#C2185B" stroke-width="2"/>';
+    s += dots(48, 93, 1.6, '#C2185B');
+    // colour bands under the petal rings, so the pattern reads as filled powder, not outlines
+    s += '<circle cx="100" cy="100" r="86" fill="#FFE082"/><circle cx="100" cy="100" r="62" fill="#F8BBD0"/>' +
+         '<circle cx="100" cy="100" r="40" fill="#FFF3D6"/><circle cx="100" cy="100" r="30" fill="#B2EBF2"/>';
+    // outer layer: 16 magenta petals tipped with gold, between them green leaves
+    s += '<g class="td-rg-out">' +
+      ring(16, function (a) { return rot(a, petal(58, 30, 14, '#E91E63', '#fff') + '<circle cx="100" cy="' + (100 - 86) + '" r="2.4" fill="#FFC107"/>'); }) +
+      ring(16, function (a) { return rot(a + 11.25, petal(62, 22, 8, '#2E7D32', '#fff')); }) + '</g>';
+    // middle layer: 12 orange petals with yellow hearts, four little diyas at the quarters
+    s += '<g class="td-rg-mid">' +
+      ring(12, function (a) { return rot(a, petal(34, 26, 14, '#FF6D00', '#fff') + petal(38, 14, 7, '#FFEB3B', 'none')); }) +
+      ring(4, function (a) { return rot(a + 15, '<path d="M92 36 Q100 46 108 36 Z" fill="#B45309"/><path d="M100 26 Q104 31 100 35 Q96 31 100 26 Z" fill="#FF9800"/>'); }) +
+      dots(24, 32, 1.8, '#fff') + '</g>';
+    // heart: a lotus of blue and purple petals around a gold centre
+    s += '<g class="td-rg-in">' +
+      ring(8, function (a) { return rot(a, petal(8, 20, 11, '#0097A7', '#fff')); }) +
+      ring(8, function (a) { return rot(a + 22.5, petal(8, 15, 8, '#7B1FA2', '#fff')); }) + '</g>';
+    s += '<circle cx="100" cy="100" r="9" fill="#FFC107" stroke="#fff" stroke-width="1.5"/><circle cx="100" cy="100" r="4" fill="#E91E63"/>';
+    s += '</svg>';
     return s;
   }
 
