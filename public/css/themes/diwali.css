@@ -1,0 +1,8 @@
+/* Diwali — deep orange and gold on a warm cream page, aubergine sidebar. */
+:root[data-theme="diwali"] {
+  --brand-1:#FFC107; --brand-2:#F29900;
+  --brand-2-rgb:242,153,0;
+  --accent:#C2410C; --accent-dark:#9A3412; --accent-light:#EA580C;
+  --accent-rgb:194,65,12; --accent-light-rgb:234,88,12;
+  --page-bg:#FDF5E6; --sidebar-top:#2D1240; --sidebar-bottom:#1C0B2B;
+}

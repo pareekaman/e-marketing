@@ -1,0 +1,8 @@
+/* Christmas — red and green, a faintly cool white page, deep pine sidebar. */
+:root[data-theme="christmas"] {
+  --brand-1:#43A047; --brand-2:#2E7D32;
+  --brand-2-rgb:46,125,50;
+  --accent:#C62828; --accent-dark:#8E0000; --accent-light:#E53935;
+  --accent-rgb:198,40,40; --accent-light-rgb:229,57,53;
+  --page-bg:#F3F8F4; --sidebar-top:#0F2E1C; --sidebar-bottom:#0A1F13;
+}

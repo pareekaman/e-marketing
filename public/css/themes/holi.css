@@ -1,0 +1,17 @@
+/* Holi — a fuchsia accent, yellow brand colour, and gulal-coloured blobs across the page. */
+:root[data-theme="holi"] {
+  --brand-1:#FBBF24; --brand-2:#F59E0B;
+  --brand-2-rgb:245,158,11;
+  --accent:#C026D3; --accent-dark:#A21CAF; --accent-light:#E879F9;
+  --accent-rgb:192,38,211; --accent-light-rgb:232,121,249;
+  --page-bg:#FBF7FF; --sidebar-top:#2E1065; --sidebar-bottom:#1E0A4A;
+}
+:root[data-theme="holi"] body {
+  background:
+    radial-gradient(700px circle at 6% -6%, rgba(236,72,153,.16), transparent 50%),
+    radial-gradient(650px circle at 100% 4%, rgba(250,204,21,.18), transparent 50%),
+    radial-gradient(700px circle at 94% 104%, rgba(34,211,238,.16), transparent 50%),
+    radial-gradient(650px circle at 0% 100%, rgba(74,222,128,.16), transparent 50%),
+    var(--page-bg);
+  background-attachment:fixed;
+}

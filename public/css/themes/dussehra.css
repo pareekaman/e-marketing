@@ -1,0 +1,8 @@
+/* Dussehra — saffron and gold with maroon, on a warm page, dark maroon sidebar. */
+:root[data-theme="dussehra"] {
+  --brand-1:#FFB300; --brand-2:#F57C00;
+  --brand-2-rgb:245,124,0;
+  --accent:#B91C1C; --accent-dark:#7F1D1D; --accent-light:#DC2626;
+  --accent-rgb:185,28,28; --accent-light-rgb:220,38,38;
+  --page-bg:#FBF1E6; --sidebar-top:#3B0D0D; --sidebar-bottom:#260707;
+}
