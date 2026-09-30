@@ -188,7 +188,11 @@ async function loadAppTheme() {
   _themeCheckedAt = Date.now();
   try {
     const r = await fetch('/api/theme', { credentials: 'include' });
-    if (r.ok) applyAppTheme((await r.json()).theme);
+    if (!r.ok) return;
+    const t = await r.json();
+    applyAppTheme(t.theme);
+    // The Theme tab is for the theme owner(s) only (theme_admin_ids on the server), not every admin.
+    if (t.canChange && typeof showThemeTab === 'function') showThemeTab();
   } catch (e) {}
 }
 
@@ -212,7 +216,6 @@ async function init() {
     // Client logins belong on the dedicated /client page, not the team app.
     if (ME.role === 'client') { window.location.replace('/client'); return; }
     loadAppTheme();
-    if (ME.role === 'admin') showThemeTab();
     const initials = ME.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
     document.getElementById('sidebarName').textContent = ME.name;
     const roleLabel = ME.role==='admin' ? '👑 Admin' : ME.role==='hod' ? '🏢 HOD' : ME.role==='pc' ? '🖥️ PC' : ME.role==='client' ? '🏢 Client' : '👤 Employee';

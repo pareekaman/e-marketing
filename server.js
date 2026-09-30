@@ -7492,6 +7492,8 @@ const PR_APPROVER_KEY = 'payment_approver_ids';
 //   31 Nikita Khandelwal   41 Naman Gupta
 const PEOPLE_SETTINGS_BY_ID = {
   billing_name_viewer_ids: [6, 7, 31, 41],
+  // Who may change the festival theme (Users > Theme). Only Naman Gupta; other admins may not.
+  theme_admin_ids: [41],
 };
 
 async function readIdSetting(key) {
@@ -9069,7 +9071,8 @@ function nextWorkingDay(user, fromDateStr, holidaysSet) {
   return _toDateStr(fromDateStr); // fallback
 }
 
-// Festival theme — one company-wide value in app_settings, changed by admins.
+// Festival theme — one company-wide value in app_settings. Only the people in theme_admin_ids
+// (PEOPLE_SETTINGS_BY_ID — Naman Gupta) may change it; being an admin is not enough.
 const APP_THEMES = ['normal', 'dussehra', 'holi', 'diwali', 'christmas'];
 const APP_THEME_KEY = 'active_theme';
 
@@ -9077,12 +9080,15 @@ app.get('/api/theme', requireAuth, async (req, res) => {
   try {
     const [[row]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [APP_THEME_KEY]);
     const theme = row && APP_THEMES.includes(row.value) ? row.value : 'normal';
-    res.json({ theme, themes: APP_THEMES });
+    const canChange = (await readIdSetting('theme_admin_ids')).includes(Number(req.session.userId));
+    res.json({ theme, themes: APP_THEMES, canChange });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.put('/api/theme', requireAuth, requireAdmin, async (req, res) => {
+app.put('/api/theme', requireAuth, async (req, res) => {
   try {
+    if (!(await readIdSetting('theme_admin_ids')).includes(Number(req.session.userId)))
+      return res.status(403).json({ error: 'Only the theme owner can change the theme' });
     const theme = req.body && req.body.theme;
     if (!APP_THEMES.includes(theme)) return res.status(400).json({ error: 'Unknown theme' });
     await db.query(

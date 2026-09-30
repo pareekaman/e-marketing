@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════════════
-// FESTIVAL THEME PICKER — "Theme" tab on the Users page, admins only.
-// Saves with PUT /api/theme (admin-only on the server too), so the tab being hidden
+// FESTIVAL THEME PICKER — "Theme" tab on the Users page, for the theme owner only (theme_admin_ids).
+// Saves with PUT /api/theme (checked on the server too), so the tab being hidden
 // from everyone else is a convenience, not the protection.
 // The preview colours below are copied from css/themes/<festival>.css — keep them in step.
 // ══════════════════════════════════════════════════════
