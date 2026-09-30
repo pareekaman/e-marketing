@@ -19,7 +19,7 @@
 .cb-panel{position:fixed;right:24px;bottom:100px;z-index:901;width:420px;max-width:calc(100vw - 32px);height:600px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 16px 40px rgba(15,23,42,.18);display:none;flex-direction:column;overflow:hidden;font-family:'Inter',sans-serif;}
 .cb-panel.open{display:flex;}
 
-.cb-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:linear-gradient(135deg,var(--accent-light,#6366f1),var(--accent,#4f46e5));color:#fff;}
+.cb-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:linear-gradient(135deg,var(--accent-light,var(--accent-light)),var(--accent,var(--accent)));color:#fff;}
 .cb-brand{display:flex;align-items:center;gap:10px;}
 .cb-avatar{width:40px;height:40px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 6px rgba(15,23,42,.18);}
 .cb-avatar svg{width:32px;height:32px;}
@@ -38,12 +38,12 @@
 .cb-av{width:30px;height:30px;border-radius:50%;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;}
 .cb-av-bot{background:#fff;border:1px solid #e2e8f0;padding:3px;}
 .cb-av-bot img{width:100%;height:100%;object-fit:contain;}
-.cb-av-me{background:#e0e7ff;color:var(--accent,#4f46e5);}
+.cb-av-me{background:#e0e7ff;color:var(--accent,var(--accent));}
 .cb-av-me img{width:100%;height:100%;object-fit:cover;}
 .cb-av-me svg{width:18px;height:18px;}
 .cb-msg{min-width:0;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.5;white-space:pre-line;word-wrap:break-word;}
 .cb-bot{background:#fff;border:1px solid #e2e8f0;color:#1e293b;border-bottom-left-radius:4px;}
-.cb-me{background:var(--accent,#4f46e5);color:#fff;border-bottom-right-radius:4px;}
+.cb-me{background:var(--accent,var(--accent));color:#fff;border-bottom-right-radius:4px;}
 .cb-err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;}
 .cb-typing{display:flex;align-items:center;gap:4px;padding:12px 14px;}
 .cb-dot{width:7px;height:7px;border-radius:50%;background:#94a3b8;animation:cbDot 1.2s infinite ease-in-out;}
@@ -60,18 +60,18 @@
 .cb-task{padding:6px 0;border-top:1px solid #f1f5f9;}
 .cb-task-title{font-size:13px;color:#1e293b;line-height:1.4;}
 .cb-task-meta{font-size:11px;color:#94a3b8;margin-top:2px;}
-.cb-more{font-size:11px;color:#6366f1;font-weight:500;padding-top:4px;}
+.cb-more{font-size:11px;color:var(--accent-light);font-weight:500;padding-top:4px;}
 
 .cb-sugs{display:flex;flex-wrap:wrap;gap:6px;align-self:flex-start;margin-left:38px;max-width:calc(100% - 38px);}
-.cb-sug{padding:5px 10px;border:1px solid #c7d2fe;border-radius:16px;background:#eef2ff;color:var(--accent,#4f46e5);font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;}
+.cb-sug{padding:5px 10px;border:1px solid #c7d2fe;border-radius:16px;background:#eef2ff;color:var(--accent,var(--accent));font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;}
 .cb-sug:hover{background:#e0e7ff;}
-.cb-open{background:var(--accent,#4f46e5);border-color:var(--accent,#4f46e5);color:#fff;font-weight:600;}
-.cb-open:hover{background:var(--accent-dark,#4338ca);}
+.cb-open{background:var(--accent,var(--accent));border-color:var(--accent,var(--accent));color:#fff;font-weight:600;}
+.cb-open:hover{background:var(--accent-dark,var(--accent-dark));}
 
 .cb-form{display:flex;gap:8px;padding:10px;border-top:1px solid #e2e8f0;background:#fff;}
 .cb-input{flex:1;min-width:0;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;}
-.cb-input:focus{border-color:var(--accent-light,#6366f1);}
-.cb-send{padding:0 14px;border:none;border-radius:8px;background:var(--accent,#4f46e5);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;}
+.cb-input:focus{border-color:var(--accent-light,var(--accent-light));}
+.cb-send{padding:0 14px;border:none;border-radius:8px;background:var(--accent,var(--accent));color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;}
 .cb-send:disabled{background:#cbd5e1;cursor:not-allowed;}
 
 /* Clear of the fixed bottom tab bar on phones. */

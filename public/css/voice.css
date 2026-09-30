@@ -2,16 +2,16 @@
    VOICE DELEGATE — mic control inside the Delegate Task modal
    ══════════════════════════════════════════════ */
 .vd-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 14px;padding:10px 12px;background:linear-gradient(135deg,#eef2ff,#f5f3ff);border:1px solid #e0e7ff;border-radius:10px;}
-.vd-mic{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border:none;border-radius:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:transform .15s,box-shadow .15s,background .2s;box-shadow:0 2px 8px rgba(79,70,229,.25);}
-.vd-mic:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(79,70,229,.35);}
+.vd-mic{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border:none;border-radius:8px;background:linear-gradient(135deg,var(--accent-light),var(--accent));color:#fff;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:transform .15s,box-shadow .15s,background .2s;box-shadow:0 2px 8px rgba(var(--accent-rgb),.25);}
+.vd-mic:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(var(--accent-rgb),.35);}
 .vd-mic:disabled{background:#cbd5e1;box-shadow:none;cursor:not-allowed;transform:none;}
 .vd-mic.recording{background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 2px 8px rgba(220,38,38,.3);animation:vdPulse 1.4s ease-in-out infinite;}
 @keyframes vdPulse{0%,100%{box-shadow:0 2px 8px rgba(220,38,38,.3);}50%{box-shadow:0 2px 18px rgba(220,38,38,.6);}}
 .vd-mic-icon{font-size:15px;line-height:1;}
 
-.vd-hint{flex:1;min-width:150px;font-size:11px;color:#6366f1;font-weight:500;line-height:1.4;}
+.vd-hint{flex:1;min-width:150px;font-size:11px;color:var(--accent-light);font-weight:500;line-height:1.4;}
 .vd-template{flex-basis:100%;font-size:11px;color:#64748b;line-height:1.5;border-top:1px dashed #d9def5;padding-top:7px;margin-top:1px;}
-.vd-template b{color:#4f46e5;font-weight:600;}
+.vd-template b{color:var(--accent);font-weight:600;}
 .vd-template em{font-style:normal;color:#475569;}
 
 /* Live transcript + what the parser made of it. Hidden until first use. */

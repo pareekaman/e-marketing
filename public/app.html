@@ -56,7 +56,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
     <img src="emarketing-logo.png" alt="E-Marketing"
       style="width:34px;height:34px;object-fit:cover;border-radius:6px;flex-shrink:0"
       onerror="this.style.display='none';document.getElementById('sidebarLogoFallback').style.display='grid'"/>
-    <div id="sidebarLogoFallback" style="display:none;width:34px;height:34px;background:linear-gradient(135deg,#FF9800,#F39C12);border-radius:8px;place-items:center;color:#fff;font-weight:700;font-size:15px;font-style:italic;flex-shrink:0">e</div>
+    <div id="sidebarLogoFallback" style="display:none;width:34px;height:34px;background:linear-gradient(135deg,var(--brand-1),var(--brand-2));border-radius:8px;place-items:center;color:#fff;font-weight:700;font-size:15px;font-style:italic;flex-shrink:0">e</div>
     <div class="logo-text">E-Marketing</div>
   </div>
   <nav class="nav">
@@ -497,8 +497,8 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
       <!-- Profile Image Section -->
       <div style="display:flex;align-items:center;gap:20px;margin-bottom:22px;">
         <div style="position:relative">
-          <div id="profileAvatar" title="Click to view photo" onclick="viewProfileImage()" style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#6366f1);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0;border:3px solid #e2e8f0;cursor:pointer;">?</div>
-          <div title="Change photo" onclick="document.getElementById('profileImgInput').click()" style="position:absolute;bottom:0;right:0;width:24px;height:24px;background:#4f46e5;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;cursor:pointer;">
+          <div id="profileAvatar" title="Click to view photo" onclick="viewProfileImage()" style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent-light));display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0;border:3px solid #e2e8f0;cursor:pointer;">?</div>
+          <div title="Change photo" onclick="document.getElementById('profileImgInput').click()" style="position:absolute;bottom:0;right:0;width:24px;height:24px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;cursor:pointer;">
             <span style="color:#fff;font-size:12px">✏️</span>
           </div>
         </div>
@@ -547,9 +547,9 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
     <div style="display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:8px;width:fit-content;margin-bottom:18px">
       <div class="tab active" id="apprTabTask" onclick="switchApprovalTab('task',this)">📋 Task Approvals <span id="apprTaskBadge" style="display:none;background:#E74C3C;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
       <div class="tab" id="apprTabTransfer" onclick="switchApprovalTab('transfer',this)" style="display:none">🔀 Transfer Requests <span id="apprTransferBadge" style="display:none;background:#3498DB;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
-      <div class="tab" id="apprTabLeave" onclick="switchApprovalTab('leave',this)">🗓 Leave Approvals <span id="apprLeaveBadge" style="display:none;background:#F39C12;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
+      <div class="tab" id="apprTabLeave" onclick="switchApprovalTab('leave',this)">🗓 Leave Approvals <span id="apprLeaveBadge" style="display:none;background:var(--brand-2);color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
       <div class="tab" id="apprTabWa" onclick="switchApprovalTab('wa',this)" style="display:none">📱 WhatsApp Tasks <span id="apprWaBadge" style="display:none;background:#25d366;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
-      <div class="tab" id="apprTabPayment" onclick="switchApprovalTab('payment',this)" style="display:none">💳 Payment Approvals <span id="apprPaymentBadge" style="display:none;background:#4f46e5;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
+      <div class="tab" id="apprTabPayment" onclick="switchApprovalTab('payment',this)" style="display:none">💳 Payment Approvals <span id="apprPaymentBadge" style="display:none;background:var(--accent);color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
       <div class="tab" id="apprTabMdo" onclick="switchApprovalTab('mdo',this)" style="display:none">🧾 MDO Approvals</div>
     </div>
 
@@ -640,7 +640,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
           <div id="fmsSheetInfoText" style="font-size:13px;color:#374151;margin-top:2px"></div>
         </div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-outline btn-sm" onclick="openEditFMS()" style="color:#4f46e5">✏️ Edit FMS</button>
+          <button class="btn btn-outline btn-sm" onclick="openEditFMS()" style="color:var(--accent)">✏️ Edit FMS</button>
           <button class="btn btn-outline btn-sm" onclick="syncFMSData()" style="color:#10b981">🔄 Sync Data</button>
           <button class="btn btn-outline btn-sm" onclick="deleteFMSSheet(fmsActiveId)" style="color:#dc2626;border-color:#fecaca">🗑 Delete</button>
         </div>
@@ -680,7 +680,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
       <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">
         Process Flow — Click a step to view tasks
         <span id="fmsTrainLegend" style="margin-left:12px;font-weight:400;text-transform:none">
-          <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,#4f46e5,#6366f1);display:inline-block"></span> Your step</span>
+          <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,var(--accent),var(--accent-light));display:inline-block"></span> Your step</span>
           <span style="margin-left:10px;display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:#1e293b;display:inline-block;opacity:.5"></span> Other step</span>
         </span>
       </div>
@@ -1250,8 +1250,8 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
         style="padding:8px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:600;color:#0f172a;background:#fff;outline:none;cursor:pointer;min-width:160px">
         <option value="">— Select Bank —</option>
       </select>
-      <label id="ccUploadBtn" style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:#4f46e5;color:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s"
-        onmouseover="this.style.background='#1e40af'" onmouseout="this.style.background='#4f46e5'">
+      <label id="ccUploadBtn" style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:var(--accent);color:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s"
+        onmouseover="this.style.background='#1e40af'" onmouseout="this.style.background='var(--accent)'">
         📄 Upload
         <input type="file" accept=".pdf" style="display:none" onchange="ccUploadPdf(this)">
       </label>
@@ -1307,7 +1307,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
           <div style="display:flex;align-items:center;border:1.5px solid #e2e8f0;border-radius:10px;background:#fff;overflow:hidden">
             <input id="prAmount" type="number" min="0" step="0.01" placeholder="0.00" style="flex:1;border:none;background:transparent;padding:10px 12px;font-size:13px;outline:none;font-family:inherit">
             <button id="prCurrencyBtn" type="button" onclick="prToggleCurrency()" title="Click to switch currency"
-              style="border:none;border-left:1.5px solid #e2e8f0;background:#f8fafc;padding:0 14px;height:42px;font-size:15px;font-weight:700;color:#4f46e5;cursor:pointer;flex-shrink:0;transition:background .15s"
+              style="border:none;border-left:1.5px solid #e2e8f0;background:#f8fafc;padding:0 14px;height:42px;font-size:15px;font-weight:700;color:var(--accent);cursor:pointer;flex-shrink:0;transition:background .15s"
               onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#f8fafc'">₹</button>
           </div>
         </div>
@@ -1334,7 +1334,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
 
       <!-- Submit -->
       <div style="display:flex;justify-content:flex-end">
-        <button id="prSubmitBtn" onclick="prSubmit()" style="display:inline-flex;align-items:center;gap:8px;background:#4f46e5;color:#fff;border:none;border-radius:10px;padding:11px 28px;font-size:14px;font-weight:700;cursor:pointer">
+        <button id="prSubmitBtn" onclick="prSubmit()" style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#fff;border:none;border-radius:10px;padding:11px 28px;font-size:14px;font-weight:700;cursor:pointer">
           <svg width="16" height="16" fill="none" stroke="#fff" stroke-width="2.5" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           Submit Request
         </button>
@@ -1366,7 +1366,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
     <div id="dmsRootView">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap">
         <input type="text" id="dmsClientSearch" placeholder="Search clients..." oninput="dmsFilterClients()" style="flex:1;min-width:200px;max-width:320px;box-sizing:border-box;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit"/>
-        <button id="dmsBulkSetupBtn" onclick="dmsBulkSetup()" title="Create Drive folders for every existing client that doesn't have one yet" style="display:none;font-size:12px;padding:6px 12px;border:1px solid #c7d2fe;background:#eef2ff;color:#4338ca;border-radius:8px;cursor:pointer;font-weight:600;white-space:nowrap">📁 Create missing folders</button>
+        <button id="dmsBulkSetupBtn" onclick="dmsBulkSetup()" title="Create Drive folders for every existing client that doesn't have one yet" style="display:none;font-size:12px;padding:6px 12px;border:1px solid #c7d2fe;background:#eef2ff;color:var(--accent-dark);border-radius:8px;cursor:pointer;font-weight:600;white-space:nowrap">📁 Create missing folders</button>
       </div>
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
         <div id="dmsClientList"><div style="padding:16px;color:#94a3b8;font-size:13px;text-align:center">Loading…</div></div>
@@ -1376,10 +1376,10 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
     <!-- CLIENT DETAIL: shown after clicking a client row -->
     <div id="dmsDetail" style="display:none">
       <div style="margin-bottom:14px;font-size:13px;display:flex;align-items:center;flex-wrap:wrap;gap:10px">
-        <button onclick="dmsBackToRoot()" title="Back to Clients" style="border:none;background:none;cursor:pointer;color:#4f46e5;padding:2px;display:flex;align-items:center">
+        <button onclick="dmsBackToRoot()" title="Back to Clients" style="border:none;background:none;cursor:pointer;color:var(--accent);padding:2px;display:flex;align-items:center">
           <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
         </button>
-        <a href="javascript:void(0)" onclick="dmsBackToRoot()" style="color:#4f46e5;text-decoration:none;font-weight:600">Clients</a>
+        <a href="javascript:void(0)" onclick="dmsBackToRoot()" style="color:var(--accent);text-decoration:none;font-weight:600">Clients</a>
         <span style="color:#94a3b8">›</span>
         <span id="dmsClientName" style="color:#0f172a;font-weight:700;font-size:14px"></span>
         <span id="dmsFolderLink" style="font-size:12px"></span>
@@ -1398,7 +1398,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
       <!-- File browser -->
       <div id="dmsFileBrowser" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div style="font-weight:700;font-size:14px;color:#0f172a">Files — <span id="dmsBrowserFolderName" style="color:#4f46e5"></span></div>
+          <div style="font-weight:700;font-size:14px;color:#0f172a">Files — <span id="dmsBrowserFolderName" style="color:var(--accent)"></span></div>
           <div style="display:flex;gap:8px;align-items:center">
             <button id="dmsBulkDeleteBtn" onclick="dmsBulkDeleteSelected()" style="display:none;font-size:12px;padding:5px 12px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:8px;cursor:pointer;font-weight:600;white-space:nowrap">🗑 Delete Selected (<span id="dmsBulkDeleteCount">0</span>)</button>
             <button onclick="dmsRefreshFolder()" title="Refresh" style="border:1px solid #e2e8f0;background:none;border-radius:8px;width:30px;height:30px;cursor:pointer;color:#64748b;display:flex;align-items:center;justify-content:center">
@@ -1411,7 +1411,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
           </div>
         </div>
         <input type="text" id="dmsFileSearch" placeholder="Search files..." oninput="dmsFilterFiles()" style="width:100%;max-width:280px;box-sizing:border-box;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit;margin-bottom:12px"/>
-        <div id="dmsUploadStatus" style="font-size:12px;color:#4f46e5;margin-bottom:10px;display:none"></div>
+        <div id="dmsUploadStatus" style="font-size:12px;color:var(--accent);margin-bottom:10px;display:none"></div>
         <div id="dmsFileList" oncontextmenu="dmsFileListContextMenu(event)"><div style="color:#94a3b8;font-size:13px">Select a folder above to browse files.</div></div>
       </div>
     </div>
@@ -1539,7 +1539,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
     <div id="invStats" style="display:none;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px">
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">
         <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Total Items</div>
-        <div id="invStatTotal" style="font-size:26px;font-weight:700;color:#4f46e5">0</div>
+        <div id="invStatTotal" style="font-size:26px;font-weight:700;color:var(--accent)">0</div>
       </div>
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">
         <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Assigned</div>
@@ -2868,7 +2868,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
     <div class="form-group" id="dApproverGroup" style="display:none">
       <label>Approver</label>
       <select id="dApprover" onchange="onDelegateApproverChange()"><option value="">Select Approver</option></select>
-      <div id="dApproverEmail" style="margin-top:6px;font-size:12px;color:#4f46e5;font-weight:500;display:none">
+      <div id="dApproverEmail" style="margin-top:6px;font-size:12px;color:var(--accent);font-weight:500;display:none">
         📧 <span id="dApproverEmailText"></span>
       </div>
     </div>
@@ -3187,9 +3187,9 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
       <p style="font-size:14px;color:#374151;line-height:1.6">
         Share your FMS Sheet to this email so data can sync:
       </p>
-      <div id="fmsShareEmail" style="margin-top:10px;font-size:15px;font-weight:700;color:#4f46e5;background:#eff6ff;padding:10px;border-radius:8px;letter-spacing:.3px;word-break:break-all;">
+      <div id="fmsShareEmail" style="margin-top:10px;font-size:15px;font-weight:700;color:var(--accent);background:#eff6ff;padding:10px;border-radius:8px;letter-spacing:.3px;word-break:break-all;">
       </div>
-      <button onclick="copyFMSEmail()" style="margin-top:8px;background:none;border:1px solid #4f46e5;color:#4f46e5;padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer">📋 Copy Email</button>
+      <button onclick="copyFMSEmail()" style="margin-top:8px;background:none;border:1px solid var(--accent);color:var(--accent);padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer">📋 Copy Email</button>
     </div>
     <button id="fmsSkipBtn" class="btn btn-primary" style="width:100%;pointer-events:none;opacity:.6" onclick="proceedToStepsConfig()">
       Skip (<span id="fmsCountdown">7</span>s)
@@ -3458,7 +3458,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
     <!-- Exclude from Daily Reminder -->
     <div class="form-group" style="background:#fef3c7;border:1.5px solid #fcd34d;border-radius:8px;padding:10px 12px;margin-top:6px">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;font-weight:500;color:#78350f">
-        <input type="checkbox" id="uExcludeReminder" style="accent-color:#F39C12;width:16px;height:16px;cursor:pointer"/>
+        <input type="checkbox" id="uExcludeReminder" style="accent-color:var(--brand-2);width:16px;height:16px;cursor:pointer"/>
         🚫 Exclude from Daily Reminder
       </label>
       <div style="font-size:11px;color:#92400e;margin-top:4px;margin-left:24px">
@@ -3498,7 +3498,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
     <div style="display:flex;gap:12px;margin-bottom:14px">
       <div style="flex:1">
         <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Plan Value</div>
-        <div id="fmsDonePlanDisplay" style="font-size:15px;font-weight:700;color:#4f46e5;background:#eff6ff;padding:10px 14px;border-radius:8px"></div>
+        <div id="fmsDonePlanDisplay" style="font-size:15px;font-weight:700;color:var(--accent);background:#eff6ff;padding:10px 14px;border-radius:8px"></div>
       </div>
       <div style="flex:1">
         <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Actual (Now)</div>
@@ -3689,7 +3689,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
       <div id="planPctPreview" style="margin-top:6px;font-size:12px;color:#64748b;min-height:18px"></div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:20px">
-      <button class="btn btn-primary" style="background:linear-gradient(135deg,#7c3aed,#4f46e5);border:none" onclick="saveWeekPlan()">Save Plan</button>
+      <button class="btn btn-primary" style="background:linear-gradient(135deg,#7c3aed,var(--accent));border:none" onclick="saveWeekPlan()">Save Plan</button>
       <button class="btn btn-outline" onclick="closeModal('setPlanModal')">Cancel</button>
     </div>
   </div>
@@ -4047,7 +4047,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
     <!-- Tabs -->
     <div style="display:flex;gap:6px;padding:14px 22px 0">
       <button id="ccSumTab-dept" onclick="ccSumSwitchTab('dept')"
-        style="flex:1;padding:8px 0;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;background:#4f46e5;color:#fff;transition:background .15s">
+        style="flex:1;padding:8px 0;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;background:var(--accent);color:#fff;transition:background .15s">
         📂 Department
       </button>
       <button id="ccSumTab-owner" onclick="ccSumSwitchTab('owner')"
@@ -4070,7 +4070,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
     <div id="ccOwnOtherBtn" onclick="ccOwnShowOtherInput()" style="cursor:pointer;color:#64748b;font-size:12px;padding:5px 4px;border-radius:4px" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">Other...</div>
     <div id="ccOwnOtherInputRow" style="display:none;align-items:center;gap:4px;margin-top:6px">
       <input type="text" id="ccOwnPanelTxt" placeholder="Type owner…"
-        style="width:86px;padding:4px 7px;border:1.5px solid #4f46e5;border-radius:6px;font-size:12px;outline:none;font-family:inherit"
+        style="width:86px;padding:4px 7px;border:1.5px solid var(--accent);border-radius:6px;font-size:12px;outline:none;font-family:inherit"
         onkeydown="if(event.key==='Enter')ccOwnConfirmPanel();if(event.key==='Escape')ccOwnCancelPanel()">
       <button onclick="ccOwnConfirmPanel()" title="Save" style="width:22px;height:22px;border:none;border-radius:5px;background:#16a34a;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✓</button>
       <button onclick="ccOwnCancelPanel()" title="Cancel" style="width:22px;height:22px;border:none;border-radius:5px;background:#ef4444;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
@@ -4085,7 +4085,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
     <div id="ccDeptOtherBtn" onclick="ccDeptShowOtherInput()" style="cursor:pointer;color:#64748b;font-size:12px;padding:5px 4px;border-radius:4px" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">Other...</div>
     <div id="ccDeptOtherInputRow" style="display:none;align-items:center;gap:4px;margin-top:6px">
       <input type="text" id="ccDeptPanelTxt" placeholder="New department…"
-        style="width:96px;padding:4px 7px;border:1.5px solid #4f46e5;border-radius:6px;font-size:12px;outline:none;font-family:inherit"
+        style="width:96px;padding:4px 7px;border:1.5px solid var(--accent);border-radius:6px;font-size:12px;outline:none;font-family:inherit"
         onkeydown="if(event.key==='Enter')ccDeptConfirmPanel();if(event.key==='Escape')ccDeptCancelPanel()">
       <button onclick="ccDeptConfirmPanel()" title="Save" style="width:22px;height:22px;border:none;border-radius:5px;background:#16a34a;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✓</button>
       <button onclick="ccDeptCancelPanel()" title="Cancel" style="width:22px;height:22px;border:none;border-radius:5px;background:#ef4444;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
@@ -4098,14 +4098,14 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
   <div style="background:#fff;border-radius:16px;padding:28px 28px 22px;width:min(440px,94vw);box-shadow:0 12px 40px rgba(0,0,0,.2)">
     <h3 id="prBillTitle" style="margin:0 0 4px;font-size:18px;color:#0f172a">Mark Payment Done</h3>
     <p id="prBillSubtitle" style="margin:0 0 18px;font-size:13px;color:#64748b">Optionally upload the bill/receipt before marking as paid</p>
-    <div id="prBillDropzone" onclick="document.getElementById('prBillFileInput').click()" style="border:2px dashed #cbd5e1;border-radius:10px;padding:22px 16px;text-align:center;cursor:pointer;transition:border-color .2s;background:#f8fafc" onmouseover="this.style.borderColor='#6366f1'" onmouseout="this.style.borderColor='#cbd5e1'">
+    <div id="prBillDropzone" onclick="document.getElementById('prBillFileInput').click()" style="border:2px dashed #cbd5e1;border-radius:10px;padding:22px 16px;text-align:center;cursor:pointer;transition:border-color .2s;background:#f8fafc" onmouseover="this.style.borderColor='var(--accent-light)'" onmouseout="this.style.borderColor='#cbd5e1'">
       <div id="prBillPreview" style="display:none;margin-bottom:10px"><img id="prBillImg" style="max-height:160px;max-width:100%;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.12)"></div>
       <div id="prBillPrompt" style="color:#94a3b8;font-size:14px">📎 &nbsp; Click to choose transaction image or PDF</div>
     </div>
     <input type="file" id="prBillFileInput" accept="image/*,.pdf" style="display:none" onchange="prBillFileSelected()">
     <div style="margin-top:14px">
       <label style="font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:4px">File Name</label>
-      <input type="text" id="prBillFilename" placeholder="File name (without extension)" style="width:100%;box-sizing:border-box;border:1.5px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:13px;outline:none;font-family:inherit" onfocus="this.style.borderColor='#4f46e5'" onblur="this.style.borderColor='#e2e8f0'">
+      <input type="text" id="prBillFilename" placeholder="File name (without extension)" style="width:100%;box-sizing:border-box;border:1.5px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:13px;outline:none;font-family:inherit" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='#e2e8f0'">
     </div>
     <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
       <button onclick="prCloseBillModal()" style="background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:9px 18px;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
@@ -4140,12 +4140,12 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
       </div>
     </div>
     <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:6px">File Name</label>
-    <input id="ccRenameInput" type="text" style="width:100%;box-sizing:border-box;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:14px;outline:none;font-family:inherit;color:#0f172a" onfocus="this.style.borderColor='#4f46e5'" onblur="this.style.borderColor='#e2e8f0'"
+    <input id="ccRenameInput" type="text" style="width:100%;box-sizing:border-box;border:1.5px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:14px;outline:none;font-family:inherit;color:#0f172a" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='#e2e8f0'"
       onkeydown="if(event.key==='Enter')document.getElementById('ccRenameOkBtn').click();if(event.key==='Escape')document.getElementById('ccRenameCancelBtn').click()">
     <div style="margin-top:6px;font-size:11px;color:#94a3b8">.pdf extension will be added automatically if missing</div>
     <div style="display:flex;gap:10px;margin-top:18px;justify-content:flex-end">
       <button id="ccRenameCancelBtn" style="background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:9px 20px;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
-      <button id="ccRenameOkBtn" style="background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:9px 24px;font-size:14px;font-weight:600;cursor:pointer">Save to Drive</button>
+      <button id="ccRenameOkBtn" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 24px;font-size:14px;font-weight:600;cursor:pointer">Save to Drive</button>
     </div>
   </div>
 </div>

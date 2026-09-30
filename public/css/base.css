@@ -3,23 +3,26 @@ html,body{overflow-x:hidden;}
 :root{
   --brand-1:#FF9800; --brand-2:#F39C12;
   --accent:#4f46e5; --accent-dark:#4338ca; --accent-light:#6366f1;
+  /* RGB triplets of the colours above, for rgba(var(--x-rgb), a). A festival theme
+     overrides the hex and its triplet together (see css/themes.css). */
+  --brand-2-rgb:243,156,18; --accent-rgb:79,70,229; --accent-light-rgb:99,102,241;
   --ink:#0f172a; --ink-soft:#334155;
   --shadow-xs:0 1px 2px rgba(15,23,42,.05);
   --shadow-sm:0 2px 8px rgba(15,23,42,.06),0 1px 2px rgba(15,23,42,.04);
   --shadow-md:0 8px 24px -8px rgba(15,23,42,.14),0 2px 6px rgba(15,23,42,.05);
   --shadow-lg:0 20px 48px -12px rgba(15,23,42,.22),0 4px 12px rgba(15,23,42,.06);
-  --shadow-glow-brand:0 8px 20px -4px rgba(243,156,18,.38);
-  --shadow-glow-accent:0 8px 20px -4px rgba(79,70,229,.35);
+  --shadow-glow-brand:0 8px 20px -4px rgba(var(--brand-2-rgb),.38);
+  --shadow-glow-accent:0 8px 20px -4px rgba(var(--accent-rgb),.35);
   --ease:cubic-bezier(.4,0,.2,1);
   --ease-spring:cubic-bezier(.34,1.56,.64,1);
 }
-::selection{background:rgba(79,70,229,.18);color:#1e1b4b;}
+::selection{background:rgba(var(--accent-rgb),.18);color:#1e1b4b;}
 body{
   font-family:'Inter',sans-serif;color:#1e293b;min-height:100vh;
   -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
   background:
-    radial-gradient(1100px circle at 8% -8%, rgba(79,70,229,.07), transparent 45%),
-    radial-gradient(900px circle at 108% 0%, rgba(243,156,18,.08), transparent 40%),
+    radial-gradient(1100px circle at 8% -8%, rgba(var(--accent-rgb),.07), transparent 45%),
+    radial-gradient(900px circle at 108% 0%, rgba(var(--brand-2-rgb),.08), transparent 40%),
     #f3f5fa;
   background-attachment:fixed;
 }
@@ -82,7 +85,7 @@ body{
 .hrm-act-icons{display:flex;align-items:center;gap:4px;margin-left:auto;padding-left:10px;}
 .hrm-btn{font-size:11px;font-weight:600;padding:5px 11px;border-radius:7px;cursor:pointer;border:1px solid transparent;font-family:inherit;line-height:1.4;text-decoration:none;display:inline-flex;align-items:center;gap:5px;transition:filter .12s;}
 .hrm-btn:hover{filter:brightness(.96);}
-.hrm-btn-update{background:#eef2ff;color:#4338ca;border-color:#c7d2fe;}
+.hrm-btn-update{background:#eef2ff;color:var(--accent-dark);border-color:#c7d2fe;}
 .hrm-btn-email{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;}
 .hrm-closed{font-size:11px;color:#94a3b8;font-weight:600;padding:5px 2px;}
 .hrm-ico{width:29px;height:29px;display:inline-flex;align-items:center;justify-content:center;
@@ -115,13 +118,13 @@ body{
 .awd-table th{text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;font-weight:700;padding:8px 14px;background:#fcfcfd;border-top:1px solid #f1f5f9;}
 .awd-table td{padding:9px 14px;font-size:13px;color:#334155;border-top:1px solid #f8fafc;vertical-align:top;}
 .awd-table tr:hover td{background:#fcfcfd;}
-.awd-type{font-size:10px;font-weight:700;color:#4f46e5;background:#eef2ff;border:1px solid #e0e7ff;border-radius:5px;padding:2px 7px;white-space:nowrap;}
+.awd-type{font-size:10px;font-weight:700;color:var(--accent);background:#eef2ff;border:1px solid #e0e7ff;border-radius:5px;padding:2px 7px;white-space:nowrap;}
 .awd-date{color:#64748b;white-space:nowrap;font-variant-numeric:tabular-nums;}
 .awd-reason{color:#854d0e;}
 .awd-noreason{color:#cbd5e1;}
 .dash-emp-filter-opt{padding:7px 10px;border-radius:6px;font-size:13px;color:#1e293b;cursor:pointer;white-space:nowrap;}
 .dash-emp-filter-opt:hover{background:#f1f5f9;}
-.dash-emp-filter-opt.selected{background:#eef2ff;color:#4f46e5;font-weight:600;}
+.dash-emp-filter-opt.selected{background:#eef2ff;color:var(--accent);font-weight:600;}
 /* .cselect-btn lived here, styling initCustomSelect()'s trigger button. Both are
    gone — see the note where initCustomSelect() used to be in hrm.js. The
    .dash-emp-filter-* rules above stay: the dashboard employee filter still uses
@@ -133,10 +136,10 @@ body{
   white-space:nowrap;overflow:hidden;
 }
 .logo-icon{
-  width:34px;height:34px;background:linear-gradient(135deg,#6366f1,#4f46e5 60%,#F39C12);
+  width:34px;height:34px;background:linear-gradient(135deg,var(--accent-light),var(--accent) 60%,var(--brand-2));
   border-radius:9px;display:grid;place-items:center;color:#fff;
   font-weight:700;font-size:15px;flex-shrink:0;
-  box-shadow:0 4px 14px -2px rgba(79,70,229,.55), inset 0 1px 0 rgba(255,255,255,.25);
+  box-shadow:0 4px 14px -2px rgba(var(--accent-rgb),.55), inset 0 1px 0 rgba(255,255,255,.25);
 }
 .logo-text{font-size:15px;font-weight:700;color:#fff;opacity:0;transition:opacity .2s .1s;white-space:nowrap;}
 .sidebar:hover .logo-text{opacity:1;}
@@ -159,9 +162,9 @@ body{
 .nav-label-text{opacity:0;transition:opacity .2s .1s;}
 .sidebar:hover .nav-label-text{opacity:1;}
 .nav-item:hover{background:rgba(255,255,255,.06);color:#e2e8f0;transform:translateX(1px);}
-.nav-item.active{background:linear-gradient(90deg,rgba(99,102,241,.22),rgba(99,102,241,.06));color:#a5b4fc;box-shadow:inset 0 0 0 1px rgba(99,102,241,.25);}
-.nav-item.active::before{content:'';position:absolute;left:-8px;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:linear-gradient(180deg,#818cf8,#6366f1);box-shadow:0 0 10px rgba(99,102,241,.7);}
-.nav-item.active svg{filter:drop-shadow(0 0 6px rgba(99,102,241,.5));}
+.nav-item.active{background:linear-gradient(90deg,rgba(var(--accent-light-rgb),.22),rgba(var(--accent-light-rgb),.06));color:#a5b4fc;box-shadow:inset 0 0 0 1px rgba(var(--accent-light-rgb),.25);}
+.nav-item.active::before{content:'';position:absolute;left:-8px;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:linear-gradient(180deg,#818cf8,var(--accent-light));box-shadow:0 0 10px rgba(var(--accent-light-rgb),.7);}
+.nav-item.active svg{filter:drop-shadow(0 0 6px rgba(var(--accent-light-rgb),.5));}
 .nav-divider{border-top:1px solid rgba(255,255,255,.08);margin:8px 0;}
 
 /* ── Sidebar nav groups (collapsible section headers) ── */
@@ -187,9 +190,9 @@ body{
 }
 .su-avatar{
   width:32px;height:32px;border-radius:50%;
-  background:linear-gradient(135deg,#6366f1,#4f46e5);
+  background:linear-gradient(135deg,var(--accent-light),var(--accent));
   display:grid;place-items:center;font-size:11px;font-weight:700;
-  color:#fff;flex-shrink:0;box-shadow:0 2px 8px rgba(79,70,229,.4);
+  color:#fff;flex-shrink:0;box-shadow:0 2px 8px rgba(var(--accent-rgb),.4);
 }
 .su-info{opacity:0;transition:opacity .2s .1s;}
 .sidebar:hover .su-info{opacity:1;}
@@ -234,10 +237,10 @@ body{
 .btn{padding:8px 15px;border-radius:9px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:transform .15s var(--ease),box-shadow .2s var(--ease),background .2s var(--ease),border-color .2s var(--ease);border:none;display:inline-flex;align-items:center;gap:6px;}
 .btn:hover{transform:translateY(-1px);}
 .btn:active{transform:translateY(0);}
-.btn:focus-visible{outline:2px solid #4f46e5;outline-offset:2px;}
-.btn-primary{background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;box-shadow:0 2px 10px -2px rgba(79,70,229,.5);}.btn-primary:hover{background:linear-gradient(135deg,#7376f5,#4f46e5);box-shadow:0 6px 18px -4px rgba(79,70,229,.6);}
-.btn-primary:focus-visible{outline-color:#4f46e5;}
-.btn-outline{background:#fff;color:#374151;border:1.5px solid #e2e8f0;}.btn-outline:hover{border-color:#6366f1;color:#6366f1;box-shadow:0 4px 12px -4px rgba(99,102,241,.25);}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.btn-primary{background:linear-gradient(135deg,var(--accent-light),var(--accent));color:#fff;box-shadow:0 2px 10px -2px rgba(var(--accent-rgb),.5);}.btn-primary:hover{background:linear-gradient(135deg,#7376f5,var(--accent));box-shadow:0 6px 18px -4px rgba(var(--accent-rgb),.6);}
+.btn-primary:focus-visible{outline-color:var(--accent);}
+.btn-outline{background:#fff;color:#374151;border:1.5px solid #e2e8f0;}.btn-outline:hover{border-color:var(--accent-light);color:var(--accent-light);box-shadow:0 4px 12px -4px rgba(var(--accent-light-rgb),.25);}
 .btn-danger{background:linear-gradient(135deg,#f87171,#ef4444);color:#fff;box-shadow:0 2px 10px -2px rgba(239,68,68,.4);}.btn-danger:hover{box-shadow:0 6px 18px -4px rgba(239,68,68,.5);}
 .btn-danger:focus-visible{outline-color:#ef4444;}
 .btn-green{background:linear-gradient(135deg,#34d399,#10b981);color:#fff;box-shadow:0 2px 10px -2px rgba(16,185,129,.4);}.btn-green:hover{box-shadow:0 6px 18px -4px rgba(16,185,129,.5);}
