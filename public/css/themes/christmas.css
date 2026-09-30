@@ -18,3 +18,52 @@
   animation-delay:.8s; }
 @keyframes td-blink { from { opacity:.35; } to { opacity:1; } }
 @media (prefers-reduced-motion: reduce) { .td-lights { animation:none; } }
+/* Santa's dance: one 12s routine of five steps, each part keyed on the same clock —
+   1 sway (0-20%), 2 arms up and waving (20-40%), 3 hopping kicks (40-60%),
+   4 a spin (60-80%), 5 a low twist (80-100%). */
+.sd-all, .sd-body, .sd-arm, .sd-leg { transform-box:view-box; animation:12s ease-in-out infinite; }
+.sd-all { transform-origin:68px 171px; animation-name:sd-all; }
+.sd-body { transform-origin:68px 150px; animation-name:sd-body; }
+.sd-arm-l { transform-origin:36px 88px; animation-name:sd-arm-l; }
+.sd-arm-r { transform-origin:100px 88px; animation-name:sd-arm-r; }
+.sd-leg-l { transform-origin:52px 152px; animation-name:sd-leg-l; }
+.sd-leg-r { transform-origin:82px 152px; animation-name:sd-leg-r; }
+@keyframes sd-all {
+  0%,20%,40%,100% { transform:none; }
+  5% { transform:rotate(-6deg); } 10% { transform:rotate(6deg); } 15% { transform:rotate(-6deg); }
+  44% { transform:translateY(-16px); } 48% { transform:none; } 52% { transform:translateY(-16px); } 56% { transform:none; } 60% { transform:none; }
+  66% { transform:scaleX(-1); } 72% { transform:scaleX(1); } 76% { transform:scaleX(-1); } 80% { transform:none; }
+  84% { transform:translateY(6px) scaleY(.93); } 88% { transform:none; } 92% { transform:translateY(6px) scaleY(.93); } 96% { transform:none; }
+}
+@keyframes sd-body {
+  0%,20%,80%,100% { transform:none; }
+  5% { transform:rotate(-4deg); } 10% { transform:rotate(4deg); } 15% { transform:rotate(-4deg); }
+  84% { transform:rotate(-10deg); } 88% { transform:rotate(10deg); } 92% { transform:rotate(-10deg); } 96% { transform:rotate(10deg); }
+}
+@keyframes sd-arm-l {
+  0%,100% { transform:none; }
+  5% { transform:rotate(25deg); } 10% { transform:rotate(-5deg); } 15% { transform:rotate(25deg); } 20% { transform:none; }
+  24% { transform:rotate(120deg); } 28% { transform:rotate(145deg); } 32% { transform:rotate(110deg); } 36% { transform:rotate(145deg); } 40% { transform:rotate(90deg); }
+  44%,52% { transform:rotate(150deg); } 48%,56% { transform:rotate(70deg); } 60% { transform:rotate(80deg); }
+  64%,76% { transform:rotate(95deg); } 80% { transform:none; }
+  84%,92% { transform:rotate(55deg); } 88%,96% { transform:rotate(-15deg); }
+}
+@keyframes sd-arm-r {
+  0%,100% { transform:none; }
+  5% { transform:rotate(5deg); } 10% { transform:rotate(-25deg); } 15% { transform:rotate(5deg); } 20% { transform:none; }
+  24% { transform:rotate(-120deg); } 28% { transform:rotate(-95deg); } 32% { transform:rotate(-140deg); } 36% { transform:rotate(-95deg); } 40% { transform:rotate(-90deg); }
+  44%,52% { transform:rotate(-70deg); } 48%,56% { transform:rotate(-150deg); } 60% { transform:rotate(-80deg); }
+  64%,76% { transform:rotate(-95deg); } 80% { transform:none; }
+  84%,92% { transform:rotate(15deg); } 88%,96% { transform:rotate(-55deg); }
+}
+@keyframes sd-leg-l {
+  0%,40%,48%,60%,80%,100% { transform:none; }
+  44% { transform:rotate(28deg); }
+  84%,92% { transform:rotate(-12deg); } 88%,96% { transform:rotate(12deg); }
+}
+@keyframes sd-leg-r {
+  0%,40%,60%,80%,100% { transform:none; }
+  48% { transform:none; } 52% { transform:rotate(-28deg); } 56% { transform:none; }
+  84%,92% { transform:rotate(-12deg); } 88%,96% { transform:rotate(12deg); }
+}
+@media (prefers-reduced-motion: reduce) { .sd-all, .sd-body, .sd-arm, .sd-leg { animation:none; } }
