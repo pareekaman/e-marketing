@@ -107,7 +107,7 @@
     var factory = registry[name];
     if (!factory) return;
     ensureLayer(); sizeCanvas();
-    st.inst = factory({ layer: st.layer, svg: addSvg, rand: rand, pick: pick, fireworks: makeFireworks }) || {};
+    st.inst = factory({ layer: st.layer, canvas: st.canvas, svg: addSvg, rand: rand, pick: pick, fireworks: makeFireworks }) || {};
     sizeCanvas(); // again: now that the instance's scale is known
     st.mounted = true;
     if (!(reducedMq && reducedMq.matches)) start();

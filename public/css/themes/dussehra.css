@@ -7,13 +7,52 @@
   --page-bg:#FBF1E6; --sidebar-top:#3B0D0D; --sidebar-bottom:#260707;
 }
 
-/* Decoration (js/themes/dussehra.js): Shri Ram bottom-left shooting across the page at
-   Ravan bottom-right (left of the chatbot button). Arrows fly across the whole page. */
-.td-ram { left:74px; bottom:0; width:112px; transform:scaleX(-1); filter:drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+/* Decoration (js/themes/dussehra.js): Shri Ram bottom-left, Ravan bottom-right (left of the
+   chatbot button). Placement and looks live here; the story itself is in the JS file.
+   Ram faces right inside his own SVG, so .td-ram must not be flipped here. */
+.td-ram { left:74px; bottom:0; width:112px; filter:drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+.td-ram.td-win { animation:td-win .55s ease-out 2; }
+@keyframes td-win { 0%,100% { transform:translateY(0); } 40% { transform:translateY(-10px); } }
+
 .td-ravan { right:104px; bottom:0; width:138px; transform-origin:50% 100%; will-change:transform;
   filter:drop-shadow(0 0 10px rgba(220,38,38,.55)) drop-shadow(0 4px 6px rgba(0,0,0,.3)); animation:td-menace 3.2s ease-in-out infinite; }
 @keyframes td-menace { 0%,100% { transform:rotate(-1.6deg) scale(1); } 50% { transform:rotate(1.6deg) scale(1.03); } }
-.td-ravan.td-hit { animation:td-recoil .38s ease-out; }
-@keyframes td-recoil { 0% { transform:translateX(0) rotate(0); } 30% { transform:translateX(10px) rotate(4deg); filter:brightness(1.8) drop-shadow(0 0 14px #ff3b1a); } 100% { transform:translateX(0) rotate(0); } }
-.td-arrow { width:64px; will-change:transform; }
-@media (prefers-reduced-motion: reduce) { .td-ravan, .td-ravan.td-hit { animation:none; } }
+/* struck -> burning -> collapsing into the ground; each hands over to the next where it ended */
+.td-ravan.td-hit { animation:td-recoil .38s ease-out forwards; }
+@keyframes td-recoil {
+  0%   { transform:translateX(0) rotate(0); }
+  30%  { transform:translateX(12px) rotate(5deg); filter:brightness(1.9) drop-shadow(0 0 16px #ff3b1a); }
+  100% { transform:translateX(6px) rotate(3deg); filter:brightness(1.8) drop-shadow(0 0 16px #ff3b1a); }
+}
+.td-ravan.td-burn { animation:td-burn 1.3s linear forwards; }
+@keyframes td-burn {
+  0%   { transform:translateX(6px) rotate(3deg); filter:brightness(1.8) drop-shadow(0 0 16px #ff3b1a); }
+  20%  { transform:translateX(-3px) rotate(-1deg); }
+  40%  { transform:translateX(3px) rotate(1.5deg); }
+  60%  { transform:translateX(-2px) rotate(0deg); }
+  80%  { transform:translateX(2px) rotate(2deg); }
+  100% { transform:translateX(0) rotate(2deg); filter:brightness(.45) sepia(.7) saturate(1.6) drop-shadow(0 0 18px #ff5a1a); }
+}
+.td-ravan.td-fall { animation:td-fall 1.3s cubic-bezier(.55,0,.9,.4) forwards; }
+@keyframes td-fall {
+  0%   { transform:rotate(2deg) translateY(0); opacity:1; filter:brightness(.45) sepia(.7) saturate(1.6) drop-shadow(0 0 18px #ff5a1a); }
+  35%  { transform:rotate(9deg) translateY(4%); }
+  100% { transform:rotate(16deg) translateY(110%); opacity:0; filter:brightness(.2) sepia(1) drop-shadow(0 0 6px #ff5a1a); }
+}
+/* ...and rising out of the ground again for the next round */
+.td-ravan.td-rise { animation:td-rise .9s cubic-bezier(.2,.8,.3,1) both; }
+@keyframes td-rise { from { transform:translateY(110%); opacity:0; } 60% { opacity:1; } to { transform:translateY(0); opacity:1; } }
+
+.td-arrow { will-change:transform; }
+
+/* "Happy Dussehra", shown where Ravan stood once he has fallen */
+.td-hd { position:absolute; z-index:2; transform:translateX(50%); white-space:nowrap; font:700 13px/1 'Inter',sans-serif;
+  letter-spacing:.2px; color:#fff; padding:7px 13px; border-radius:999px; background:linear-gradient(135deg,#F57C00,#B91C1C);
+  box-shadow:0 0 0 2px rgba(255,255,255,.75), 0 8px 20px -6px rgba(185,28,28,.65);
+  animation:td-hd-in .6s cubic-bezier(.34,1.56,.64,1) both, td-hd-float 3s ease-in-out .6s infinite; }
+@keyframes td-hd-in { from { opacity:0; transform:translateX(50%) translateY(12px) scale(.5); } to { opacity:1; transform:translateX(50%) translateY(0) scale(1); } }
+@keyframes td-hd-float { 0%,100% { transform:translateX(50%) translateY(0); } 50% { transform:translateX(50%) translateY(-4px); } }
+.td-hd.td-hd-out { animation:td-hd-out .4s ease-in forwards; }
+@keyframes td-hd-out { from { opacity:1; transform:translateX(50%) scale(1); } to { opacity:0; transform:translateX(50%) translateY(8px) scale(.8); } }
+
+@media (prefers-reduced-motion: reduce) { .td-ravan, .td-ram.td-win, .td-hd { animation:none; } }
