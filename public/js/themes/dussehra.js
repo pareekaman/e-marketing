@@ -108,16 +108,17 @@ ThemeDecor.register('dussehra', function (d) {
   var ram =
     '<svg viewBox="0 0 200 260" xmlns="http://www.w3.org/2000/svg"><defs>' +
     '<radialGradient id="tdRamHalo"><stop offset="0" stop-color="#FFF6D5"/><stop offset=".55" stop-color="#FFD54F" stop-opacity=".7"/><stop offset="1" stop-color="#FFB300" stop-opacity="0"/></radialGradient>' +
-    '<linearGradient id="tdRamSkin" gradientUnits="userSpaceOnUse" x1="60" y1="20" x2="150" y2="250"><stop offset="0" stop-color="#5B9BE6"/><stop offset="1" stop-color="#2C5DA8"/></linearGradient>' +
+    '<linearGradient id="tdRamSkin" gradientUnits="userSpaceOnUse" x1="60" y1="20" x2="150" y2="250"><stop offset="0" stop-color="#A5D4F7"/><stop offset="1" stop-color="#4A8CCB"/></linearGradient>' +
     '<linearGradient id="tdRamGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF1A8"/><stop offset=".5" stop-color="#F5C518"/><stop offset="1" stop-color="#C98A06"/></linearGradient>' +
-    '<linearGradient id="tdRamSilk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FDE047"/><stop offset="1" stop-color="#EAB308"/></linearGradient>' +
-    '<linearGradient id="tdRamScarf" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FB923C"/><stop offset="1" stop-color="#DC2626"/></linearGradient>' +
+    '<linearGradient id="tdRamSilk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FB923C"/><stop offset="1" stop-color="#EA580C"/></linearGradient>' +
+    '<linearGradient id="tdRamScarf" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FDBA74"/><stop offset="1" stop-color="#EA580C"/></linearGradient>' +
     '</defs>' +
     // halo behind the head
     '<circle cx="85" cy="54" r="35" fill="url(#tdRamHalo)"/>' +
     '<circle cx="85" cy="54" r="27" fill="none" stroke="#F59E0B" stroke-width="1.2" stroke-opacity=".5"/>' +
     // long hair down the back, quiver with fletchings over the shoulder, saffron scarf streaming back
-    '<path d="M71 48 C61 62 61 84 56 104 C64 101 69 92 72 82 C74 74 73 62 77 54 Z" fill="#1C1917"/>' +
+    '<path d="M74 44 C58 50 50 70 46 96 C42 116 34 126 26 132 C40 130 50 118 56 104 C58 120 52 134 46 142 C60 134 66 116 68 98 C70 86 72 76 76 66 Z" fill=""/>' +
+    '<path d="M72 46 C56 44 40 52 22 50 M70 52 C54 56 40 66 24 70 M70 60 C58 70 46 84 36 90" fill="none" stroke="" stroke-width="2.4" stroke-linecap="round"/>' +
     '<g transform="rotate(-22 60 100)"><rect x="54" y="70" width="13" height="60" rx="4" fill="#7C2D12" stroke="#431407" stroke-width="1"/>' +
     '<rect x="54" y="80" width="13" height="4" fill="url(#tdRamGold)"/><rect x="54" y="118" width="13" height="4" fill="url(#tdRamGold)"/>' +
     '<path d="M57 70 l-2 -12 l4 5 z M61 70 l0 -13 l3 6 z M65 70 l2 -12 l1 7 z" fill="#DC2626"/></g>' +
@@ -125,7 +126,7 @@ ThemeDecor.register('dussehra', function (d) {
     // legs in an archer's stance, feet, anklets
     '<path d="M62 190 L51 244" stroke="url(#tdRamSkin)" stroke-width="11" stroke-linecap="round"/>' +
     '<path d="M112 190 L123 244" stroke="url(#tdRamSkin)" stroke-width="11" stroke-linecap="round"/>' +
-    '<ellipse cx="54" cy="250" rx="10" ry="4.2" fill="#2C5DA8"/><ellipse cx="128" cy="250" rx="11" ry="4.2" fill="#2C5DA8"/>' +
+    '<ellipse cx="54" cy="250" rx="10" ry="4.2" fill="#4A8CCB"/><ellipse cx="128" cy="250" rx="11" ry="4.2" fill="#4A8CCB"/>' +
     '<path d="M46 240 H58 M116 240 H128" stroke="#F5C518" stroke-width="3" stroke-linecap="round"/>' +
     // far arm: held out to the bow (aim) or raised with it (cheer); behind the body
     '<g class="td-aim"><path d="M92 96 L153 94" stroke="url(#tdRamSkin)" stroke-width="9" stroke-linecap="round"/>' +
@@ -138,15 +139,17 @@ ThemeDecor.register('dussehra', function (d) {
     '<path d="M80 72 L80 88 L90 88 L90 72 Z" fill="url(#tdRamSkin)"/>' +
     // sacred thread, gold necklace, garland of flowers
     '<path d="M74 92 L99 138" stroke="#F8FAFC" stroke-width="1.3"/>' +
-    '<path d="M73 93 Q85 112 99 93" fill="none" stroke="#F5C518" stroke-width="2.4"/><circle cx="86" cy="104" r="2.6" fill="#DC2626" stroke="#F5C518" stroke-width="1"/>' +
-    '<path d="M71 95 Q86 146 101 95" fill="none" stroke="#F472B6" stroke-width="3.4" stroke-dasharray="0.1 5" stroke-linecap="round"/>' +
-    '<path d="M71 95 Q86 146 101 95" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-dasharray="0.1 5" stroke-dashoffset="2.5" stroke-linecap="round"/>' +
+    '<path d="M74 92 Q86 106 98 92" fill="none" stroke="#7C2D12" stroke-width="2.8" stroke-dasharray="0.1 3.2" stroke-linecap="round"/>' +
+    '<path d="M73 93 Q86 116 99 93" fill="none" stroke="#92400E" stroke-width="3" stroke-dasharray="0.1 3.4" stroke-linecap="round"/>' +
+    '<path d="M71 95 Q86 134 101 95" fill="none" stroke="#78350F" stroke-width="3.4" stroke-dasharray="0.1 3.6" stroke-linecap="round"/>' +
+    // saffron uttariya draped across the chest from the shoulder
+    '<path d="M70 90 C78 92 84 100 102 132 L96 140 C84 116 76 104 68 100 Z" fill="url(#tdRamScarf)" stroke="#C2410C" stroke-width=".7"/>' +
     // yellow silk dhoti with a red border, red-and-gold waist sash
-    '<path d="M69 142 H101 L124 194 Q116 200 106 198 L86 166 L70 200 Q58 200 50 194 Z" fill="url(#tdRamSilk)" stroke="#A16207" stroke-width="1"/>' +
-    '<path d="M52 192 Q60 197 70 197 M106 195 Q115 197 122 192" stroke="#DC2626" stroke-width="3" fill="none"/>' +
-    '<path d="M78 150 L74 186 M92 150 L100 182" stroke="#CA8A04" stroke-width="1" fill="none" opacity=".7"/>' +
-    '<path d="M68 136 H102 V146 H68 Z" fill="#DC2626"/><path d="M68 136.8 H102 M68 145.2 H102" stroke="#F5C518" stroke-width="1.6"/>' +
-    '<path d="M92 146 Q96 160 90 172 Q98 162 97 147 Z" fill="#DC2626"/>' +
+    '<path d="M69 142 H101 L124 194 Q116 200 106 198 L86 166 L70 200 Q58 200 50 194 Z" fill="url(#tdRamSilk)" stroke="#9A3412" stroke-width="1"/>' +
+    '<path d="M52 192 Q60 197 70 197 M106 195 Q115 197 122 192" stroke="#C2410C" stroke-width="3" fill="none"/>' +
+    '<path d="M78 150 L74 186 M92 150 L100 182" stroke="#9A3412" stroke-width="1" fill="none" opacity=".6"/>' +
+    '<path d="M68 136 H102 V146 H68 Z" fill="#EA580C"/><path d="M68 137 H102 M68 145 H102" stroke="#D6B98A" stroke-width="1.6"/>' +
+    '<path d="M92 146 Q96 160 90 172 Q98 162 97 147 Z" fill="#C2410C"/>' +
     // aiming: the Kodanda bow (curled, gold-banded), its string, the arrow, and both hands
     '<g class="td-aim">' +
     '<path d="M138 24 Q170 93 138 162" fill="none" stroke="#7C2D12" stroke-width="4.6" stroke-linecap="round"/>' +
@@ -174,8 +177,8 @@ ThemeDecor.register('dussehra', function (d) {
     '<circle cx="61" cy="42" r="5.6" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width=".8"/></g>' +
     // head, hair at the side, ear with a gold earring
     '<ellipse cx="85" cy="60" rx="15" ry="16.5" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width="1"/>' +
-    '<path d="M70.5 52 C68.5 62 70 70 76 75 C72.5 65 73.5 57 78 51 Z" fill="#1C1917"/>' +
-    '<ellipse cx="76.5" cy="62" rx="3" ry="4.2" fill="#3F7ACB" stroke="#1E3F73" stroke-width=".8"/>' +
+    '<path d="M70.5 52 C68.5 62 70 70 76 75 C72.5 65 73.5 57 78 51 Z" fill="#1F2A44"/>' +
+    '<ellipse cx="76.5" cy="62" rx="3" ry="4.2" fill="#7FB5E6" stroke="#1E3F73" stroke-width=".8"/>' +
     '<circle cx="76.5" cy="71" r="3.4" fill="url(#tdRamGold)" stroke="#B45309" stroke-width=".7"/><circle cx="76.5" cy="71" r="1.2" fill="#DC2626"/>' +
     // calm, focused face while aiming...
     '<g class="td-aim">' +
@@ -192,15 +195,11 @@ ThemeDecor.register('dussehra', function (d) {
     '<path d="M90 69.2 Q94 71.3 98 68.8" fill="none" stroke="#fff" stroke-width="1.1"/></g>' +
     // nose, tilak
     '<path d="M99.5 57.5 Q102.5 63 98.8 65.8" fill="none" stroke="#1E3F73" stroke-width="1.2" stroke-linecap="round"/>' +
-    '<path d="M90 46.5 L91 51 Q92 52 93 51 L94 46.5" fill="none" stroke="#fff" stroke-width="1.3"/><path d="M92 47 V51" stroke="#DC2626" stroke-width="1.3"/>' +
-    // tall gold crown (mukut) with jewels and a finial
-    '<path d="M71 44 L74 21 Q85.5 11 97 21 L100 44 Z" fill="url(#tdRamGold)" stroke="#B45309" stroke-width="1"/>' +
-    '<path d="M73 31 H98 M72 38 H99" stroke="#B45309" stroke-width="1" opacity=".55"/>' +
-    '<rect x="69" y="40" width="33" height="6" rx="2" fill="url(#tdRamGold)" stroke="#B45309" stroke-width="1"/>' +
-    '<circle cx="85.5" cy="27.5" r="3.2" fill="#DC2626" stroke="#fff" stroke-width=".8"/>' +
-    '<circle cx="78" cy="34.5" r="1.8" fill="#16A34A"/><circle cx="93" cy="34.5" r="1.8" fill="#16A34A"/><circle cx="85.5" cy="43" r="1.6" fill="#DC2626"/>' +
-    '<path d="M85.5 13 V4" stroke="#F5C518" stroke-width="2.4" stroke-linecap="round"/>' +
-    '<circle cx="85.5" cy="12" r="3" fill="url(#tdRamGold)" stroke="#B45309" stroke-width=".7"/>' +
+    '<path d="M89.6 45 L90.8 51 Q92 52.6 93.2 51 L94.4 45" fill="none" stroke="#F97316" stroke-width="1.7"/><path d="M92 46 V51" stroke="#DC2626" stroke-width="1.1"/>' +
+    // hair over the head, swept back, gathered into a jata knot tied with a saffron band
+    '<path d="M69.5 61 C66 45 76 37 88 37.5 C97 38 102 44 100.5 52 C96 45.5 89 44 82.5 45.5 C77 47 74 53 72.5 63 Z" fill=""/>' +
+    '<ellipse cx="80" cy="32" rx="8.5" ry="6.5" fill=""/><path d="M73 36 Q80 40 87 36" stroke="#EA580C" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
+    '<path d="M76 27 Q70 22 64 24 M83 26 Q86 20 92 21" fill="none" stroke="" stroke-width="1.6" stroke-linecap="round"/>' +
     '</svg>';
 
   // Arrows in flight. Each has its tip at a known point (tip) so it can be flown tip-first.
