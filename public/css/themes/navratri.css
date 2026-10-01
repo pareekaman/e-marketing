@@ -14,20 +14,20 @@
 @keyframes nv-sway { from { transform:skewX(-2deg); } to { transform:skewX(2deg); } }
 
 /* two dandiya dancers, bottom-left; they step, bob and strike sticks on a 2.4s beat */
-.td-dancer { bottom:0; width:84px; filter:drop-shadow(0 4px 5px rgba(0,0,0,.25)); transition:translate .3s var(--ease); }
+.td-dancer { bottom:0; width:120px; filter:drop-shadow(0 4px 5px rgba(0,0,0,.25)); transition:translate .3s var(--ease); }
 .td-dancer-1 { left:72px; }
-.td-dancer-2 { left:150px; }
+.td-dancer-2 { left:180px; }
 .nv-body, .nv-arm, .nv-skirt { transform-box:view-box; animation:2.4s ease-in-out infinite; }
-.nv-body { transform-origin:40px 145px; animation-name:nv-step; }
+.nv-body { transform-origin:50px 152px; animation-name:nv-step; }
 .td-dancer-2 .nv-body { animation-delay:-1.2s; }
-.nv-skirt { transform-origin:40px 72px; animation-name:nv-twirl; }
-.nv-arm-l { transform-origin:31px 50px; animation-name:nv-arm-l; }
-.nv-arm-r { transform-origin:49px 50px; animation-name:nv-arm-r; }
+.nv-skirt { transform-origin:50px 86px; animation-name:nv-twirl; }
+.nv-arm-l { transform-origin:40px 64px; animation-name:nv-arm-l; }
+.nv-arm-r { transform-origin:60px 64px; animation-name:nv-arm-r; }
 .td-dancer-2 .nv-arm, .td-dancer-2 .nv-skirt { animation-delay:-1.2s; }
 @keyframes nv-step { 0%,50%,100% { transform:translateY(0) rotate(0); } 25% { transform:translateY(-6px) rotate(-6deg); } 75% { transform:translateY(-6px) rotate(6deg); } }
 @keyframes nv-twirl { 0%,50%,100% { transform:scaleX(1); } 25% { transform:scaleX(1.12) skewX(-6deg); } 75% { transform:scaleX(1.12) skewX(6deg); } }
-@keyframes nv-arm-l { 0%,100% { transform:rotate(0); } 25% { transform:rotate(55deg); } 50% { transform:rotate(-20deg); } 75% { transform:rotate(40deg); } }
-@keyframes nv-arm-r { 0%,100% { transform:rotate(0); } 25% { transform:rotate(-40deg); } 50% { transform:rotate(20deg); } 75% { transform:rotate(-55deg); } }
+@keyframes nv-arm-l { 0%,50%,100% { transform:rotate(0); } 25% { transform:rotate(14deg); } 75% { transform:rotate(-10deg); } }
+@keyframes nv-arm-r { 0%,50%,100% { transform:rotate(0); } 25% { transform:rotate(10deg); } 75% { transform:rotate(-14deg); } }
 
 /* garba pot bottom-right, beside the chatbot button: a flame and holes that twinkle */
 .td-garba { right:104px; bottom:4px; width:74px; filter:drop-shadow(0 0 10px rgba(255,170,0,.6)); }
@@ -39,7 +39,7 @@
 @keyframes nv-flame { from { transform:scale(1,.9) skewX(-3deg); } to { transform:scale(1.06,1.1) skewX(3deg); } }
 
 /* "शुभ नवरात्रि" above the dancers; Devanagari needs a system font, Inter has none */
-.nv-greet { position:absolute; left:84px; bottom:158px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
+.nv-greet { position:absolute; left:110px; bottom:206px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
   color:#fff; padding:7px 14px; border-radius:999px; background:linear-gradient(135deg,#F97316,#BE185D 60%,#7E22CE);
   box-shadow:0 0 0 2px rgba(255,255,255,.75), 0 0 18px rgba(219,39,119,.6); transition:translate .3s var(--ease);
   animation:nv-greet 2.4s ease-in-out infinite alternate; }
@@ -52,17 +52,15 @@
   .td-dancer, .nv-greet { transition:none; }
 }
 
-/* Maa Durga, bottom-right beside the garba, with an aarti thali circling before her */
-.td-durga { right:190px; bottom:0; width:150px; filter:drop-shadow(0 0 12px rgba(255,180,0,.6)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
-.nv-halo { transform-box:view-box; transform-origin:80px 58px; animation:nv-halo 3s ease-in-out infinite alternate; }
-@keyframes nv-halo { from { opacity:.75; transform:scale(.96); } to { opacity:1; transform:scale(1.04); } }
-.td-aarti { right:239px; bottom:40px; width:50px; animation:nv-aarti 3.2s linear infinite; filter:drop-shadow(0 0 8px rgba(255,170,0,.8)); }
-/* a clockwise circle in front of her: 0 → right → up → left → down */
-@keyframes nv-aarti {
-  0%   { transform:translate(0, 0); }
-  25%  { transform:translate(34px, -34px); }
-  50%  { transform:translate(0, -68px); }
-  75%  { transform:translate(-34px, -34px); }
-  100% { transform:translate(0, 0); }
-}
-@media (prefers-reduced-motion: reduce) { .nv-halo, .td-aarti { animation:none; } }
+/* Maa Durga riding her tiger, bottom-right beside the garba, an aarti thali circling before her */
+.td-durga { right:186px; bottom:0; width:200px; filter:drop-shadow(0 0 12px rgba(255,180,0,.5)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+.nv-halo { transform-box:view-box; transform-origin:128px 62px; animation:nv-halo 3s ease-in-out infinite alternate; }
+@keyframes nv-halo { from { opacity:.7; transform:scale(.95); } to { opacity:1; transform:scale(1.05); } }
+.nv-tail { transform-box:view-box; transform-origin:196px 168px; animation:nv-tail 1.6s ease-in-out infinite alternate; }
+@keyframes nv-tail { from { transform:rotate(-10deg); } to { transform:rotate(10deg); } }
+.nv-lion-head { transform-box:view-box; transform-origin:79px 190px; animation:nv-nod 3.4s ease-in-out infinite; }
+@keyframes nv-nod { 0%,100% { transform:rotate(0); } 30% { transform:rotate(-5deg); } 60% { transform:rotate(3deg); } }
+.td-aarti { right:304px; bottom:30px; width:46px; animation:nv-aarti 3.2s linear infinite; filter:drop-shadow(0 0 8px rgba(255,170,0,.8)); }
+/* a circle in front of her: 0 → right → up → left → down */
+@keyframes nv-aarti { 0% { transform:translate(0,0); } 25% { transform:translate(36px,-36px); } 50% { transform:translate(0,-72px); } 75% { transform:translate(-36px,-36px); } 100% { transform:translate(0,0); } }
+@media (prefers-reduced-motion: reduce) { .nv-halo, .nv-tail, .nv-lion-head, .td-aarti { animation:none; } }

@@ -7,47 +7,71 @@ ThemeDecor.register('navratri', function (d) {
   toran.className = 'td-item td-toran';
   d.layer.appendChild(toran);
 
-  // One dancer. dress: [ghagra/kurta colour, border colour], girl: true for ghagra and chunri.
-  // Arms are groups that turn about the shoulder (.nv-arm-l / .nv-arm-r); each hand holds a stick.
-  function dancer(skirt, border, top, girl) {
-    var s = '<svg viewBox="0 0 80 150" xmlns="http://www.w3.org/2000/svg"><g class="nv-body">';
-    // legs and feet
-    s += '<path d="M33 112 L30 140 M47 112 L50 140" stroke="#8D5524" stroke-width="6" stroke-linecap="round"/>' +
-         '<ellipse cx="28" cy="143" rx="7" ry="3" fill="#7C2D12"/><ellipse cx="52" cy="143" rx="7" ry="3" fill="#7C2D12"/>';
-    if (girl) {
-      // flared ghagra with a mirror-work border, choli, chunri over the head
-      s += '<g class="nv-skirt"><path d="M28 70 L52 70 L70 124 Q40 134 10 124 Z" fill="' + skirt + '"/>' +
-           '<path d="M10 124 Q40 134 70 124 L68 117 Q40 127 12 117 Z" fill="' + border + '"/>' +
-           '<path d="M20 108 h3 M30 112 h3 M40 113 h3 M50 112 h3 M58 108 h3" stroke="#FFF7C2" stroke-width="2.2" stroke-linecap="round"/></g>' +
-           '<path d="M29 46 Q40 42 51 46 L52 72 L28 72 Z" fill="' + top + '"/>';
-    } else {
-      // kediyu (frilled short coat) over dhoti
-      s += '<path d="M30 74 L50 74 L54 112 L26 112 Z" fill="#FFF7ED"/>' +
-           '<g class="nv-skirt"><path d="M28 46 Q40 42 52 46 L56 80 Q48 90 40 86 Q32 90 24 80 Z" fill="' + skirt + '"/>' +
-           '<path d="M24 80 Q32 90 40 86 Q48 90 56 80 L55 76 Q48 85 40 81 Q32 85 25 76 Z" fill="' + border + '"/></g>';
-    }
-    // arms (each holds a dandiya stick)
-    s += '<g class="nv-arm nv-arm-l"><path d="M31 50 L18 62 L14 48" fill="none" stroke="#8D5524" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>' +
-         '<path d="M14 48 L6 30" stroke="#B45309" stroke-width="3" stroke-linecap="round"/><path d="M6 30 l-1 -3" stroke="#DC2626" stroke-width="4" stroke-linecap="round"/></g>';
-    s += '<g class="nv-arm nv-arm-r"><path d="M49 50 L62 62 L66 48" fill="none" stroke="#8D5524" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>' +
-         '<path d="M66 48 L74 30" stroke="#B45309" stroke-width="3" stroke-linecap="round"/><path d="M74 30 l1 -3" stroke="#DC2626" stroke-width="4" stroke-linecap="round"/></g>';
-    // head, hair, face
-    s += '<rect x="36" y="36" width="8" height="10" fill="#8D5524"/>' +
-         '<circle cx="40" cy="28" r="11" fill="#C68642"/>' +
-         '<path d="M29 27 Q30 15 40 15 Q50 15 51 27 Q46 21 40 21 Q34 21 29 27 Z" fill="#1C1917"/>' +
-         '<circle cx="36" cy="28" r="1.4" fill="#111"/><circle cx="44" cy="28" r="1.4" fill="#111"/>' +
-         '<path d="M36 33 Q40 36 44 33" fill="none" stroke="#7F1D1D" stroke-width="1.3" stroke-linecap="round"/>';
-    if (girl) {
-      s += '<circle cx="40" cy="23" r="1.3" fill="#DC2626"/>' +
-           '<path d="M27 26 Q28 10 40 11 Q52 10 53 26 Q57 40 60 58 Q52 50 50 32 Q46 18 40 18 Q34 18 30 32 Q28 50 20 58 Q23 40 27 26 Z" fill="' + border + '" opacity=".9"/>' +
-           '<circle cx="29" cy="32" r="1.6" fill="#F5C518"/><circle cx="51" cy="32" r="1.6" fill="#F5C518"/>';
-    } else {
-      s += '<path d="M29 20 Q40 6 51 20 Q40 15 29 20 Z" fill="' + border + '"/>';
-    }
-    return s + '</g></svg>';
+  // A dandiya pair, both with arms raised and sticks overhead. Arms are groups turning about the
+  // shoulder (.nv-arm-l / .nv-arm-r, origins in navratri.css), the skirt twirls (.nv-skirt) and the
+  // whole dancer steps (.nv-body).
+  var SKIN = '#E8A87C', INK = '#3B2410';
+  function stick(x1, y1, x2, y2) {
+    return '<path d="M' + x1 + ' ' + y1 + ' L' + x2 + ' ' + y2 + '" stroke="#B45309" stroke-width="3.4" stroke-linecap="round"/>' +
+           '<path d="M' + x1 + ' ' + y1 + ' L' + x2 + ' ' + y2 + '" stroke="#FDE047" stroke-width="3.4" stroke-dasharray="3 3" stroke-linecap="round"/>' +
+           '<circle cx="' + x2 + '" cy="' + y2 + '" r="2.4" fill="#DC2626"/>';
   }
-  d.svg(dancer('#DB2777', '#F59E0B', '#16A34A', true), 'td-dancer td-dancer-1');
-  d.svg(dancer('#7C3AED', '#F59E0B', '', false), 'td-dancer td-dancer-2');
+  function arm(side, sleeve, cuff) {
+    var sx = 50 + side * 10, hx = 50 + side * 18;
+    return '<g class="nv-arm nv-arm-' + (side < 0 ? 'l' : 'r') + '">' +
+      '<path d="M' + sx + ' 64 L' + (50 + side * 20) + ' 44 L' + hx + ' 22" fill="none" stroke="' + SKIN + '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M' + sx + ' 64 L' + (50 + side * 17) + ' 52" stroke="' + sleeve + '" stroke-width="8" stroke-linecap="round"/>' +
+      '<path d="M' + (hx - 3.5) + ' 29 h7" stroke="' + cuff + '" stroke-width="3"/>' +
+      stick(hx, 22, hx - side * 20, 6) + '<circle cx="' + hx + '" cy="22" r="3.4" fill="' + SKIN + '"/></g>';
+  }
+  function head(girl) {
+    var s = '<rect x="46" y="52" width="8" height="10" fill="' + SKIN + '"/>' +
+      '<circle cx="50" cy="44" r="10.5" fill="' + SKIN + '" stroke="' + INK + '" stroke-width=".8"/>' +
+      '<path d="M44.5 44 Q46.5 41.5 48.5 44 M51.5 44 Q53.5 41.5 55.5 44" fill="none" stroke="' + INK + '" stroke-width="1.3" stroke-linecap="round"/>' +
+      '<path d="M45 49 Q50 54.5 55 49 Z" fill="#9F1239"/><path d="M46.5 49.4 Q50 51 53.5 49.4" stroke="#fff" stroke-width=".9" fill="none"/>' +
+      '<ellipse cx="44" cy="48" rx="2.2" ry="1.4" fill="#F9A8D4" opacity=".8"/><ellipse cx="56" cy="48" rx="2.2" ry="1.4" fill="#F9A8D4" opacity=".8"/>';
+    if (girl) {
+      s += '<path d="M39.5 44 Q39 31 50 31 Q61 31 60.5 44 Q57 36 50 36 Q43 36 39.5 44 Z" fill="#1C1917"/>' +
+           '<circle cx="40" cy="38" r="4.2" fill="#1C1917"/><circle cx="38" cy="36" r="1.8" fill="#F472B6"/><circle cx="41" cy="34.6" r="1.6" fill="#FFF"/>' +
+           '<circle cx="50" cy="39" r="1.2" fill="#DC2626"/><path d="M50 31 V36" stroke="#F5B70A" stroke-width="1"/>' +
+           '<circle cx="39.6" cy="48" r="1.6" fill="#F5B70A"/><circle cx="60.4" cy="48" r="1.6" fill="#F5B70A"/>';
+    } else {
+      s += '<path d="M39.5 43 Q38 30 50 30.5 Q62 30 60.5 43 Q58 35 50 36 Q42 35 39.5 43 Z" fill="#3F1F12"/>';
+    }
+    return s;
+  }
+  function girl() {
+    return '<svg viewBox="0 0 100 160" xmlns="http://www.w3.org/2000/svg"><g class="nv-body">' +
+      '<path d="M44 140 L42 152 M56 140 L58 152" stroke="' + SKIN + '" stroke-width="5" stroke-linecap="round"/>' +
+      // pink dupatta streaming out behind
+      '<path d="M42 64 Q22 70 8 92 Q24 86 34 92 Q30 80 44 74 Z" fill="#EC4899" stroke="#F59E0B" stroke-width="1.6"/>' +
+      // flared green ghagra with pink-and-gold border and flowers
+      '<g class="nv-skirt"><path d="M42 84 L58 84 Q86 104 96 138 Q50 152 4 138 Q14 104 42 84 Z" fill="#15803D"/>' +
+      '<path d="M4 138 Q50 152 96 138 L93 129 Q50 143 7 129 Z" fill="#DB2777"/>' +
+      '<path d="M5.5 133.5 Q50 147.5 94.5 133.5" fill="none" stroke="#F5B70A" stroke-width="1.6" stroke-dasharray="2 3"/>' +
+      '<g fill="#F472B6"><circle cx="26" cy="116" r="2.4"/><circle cx="40" cy="122" r="2.4"/><circle cx="56" cy="122" r="2.4"/><circle cx="72" cy="116" r="2.4"/><circle cx="50" cy="106" r="2.2"/><circle cx="34" cy="102" r="2.2"/><circle cx="66" cy="102" r="2.2"/></g>' +
+      '<g fill="#FDE047"><circle cx="26" cy="116" r="1"/><circle cx="40" cy="122" r="1"/><circle cx="56" cy="122" r="1"/><circle cx="72" cy="116" r="1"/></g></g>' +
+      // green choli with a pink drape
+      '<path d="M40 62 Q50 58 60 62 L59 86 L41 86 Z" fill="#16A34A" stroke="#14532D" stroke-width=".8"/>' +
+      '<path d="M41 62 Q48 74 59 84 L59 78 Q52 72 46 62 Z" fill="#EC4899"/>' +
+      '<path d="M44 64 Q50 70 56 64" fill="none" stroke="#F5B70A" stroke-width="1.6"/>' +
+      arm(-1, '#16A34A', '#15803D') + arm(1, '#16A34A', '#15803D') + head(true) + '</g></svg>';
+  }
+  function boy() {
+    return '<svg viewBox="0 0 100 160" xmlns="http://www.w3.org/2000/svg"><g class="nv-body">' +
+      // red dhoti, puffed
+      '<path d="M38 108 Q30 134 36 148 L48 148 L50 118 L52 148 L64 148 Q70 134 62 108 Z" fill="#DC2626" stroke="#7F1D1D" stroke-width="1"/>' +
+      '<path d="M42 118 Q44 132 41 144 M58 118 Q56 132 59 144" fill="none" stroke="#991B1B" stroke-width="1"/>' +
+      '<path d="M41 148 L40 153 M59 148 L60 153" stroke="' + SKIN + '" stroke-width="5" stroke-linecap="round"/>' +
+      // black kurta flaring as he turns, gold-embroidered vest
+      '<g class="nv-skirt"><path d="M40 62 Q50 58 60 62 L64 96 Q78 112 82 120 Q50 128 18 120 Q22 112 36 96 Z" fill="#1C1917" stroke="#000" stroke-width=".8"/></g>' +
+      '<path d="M41 63 L43 100 L49 100 L48 64 Z M59 63 L57 100 L51 100 L52 64 Z" fill="#1C1917" stroke="#F5B70A" stroke-width="1.6"/>' +
+      '<path d="M44 72 h2 M44 80 h2 M44 88 h2 M54 72 h2 M54 80 h2 M54 88 h2" stroke="#F5B70A" stroke-width="1.6" stroke-linecap="round"/>' +
+      '<path d="M45 63 Q50 76 55 63" fill="none" stroke="#F8FAFC" stroke-width="1.6" stroke-dasharray="0.1 2.6" stroke-linecap="round"/>' +
+      arm(-1, '#1C1917', '#F5B70A') + arm(1, '#1C1917', '#F5B70A') + head(false) + '</g></svg>';
+  }
+  d.svg(girl(), 'td-dancer td-dancer-1');
+  d.svg(boy(), 'td-dancer td-dancer-2');
 
   // Garba: a clay pot with rows of holes, a diya burning inside, light glinting through the holes.
   var holes = '';
@@ -65,68 +89,89 @@ ThemeDecor.register('navratri', function (d) {
     '<path class="nv-flame" d="M40 2 C46 10 46 17 40 22 C34 17 34 10 40 2 Z" fill="#FF9800"/>' +
     '<path class="nv-flame" d="M40 9 C43 13 43 17 40 20 C37 17 37 13 40 9 Z" fill="#FFEB3B"/></svg>', 'td-garba');
 
-  // Maa Durga on a lotus, with eight arms holding her weapons, a halo behind her, and an aarti
-  // thali circling in front of her (.nv-aarti, css). Drawn facing the viewer.
+  // Maa Durga riding her tiger, in a friendly cartoon style: big round face with sparkling eyes,
+  // gold crown, red saree, hands joined in front and eight more arms fanned out with her weapons;
+  // the tiger in front, big-headed and smiling. A halo glows behind her (.nv-halo); the tiger's
+  // tail swishes (.nv-tail) and his head nods (.nv-lion-head).
   function durga() {
-    var s = '<svg viewBox="0 0 160 200" xmlns="http://www.w3.org/2000/svg"><defs>' +
-      '<radialGradient id="nvHalo"><stop offset="0" stop-color="#FFF6D5"/><stop offset=".6" stop-color="#FFD54F" stop-opacity=".8"/><stop offset="1" stop-color="#FF9800" stop-opacity="0"/></radialGradient>' +
-      '<linearGradient id="nvGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF1A8"/><stop offset=".5" stop-color="#F5C518"/><stop offset="1" stop-color="#C98A06"/></linearGradient>' +
-      '<linearGradient id="nvSaree" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E11D48"/><stop offset="1" stop-color="#9F1239"/></linearGradient></defs>';
-    // halo with rays
-    s += '<g class="nv-halo"><circle cx="80" cy="58" r="50" fill="url(#nvHalo)"/>';
-    for (var k = 0; k < 16; k++) s += '<path d="M80 58 L' + (80 + 56 * Math.cos(k * Math.PI / 8)).toFixed(1) + ' ' + (58 + 56 * Math.sin(k * Math.PI / 8)).toFixed(1) + '" stroke="#FBBF24" stroke-width="1.4" stroke-opacity=".5"/>';
-    s += '</g>';
-    // eight arms fanned out behind the body, each with what it holds
-    var arms = [
-      [-150, 'M-3 -14 L3 -14 L0 -26 Z M-6 -14 V-20 M6 -14 V-20 M0 -14 V12', '#9CA3AF'],                 // trishul
-      [-125, 'M0 -10 m-7 0 a7 7 0 1 0 14 0 a7 7 0 1 0 -14 0 M0 -17 V-3 M-7 -10 H7', '#F5C518'],      // chakra
-      [-100, 'M0 -2 L0 -30 L3 -26 L3 -2 Z', '#E5E7EB'],                                                // sword
-      [-75, 'M0 -4 Q-8 -14 0 -22 Q8 -14 0 -4 Z M0 -4 Q-12 -8 -10 -16 M0 -4 Q12 -8 10 -16', '#F472B6'], // lotus
-      [-30, 'M0 -4 Q8 -10 4 -20 Q-2 -14 0 -4 Z', '#FFF7ED'],                                           // conch
-      [-55, 'M-6 -26 Q8 -12 -6 2 M-6 -26 L-6 2', '#7C2D12'],                                           // bow
-      [-5, 'M0 0 V-18 M0 -22 m-5 0 a5 5 0 1 0 10 0 a5 5 0 1 0 -10 0', '#6B7280']                     // mace
-    ];
-    arms.forEach(function (a, i) {
-      [-1, 1].forEach(function (side) {
-        if (i === 6 && side === 1) return;
-        var ang = (side === -1 ? a[0] : -180 - a[0]) * Math.PI / 180, len = 54 - (i % 3) * 5;
-        var sx = 80 + side * 12, sy = 96, hx = sx + Math.cos(ang) * len, hy = sy + Math.sin(ang) * len;
-        if (side === 1 && i > 3) return; // seven objects in all, plus the blessing hand in front
-        s += '<path d="M' + sx + ' ' + sy + ' L' + hx.toFixed(1) + ' ' + hy.toFixed(1) + '" stroke="#E8B07A" stroke-width="5" stroke-linecap="round"/>' +
-             '<circle cx="' + hx.toFixed(1) + '" cy="' + hy.toFixed(1) + '" r="3" fill="#E8B07A"/>' +
-             '<path d="M' + (hx - 2).toFixed(1) + ' ' + hy.toFixed(1) + ' h4" stroke="#F5C518" stroke-width="2"/>' +
-             '<g transform="translate(' + hx.toFixed(1) + ' ' + hy.toFixed(1) + ')"><path d="' + a[1] + '" fill="' + a[2] + '" stroke="' + a[2] + '" stroke-width="1.6" stroke-linecap="round"/></g>';
-      });
+    var skin = '#F7C99B', line = '#5B3A1A';
+    var s = '<svg viewBox="0 0 220 210" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<radialGradient id="nvHalo"><stop offset="0" stop-color="#FFF6D5"/><stop offset=".6" stop-color="#FFD54F" stop-opacity=".75"/><stop offset="1" stop-color="#FF9800" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="nvGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE58A"/><stop offset=".55" stop-color="#F5B70A"/><stop offset="1" stop-color="#C98A06"/></linearGradient></defs>';
+    // halo
+    s += '<g class="nv-halo"><circle cx="128" cy="62" r="60" fill="url(#nvHalo)"/></g>';
+    // tiger's tail (behind), body
+    s += '<path class="nv-tail" d="M196 168 Q216 150 206 128 Q200 118 192 124" fill="none" stroke="#F59E0B" stroke-width="7" stroke-linecap="round"/>' +
+         '<path d="M203 141 l-6 2 M205 133 l-6 -1" stroke="#1C1917" stroke-width="2.4" stroke-linecap="round"/>' +
+         '<path d="M60 150 Q70 128 120 130 Q182 128 198 152 Q204 178 188 196 L70 198 Q56 182 60 150 Z" fill="#F59E0B" stroke="' + line + '" stroke-width="1.6"/>' +
+         '<path d="M150 134 l-4 14 M164 136 l-3 15 M178 142 l-4 13 M190 152 l-6 10 M136 134 l-3 12" stroke="#1C1917" stroke-width="3" stroke-linecap="round"/>' +
+         '<path d="M86 196 v-18 M110 197 v-18 M164 197 v-20 M184 196 v-18" stroke="#F59E0B" stroke-width="12" stroke-linecap="round"/>' +
+         '<path d="M78 200 h16 M102 200 h16 M156 200 h16 M176 200 h16" stroke="#FDE7C8" stroke-width="6" stroke-linecap="round"/>';
+    // eight arms fanned out behind her shoulders, each holding something
+    var held = {
+      trishul: '<path d="M0 0 V-34 M-8 -28 Q-8 -38 0 -44 Q8 -38 8 -28 M0 -44 V-48" fill="none" stroke="#F5B70A" stroke-width="3" stroke-linecap="round"/>',
+      chakra: '<g transform="translate(0 -12)"><circle r="9" fill="#FDE7C8" stroke="#E11D48" stroke-width="2.4"/><circle r="3" fill="#E11D48"/></g><path d="M0 0 V-3" stroke="#7C2D12" stroke-width="2.4"/>',
+      sword: '<path d="M0 2 V-6 M-5 -6 H5" stroke="#7C2D12" stroke-width="3" stroke-linecap="round"/><path d="M-3 -6 L0 -40 L3 -6 Z" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="1"/>',
+      bow: '<path d="M-8 -30 Q12 -14 -8 4" fill="none" stroke="#7C2D12" stroke-width="3"/><path d="M-8 -30 V4" stroke="#E5E7EB" stroke-width="1"/>',
+      lotus: '<path d="M0 0 V-14" stroke="#16A34A" stroke-width="2"/><path d="M0 -14 Q-9 -22 -6 -30 Q0 -26 0 -14 Q0 -26 6 -30 Q9 -22 0 -14 Z" fill="#F472B6" stroke="#BE185D" stroke-width="1"/>',
+      conch: '<path d="M-6 -4 Q0 -24 8 -10 Q6 0 -6 -4 Z" fill="#FFF7ED" stroke="#B45309" stroke-width="1.2"/>',
+      mace: '<path d="M0 2 V-26" stroke="#7C2D12" stroke-width="3"/><circle cx="0" cy="-30" r="7" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>',
+      shield: '<circle cx="0" cy="-4" r="11" fill="#B45309" stroke="#F5B70A" stroke-width="2.4"/><circle cx="0" cy="-4" r="3" fill="#F5B70A"/>'
+    };
+    [[-165, 'trishul'], [-140, 'chakra'], [-115, 'sword'], [-195, 'bow'],
+     [-15, 'lotus'], [-40, 'conch'], [-65, 'mace'], [15, 'shield']].forEach(function (a) {
+      var ang = a[0] * Math.PI / 180, sx = 128 + Math.cos(ang) * 8, sy = 104;
+      var hx = sx + Math.cos(ang) * 52, hy = sy + Math.sin(ang) * 46;
+      s += '<path d="M' + sx.toFixed(1) + ' ' + sy + ' L' + hx.toFixed(1) + ' ' + hy.toFixed(1) + '" stroke="' + skin + '" stroke-width="7" stroke-linecap="round"/>' +
+           '<path d="M' + (sx + (hx - sx) * 0.82).toFixed(1) + ' ' + (sy + (hy - sy) * 0.82).toFixed(1) + ' l0.1 0" stroke="#F5B70A" stroke-width="8" stroke-linecap="round" opacity=".9"/>' +
+           '<g transform="translate(' + hx.toFixed(1) + ' ' + hy.toFixed(1) + ')">' + held[a[1]] + '</g>' +
+           '<circle cx="' + hx.toFixed(1) + '" cy="' + hy.toFixed(1) + '" r="4.2" fill="' + skin + '" stroke="' + line + '" stroke-width=".8"/>';
     });
-    // lotus seat
-    for (var p = 0; p < 9; p++) s += '<ellipse cx="' + (44 + p * 9) + '" cy="182" rx="7" ry="13" fill="' + (p % 2 ? '#F472B6' : '#EC4899') + '" stroke="#fff" stroke-width="1" transform="rotate(' + ((p - 4) * 12) + ' ' + (44 + p * 9) + ' 186)"/>';
-    s += '<ellipse cx="80" cy="190" rx="46" ry="7" fill="#BE185D"/>';
-    // body: red saree with a gold border, draped over one shoulder
-    s += '<path d="M60 92 Q80 84 100 92 L110 182 Q80 190 50 182 Z" fill="url(#nvSaree)" stroke="#881337" stroke-width="1"/>' +
-         '<path d="M50 182 Q80 190 110 182 L108 172 Q80 180 52 172 Z" fill="url(#nvGold)"/>' +
-         '<path d="M62 92 Q86 118 108 170" fill="none" stroke="url(#nvGold)" stroke-width="5"/>' +
-         '<path d="M66 100 Q80 112 94 100" fill="none" stroke="#F5C518" stroke-width="2.4"/><circle cx="80" cy="108" r="3" fill="#16A34A" stroke="#F5C518" stroke-width="1"/>' +
-         '<path d="M64 110 Q80 140 96 110" fill="none" stroke="#F97316" stroke-width="3" stroke-dasharray="0.1 4" stroke-linecap="round"/>';
-    // blessing hand in front (abhaya mudra)
-    s += '<path d="M94 100 L104 120 L106 104" fill="none" stroke="#E8B07A" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>' +
-         '<path d="M102 104 v-8 M104.5 103 v-9 M107 103 v-8 M109.5 104 v-6" stroke="#E8B07A" stroke-width="2.4" stroke-linecap="round"/>' +
-         '<circle cx="106" cy="106" r="1.4" fill="#DC2626"/>';
-    // neck, face, hair, crown
-    s += '<rect x="74" y="74" width="12" height="14" fill="#E8B07A"/>' +
-         '<path d="M61 56 Q59 80 66 86 L94 86 Q101 80 99 56 Z" fill="#1C1917"/>' +
-         '<ellipse cx="80" cy="62" rx="16" ry="18" fill="#F0C08C" stroke="#B45309" stroke-width="1"/>' +
-         '<path d="M68 57 Q72 53 76 56 M84 56 Q88 53 92 57" fill="none" stroke="#1C1917" stroke-width="1.6" stroke-linecap="round"/>' +
-         '<path d="M68.5 61 Q72.5 57.5 77 61 Q72.5 63.5 68.5 61 Z M83 61 Q87.5 57.5 91.5 61 Q87.5 63.5 83 61 Z" fill="#fff" stroke="#1C1917" stroke-width=".9"/>' +
-         '<circle cx="73" cy="60.6" r="1.7" fill="#1C1917"/><circle cx="87" cy="60.6" r="1.7" fill="#1C1917"/>' +
-         '<path d="M80 49 V54" stroke="#DC2626" stroke-width="1.4"/><ellipse cx="80" cy="51.5" rx="1.1" ry="2.4" fill="#fff" stroke="#DC2626" stroke-width=".6"/>' +
-         '<circle cx="80" cy="56.5" r="1.4" fill="#DC2626"/>' +
-         '<path d="M78 66 Q80 69 82 66" fill="none" stroke="#B45309" stroke-width="1"/><circle cx="83.5" cy="68" r="1.6" fill="none" stroke="#F5C518" stroke-width=".9"/>' +
-         '<path d="M75 72 Q80 75.5 85 72" fill="none" stroke="#BE123C" stroke-width="1.6" stroke-linecap="round"/>' +
-         '<circle cx="63.5" cy="68" r="2.6" fill="#F5C518"/><circle cx="96.5" cy="68" r="2.6" fill="#F5C518"/>' +
-         '<path d="M63 46 L66 22 Q80 6 94 22 L97 46 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
-         '<path d="M62 40 H98 V47 H62 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
-         '<circle cx="80" cy="28" r="3.6" fill="#DC2626" stroke="#fff" stroke-width=".8"/><circle cx="71" cy="36" r="2" fill="#16A34A"/><circle cx="89" cy="36" r="2" fill="#16A34A"/>' +
-         '<path d="M80 10 V2" stroke="#F5C518" stroke-width="2.4" stroke-linecap="round"/><circle cx="80" cy="10" r="3" fill="url(#nvGold)"/>';
+    // seated body: red saree, gold border, legs draped over the tiger
+    s += '<path d="M104 104 Q128 94 152 104 L160 150 Q128 160 96 150 Z" fill="#DC2626" stroke="' + line + '" stroke-width="1.4"/>' +
+         '<path d="M96 150 Q128 160 160 150 L152 174 Q118 182 92 170 Z" fill="#B91C1C" stroke="' + line + '" stroke-width="1.2"/>' +
+         '<path d="M92 170 Q118 182 152 174" fill="none" stroke="#F5B70A" stroke-width="4"/>' +
+         '<path d="M106 104 Q130 122 156 148" fill="none" stroke="#F5B70A" stroke-width="4"/>' +
+         '<path d="M112 108 Q128 120 144 108" fill="none" stroke="#F5B70A" stroke-width="3"/><circle cx="128" cy="116" r="3.2" fill="#DC2626" stroke="#F5B70A" stroke-width="1.2"/>' +
+         '<path d="M98 172 L92 186 M112 176 L108 190" stroke="' + skin + '" stroke-width="7" stroke-linecap="round"/>';
+    // hands joined in front (namaste)
+    s += '<path d="M112 128 L126 122 M144 128 L130 122" stroke="' + skin + '" stroke-width="7" stroke-linecap="round"/>' +
+         '<path d="M124 124 Q128 108 132 124 Z" fill="' + skin + '" stroke="' + line + '" stroke-width="1"/>' +
+         '<path d="M116 125.5 l-1 -4 M140 125.5 l1 -4" stroke="#F5B70A" stroke-width="3" stroke-linecap="round"/>';
+    // the big round head: hair, face, sparkling eyes, cheeks, bindi, nose ring, smile, earrings
+    s += '<path d="M90 62 Q88 22 128 20 Q168 22 166 62 Q170 92 156 104 L100 104 Q86 92 90 62 Z" fill="#3F1F12"/>' +
+         '<circle cx="128" cy="64" r="32" fill="' + skin + '" stroke="' + line + '" stroke-width="1.2"/>' +
+         '<path d="M98 50 Q112 34 128 40 Q144 34 158 50 Q144 42 128 46 Q112 42 98 50 Z" fill="#3F1F12"/>';
+    [-1, 1].forEach(function (sx) {
+      var ex = 128 + sx * 12;
+      s += '<circle cx="' + ex + '" cy="66" r="8.5" fill="#1C1917"/>' +
+           '<path d="M' + ex + ' 60 L' + (ex + 1.6) + ' 64.4 L' + (ex + 6) + ' 66 L' + (ex + 1.6) + ' 67.6 L' + ex + ' 72 L' + (ex - 1.6) + ' 67.6 L' + (ex - 6) + ' 66 L' + (ex - 1.6) + ' 64.4 Z" fill="#fff"/>' +
+           '<path d="M' + (ex - 8) + ' 55 Q' + ex + ' 51 ' + (ex + 8) + ' 55" fill="none" stroke="#3F1F12" stroke-width="1.8" stroke-linecap="round"/>' +
+           '<ellipse cx="' + (128 + sx * 21) + '" cy="78" rx="5" ry="3.2" fill="#F9A8D4" opacity=".8"/>' +
+           '<circle cx="' + (128 + sx * 31) + '" cy="78" r="3.6" fill="url(#nvGold)" stroke="#B45309" stroke-width=".7"/>';
+    });
+    s += '<circle cx="128" cy="54" r="2.6" fill="#DC2626"/>' +
+         '<circle cx="128" cy="76" r="2.6" fill="none" stroke="#F5B70A" stroke-width="1.4"/>' +
+         '<path d="M121 84 Q128 90 135 84" fill="none" stroke="#9F1239" stroke-width="2" stroke-linecap="round"/>';
+    // crown with a maang-tika
+    s += '<path d="M100 40 Q128 26 156 40 L152 30 Q128 18 104 30 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         '<path d="M112 28 Q128 4 144 28 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         '<ellipse cx="128" cy="22" rx="3.4" ry="4.4" fill="#DC2626" stroke="#fff" stroke-width=".8"/>' +
+         '<path d="M128 10 V2" stroke="#F5B70A" stroke-width="2.6" stroke-linecap="round"/><circle cx="128" cy="10" r="3.2" fill="url(#nvGold)"/>' +
+         '<path d="M128 36 V44" stroke="#F5B70A" stroke-width="1.4"/><circle cx="128" cy="46" r="2.4" fill="#DC2626" stroke="#F5B70A" stroke-width="1"/>';
+    // the tiger's big friendly head, in front
+    s += '<g class="nv-lion-head">' +
+         '<circle cx="54" cy="138" r="11" fill="#F59E0B" stroke="' + line + '" stroke-width="1.4"/><circle cx="54" cy="138" r="5.5" fill="#FBCFE8"/>' +
+         '<circle cx="104" cy="138" r="11" fill="#F59E0B" stroke="' + line + '" stroke-width="1.4"/><circle cx="104" cy="138" r="5.5" fill="#FBCFE8"/>' +
+         '<ellipse cx="79" cy="164" rx="32" ry="28" fill="#F59E0B" stroke="' + line + '" stroke-width="1.6"/>' +
+         '<path d="M79 137 v8 M71 139 l2 7 M87 139 l-2 7 M48 160 h8 M47 168 h8 M110 160 h-8 M111 168 h-8" stroke="#1C1917" stroke-width="2.6" stroke-linecap="round"/>' +
+         '<ellipse cx="79" cy="176" rx="17" ry="12" fill="#FDE7C8"/>' +
+         '<circle cx="67" cy="160" r="6" fill="#1C1917"/><circle cx="91" cy="160" r="6" fill="#1C1917"/>' +
+         '<circle cx="68.5" cy="158" r="2.2" fill="#fff"/><circle cx="92.5" cy="158" r="2.2" fill="#fff"/>' +
+         '<path d="M75 170 Q79 167 83 170 Q79 175 75 170 Z" fill="#F472B6" stroke="' + line + '" stroke-width=".8"/>' +
+         '<path d="M79 174 Q75 180 71 177 M79 174 Q83 180 87 177" fill="none" stroke="' + line + '" stroke-width="1.4" stroke-linecap="round"/>' +
+         '<ellipse cx="60" cy="172" rx="4" ry="2.4" fill="#F9A8D4" opacity=".8"/><ellipse cx="98" cy="172" rx="4" ry="2.4" fill="#F9A8D4" opacity=".8"/>' +
+         '</g>';
     return s + '</svg>';
   }
   d.svg(durga(), 'td-durga');
