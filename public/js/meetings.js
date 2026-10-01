@@ -484,7 +484,7 @@ async function openMeetingModal(id, prefillStart) {
   await Promise.all([_mtgEnsureClients(), _mtgEnsureUsers()]);
   const clientSel = document.getElementById('mtgClient');
   clientSel.innerHTML = '<option value="">— None —</option>' +
-    _mtgClientsCache.filter(isActiveClient).map(c => `<option value="${c.id}">${dtEscape(clientLabel(c))}</option>`).join('');
+    sortClientsForPicker(_mtgClientsCache.filter(isActiveClient)).map(c => `<option value="${c.id}">${dtEscape(clientLabel(c))}</option>`).join('');
   // Explicit reset — browsers retain the previously-selected <select> .value
   // across innerHTML rebuilds if the new option list still contains it, so a
   // brand-new meeting was silently inheriting the last-picked client.

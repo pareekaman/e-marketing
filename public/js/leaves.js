@@ -28,6 +28,10 @@ async function lvLoadClients(){
     const list = await api('/api/clients');
     LEAVE_CLIENTS = (Array.isArray(list) ? list : [])
       .filter(c => c.is_active === undefined || !!Number(c.is_active))
+      // Your own clients first. The name stays the stored value here, so it
+      // is also what the Extra Working picker shows.
+      .sort((a, b) => (Number(!!Number(b.is_my_client)) - Number(!!Number(a.is_my_client))) ||
+        (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
       .map(c => c.name);
   } catch { LEAVE_CLIENTS = []; }
   // If the user already picked Extra Working before clients arrived, refresh dropdowns

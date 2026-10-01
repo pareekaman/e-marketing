@@ -483,7 +483,7 @@ async function dtCheckLockAndRender(){
 function dtClientOptions(selected){
   let html = '<option value="">--select--</option>';
   // Active clients only, but a row that already names an inactive one keeps it.
-  for (const c of DT_CLIENTS) {
+  for (const c of sortClientsForPicker(DT_CLIENTS)) {
     if (!isActiveClient(c) && selected !== c.name) continue;
     const sel = (selected === c.name) ? 'selected' : '';
     html += `<option value="${dtEscape(c.name)}" ${sel}>${dtEscape(clientLabel(c))}</option>`;
@@ -504,6 +504,13 @@ function dtDeptOptions(selected){
 function isActiveClient(c){ return c.is_active === undefined || !!Number(c.is_active); }
 // Pickers show the brand people know; clients without one fall back to the name.
 function clientLabel(c){ return (c.brand_name || '').trim() || c.name || ''; }
+// Picker order: the clients you handle first, then everyone else, each group
+// A-Z by the label actually shown.
+function sortClientsForPicker(list){
+  return [...(list || [])].sort((a, b) =>
+    (Number(!!Number(b.is_my_client)) - Number(!!Number(a.is_my_client))) ||
+    clientLabel(a).localeCompare(clientLabel(b), undefined, { sensitivity: 'base' }));
+}
 function dtEscape(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function dtAddRow(prefill){
