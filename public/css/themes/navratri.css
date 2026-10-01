@@ -54,7 +54,7 @@
 @keyframes nv-tail { from { transform:rotate(-10deg); } to { transform:rotate(10deg); } }
 .nv-lion-head { transform-box:view-box; transform-origin:79px 190px; animation:nv-nod 3.4s ease-in-out infinite; }
 @keyframes nv-nod { 0%,100% { transform:rotate(0); } 30% { transform:rotate(-5deg); } 60% { transform:rotate(3deg); } }
-.td-aarti { right:222px; bottom:30px; width:46px; animation:nv-aarti 3.2s linear infinite; filter:drop-shadow(0 0 8px rgba(255,170,0,.8)); }
+.td-aarti { right:181px; bottom:30px; width:46px; animation:nv-aarti 3.2s linear infinite; filter:drop-shadow(0 0 8px rgba(255,170,0,.8)); }
 /* a circle in front of her: 0 → right → up → left → down */
 @keyframes nv-aarti { 0% { transform:translate(0,0); } 25% { transform:translate(36px,-36px); } 50% { transform:translate(0,-72px); } 75% { transform:translate(-36px,-36px); } 100% { transform:translate(0,0); } }
 @media (prefers-reduced-motion: reduce) { .nv-halo, .nv-tail, .nv-lion-head, .td-aarti { animation:none; } }
