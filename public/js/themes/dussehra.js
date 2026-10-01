@@ -8,33 +8,51 @@
    Monday check-in, or a hidden tab), so nobody misses it. Under reduced motion only the
    ending is shown, still. */
 ThemeDecor.register('dussehra', function (d) {
-  var faces = ['#B91C1C', '#1E3A8A', '#14532D', '#581C87', '#B45309'];
+  var faces = ['#B5653A', '#A0522D', '#C0703F', '#9A4A2A', '#B86A3C'];
 
-  // One angry face: spiky crown, glaring eyes under slanted brows, bared fangs, curled moustache.
+  // One terrifying face under a tall gold mukut: deep-set glowing red eyes with slit pupils,
+  // heavy slanted brows, a big curled moustache, and a wide snarl with long fangs.
   function head(cx, cy, r, i) {
-    var f = faces[i % faces.length], e = r * 0.4, ey = cy - r * 0.12;
-    function brow(sx) { return '<path d="M' + (cx + sx * r * 0.78) + ' ' + (ey - r * 0.5) + ' L' + (cx + sx * r * 0.12) + ' ' + (ey - r * 0.1) + '" stroke="#0B0B0B" stroke-width="' + (r * 0.24) + '" stroke-linecap="round"/>'; }
+    var f = faces[i % faces.length], e = r * 0.4, ey = cy - r * 0.08;
+    function P(x, y) { return (cx + x * r).toFixed(1) + ' ' + (cy + y * r).toFixed(1); }
+    function brow(sx) { return '<path d="M' + P(sx * 0.9, -0.62) + ' L' + P(sx * 0.1, -0.12) + '" stroke="#0B0B0B" stroke-width="' + (r * 0.26) + '" stroke-linecap="round"/>'; }
     function eye(sx) {
       var x = cx + sx * e;
-      return '<ellipse cx="' + x + '" cy="' + ey + '" rx="' + (r * 0.24) + '" ry="' + (r * 0.17) + '" fill="#FFF7C2"/>' +
-             '<circle cx="' + (x - sx * r * 0.03) + '" cy="' + ey + '" r="' + (r * 0.11) + '" fill="#FF1F1F"/>';
+      return '<ellipse cx="' + x + '" cy="' + (ey - r * 0.03) + '" rx="' + (r * 0.32) + '" ry="' + (r * 0.24) + '" fill="#000" fill-opacity=".4"/>' +
+             '<circle class="td-reye" cx="' + x + '" cy="' + ey + '" r="' + (r * 0.3) + '" fill="#FF2A00" fill-opacity=".55"/>' +
+             '<path d="M' + (x - sx * r * 0.24) + ' ' + (ey - r * 0.05) + ' L' + (x + sx * r * 0.24) + ' ' + (ey - r * 0.15) + ' L' + (x + sx * r * 0.18) + ' ' + (ey + r * 0.11) + ' Z" fill="#FFE600"/>' +
+             '<ellipse cx="' + x + '" cy="' + (ey - r * 0.02) + '" rx="' + (r * 0.05) + '" ry="' + (r * 0.12) + '" fill="#000"/>';
     }
+    // mukut: a band, two tiers narrowing upward, a finial; a red jewel at the front
+    var crown =
+      '<path d="M' + P(-0.95, -0.55) + ' L' + P(-0.85, -1.05) + ' L' + P(0.85, -1.05) + ' L' + P(0.95, -0.55) + ' Z" fill="#F5C518" stroke="#8A5A00" stroke-width="0.8"/>' +
+      '<path d="M' + P(-0.75, -1.05) + ' L' + P(-0.55, -1.6) + ' L' + P(0.55, -1.6) + ' L' + P(0.75, -1.05) + ' Z" fill="#EAB308" stroke="#8A5A00" stroke-width="0.8"/>' +
+      '<path d="M' + P(-0.45, -1.6) + ' L' + P(-0.25, -2.05) + ' L' + P(0.25, -2.05) + ' L' + P(0.45, -1.6) + ' Z" fill="#F5C518" stroke="#8A5A00" stroke-width="0.8"/>' +
+      '<path d="M' + P(0, -2.05) + ' L' + P(0, -2.4) + '" stroke="#F5C518" stroke-width="' + (r * 0.14) + '" stroke-linecap="round"/>' +
+      '<circle cx="' + cx + '" cy="' + (cy - r * 2.45) + '" r="' + (r * 0.12) + '" fill="#F5C518" stroke="#8A5A00" stroke-width="0.5"/>' +
+      '<path d="M' + P(-0.8, -0.8) + ' H' + (cx + 0.8 * r).toFixed(1) + '" stroke="#16A34A" stroke-width="' + (r * 0.07) + '" stroke-dasharray="' + (r * 0.12) + ' ' + (r * 0.12) + '"/>' +
+      '<ellipse cx="' + cx + '" cy="' + (cy - r * 1.3) + '" rx="' + (r * 0.17) + '" ry="' + (r * 0.22) + '" fill="#DC2626" stroke="#7F1D1D" stroke-width="0.6"/>';
     return '<g>' +
-      '<polygon points="' + (cx - r * 0.95) + ',' + (cy - r * 0.5) + ' ' + (cx - r * 0.8) + ',' + (cy - r * 1.7) + ' ' + (cx - r * 0.4) + ',' + (cy - r * 0.95) + ' ' + cx + ',' + (cy - r * 1.95) + ' ' +
-        (cx + r * 0.4) + ',' + (cy - r * 0.95) + ' ' + (cx + r * 0.8) + ',' + (cy - r * 1.7) + ' ' + (cx + r * 0.95) + ',' + (cy - r * 0.5) + '" fill="#F5C518" stroke="#8A5A00" stroke-width="0.9"/>' +
       '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="' + f + '" stroke="#140505" stroke-width="1.2"/>' +
-      eye(-1) + eye(1) + brow(-1) + brow(1) +
-      '<path d="M' + (cx - r * 0.82) + ' ' + (cy + r * 0.2) + ' Q' + (cx - r * 0.4) + ' ' + (cy + r * 0.5) + ' ' + cx + ' ' + (cy + r * 0.22) + ' Q' + (cx + r * 0.4) + ' ' + (cy + r * 0.5) + ' ' + (cx + r * 0.82) + ' ' + (cy + r * 0.2) +
-        '" stroke="#0B0B0B" stroke-width="' + (r * 0.2) + '" fill="none" stroke-linecap="round"/>' +
-      '<path d="M' + (cx - r * 0.42) + ' ' + (cy + r * 0.5) + ' Q' + cx + ' ' + (cy + r * 0.86) + ' ' + (cx + r * 0.42) + ' ' + (cy + r * 0.5) + ' Z" fill="#3B0505"/>' +
-      '<polygon points="' + (cx - r * 0.34) + ',' + (cy + r * 0.52) + ' ' + (cx - r * 0.2) + ',' + (cy + r * 0.52) + ' ' + (cx - r * 0.27) + ',' + (cy + r * 0.8) + '" fill="#fff"/>' +
-      '<polygon points="' + (cx + r * 0.34) + ',' + (cy + r * 0.52) + ' ' + (cx + r * 0.2) + ',' + (cy + r * 0.52) + ' ' + (cx + r * 0.27) + ',' + (cy + r * 0.8) + '" fill="#fff"/>' +
+      '<circle cx="' + (cx - r * 0.98) + '" cy="' + (cy + r * 0.25) + '" r="' + (r * 0.16) + '" fill="#F5C518" stroke="#8A5A00" stroke-width="0.5"/>' +
+      '<circle cx="' + (cx + r * 0.98) + '" cy="' + (cy + r * 0.25) + '" r="' + (r * 0.16) + '" fill="#F5C518" stroke="#8A5A00" stroke-width="0.5"/>' +
+      crown + eye(-1) + eye(1) + brow(-1) + brow(1) +
+      // wide snarling mouth with long upper fangs and small lower ones
+      '<path d="M' + P(-0.5, 0.42) + ' Q' + P(0, 0.34) + ' ' + P(0.5, 0.42) + ' Q' + P(0, 1.0) + ' ' + P(-0.5, 0.42) + ' Z" fill="#2A0303"/>' +
+      '<path d="M' + P(-0.42, 0.42) + ' L' + P(-0.28, 0.42) + ' L' + P(-0.35, 0.98) + ' Z M' + P(0.42, 0.42) + ' L' + P(0.28, 0.42) + ' L' + P(0.35, 0.98) + ' Z" fill="#fff"/>' +
+      '<path d="M' + P(-0.14, 0.82) + ' L' + P(-0.04, 0.82) + ' L' + P(-0.09, 0.62) + ' Z M' + P(0.14, 0.82) + ' L' + P(0.04, 0.82) + ' L' + P(0.09, 0.62) + ' Z" fill="#fff"/>' +
+      // big curled moustache over the mouth
+      '<path d="M' + P(0, 0.26) + ' Q' + P(-0.55, 0.12) + ' ' + P(-1.05, 0.5) + ' Q' + P(-1.25, 0.2) + ' ' + P(-1.0, 0.05) + ' Q' + P(-0.5, 0.0) + ' ' + P(0, 0.18) + ' Q' + P(0.5, 0.0) + ' ' + P(1.0, 0.05) +
+        ' Q' + P(1.25, 0.2) + ' ' + P(1.05, 0.5) + ' Q' + P(0.55, 0.12) + ' ' + P(0, 0.26) + ' Z" fill="#0B0B0B"/>' +
       '</g>';
   }
 
-  var heads = head(100, 20, 13, 0);
-  [64, 88, 112, 136].forEach(function (x, i) { heads += head(x, 44, 12, i + 1); });
-  [46, 73, 100, 127, 154].forEach(function (x, i) { heads += head(x, 74, 13.5, i + 2); });
+  // Ten heads in one row, as on the effigy: the main head in front in the middle, the others
+  // behind it on both sides, each a little smaller and lower than the one inside it.
+  var heads = '';
+  [[-12, 78, 11], [9, 76, 12.5], [191, 76, 12.5], [28, 73, 14], [172, 73, 14], [49, 70, 15.5], [151, 70, 15.5],
+   [72, 67, 17], [128, 67, 17]].forEach(function (h, i) { heads += head(h[0], h[1], h[2], i + 1); });
+  heads += head(100, 62, 22, 0);
 
   // Ravan faces the viewer, with a bow held out towards Ram. Parts with class td-nock (the
   // arrow on the string), td-sd (string drawn) and td-sr (string at rest) are toggled as he shoots.
