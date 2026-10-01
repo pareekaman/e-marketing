@@ -1,5 +1,5 @@
 /* Navratri decoration: a marigold-and-mango-leaf toran along the top, a girl and a boy playing
-   dandiya bottom-left, a lit garba pot bottom-right, marigold petals drifting down, and a
+   dandiya bottom-left, marigold petals drifting down, and a
    "शुभ नवरात्रि" greeting. Movement is css (css/themes/navratri.css); the petals are on the canvas. */
 ThemeDecor.register('navratri', function (d) {
   // Toran: a css-drawn string (see .td-toran), here only the element.
@@ -73,21 +73,6 @@ ThemeDecor.register('navratri', function (d) {
   d.svg(girl(), 'td-dancer td-dancer-1');
   d.svg(boy(), 'td-dancer td-dancer-2');
 
-  // Garba: a clay pot with rows of holes, a diya burning inside, light glinting through the holes.
-  var holes = '';
-  [[52, 6, 6.5], [64, 7, 7.5], [76, 6, 6.5]].forEach(function (row) {
-    for (var k = 0; k < row[1]; k++) {
-      var x = 40 + (k - (row[1] - 1) / 2) * row[2];
-      holes += '<circle class="nv-hole" style="animation-delay:' + ((k * 0.17 + row[0] / 40) % 1.2).toFixed(2) + 's" cx="' + x.toFixed(1) + '" cy="' + row[0] + '" r="1.9" fill="#FFE066"/>';
-    }
-  });
-  d.svg('<svg viewBox="0 0 80 100" xmlns="http://www.w3.org/2000/svg">' +
-    '<ellipse class="nv-glow" cx="40" cy="60" rx="38" ry="34" fill="#FFB300" fill-opacity=".25"/>' +
-    '<path d="M24 30 Q8 46 12 70 Q18 92 40 94 Q62 92 68 70 Q72 46 56 30 Z" fill="#B45309" stroke="#7C2D12" stroke-width="1.5"/>' +
-    '<path d="M14 58 Q40 66 66 58 M13 72 Q40 80 67 72" fill="none" stroke="#F59E0B" stroke-width="2"/>' + holes +
-    '<rect x="24" y="22" width="32" height="9" rx="3" fill="#92400E" stroke="#7C2D12" stroke-width="1"/>' +
-    '<path class="nv-flame" d="M40 2 C46 10 46 17 40 22 C34 17 34 10 40 2 Z" fill="#FF9800"/>' +
-    '<path class="nv-flame" d="M40 9 C43 13 43 17 40 20 C37 17 37 13 40 9 Z" fill="#FFEB3B"/></svg>', 'td-garba');
 
   // Maa Durga riding her tiger, in a friendly cartoon style: big round face with sparkling eyes,
   // gold crown, red saree, hands joined in front and eight more arms fanned out with her weapons;

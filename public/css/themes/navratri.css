@@ -29,12 +29,6 @@
 @keyframes nv-arm-l { 0%,50%,100% { transform:rotate(0); } 25% { transform:rotate(14deg); } 75% { transform:rotate(-10deg); } }
 @keyframes nv-arm-r { 0%,50%,100% { transform:rotate(0); } 25% { transform:rotate(10deg); } 75% { transform:rotate(-14deg); } }
 
-/* garba pot bottom-right, beside the chatbot button: a flame and holes that twinkle */
-.td-garba { right:104px; bottom:4px; width:74px; filter:drop-shadow(0 0 10px rgba(255,170,0,.6)); }
-.nv-hole { animation:nv-twinkle 1.2s ease-in-out infinite alternate; }
-@keyframes nv-twinkle { from { opacity:.25; } to { opacity:1; } }
-.nv-glow { transform-box:fill-box; transform-origin:center; animation:nv-glow 1.6s ease-in-out infinite alternate; }
-@keyframes nv-glow { from { opacity:.5; transform:scale(.9); } to { opacity:1; transform:scale(1.12); } }
 .nv-flame { transform-box:fill-box; transform-origin:50% 100%; animation:nv-flame 1s ease-in-out infinite alternate; }
 @keyframes nv-flame { from { transform:scale(1,.9) skewX(-3deg); } to { transform:scale(1.06,1.1) skewX(3deg); } }
 
@@ -48,19 +42,19 @@
 /* The sidebar widens from 60px to 232px on hover and sits above this layer: step aside with it. */
 .sidebar:hover ~ #themeDecor .td-dancer, .sidebar:hover ~ #themeDecor .nv-greet { translate:172px 0; }
 @media (prefers-reduced-motion: reduce) {
-  .td-toran, .nv-body, .nv-arm, .nv-skirt, .nv-hole, .nv-glow, .nv-flame, .nv-greet { animation:none; }
+  .td-toran, .nv-body, .nv-arm, .nv-skirt, .nv-flame, .nv-greet { animation:none; }
   .td-dancer, .nv-greet { transition:none; }
 }
 
-/* Maa Durga riding her tiger, bottom-right beside the garba, an aarti thali circling before her */
-.td-durga { right:186px; bottom:0; width:200px; filter:drop-shadow(0 0 12px rgba(255,180,0,.5)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+/* Maa Durga riding her tiger, bottom-right beside the chatbot button, an aarti thali circling before her */
+.td-durga { right:104px; bottom:0; width:200px; filter:drop-shadow(0 0 12px rgba(255,180,0,.5)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
 .nv-halo { transform-box:view-box; transform-origin:128px 62px; animation:nv-halo 3s ease-in-out infinite alternate; }
 @keyframes nv-halo { from { opacity:.7; transform:scale(.95); } to { opacity:1; transform:scale(1.05); } }
 .nv-tail { transform-box:view-box; transform-origin:196px 168px; animation:nv-tail 1.6s ease-in-out infinite alternate; }
 @keyframes nv-tail { from { transform:rotate(-10deg); } to { transform:rotate(10deg); } }
 .nv-lion-head { transform-box:view-box; transform-origin:79px 190px; animation:nv-nod 3.4s ease-in-out infinite; }
 @keyframes nv-nod { 0%,100% { transform:rotate(0); } 30% { transform:rotate(-5deg); } 60% { transform:rotate(3deg); } }
-.td-aarti { right:304px; bottom:30px; width:46px; animation:nv-aarti 3.2s linear infinite; filter:drop-shadow(0 0 8px rgba(255,170,0,.8)); }
+.td-aarti { right:222px; bottom:30px; width:46px; animation:nv-aarti 3.2s linear infinite; filter:drop-shadow(0 0 8px rgba(255,170,0,.8)); }
 /* a circle in front of her: 0 → right → up → left → down */
 @keyframes nv-aarti { 0% { transform:translate(0,0); } 25% { transform:translate(36px,-36px); } 50% { transform:translate(0,-72px); } 75% { transform:translate(-36px,-36px); } 100% { transform:translate(0,0); } }
 @media (prefers-reduced-motion: reduce) { .nv-halo, .nv-tail, .nv-lion-head, .td-aarti { animation:none; } }
