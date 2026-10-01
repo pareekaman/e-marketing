@@ -1164,12 +1164,6 @@ async function cmAdd(){
   // same rule, so everyone else creates the client with no billing name and one
   // of the named viewers fills it in later.
   if (cmCanSeeBilling() && !billing_name) { err.textContent = 'Billing name required'; err.style.display = 'block'; return; }
-  // A handler is the only thing that gives a client a department — there is no
-  // department field of its own, the Client Master filter reads it off whoever
-  // manages the client. Optional handlers left 19 of 20 clients in this test
-  // set unfindable by any department filter, so this is required now, not a
-  // suggestion.
-  if (!handler_ids.length) { err.textContent = 'Select at least one handler'; err.style.display = 'block'; return; }
   if ((login_email && !login_password) || (!login_email && login_password)) {
     err.textContent = 'Fill both login email and password, or leave both blank';
     err.style.display = 'block'; return;

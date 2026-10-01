@@ -153,11 +153,9 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
     // Required on create only. Both columns are NULLable because every client
     // that predates them has neither — see the migration notes in server.js.
     if (!brandName) return res.status(400).json({ error: 'Brand name required' });
-    // A handler is the only thing that gives a client a department — Client
-    // Master's department filter reads it off whoever manages the client, and
-    // there is no field on the client itself. Enforced here too, not only in
-    // the Add Client form, since this route has other callers.
-    if (!handlerIds.length) return res.status(400).json({ error: 'At least one handler is required' });
+    // A handler is optional (the user asked for that on 2026-10-01). A client
+    // without one has no department, so it shows only under All Departments
+    // in Client Master until someone assigns a handler.
     // Billing name is required only of the people who can actually see the
     // field. Requiring it of everyone would have broken Add Client outright for
     // the rest of the team: the input is not rendered for them, so they could
@@ -171,12 +169,12 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
       return res.status(400).json({ error: 'Both login email and password required to provision client login' });
     }
     const [r] = await db.query('INSERT INTO clients (name, brand_name, billing_name, handler_id) VALUES (?, ?, ?, ?)',
-      [name, brandName, seesBilling ? billingName : null, handlerIds[0]]);
+      [name, brandName, seesBilling ? billingName : null, handlerIds[0] || null]);
     const newClientId = r.insertId;
     // The full handler list, in client_handlers — the primary handler_id column
     // above is only ever the first of these, kept for the routes/rows that
     // still read it directly. Same pattern PUT /api/clients/:id/handlers uses.
-    await db.query(
+    if (handlerIds.length) await db.query(
       `INSERT INTO client_handlers (client_id, user_id) VALUES ${handlerIds.map(() => '(?,?)').join(',')}`,
       handlerIds.flatMap(uid => [newClientId, uid]));
     if (loginEmail && loginPassword) {
