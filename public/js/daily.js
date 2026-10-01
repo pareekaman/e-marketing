@@ -486,7 +486,7 @@ function dtClientOptions(selected){
   for (const c of DT_CLIENTS) {
     if (!isActiveClient(c) && selected !== c.name) continue;
     const sel = (selected === c.name) ? 'selected' : '';
-    html += `<option value="${dtEscape(c.name)}" ${sel}>${dtEscape(c.name)}</option>`;
+    html += `<option value="${dtEscape(c.name)}" ${sel}>${dtEscape(clientLabel(c))}</option>`;
   }
   return html;
 }
@@ -502,6 +502,8 @@ function dtDeptOptions(selected){
 // so a row without it counts as active. Read fresh on every open, so a client
 // switched in Client Master drops in or out the next time a form opens.
 function isActiveClient(c){ return c.is_active === undefined || !!Number(c.is_active); }
+// Pickers show the brand people know; clients without one fall back to the name.
+function clientLabel(c){ return (c.brand_name || '').trim() || c.name || ''; }
 function dtEscape(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function dtAddRow(prefill){

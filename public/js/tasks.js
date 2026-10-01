@@ -945,7 +945,7 @@ async function openEditTask(id, type) {
   // inactive, so opening the editor never silently clears it.
   document.getElementById('editTClient').innerHTML = '<option value="">— No Client —</option>' +
     (clients || []).filter(c => isActiveClient(c) || String(c.id) === String(t.client_id))
-      .map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+      .map(c => `<option value="${c.id}">${dtEscape(clientLabel(c))}</option>`).join('');
   document.getElementById('editTClient').value = t.client_id ? String(t.client_id) : '';
   document.getElementById('editTaskErr').style.display = 'none';
 
@@ -1192,7 +1192,7 @@ async function openDelegate(prefill = {}) {
     (c.is_my_client ? myClients : otherClients).push(c);
   }
   const clientOpts = myClients.concat(otherClients)
-    .map(c => `<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+    .map(c => `<option value="${c.id}">${dtEscape(clientLabel(c))}</option>`).join('');
   document.getElementById('dClient').innerHTML = '<option value="">— Select Client —</option>' + clientOpts;
   // Hidden by default — only shown when Approval Required = Yes
   document.getElementById('dApproverGroup').style.display = 'none';
@@ -1391,7 +1391,7 @@ async function openChecklist() {
   document.getElementById('cDoer').innerHTML='<option value="">Select Employee</option>'+
     users.map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('');
   document.getElementById('cClient').innerHTML='<option value="">Select Client</option>'+
-    (clients || []).filter(isActiveClient).map(c=>`<option value="${c.id}">${dtEscape(c.name)}</option>`).join('');
+    (clients || []).filter(isActiveClient).map(c=>`<option value="${c.id}">${dtEscape(clientLabel(c))}</option>`).join('');
 
   ['cFrequency','cDate','cEndDate','cDesc'].forEach(id=>{
     document.getElementById(id).onchange = updateChecklistPreview;
