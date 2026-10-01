@@ -271,7 +271,7 @@ Rules for ALL banks:
   Transactions: date from "Date" column (DD/MM/YYYY), description from "Transaction Details" or "Particulars" column, amount from "Amount (in Rs.)" or "Amount" column; CR/DR indicator in separate column
 
 ════ SCB (Standard Chartered Bank) field names in the PDF: ════
-  Credit Card No.  ← "Card No." or the card number printed on the statement (16 digits); card type "DigiSmart" is NOT the card number
+  Credit Card No.  ← the masked card number on the card-type bar above the transactions (e.g. "DigiSmart 462269XXXXXX0068" → "462269XXXXXX0068"); card type "DigiSmart" is NOT the card number, and "Credit Card Account Number" (e.g. 1030000000994628) is NOT the card number either
   Statement Date   ← "Statement Date"
   Billing Period   ← "Statement Period"
   Total Amount Due ← "Total Payment Due (INR)"
@@ -779,6 +779,14 @@ app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'),
     const parsed = parseCCJson(raw, req.file.originalname);
     if (parsed.bankName === 'Unknown') return res.status(422).json({ error:'Bank not detected. Supported: AMEX, HDFC, RBL Bank, ICICI, AXIS, SBI, SCB' });
     applyGreenCredits(parsed.transactions, pdfText);
+    // Statements always print the card masked; an unmasked number is an account
+    // number the AI picked by mistake (SCB's "Credit Card Account Number"). Use the
+    // masked card number from page 1 instead — later pages carry sample numbers.
+    if (!/x|\*/i.test(String(parsed.cardNumber))) {
+      const page1  = pdfText.split(/--- Page 2 ---/)[0];
+      const masked = page1.match(/\b\d{4,6}[X*]{4,10}\d{4}\b/i);
+      if (masked) parsed.cardNumber = masked[0].toUpperCase();
+    }
     const prevRaw = String((raw.fields || raw)['Previous Balance'] ?? '').trim();
     parsed.prevBalance = /\d/.test(prevRaw) ? parseCCAmount(prevRaw) * (/^-|cr\b/i.test(prevRaw) ? -1 : 1) : null;
 

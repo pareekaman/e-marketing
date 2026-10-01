@@ -1907,12 +1907,7 @@ function ccRenderStatements() {
             ${txRows || `<tr><td colspan="${NCOLS}" style="padding:30px;text-align:center;color:#94a3b8;font-size:13px">No transactions in this statement</td></tr>`}
           </tbody>
           ${txns.length ? `
-          <tfoot>
-            <tr style="border-top:2px solid #e2e8f0;background:#f8fafc">
-              <td colspan="${canEdit ? 3 : 2}" style="padding:9px 12px;font-size:13px;font-weight:700;color:#0f172a">Transaction Sum</td>
-              <td style="padding:9px 12px;font-size:13px;font-weight:800;color:#dc2626;text-align:right">₹${txSum.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
-              <td colspan="3"></td>
-            </tr>
+          <tfoot style="border-top:2px solid #e2e8f0">
             ${s.prev_balance != null ? (() => {
               // Reconcile every row (not just the filtered ones) against Total Payable;
               // banks round the printed total, so ₹1 either way still counts as a match
