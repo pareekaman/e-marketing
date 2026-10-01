@@ -392,7 +392,8 @@ function cmFilteredClients(){
     filtered = filtered.filter(c => (c.handler_departments || '').split('||').includes(dept));
   }
   if (CM_STATUS) filtered = filtered.filter(c => cmIsActive(c) === (CM_STATUS === 'active'));
-  return filtered;
+  // A-Z by the title each row shows (brand, else client name).
+  return [...filtered].sort((a, b) => clientLabel(a).localeCompare(clientLabel(b), undefined, { sensitivity: 'base' }));
 }
 
 function cmRenderList(){
@@ -418,8 +419,11 @@ function cmRenderList(){
   // whatever index a client happened to have in the unfiltered list.
   filtered.forEach((c, i) => {
     const serial = i + 1;
-    const safeName = dtEscape(c.name);
-    const initials = dtEscape(cmInitials(c.name));
+    // The row is titled by the brand people know (client name when there is
+    // none), matching the pickers; the client name moves to the line below.
+    const label = clientLabel(c);
+    const safeName = dtEscape(label);
+    const initials = dtEscape(cmInitials(label));
     const avatarStyle = cmAvatarStyle(c.name);
     const handlerNames = c.all_handler_names
       ? c.all_handler_names.split('||')
@@ -427,11 +431,9 @@ function cmRenderList(){
     const handlerLabel = handlerNames.length
       ? handlerNames.map(n => `<span style="display:inline-block;white-space:nowrap;font-size:11px;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:4px">👤 ${dtEscape(n)}</span>`).join('')
       : `<span style="font-size:11px;color:#94a3b8;background:#f1f5f9;padding:2px 8px;border-radius:10px;font-weight:600">No handler</span>`;
-    // Brand name is required on new clients but NULL on every client added
-    // before the column existed, so the segment drops out rather than showing
-    // an empty separator.
-    const brandBit = c.brand_name
-      ? ` · <span style="color:#7c3aed;font-weight:600">🏷 ${dtEscape(c.brand_name)}</span>`
+    // The client name, shown only when the title is the brand and they differ.
+    const nameBit = label !== c.name
+      ? ` · <span style="color:#475569;font-weight:600">🏢 ${dtEscape(c.name)}</span>`
       : '';
     const billingBit = (cmCanSeeBilling() && c.billing_name)
       ? ` · <span style="color:#0369a1;font-weight:600">🧾 ${dtEscape(c.billing_name)}</span>`
@@ -444,7 +446,7 @@ function cmRenderList(){
           <div class="cm-avatar" style="${avatarStyle}">${initials}</div>
           <div class="cm-client-meta">
             <span class="cm-client-name">${safeName}</span>
-            <div class="cm-client-id">Client #${c.id}${brandBit}${billingBit} · ${handlerLabel}</div>
+            <div class="cm-client-id">Client #${c.id}${nameBit}${billingBit} · ${handlerLabel}</div>
           </div>
         </div>
         <div class="cm-client-actions">
