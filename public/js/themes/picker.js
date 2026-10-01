@@ -6,6 +6,7 @@
 // ══════════════════════════════════════════════════════
 const THEME_CHOICES = [
   { key: 'normal',    icon: '🏢', name: 'Normal',    note: 'The everyday look',           c: { side: '#0f1729', page: '#f3f5fa', accent: '#4f46e5', brand: '#F39C12' } },
+  { key: 'navratri',  icon: '💃', name: 'Navratri',  note: 'Dandiya, garba and marigolds', c: { side: '#4A0D2E', page: '#FFF4EC', accent: '#BE185D', brand: '#F97316' } },
   { key: 'dussehra',  icon: '🏹', name: 'Dussehra',  note: 'Shri Ram defeats Ravan',      c: { side: '#3B0D0D', page: '#FBF1E6', accent: '#B91C1C', brand: '#F57C00' } },
   { key: 'holi',      icon: '🎨', name: 'Holi',      note: 'Colour splashes and gulal',   c: { side: '#2E1065', page: '#FBF7FF', accent: '#C026D3', brand: '#F59E0B' } },
   { key: 'diwali',    icon: '🪔', name: 'Diwali',    note: 'Lights, rangoli and diyas',  c: { side: '#2D1240', page: '#FDF5E6', accent: '#C2410C', brand: '#F29900' } },

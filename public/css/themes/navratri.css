@@ -1,0 +1,53 @@
+/* Navratri — Durga's red and magenta with saffron, on a warm page, deep maroon sidebar. */
+:root[data-theme="navratri"] {
+  --brand-1:#FB923C; --brand-2:#F97316;
+  --brand-2-rgb:249,115,22;
+  --accent:#BE185D; --accent-dark:#9D174D; --accent-light:#DB2777;
+  --accent-rgb:190,24,93; --accent-light-rgb:219,39,119;
+  --page-bg:#FFF4EC; --sidebar-top:#4A0D2E; --sidebar-bottom:#2E0720;
+}
+
+/* Decoration (js/themes/navratri.js) */
+/* toran of marigolds and mango leaves along the top, swaying gently */
+.td-toran { position:absolute; left:60px; right:0; top:0; height:30px; background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='30'%3E%3Cpath d='M0 3 Q60 16 120 3' fill='none' stroke='%237C2D12' stroke-width='1.4'/%3E%3Cpath d='M15 6.1 Q19 14.1 15 22.1 Q11 14.1 15 6.1 Z' fill='%2316A34A'/%3E%3Cpath d='M15 8.1 V20.1' stroke='%23BBF7D0' stroke-width='.6'/%3E%3Cpath d='M45 8.7 Q49 16.7 45 24.7 Q41 16.7 45 8.7 Z' fill='%2315803D'/%3E%3Cpath d='M45 10.7 V22.7' stroke='%23BBF7D0' stroke-width='.6'/%3E%3Cpath d='M75 8.7 Q79 16.7 75 24.7 Q71 16.7 75 8.7 Z' fill='%2316A34A'/%3E%3Cpath d='M75 10.7 V22.7' stroke='%23BBF7D0' stroke-width='.6'/%3E%3Cpath d='M105 6.1 Q109 14.1 105 22.1 Q101 14.1 105 6.1 Z' fill='%2315803D'/%3E%3Cpath d='M105 8.1 V20.1' stroke='%23BBF7D0' stroke-width='.6'/%3E%3Ccircle cx='0' cy='5' r='6' fill='%23F97316'/%3E%3Ccircle cx='0' cy='5' r='3.6' fill='%23EA580C'/%3E%3Ccircle cx='30' cy='9.6' r='6' fill='%23FACC15'/%3E%3Ccircle cx='30' cy='9.6' r='3.6' fill='%23EAB308'/%3E%3Ccircle cx='60' cy='11.5' r='6' fill='%23F97316'/%3E%3Ccircle cx='60' cy='11.5' r='3.6' fill='%23EA580C'/%3E%3Ccircle cx='90' cy='9.6' r='6' fill='%23FACC15'/%3E%3Ccircle cx='90' cy='9.6' r='3.6' fill='%23EAB308'/%3E%3Ccircle cx='120' cy='5' r='6' fill='%23F97316'/%3E%3Ccircle cx='120' cy='5' r='3.6' fill='%23EA580C'/%3E%3C/svg%3E") repeat-x; background-size:120px 30px;
+  transform-origin:50% 0; animation:nv-sway 4s ease-in-out infinite alternate; }
+@keyframes nv-sway { from { transform:skewX(-2deg); } to { transform:skewX(2deg); } }
+
+/* two dandiya dancers, bottom-left; they step, bob and strike sticks on a 2.4s beat */
+.td-dancer { bottom:0; width:84px; filter:drop-shadow(0 4px 5px rgba(0,0,0,.25)); transition:translate .3s var(--ease); }
+.td-dancer-1 { left:72px; }
+.td-dancer-2 { left:150px; }
+.nv-body, .nv-arm, .nv-skirt { transform-box:view-box; animation:2.4s ease-in-out infinite; }
+.nv-body { transform-origin:40px 145px; animation-name:nv-step; }
+.td-dancer-2 .nv-body { animation-delay:-1.2s; }
+.nv-skirt { transform-origin:40px 72px; animation-name:nv-twirl; }
+.nv-arm-l { transform-origin:31px 50px; animation-name:nv-arm-l; }
+.nv-arm-r { transform-origin:49px 50px; animation-name:nv-arm-r; }
+.td-dancer-2 .nv-arm, .td-dancer-2 .nv-skirt { animation-delay:-1.2s; }
+@keyframes nv-step { 0%,50%,100% { transform:translateY(0) rotate(0); } 25% { transform:translateY(-6px) rotate(-6deg); } 75% { transform:translateY(-6px) rotate(6deg); } }
+@keyframes nv-twirl { 0%,50%,100% { transform:scaleX(1); } 25% { transform:scaleX(1.12) skewX(-6deg); } 75% { transform:scaleX(1.12) skewX(6deg); } }
+@keyframes nv-arm-l { 0%,100% { transform:rotate(0); } 25% { transform:rotate(55deg); } 50% { transform:rotate(-20deg); } 75% { transform:rotate(40deg); } }
+@keyframes nv-arm-r { 0%,100% { transform:rotate(0); } 25% { transform:rotate(-40deg); } 50% { transform:rotate(20deg); } 75% { transform:rotate(-55deg); } }
+
+/* garba pot bottom-right, beside the chatbot button: a flame and holes that twinkle */
+.td-garba { right:104px; bottom:4px; width:74px; filter:drop-shadow(0 0 10px rgba(255,170,0,.6)); }
+.nv-hole { animation:nv-twinkle 1.2s ease-in-out infinite alternate; }
+@keyframes nv-twinkle { from { opacity:.25; } to { opacity:1; } }
+.nv-glow { transform-box:fill-box; transform-origin:center; animation:nv-glow 1.6s ease-in-out infinite alternate; }
+@keyframes nv-glow { from { opacity:.5; transform:scale(.9); } to { opacity:1; transform:scale(1.12); } }
+.nv-flame { transform-box:fill-box; transform-origin:50% 100%; animation:nv-flame 1s ease-in-out infinite alternate; }
+@keyframes nv-flame { from { transform:scale(1,.9) skewX(-3deg); } to { transform:scale(1.06,1.1) skewX(3deg); } }
+
+/* "शुभ नवरात्रि" above the dancers; Devanagari needs a system font, Inter has none */
+.nv-greet { position:absolute; left:84px; bottom:158px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
+  color:#fff; padding:7px 14px; border-radius:999px; background:linear-gradient(135deg,#F97316,#BE185D 60%,#7E22CE);
+  box-shadow:0 0 0 2px rgba(255,255,255,.75), 0 0 18px rgba(219,39,119,.6); transition:translate .3s var(--ease);
+  animation:nv-greet 2.4s ease-in-out infinite alternate; }
+@keyframes nv-greet { from { transform:translateY(0); } to { transform:translateY(-4px); } }
+
+/* The sidebar widens from 60px to 232px on hover and sits above this layer: step aside with it. */
+.sidebar:hover ~ #themeDecor .td-dancer, .sidebar:hover ~ #themeDecor .nv-greet { translate:172px 0; }
+@media (prefers-reduced-motion: reduce) {
+  .td-toran, .nv-body, .nv-arm, .nv-skirt, .nv-hole, .nv-glow, .nv-flame, .nv-greet { animation:none; }
+  .td-dancer, .nv-greet { transition:none; }
+}
