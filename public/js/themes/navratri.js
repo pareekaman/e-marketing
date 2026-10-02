@@ -506,6 +506,76 @@ ThemeDecor.register('navratri', function (d) {
     return s + '</svg>';
   }
 
+  // Day 6 — Maa Katyayani, the warrior who slew Mahishasur: a gleaming sword raised high, a lotus,
+  // one hand in blessing (abhaya) and one granting boons (varada); in deep red and gold armour, on a
+  // roaring lion, the defeated buffalo-demon fallen at her feet. Her sword flashes (nv-flash).
+  function katyayani() {
+    var skin = '#F5C59A', line = '#5B3A1A', s;
+    s = '<svg viewBox="0 0 220 210" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<radialGradient id="nvHalo"><stop offset="0" stop-color="#FFF7ED"/><stop offset=".5" stop-color="#FCA5A5" stop-opacity=".85"/><stop offset="1" stop-color="#B91C1C" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="nvGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE58A"/><stop offset=".55" stop-color="#F5B70A"/><stop offset="1" stop-color="#C98A06"/></linearGradient>' +
+      '<linearGradient id="nvBlade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#F1F5F9"/><stop offset=".5" stop-color="#FFFFFF"/><stop offset="1" stop-color="#94A3B8"/></linearGradient>' +
+      '<radialGradient id="nvMane" cx=".5" cy=".5" r=".5"><stop offset=".45" stop-color="#C2410C"/><stop offset="1" stop-color="#7C2D12"/></radialGradient></defs>';
+    s += '<g class="nv-halo"><circle cx="128" cy="62" r="60" fill="url(#nvHalo)"/></g>';
+    var asura = '<g transform="translate(200 190) rotate(22)">' +
+         '<path d="M-22 -10 Q-34 -26 -18 -30 Q-26 -20 -14 -14 Z M22 -10 Q34 -26 18 -30 Q26 -20 14 -14 Z" fill="#E7E5E4" stroke="#57534E" stroke-width="1"/>' +
+         '<ellipse cx="0" cy="0" rx="20" ry="17" fill="#292524" stroke="#0C0A09" stroke-width="1.2"/>' +
+         '<ellipse cx="0" cy="8" rx="11" ry="7" fill="#44403C"/><circle cx="-4" cy="8" r="1.6" fill="#0C0A09"/><circle cx="4" cy="8" r="1.6" fill="#0C0A09"/>' +
+         '<path d="M-11 -4 l5 3 M-6 -4 l-5 3 M6 -4 l5 3 M11 -4 l-5 3" stroke="#DC2626" stroke-width="1.6" stroke-linecap="round"/></g>';
+    // the lion leaping: tail lashing, body, a saddle cloth, legs
+    s += '<path class="nv-tail" d="M196 160 Q222 140 212 116 Q206 106 196 112" fill="none" stroke="#D97706" stroke-width="6" stroke-linecap="round"/><circle cx="195" cy="111" r="6" fill="#7C2D12"/>' +
+         '<path d="M60 146 Q70 124 120 128 Q182 126 196 150 Q202 176 186 194 L70 196 Q56 178 60 146 Z" fill="#E7A33A" stroke="' + line + '" stroke-width="1.6"/>' +
+         '<path d="M112 128 L176 128 L180 164 L108 166 Z" fill="#991B1B" stroke="#F5B70A" stroke-width="3"/>' +
+         '<path d="M112 160 l6 -8 l6 8 l6 -8 l6 8 l6 -8 l6 8 l6 -8 l6 8 l6 -8 l6 8" fill="none" stroke="#F5B70A" stroke-width="1.6"/>' +
+         '<path d="M86 194 v-18 M110 195 v-18 M164 195 v-20 M184 194 v-18" stroke="#E7A33A" stroke-width="12" stroke-linecap="round"/>' +
+         '<path d="M78 198 h16 M102 198 h16 M156 198 h16 M176 198 h16" stroke="#FDE7C8" stroke-width="6" stroke-linecap="round"/>';
+    // Mahishasur, defeated, fallen at the lion's hind feet: a dark buffalo head with great horns
+    s += asura;
+    // right arm (viewer's left) raises the sword high; left arm holds a lotus
+    s += '<path d="M106 106 L84 84 L78 58" fill="none" stroke="' + skin + '" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+         '<path d="M88 92.6 l-6 4.6" stroke="#F5B70A" stroke-width="3.2"/>' +
+         '<g class="nv-flash"><path d="M74 52 L70 -4 L80 4 L82 52 Z" fill="url(#nvBlade)" stroke="#64748B" stroke-width="1"/><path d="M76 46 L74 6" stroke="#fff" stroke-width="1.2"/></g>' +
+         '<path d="M68 54 H88" stroke="url(#nvGold)" stroke-width="5" stroke-linecap="round"/><path d="M78 56 V66" stroke="#7C2D12" stroke-width="4"/>' +
+         '<circle cx="78" cy="60" r="4.6" fill="' + skin + '" stroke="' + line + '" stroke-width=".8"/>' +
+         '<path d="M150 106 L170 100 L178 82" fill="none" stroke="' + skin + '" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+         '<path d="M178 82 V70" stroke="#16A34A" stroke-width="2"/><path d="M178 70 q-12 -8 -8 -20 q8 6 8 20 q0 -14 8 -20 q4 12 -8 20 Z M178 68 q-4 -12 0 -22 q4 10 0 22 Z" fill="#F472B6" stroke="#BE185D" stroke-width="1"/>' +
+         '<circle cx="178" cy="82" r="4.6" fill="' + skin + '" stroke="' + line + '" stroke-width=".8"/>';
+    // seated body: deep red saree with gold, gold armour plates on chest and shoulders
+    s += '<path d="M104 104 Q128 94 152 104 L160 150 Q128 160 96 150 Z" fill="#B91C1C" stroke="' + line + '" stroke-width="1.4"/>' +
+         '<path d="M108 104 Q128 96 148 104 L146 126 Q128 132 110 126 Z" fill="url(#nvGold)" stroke="#92400E" stroke-width="1"/>' +
+         '<path d="M114 110 H142 M112 118 H144" stroke="#92400E" stroke-width=".8"/><circle cx="128" cy="114" r="4" fill="#DC2626" stroke="#92400E" stroke-width=".8"/>' +
+         '<path d="M100 104 Q104 96 112 100 L110 110 Z M156 104 Q152 96 144 100 L146 110 Z" fill="url(#nvGold)" stroke="#92400E" stroke-width=".8"/>' +
+         '<path d="M96 150 Q128 160 160 150 L152 174 Q118 182 92 170 Z" fill="#7F1D1D" stroke="' + line + '" stroke-width="1.2"/>' +
+         '<path d="M92 170 Q118 182 152 174" fill="none" stroke="#F5B70A" stroke-width="5"/>' +
+         '<path d="M98 172 L92 186 M112 176 L108 190" stroke="' + skin + '" stroke-width="7" stroke-linecap="round"/>';
+    // two lower hands in front: abhaya (raised, palm out) and varada (lowered, palm open)
+    s += '<path d="M112 128 L118 120" stroke="' + skin + '" stroke-width="6" stroke-linecap="round"/>' +
+         '<path d="M115 121 V110 M118 120 V108 M121 120 V108 M124 121 V111" stroke="' + skin + '" stroke-width="2.6" stroke-linecap="round"/>' +
+         '<path d="M144 128 L140 140" stroke="' + skin + '" stroke-width="6" stroke-linecap="round"/>' +
+         '<path d="M137 140 V150 M140 141 V152 M143 141 V152 M146 140 V149" stroke="' + skin + '" stroke-width="2.6" stroke-linecap="round"/><circle cx="141.5" cy="144" r="1.4" fill="#DC2626"/>';
+    s += mataFace(skin, line, '#1C120B');
+    // a fierce brow over the gentle face, and a warrior's crown with a red plume
+    s += '<path d="M106 53 L122 57 M150 53 L134 57" stroke="#1C120B" stroke-width="2.4" stroke-linecap="round"/>' +
+         '<path d="M100 40 Q128 24 156 40 L152 28 Q128 14 104 28 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         '<path d="M110 28 L118 6 L128 20 L138 6 L146 28 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         '<path d="M128 18 Q122 4 132 -4 Q130 6 136 12 Q132 14 128 18 Z" fill="#DC2626"/>' +
+         '<circle cx="128" cy="24" r="3" fill="#DC2626" stroke="#fff" stroke-width=".8"/>';
+    // the lion roaring in front: mane flared, mouth open, fangs
+    s += '<g class="nv-lion-head">' +
+         '<circle cx="79" cy="160" r="40" fill="url(#nvMane)"/>' +
+         '<path d="M40 144 l-10 -8 M38 164 l-11 0 M46 186 l-8 8 M118 144 l10 -8 M120 164 l11 0 M112 186 l8 8 M79 120 v-10 M58 124 l-6 -9 M100 124 l6 -9" stroke="#7C2D12" stroke-width="6" stroke-linecap="round"/>' +
+         '<ellipse cx="79" cy="162" rx="26" ry="25" fill="#F0B94A" stroke="' + line + '" stroke-width="1.4"/>' +
+         '<circle cx="58" cy="142" r="6" fill="#F0B94A" stroke="' + line + '" stroke-width="1"/><circle cx="100" cy="142" r="6" fill="#F0B94A" stroke="' + line + '" stroke-width="1"/>' +
+         '<path d="M64 150 L76 154 M94 150 L82 154" stroke="#7C2D12" stroke-width="2.4" stroke-linecap="round"/>' +
+         '<path d="M66 156 Q70 153 74 156 Q70 159 66 156 Z M84 156 Q88 153 92 156 Q88 159 84 156 Z" fill="#1C1917"/>' +
+         '<path d="M74 164 Q79 160 84 164 Q79 168 74 164 Z" fill="#7C2D12"/>' +
+         '<path d="M66 172 Q79 168 92 172 Q88 188 79 190 Q70 188 66 172 Z" fill="#7F1D1D" stroke="' + line + '" stroke-width="1.2"/>' +
+         '<path d="M70 172 l2 6 l2 -6 M84 172 l2 6 l2 -6 M72 186 l2 -4 l2 4 M82 186 l2 -4 l2 4" fill="#fff" stroke="#fff" stroke-width=".6"/>' +
+         '<ellipse cx="79" cy="184" rx="5" ry="2.4" fill="#F472B6"/>' +
+         '</g>';
+    return s + '</svg>';
+  }
+
   // The nine days (data-nv-day on <html>, set by core.js from the owner's choice); 0 or a day not
   // built yet shows Maa Durga on her tiger.
   var NV_DAYS = {
@@ -513,7 +583,8 @@ ThemeDecor.register('navratri', function (d) {
     2: { name: 'माँ ब्रह्मचारिणी', build: brahmacharini, petals: ['#FB923C', '#F97316', '#FFFFFF', '#86EFAC', '#22C55E'] },
     3: { name: 'माँ चंद्रघंटा', build: chandraghanta, petals: ['#FBBF24', '#F59E0B', '#FDE68A', '#3B82F6', '#1D4ED8'] },
     4: { name: 'माँ कूष्मांडा', build: kushmanda, petals: ['#F97316', '#FDBA74', '#FDE047', '#22C55E', '#15803D'] },
-    5: { name: 'माँ स्कंदमाता', build: skandamata, petals: ['#F472B6', '#EC4899', '#F9A8D4', '#FFFFFF', '#5EEAD4'] }
+    5: { name: 'माँ स्कंदमाता', build: skandamata, petals: ['#F472B6', '#EC4899', '#F9A8D4', '#FFFFFF', '#5EEAD4'] },
+    6: { name: 'माँ कात्यायनी', build: katyayani, petals: ['#DC2626', '#B91C1C', '#F5B70A', '#FDE68A', '#7F1D1D'] }
   };
   var DAY = NV_DAYS[+document.documentElement.getAttribute('data-nv-day')] || null;
   var durgaEl = d.svg(DAY ? DAY.build() : durga(), 'td-durga td-drag');
