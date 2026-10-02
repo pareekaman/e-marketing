@@ -368,11 +368,15 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
       </div>
     </div>
 
-    <!-- Performance & Activity (admin / HOD / PC only) -->
+    <!-- Performance & Activity — every employee; whole company, or a hod's own team -->
     <div id="dashPerfSection" class="dash-perf-section" style="display:none">
       <div class="dash-perf-head">
-        <h3>📈 Performance &amp; Activity</h3>
+        <h3>📈 Performance &amp; Activity <span id="dashPerfScopeLabel" style="font-size:12px;font-weight:600;color:#64748b"></span></h3>
         <div class="dash-perf-dates">
+          <label id="dashPerfTeamWrap" style="display:none;align-items:center;gap:7px;cursor:pointer;margin-right:10px" title="Show only your department">
+            <span class="dash-team-switch"><input type="checkbox" id="dashPerfTeam" onchange="dashPerfSetTeam(this.checked)"/><span></span></span>
+            <span style="font-weight:600;color:#334155">My Team</span>
+          </label>
           <label>From</label>
           <input type="date" id="dashPerfFrom" onchange="loadDashboardPerfCharts()"/>
           <label>To</label>

@@ -264,10 +264,28 @@ const db = {
 //
 // To force a full replay (e.g. after changing the schema by hand):
 //   DELETE FROM app_settings WHERE key_name='schema_deploy_marker';
+//
+// Narrowed on 2026-10-02 from the whole file to just the two migration blocks
+// below (_startupMigrationsPromise and _clientsTableMigrationsPromise). Hashing
+// all of server.js meant every push — even a one-line route fix — replayed
+// ~185 statements on one connection while every /api request waited, which
+// left the app on "Loading…" for 2-3 minutes after each deploy. Now only a
+// change inside a migration block replays them. If either block cannot be
+// found (renamed, moved), the id is empty and migrations run every cold start,
+// exactly as before — slower, never wrong.
 const _DEPLOY_ID = (() => {
   try {
-    return require('crypto').createHash('sha1')
-      .update(require('fs').readFileSync(__filename)).digest('hex');
+    const src = require('fs').readFileSync(__filename, 'utf8').replace(/\r\n?/g, '\n');
+    const block = start => {
+      const i = src.indexOf('\n' + start); // line start only, not this code's own copy
+      if (i < 0) return null;
+      const j = src.indexOf('\n})();', i);
+      return j < 0 ? null : src.slice(i, j);
+    };
+    const a = block('const _startupMigrationsPromise = (async () => {');
+    const b = block('const _clientsTableMigrationsPromise = (async () => {');
+    if (!a || !b) return ''; // cannot find them → never skip, migrate as before
+    return require('crypto').createHash('sha1').update(a + '\n\u0000\n' + b).digest('hex');
   } catch (e) {
     return ''; // cannot read own source → never skip, migrate as before
   }
@@ -2747,19 +2765,21 @@ app.get('/api/mis/detail', requireAuth, requireMisViewer, async (req, res) => {
 });
 
 // ── All MIS — per employee combined score ──
-app.get('/api/mis/all', requireAuth, requireMisViewer, async (req, res) => {
-  try {
-    const { start, end } = req.query;
-    if (!start || !end) return res.status(400).json({ error: 'Dates required' });
-    const isHod = req.session.role === 'hod';
-    const uid = req.session.userId;
+// The caller's department when they are a hod, else null (everyone). The MIS
+// and activity routes scope a hod to their own department with it.
+async function hodDeptOf(session) {
+  if (session.role !== 'hod') return null;
+  const [me] = await db.query('SELECT department FROM users WHERE id=?', [session.userId]);
+  return me[0]?.department || '';
+}
 
+// Per-employee combined score. dept = null covers everyone; a string limits it
+// to that department. Shared by /api/mis/all and the dashboard leaderboard.
+async function computeMisAll(start, end, dept) {
     // Same deptFilter logic as /api/mis — tasks JOIN users se filter
     let deptFilter = '';
     let deptParams = [start, end];
-    if (isHod) {
-      const [me] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
-      const dept = me[0]?.department || '';
+    if (dept !== null) {
       deptFilter = 'AND u.department=?';
       deptParams = [start, end, dept];
     }
@@ -2900,9 +2920,7 @@ app.get('/api/mis/all', requireAuth, requireMisViewer, async (req, res) => {
       if (fmsUserIds.length) {
         let userQ = `SELECT id, name, department FROM users WHERE id IN (${fmsUserIds.map(()=>'?').join(',')})`;
         const userQParams = [...fmsUserIds];
-        if (isHod) {
-          const [me] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
-          const dept = me[0]?.department || '';
+        if (dept !== null) {
           userQ += ' AND department=?';
           userQParams.push(dept);
         }
@@ -2944,24 +2962,24 @@ app.get('/api/mis/all', requireAuth, requireMisViewer, async (req, res) => {
       for (const u of result) u.profileImage = imgBy[u.userId] || null;
     }
 
-    res.json(result);
+    return result;
+}
+
+app.get('/api/mis/all', requireAuth, requireMisViewer, async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    if (!start || !end) return res.status(400).json({ error: 'Dates required' });
+    res.json(await computeMisAll(start, end, await hodDeptOf(req.session)));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Composite "Most Active" ranking for the Dashboard. Aggregates per-user signals
 // of engagement in a date range: tasks they own, tasks they delegated to OTHERS,
 // revises they triggered on others' work, and leaves they filed.
-app.get('/api/dashboard/activity', requireAuth, requireAdminOrHodOnly, async (req, res) => {
-  try {
-    const { start, end } = req.query;
-    if (!start || !end) return res.status(400).json({ error: 'Dates required' });
-    const isHod = req.session.role === 'hod';
-    const uid = req.session.userId;
+async function computeActivity(start, end, dept) {
     let deptFilter = '';
     let deptParams = [];
-    if (isHod) {
-      const [me] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
-      const dept = me[0]?.department || '';
+    if (dept !== null) {
       deptFilter = ' AND u.department=?';
       deptParams = [dept];
     }
@@ -2999,7 +3017,52 @@ app.get('/api/dashboard/activity', requireAuth, requireAdminOrHodOnly, async (re
       }))
       .filter(r => r.activityScore > 0)
       .sort((a, b) => b.activityScore - a.activityScore);
-    res.json(scored);
+    return scored;
+}
+
+app.get('/api/dashboard/activity', requireAuth, requireAdminOrHodOnly, async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    if (!start || !end) return res.status(400).json({ error: 'Dates required' });
+    res.json(await computeActivity(start, end, await hodDeptOf(req.session)));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Dashboard Performance & Activity for EVERY employee. Only what the three
+// charts draw leaves here — names, photos, completed count, score, activity
+// points — never the full MIS rows behind them. Whole company by default;
+// scope=team narrows a hod to their own department (ignored for anyone else).
+// Cached 2 minutes per range+scope: every dashboard load asks for it, and the
+// score side reads the FMS Google Sheets.
+// "My Team" department: anyone who heads a team — the hod app role, or an
+// admin whose org role (user_role) is hod. null for everyone else.
+async function teamDeptOf(session) {
+  const [[me]] = await db.query('SELECT department, role, COALESCE(user_role, role) AS user_role FROM users WHERE id=?', [session.userId]);
+  if (!me || (me.role !== 'hod' && me.user_role !== 'hod')) return null;
+  return me.department || '';
+}
+const _leaderboardCache = new Map();
+app.get('/api/dashboard/leaderboard', requireAuth, async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
+    if (!isDate(start) || !isDate(end)) return res.status(400).json({ error: 'Dates required' });
+    const dept = req.query.scope === 'team' ? await teamDeptOf(req.session) : null;
+    const key = `${start}|${end}|${dept === null ? '*' : dept}`;
+    const hit = _leaderboardCache.get(key);
+    if (hit && Date.now() - hit.at < 2 * 60 * 1000) return res.json(hit.data);
+    const [scores, activity] = await Promise.all([computeMisAll(start, end, dept), computeActivity(start, end, dept)]);
+    const data = {
+      scope: dept === null ? 'all' : 'team', department: dept,
+      scores: scores.map(u => ({ userId: u.userId, name: u.name, profileImage: u.profileImage || null,
+        completedAll: u.completedAll, overallScore: u.overallScore })),
+      activity: activity.map(r => ({ userId: r.userId, name: r.name, profileImage: r.profileImage || null,
+        activityScore: r.activityScore, active_tasks: r.active_tasks, delegated_to_others: r.delegated_to_others,
+        revises_triggered: r.revises_triggered, leaves_submitted: r.leaves_submitted })),
+    };
+    if (_leaderboardCache.size > 50) _leaderboardCache.clear();
+    _leaderboardCache.set(key, { at: Date.now(), data });
+    res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

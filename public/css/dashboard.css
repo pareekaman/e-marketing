@@ -29,6 +29,13 @@
 .dash-perf-section{margin-top:18px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px;}
 .dash-perf-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;}
 .dash-perf-head h3{font-size:15px;font-weight:700;color:#0f172a;margin:0;}
+/* My Team slider (hod only) */
+.dash-team-switch{position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0;}
+.dash-team-switch input{opacity:0;width:0;height:0;position:absolute;}
+.dash-team-switch span{position:absolute;inset:0;background:#cbd5e1;border-radius:20px;transition:background .2s;}
+.dash-team-switch span::before{content:'';position:absolute;width:16px;height:16px;left:2px;top:2px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.2);}
+.dash-team-switch input:checked + span{background:#4f46e5;}
+.dash-team-switch input:checked + span::before{transform:translateX(16px);}
 .dash-perf-dates{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:#64748b;font-weight:600;}
 .dash-perf-dates input[type="date"]{padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit;background:#fff;color:#1e293b;transition:border-color .15s,box-shadow .15s;}
 .dash-perf-dates input[type="date"]:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.15);}

@@ -170,12 +170,12 @@ async function loadDashboard(light = false) {
     // Load FMS section — respects same employee filter
     loadDashFMS(seq);
 
-    // Performance + Activity charts (admin / HOD only — depends on /api/mis/all)
-    if (isAdmin || isHod) {
-      const perfSec = document.getElementById('dashPerfSection');
-      if (perfSec) perfSec.style.display = 'block';
-      loadDashboardPerfCharts();
-    }
+    // Performance + Activity charts — every employee sees them (whole company);
+    // a hod can switch to their own team. Served by /api/dashboard/leaderboard,
+    // which returns only what the charts draw.
+    const perfSec = document.getElementById('dashPerfSection');
+    if (perfSec) perfSec.style.display = 'block';
+    loadDashboardPerfCharts();
   }
 }
 
@@ -183,10 +183,25 @@ async function loadDashboard(light = false) {
 // where it is used.
 const BOTTOM_RANK_MIN_PEOPLE = 4;
 
+// Hod's "My Team" choice, remembered per browser.
+// Heads a team: the hod app role, or an admin whose org role is hod.
+function dashPerfIsTeamHead(){ return !!ME && (ME.role === 'hod' || ME.user_role === 'hod'); }
+function dashPerfTeamOn(){
+  if (!dashPerfIsTeamHead()) return false;
+  try { return localStorage.getItem('dashPerfTeam') === '1'; } catch { return false; }
+}
+function dashPerfSetTeam(on){
+  try { localStorage.setItem('dashPerfTeam', on ? '1' : '0'); } catch {}
+  loadDashboardPerfCharts();
+}
+
 async function loadDashboardPerfCharts(){
-  const isAdmin = ME && ME.role === 'admin';
-  const isHod   = ME && ME.role === 'hod';
-  if (!isAdmin && !isHod) return;
+  if (!ME) return;
+  const team = dashPerfTeamOn();
+  const teamWrap = document.getElementById('dashPerfTeamWrap');
+  if (teamWrap) teamWrap.style.display = dashPerfIsTeamHead() ? 'inline-flex' : 'none';
+  const teamCb = document.getElementById('dashPerfTeam');
+  if (teamCb) teamCb.checked = team;
   const fromEl = document.getElementById('dashPerfFrom');
   const toEl   = document.getElementById('dashPerfTo');
   if (!fromEl || !toEl) return;
@@ -203,10 +218,10 @@ async function loadDashboardPerfCharts(){
   const perfGrid = document.querySelector('.dash-perf-grid');
   if (perfGrid) perfGrid.style.opacity = '0.4';
 
-  const [scoreData, activityData] = await Promise.all([
-    api(`/api/mis/all?start=${fromEl.value}&end=${toEl.value}`),
-    api(`/api/dashboard/activity?start=${fromEl.value}&end=${toEl.value}`)
-  ]);
+  const lb = await api(`/api/dashboard/leaderboard?start=${fromEl.value}&end=${toEl.value}&scope=${team ? 'team' : 'all'}`);
+  const scoreData = lb && lb.scores, activityData = lb && lb.activity;
+  const scopeLabel = document.getElementById('dashPerfScopeLabel');
+  if (scopeLabel) scopeLabel.textContent = lb && lb.scope === 'team' ? `· ${lb.department || 'My Team'}` : '· Whole company';
 
   if (perfGrid) perfGrid.style.opacity = '1';
 
