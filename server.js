@@ -825,6 +825,9 @@ const _startupMigrationsPromise = (async () => {
 
   // Per-user permissions column (replaces role_permissions)
   await sa(`ALTER TABLE users ADD COLUMN user_permissions TEXT DEFAULT NULL AFTER extra_access`);
+  // Department whose clients Client Master lists first for this user; set from
+  // the Access Control panel. NULL keeps the plain A-Z list.
+  await sa(`ALTER TABLE users ADD COLUMN cm_priority_dept VARCHAR(100) DEFAULT NULL`);
   await sa(`ALTER TABLE users ADD COLUMN birthday DATE DEFAULT NULL`);
   await sa(`ALTER TABLE users ADD COLUMN joining_date DATE DEFAULT NULL`);
 
@@ -1958,12 +1961,18 @@ app.get('/api/me', requireAuth, async (req, res) => {
       rows[0].canReviewMdoTasks  = (await readIdSetting('mdo_reviewer_ids')).includes(Number(req.session.userId));
       rows[0].canViewCreditCards = await canViewCreditCards(req.session);
       rows[0].canViewBillingName = await canViewBillingName(req.session);
+      rows[0].canManageInvoices  = await canManageInvoices(req.session);
     } catch (e) {
       rows[0].canApprovePayments = false;
       rows[0].canReviewMdoTasks  = false; rows[0].canViewCreditCards = false;
       // Fail closed — an error here must hide the field, never reveal it.
       rows[0].canViewBillingName = false;
+      rows[0].canManageInvoices  = false;
     }
+    try {
+      const [[pd]] = await db.query('SELECT cm_priority_dept FROM users WHERE id=?', [req.session.userId]);
+      rows[0].cm_priority_dept = pd?.cm_priority_dept || null;
+    } catch (e) { rows[0].cm_priority_dept = null; }
     // When an admin is "viewing as" this user, expose who's really behind the wheel
     // so the UI can show an exit-impersonation banner.
     rows[0].impersonatedBy = req.session.impersonatedBy || null;
@@ -3208,6 +3217,15 @@ app.get('/api/users', requireAuth, async (req, res) => {
         }
       }
     } catch(e) { for (const r of rows) r.user_permissions = null; }
+    // Own block, so a missing column cannot wipe user_permissions above.
+    try {
+      const ids = rows.map(r=>r.id);
+      if (ids.length) {
+        const [pds] = await db.query(`SELECT id,cm_priority_dept FROM users WHERE id IN (${ids.map(()=>'?').join(',')})`, ids);
+        const pdMap = Object.fromEntries(pds.map(u=>[u.id, u.cm_priority_dept]));
+        for (const r of rows) r.cm_priority_dept = pdMap[r.id] || null;
+      }
+    } catch(e) { for (const r of rows) r.cm_priority_dept = null; }
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -3476,6 +3494,19 @@ async function userCanDo(session, action) {
   const p = await getEffectivePerms(session);
   return p === 'all' || p.actions.includes(action);
 }
+
+// Client Master "show these clients first" department, set per user from the
+// Access Control panel. Saved on its own, apart from Done, because it is a
+// display preference rather than an access grant. Blank clears it.
+app.put('/api/users/:id/cm-priority-dept', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    if (!userId) return res.status(400).json({ error: 'Invalid user ID' });
+    const dept = String(req.body.dept || '').trim().slice(0, 100) || null;
+    await db.query('UPDATE users SET cm_priority_dept=? WHERE id=?', [dept, userId]);
+    res.json({ success: true, dept });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
 
 app.put('/api/user-permissions/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -4458,6 +4489,9 @@ const _clientsTableMigrationsPromise = (async () => {
   // neither `name` nor `brand_name`. Same deal as brand_name: required when
   // adding a client, NULLable so the clients that predate it stay editable.
   await sa(`ALTER TABLE clients ADD COLUMN billing_name VARCHAR(255) DEFAULT NULL AFTER brand_name`);
+  // Kickstart meeting date — required when adding a client, NULLable for the
+  // same reason as brand/billing: every client added before it has none.
+  await sa(`ALTER TABLE clients ADD COLUMN kickstart_date DATE DEFAULT NULL AFTER billing_name`);
   // Handler = the user (account manager) responsible for this client. Drives the
   // default doer in the "Delegate Task" shortcut on the Client Master row.
   await sa(`ALTER TABLE clients ADD COLUMN handler_id INT DEFAULT NULL AFTER name`);
@@ -6952,6 +6986,8 @@ async function resolvePortalClientId(req) {
   const [[c]] = await db.query('SELECT id, handler_id FROM clients WHERE id=?', [wanted]);
   if (!c) return { error: 'Client not found', status: 404 };
   if (['admin', 'hod', 'pc'].includes(req.session.role)) return { id: c.id, preview: true };
+  // Client Master at the Admin level opens any client's portal, like an admin.
+  if (await userCanDo(req.session, 'admin_clients')) return { id: c.id, preview: true };
   // Not a manager — allow only if this user handles this client. Check both the
   // primary handler_id and the many-to-many client_handlers table.
   if (await isHandlerOf(req.session.userId, c)) return { id: c.id, preview: true };
@@ -6966,6 +7002,119 @@ async function isHandlerOf(userId, client) {
     'SELECT 1 AS ok FROM client_handlers WHERE client_id=? AND user_id=? LIMIT 1', [client.id, userId]);
   return !!row;
 }
+
+// ── Client invoices ─────────────────────────────────────────────────────────
+// Invoices are typed up outside the app; the accountant uploads the PDF from
+// Client Master and the client sees it on their portal. Only the admin role and
+// the people in invoice_manager_ids (PEOPLE_SETTINGS_BY_ID) may upload or
+// delete; the client can open and download, never delete.
+// The PDF lives in the row (LONGBLOB), like cc_statements.pdf_data. 4 MB cap:
+// Vercel refuses request bodies above ~4.5 MB before they reach Express.
+const invoiceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 } });
+let _invoiceTable = null;
+function ensureInvoiceTable() {
+  if (!_invoiceTable) _invoiceTable = db.query(`CREATE TABLE IF NOT EXISTS client_invoices (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      client_id INT NOT NULL,
+      invoice_no VARCHAR(100) NOT NULL,
+      invoice_date DATE NOT NULL,
+      amount DECIMAL(14,2) NOT NULL,
+      file_name VARCHAR(255) DEFAULT NULL,
+      pdf_data LONGBLOB NOT NULL,
+      uploaded_by INT DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_client (client_id)
+    )`).catch(e => { _invoiceTable = null; throw e; });
+  return _invoiceTable;
+}
+async function canManageInvoices(session) {
+  if (session.role === 'admin') return true;
+  return (await readIdSetting('invoice_manager_ids')).includes(Number(session.userId));
+}
+const INVOICE_COLS = `id, client_id, invoice_no, DATE_FORMAT(invoice_date, '%Y-%m-%d') AS invoice_date,
+  amount, file_name, created_at`;
+
+// Client Master: list, upload, delete.
+app.get('/api/clients/:id/invoices', requireAuth, async (req, res) => {
+  try {
+    if (!(await canManageInvoices(req.session))) return res.status(403).json({ error: 'Access denied' });
+    await ensureInvoiceTable();
+    const [rows] = await db.query(
+      `SELECT ${INVOICE_COLS} FROM client_invoices WHERE client_id=? ORDER BY invoice_date DESC, id DESC`, [req.params.id]);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/clients/:id/invoices', requireAuth, invoiceUpload.single('file'), async (req, res) => {
+  try {
+    if (!(await canManageInvoices(req.session))) return res.status(403).json({ error: 'Access denied' });
+    const clientId = parseInt(req.params.id);
+    const [[client]] = await db.query('SELECT id FROM clients WHERE id=?', [clientId]);
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    const invoiceNo = String(req.body.invoice_no || '').trim().slice(0, 100);
+    const invoiceDate = String(req.body.invoice_date || '').trim();
+    const amount = Number(req.body.amount);
+    if (!invoiceNo) return res.status(400).json({ error: 'Invoice number required' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate)) return res.status(400).json({ error: 'Invoice date required' });
+    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Amount required' });
+    const f = req.file;
+    // Checked by content, not just the name: a real PDF starts with %PDF.
+    if (!f || !f.buffer || f.buffer.slice(0, 4).toString('latin1') !== '%PDF') {
+      return res.status(400).json({ error: 'Please choose a PDF file' });
+    }
+    await ensureInvoiceTable();
+    const [r] = await db.query(
+      `INSERT INTO client_invoices (client_id, invoice_no, invoice_date, amount, file_name, pdf_data, uploaded_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [clientId, invoiceNo, invoiceDate, Math.round(amount * 100) / 100,
+       String(f.originalname || 'invoice.pdf').slice(0, 255), f.buffer, req.session.userId]);
+    res.json({ success: true, id: r.insertId });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.delete('/api/client-invoices/:invId', requireAuth, async (req, res) => {
+  try {
+    if (!(await canManageInvoices(req.session))) return res.status(403).json({ error: 'Access denied' });
+    await ensureInvoiceTable();
+    // pdf_data is left out of the archive, as with cc_statements: megabytes per row.
+    const [rows] = await db.query(`SELECT ${INVOICE_COLS}, uploaded_by FROM client_invoices WHERE id=?`, [req.params.invId]);
+    if (!rows.length) return res.status(404).json({ error: 'Invoice not found' });
+    await archiveDeleted('client_invoices', rows, req, {
+      summary: r => `Invoice ${r.invoice_no} (client #${r.client_id})`,
+      reason: 'pdf_data (LONGBLOB) not archived',
+    });
+    await db.query('DELETE FROM client_invoices WHERE id=?', [req.params.invId]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Client portal: the client (or staff previewing it) lists and opens them.
+app.get('/api/client-portal/invoices', requireAuth, async (req, res) => {
+  try {
+    const resolved = await resolvePortalClientId(req);
+    if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
+    await ensureInvoiceTable();
+    const [rows] = await db.query(
+      `SELECT ${INVOICE_COLS} FROM client_invoices WHERE client_id=? ORDER BY invoice_date DESC, id DESC`, [resolved.id]);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// The PDF itself. Allowed for an invoice manager, or anyone the portal lets in
+// for the client the invoice belongs to. Under /api/client-portal/ because
+// that is the only prefix a client login may call (CLIENT_ALLOWED_API).
+app.get('/api/client-portal/invoices/:invId/pdf', requireAuth, async (req, res) => {
+  try {
+    await ensureInvoiceTable();
+    const [[inv]] = await db.query('SELECT client_id, invoice_no, file_name, pdf_data FROM client_invoices WHERE id=?', [req.params.invId]);
+    if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+    if (!(await canManageInvoices(req.session))) {
+      const resolved = await resolvePortalClientId({ session: req.session, query: { clientId: String(inv.client_id) } });
+      if (resolved.error || Number(resolved.id) !== Number(inv.client_id)) return res.status(403).json({ error: 'Access denied' });
+    }
+    const name = (inv.file_name || `Invoice-${inv.invoice_no}.pdf`).replace(/["\\\r\n]/g, '');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${name}"`);
+    res.send(inv.pdf_data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 // Client changes their own portal login password.
 app.put('/api/client-portal/password', requireAuth, async (req, res) => {
@@ -7008,6 +7157,14 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
       `SELECT c.id, c.name, c.handler_id, c.logo_url, c.system_links, u.name AS handler_name, u.email AS handler_email
        FROM clients c LEFT JOIN users u ON c.handler_id = u.id WHERE c.id=?`, [id]);
     if (client) client.system_links = parseSystemLinks(client.system_links);
+    // Own query, so a cold instance where the column is not there yet still
+    // serves the portal — the date just shows as not set.
+    if (client) {
+      try {
+        const [[k]] = await db.query(`SELECT DATE_FORMAT(kickstart_date, '%Y-%m-%d') AS d FROM clients WHERE id=?`, [id]);
+        client.kickstart_date = k?.d || null;
+      } catch { client.kickstart_date = null; }
+    }
     // The client's own portal login, if one exists. A handler needs it to
     // delegate TO the client; when it is null the UI says so instead of
     // offering an option that cannot work.
@@ -7492,6 +7649,8 @@ const PR_APPROVER_KEY = 'payment_approver_ids';
 //   31 Nikita Khandelwal   41 Naman Gupta
 const PEOPLE_SETTINGS_BY_ID = {
   billing_name_viewer_ids: [6, 7, 31, 41],
+  // Who may upload and delete client invoices (Client Master). Admins always may.
+  invoice_manager_ids: [21], // Rotan Singh (accounts)
   // Who may change the festival theme (Users > Theme). Only Naman Gupta; other admins may not.
   theme_admin_ids: [41],
 };
@@ -7582,8 +7741,9 @@ async function seedPaymentRoleIds() {
           if (same) continue;
         } catch { had = []; }
       }
-      const [rows] = await db.query(
-        `SELECT id, name FROM users WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
+      // An empty list is valid (nobody beyond admins); IN () is not SQL.
+      const [rows] = ids.length ? await db.query(
+        `SELECT id, name FROM users WHERE id IN (${ids.map(() => '?').join(',')})`, ids) : [[]];
       const missing = ids.filter(id => !rows.some(r => r.id === id));
       await db.query(
         `INSERT INTO app_settings (key_name, value) VALUES (?,?)

@@ -304,6 +304,7 @@ function cmOpenAddModal() {
   document.getElementById('cmFormName').value = '';
   document.getElementById('cmFormBrandName').value = '';
   document.getElementById('cmFormBillingName').value = '';
+  document.getElementById('cmFormKickstart').value = '';
   // Hidden by default in the markup so it never flashes for the wrong person
   // between page load and this running.
   const billingGroup = document.getElementById('cmFormBillingNameGroup');
@@ -392,8 +393,13 @@ function cmFilteredClients(){
     filtered = filtered.filter(c => (c.handler_departments || '').split('||').includes(dept));
   }
   if (CM_STATUS) filtered = filtered.filter(c => cmIsActive(c) === (CM_STATUS === 'active'));
-  // A-Z by the title each row shows (brand, else client name).
-  return [...filtered].sort((a, b) => clientLabel(a).localeCompare(clientLabel(b), undefined, { sensitivity: 'base' }));
+  // A-Z by the title each row shows (brand, else client name). A department
+  // set for this user in Access Control puts its clients (any handler in it)
+  // at the top; everything else follows, nothing is hidden.
+  const first = (ME && ME.cm_priority_dept) || '';
+  const inFirst = c => first && (c.handler_departments || '').split('||').includes(first) ? 1 : 0;
+  return [...filtered].sort((a, b) => (inFirst(b) - inFirst(a)) ||
+    clientLabel(a).localeCompare(clientLabel(b), undefined, { sensitivity: 'base' }));
 }
 
 function cmRenderList(){
@@ -533,6 +539,7 @@ async function cmShowDetail(id, from, to) {
     cmRenderLinksRows();
     cmInitHandlerWidget(id);
     cmDmsLoad(id);
+    if (ME.canManageInvoices) cmInvLoad(id);
   } catch (e) {
     detail.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed to load: ${e.message}</div>`;
   }
@@ -872,7 +879,82 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
       <div id="cmDmsContent"><div style="color:#94a3b8;font-size:12px;padding:8px 0">Loading…</div></div>
     </div>
+
+    ${ME.canManageInvoices ? `<div class="task-table-card" style="padding:14px 18px;margin-top:16px">
+      <div class="card-head-title" style="margin-bottom:12px">🧾 Invoices <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on the client's portal</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end">
+        <div class="form-group" style="margin:0"><label>Invoice No *</label><input type="text" id="cmInvNo" placeholder="e.g. EM/24-25/101"/></div>
+        <div class="form-group" style="margin:0"><label>Invoice Date *</label><input type="date" id="cmInvDate"/></div>
+        <div class="form-group" style="margin:0"><label>Amount (₹) *</label><input type="number" id="cmInvAmount" min="0" step="0.01" placeholder="0.00"/></div>
+        <div class="form-group" style="margin:0"><label>PDF *</label><input type="file" id="cmInvFile" accept="application/pdf,.pdf"/></div>
+        <button class="btn btn-primary" id="cmInvBtn" style="padding:9px 14px;font-size:13px" onclick="cmInvUpload(${id})">⬆ Upload</button>
+      </div>
+      <div id="cmInvList" style="margin-top:14px"><div style="color:#94a3b8;font-size:12px">Loading…</div></div>
+    </div>` : ''}
   `;
+}
+
+// ── Invoices (admin role or invoice_manager_ids) ──────────────────────────────
+function cmInvMoney(n){ return '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function cmInvDate(d){
+  const [y, m, day] = String(d || '').split('-').map(Number);
+  return (y && m && day) ? day + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1] + ' ' + y : (d || '');
+}
+async function cmInvLoad(clientId){
+  const box = document.getElementById('cmInvList');
+  if (!box) return;
+  const rows = await api('/api/clients/' + clientId + '/invoices');
+  if (!Array.isArray(rows)) { box.innerHTML = `<div style="color:#dc2626;font-size:12px">${dtEscape((rows && rows.error) || 'Failed to load')}</div>`; return; }
+  if (!rows.length) { box.innerHTML = '<div style="color:#94a3b8;font-size:12px">No invoices uploaded yet.</div>'; return; }
+  box.innerHTML = '<div style="overflow-x:auto"><table class="task-table" style="width:100%"><thead><tr><th>Invoice No</th><th>Date</th><th style="text-align:right">Amount</th><th></th></tr></thead><tbody>' +
+    rows.map(r => `<tr>
+      <td style="font-weight:600">${dtEscape(r.invoice_no)}</td>
+      <td>${dtEscape(cmInvDate(r.invoice_date))}</td>
+      <td style="text-align:right">${cmInvMoney(r.amount)}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="cmInvView(${r.id})">View</button>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:12px;color:#dc2626;border-color:#fecaca" onclick="cmInvDelete(${r.id},${clientId},${jsArg(r.invoice_no)})">Delete</button>
+      </td></tr>`).join('') + '</tbody></table></div>';
+}
+async function cmInvUpload(clientId){
+  const no = document.getElementById('cmInvNo').value.trim();
+  const date = document.getElementById('cmInvDate').value;
+  const amount = document.getElementById('cmInvAmount').value;
+  const file = document.getElementById('cmInvFile').files[0];
+  if (!no) return showToast('Invoice number required', 'error');
+  if (!date) return showToast('Invoice date required', 'error');
+  if (!(Number(amount) > 0)) return showToast('Amount required', 'error');
+  if (!file) return showToast('Choose the invoice PDF', 'error');
+  if (file.size > 4 * 1024 * 1024) return showToast('PDF must be under 4 MB', 'error');
+  const fd = new FormData();
+  fd.append('invoice_no', no); fd.append('invoice_date', date); fd.append('amount', amount); fd.append('file', file);
+  const btn = document.getElementById('cmInvBtn');
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  try {
+    const res = await fetch('/api/clients/' + clientId + '/invoices', { method: 'POST', body: fd, credentials: 'include' });
+    const data = await res.json().catch(() => ({ error: res.status === 413 ? 'PDF too large (max 4 MB)' : 'Upload failed' }));
+    if (!res.ok || data.error) { showToast(data.error || 'Upload failed', 'error'); return; }
+    showToast('✅ Invoice uploaded');
+    ['cmInvNo', 'cmInvDate', 'cmInvAmount', 'cmInvFile'].forEach(i => document.getElementById(i).value = '');
+    cmInvLoad(clientId);
+  } catch (e) { showToast('Upload failed: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = '⬆ Upload'; }
+}
+async function cmInvView(invId){
+  try {
+    const res = await fetch('/api/client-portal/invoices/' + invId + '/pdf', { credentials: 'include' });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || 'Could not open the PDF', 'error'); return; }
+    const url = URL.createObjectURL(await res.blob());
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { showToast('Could not open the PDF: ' + e.message, 'error'); }
+}
+async function cmInvDelete(invId, clientId, no){
+  if (!await appConfirm(`Delete invoice ${no}? The client will no longer see it.`, 'Delete invoice?')) return;
+  const r = await api('/api/client-invoices/' + invId, 'DELETE');
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  showToast('Invoice deleted');
+  cmInvLoad(clientId);
 }
 
 // ── System Links editor (admin client detail) ───────────────────────
@@ -1156,12 +1238,14 @@ async function cmAdd(){
   const name = document.getElementById('cmFormName').value.trim();
   const brand_name = document.getElementById('cmFormBrandName').value.trim();
   const billing_name = document.getElementById('cmFormBillingName').value.trim();
+  const kickstart_date = document.getElementById('cmFormKickstart').value;
   const handler_ids = [...document.querySelectorAll('.cmAddHandlerCb:checked')].map(cb => parseInt(cb.value));
   const handler_id = handler_ids[0] || null;
   const login_email = document.getElementById('cmFormLoginEmail').value.trim();
   const login_password = document.getElementById('cmFormLoginPassword').value;
   if (!name) { err.textContent = 'Client name required'; err.style.display = 'block'; return; }
   if (!brand_name) { err.textContent = 'Brand name required'; err.style.display = 'block'; return; }
+  if (!kickstart_date) { err.textContent = 'Kickstart meeting date required'; err.style.display = 'block'; return; }
   // Only demanded of the people who can see the input — the server applies the
   // same rule, so everyone else creates the client with no billing name and one
   // of the named viewers fills it in later.
@@ -1172,7 +1256,7 @@ async function cmAdd(){
   }
   try {
     const r = await api('/api/clients', 'POST', {
-      name, brand_name, handler_id, handler_ids, login_email, login_password,
+      name, brand_name, kickstart_date, handler_id, handler_ids, login_email, login_password,
       // Omitted entirely for anyone who cannot see the field — the server would
       // drop it anyway, but there is no reason to send a value it must ignore.
       ...(cmCanSeeBilling() ? { billing_name } : {}),

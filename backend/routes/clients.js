@@ -51,6 +51,9 @@ async function clientMasterScope(req) {
   // that left them with almost an empty list — they get the full list until
   // those assignments exist and the user asks to narrow it again.
   if (role === 'admin' || role === 'pc' || role === 'hod') return null;
+  // Client Master at the Admin level in Access Control runs the page the way
+  // an admin does, so it sees every client too.
+  if (await userCanDo(req.session, 'admin_clients')) return null;
   const uid = req.session.userId;
   // Everyone else: only the clients they personally handle, by the primary
   // handler_id or a client_handlers row.
@@ -133,9 +136,20 @@ app.put('/api/clients/:id/logo', requireAuth, requireClientsEditor, async (req, 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// The startup migration adds clients.kickstart_date, but a fresh serverless
+// instance can take a request before it has run; adding the column here too
+// (once per instance) keeps the first Add Client from failing on it.
+let _kickstartCol = null;
+function ensureKickstartColumn() {
+  if (!_kickstartCol) _kickstartCol = db.query('ALTER TABLE clients ADD COLUMN kickstart_date DATE DEFAULT NULL')
+    .catch(e => { if (e.code !== 'ER_DUP_FIELDNAME') { _kickstartCol = null; throw e; } });
+  return _kickstartCol;
+}
+
 app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => {
   try {
     const name = (req.body.name || '').trim();
+    const kickstartDate = String(req.body.kickstart_date || '').trim();
     const brandName = (req.body.brand_name || '').trim();
     const billingName = (req.body.billing_name || '').trim();
     const handlerRaw = req.body.handler_id;
@@ -153,6 +167,7 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
     // Required on create only. Both columns are NULLable because every client
     // that predates them has neither — see the migration notes in server.js.
     if (!brandName) return res.status(400).json({ error: 'Brand name required' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(kickstartDate)) return res.status(400).json({ error: 'Kickstart meeting date required' });
     // A handler is optional (the user asked for that on 2026-10-01). A client
     // without one has no department, so it shows only under All Departments
     // in Client Master until someone assigns a handler.
@@ -168,8 +183,9 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
     if ((loginEmail && !loginPassword) || (!loginEmail && loginPassword)) {
       return res.status(400).json({ error: 'Both login email and password required to provision client login' });
     }
-    const [r] = await db.query('INSERT INTO clients (name, brand_name, billing_name, handler_id) VALUES (?, ?, ?, ?)',
-      [name, brandName, seesBilling ? billingName : null, handlerIds[0] || null]);
+    await ensureKickstartColumn();
+    const [r] = await db.query('INSERT INTO clients (name, brand_name, billing_name, kickstart_date, handler_id) VALUES (?, ?, ?, ?, ?)',
+      [name, brandName, seesBilling ? billingName : null, kickstartDate, handlerIds[0] || null]);
     const newClientId = r.insertId;
     // The full handler list, in client_handlers — the primary handler_id column
     // above is only ever the first of these, kept for the routes/rows that
@@ -369,7 +385,8 @@ app.get('/api/clients/:id/stats', requireAuth, async (req, res) => {
     if (!client) return res.status(404).json({ error: 'Client not found' });
     // Managers see any client; a regular handler may open only the clients they
     // handle. Reuses the row just fetched (has id + handler_id) for the check.
-    if (!['admin', 'hod', 'pc'].includes(req.session.role) && !(await isHandlerOf(req.session.userId, client))) {
+    if (!['admin', 'hod', 'pc'].includes(req.session.role) && !(await userCanDo(req.session, 'admin_clients'))
+        && !(await isHandlerOf(req.session.userId, client))) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     client.system_links = parseSystemLinks(client.system_links);

@@ -438,6 +438,7 @@ function loadUserPerms(userId) {
               ${pg.readOnly ? `<span class="acc-ro" title="This page has no editable data — there is nothing for Editor to grant.">read-only</span>` : ''}
             </div>
             ${pg.note ? `<div style="font-size:11px;color:#64748b;margin-top:2px">🔒 ${esc(pg.note)}</div>` : ''}
+            ${pg.page === 'clients' && !dim ? accClientsFirstHtml(u) : ''}
           </div>
         </div>
         <select onchange="onAccLevelChange(${userId},'${pg.page}',this.value)" ${pg.locked?'disabled':''}
@@ -458,6 +459,27 @@ function loadUserPerms(userId) {
     </div>
     <div style="overflow-y:auto;max-height:calc(100vh - 320px)">${rows}</div>`;
   accSyncDirty(userId);
+}
+
+// Client Master: which department's clients this person sees at the top of
+// the list. A display preference, not access, so it saves on change by itself
+// rather than waiting for Done.
+function accClientsFirstHtml(u) {
+  const depts = [...new Set(_accUsers.map(x => x.department || '').filter(Boolean))].sort();
+  const cur = u.cm_priority_dept || '';
+  const opts = ['<option value="">None (A-Z)</option>']
+    .concat(depts.map(d => `<option value="${esc(d)}" ${d === cur ? 'selected' : ''}>${esc(d)}</option>`)).join('');
+  return `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#64748b">
+    Show these clients first:
+    <select onchange="accSetClientsFirst(${u.id},this.value)" style="padding:3px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;font-family:inherit;color:#0f172a;background:#fff;outline:none;cursor:pointer">${opts}</select>
+  </div>`;
+}
+async function accSetClientsFirst(userId, dept) {
+  const r = await api(`/api/users/${userId}/cm-priority-dept`, 'PUT', { dept });
+  if (!r || r.error) { showToast((r && r.error) || 'Failed to save', 'error'); return; }
+  const u = _accUsers.find(x => x.id === userId);
+  if (u) u.cm_priority_dept = r.dept;
+  showToast(r.dept ? `${r.dept} clients will show first` : 'Client Master back to A-Z', 'success');
 }
 
 function onAccLevelChange(userId, page, level) {

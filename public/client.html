@@ -304,6 +304,13 @@ function cpAvatarStyle(name){
   const [a,b] = CP_AVATAR_PALETTE[h % CP_AVATAR_PALETTE.length];
   return `background:linear-gradient(135deg,${a},${b});`;
 }
+// YYYY-MM-DD -> "5 Oct 2026". Built from the parts, not new Date(str), so
+// the browser's time zone can never move it a day.
+function cpFmtKickstart(d){
+  const [y, m, day] = String(d).split('-').map(Number);
+  if (!y || !m || !day) return d;
+  return day + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1] + ' ' + y;
+}
 function cpInitials(name){
   const parts = name.trim().split(/\s+/).slice(0,2);
   return parts.map(p => p[0] || '').join('').toUpperCase() || '?';
@@ -412,6 +419,7 @@ async function loadClientPortal(from, to){
     }
     wrap.innerHTML = cpRenderHtml(s);
     setTimeout(()=>cpRenderCharts(s), 0);
+    cpLoadInvoices();
     // Keep the currently-open About/Profile page fresh after a data reload.
     if (_cpPage === 'about')   document.getElementById('cpAbout').innerHTML   = cpRenderAbout(s);
     if (_cpPage === 'profile') document.getElementById('cpProfile').innerHTML = cpRenderProfile(s, _cpUser || {});
@@ -521,6 +529,7 @@ function cpRenderHtml(s){
             <div style="font-size:10.5px;color:#92400e;font-weight:700;text-transform:uppercase;letter-spacing:.6px">${greeting}</div>
             <div style="font-size:21px;font-weight:800;color:#0f172a;line-height:1.1;margin-top:1px">${dtEscape(client.name || 'Client')}</div>
             <div style="margin-top:7px">${handlerLine}</div>
+            ${client.kickstart_date ? `<div style="margin-top:6px;font-size:12px;color:#92400e;font-weight:600">🚀 Kickstart meeting: ${dtEscape(cpFmtKickstart(client.kickstart_date))}</div>` : ''}
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
@@ -582,7 +591,52 @@ function cpRenderHtml(s){
         </table>
       </div>
     </div>
+
+    <div class="cp-card" id="cpInvoiceCard" style="display:none">
+      <div class="cp-card-head"><h4>🧾 Invoices</h4><span id="cpInvoiceCount" style="font-size:11px;color:#94a3b8"></span></div>
+      <div class="cp-scroll" style="max-height:50vh">
+        <table>
+          <thead><tr style="background:#f8fafc;position:sticky;top:0;z-index:1">
+            <th>Invoice No</th><th>Date</th><th style="text-align:right">Amount</th><th></th>
+          </tr></thead>
+          <tbody id="cpInvoiceBody"></tbody>
+        </table>
+      </div>
+    </div>
   `;
+}
+
+// Invoices the accountant uploaded for this client. Open/download only; the
+// card stays hidden until there is at least one.
+async function cpLoadInvoices(){
+  const card = document.getElementById('cpInvoiceCard');
+  if (!card) return;
+  const rows = await api(cpUrl('/api/client-portal/invoices'));
+  if (!Array.isArray(rows) || !rows.length) { card.style.display = 'none'; return; }
+  const money = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  document.getElementById('cpInvoiceCount').textContent = rows.length + ' invoice' + (rows.length === 1 ? '' : 's');
+  document.getElementById('cpInvoiceBody').innerHTML = rows.map(r => `<tr>
+    <td style="font-weight:600">${dtEscape(r.invoice_no)}</td>
+    <td>${dtEscape(cpFmtKickstart(r.invoice_date))}</td>
+    <td style="text-align:right">${money(r.amount)}</td>
+    <td style="text-align:right;white-space:nowrap">
+      <button class="btn btn-outline" style="padding:4px 10px;font-size:12px" onclick="cpOpenInvoice(${r.id},false)">View</button>
+      <button class="btn btn-primary" style="padding:4px 10px;font-size:12px" onclick="cpOpenInvoice(${r.id},true,${dtEscape(JSON.stringify('Invoice-' + r.invoice_no + '.pdf'))})">Download</button>
+    </td></tr>`).join('');
+  card.style.display = '';
+}
+async function cpOpenInvoice(id, download, name){
+  try {
+    const res = await fetch('/api/client-portal/invoices/' + id + '/pdf', { credentials: 'include' });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); showToast(e.error || 'Could not open the invoice', 'error'); return; }
+    const url = URL.createObjectURL(await res.blob());
+    if (download) {
+      const a = document.createElement('a');
+      a.href = url; a.download = String(name || 'invoice.pdf').replace(/[\\/:*?"<>|]/g, '-');
+      document.body.appendChild(a); a.click(); a.remove();
+    } else window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { showToast('Could not open the invoice: ' + e.message, 'error'); }
 }
 
 // "Action Required" — tasks the handler delegated TO the client, so the client
@@ -809,6 +863,7 @@ function cpRenderProfile(s, me){
             </div>
           </div>
           ${detail('Login Email', CP_IS_PREVIEW ? '—' : dtEscape(me.email || '—'))}
+          ${detail('Kickstart Meeting', client.kickstart_date ? dtEscape(cpFmtKickstart(client.kickstart_date)) : '—')}
           ${detail('Handler', dtEscape(client.handler_name || 'Not assigned'))}
           ${detail('Handler Email', client.handler_email ? dtEscape(client.handler_email) : '—')}
         </div>
