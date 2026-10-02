@@ -1,6 +1,7 @@
 /* Christmas decoration: gentle snowfall, a string of lights along the top, and Santa in his sleigh,
-   pulled by two reindeer, flying all over the page — dropping gifts as he goes and calling out
-   "Merry Christmas, my dear kids!" and "Ho ho ho!" from a speech bubble. */
+   pulled by the nine reindeer, flying all over the page — dropping gifts as he goes and calling out
+   "Merry Christmas, mere pyare bachcho!" and "Ho ho ho!" from a speech bubble (Hinglish on purpose —
+   the user asked for this greeting in Hinglish; it is a festive exception to the English-only UI rule). */
 ThemeDecor.register('christmas', function (d) {
   d.svg('', 'td-lights');
   d.svg('', 'td-lights td-lights-b');
@@ -173,7 +174,7 @@ ThemeDecor.register('christmas', function (d) {
   var say = document.createElement('div');
   say.className = 'td-item sl-say';
   d.layer.appendChild(say);
-  var LINES = ['Merry Christmas, my dear kids!', 'Ho ho ho!'];
+  var LINES = ['Merry Christmas, mere pyare bachcho!', 'Ho ho ho!'];
 
   // Where he is: a slow wander over the whole page (two sine waves at unrelated speeds, so the
   // path does not repeat soon). He faces the way he is going and tilts with the climb.
