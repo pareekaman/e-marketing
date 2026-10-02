@@ -168,18 +168,38 @@
 @keyframes td-look-eye { to { transform:translate(.6px,-1.2px); } }
 .td-vibhishan.td-gone { animation:td-vb-out .6s ease-in forwards; }
 @keyframes td-vb-out { to { opacity:0; transform:translateY(12px); } }
-/* his words come out of his mouth one after another (td-w, each one's delay set inline), in a bubble
-   beside his face whose tail (td-say-tail) runs down to his lips. Devanagari needs a system font. */
-.td-say { position:absolute; left:54px; bottom:calc(100% - 20px); z-index:3; pointer-events:none; white-space:nowrap;
-  padding:6px 12px 5px; border-radius:14px 14px 14px 4px; background:linear-gradient(180deg,#FFFBEB,#FEF3C7);
-  box-shadow:0 0 0 1.5px #2563EB, 0 0 14px -2px rgba(37,99,235,.6), 0 8px 18px -8px rgba(0,0,0,.4);
-  transform-origin:0 100%; animation:td-m-in .45s cubic-bezier(.34,1.56,.64,1) both; }
-.td-say b { display:block; font:700 14px/1.4 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif; color:#1E3A8A; }
-.td-say .td-w { display:inline-block; opacity:0; transform-origin:0 100%; animation:td-word .3s ease-out forwards; }
-@keyframes td-word { from { opacity:0; transform:translate(-10px,8px) scale(.4); } to { opacity:1; transform:none; } }
-.td-say small { display:block; margin-top:1px; font:700 9.5px/1.2 'Inter',sans-serif; letter-spacing:.6px; text-transform:uppercase; color:#1E3A8A; opacity:.7; }
-.td-say-tail { position:absolute; left:-7px; top:calc(100% - 3px); width:22px; height:18px; overflow:visible; }
+/* Speech bubbles (speak() in the JS): the words come out one after another (td-w, each one's delay
+   set inline) as if from the speaker's mouth, and a tail (td-say-tail) runs to it. Devanagari needs
+   a system font. */
+.td-say { position:absolute; z-index:3; pointer-events:none; white-space:nowrap; padding:6px 12px 5px;
+  animation:td-m-in .45s cubic-bezier(.34,1.56,.64,1) both; }
+.td-say b { display:block; font:700 14px/1.4 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif; }
+.td-say .td-w { display:inline-block; opacity:0; animation:td-word .3s ease-out forwards; }
+.td-say small { display:block; margin-top:1px; font:700 9.5px/1.2 'Inter',sans-serif; letter-spacing:.6px; text-transform:uppercase; opacity:.75; }
+.td-say-tail { position:absolute; overflow:visible; }
 .td-say.td-say-out { animation:td-m-out .35s ease-in forwards; }
+@keyframes td-word { from { opacity:0; transform:translate(-10px,8px) scale(.4); } to { opacity:1; transform:none; } }
+/* Vibhishan's: cream and royal blue, beside his face, the tail down to his lips */
+.td-say-vb { left:54px; bottom:calc(100% - 20px); border-radius:14px 14px 14px 4px; transform-origin:0 100%;
+  background:linear-gradient(180deg,#FFFBEB,#FEF3C7); color:#1E3A8A;
+  box-shadow:0 0 0 1.5px #2563EB, 0 0 14px -2px rgba(37,99,235,.6), 0 8px 18px -8px rgba(0,0,0,.4); }
+.td-say-vb .td-w { transform-origin:0 100%; }
+.td-say-vb .td-say-tail { left:-7px; top:calc(100% - 3px); width:22px; height:18px; }
+/* Ravan's taunt: blood red and gold, beside his outermost head on Ram's side; td-say-flip puts it
+   on his other side when it would leave the screen */
+.td-say-rv { right:calc(100% + 24px); bottom:calc(100% - 66px); text-align:right; border-radius:14px 14px 4px 14px; transform-origin:100% 100%;
+  background:linear-gradient(180deg,#5B0F0F,#3B0A0A); color:#FDE68A;
+  box-shadow:0 0 0 1.5px #EF4444, 0 0 16px -2px rgba(239,68,68,.75), 0 8px 18px -8px rgba(0,0,0,.5); }
+.td-say-rv small { color:#FCA5A5; }
+.td-say-rv .td-w { transform-origin:100% 100%; animation-name:td-word-rv; }
+@keyframes td-word-rv { from { opacity:0; transform:translate(10px,8px) scale(.4); } to { opacity:1; transform:none; } }
+.td-say-rv .td-say-tail { left:calc(100% - 3px); bottom:6px; width:20px; height:16px; }
+.td-say-rv.td-say-flip { right:auto; left:calc(100% + 24px); text-align:left; border-radius:14px 14px 14px 4px; transform-origin:0 100%; }
+.td-say-rv.td-say-flip .td-say-tail { left:auto; right:calc(100% - 3px); transform:scaleX(-1); }
+.td-say-rv.td-say-flip .td-w { transform-origin:0 100%; animation-name:td-word; }
+/* Ravan shaking with laughter as he mocks Ram */
+.td-ravan.td-laugh { animation:td-laugh .18s ease-in-out 18 alternate; }
+@keyframes td-laugh { from { transform:rotate(-1.6deg) translateY(0); } to { transform:rotate(-.8deg) translateY(-5px); } }
 /* Hanuman and the vanar sena along the foot of the page (placed and sized by the JS; each one's
    delay is set inline) */
 .td-army { animation:td-army-in .6s cubic-bezier(.34,1.56,.64,1) both; filter:drop-shadow(0 4px 6px rgba(0,0,0,.25)); }

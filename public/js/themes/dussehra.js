@@ -4,7 +4,8 @@
      2. the Nagastra: serpents wind round him, and he throws them off;
      3. Shiva's Trishul: lightning crackles all over him;
      4. Vishnu's Sudarshan Chakra: it cuts through his heads, which grow back, and returns to Ram.
-        Then Vibhishan comes to Ram's side, kneels, and tells him to strike at Ravan's navel;
+        Ravan laughs at Ram ("you can never kill me"); then Vibhishan comes to Ram's side, kneels,
+        and tells him to strike at Ravan's navel;
      5. the Brahmastra, at his navel: he burns and collapses, and "Happy Dussehra" appears where
         he stood. Everyone rejoices for a few seconds (Hanuman and the vanar sena spring up along
         the foot of the page, crackers go up); then the Pushpak Viman comes for Ram with Sita and
@@ -880,11 +881,56 @@ ThemeDecor.register('dussehra', function (d) {
     setPose('aim');
   }
 
-  // After the chakra, Vibhishan comes to Ram's side (his right, or his left if there is no room),
-  // kneels, points at Ravan and tells him where his life lies. Placed from where Ram is now, since
-  // Ram may have been dragged anywhere.
-  // His words come out of his mouth one after another (td-w, each a little later), in a bubble whose
-  // tail runs down to his lips.
+  // A speech bubble on a figure: the words come out one after another (td-w, `step` seconds apart)
+  // as if from the speaker's mouth, the speaker's name under them, and a tail (an SVG) running to
+  // the mouth. `cls` gives the speaker's look and placement (see the CSS).
+  function speak(el, lines, who, cls, tail, step) {
+    var b = document.createElement('div'), n = 0;
+    b.className = 'td-say ' + cls;
+    lines.forEach(function (line) {
+      var row = document.createElement('b');
+      line.split(' ').forEach(function (word, j) {
+        var sp = document.createElement('span');
+        sp.className = 'td-w';
+        sp.textContent = word;
+        sp.style.animationDelay = (0.25 + step * n++).toFixed(2) + 's';
+        if (j) row.appendChild(document.createTextNode(' '));
+        row.appendChild(sp);
+      });
+      b.appendChild(row);
+    });
+    var name = document.createElement('small');
+    name.textContent = who;
+    b.appendChild(name);
+    b.insertAdjacentHTML('beforeend', tail);
+    el.appendChild(b);
+    return b;
+  }
+  function unsay(b) {
+    b.classList.add('td-say-out');
+    timers.push(setTimeout(function () { b.remove(); }, 400));
+  }
+
+  // After the chakra, his heads grown back, Ravan shakes with laughter and mocks Ram from his
+  // outermost head on Ram's side (td-say-rv; td-say-flip puts it on his other side if the bubble
+  // would leave the screen).
+  var TAUNT = ['हा हा हा! अरे ओ बनवासी!', 'तू मुझे कभी भी नहीं मार सकता'];
+  var TAUNT_TAIL = '<svg class="td-say-tail" viewBox="0 0 20 16" xmlns="http://www.w3.org/2000/svg">' +
+    '<path d="M0 1 Q9 6 19 11 Q9 13 0 14 Z" fill="#4A0D0D"/>' +
+    '<path d="M0 1 Q9 6 19 11 Q9 13 0 14" fill="none" stroke="#EF4444" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+  async function taunt() {
+    ravEl.classList.add('td-laugh');
+    var b = speak(ravEl, TAUNT, 'Ravan', 'td-say-rv', TAUNT_TAIL, 0.16);
+    if (b.getBoundingClientRect().left < 8) b.classList.add('td-say-flip');
+    await wait(3300); if (dead) return;
+    unsay(b);
+    ravEl.classList.remove('td-laugh');
+    await wait(500);
+  }
+
+  // Then Vibhishan comes to Ram's side (his right, or his left if there is no room), kneels, points
+  // at Ravan and tells him where his life lies, in a bubble whose tail runs down to his lips. Placed
+  // from where Ram is now, since Ram may have been dragged anywhere.
   var SAYING = ['हे प्रभु!', 'इसकी नाभि में बाण मारिए'];
   var SAY_TAIL = '<svg class="td-say-tail" viewBox="0 0 22 18" xmlns="http://www.w3.org/2000/svg">' +
     '<path d="M10 0 H20 Q13 10 1 17 Q8 9 10 0 Z" fill="#FEF3C7"/>' +
@@ -898,28 +944,9 @@ ThemeDecor.register('dussehra', function (d) {
     vibEl.style.top = Math.round(r.bottom - h) + 'px';
     await wait(700); if (dead) return;
     vibEl.classList.add('vb-talking');
-    var b = document.createElement('div'), n = 0;
-    b.className = 'td-say';
-    SAYING.forEach(function (line) {
-      var row = document.createElement('b');
-      line.split(' ').forEach(function (word, j) {
-        var sp = document.createElement('span');
-        sp.className = 'td-w';
-        sp.textContent = word;
-        sp.style.animationDelay = (0.25 + 0.2 * n++) + 's';
-        if (j) row.appendChild(document.createTextNode(' '));
-        row.appendChild(sp);
-      });
-      b.appendChild(row);
-    });
-    var who = document.createElement('small');
-    who.textContent = 'Vibhishan';
-    b.appendChild(who);
-    b.insertAdjacentHTML('beforeend', SAY_TAIL);
-    vibEl.appendChild(b);
+    var b = speak(vibEl, SAYING, 'Vibhishan', 'td-say-vb', SAY_TAIL, 0.2);
     await wait(2800); if (dead) return;
-    b.classList.add('td-say-out');
-    timers.push(setTimeout(function () { b.remove(); }, 400));
+    unsay(b);
     vibEl.classList.remove('vb-talking');
     await wait(400);
   }
@@ -1034,7 +1061,10 @@ ThemeDecor.register('dussehra', function (d) {
     for (var i = 0; i < ASTRAS.length; i++) {
       a = ASTRAS[i];
       if (i) { await whenClear(500); if (dead) return; }
-      if (a.key === 'brahma') { await advise(); if (dead) return; } // Vibhishan: "strike at his navel"
+      if (a.key === 'brahma') { // Ravan mocks Ram; Vibhishan: "strike at his navel"
+        await taunt(); if (dead) return;
+        await advise(); if (dead) return;
+      }
       if (a.mantra) { await invoke(a); if (dead) return; }
       await turnTo(aimAngle(a) + a.loft, a.mantra ? 420 : 320); if (dead) return;
       await wait(140); if (dead) return;
