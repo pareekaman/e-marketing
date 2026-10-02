@@ -730,6 +730,79 @@ ThemeDecor.register('navratri', function (d) {
     return s + '</svg>';
   }
 
+  // Day 8 — Maa Mahagauri, radiant white and serene: in white with a pink-and-gold border and pearls,
+  // a crescent on her crown, four arms (trishul, damru, abhaya, varada), riding a white bull dressed
+  // in pink with strings of pearls, a full moon and sprigs of jasmine behind her.
+  function mahagauri() {
+    var skin = '#FCE7D6', line = '#7C5A3A', s, k;
+    s = '<svg viewBox="0 0 220 210" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<radialGradient id="nvHalo"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".6" stop-color="#FCE7F3" stop-opacity=".9"/><stop offset="1" stop-color="#F9A8D4" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="nvGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE58A"/><stop offset=".55" stop-color="#F5B70A"/><stop offset="1" stop-color="#C98A06"/></linearGradient>' +
+      '<radialGradient id="nvMoon" cx=".4" cy=".35"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E2E8F0"/></radialGradient>' +
+      '<linearGradient id="nvBull" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E5E7EB"/></linearGradient></defs>';
+    // the full moon behind her, and sprigs of jasmine on both sides
+    s += '<circle cx="128" cy="60" r="62" fill="url(#nvMoon)" opacity=".85"/><circle cx="104" cy="40" r="6" fill="#E2E8F0"/><circle cx="160" cy="74" r="4" fill="#E2E8F0"/>';
+    [[26, 60], [40, 92], [18, 120], [200, 54], [190, 96], [206, 124]].forEach(function (j) {
+      for (k = 0; k < 5; k++) { var a = k * 1.2566; s += '<ellipse cx="' + (j[0] + Math.cos(a) * 4).toFixed(1) + '" cy="' + (j[1] + Math.sin(a) * 4).toFixed(1) + '" rx="3.4" ry="2" transform="rotate(' + (k * 72) + ' ' + (j[0] + Math.cos(a) * 4).toFixed(1) + ' ' + (j[1] + Math.sin(a) * 4).toFixed(1) + ')" fill="#FFFFFF" stroke="#E2E8F0" stroke-width=".5"/>'; }
+      s += '<circle cx="' + j[0] + '" cy="' + j[1] + '" r="1.6" fill="#FDE047"/>';
+    });
+    s += '<g class="nv-halo"><circle cx="128" cy="62" r="56" fill="url(#nvHalo)"/></g>';
+    // the white bull: tail, body with its hump, a pink cloth hung with pearls, legs with anklets
+    s += '<path class="nv-tail" d="M196 160 Q214 168 210 188" fill="none" stroke="#E5E7EB" stroke-width="4" stroke-linecap="round"/><path d="M206 186 q6 4 4 12 q-6 -2 -8 -8 Z" fill="#CBD5E1"/>' +
+         '<path d="M60 152 Q62 126 96 124 Q104 112 118 120 Q170 120 194 140 Q206 160 194 190 L70 194 Q56 178 60 152 Z" fill="url(#nvBull)" stroke="#94A3B8" stroke-width="1.6"/>' +
+         '<path d="M112 128 L172 128 L176 168 L108 170 Z" fill="#F9A8D4" stroke="#F5B70A" stroke-width="2.4"/>';
+    for (k = 0; k < 7; k++) s += '<path d="M' + (114 + k * 9) + ' 170 V' + (180 + (k % 2) * 4) + '" stroke="#F8FAFC" stroke-width="2.6" stroke-dasharray="0.1 3.4" stroke-linecap="round"/>';
+    s += '<path d="M86 192 v-16 M110 193 v-16 M164 193 v-18 M184 192 v-16" stroke="#F1F5F9" stroke-width="11" stroke-linecap="round"/>' +
+         '<path d="M81 186 h10 M105 187 h10 M159 187 h10 M179 186 h10" stroke="#F5B70A" stroke-width="2.4"/>' +
+         '<path d="M80 197 h12 M104 198 h12 M158 198 h12 M178 197 h12" stroke="#94A3B8" stroke-width="5" stroke-linecap="round"/>';
+    // upper arms: trishul (viewer's left), damru (viewer's right)
+    s += '<path d="M106 106 L86 88 L84 68" fill="none" stroke="' + skin + '" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+         '<path d="M84 96 V6" stroke="#B7791F" stroke-width="3" stroke-linecap="round"/>' +
+         '<path d="M74 24 Q74 10 84 4 Q94 10 94 24 M84 4 V-4" fill="none" stroke="#CBD5E1" stroke-width="3" stroke-linecap="round"/>' +
+         '<circle cx="84" cy="68" r="4.6" fill="' + skin + '" stroke="' + line + '" stroke-width=".8"/>' +
+         '<path d="M150 106 L170 88 L174 70" fill="none" stroke="' + skin + '" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+         '<path d="M166 52 L182 52 L176 62 L182 72 L166 72 L172 62 Z" fill="#B45309" stroke="#78350F" stroke-width="1"/><path d="M168 62 H180" stroke="#F5B70A" stroke-width="1.4"/>' +
+         '<path d="M166 62 q-6 -2 -8 2 M182 62 q6 2 8 -2" fill="none" stroke="#78350F" stroke-width="1"/><circle cx="157" cy="64" r="1.6" fill="#78350F"/><circle cx="191" cy="60" r="1.6" fill="#78350F"/>' +
+         '<circle cx="174" cy="70" r="4.6" fill="' + skin + '" stroke="' + line + '" stroke-width=".8"/>';
+    // seated body: white saree, pink-and-gold border, a pearl necklace
+    s += '<path d="M104 104 Q128 94 152 104 L160 150 Q128 160 96 150 Z" fill="#FFFFFF" stroke="' + line + '" stroke-width="1.2"/>' +
+         '<path d="M112 104 Q128 98 144 104 L142 118 Q128 122 114 118 Z" fill="#F9A8D4"/>' +
+         '<path d="M96 150 Q128 160 160 150 L152 174 Q118 182 92 170 Z" fill="#FAFAFA" stroke="' + line + '" stroke-width="1"/>' +
+         '<path d="M92 170 Q118 182 152 174" fill="none" stroke="#F472B6" stroke-width="5"/><path d="M93 166 Q118 178 153 170" fill="none" stroke="#F5B70A" stroke-width="1.4"/>' +
+         '<path d="M106 104 Q130 124 156 148" fill="none" stroke="#F472B6" stroke-width="4"/>' +
+         '<path d="M112 104 Q128 122 144 104" fill="none" stroke="#FFFFFF" stroke-width="3.4" stroke-dasharray="0.1 3.6" stroke-linecap="round"/>' +
+         '<path d="M114 104 Q128 120 142 104" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="0.1 3.6" stroke-linecap="round"/>' +
+         '<path d="M98 172 L92 186 M112 176 L108 190" stroke="' + skin + '" stroke-width="7" stroke-linecap="round"/>';
+    // lower hands in front: abhaya and varada
+    s += '<path d="M112 128 L118 120" stroke="' + skin + '" stroke-width="6" stroke-linecap="round"/>' +
+         '<path d="M115 121 V110 M118 120 V108 M121 120 V108 M124 121 V111" stroke="' + skin + '" stroke-width="2.6" stroke-linecap="round"/>' +
+         '<path d="M144 128 L140 140" stroke="' + skin + '" stroke-width="6" stroke-linecap="round"/>' +
+         '<path d="M137 140 V150 M140 141 V152 M143 141 V152 M146 140 V149" stroke="' + skin + '" stroke-width="2.6" stroke-linecap="round"/><circle cx="141.5" cy="144" r="1.4" fill="#F472B6"/>';
+    s += mataFace(skin, line, '#2B1A12');
+    // serene: eyes softly closed over the open ones; a pearl-studded crown with a crescent
+    s += '<path d="M107 66 Q116 72 125 66 M131 66 Q140 72 149 66" fill="none" stroke="#2B1A12" stroke-width="1.6" stroke-linecap="round"/>' +
+         '<path d="M108 66 Q116 61 124 66 Z M132 66 Q140 61 148 66 Z" fill="' + skin + '"/>' +
+         '<path d="M100 40 Q128 26 156 40 L152 30 Q128 18 104 30 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         '<path d="M112 28 Q128 4 144 28 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         '<path d="M104 32 Q128 22 152 32" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-dasharray="0.1 3.6" stroke-linecap="round"/>' +
+         '<path d="M121 14 A9 9 0 1 0 135 14 A7 7 0 1 1 121 14 Z" fill="#FFFFFF" stroke="#CBD5E1" stroke-width=".8"/>' +
+         '<path d="M128 36 V44" stroke="#F5B70A" stroke-width="1.4"/><circle cx="128" cy="46" r="2.6" fill="#FFFFFF" stroke="#F5B70A" stroke-width="1"/>';
+    // the bull's head in front: curved horns tipped with gold, a pink forehead ornament, a bell
+    s += '<g class="nv-lion-head">' +
+         '<path d="M58 132 Q44 120 50 104 M100 132 Q114 120 108 104" fill="none" stroke="#E7E5E4" stroke-width="5" stroke-linecap="round"/>' +
+         '<circle cx="50" cy="104" r="2.6" fill="#F5B70A"/><circle cx="108" cy="104" r="2.6" fill="#F5B70A"/>' +
+         '<ellipse cx="46" cy="144" rx="11" ry="5" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.2" transform="rotate(-20 46 144)"/>' +
+         '<ellipse cx="112" cy="144" rx="11" ry="5" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.2" transform="rotate(20 112 144)"/>' +
+         '<path d="M58 140 Q79 128 100 140 Q104 166 92 186 Q79 194 66 186 Q54 166 58 140 Z" fill="url(#nvBull)" stroke="#94A3B8" stroke-width="1.6"/>' +
+         '<ellipse cx="79" cy="180" rx="15" ry="10" fill="#FBCFE8"/><ellipse cx="73" cy="180" rx="2.4" ry="3" fill="#9D174D"/><ellipse cx="85" cy="180" rx="2.4" ry="3" fill="#9D174D"/>' +
+         '<circle cx="69" cy="156" r="4" fill="#1C1917"/><circle cx="89" cy="156" r="4" fill="#1C1917"/><circle cx="70" cy="154.6" r="1.4" fill="#fff"/><circle cx="90" cy="154.6" r="1.4" fill="#fff"/>' +
+         '<path d="M70 140 L79 148 L88 140 Z" fill="#F472B6" stroke="#F5B70A" stroke-width="1"/><circle cx="79" cy="143" r="1.8" fill="#FFFFFF"/>' +
+         '<path d="M60 190 Q79 204 98 190" fill="none" stroke="#FFFFFF" stroke-width="3.6" stroke-dasharray="0.1 4" stroke-linecap="round"/>' +
+         '<path d="M74 200 Q79 192 84 200 L83 206 H75 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width=".8"/>' +
+         '</g>';
+    return s + '</svg>';
+  }
+
   // The nine days (data-nv-day on <html>, set by core.js from the owner's choice); 0 or a day not
   // built yet shows Maa Durga on her tiger.
   var NV_DAYS = {
@@ -739,7 +812,8 @@ ThemeDecor.register('navratri', function (d) {
     4: { name: 'माँ कूष्मांडा', build: kushmanda, petals: ['#F97316', '#FDBA74', '#FDE047', '#22C55E', '#15803D'] },
     5: { name: 'माँ स्कंदमाता', build: skandamata, petals: ['#F472B6', '#EC4899', '#F9A8D4', '#FFFFFF', '#5EEAD4'] },
     6: { name: 'माँ कात्यायनी', build: katyayani, petals: ['#DC2626', '#B91C1C', '#F5B70A', '#FDE68A', '#7F1D1D'] },
-    7: { name: 'माँ कालरात्रि', build: kalaratri, petals: ['#312E81', '#4C1D95', '#A5F3FC', '#DC2626', '#E0E7FF'] }
+    7: { name: 'माँ कालरात्रि', build: kalaratri, petals: ['#312E81', '#4C1D95', '#A5F3FC', '#DC2626', '#E0E7FF'] },
+    8: { name: 'माँ महागौरी', build: mahagauri, petals: ['#FFFFFF', '#FCE7F3', '#F9A8D4', '#F472B6', '#FDE68A'] }
   };
   var DAY = NV_DAYS[+document.documentElement.getAttribute('data-nv-day')] || null;
   var durgaEl = d.svg(DAY ? DAY.build() : durga(), 'td-durga td-drag');

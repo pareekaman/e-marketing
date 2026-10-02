@@ -189,7 +189,8 @@ const NV_DAY_CHOICES = [
   { day: 4, name: 'Day 4 · Kushmanda', note: 'Creator of the universe, the sun behind her' },
   { day: 5, name: 'Day 5 · Skandamata', note: 'Baby Skanda on her lap, on a lotus' },
   { day: 6, name: 'Day 6 · Katyayani', note: 'The warrior who slew Mahishasur' },
-  { day: 7, name: 'Day 7 · Kalaratri', note: 'Dark as night, lightning round her neck' }
+  { day: 7, name: 'Day 7 · Kalaratri', note: 'Dark as night, lightning round her neck' },
+  { day: 8, name: 'Day 8 · Mahagauri', note: 'Radiant white, on a white bull' }
 ];
 let _nvDayCurrent = 0;
 function nvDayRow() {

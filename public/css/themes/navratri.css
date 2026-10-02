@@ -421,3 +421,42 @@
   filter:drop-shadow(0 3px 3px rgba(0,0,0,.22)); }
 .nv-ring-dancer svg { display:block; width:100%; height:auto; overflow:visible; }
 @media (prefers-reduced-motion: reduce) { .td-garba-circle { transition:none; } }
+
+/* Navratri Day 8 — Maa Mahagauri: pearl white and soft pink in moonlight, strings of pearls along the
+   cards, jasmine over the page, a moonlit sidebar. Only with data-nv-day="8". */
+:root[data-theme="navratri"][data-nv-day="8"] {
+  --brand-1:#F9A8D4; --brand-2:#EC4899; --brand-2-rgb:236,72,153;
+  --accent:#BE185D; --accent-dark:#9D174D; --accent-light:#DB2777;
+  --accent-rgb:190,24,93; --accent-light-rgb:219,39,119;
+  --page-bg:#FFFBFD; --sidebar-top:#831843; --sidebar-bottom:#500724;
+}
+:root[data-theme="navratri"][data-nv-day="8"] body {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cg fill='%23F9A8D4' fill-opacity='.18'%3E%3Cellipse cx='40' cy='34' rx='4' ry='2.2'/%3E%3Cellipse cx='44' cy='40' rx='4' ry='2.2' transform='rotate(72 44 40)'/%3E%3Cellipse cx='36' cy='42' rx='4' ry='2.2' transform='rotate(-72 36 42)'/%3E%3C/g%3E%3Ccircle cx='40' cy='39' r='1.4' fill='%23F5B70A' fill-opacity='.35'/%3E%3Ccircle cx='110' cy='110' r='2' fill='%23E2E8F0'/%3E%3C/svg%3E") repeat 0 0 / 150px 150px,
+    radial-gradient(900px 360px at 50% -140px, rgba(252,231,243,.9), transparent 70%),
+    var(--page-bg);
+  background-attachment:fixed;
+}
+/* a string of pearls along the top of each card */
+:root[data-theme="navratri"][data-nv-day="8"] .ov-card, :root[data-theme="navratri"][data-nv-day="8"] .chart-card, :root[data-theme="navratri"][data-nv-day="8"] .task-table-card {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='8'%3E%3Ccircle cx='5' cy='4' r='3' fill='%23FFFFFF' stroke='%23F9A8D4' stroke-width='.8'/%3E%3Ccircle cx='4' cy='3' r='.9' fill='%23FCE7F3'/%3E%3C/svg%3E") repeat-x left top 2px / 10px 8px,
+    linear-gradient(180deg, #FFF1F7 8px, #fff 60px);
+  outline:none; box-shadow:0 0 0 1px rgba(236,72,153,.12), 0 12px 26px -16px rgba(236,72,153,.4);
+}
+:root[data-theme="navratri"][data-nv-day="8"] .ov-card::before { background:linear-gradient(180deg,#FFFFFF,#F9A8D4,#EC4899); }
+:root[data-theme="navratri"][data-nv-day="8"] .topbar-title {
+  background:linear-gradient(90deg,#9D174D,#EC4899 50%,#F5B70A); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+/* the sidebar in moonlight: a full moon glowing at the top, jasmine drifting down */
+:root[data-theme="navratri"][data-nv-day="8"] .sidebar { background:radial-gradient(90px 90px at 50% 40px, rgba(255,255,255,.45), transparent 70%), linear-gradient(180deg,var(--sidebar-top),var(--sidebar-bottom)); }
+:root[data-theme="navratri"][data-nv-day="8"] .sidebar::before {
+  content:''; position:absolute; left:0; right:0; top:-120px; height:calc(100% + 120px); z-index:-1; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='120'%3E%3Cg fill='%23fff' fill-opacity='.75'%3E%3Cellipse cx='20' cy='20' rx='3' ry='1.6'/%3E%3Cellipse cx='22' cy='23' rx='3' ry='1.6' transform='rotate(72 22 23)'/%3E%3Cellipse cx='60' cy='76' rx='3' ry='1.6'/%3E%3Cellipse cx='58' cy='79' rx='3' ry='1.6' transform='rotate(-72 58 79)'/%3E%3C/g%3E%3C/svg%3E") repeat 0 0 / 80px 120px;
+  animation:nv-jasmine 11s linear infinite;
+}
+@keyframes nv-jasmine { from { transform:translateY(0); } to { transform:translateY(120px); } }
+:root[data-theme="navratri"][data-nv-day="8"] .nav-item.active { background:linear-gradient(90deg,rgba(255,255,255,.25),rgba(255,255,255,.06)); color:#fff; box-shadow:inset 0 0 0 1px rgba(255,255,255,.35); }
+:root[data-theme="navratri"][data-nv-day="8"] .nav-item.active::before { background:linear-gradient(180deg,#FFFFFF,#F9A8D4); }
+:root[data-theme="navratri"][data-nv-day="8"] .nv-greet { background:linear-gradient(135deg,#F472B6,#EC4899 50%,#BE185D); box-shadow:0 0 0 2px rgba(255,255,255,.9), 0 0 18px rgba(249,168,212,.8); }
+@media (prefers-reduced-motion: reduce) { :root[data-theme="navratri"][data-nv-day="8"] .sidebar::before { animation:none; } }
