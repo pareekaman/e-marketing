@@ -146,6 +146,10 @@ ThemeDecor.register('dussehra', function (d) {
     // torso and neck
     '<path d="M69 90 Q85 83 100 90 L101 118 Q99 134 96 142 L72 142 Q67 128 68 112 Z" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width="1"/>' +
     '<path d="M77 108 Q87 114 96 106" fill="none" stroke="#1E3F73" stroke-opacity=".35" stroke-width="1.2"/>' +
+    // muscle: the chest's lower edge, the line down the middle, the abdomen; a highlight on the chest, shade at the back
+    '<path d="M86 96 V132 M80 120 Q86 122 92 120 M80 128 Q86 130 92 128" fill="none" stroke="#1E3F73" stroke-opacity=".22" stroke-width="1"/>' +
+    '<ellipse cx="91" cy="99" rx="7" ry="4.5" fill="#FFFFFF" fill-opacity=".16"/>' +
+    '<path d="M69 92 Q66 112 72 141 L76 141 Q71 114 73 92 Z" fill="#1E3F73" fill-opacity=".2"/>' +
     '<path d="M80 72 L80 88 L90 88 L90 72 Z" fill="url(#tdRamSkin)"/>' +
     // sacred thread, gold necklace, garland of flowers
     '<path d="M74 92 L99 138" stroke="#F8FAFC" stroke-width="1.3"/>' +
@@ -189,16 +193,23 @@ ThemeDecor.register('dussehra', function (d) {
     '<path d="M56.6 52 L65.6 51.4" stroke="#F5C518" stroke-width="3"/>' +
     '<circle cx="61" cy="42" r="5.6" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width=".8"/></g>' +
     // head, hair at the side, ear with a gold earring
-    '<ellipse cx="85" cy="60" rx="15" ry="16.5" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width="1"/>' +
+    // a profile: brow, a straight nose, full lips, a firm chin and jaw; light from the front, shade at the jaw
+    '<path d="M74 46 C80 41 92 41 97 46 C99 49 99.6 52 99.4 54 C100.4 56.5 102.6 60 104.2 62.6 C104.6 63.6 103.6 64.4 101.4 64.4 C100.9 65.4 101.4 66.4 102 67.2 C101.3 67.9 100.4 68.4 99.6 68.7 C100.4 69.3 100.9 70.2 100.6 71.2 C100 72.6 99.6 74 98.6 75.4 C96 77.8 91 78.6 86.5 77.6 C82 76.4 78 73.6 75.5 70 C71.5 64 70.5 52 74 46 Z" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width="1" stroke-linejoin="round"/>' +
+    '<path d="M77 70 C81 75 87 77.6 93 77.2 C88 75.6 83 73 80 68 Z" fill="#1E3F73" fill-opacity=".22"/>' +
+    '<ellipse cx="93" cy="65" rx="4.6" ry="3.2" fill="#FFFFFF" fill-opacity=".18"/>' +
+    '<path d="M97.6 47.4 C99.2 50 99.6 52.4 99.4 54" fill="none" stroke="#FFFFFF" stroke-opacity=".35" stroke-width="1.2" stroke-linecap="round"/>' +
     '<path d="M70.5 52 C68.5 62 70 70 76 75 C72.5 65 73.5 57 78 51 Z" fill="#1F2A44"/>' +
     '<ellipse cx="76.5" cy="62" rx="3" ry="4.2" fill="#7FB5E6" stroke="#1E3F73" stroke-width=".8"/>' +
     '<circle cx="76.5" cy="71" r="3.4" fill="url(#tdRamGold)" stroke="#B45309" stroke-width=".7"/><circle cx="76.5" cy="71" r="1.2" fill="#DC2626"/>' +
     // calm, focused face while aiming...
     '<g class="td-aim td-fcalm">' +
-    '<path d="M86 52 Q91 49.5 96.5 51.5" fill="none" stroke="#111827" stroke-width="1.6" stroke-linecap="round"/>' +
-    '<path d="M86.5 58 Q91.5 54.5 96.5 58 Q91.5 60.5 86.5 58 Z" fill="#fff"/><circle cx="92.8" cy="57.8" r="1.6" fill="#111827"/>' +
-    '<path d="M86 57.6 Q91.5 54 97 57.6" fill="none" stroke="#111827" stroke-width="1.1"/>' +
-    '<path d="M91 70.5 Q94 72 97 70" fill="none" stroke="#7F1D1D" stroke-width="1.4" stroke-linecap="round"/></g>' +
+    '<path d="M87 52.4 Q92 50 97.4 51.6" fill="none" stroke="#111827" stroke-width="1.7" stroke-linecap="round"/>' +
+    '<path d="M88 57.8 Q92.5 55 96.6 57.4 Q92.6 59.8 88 57.8 Z" fill="#F8FAFC"/>' +
+    '<circle cx="93.6" cy="57.4" r="1.9" fill="#3B2A1A"/><circle cx="93.9" cy="57.4" r="1" fill="#0B0B0B"/><circle cx="94.4" cy="56.8" r=".45" fill="#fff"/>' +
+    '<path d="M87.6 57.6 Q92.4 54.3 97 57.2 M96.4 56.9 l1.3 -.9" fill="none" stroke="#111827" stroke-width="1.2" stroke-linecap="round"/>' +
+    '<path d="M89 59.6 Q92.6 60.8 95.6 59.4" fill="none" stroke="#1E3F73" stroke-opacity=".45" stroke-width=".7"/>' +
+    '<path d="M99.6 68.6 Q98 69 96.4 68.4" fill="none" stroke="#7F1D1D" stroke-width="1.2" stroke-linecap="round"/>' +
+    '<path d="M101.4 67 Q100 67.6 99.6 68.6 Q100.4 69.6 100.6 70.6" fill="#9F3A4A" fill-opacity=".55"/></g>' +
     // ...and beaming while Ravan burns: smiling eye, raised brow, rosy cheek, open smile
     '<g class="td-cheer" style="display:none">' +
     '<path d="M85.5 50 Q91 46.5 96.5 49.5" fill="none" stroke="#111827" stroke-width="1.6" stroke-linecap="round"/>' +
@@ -210,9 +221,9 @@ ThemeDecor.register('dussehra', function (d) {
     '<g class="td-fchant" style="display:none">' +
     '<path d="M86 52 Q91 49.5 96.5 51.5" fill="none" stroke="#111827" stroke-width="1.6" stroke-linecap="round"/>' +
     '<path d="M86.5 58 Q91.5 61.2 96.5 58" fill="none" stroke="#111827" stroke-width="1.5" stroke-linecap="round"/>' +
-    '<ellipse class="td-chant-mouth" cx="94" cy="70.4" rx="2.4" ry="1.8" fill="#7F1D1D"/></g>' +
-    // nose, tilak
-    '<path d="M99.5 57.5 Q102.5 63 98.8 65.8" fill="none" stroke="#1E3F73" stroke-width="1.2" stroke-linecap="round"/>' +
+    '<ellipse class="td-chant-mouth" cx="99.2" cy="68.7" rx="1.6" ry="1.3" fill="#7F1D1D"/></g>' +
+    // nostril, tilak
+    '<path d="M101.6 63.6 Q100.4 63.2 100 62.2" fill="none" stroke="#1E3F73" stroke-width=".9" stroke-linecap="round"/>' +
     '<path d="M89.6 45 L90.8 51 Q92 52.6 93.2 51 L94.4 45" fill="none" stroke="#F97316" stroke-width="1.7"/><path d="M92 46 V51" stroke="#DC2626" stroke-width="1.1"/>' +
     // hair over the head, swept back, gathered into a jata knot tied with a saffron band
     '<path d="M69.5 61 C66 45 76 37 88 37.5 C97 38 102 44 100.5 52 C96 45.5 89 44 82.5 45.5 C77 47 74 53 72.5 63 Z" fill="#1F2A44"/>' +
