@@ -198,7 +198,11 @@ async function setAppTheme(key) {
   _themeSaving = false;
   if (r.error) { showToast(r.error, 'error'); return; }
   _themeCurrent = r.theme;
-  applyAppTheme(r.theme);
+  // the owner wants to see what they just picked, even if they had switched it off for themselves
+  _companyTheme = r.theme;
+  if (_themeOff && r.theme !== 'normal') setMyThemeOff(false);
+  else applyAppTheme(r.theme);
+  syncThemeToggle();
   paintThemePicker();
   showToast(choice.name + ' theme applied for everyone');
 }

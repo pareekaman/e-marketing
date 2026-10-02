@@ -190,10 +190,29 @@ async function loadAppTheme() {
     const r = await fetch('/api/theme', { credentials: 'include' });
     if (!r.ok) return;
     const t = await r.json();
-    applyAppTheme(t.theme);
+    _companyTheme = t.theme;
+    _themeOff = !!t.off;
+    applyAppTheme(_themeOff ? 'normal' : t.theme);
+    syncThemeToggle();
     // The Theme tab is for the theme owner(s) only (theme_admin_ids on the server), not every admin.
     if (t.canChange && typeof showThemeTab === 'function') showThemeTab();
   } catch (e) {}
+}
+// The dashboard slider: each person can switch the festival theme off for themselves. It shows only
+// while the company has a festival theme on; with Normal there is nothing to switch.
+let _companyTheme = 'normal', _themeOff = false;
+function syncThemeToggle() {
+  const box = document.getElementById('themeToggle');
+  if (!box) return;
+  box.style.display = _companyTheme === 'normal' ? 'none' : '';
+  document.getElementById('themeToggleInput').checked = !_themeOff;
+}
+async function setMyThemeOff(off) {
+  _themeOff = off;
+  applyAppTheme(off ? 'normal' : _companyTheme);
+  syncThemeToggle();
+  const r = await api('/api/theme/mine', 'PUT', { off });
+  if (r && r.error) { showToast(r.error, 'error'); _themeOff = !off; applyAppTheme(_themeOff ? 'normal' : _companyTheme); syncThemeToggle(); }
 }
 
 async function init() {

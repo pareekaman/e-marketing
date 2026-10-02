@@ -41,3 +41,13 @@
 .tp-name { display:flex; align-items:center; gap:6px; font-size:14px; font-weight:700; color:#1e293b; }
 .tp-badge { margin-left:auto; font-size:11px; font-weight:600; color:#fff; background:var(--tp-acc); padding:2px 8px; border-radius:20px; }
 .tp-note { font-size:12px; color:#64748b; margin-top:3px; }
+
+/* The dashboard slider: switches the festival theme off or on for this person only (core.js). */
+.theme-toggle { display:inline-flex; align-items:center; gap:8px; padding:5px 12px 5px 6px; border:1.5px solid #e2e8f0; border-radius:999px;
+  background:#fff; cursor:pointer; user-select:none; font:600 12.5px/1 'Inter',sans-serif; color:#475569; }
+.theme-toggle input { position:absolute; opacity:0; width:0; height:0; }
+.tt-track { position:relative; width:34px; height:19px; border-radius:999px; background:#cbd5e1; transition:background .2s; flex:none; }
+.tt-knob { position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.3); transition:transform .2s; }
+.theme-toggle input:checked + .tt-track { background:linear-gradient(90deg,var(--brand-1),var(--brand-2)); }
+.theme-toggle input:checked + .tt-track .tt-knob { transform:translateX(15px); }
+.theme-toggle input:focus-visible + .tt-track { outline:2px solid var(--brand-2); outline-offset:2px; }

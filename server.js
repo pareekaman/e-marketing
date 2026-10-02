@@ -9411,7 +9411,20 @@ app.get('/api/theme', requireAuth, async (req, res) => {
     const [[row]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [APP_THEME_KEY]);
     const theme = row && APP_THEMES.includes(row.value) ? row.value : 'normal';
     const canChange = (await readIdSetting('theme_admin_ids')).includes(Number(req.session.userId));
-    res.json({ theme, themes: APP_THEMES, canChange });
+    const [[mine]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [themeOffKey(req)]);
+    res.json({ theme, themes: APP_THEMES, canChange, off: !!(mine && mine.value === '1') });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Anyone may switch the festival theme off for themselves (the slider on the dashboard); it stays
+// on for everyone else. Kept per account as theme_off:<user id> = '1'; switching it back on deletes it.
+function themeOffKey(req) { return 'theme_off:' + Number(req.session.userId); }
+app.put('/api/theme/mine', requireAuth, async (req, res) => {
+  try {
+    const off = !!(req.body && req.body.off);
+    if (off) await db.query('INSERT INTO app_settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)', [themeOffKey(req), '1']);
+    else await db.query('DELETE FROM app_settings WHERE key_name=?', [themeOffKey(req)]);
+    res.json({ success: true, off });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

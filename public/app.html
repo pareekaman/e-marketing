@@ -320,6 +320,12 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
             style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff">
           <button onclick="clearPCDateFilter()" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;background:#fff;cursor:pointer;color:#64748b">✕ Clear</button>
         </div>
+        <!-- Festival theme on/off for this person only; shown while the company has a festival theme (core.js syncThemeToggle) -->
+        <label id="themeToggle" class="theme-toggle" style="display:none" title="Switch the festival theme on or off for yourself">
+          <input type="checkbox" id="themeToggleInput" onchange="setMyThemeOff(!this.checked)">
+          <span class="tt-track"><span class="tt-knob"></span></span>
+          <span class="tt-label">Festival theme</span>
+        </label>
       </div>
       <div class="dash-topbar-btns" id="dashBtns"></div>
     </div>
