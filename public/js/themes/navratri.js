@@ -803,6 +803,63 @@ ThemeDecor.register('navratri', function (d) {
     return s + '</svg>';
   }
 
+  // Day 9 — Maa Siddhidatri, giver of every siddhi: seated on a great golden lotus, the eight siddhis
+  // glowing round her head as lamps (nv-siddhi), four arms (chakra, shankh, gada, lotus), in royal
+  // purple and gold, two sages on either side bowing with folded hands.
+  function siddhidatri() {
+    var skin = '#F8CFA6', line = '#5B3A1A', s, k, a;
+    s = '<svg viewBox="0 0 220 210" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<radialGradient id="nvHalo"><stop offset="0" stop-color="#FFFBEB"/><stop offset=".5" stop-color="#FDE68A" stop-opacity=".85"/><stop offset="1" stop-color="#A855F7" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="nvGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE58A"/><stop offset=".55" stop-color="#F5B70A"/><stop offset="1" stop-color="#C98A06"/></linearGradient>' +
+      '<linearGradient id="nvPetal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FDE68A"/><stop offset="1" stop-color="#D97706"/></linearGradient></defs>';
+    s += '<g class="nv-halo"><circle cx="128" cy="62" r="62" fill="url(#nvHalo)"/></g>';
+    // the eight siddhis: small lamps glowing in a ring round her head
+    for (k = 0; k < 8; k++) {
+      a = (-90 + k * 45) * Math.PI / 180;
+      var lx = 128 + Math.cos(a) * 72, ly = 58 + Math.sin(a) * 62; // wide enough to clear her hair
+      s += '<g class="nv-siddhi" style="animation-delay:' + (k * 0.25) + 's"><circle cx="' + lx.toFixed(1) + '" cy="' + ly.toFixed(1) + '" r="6" fill="#FDE047" fill-opacity=".35"/>' +
+           '<path d="M' + (lx - 4).toFixed(1) + ' ' + (ly + 2).toFixed(1) + ' Q' + lx.toFixed(1) + ' ' + (ly + 6).toFixed(1) + ' ' + (lx + 4).toFixed(1) + ' ' + (ly + 2).toFixed(1) + ' Z" fill="#B45309"/>' +
+           '<path d="M' + lx.toFixed(1) + ' ' + (ly - 5).toFixed(1) + ' q2.4 3 0 6 q-2.4 -3 0 -6 Z" fill="#F97316"/></g>';
+    }
+    // a sage on each side, bowing with folded hands: saffron robes, white beard, a topknot
+    [[22, 1], [198, -1]].forEach(function (g) {
+      var x = g[0], f = g[1];
+      s += '<path d="M' + (x - 13) + ' 196 Q' + (x - 14) + ' 158 ' + x + ' 150 Q' + (x + 14) + ' 158 ' + (x + 13) + ' 196 Z" fill="#F97316" stroke="#9A3412" stroke-width="1"/>' +
+           '<path d="M' + (x - 6) + ' 152 L' + (x + 8) + ' 190" stroke="#FDE68A" stroke-width="2"/>' +
+           '<circle cx="' + (x + f * 3) + '" cy="142" r="9" fill="' + skin + '" stroke="' + line + '" stroke-width=".8"/>' +
+           '<path d="M' + (x + f * 3 - 7) + ' 144 Q' + (x + f * 3) + ' 162 ' + (x + f * 3 + 7) + ' 144 Z" fill="#F8FAFC" stroke="#CBD5E1" stroke-width=".6"/>' +
+           '<ellipse cx="' + (x + f * 3) + '" cy="131" rx="4" ry="3.4" fill="#F1F5F9" stroke="#CBD5E1" stroke-width=".6"/>' +
+           '<path d="M' + (x + f * 3 - 4) + ' 141 q2 1.6 4 0 M' + (x + f * 3 + 1) + ' 141 q2 1.6 4 0" fill="none" stroke="' + line + '" stroke-width=".9"/>' +
+           '<path d="M' + (x + f * 3) + ' 136 V140" stroke="#DC2626" stroke-width="1.2"/>' +
+           '<path d="M' + (x + f * 8) + ' 170 L' + (x + f * 12) + ' 160 Q' + (x + f * 14) + ' 154 ' + (x + f * 12) + ' 150 Q' + (x + f * 10) + ' 156 ' + (x + f * 8) + ' 162 Z" fill="' + skin + '" stroke="' + line + '" stroke-width=".7"/>';
+    });
+    // four arms: chakra and shankh above, gada and lotus below
+    var arm = function (x1, y1, x2, y2) { return '<path d="M' + x1 + ' ' + y1 + ' L' + x2 + ' ' + y2 + '" stroke="' + skin + '" stroke-width="7" stroke-linecap="round"/><circle cx="' + x2 + '" cy="' + y2 + '" r="4.2" fill="' + skin + '" stroke="' + line + '" stroke-width=".8"/>'; };
+    s += arm(108, 106, 76, 78) + '<g transform="translate(76 66)"><circle r="10" fill="#FDE7C8" stroke="#E11D48" stroke-width="2.4"/>';
+    for (k = 0; k < 8; k++) { a = k * Math.PI / 4; s += '<path d="M0 0 L' + (Math.cos(a) * 9).toFixed(1) + ' ' + (Math.sin(a) * 9).toFixed(1) + '" stroke="#E11D48" stroke-width="1.2"/>'; }
+    s += '<circle r="3" fill="#E11D48"/></g>' +
+         arm(148, 106, 180, 78) + '<path d="M174 74 Q170 56 184 52 Q196 54 192 66 Q188 76 174 74 Z" fill="#FFF7ED" stroke="#B45309" stroke-width="1.2"/><path d="M178 70 Q182 60 190 58" fill="none" stroke="#B45309" stroke-width="1"/>' +
+         arm(106, 120, 84, 140) + '<path d="M84 144 V112" stroke="#7C2D12" stroke-width="3"/><circle cx="84" cy="106" r="7" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         arm(150, 120, 172, 140) + '<path d="M172 136 V124" stroke="#16A34A" stroke-width="2"/><path d="M172 124 q-12 -8 -8 -20 q8 6 8 20 q0 -14 8 -20 q4 12 -8 20 Z M172 122 q-4 -12 0 -22 q4 10 0 22 Z" fill="#F472B6" stroke="#BE185D" stroke-width="1"/>';
+    // the great golden lotus she sits on: two rings of petals
+    for (k = -4; k <= 4; k++) s += '<path d="M' + (128 + k * 14) + ' 192 Q' + (116 + k * 16) + ' 174 ' + (128 + k * 14) + ' 160 Q' + (140 + k * 12) + ' 174 ' + (128 + k * 14) + ' 192 Z" fill="url(#nvPetal)" stroke="#B45309" stroke-width=".9"/>';
+    for (k = -3; k <= 3; k++) s += '<path d="M' + (128 + k * 15) + ' 200 Q' + (118 + k * 17) + ' 186 ' + (128 + k * 15) + ' 176 Q' + (138 + k * 13) + ' 186 ' + (128 + k * 15) + ' 200 Z" fill="#FCD34D" stroke="#B45309" stroke-width=".9"/>';
+    // seated body: royal purple saree with gold, a gold necklace
+    s += '<path d="M104 104 Q128 94 152 104 L160 150 Q128 160 96 150 Z" fill="#7E22CE" stroke="' + line + '" stroke-width="1.4"/>' +
+         '<path d="M112 104 Q128 98 144 104 L142 118 Q128 122 114 118 Z" fill="url(#nvGold)"/>' +
+         '<path d="M92 148 Q128 160 164 148 L158 172 Q128 180 98 172 Z" fill="#6B21A8" stroke="' + line + '" stroke-width="1.2"/>' +
+         '<path d="M98 172 Q128 180 158 172" fill="none" stroke="#F5B70A" stroke-width="5"/>' +
+         '<path d="M106 104 Q130 124 156 148" fill="none" stroke="#F5B70A" stroke-width="4"/>' +
+         '<path d="M114 106 Q128 120 142 106" fill="none" stroke="#F5B70A" stroke-width="2.6"/><circle cx="128" cy="116" r="3.4" fill="#7E22CE" stroke="#F5B70A" stroke-width="1.2"/>';
+    s += mataFace(skin, line, '#1C120B');
+    // a tall jewelled crown
+    s += '<path d="M100 40 Q128 26 156 40 L152 28 Q128 16 104 28 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         '<path d="M108 28 L114 8 L121 20 L128 -2 L135 20 L142 8 L148 28 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         '<circle cx="128" cy="14" r="3" fill="#7E22CE" stroke="#fff" stroke-width=".8"/><circle cx="116" cy="22" r="1.8" fill="#16A34A"/><circle cx="140" cy="22" r="1.8" fill="#16A34A"/>' +
+         '<path d="M128 36 V44" stroke="#F5B70A" stroke-width="1.4"/><circle cx="128" cy="46" r="2.4" fill="#7E22CE" stroke="#F5B70A" stroke-width="1"/>';
+    return s + '</svg>';
+  }
+
   // The nine days (data-nv-day on <html>, set by core.js from the owner's choice); 0 or a day not
   // built yet shows Maa Durga on her tiger.
   var NV_DAYS = {
@@ -813,7 +870,8 @@ ThemeDecor.register('navratri', function (d) {
     5: { name: 'माँ स्कंदमाता', build: skandamata, petals: ['#F472B6', '#EC4899', '#F9A8D4', '#FFFFFF', '#5EEAD4'] },
     6: { name: 'माँ कात्यायनी', build: katyayani, petals: ['#DC2626', '#B91C1C', '#F5B70A', '#FDE68A', '#7F1D1D'] },
     7: { name: 'माँ कालरात्रि', build: kalaratri, petals: ['#312E81', '#4C1D95', '#A5F3FC', '#DC2626', '#E0E7FF'] },
-    8: { name: 'माँ महागौरी', build: mahagauri, petals: ['#FFFFFF', '#FCE7F3', '#F9A8D4', '#F472B6', '#FDE68A'] }
+    8: { name: 'माँ महागौरी', build: mahagauri, petals: ['#FFFFFF', '#FCE7F3', '#F9A8D4', '#F472B6', '#FDE68A'] },
+    9: { name: 'माँ सिद्धिदात्री', build: siddhidatri, petals: ['#A855F7', '#7E22CE', '#F5B70A', '#FDE68A', '#F472B6'] }
   };
   var DAY = NV_DAYS[+document.documentElement.getAttribute('data-nv-day')] || null;
   var durgaEl = d.svg(DAY ? DAY.build() : durga(), 'td-durga td-drag');
