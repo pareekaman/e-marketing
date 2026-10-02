@@ -288,14 +288,32 @@ function renderEmp360(){
     const ewDays = new Set(ew.map(e => e.entry_date)).size;
     const ewMin = ew.reduce((s, e) => s + (Number(e.duration_min) || 0), 0);
     html += `<div class="e3-section-title">🟢 Extra Working (approved)</div>
-      <div style="font-size:11.5px;color:#64748b;margin-bottom:8px">${ewDays} ${ewDays === 1 ? 'day' : 'days'} · ${fmtMins(ewMin)} · not counted in the daily report numbers above</div>
-      <table class="e3-table"><thead><tr><th>Date</th><th>Client</th><th>Task</th><th>Min</th></tr></thead><tbody>` +
-      ew.map(e => `<tr>
-        <td style="white-space:nowrap">${dtEscape(e.entry_date)}</td>
+      <div style="font-size:11.5px;color:#64748b;margin-bottom:10px">${ewDays} ${ewDays === 1 ? 'day' : 'days'} · ${fmtMins(ewMin)} · not counted in the daily report numbers above
+      <span style="color:#94a3b8">· click a day to open it</span></div>`;
+    // One collapsed row per day, same as the daily entries above. Indices start
+    // at 10000 so these never share an e3day id with a daily-entry day.
+    const ewByDay = new Map();
+    for (const e of ew) { if (!ewByDay.has(e.entry_date)) ewByDay.set(e.entry_date, []); ewByDay.get(e.entry_date).push(e); }
+    let ewIdx = 10000;
+    for (const [day, list] of ewByDay) {
+      const mins = list.reduce((s, e) => s + (Number(e.duration_min) || 0), 0);
+      const rows = list.map(e => `<tr>
         <td>${dtEscape(e.client_name || '—')}</td>
         <td>${dtEscape(e.description || '')}</td>
         <td style="white-space:nowrap">${e.duration_min || 0}</td>
-      </tr>`).join('') + `</tbody></table>`;
+      </tr>`).join('');
+      html += `<div class="e3-day" id="e3day${ewIdx}">
+        <div class="e3-day-head" onclick="e3ToggleDay(${ewIdx})">
+          <span class="e3-day-chev">▶</span>
+          <span class="e3-day-date">${dtEscape(day)}</span>
+          <span class="e3-day-meta">${list.length} ${list.length === 1 ? 'entry' : 'entries'} · ${fmtMins(mins)}</span>
+        </div>
+        <div class="e3-day-body">
+          <table class="e3-table"><thead><tr><th>Client</th><th>Task</th><th>Min</th></tr></thead><tbody>${rows}</tbody></table>
+        </div>
+      </div>`;
+      ewIdx++;
+    }
   }
 
   // Recent meetings
