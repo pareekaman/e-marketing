@@ -282,6 +282,22 @@ function renderEmp360(){
     }
   }
 
+  // Approved Extra Working — its own section; the daily numbers above exclude it.
+  const ew = Array.isArray(d.extraWorking) ? d.extraWorking : [];
+  if (ew.length) {
+    const ewDays = new Set(ew.map(e => e.entry_date)).size;
+    const ewMin = ew.reduce((s, e) => s + (Number(e.duration_min) || 0), 0);
+    html += `<div class="e3-section-title">🟢 Extra Working (approved)</div>
+      <div style="font-size:11.5px;color:#64748b;margin-bottom:8px">${ewDays} ${ewDays === 1 ? 'day' : 'days'} · ${fmtMins(ewMin)} · not counted in the daily report numbers above</div>
+      <table class="e3-table"><thead><tr><th>Date</th><th>Client</th><th>Task</th><th>Min</th></tr></thead><tbody>` +
+      ew.map(e => `<tr>
+        <td style="white-space:nowrap">${dtEscape(e.entry_date)}</td>
+        <td>${dtEscape(e.client_name || '—')}</td>
+        <td>${dtEscape(e.description || '')}</td>
+        <td style="white-space:nowrap">${e.duration_min || 0}</td>
+      </tr>`).join('') + `</tbody></table>`;
+  }
+
   // Recent meetings
   if (mt.recent.length) {
     html += `<div class="e3-section-title">📅 Recent Meetings</div>`;
@@ -486,9 +502,11 @@ function renderDREntriesUserDropdown(){
   const sel = document.getElementById('drUserFilter');
   const cur = sel.value;
   let html = '<option value="">All Doers</option>';
-  for (const u of DR_DATA.summary) {
-    const selected = cur == u.user_id ? 'selected' : '';
-    html += `<option value="${u.user_id}" ${selected}>${dtEscape(u.name)}</option>`;
+  const people = new Map();
+  for (const e of drBaseEntries()) if (!people.has(e.user_id)) people.set(e.user_id, e.doer_name);
+  for (const [id, name] of [...people].sort((a, b) => String(a[1]).localeCompare(String(b[1])))) {
+    const selected = cur == id ? 'selected' : '';
+    html += `<option value="${id}" ${selected}>${dtEscape(name)}</option>`;
   }
   sel.innerHTML = html;
 }
@@ -497,7 +515,7 @@ function renderDREntriesClientDropdown(){
   const sel = document.getElementById('drClientFilter');
   if (!sel) return;
   const cur = sel.value;
-  const clients = [...new Set(DR_DATA.entries.map(e => e.client_name).filter(Boolean))].sort();
+  const clients = [...new Set(drBaseEntries().map(e => e.client_name).filter(Boolean))].sort();
   let html = '<option value="">All Clients</option>';
   for (const c of clients) {
     const selected = cur === c ? 'selected' : '';
@@ -510,6 +528,8 @@ function drClearEntryFilters(){
   const s = document.getElementById('drSearch'); if (s) s.value = '';
   const u = document.getElementById('drUserFilter'); if (u) u.value = '';
   const c = document.getElementById('drClientFilter'); if (c) c.value = '';
+  const ty = document.getElementById('drTypeFilter'); if (ty) ty.value = 'daily';
+  renderDREntriesUserDropdown(); renderDREntriesClientDropdown();
   renderDREntries();
 }
 
@@ -519,18 +539,29 @@ function drClearRange(){
   loadDailyReports();
 }
 
+// Rows for the chosen type. Extra Working is a separate list from the server
+// (approved only) and never enters the stats or the per-user summary.
+function drBaseEntries(){
+  const type = document.getElementById('drTypeFilter')?.value || 'daily';
+  const extra = DR_DATA.extra_entries || [];
+  if (type === 'extra') return extra;
+  if (type === 'all') return [...DR_DATA.entries, ...extra].sort((a, b) =>
+    a.entry_date.localeCompare(b.entry_date) || String(a.doer_name).localeCompare(String(b.doer_name)));
+  return DR_DATA.entries;
+}
+
 function drFilteredEntries(){
   if (!DR_DATA) return [];
   const search = (document.getElementById('drSearch')?.value || '').toLowerCase();
   const userId = document.getElementById('drUserFilter')?.value || '';
   const client = document.getElementById('drClientFilter')?.value || '';
-  let entries = DR_DATA.entries;
+  let entries = drBaseEntries();
   if (userId) entries = entries.filter(e => String(e.user_id) === String(userId));
   if (client) entries = entries.filter(e => e.client_name === client);
   if (search) {
     entries = entries.filter(e =>
-      e.doer_name.toLowerCase().includes(search) ||
-      e.client_name.toLowerCase().includes(search) ||
+      String(e.doer_name || '').toLowerCase().includes(search) ||
+      String(e.client_name || '').toLowerCase().includes(search) ||
       (e.description||'').toLowerCase().includes(search) ||
       (e.department||'').toLowerCase().includes(search)
     );
@@ -563,9 +594,9 @@ function renderDREntries(){
   </tr></thead><tbody>`;
   for (const e of entries) {
     html += `<tr>
-      <td><b>${e.entry_date}</b></td>
+      <td><b>${e.entry_date}</b>${e.extra_working ? ' <span style="background:#dcfce7;color:#15803d;font-weight:700;font-size:10px;padding:1px 5px;border-radius:5px" title="Approved Extra Working">EW</span>' : ''}</td>
       <td>${dtEscape(e.doer_name)}</td>
-      <td><span class="pill-tag">${dtEscape(e.client_name)}</span></td>
+      <td>${e.client_name ? `<span class="pill-tag">${dtEscape(e.client_name)}</span>` : '—'}</td>
       <td>${e.department ? `<span class="pill-dept">${dtEscape(e.department)}</span>` : '—'}</td>
       <td>${dtEscape(e.description)}</td>
       <td><span class="pill-min">${e.duration_min} min</span></td>

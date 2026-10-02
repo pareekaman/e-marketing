@@ -8488,7 +8488,9 @@ app.get('/api/compliance/employee/:id', requireAuth, requireComplianceViewer, as
     res.json({
       range: { from, to },
       user: { id: user.id, name: user.name, email: user.email, role: user.role, department: user.department },
-      delegation, checklist, dailyReport, recentEntries, clients, meetings, scores, weekly
+      delegation, checklist, dailyReport, recentEntries, clients, meetings, scores, weekly,
+      // Approved Extra Working in the window, newest first; not in dailyReport.
+      extraWorking: (await approvedExtraWorkingRows(from, to, { userId: id }).catch(() => [])).reverse()
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -8549,6 +8551,40 @@ app.get('/api/daily-tasks/all', requireAuth, requireAdmin, async (req, res) => {
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// Approved Extra Working as rows shaped like daily_tasks entries. It is stored
+// in leave_requests.dates_json, one item per day: either client-wise `entries`
+// (minutes when given, else hours) or, on older requests, just `hours`.
+// Kept apart from daily_tasks everywhere it is shown, so no daily total moves.
+async function approvedExtraWorkingRows(from, to, { userId, client } = {}) {
+  const params = [to, from];
+  let extra = '';
+  if (userId) { extra = ' AND lr.user_id = ?'; params.push(userId); }
+  const [reqs] = await db.query(
+    `SELECT lr.id, lr.user_id, lr.dates_json, u.name AS doer_name, u.email AS doer_email
+       FROM leave_requests lr JOIN users u ON u.id = lr.user_id
+      WHERE lr.status='approved' AND lr.leave_type='extra_working'
+        AND lr.from_date <= ? AND lr.to_date >= ?${extra}`, params);
+  const out = [];
+  for (const r of reqs) {
+    let days = []; try { days = JSON.parse(r.dates_json) || []; } catch {}
+    for (const d of days) {
+      if (!d || !d.date || d.date < from || d.date > to) continue;
+      const list = Array.isArray(d.entries) && d.entries.length ? d.entries
+        : [{ client: '', description: 'Extra working', hours: d.hours }];
+      for (const e of list) {
+        const min = Number.isFinite(Number(e.minutes)) && Number(e.minutes) > 0
+          ? Math.round(Number(e.minutes)) : Math.round((Number(e.hours) || 0) * 60);
+        const row = { entry_date: d.date, user_id: r.user_id, doer_name: r.doer_name, doer_email: r.doer_email,
+          client_name: e.client || '', department: e.department || '', description: e.description || '',
+          duration_min: min, request_id: r.id, extra_working: true };
+        if (client && row.client_name !== client) continue;
+        out.push(row);
+      }
+    }
+  }
+  return out.sort((a, b) => a.entry_date.localeCompare(b.entry_date) || a.doer_name.localeCompare(b.doer_name));
+}
 
 // Monthly report — summary + day-wise entries (admin only)
 app.get('/api/daily-tasks/report', requireAuth, requireAdmin, async (req, res) => {
@@ -8613,7 +8649,9 @@ app.get('/api/daily-tasks/report', requireAuth, requireAdmin, async (req, res) =
       total_entries: rows.length,
       total_minutes: rows.reduce((a, b) => a + b.duration_min, 0),
       summary,
-      entries: rows
+      entries: rows,
+      // Separate list: the totals above stay daily-task only.
+      extra_entries: await approvedExtraWorkingRows(fromDate, toDate, { userId: req.query.user_id, client: req.query.client }).catch(() => [])
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

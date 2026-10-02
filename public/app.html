@@ -1163,6 +1163,11 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
       <div class="dr-section-title">📝 All Entries</div>
       <div class="dr-filter-row" style="flex-wrap:wrap;gap:8px">
         <input type="text" id="drSearch" placeholder="🔍 Search by name / client / description..." oninput="renderDREntries()"/>
+        <select id="drTypeFilter" onchange="renderDREntriesUserDropdown();renderDREntriesClientDropdown();renderDREntries()" title="Daily Task entries, approved Extra Working, or both">
+          <option value="daily">Daily Task</option>
+          <option value="extra">Extra Working (approved)</option>
+          <option value="all">Daily Task + Extra Working</option>
+        </select>
         <select id="drUserFilter" onchange="renderDREntries()">
           <option value="">All Doers</option>
         </select>
