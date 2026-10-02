@@ -215,6 +215,13 @@
 @keyframes td-follow-eye { from { transform:translate(-1.2px,-1.6px); } to { transform:translate(1.2px,-1.6px); } }
 .td-army.td-gone { animation:td-army-out .6s ease-in forwards; }
 @keyframes td-army-out { to { transform:translateY(105%); opacity:0; } }
+/* the devi-devtas on clouds along the top, showering flowers as the Pushpak Viman goes */
+.td-devta { z-index:2; animation:td-devta-in .8s cubic-bezier(.34,1.56,.64,1) both;
+  filter:drop-shadow(0 0 10px rgba(255,214,102,.8)) drop-shadow(0 4px 6px rgba(0,0,0,.15)); }
+.td-devta svg { animation:td-pv-bob 1.6s ease-in-out infinite alternate; }
+@keyframes td-devta-in { from { opacity:0; transform:translateY(-110%); } to { opacity:1; transform:none; } }
+.td-devta.td-gone { animation:td-devta-out .7s ease-in forwards; }
+@keyframes td-devta-out { to { opacity:0; transform:translateY(-110%); } }
 /* the Pushpak Viman, bobbing on its clouds (sized, flown, and Ram's seat filled by the JS) */
 .td-vimana { z-index:2; filter:drop-shadow(0 0 14px rgba(255,214,102,.75)) drop-shadow(0 6px 10px rgba(0,0,0,.22)); }
 .td-vimana svg { animation:td-pv-bob 1.4s ease-in-out infinite alternate; }

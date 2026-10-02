@@ -990,9 +990,48 @@ ThemeDecor.register('dussehra', function (d) {
     }, 350));
   }
   // As it flies away it showers flowers on everyone below (petals, drawn on the canvas).
+  // The devi-devtas, each on a cloud with a halo, leaning out from the top of the page with a
+  // basket of flowers; draw() rains petals from their baskets while `shower` is on.
+  function devta(skin, robe, crown) {
+    return '<svg viewBox="0 0 90 90" xmlns="http://www.w3.org/2000/svg">' +
+      '<circle cx="45" cy="26" r="20" fill="#FFE082" fill-opacity=".55"/>' +
+      '<path d="M27 66 Q26 44 45 40 Q64 44 63 66 Z" fill="' + robe + '" stroke="#7C2D12" stroke-width=".8"/>' +
+      '<path d="M30 48 Q45 56 60 48" fill="none" stroke="#F5C518" stroke-width="2.2"/>' +
+      '<ellipse cx="45" cy="28" rx="10" ry="11" fill="' + skin + '" stroke="#7C2D12" stroke-width=".7"/>' +
+      '<path d="M40 28 Q41.5 26.5 43 28 M47 28 Q48.5 26.5 50 28" fill="none" stroke="#1F1A17" stroke-width="1.1" stroke-linecap="round"/>' +
+      '<path d="M42 33 Q45 35.5 48 33" fill="none" stroke="#9F1239" stroke-width="1.1" stroke-linecap="round"/>' +
+      '<circle cx="45" cy="23" r="1.1" fill="#DC2626"/>' +
+      '<path d="M35 20 L38 9 L42 15 L45 5 L48 15 L52 9 L55 20 Z" fill="' + crown + '" stroke="#8A5A00" stroke-width=".7"/>' +
+      '<path d="M33 50 L22 58 M57 50 L66 58" stroke="' + skin + '" stroke-width="5" stroke-linecap="round"/>' +
+      '<path d="M58 56 H76 L72 64 H62 Z" fill="#B45309" stroke="#78350F" stroke-width=".7"/>' +
+      '<circle cx="62" cy="55" r="2.6" fill="#F59E0B"/><circle cx="67" cy="54" r="2.6" fill="#F472B6"/><circle cx="72" cy="55" r="2.6" fill="#E11D48"/>' +
+      '<g fill="#FFFFFF" stroke="#DBEAFE" stroke-width="1"><circle cx="20" cy="74" r="11"/><circle cx="36" cy="70" r="13"/><circle cx="54" cy="70" r="13"/><circle cx="70" cy="74" r="11"/><ellipse cx="45" cy="80" rx="36" ry="8"/></g>' +
+      '</svg>';
+  }
+  var DEVTAS = [['#A5D4F7', '#FBBF24', '#F5C518'], ['#F6CFA8', '#DC2626', '#F5C518'], ['#93C5FD', '#F97316', '#FDE68A'],
+                ['#F9D9BE', '#DB2777', '#F5C518'], ['#F6CFA8', '#16A34A', '#F5C518']];
+  var devEls = [];
+  function devtas() {
+    var W = d.layer.clientWidth, n = DEVTAS.length;
+    devEls = DEVTAS.map(function (c, i) {
+      var el = d.svg(devta(c[0], c[1], c[2]), 'td-devta');
+      el.style.width = '78px';
+      el.style.left = Math.round(W * (i + 0.5) / n - 39) + 'px';
+      el.style.top = (i % 2 ? 14 : 2) + 'px';
+      el.style.animationDelay = (0.12 * i) + 's';
+      return el;
+    });
+  }
+  function devtasGo() {
+    devEls.forEach(function (el) { el.classList.add('td-gone'); });
+    var els = devEls; devEls = [];
+    timers.push(setTimeout(function () { els.forEach(function (el) { el.remove(); }); }, 800));
+  }
+
   function depart(pv) {
     var W = d.layer.clientWidth;
     shower = true;
+    devtas();
     pv.el.animate([
       { transform: 'translate(' + pv.x + 'px,' + pv.y + 'px) scale(1)' },
       { transform: 'translate(' + (pv.x + 70) + 'px,' + (pv.y - 60) + 'px) scale(.95)', offset: 0.25 },
@@ -1128,6 +1167,7 @@ ThemeDecor.register('dussehra', function (d) {
     hideLabel();
     pv.el.remove(); vimEl = null;
     below.forEach(function (el) { el.classList.add('td-gone'); });
+    devtasGo();
     timers.push(setTimeout(function () { below.forEach(function (el) { el.remove(); }); }, 1000));
     vibEl = null;
     await wait(600); if (dead) return;
@@ -1189,6 +1229,15 @@ ThemeDecor.register('dussehra', function (d) {
       // ...and, once Ram is aboard and it is leaving, flowers dropped from it over everyone below
       for (var fn = shower ? 36 * dt : 0, fk = Math.floor(fn) + (Math.random() < fn % 1 ? 1 : 0); fk > 0 && petals.length < 260; fk--) {
         petals.push({ x: vr.left + vr.width * d.rand(0.15, 0.85), y: vr.top + vr.height * d.rand(0.6, 0.8), vx: d.rand(-40, 40), vy: d.rand(-30, 20),
+                      rot: d.rand(0, 6.2832), va: d.rand(-5, 5), ph: d.rand(0, 6.2832), s: d.rand(0.8, 1.4), c: d.pick(PETAL), life: 9 });
+      }
+    }
+
+    // ...and from the devtas' baskets at the top of the page
+    for (var di = 0; shower && di < devEls.length; di++) {
+      var db = devEls[di].getBoundingClientRect();
+      for (var dn = 9 * dt, dk = Math.floor(dn) + (Math.random() < dn % 1 ? 1 : 0); dk > 0 && petals.length < 320; dk--) {
+        petals.push({ x: db.left + db.width * d.rand(0.65, 0.85), y: db.top + db.height * 0.68, vx: d.rand(-30, 40), vy: d.rand(-20, 10),
                       rot: d.rand(0, 6.2832), va: d.rand(-5, 5), ph: d.rand(0, 6.2832), s: d.rand(0.8, 1.4), c: d.pick(PETAL), life: 9 });
       }
     }
