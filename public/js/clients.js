@@ -1591,6 +1591,11 @@ function renderCompliance(){
       let cell;
       if (s.preJoin) {
         cell = '<span class="cp-cell-off" title="Before joining date">–</span>';
+      } else if (s.off && s.extraHours != null) {
+        // Approved Extra Working on an off day. Shown, not scored: off days are
+        // outside workingDays, so the percentage is unchanged.
+        const h = Math.round(Number(s.extraHours) * 100) / 100;
+        cell = `<span style="display:inline-block;background:#dcfce7;color:#15803d;font-weight:700;font-size:11px;padding:2px 6px;border-radius:6px;white-space:nowrap" title="Approved Extra Working on ${s.isHoliday ? 'a holiday' : 'a week off'}">EW ${h}h</span>`;
       } else if (s.off) {
         cell = s.isHoliday
           ? '<span class="cp-cell-holiday" title="Holiday">🎉 Off</span>'

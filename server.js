@@ -8211,6 +8211,25 @@ app.get('/api/compliance/last7', requireAuth, requireComplianceViewer, async (re
       }
     }
 
+    // Approved Extra Working in this range: { userId: { date: hours } }. It is
+    // stored as a leave request, not in daily_tasks, so the grid never saw it;
+    // shown on the cell only — the score still counts working days alone.
+    const extraMap = {};
+    try {
+      const [ewRows] = await db.query(
+        `SELECT user_id, dates_json FROM leave_requests
+          WHERE status='approved' AND leave_type='extra_working' AND from_date <= ? AND to_date >= ?`,
+        [dates[dates.length - 1], dates[0]]);
+      for (const r of ewRows) {
+        let arr = []; try { arr = JSON.parse(r.dates_json) || []; } catch {}
+        for (const d of arr) {
+          if (!d || !dates.includes(d.date)) continue;
+          (extraMap[r.user_id] = extraMap[r.user_id] || {})[d.date] =
+            ((extraMap[r.user_id] || {})[d.date] || 0) + (Number(d.hours) || 0);
+        }
+      }
+    } catch (e) { console.error('compliance extra working:', e.message); }
+
     const holidaysSet = await loadHolidaysSet();
 
     // Build grid — mark off-days so UI doesn't count them as missed
@@ -8226,7 +8245,8 @@ app.get('/api/compliance/last7', requireAuth, requireComplianceViewer, async (re
         off: isUserOffOn(u, d, holidaysSet),
         preJoin: !!(u.joining_date && d < u.joining_date),
         isHoliday: holidaysSet.has(d),
-        onLeave: leaveMap[u.id]?.has(d) || false
+        onLeave: leaveMap[u.id]?.has(d) || false,
+        extraHours: extraMap[u.id]?.[d] ?? null
       }))
     }));
 

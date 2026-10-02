@@ -1062,7 +1062,7 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
         <div class="cp-header" style="justify-content:flex-end">
           <button class="dt-btn dt-btn-add" onclick="loadCompliance()">🔄 Refresh</button>
         </div>
-        <p class="cp-sub">Last 7 days — who filled the Daily Task and when. <span class="cp-dot cp-dot-yes"></span> = filled · <span class="cp-dot cp-dot-no"></span> = missed · <span style="color:#7c3aed;font-weight:700">L</span> = on leave · <span style="color:#94a3b8;font-weight:600">Off</span> = week off or holiday. Leave and off days are left out of the score.</p>
+        <p class="cp-sub">Last 7 days — who filled the Daily Task and when. <span class="cp-dot cp-dot-yes"></span> = filled · <span class="cp-dot cp-dot-no"></span> = missed · <span style="color:#7c3aed;font-weight:700">L</span> = on leave · <span style="color:#94a3b8;font-weight:600">Off</span> = week off or holiday · <span style="background:#dcfce7;color:#15803d;font-weight:700;font-size:11px;padding:1px 5px;border-radius:5px">EW</span> = approved extra working on an off day. Leave and off days (extra working included) are left out of the score.</p>
 
         <div class="cp-filter-row">
           <input type="text" id="cpSearch" placeholder="🔍 Search by name / email / department..." oninput="renderCompliance()"/>
