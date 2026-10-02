@@ -136,10 +136,16 @@ ThemeDecor.register('dussehra', function (d) {
     // legs in an archer's stance, feet, anklets
     '<path d="M62 190 L51 244" stroke="url(#tdRamSkin)" stroke-width="11" stroke-linecap="round"/>' +
     '<path d="M112 190 L123 244" stroke="url(#tdRamSkin)" stroke-width="11" stroke-linecap="round"/>' +
+    // each leg lit from the front and shaded behind: a dark band down its back edge, a light one down its front
+    '<path d="M58.5 190 L47.5 243 M108.5 190.5 L119.5 243.5" stroke="#1E3F73" stroke-opacity=".38" stroke-width="3.5" stroke-linecap="round"/>' +
+    '<path d="M65 191 L54.5 242 M115 190 L125.5 242" stroke="#FFFFFF" stroke-opacity=".32" stroke-width="2.2" stroke-linecap="round"/>' +
+    '<path d="M58 214 Q60 218 57 222 M117 214 Q115 218 118 222" fill="none" stroke="#1E3F73" stroke-opacity=".35" stroke-width="1"/>' +
     '<ellipse cx="54" cy="250" rx="10" ry="4.2" fill="#4A8CCB"/><ellipse cx="128" cy="250" rx="11" ry="4.2" fill="#4A8CCB"/>' +
     '<path d="M46 240 H58 M116 240 H128" stroke="#F5C518" stroke-width="3" stroke-linecap="round"/>' +
     // far arm: held out to the bow (aim; it turns with the bow, see setAng) or raised with it (cheer); behind the body
     '<g class="td-aim"><g class="td-rot"><path d="M92 96 L153 94" stroke="url(#tdRamSkin)" stroke-width="9" stroke-linecap="round"/>' +
+    '<path d="M93 99 L153 97.2" stroke="#1E3F73" stroke-opacity=".35" stroke-width="3" stroke-linecap="round"/>' +
+    '<path d="M95 93.2 L150 91.6" stroke="#FFFFFF" stroke-opacity=".35" stroke-width="1.8" stroke-linecap="round"/>' +
     '<path d="M110 91 V100 M144 89.8 V98.8" stroke="#F5C518" stroke-width="3"/></g></g>' +
     '<g class="td-cheer" style="display:none"><path d="M94 94 L124 40" stroke="url(#tdRamSkin)" stroke-width="9" stroke-linecap="round"/>' +
     '<path d="M100.6 72.9 L108.4 77.3 M115.6 45.9 L123.4 50.3" stroke="#F5C518" stroke-width="3"/></g>' +
@@ -162,6 +168,10 @@ ThemeDecor.register('dussehra', function (d) {
     '<path d="M69 142 H101 L124 194 Q116 200 106 198 L86 166 L70 200 Q58 200 50 194 Z" fill="url(#tdRamSilk)" stroke="#9A3412" stroke-width="1"/>' +
     '<path d="M52 192 Q60 197 70 197 M106 195 Q115 197 122 192" stroke="#C2410C" stroke-width="3" fill="none"/>' +
     '<path d="M78 150 L74 186 M92 150 L100 182" stroke="#9A3412" stroke-width="1" fill="none" opacity=".6"/>' +
+    // deep folds in the silk: shadowed hollows between the pleats, and a sheen along each ridge
+    '<path d="M74 146 Q70 170 60 194 L66 196 Q74 172 79 147 Z M88 147 Q96 168 108 194 L114 192 Q100 168 93 147 Z" fill="#7C2D12" fill-opacity=".3"/>' +
+    '<path d="M82 147 Q80 170 76 190 M98 150 Q104 170 116 190 M70 150 Q66 172 56 192" fill="none" stroke="#FED7AA" stroke-opacity=".55" stroke-width="1.4" stroke-linecap="round"/>' +
+    '<path d="M86 166 L80 182 L86 178 L92 184 Z" fill="#7C2D12" fill-opacity=".35"/>' +
     '<path d="M68 136 H102 V146 H68 Z" fill="#EA580C"/><path d="M68 137 H102 M68 145 H102" stroke="#D6B98A" stroke-width="1.6"/>' +
     '<path d="M92 146 Q96 160 90 172 Q98 162 97 147 Z" fill="#C2410C"/>' +
     // aiming: the Kodanda bow (curled, gold-banded), its string, the arrow, and both hands. The parts
