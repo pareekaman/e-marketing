@@ -50,7 +50,8 @@
 .td-ravan.td-rise { animation:td-rise .9s cubic-bezier(.2,.8,.3,1) both; }
 @keyframes td-rise { from { transform:translateY(110%); opacity:0; } 60% { opacity:1; } to { transform:translateY(0); opacity:1; } }
 
-.td-arrow { will-change:transform; }
+/* Ram's astras in flight sit above the sparks they trail */
+.td-astra { z-index:2; will-change:transform; }
 
 /* "Happy Dussehra", shown where Ravan stood once he has fallen */
 .td-hd { position:absolute; z-index:2; transform:translateX(50%); white-space:nowrap; font:700 13px/1 'Inter',sans-serif;
@@ -67,6 +68,84 @@
 .td-reye { animation:td-reye 1.1s ease-in-out infinite alternate; }
 @keyframes td-reye { from { fill-opacity:.25; } to { fill-opacity:.9; } }
 @media (prefers-reduced-motion: reduce) { .td-reye { animation:none; } }
+
+/* Invoking an astra: Ram glows in its colour (--g, set by the JS), the Brahmastra brightest of all */
+.td-ram.td-invoke { filter:drop-shadow(0 0 12px var(--g)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+.td-ram.td-charge { animation:td-charge .45s ease-in-out infinite alternate; }
+@keyframes td-charge {
+  from { filter:drop-shadow(0 0 8px rgba(255,236,170,.7)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+  to   { filter:drop-shadow(0 0 22px #FFF8DC) drop-shadow(0 0 6px #fff) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+}
+/* his lips moving as he chants */
+.td-chant-mouth { transform-box:fill-box; transform-origin:center; animation:td-chant .3s ease-in-out infinite alternate; }
+@keyframes td-chant { from { transform:scaleY(.3); } to { transform:scaleY(1.15); } }
+/* the mantra, in a bubble beside his head pointing back at his mouth (--m: the astra's colour).
+   Devanagari needs a system font, Inter has none. */
+.td-mantra { position:absolute; left:95%; bottom:74%; z-index:3; pointer-events:none; white-space:nowrap; text-align:center;
+  padding:6px 12px 5px; border-radius:14px; background:linear-gradient(180deg,#FFFBEB,#FEF3C7);
+  box-shadow:0 0 0 1.5px var(--m), 0 0 16px -2px var(--m), 0 8px 18px -8px rgba(0,0,0,.4);
+  transform-origin:0 100%; animation:td-m-in .45s cubic-bezier(.34,1.56,.64,1) both; }
+.td-mantra b { display:block; font:700 14px/1.35 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif; color:#9A3412;
+  animation:td-m-glow .9s ease-in-out infinite alternate; }
+.td-mantra span { display:block; font:700 9.5px/1.2 'Inter',sans-serif; letter-spacing:.6px; text-transform:uppercase; color:#7C2D12; opacity:.75; }
+.td-mantra::after { content:''; position:absolute; left:-6px; bottom:9px; width:11px; height:11px; background:#FEF3C7;
+  transform:rotate(45deg); box-shadow:-1.5px 1.5px 0 0 var(--m); }
+.td-mantra.td-mantra-left { left:auto; right:95%; transform-origin:100% 100%; }
+.td-mantra.td-mantra-left::after { left:auto; right:-6px; box-shadow:1.5px -1.5px 0 0 var(--m); }
+.td-mantra.td-mantra-out { animation:td-m-out .35s ease-in forwards; }
+@keyframes td-m-in { from { opacity:0; transform:scale(.4); } to { opacity:1; transform:scale(1); } }
+@keyframes td-m-out { to { opacity:0; transform:translateY(-8px) scale(.9); } }
+@keyframes td-m-glow { from { text-shadow:0 0 0 rgba(245,158,11,0); } to { text-shadow:0 0 8px rgba(245,158,11,.85); } }
+/* the astra appearing beyond the raised arrow's tip (--r: its angle), then sinking into the tip (--bx/--by) */
+.td-emblem { position:absolute; z-index:3; pointer-events:none; filter:drop-shadow(0 0 5px var(--g)) drop-shadow(0 0 12px var(--g));
+  transform:translate(-50%,-50%) rotate(var(--r)); animation:td-em-in .7s cubic-bezier(.34,1.56,.64,1) both; }
+@keyframes td-em-in { from { opacity:0; transform:translate(-50%,-50%) rotate(var(--r)) scale(.1); } to { opacity:1; transform:translate(-50%,-50%) rotate(var(--r)) scale(1); } }
+.td-emblem.td-em-out { animation:td-em-out .4s ease-in forwards; }
+@keyframes td-em-out {
+  from { opacity:1; transform:translate(-50%,-50%) rotate(var(--r)) scale(1); }
+  to   { opacity:0; transform:translate(calc(-50% + var(--bx)),calc(-50% + var(--by))) rotate(var(--r)) scale(.15); }
+}
+.td-em-chakra svg { animation:td-whirl .6s linear infinite; }
+@keyframes td-whirl { to { transform:rotate(360deg); } }
+
+/* Ravan struck by an astra that does not finish him: a jolt, and he squares up again */
+.td-ravan.td-flinch { animation:td-flinch .5s ease-out; }
+@keyframes td-flinch {
+  0%   { transform:rotate(-1.6deg); }
+  25%  { transform:translateX(10px) rotate(4deg); filter:brightness(1.8) drop-shadow(0 0 16px #ff3b1a); }
+  100% { transform:rotate(-1.6deg); }
+}
+/* bound by the Nagastra's serpents: straining against them, lit green */
+.td-ravan.td-venom { animation:td-strain .14s ease-in-out 12 alternate;
+  filter:drop-shadow(0 0 14px rgba(34,197,94,.95)) drop-shadow(0 4px 6px rgba(0,0,0,.35)); }
+/* shaken by the Trishul's lightning, lit blue */
+.td-ravan.td-shock { animation:td-strain .07s linear 12 alternate;
+  filter:brightness(1.3) drop-shadow(0 0 16px rgba(96,165,250,.95)) drop-shadow(0 4px 6px rgba(0,0,0,.35)); }
+@keyframes td-strain { from { transform:translateX(-2px) rotate(-1.6deg); } to { transform:translateX(2px) rotate(-.4deg); } }
+/* the Sudarshan Chakra cuts through his heads, and they grow back */
+.td-heads { transform-box:fill-box; transform-origin:50% 100%; }
+.td-ravan.td-sever .td-heads { animation:td-regrow 1.1s ease-in-out; }
+@keyframes td-regrow {
+  0%   { transform:none; opacity:1; }
+  14%  { transform:translate(10px,-18px) rotate(14deg); opacity:.9; }
+  34%  { transform:translate(16px,-10px) rotate(30deg) scale(.4); opacity:0; }
+  60%  { transform:scale(.15); opacity:0; }
+  86%  { transform:scale(1.08); opacity:1; }
+  100% { transform:none; opacity:1; }
+}
+/* the Nagastra's serpents winding up him from the feet (each coil's delay is set inline), the head rearing last */
+.td-coil { position:absolute; left:0; top:0; width:100%; pointer-events:none; transform-origin:50% 60%; }
+.td-cb { stroke-dasharray:1; stroke-dashoffset:1; animation:td-wrap .35s ease-out forwards; }
+@keyframes td-wrap { to { stroke-dashoffset:0; } }
+.td-cs { opacity:0; animation:td-scales .3s ease-out forwards; }
+@keyframes td-scales { to { opacity:1; } }
+.td-chead { opacity:0; transform-box:fill-box; transform-origin:50% 100%; animation:td-rear .4s .5s cubic-bezier(.34,1.56,.64,1) forwards; }
+@keyframes td-rear { from { opacity:0; transform:scale(.3); } to { opacity:1; transform:none; } }
+.td-coil.td-coil-off { animation:td-coil-off .4s ease-in forwards; }
+@keyframes td-coil-off { to { opacity:0; transform:scale(1.18); } }
+/* the Brahmastra's blinding light, flooding out from where it struck */
+.td-glare { position:absolute; inset:0; z-index:2; pointer-events:none; animation:td-glare .95s ease-out forwards; }
+@keyframes td-glare { 0% { opacity:0; } 14% { opacity:1; } 100% { opacity:0; } }
 
 /* Dussehra skin: the evening of Vijayadashami across the whole UI. Only under data-theme="dussehra". */
 /* a sunset glow over the top of the page */

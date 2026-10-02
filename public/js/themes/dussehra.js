@@ -1,12 +1,17 @@
-/* Dussehra decoration — a short story that loops while the theme is on:
-     1. Shri Ram (bottom-left) looses an arrow and Ravan (bottom-right) answers; the two arrows
-        meet head-on in mid-air and shatter.
-     2. Both shoot again, but Ram's arrow breaks Ravan's on the way and flies on to strike him.
-     3. Ravan burns and collapses, "Happy Dussehra" appears where he stood, crackers go up.
-     4. Five seconds later he rises again and the story repeats.
-   A round starts only while nothing covers the page (the page loader, a modal such as the
-   Monday check-in, or a hidden tab), so nobody misses it. Under reduced motion only the
-   ending is shown, still. */
+/* Dussehra decoration — a short story that loops while the theme is on. Shri Ram (bottom-left)
+   looses five weapons at Ravan (bottom-right), one after another:
+     1. an arrow, which breaks on his armour;
+     2. the Nagastra: serpents wind round him, and he throws them off;
+     3. Shiva's Trishul: lightning crackles all over him;
+     4. Vishnu's Sudarshan Chakra: it cuts through his heads, which grow back, and returns to Ram;
+     5. the Brahmastra, at his navel: he burns and collapses, "Happy Dussehra" appears where he
+        stood and crackers go up. Five seconds later he rises again and the story repeats.
+   Each astra (2-5) is first invoked as in the epics: Ram raises the bow and arrow to the sky and
+   chants its mantra while the astra gathers on the arrow's tip. Every shot steers after Ravan in
+   flight, so it still finds him if he is dragged somewhere else while it flies.
+   A shot is loosed only while nothing covers the page (the page loader, a modal such as the
+   Monday check-in, or a hidden tab), so nobody misses it. Under reduced motion only the ending
+   is shown, still. */
 ThemeDecor.register('dussehra', function (d) {
   var faces = ['#B5653A', '#A0522D', '#C0703F', '#9A4A2A', '#B86A3C'];
 
@@ -98,7 +103,7 @@ ThemeDecor.register('dussehra', function (d) {
     // drawing arm, bent across the chest to the string
     '<path d="M68 106 L74 126 L52 101" fill="none" stroke="#4A0E08" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<circle cx="52" cy="101" r="5.5" fill="#9B2C1B"/>' +
-    heads + '</svg>';
+    '<g class="td-heads">' + heads + '</g></svg>';
 
   // Shri Ram, drawn facing right (towards Ravan) — no flipping anywhere. Two poses, switched by
   // setPose(): .td-aim (bow drawn, calm face) and .td-cheer (bow raised high, fist up, beaming),
@@ -117,8 +122,8 @@ ThemeDecor.register('dussehra', function (d) {
     '<circle cx="85" cy="54" r="35" fill="url(#tdRamHalo)"/>' +
     '<circle cx="85" cy="54" r="27" fill="none" stroke="#F59E0B" stroke-width="1.2" stroke-opacity=".5"/>' +
     // long hair down the back, quiver with fletchings over the shoulder, saffron scarf streaming back
-    '<path d="M74 44 C58 50 50 70 46 96 C42 116 34 126 26 132 C40 130 50 118 56 104 C58 120 52 134 46 142 C60 134 66 116 68 98 C70 86 72 76 76 66 Z" fill=""/>' +
-    '<path d="M72 46 C56 44 40 52 22 50 M70 52 C54 56 40 66 24 70 M70 60 C58 70 46 84 36 90" fill="none" stroke="" stroke-width="2.4" stroke-linecap="round"/>' +
+    '<path d="M74 44 C58 50 50 70 46 96 C42 116 34 126 26 132 C40 130 50 118 56 104 C58 120 52 134 46 142 C60 134 66 116 68 98 C70 86 72 76 76 66 Z" fill="#1F2A44"/>' +
+    '<path d="M72 46 C56 44 40 52 22 50 M70 52 C54 56 40 66 24 70 M70 60 C58 70 46 84 36 90" fill="none" stroke="#1F2A44" stroke-width="2.4" stroke-linecap="round"/>' +
     '<g transform="rotate(-22 60 100)"><rect x="54" y="70" width="13" height="60" rx="4" fill="#7C2D12" stroke="#431407" stroke-width="1"/>' +
     '<rect x="54" y="80" width="13" height="4" fill="url(#tdRamGold)"/><rect x="54" y="118" width="13" height="4" fill="url(#tdRamGold)"/>' +
     '<path d="M57 70 l-2 -12 l4 5 z M61 70 l0 -13 l3 6 z M65 70 l2 -12 l1 7 z" fill="#DC2626"/></g>' +
@@ -128,9 +133,9 @@ ThemeDecor.register('dussehra', function (d) {
     '<path d="M112 190 L123 244" stroke="url(#tdRamSkin)" stroke-width="11" stroke-linecap="round"/>' +
     '<ellipse cx="54" cy="250" rx="10" ry="4.2" fill="#4A8CCB"/><ellipse cx="128" cy="250" rx="11" ry="4.2" fill="#4A8CCB"/>' +
     '<path d="M46 240 H58 M116 240 H128" stroke="#F5C518" stroke-width="3" stroke-linecap="round"/>' +
-    // far arm: held out to the bow (aim) or raised with it (cheer); behind the body
-    '<g class="td-aim"><path d="M92 96 L153 94" stroke="url(#tdRamSkin)" stroke-width="9" stroke-linecap="round"/>' +
-    '<path d="M110 91 V100 M144 89.8 V98.8" stroke="#F5C518" stroke-width="3"/></g>' +
+    // far arm: held out to the bow (aim; it turns with the bow, see setAng) or raised with it (cheer); behind the body
+    '<g class="td-aim"><g class="td-rot"><path d="M92 96 L153 94" stroke="url(#tdRamSkin)" stroke-width="9" stroke-linecap="round"/>' +
+    '<path d="M110 91 V100 M144 89.8 V98.8" stroke="#F5C518" stroke-width="3"/></g></g>' +
     '<g class="td-cheer" style="display:none"><path d="M94 94 L124 40" stroke="url(#tdRamSkin)" stroke-width="9" stroke-linecap="round"/>' +
     '<path d="M100.6 72.9 L108.4 77.3 M115.6 45.9 L123.4 50.3" stroke="#F5C518" stroke-width="3"/></g>' +
     // torso and neck
@@ -150,8 +155,10 @@ ThemeDecor.register('dussehra', function (d) {
     '<path d="M78 150 L74 186 M92 150 L100 182" stroke="#9A3412" stroke-width="1" fill="none" opacity=".6"/>' +
     '<path d="M68 136 H102 V146 H68 Z" fill="#EA580C"/><path d="M68 137 H102 M68 145 H102" stroke="#D6B98A" stroke-width="1.6"/>' +
     '<path d="M92 146 Q96 160 90 172 Q98 162 97 147 Z" fill="#C2410C"/>' +
-    // aiming: the Kodanda bow (curled, gold-banded), its string, the arrow, and both hands
-    '<g class="td-aim">' +
+    // aiming: the Kodanda bow (curled, gold-banded), its string, the arrow, and both hands. The parts
+    // in td-rot turn together about the far shoulder (setAng) and the drawing arm (td-narm) is redrawn
+    // to follow; td-tip and td-tail mark the arrow's point and nock, to measure a shot from.
+    '<g class="td-aim"><g class="td-rot">' +
     '<path d="M138 24 Q170 93 138 162" fill="none" stroke="#7C2D12" stroke-width="4.6" stroke-linecap="round"/>' +
     '<path d="M138 24 Q140 16 147 14 M138 162 Q140 170 147 172" fill="none" stroke="#7C2D12" stroke-width="3.2" stroke-linecap="round"/>' +
     '<path d="M143.5 42 l4 -2 M143.5 144 l4 2" stroke="#F5C518" stroke-width="3" stroke-linecap="round"/>' +
@@ -159,12 +166,13 @@ ThemeDecor.register('dussehra', function (d) {
     '<path class="td-sr" d="M139 25 L139 161" fill="none" stroke="#F8FAFC" stroke-width="1.3" visibility="hidden"/>' +
     '<g class="td-nock"><path d="M100 89 H186" stroke="#8B5A2B" stroke-width="2.6"/>' +
     '<polygon points="199,89 185,83 188,89 185,95" fill="url(#tdRamGold)" stroke="#B45309" stroke-width=".8"/>' +
-    '<path d="M101 89 l8 -6 h6 l-6 6 z M101 89 l8 6 h6 l-6 -6 z" fill="#DC2626"/><path d="M104 89 l5 -3.5 M104 89 l5 3.5" stroke="#fff" stroke-width="1"/></g>' +
+    '<path d="M101 89 l8 -6 h6 l-6 6 z M101 89 l8 6 h6 l-6 -6 z" fill="#DC2626"/><path d="M104 89 l5 -3.5 M104 89 l5 3.5" stroke="#fff" stroke-width="1"/>' +
+    '<circle class="td-tip" cx="199" cy="89" r=".5" fill="none"/><circle class="td-tail" cx="100" cy="89" r=".5" fill="none"/></g>' +
     '<rect x="150" y="87" width="7" height="14" rx="2" fill="url(#tdRamGold)"/>' +
-    '<circle cx="153" cy="94" r="5.2" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width=".8"/>' +
-    '<path d="M80 95 L56 86 L100 89" fill="none" stroke="url(#tdRamSkin)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>' +
-    '<path d="M65.8 84.9 L62.6 93.3 M92.3 84 L91.7 93" stroke="#F5C518" stroke-width="3"/>' +
-    '<circle cx="100" cy="89" r="5" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width=".8"/></g>' +
+    '<circle cx="153" cy="94" r="5.2" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width=".8"/></g>' +
+    '<path class="td-narm" d="M80 95 L56 86 L100 89" fill="none" stroke="url(#tdRamSkin)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path class="td-nband" d="M65.8 84.9 L62.6 93.3 M92.3 84 L91.7 93" stroke="#F5C518" stroke-width="3"/>' +
+    '<g class="td-rot"><circle cx="100" cy="89" r="5" fill="url(#tdRamSkin)" stroke="#1E3F73" stroke-width=".8"/></g></g>' +
     // cheering: the bow held high, the other fist raised
     '<g class="td-cheer" style="display:none">' +
     '<path d="M116 -10 Q132 38 116 86" fill="none" stroke="#7C2D12" stroke-width="4.6" stroke-linecap="round"/>' +
@@ -181,7 +189,7 @@ ThemeDecor.register('dussehra', function (d) {
     '<ellipse cx="76.5" cy="62" rx="3" ry="4.2" fill="#7FB5E6" stroke="#1E3F73" stroke-width=".8"/>' +
     '<circle cx="76.5" cy="71" r="3.4" fill="url(#tdRamGold)" stroke="#B45309" stroke-width=".7"/><circle cx="76.5" cy="71" r="1.2" fill="#DC2626"/>' +
     // calm, focused face while aiming...
-    '<g class="td-aim">' +
+    '<g class="td-aim td-fcalm">' +
     '<path d="M86 52 Q91 49.5 96.5 51.5" fill="none" stroke="#111827" stroke-width="1.6" stroke-linecap="round"/>' +
     '<path d="M86.5 58 Q91.5 54.5 96.5 58 Q91.5 60.5 86.5 58 Z" fill="#fff"/><circle cx="92.8" cy="57.8" r="1.6" fill="#111827"/>' +
     '<path d="M86 57.6 Q91.5 54 97 57.6" fill="none" stroke="#111827" stroke-width="1.1"/>' +
@@ -193,36 +201,90 @@ ThemeDecor.register('dussehra', function (d) {
     '<circle cx="93.5" cy="64.5" r="2.6" fill="#F472B6" opacity=".55"/>' +
     '<path d="M88.5 68.5 Q94 76.5 99.5 68 Q94 71 88.5 68.5 Z" fill="#7F1D1D"/>' +
     '<path d="M90 69.2 Q94 71.3 98 68.8" fill="none" stroke="#fff" stroke-width="1.1"/></g>' +
+    // ...and eyes closed, lips moving, while he chants an astra's mantra (the mouth moves in the CSS)
+    '<g class="td-fchant" style="display:none">' +
+    '<path d="M86 52 Q91 49.5 96.5 51.5" fill="none" stroke="#111827" stroke-width="1.6" stroke-linecap="round"/>' +
+    '<path d="M86.5 58 Q91.5 61.2 96.5 58" fill="none" stroke="#111827" stroke-width="1.5" stroke-linecap="round"/>' +
+    '<ellipse class="td-chant-mouth" cx="94" cy="70.4" rx="2.4" ry="1.8" fill="#7F1D1D"/></g>' +
     // nose, tilak
     '<path d="M99.5 57.5 Q102.5 63 98.8 65.8" fill="none" stroke="#1E3F73" stroke-width="1.2" stroke-linecap="round"/>' +
     '<path d="M89.6 45 L90.8 51 Q92 52.6 93.2 51 L94.4 45" fill="none" stroke="#F97316" stroke-width="1.7"/><path d="M92 46 V51" stroke="#DC2626" stroke-width="1.1"/>' +
     // hair over the head, swept back, gathered into a jata knot tied with a saffron band
-    '<path d="M69.5 61 C66 45 76 37 88 37.5 C97 38 102 44 100.5 52 C96 45.5 89 44 82.5 45.5 C77 47 74 53 72.5 63 Z" fill=""/>' +
-    '<ellipse cx="80" cy="32" rx="8.5" ry="6.5" fill=""/><path d="M73 36 Q80 40 87 36" stroke="#EA580C" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
-    '<path d="M76 27 Q70 22 64 24 M83 26 Q86 20 92 21" fill="none" stroke="" stroke-width="1.6" stroke-linecap="round"/>' +
+    '<path d="M69.5 61 C66 45 76 37 88 37.5 C97 38 102 44 100.5 52 C96 45.5 89 44 82.5 45.5 C77 47 74 53 72.5 63 Z" fill="#1F2A44"/>' +
+    '<ellipse cx="80" cy="32" rx="8.5" ry="6.5" fill="#1F2A44"/><path d="M73 36 Q80 40 87 36" stroke="#EA580C" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
+    '<path d="M76 27 Q70 22 64 24 M83 26 Q86 20 92 21" fill="none" stroke="#1F2A44" stroke-width="1.6" stroke-linecap="round"/>' +
     '</svg>';
 
-  // Arrows in flight. Each has its tip at a known point (tip) so it can be flown tip-first.
-  var ARROW = {
-    ram: { w: 70, tip: { x: 70, y: 7 }, trail: ['#FFC107', '#FFD54F', '#FF9800'], svg:
-      '<svg viewBox="0 0 70 14" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto;overflow:visible">' +
+  // The five weapons, in the order Ram looses them. Each is drawn pointing right, its point at `tip`
+  // (px; the chakra's is its centre), `w` px long. It flies at `speed` px/s, turning at up to `turn`
+  // rad/s towards its mark (Ravan's navel, or his heads for the chakra), and leaves the bow aimed
+  // `loft` degrees above the mark. Each but the plain arrow has a mantra Ram chants to invoke it.
+  function svgOpen(box) { return '<svg viewBox="' + box + '" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto;overflow:visible">'; }
+  // the Nagastra's body, swaying between two curves as it flies
+  var NAGA_A = 'M2 14 C12 5 22 5 32 14 S52 23 62 14 S76 8 82 14', NAGA_B = 'M2 14 C12 23 22 23 32 14 S52 5 62 14 S76 20 82 14';
+  var SLITHER = '<animate attributeName="d" dur=".6s" repeatCount="indefinite" values="' + NAGA_A + ';' + NAGA_B + ';' + NAGA_A + '"/>';
+  var CHAKRA = (function () {
+    var s = svgOpen('0 0 48 48') + '<circle cx="24" cy="24" r="23.5" fill="#FFD54F" fill-opacity=".35"/>', pts = [], i, a, r;
+    // sixteen saw teeth round the rim, leaning the way it spins
+    for (i = 0; i < 32; i++) {
+      a = (i + (i % 2 ? 0.6 : 0)) * Math.PI / 16; r = i % 2 ? 17.5 : 22.5;
+      pts.push((24 + r * Math.cos(a)).toFixed(1) + ',' + (24 + r * Math.sin(a)).toFixed(1));
+    }
+    s += '<polygon points="' + pts.join(' ') + '" fill="#F59E0B" stroke="#92400E" stroke-width=".7"/>' +
+         '<circle cx="24" cy="24" r="16" fill="#FCD34D" stroke="#B45309" stroke-width="1"/>' +
+         '<circle cx="24" cy="24" r="12.5" fill="none" stroke="#B45309" stroke-width=".8"/>';
+    for (i = 0; i < 8; i++) {
+      a = i * Math.PI / 4;
+      s += '<path d="M' + (24 + 4 * Math.cos(a)).toFixed(1) + ' ' + (24 + 4 * Math.sin(a)).toFixed(1) +
+           ' L' + (24 + 12.5 * Math.cos(a)).toFixed(1) + ' ' + (24 + 12.5 * Math.sin(a)).toFixed(1) + '" stroke="#B45309" stroke-width="1.6"/>';
+    }
+    return s + '<circle cx="24" cy="24" r="4.2" fill="#DC2626" stroke="#7F1D1D" stroke-width=".7"/><circle cx="24" cy="24" r="1.5" fill="#FDE68A"/></svg>';
+  })();
+  var ASTRAS = [
+    { key: 'arrow', name: 'Arrow', w: 70, tip: { x: 70, y: 7 }, speed: 720, turn: 3, loft: 3, hitR: 18, rate: 110,
+      trail: ['#FFC107', '#FFD54F', '#FF9800'], svg: svgOpen('0 0 70 14') +
       '<ellipse cx="38" cy="7" rx="32" ry="5.5" fill="#FFB300" fill-opacity=".45"/>' +
       '<path d="M6 7 H60" stroke="#8B5A2B" stroke-width="2.6"/>' +
       '<polygon points="70,7 58,1.5 58,12.5" fill="#FDE68A" stroke="#B45309" stroke-width=".8"/>' +
       '<polygon points="10,7 0,1 4,7 0,13" fill="#DC2626"/></svg>' },
-    ravan: { w: 70, tip: { x: 0, y: 7 }, trail: ['#EF4444', '#B91C1C', '#A855F7'], svg:
-      '<svg viewBox="0 0 70 14" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto;overflow:visible">' +
-      '<ellipse cx="32" cy="7" rx="32" ry="5.5" fill="#DC2626" fill-opacity=".35"/>' +
-      '<path d="M10 7 H64" stroke="#1F1F1F" stroke-width="2.6"/>' +
-      '<polygon points="0,7 12,1.5 12,12.5" fill="#991B1B" stroke="#450A0A" stroke-width=".8"/>' +
-      '<polygon points="60,7 70,1 66,7 70,13" fill="#7C3AED"/></svg>' },
-    divine: { w: 90, tip: { x: 90, y: 9 }, trail: ['#FFC107', '#FFE082', '#FF9800', '#FFFFFF'], svg:
-      '<svg viewBox="0 0 90 18" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto;overflow:visible">' +
-      '<ellipse cx="48" cy="9" rx="44" ry="8" fill="#FFB300" fill-opacity=".35"/><ellipse cx="60" cy="9" rx="28" ry="4.5" fill="#FFE082" fill-opacity=".7"/>' +
-      '<path d="M8 9 H76" stroke="#8B5A2B" stroke-width="3.2"/>' +
-      '<polygon points="90,9 74,2 74,16" fill="#FDE68A" stroke="#B45309" stroke-width="1"/>' +
-      '<polygon points="13,9 0,1.5 5,9 0,16.5" fill="#DC2626"/></svg>' }
-  };
+    // a flying serpent: its hood spread behind the head, a yellow eye, a flickering forked tongue
+    { key: 'naga', name: 'Nagastra', mantra: 'ॐ नागास्त्राय नमः', color: '#22C55E', rgb: '34,197,94', chant: 1900,
+      w: 100, tip: { x: 100, y: 14 }, speed: 470, turn: 2.6, loft: 12, hitR: 22, rate: 100,
+      trail: ['#22C55E', '#16A34A', '#86EFAC', '#A3E635'], svg: svgOpen('0 0 100 28') +
+      '<ellipse cx="52" cy="14" rx="48" ry="12" fill="#22C55E" fill-opacity=".25"/>' +
+      '<path d="' + NAGA_A + '" fill="none" stroke="#14532D" stroke-width="7.5" stroke-linecap="round">' + SLITHER + '</path>' +
+      '<path d="' + NAGA_A + '" fill="none" stroke="#4ADE80" stroke-width="3" stroke-dasharray="2.5 3">' + SLITHER + '</path>' +
+      '<path d="M77 5 Q87 7 87 14 Q87 21 77 23 Q81 14 77 5 Z" fill="#166534" stroke="#052E16" stroke-width=".7"/>' +
+      '<path d="M80 10 Q88 7.5 95 10.5 Q99 12.5 99 14 Q98 16.5 93 17.5 Q86 19 80 17 Z" fill="#15803D" stroke="#052E16" stroke-width=".8"/>' +
+      '<circle cx="91.5" cy="12" r="1.6" fill="#FDE047"/><path d="M91.5 10.7 V13.3" stroke="#111" stroke-width=".7"/>' +
+      '<path d="M99 14 H103 M103 14 l2.4 -1.6 M103 14 l2.4 1.6" stroke="#DC2626" stroke-width="1" stroke-linecap="round"/></svg>' },
+    // Shiva's trident: three steel prongs, the damaru tied below them with a red ribbon streaming back
+    { key: 'trishul', name: "Shiva's Trishul", mantra: 'ॐ नमः शिवाय', color: '#3B82F6', rgb: '96,165,250', chant: 1900,
+      w: 100, tip: { x: 100, y: 18 }, speed: 640, turn: 3, loft: 6, hitR: 22, rate: 130,
+      trail: ['#60A5FA', '#93C5FD', '#FFFFFF', '#3B82F6'], svg: svgOpen('0 0 100 36') +
+      '<ellipse cx="60" cy="18" rx="42" ry="14" fill="#3B82F6" fill-opacity=".22"/>' +
+      '<path d="M3 18 H74" stroke="#475569" stroke-width="3.4" stroke-linecap="round"/><path d="M3 17 H74" stroke="#CBD5E1" stroke-width="1"/>' +
+      '<path d="M63 18 Q54 28 38 27 Q50 24 59 18 Z" fill="#DC2626"/>' +
+      '<path d="M58 10.5 H66 L62 18 Z M62 18 L66 25.5 H58 Z" fill="#B45309" stroke="#78350F" stroke-width=".6"/>' +
+      '<path d="M74 9 Q70 18 74 27" fill="none" stroke="#94A3B8" stroke-width="3.4" stroke-linecap="round"/>' +
+      '<path d="M73 11 Q74 2 83 2.5 Q91 3 97 6.5 Q88 6.5 82 7.5 Q77 8.5 76 13 Z" fill="#E2E8F0" stroke="#475569" stroke-width=".8"/>' +
+      '<path d="M73 25 Q74 34 83 33.5 Q91 33 97 29.5 Q88 29.5 82 28.5 Q77 27.5 76 23 Z" fill="#E2E8F0" stroke="#475569" stroke-width=".8"/>' +
+      '<path d="M72 18 L86 14 L100 18 L86 22 Z" fill="#F1F5F9" stroke="#475569" stroke-width=".8"/></svg>' },
+    // Vishnu's discus, spinning; it flies back to Ram once it has struck
+    { key: 'chakra', name: "Vishnu's Sudarshan Chakra", mantra: 'ॐ नमो भगवते वासुदेवाय', color: '#F97316', rgb: '255,193,7', chant: 2100,
+      w: 48, tip: { x: 24, y: 24 }, spin: true, returns: true, aim: crowns, speed: 560, turn: 4, loft: 0, hitR: 22, rate: 150,
+      trail: ['#FFD54F', '#FFB300', '#FF7043', '#FFFFFF'], svg: CHAKRA },
+    // a great white-hot arrow wreathed in flame
+    { key: 'brahma', name: 'Brahmastra', mantra: 'ॐ ब्रह्मास्त्राय नमः', color: '#FBBF24', rgb: '255,244,214', chant: 2700,
+      w: 130, tip: { x: 130, y: 17 }, big: true, flame: true, speed: 400, turn: 2.4, loft: 10, hitR: 24, rate: 200,
+      trail: ['#FFFFFF', '#FFF59D', '#FFD54F', '#FFB300'], svg: svgOpen('0 0 130 34') +
+      '<ellipse cx="74" cy="17" rx="58" ry="16" fill="#FFF7D6" fill-opacity=".35"/><ellipse cx="92" cy="17" rx="38" ry="9" fill="#FDE68A" fill-opacity=".7"/>' +
+      '<path d="M8 17 H108" stroke="#B45309" stroke-width="4.6" stroke-linecap="round"/><path d="M8 16 H108" stroke="#FFF7D6" stroke-width="1.4"/>' +
+      '<path d="M104 5 Q95 0 86 3 Q95 6 101 9.5 Z M104 29 Q95 34 86 31 Q95 28 101 24.5 Z" fill="#F59E0B" fill-opacity=".85"/>' +
+      '<path d="M130 17 L103 4 L110 17 L103 30 Z" fill="#FFFBEB" stroke="#D97706" stroke-width="1.2"/><path d="M125 17 L108 9.5 L112 17 L108 24.5 Z" fill="#FDE68A"/>' +
+      '<path d="M12 17 l10 -9 h7 l-9 9 z M12 17 l10 9 h7 l-9 -9 z" fill="#DC2626"/><path d="M24 17 l8 -7 h6 l-7 7 z M24 17 l8 7 h6 l-7 -7 z" fill="#F59E0B"/></svg>' }
+  ];
+  var RAISE = 58; // degrees: how high Ram raises the bow to invoke an astra
 
   var ramEl = d.svg(ram, 'td-ram td-drag');
   var ravEl = d.svg(ravan, 'td-ravan td-drag');
@@ -230,9 +292,10 @@ ThemeDecor.register('dussehra', function (d) {
   d.canvas.style.zIndex = '1';
 
   var dead = false, celebrate = false, label = null, rocketIn = 0;
-  var burn = null; // { until, x } while Ravan is burning
-  var timers = [], arrows = [], flights = [];
-  var parts = [], fire = [], smoke = [], debris = [], rings = [], flashes = [], rockets = [];
+  var burn = null;     // { until, x } while Ravan is burning
+  var invoking = null; // the astra being invoked: light pours down onto the raised arrow's tip
+  var timers = [], shots = [], shotRaf = 0, shotLast = 0;
+  var parts = [], fire = [], smoke = [], debris = [], rings = [], flashes = [], rockets = [], bolts = [];
   var CRACKER = ['#FFB300', '#FF7043', '#FFD54F', '#EF5350', '#FFFFFF', '#FF9800'];
 
   // Soft round sprites for fire and smoke, drawn once and stamped every frame.
@@ -251,43 +314,141 @@ ThemeDecor.register('dussehra', function (d) {
 
   function wait(ms) { return new Promise(function (res) { timers.push(setTimeout(res, ms)); }); }
 
-  // Ram aiming (bow drawn) or cheering (bow raised, beaming). display, not visibility, so no
-  // part of the hidden pose can show through (setBow sets visibility on the aiming parts).
-  function setPose(cheer) {
-    [].forEach.call(ramEl.querySelectorAll('.td-aim'), function (g) { g.style.display = cheer ? 'none' : ''; });
-    [].forEach.call(ramEl.querySelectorAll('.td-cheer'), function (g) { g.style.display = cheer ? '' : 'none'; });
+  // Ram's pose: 'aim' (bow drawn, calm face), 'chant' (the same, eyes closed and lips moving) or
+  // 'cheer' (bow raised high, beaming). display, not visibility, so no part of a hidden pose can
+  // show through (setBow sets visibility on the aiming parts).
+  function setPose(p) {
+    function show(sel, on) { [].forEach.call(ramEl.querySelectorAll(sel), function (g) { g.style.display = on ? '' : 'none'; }); }
+    show('.td-aim', p !== 'cheer'); show('.td-cheer', p === 'cheer');
+    show('.td-fcalm', p === 'aim'); show('.td-fchant', p === 'chant');
   }
   function setBow(el, drawn) {
     el.querySelector('.td-nock').style.visibility = drawn ? '' : 'hidden';
     el.querySelector('.td-sd').style.visibility = drawn ? '' : 'hidden';
     el.querySelector('.td-sr').style.visibility = drawn ? 'hidden' : 'visible';
   }
-  function tipOf(el, side) {
-    var r = el.querySelector('.td-nock').getBoundingClientRect();
-    return { x: side === 'right' ? r.right : r.left, y: r.top + r.height / 2 };
+
+  // The bow, the arrow and both hands turn together about the far shoulder (92,96) by `deg`
+  // (upwards is positive). The far arm turns with them; the drawing arm is redrawn from its
+  // shoulder (80,95) to the drawing hand, the forearm along the arrow as an archer holds it.
+  var ang = 0, angRaf = 0, rots = ramEl.querySelectorAll('.td-rot');
+  var narm = ramEl.querySelector('.td-narm'), nband = ramEl.querySelector('.td-nband');
+  function f1(v) { return v.toFixed(1); }
+  // a gold armlet across the limb from (ax,ay) to (bx,by), at fraction k along it
+  function band(ax, ay, bx, by, k) {
+    var dx = bx - ax, dy = by - ay, l = Math.sqrt(dx * dx + dy * dy) || 1;
+    var cx = ax + dx * k, cy = ay + dy * k, px = -dy / l * 4.5, py = dx / l * 4.5;
+    return 'M' + f1(cx + px) + ' ' + f1(cy + py) + ' L' + f1(cx - px) + ' ' + f1(cy - py) + ' ';
   }
+  function setAng(deg) {
+    ang = deg;
+    var r = deg * Math.PI / 180, c = Math.cos(r), s = Math.sin(r), tr = 'rotate(' + f1(-deg) + ' 92 96)';
+    [].forEach.call(rots, function (g) { g.setAttribute('transform', tr); });
+    var hx = 92 + 8 * c - 7 * s, hy = 96 - 8 * s - 7 * c, fl = 44 - 0.07 * deg;
+    var ex = hx - c * fl - 3 * s, ey = hy + s * fl - 3 * c;
+    narm.setAttribute('d', 'M80 95 L' + f1(ex) + ' ' + f1(ey) + ' L' + f1(hx) + ' ' + f1(hy));
+    nband.setAttribute('d', band(80, 95, ex, ey, 0.66) + band(ex, ey, hx, hy, 0.82));
+  }
+  // Eases the bow round to `deg` over `ms`.
+  function turnTo(deg, ms) {
+    cancelAnimationFrame(angRaf);
+    var from = ang, t0 = performance.now();
+    return new Promise(function (res) {
+      (function step(now) {
+        if (dead) return;
+        var k = Math.min(1, Math.max(0, (now - t0) / ms)), e = k < 0.5 ? 2 * k * k : 1 - 2 * (1 - k) * (1 - k);
+        setAng(from + (deg - from) * e);
+        if (k < 1) angRaf = requestAnimationFrame(step); else { angRaf = 0; res(); }
+      })(t0);
+    });
+  }
+
   function pointIn(el, fx, fy) {
     var r = el.getBoundingClientRect();
     return { x: r.left + fx * r.width, y: r.top + fy * r.height };
   }
-  function dist(a, b) { return Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)); }
-
-  // Flies an arrow tip-first from `from` to `to`, in a straight line, over `dur` ms.
-  function fly(kind, from, to, dur) {
-    var k = ARROW[kind], el = d.svg(k.svg, 'td-arrow');
-    var ang = Math.atan2(to.y - from.y, to.x - from.x) - (k.tip.x === 0 ? Math.PI : 0);
-    el.style.width = k.w + 'px'; el.style.left = '0px'; el.style.top = '0px';
-    el.style.transformOrigin = k.tip.x + 'px ' + k.tip.y + 'px';
-    el.animate([
-      { transform: 'translate(' + (from.x - k.tip.x) + 'px,' + (from.y - k.tip.y) + 'px) rotate(' + ang + 'rad)' },
-      { transform: 'translate(' + (to.x - k.tip.x) + 'px,' + (to.y - k.tip.y) + 'px) rotate(' + ang + 'rad)' }
-    ], { duration: dur, easing: 'linear', fill: 'forwards' });
-    arrows.push(el);
-    flights.push({ a: from, b: to, t0: performance.now(), dur: dur, trail: k.trail, big: kind === 'divine' });
-    return el;
+  function centerOf(el) { return pointIn(el, 0.5, 0.5); }
+  // Where shots land: Ravan's navel, or his heads for the chakra.
+  function navel() { return pointIn(ravEl, 0.5, 142 / 250); }
+  function crowns() { return pointIn(ravEl, 0.5, 64 / 250); }
+  // The angle (degrees, upwards positive) that points Ram's arrow at the astra's mark.
+  function aimAngle(a) {
+    var n = centerOf(ramEl.querySelector('.td-tail')), t = (a.aim || navel)();
+    return Math.max(-35, Math.min(70, Math.atan2(n.y - t.y, t.x - n.x) * 180 / Math.PI));
   }
-  function dropArrow(el) { el.remove(); arrows = arrows.filter(function (a) { return a !== el; }); }
-  function dropArrows() { arrows.forEach(function (a) { a.remove(); }); arrows = []; flights = []; }
+
+  // A shot steers every frame towards where its mark is now, so if Ravan is dragged away while it
+  // flies, it turns after him. It turns harder the nearer it gets and the longer it has flown, so
+  // it cannot circle him for ever. The chakra then flies back to Ram's bow hand. Shots move on
+  // their own frames: the canvas runs at ~30fps, too few for a figure crossing the screen.
+  function launch(a) {
+    var el = d.svg(a.svg, 'td-astra'), from = centerOf(ramEl.querySelector('.td-tip'));
+    el.style.width = a.w + 'px'; el.style.left = '0px'; el.style.top = '0px';
+    el.style.transformOrigin = a.tip.x + 'px ' + a.tip.y + 'px';
+    var s = { a: a, el: el, x: from.x, y: from.y, th: -ang * Math.PI / 180, age: 0, spin: 0, back: false };
+    var out = { hit: new Promise(function (res) { s.onHit = res; }), home: null };
+    if (a.returns) out.home = new Promise(function (res) { s.onHome = res; });
+    shots.push(s); place(s);
+    if (!shotRaf) { shotLast = performance.now(); shotRaf = requestAnimationFrame(stepShots); }
+    return out;
+  }
+  function stepShots(now) {
+    shotRaf = 0;
+    if (dead) return;
+    var dt = Math.min(0.05, Math.max(0, (now - shotLast) / 1000));
+    shotLast = now;
+    for (var i = shots.length - 1; i >= 0; i--) {
+      var s = shots[i], a = s.a, g = s.back ? pointIn(ramEl, 0.76, 0.36) : (a.aim || navel)();
+      s.age += dt; s.spin += 16 * dt;
+      var dx = g.x - s.x, dy = g.y - s.y, dd = Math.sqrt(dx * dx + dy * dy), v = a.speed * (1 + 0.2 * s.age);
+      if (dd <= Math.max(a.hitR, v * dt) || s.age > 12) {
+        if (!s.back) {
+          s.onHit({ x: s.x, y: s.y, th: s.th });
+          if (a.returns) { s.back = true; s.age = 0; continue; }
+        } else {
+          spray(s.x, s.y, 26, a.trail, [30, 130], 60); // back in Ram's hand, it goes out in a burst of light
+          s.onHome();
+        }
+        s.el.remove(); shots.splice(i, 1); continue;
+      }
+      var diff = Math.atan2(dy, dx) - s.th, turn = (a.turn * (1 + 3 * Math.max(0, 1 - dd / 220)) + 1.5 * s.age) * dt;
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+      s.th += Math.max(-turn, Math.min(turn, diff));
+      s.x += Math.cos(s.th) * v * dt; s.y += Math.sin(s.th) * v * dt;
+      place(s); trail(s, dt);
+    }
+    if (shots.length) shotRaf = requestAnimationFrame(stepShots);
+  }
+  function place(s) {
+    var a = s.a, t = 'translate(' + f1(s.x - a.tip.x) + 'px,' + f1(s.y - a.tip.y) + 'px) rotate(' + (a.spin ? s.spin : s.th).toFixed(3) + 'rad)';
+    if (!a.spin && Math.cos(s.th) < 0) t += ' scaleY(-1)'; // flying leftwards: kept the right way up
+    s.el.style.transform = t;
+  }
+  // Sparks streaming off a shot (thrown off the rim of the spinning chakra), fire behind the Brahmastra.
+  function trail(s, dt) {
+    var a = s.a, c = Math.cos(s.th), sn = Math.sin(s.th), n = a.rate * dt, k, b;
+    for (n = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0); n > 0 && parts.length < 900; n--) {
+      if (a.spin) {
+        k = d.rand(0, 6.2832);
+        parts.push({ x: s.x + Math.cos(k) * 20, y: s.y + Math.sin(k) * 20, vx: -Math.sin(k) * 90 - c * 30, vy: Math.cos(k) * 90 - sn * 30,
+                     g: 40, drag: 0.93, r: d.rand(1.2, 2.4), life: 1, decay: d.rand(2.2, 3.4), c: d.pick(a.trail) });
+      } else {
+        b = d.rand(0.3, 1.05) * a.tip.x;
+        parts.push({ x: s.x - c * b, y: s.y - sn * b + d.rand(-3, 3), vx: -c * d.rand(10, 40), vy: d.rand(-20, 20),
+                     g: 30, drag: 0.94, r: d.rand(1.4, a.big ? 3.6 : 2.6), life: 1, decay: d.rand(2, 3.2), c: d.pick(a.trail) });
+      }
+    }
+    for (k = 0; a.flame && k < 2 && fire.length < 260; k++) {
+      b = d.rand(0.2, 0.8) * a.tip.x;
+      fire.push({ x: s.x - c * b, y: s.y - sn * b, vx: -c * 30, vy: d.rand(-30, -5), r: d.rand(5, 9), life: 1, decay: d.rand(2.6, 3.8),
+                  s: FLAME[Math.floor(Math.random() * FLAME.length)] });
+    }
+  }
+  function dropShots() {
+    shots.forEach(function (s) { s.el.remove(); });
+    shots = [];
+    cancelAnimationFrame(shotRaf); shotRaf = 0;
+  }
 
   function spray(x, y, n, colors, sp, grav) {
     for (var i = 0; i < n && parts.length < 900; i++) {
@@ -296,7 +457,7 @@ ThemeDecor.register('dussehra', function (d) {
     }
   }
   function flash(x, y, r) { flashes.push({ x: x, y: y, r: r, life: 1, decay: 2.4 }); }
-  function ring(x, y, c) { rings.push({ x: x, y: y, r: 6, vr: 210, life: 1, decay: 2, c: c }); }
+  function ring(x, y, c, vr) { rings.push({ x: x, y: y, r: 6, vr: vr || 210, life: 1, decay: 2, c: c }); }
   // An arrow snapping in two: the halves spin away (dir -1 to the left, 1 to the right) and fall.
   function snap(x, y, dir, color) {
     [30, 22].forEach(function (len) {
@@ -304,36 +465,171 @@ ThemeDecor.register('dussehra', function (d) {
     });
   }
 
-  // First exchange: the arrows meet head-on and both shatter.
-  function clash(p) {
-    flash(p.x, p.y, 70); ring(p.x, p.y, '#F59E0B');
-    spray(p.x, p.y, 36, ARROW.ram.trail.concat('#FFFFFF'), [70, 260], 260);
-    spray(p.x, p.y, 30, ARROW.ravan.trail, [70, 240], 260);
-    snap(p.x, p.y, -1, '#8B5A2B'); snap(p.x, p.y, 1, '#1F1F1F');
-  }
-  // Second exchange: only Ravan's arrow breaks, thrown back towards him; Ram's flies on.
-  function overpower(p) {
-    flash(p.x, p.y, 60); ring(p.x, p.y, '#FFC107');
-    spray(p.x, p.y, 34, ARROW.ravan.trail, [60, 220], 260);
-    spray(p.x, p.y, 16, ['#FFE082', '#FFFFFF'], [40, 140], 120);
-    snap(p.x, p.y, 1, '#1F1F1F');
-  }
-  function strike(p) {
-    flash(p.x, p.y, 95); ring(p.x, p.y, '#EF4444');
-    spray(p.x, p.y, 60, ['#FFB300', '#FF7043', '#FFE066', '#FFFFFF', '#EF4444'], [80, 300], 300);
-  }
   function blast(x, y) {
     spray(x, y, 48, CRACKER, [60, 220], 90);
     flash(x, y, 50);
   }
 
-  // The arrow stays lodged in Ravan (moving with him as he burns and falls), head buried.
-  function lodge() {
-    var s = document.createElement('div');
+  // Ravan's state (struck, burning, falling, rising), one at a time; brief reactions to a hit come
+  // and go on their own. classList, so td-drag and the rest stay put.
+  var STATES = ['td-hit', 'td-burn', 'td-fall', 'td-rise'];
+  function ravState(cls) {
+    STATES.forEach(function (c) { ravEl.classList.remove(c); });
+    if (cls) ravEl.classList.add(cls);
+  }
+  function react(cls, ms) {
+    ravEl.classList.add(cls);
+    timers.push(setTimeout(function () { ravEl.classList.remove(cls); }, ms));
+  }
+
+  // What each weapon does when it lands. Only the Brahmastra finishes him (see round()).
+  function impact(a, p) {
+    if (a.key === 'arrow') {          // it breaks on his armour
+      flash(p.x, p.y, 60); ring(p.x, p.y, '#F59E0B');
+      spray(p.x, p.y, 34, a.trail.concat('#FFFFFF'), [60, 220], 260);
+      snap(p.x, p.y, -1, '#8B5A2B');
+      react('td-flinch', 520);
+    } else if (a.key === 'naga') {    // serpents wind round him; he strains, and throws them off
+      ring(p.x, p.y, '#22C55E');
+      spray(p.x, p.y, 40, a.trail, [50, 200], 200);
+      coil();
+      react('td-venom', 1700);
+    } else if (a.key === 'trishul') { // lightning crackles all over him
+      flash(p.x, p.y, 75); ring(p.x, p.y, '#60A5FA');
+      spray(p.x, p.y, 50, a.trail, [80, 260], 220);
+      bolts.push({ life: 1, decay: 1.2, next: 0, segs: [] });
+      react('td-shock', 900);
+    } else if (a.key === 'chakra') {  // it cuts through his heads, and they grow back
+      flash(p.x, p.y, 60); ring(p.x, p.y, '#FFD54F');
+      spray(p.x, p.y, 46, a.trail, [70, 240], 220);
+      react('td-sever', 1150); react('td-flinch', 520);
+    } else {                          // the Brahmastra
+      flash(p.x, p.y, 170); ring(p.x, p.y, '#FFFFFF', 300); ring(p.x, p.y, '#FFD54F');
+      timers.push(setTimeout(function () { ring(p.x, p.y, '#F59E0B', 150); }, 180));
+      spray(p.x, p.y, 140, ['#FFFFFF', '#FFF59D', '#FFD54F', '#FFB300', '#FF7043'], [90, 380], 300);
+      glare(p);
+    }
+  }
+
+  // The Nagastra's serpents, over Ravan in his own coordinates: coils wind up him from the feet,
+  // then a hooded head rears by his shoulder. After a moment he throws them off.
+  var COIL = svgOpen('0 0 200 250') +
+    [[48, 216, 236], [50, 182, 204], [54, 144, 164], [56, 112, 130]].map(function (b, i) {
+      var p = 'M' + b[0] + ' ' + b[1] + ' Q100 ' + b[2] + ' ' + (200 - b[0]) + ' ' + b[1];
+      return '<path class="td-cb" style="animation-delay:' + (i * 0.12) + 's" d="' + p + '" pathLength="1" fill="none" stroke="#14532D" stroke-width="11" stroke-linecap="round"/>' +
+             '<path class="td-cs" style="animation-delay:' + (i * 0.12 + 0.2) + 's" d="' + p + '" fill="none" stroke="#4ADE80" stroke-width="3.5" stroke-dasharray="4 5"/>';
+    }).join('') +
+    '<g class="td-chead"><path d="M144 114 Q158 104 157 86" fill="none" stroke="#14532D" stroke-width="9" stroke-linecap="round"/>' +
+    '<ellipse cx="157" cy="76" rx="10" ry="13" fill="#166534" stroke="#052E16" stroke-width="1"/>' +
+    '<ellipse cx="157" cy="78" rx="5.5" ry="8" fill="#4ADE80" fill-opacity=".45"/>' +
+    '<ellipse cx="157" cy="69" rx="4.6" ry="5.6" fill="#15803D" stroke="#052E16" stroke-width=".8"/>' +
+    '<circle cx="155" cy="68" r="1.1" fill="#EF4444"/><circle cx="159" cy="68" r="1.1" fill="#EF4444"/>' +
+    '<path d="M157 74.5 V79 M157 79 l-1.6 2 M157 79 l1.6 2" stroke="#DC2626" stroke-width=".9" stroke-linecap="round"/></g></svg>';
+  function coil() {
+    var c = document.createElement('div');
+    c.className = 'td-coil';
+    c.innerHTML = COIL;
+    ravEl.appendChild(c);
+    timers.push(setTimeout(function () {
+      var p = navel();
+      c.classList.add('td-coil-off');
+      spray(p.x, p.y, 36, ['#22C55E', '#86EFAC', '#A3E635', '#FFFFFF'], [60, 220], 200);
+    }, 1500));
+    timers.push(setTimeout(function () { c.remove(); }, 1950));
+  }
+  // Fresh forks of lightning over Ravan's body (redrawn every few frames, so they flicker).
+  function zap() {
+    var r = ravEl.getBoundingClientRect(), out = [];
+    for (var k = 0; k < 4; k++) {
+      var x = r.left + r.width * d.rand(0.25, 0.75), y = r.top + r.height * d.rand(0.3, 0.8);
+      var an = d.rand(0, 6.2832), len = d.rand(40, 90), pts = [[x, y]];
+      for (var j = 1; j <= 6; j++) {
+        var t = j / 6, jx = j < 6 ? d.rand(-9, 9) : 0;
+        pts.push([x + Math.cos(an) * len * t - Math.sin(an) * jx, y + Math.sin(an) * len * t + Math.cos(an) * jx]);
+      }
+      out.push(pts);
+    }
+    return out;
+  }
+  // The Brahmastra's blinding light, flooding out from where it struck (the layer sits at the
+  // viewport's corner, so page coordinates are the layer's own).
+  function glare(p) {
+    var o = document.createElement('div');
+    o.className = 'td-glare';
+    o.style.background = 'radial-gradient(circle at ' + Math.round(p.x) + 'px ' + Math.round(p.y) + 'px, rgba(255,255,240,.95), rgba(255,236,170,.55) 150px, rgba(255,200,80,0) 380px)';
+    d.layer.appendChild(o);
+    timers.push(setTimeout(function () { o.remove(); }, 950));
+  }
+
+  // The Brahmastra stays lodged in Ravan at the angle it struck, head buried, moving with him as he
+  // burns and falls. Placed from his navel: turned to the heading, its point 14px in, the front clipped.
+  function lodge(a, th) {
+    var k = 0.8, s = document.createElement('div');
     s.className = 'td-lodged';
-    s.innerHTML = ARROW.divine.svg;
-    s.style.cssText = 'position:absolute;width:' + ARROW.divine.w + 'px;left:calc(50% - ' + (ARROW.divine.w - 10) + 'px);top:calc(56.8% - 9px);clip-path:inset(0 13px 0 0)';
+    s.innerHTML = a.svg;
+    s.style.cssText = 'position:absolute;left:50%;top:' + (142 / 2.5) + '%;width:' + (a.w * k) + 'px;transform-origin:0 0;clip-path:inset(0 18px 0 0);' +
+      'transform:rotate(' + th.toFixed(3) + 'rad) translate(' + f1(14 - a.tip.x * k) + 'px,0)' +
+      (Math.cos(th) < 0 ? ' scaleY(-1)' : '') + ' translate(0,' + f1(-a.tip.y * k) + 'px)';
     ravEl.appendChild(s);
+  }
+
+  // Ram's mantra in a bubble beside his head (on his other side if this one would leave the screen).
+  function say(a) {
+    var b = document.createElement('div');
+    b.className = 'td-mantra';
+    b.style.setProperty('--m', a.color);
+    b.innerHTML = '<b></b><span></span>';
+    b.firstChild.textContent = a.mantra;
+    b.lastChild.textContent = a.name;
+    ramEl.appendChild(b);
+    if (b.getBoundingClientRect().right > d.layer.getBoundingClientRect().right - 8) b.classList.add('td-mantra-left');
+    return b;
+  }
+  function hush(b) {
+    b.classList.add('td-mantra-out');
+    timers.push(setTimeout(function () { b.remove(); }, 400));
+  }
+  // The astra appearing in the light just beyond the raised arrow's tip, pointing the way it does.
+  // It lives on the layer, above the canvas, so the beam of light does not wash it out; draw()
+  // keeps it at the tip (Ram may be dragged, or step aside for the sidebar, meanwhile).
+  var emblem = null; // { el, off }: the astra shown while it is invoked, off px beyond the tip
+  function manifest(a) {
+    var r = RAISE * Math.PI / 180, len = a.w * (a.big ? 0.7 : 0.9), off = len / 2 + 6;
+    var em = document.createElement('div');
+    em.className = 'td-emblem td-em-' + a.key;
+    em.innerHTML = a.svg;
+    em.style.width = f1(len) + 'px';
+    em.style.setProperty('--r', (a.spin ? 0 : -RAISE) + 'deg');
+    em.style.setProperty('--g', a.color);
+    em.style.setProperty('--bx', f1(-Math.cos(r) * off) + 'px'); em.style.setProperty('--by', f1(Math.sin(r) * off) + 'px');
+    d.layer.appendChild(em);
+    emblem = { el: em, off: off };
+    placeEmblem(centerOf(ramEl.querySelector('.td-tip')));
+    return em;
+  }
+  function placeEmblem(tp) {
+    var r = ang * Math.PI / 180;
+    emblem.el.style.left = f1(tp.x + Math.cos(r) * emblem.off) + 'px';
+    emblem.el.style.top = f1(tp.y - Math.sin(r) * emblem.off) + 'px';
+  }
+  // Invoking an astra, as in the epics: Ram raises the bow and arrow to the sky, closes his eyes and
+  // chants its mantra while the astra appears in the light beyond the arrow's tip. It sinks into the
+  // arrow, and he opens his eyes to aim. The glow stays on him until he looses (round()).
+  async function invoke(a) {
+    setPose('chant');
+    ramEl.style.setProperty('--g', a.color);
+    ramEl.classList.add('td-invoke');
+    await turnTo(RAISE, 650); if (dead) return;
+    var bub = say(a), em = manifest(a);
+    invoking = a;
+    if (a.big) ramEl.classList.add('td-charge');
+    await wait(a.chant); if (dead) return;
+    invoking = null; emblem = null;
+    em.classList.add('td-em-out');
+    timers.push(setTimeout(function () { em.remove(); }, 420));
+    hush(bub);
+    await wait(380); if (dead) return;
+    setPose('aim');
   }
 
   // Anchored to the layer's right/bottom (as Ravan is), measured from the layer itself so a page
@@ -386,58 +682,38 @@ ThemeDecor.register('dussehra', function (d) {
   async function round(first) {
     await whenClear(first ? 2000 : 600); if (dead) return;
 
-    // 1. Ram looses; Ravan answers a moment later; the arrows meet head-on and shatter.
-    var from = tipOf(ramEl, 'right'), back = tipOf(ravEl, 'left');
-    var v = 0.75, gap = Math.max(40, back.x - from.x);
-    var lag = Math.min(320, 0.35 * gap / v);
-    var d1 = (gap / v + lag) / 2, d2 = d1 - lag;
-    var meet = { x: from.x + v * d1, y: (from.y + back.y) / 2 };
-    setBow(ramEl, false); fly('ram', from, meet, d1);
-    await wait(lag); if (dead) return;
-    setBow(ravEl, false); fly('ravan', back, meet, d2);
-    await wait(d2); if (dead) return;
-    dropArrows(); clash(meet);
-    await wait(450); if (dead) return;
-    setBow(ramEl, true);
-    await wait(250); if (dead) return;
-    setBow(ravEl, true);
-    await wait(900); if (dead) return;
-    await whenClear(600); if (dead) return; // a pop-up that opened mid-duel: save the ending for after it
-
-    // 2. Both shoot again. Ram's divine arrow flies at Ravan's navel; Ravan's, loosed a moment
-    //    later, meets it on the way and is broken, and Ram's flies on.
-    from = tipOf(ramEl, 'right'); back = tipOf(ravEl, 'left');
-    var target = pointIn(ravEl, 0.5, 142 / 250);
-    var L = dist(from, target), v2 = 0.95, lag2 = 280, d3 = L / v2;
-    var ux = (target.x - from.x) / L, uy = (target.y - from.y) / L;
-    // How far along Ram's path they meet, given Ravan's arrow leaves lag2 ms later at speed v.
-    var lo = 0, hi = L;
-    for (var k = 0; k < 30; k++) {
-      var s = (lo + hi) / 2;
-      if (dist({ x: from.x + ux * s, y: from.y + uy * s }, back) > v * (s / v2 - lag2)) lo = s; else hi = s;
+    // 1-5. The five weapons, one after another. Each waits for a clear page first, so a pop-up
+    //      that opens mid-story holds the next shot until it is closed.
+    var a, p, shot;
+    for (var i = 0; i < ASTRAS.length; i++) {
+      a = ASTRAS[i];
+      if (i) { await whenClear(500); if (dead) return; }
+      if (a.mantra) { await invoke(a); if (dead) return; }
+      await turnTo(aimAngle(a) + a.loft, a.mantra ? 420 : 320); if (dead) return;
+      await wait(140); if (dead) return;
+      setBow(ramEl, false);
+      ramEl.classList.remove('td-invoke', 'td-charge');
+      shot = launch(a);
+      turnTo(0, 650); // the bow comes back down as the shot flies
+      p = await shot.hit; if (dead) return;
+      impact(a, p);
+      if (i === ASTRAS.length - 1) break;
+      if (shot.home) { await shot.home; if (dead) return; }
+      await wait(1100); if (dead) return;
+      setBow(ramEl, true); // the next arrow on the string
+      await wait(450); if (dead) return;
     }
-    var meet2 = { x: from.x + ux * lo, y: from.y + uy * lo };
-    var tMeet = Math.max(lag2 + 60, lo / v2);
-    setBow(ramEl, false);
-    var divine = fly('divine', from, target, d3);
-    await wait(lag2); if (dead) return;
-    setBow(ravEl, false);
-    var answer = fly('ravan', back, meet2, tMeet - lag2);
-    await wait(tMeet - lag2); if (dead) return;
-    dropArrow(answer); overpower(meet2);
-    divine.animate([{ filter: 'none' }, { filter: 'brightness(1.7) drop-shadow(0 0 8px #FFD54F)' }, { filter: 'none' }], { duration: 320 });
-    await wait(Math.max(0, d3 - tMeet)); if (dead) return;
 
-    // 3. The strike: Ravan flashes, burns, and collapses into the ground as crackers burst above.
+    // 6. The Brahmastra has struck: Ravan burns, and collapses into the ground as crackers burst above.
     var spot = labelSpot();
-    dropArrows(); strike(target); lodge();
-    ravEl.className = 'td-item td-ravan td-hit';
+    lodge(a, p.th);
+    ravState('td-hit');
     await wait(380); if (dead) return;
-    ravEl.className = 'td-item td-ravan td-burn';
+    ravState('td-burn');
     burn = { until: performance.now() + 3400, x: spot.x };
-    setPose(true); ramEl.classList.add('td-joy'); // Ram raises his bow and beams as Ravan burns
+    setPose('cheer'); ramEl.classList.add('td-joy'); // Ram raises his bow and beams as Ravan burns
     await wait(1300); if (dead) return;
-    ravEl.className = 'td-item td-ravan td-fall';
+    ravState('td-fall');
     blast(spot.x, spot.y - 90);
     await wait(260); if (dead) return;
     blast(spot.x - 70, spot.y - 60);
@@ -446,7 +722,7 @@ ThemeDecor.register('dussehra', function (d) {
     await wait(800); if (dead) return;
     ravEl.style.display = 'none';
 
-    // 4. Victory, then five seconds of crackers before Ravan rises for the next round.
+    // 7. Victory, then five seconds of crackers before Ravan rises for the next round.
     await wait(300); if (dead) return;
     setBow(ramEl, true);
     ramEl.classList.remove('td-joy'); ramEl.classList.add('td-win');
@@ -456,13 +732,12 @@ ThemeDecor.register('dussehra', function (d) {
     celebrate = false;
     hideLabel();
     ramEl.classList.remove('td-win');
-    setPose(false);
-    [].forEach.call(ravEl.querySelectorAll('.td-lodged'), function (a) { a.remove(); });
-    setBow(ravEl, true);
+    setPose('aim'); setAng(0);
+    [].forEach.call(ravEl.querySelectorAll('.td-lodged, .td-coil'), function (x) { x.remove(); });
     ravEl.style.display = '';
-    ravEl.className = 'td-item td-ravan td-rise';
+    ravState('td-rise');
     await wait(900); if (dead) return;
-    ravEl.className = 'td-item td-ravan';
+    ravState(null);
     await wait(600); if (dead) return;
     round(false);
   }
@@ -470,7 +745,7 @@ ThemeDecor.register('dussehra', function (d) {
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     showLabel(labelSpot());
     ravEl.style.display = 'none';
-    setPose(true);
+    setPose('cheer');
   } else {
     round(true);
   }
@@ -478,16 +753,29 @@ ThemeDecor.register('dussehra', function (d) {
   function draw(ctx, dt, w, h) {
     var now = performance.now(), i, p;
 
-    // sparkle trails behind arrows in flight
-    for (i = 0; i < flights.length; i++) {
-      var f = flights[i], t = (now - f.t0) / f.dur;
-      if (t < 0 || t > 1) continue;
-      var len = dist(f.a, f.b) || 1, dx = (f.b.x - f.a.x) / len, dy = (f.b.y - f.a.y) / len;
-      var x = f.a.x + (f.b.x - f.a.x) * t, y = f.a.y + (f.b.y - f.a.y) * t;
-      for (var k = 0; k < (f.big ? 6 : 4) && parts.length < 900; k++) {
-        var behind = d.rand(8, f.big ? 60 : 44);
-        parts.push({ x: x - dx * behind, y: y - dy * behind + d.rand(-3, 3), vx: -dx * d.rand(10, 40), vy: d.rand(-20, 20), g: 30, drag: 0.94,
-                     r: d.rand(1.4, f.big ? 3.6 : 2.6), life: 1, decay: d.rand(2, 3.2), c: d.pick(f.trail) });
+    // while an astra is invoked: light pouring down the line of the raised arrow onto its tip, a
+    // glow on the tip, and sparks drawn in to it from all round
+    if (invoking) {
+      var tp = centerOf(ramEl.querySelector('.td-tip')), rr = ang * Math.PI / 180, ux = Math.cos(rr), uy = -Math.sin(rr);
+      if (emblem) placeEmblem(tp);
+      var big = !!invoking.big, rgb = invoking.rgb, pulse = 0.8 + 0.2 * Math.sin(now / 110), orb = (big ? 36 : 22) * pulse;
+      var len = Math.min(1400, (tp.y + 60) / Math.max(0.25, -uy)), ex = tp.x + ux * len, ey = tp.y + uy * len;
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 1; ctx.lineCap = 'round';
+      var beam = ctx.createLinearGradient(ex, ey, tp.x, tp.y);
+      beam.addColorStop(0, 'rgba(' + rgb + ',0)'); beam.addColorStop(1, 'rgba(' + rgb + ',' + (0.5 * pulse).toFixed(3) + ')');
+      ctx.strokeStyle = beam; ctx.lineWidth = big ? 26 : 16;
+      ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(tp.x, tp.y); ctx.stroke();
+      var core = ctx.createLinearGradient(ex, ey, tp.x, tp.y);
+      core.addColorStop(0, 'rgba(255,255,255,0)'); core.addColorStop(1, 'rgba(255,255,255,' + (0.8 * pulse).toFixed(3) + ')');
+      ctx.strokeStyle = core; ctx.lineWidth = big ? 6 : 3;
+      ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(tp.x, tp.y); ctx.stroke();
+      var glow = ctx.createRadialGradient(tp.x, tp.y, 0, tp.x, tp.y, orb);
+      glow.addColorStop(0, 'rgba(255,255,255,.95)'); glow.addColorStop(0.35, 'rgba(' + rgb + ',.7)'); glow.addColorStop(1, 'rgba(' + rgb + ',0)');
+      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(tp.x, tp.y, orb, 0, 6.2832); ctx.fill();
+      for (var n = (big ? 90 : 45) * dt, k = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0); k > 0 && parts.length < 900; k--) {
+        var an = d.rand(0, 6.2832), rad = d.rand(45, big ? 120 : 80), T = d.rand(0.35, 0.55);
+        var sx = tp.x + Math.cos(an) * rad, sy = tp.y + Math.sin(an) * rad;
+        parts.push({ x: sx, y: sy, vx: (tp.x - sx) / T, vy: (tp.y - sy) / T, g: 0, drag: 1, r: d.rand(1.2, 2.4), life: 1, decay: 1 / T, c: d.pick(invoking.trail) });
       }
     }
 
@@ -539,6 +827,21 @@ ThemeDecor.register('dussehra', function (d) {
       ctx.globalAlpha = 1; ctx.fillStyle = gr;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 1.4, 0, 6.2832); ctx.fill();
     }
+    // the Trishul's lightning, crackling over Ravan: a blue glow round a white-hot core
+    for (i = bolts.length - 1; i >= 0; i--) {
+      p = bolts[i]; p.life -= p.decay * dt;
+      if (p.life <= 0) { bolts.splice(i, 1); continue; }
+      if ((p.next -= dt) <= 0) { p.segs = zap(); p.next = 0.08; }
+      ctx.globalAlpha = 1; ctx.lineJoin = 'round';
+      for (var q = 0; q < 2; q++) {
+        ctx.lineWidth = q ? 1.3 : 4; ctx.strokeStyle = (q ? 'rgba(255,255,255,' : 'rgba(96,165,250,') + p.life.toFixed(3) + ')';
+        p.segs.forEach(function (pts) {
+          ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+          for (var j = 1; j < pts.length; j++) ctx.lineTo(pts[j][0], pts[j][1]);
+          ctx.stroke();
+        });
+      }
+    }
     ctx.globalCompositeOperation = 'source-over';
     for (i = rings.length - 1; i >= 0; i--) {
       p = rings[i]; p.life -= p.decay * dt; p.r += p.vr * dt;
@@ -570,7 +873,8 @@ ThemeDecor.register('dussehra', function (d) {
       if (p.y <= p.ty) { blast(p.x, p.y); rockets.splice(i, 1); }
     }
 
-    return !!(flights.length || parts.length || fire.length || smoke.length || debris.length || rings.length || flashes.length || rockets.length || burn);
+    return !!(invoking || shots.length || bolts.length || parts.length || fire.length || smoke.length || debris.length ||
+              rings.length || flashes.length || rockets.length || burn);
   }
 
   return {
@@ -578,8 +882,10 @@ ThemeDecor.register('dussehra', function (d) {
     frame: draw,
     stop: function () {
       dead = true;
+      invoking = null;
       timers.forEach(clearTimeout);
-      dropArrows();
+      cancelAnimationFrame(angRaf);
+      dropShots();
     }
   };
 });
