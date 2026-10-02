@@ -16,8 +16,26 @@ const THEME_CHOICES = [
   { key: 'christmas', icon: '🎄', name: 'Christmas', note: 'Santa, snowfall and lights',  c: { side: '#0F2E1C', page: '#F3F8F4', accent: '#C62828', brand: '#2E7D32' }, art: tpArtChristmas },
   { key: 'janmashtami', icon: '🦚', name: 'Janmashtami', note: 'Krishna, his flute and the dahi handi', c: { side: '#0B1E4A', page: '#F4F8FF', accent: '#1D4ED8', brand: '#EAB308' }, art: tpArtJanmashtami },
   { key: 'shivratri', icon: '🔱', name: 'Maha Shivratri', note: 'Shiv ji in meditation, Kailash at night', c: { side: '#0F172A', page: '#F3F5FA', accent: '#3730A3', brand: '#6366F1' }, art: tpArtShivratri },
-  { key: 'ganesh', icon: '🐘', name: 'Ganesh Chaturthi', note: 'Ganpati Bappa in his pandal, dhol and modaks', c: { side: '#7F1D1D', page: '#FFF8EE', accent: '#B91C1C', brand: '#F97316' }, art: tpArtGanesh }
+  { key: 'ganesh', icon: '🐘', name: 'Ganesh Chaturthi', note: 'Ganpati Bappa in his pandal, dhol and modaks', c: { side: '#7F1D1D', page: '#FFF8EE', accent: '#B91C1C', brand: '#F97316' }, art: tpArtGanesh },
+  { key: 'ramnavami', icon: '🚩', name: 'Ram Navami', note: 'Baby Ram in his cradle, Ayodhya and Hanuman ji', c: { side: '#7C2D12', page: '#FFF9F0', accent: '#C2410C', brand: '#F97316' }, art: tpArtRamNavami }
 ];
+
+// Ram Navami: the sun rising over Ayodhya's domes, saffron flags, a rocking cradle.
+function tpArtRamNavami() {
+  let s = '<defs><linearGradient id="tpRnBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FED7AA"/><stop offset="1" stop-color="#FDE68A"/></linearGradient>' +
+    '<radialGradient id="tpRnSun"><stop offset="0" stop-color="#FFFBEB"/><stop offset=".5" stop-color="#FDE047"/><stop offset="1" stop-color="#F97316" stop-opacity="0"/></radialGradient></defs>' +
+    '<rect width="220" height="110" fill="url(#tpRnBg)"/>' +
+    tpBurst(110, 50, 30, 48, 16, '#FB923C') +
+    '<circle class="gl" cx="110" cy="50" r="30" fill="url(#tpRnSun)"/>' +
+    '<path d="M20 110 V64 H56 V110 Z M164 110 V64 H200 V110 Z" fill="#FCD34D" stroke="#B45309" stroke-width=".8"/>' +
+    '<path d="M18 64 Q38 40 58 64 Z M162 64 Q182 40 202 64 Z" fill="#F5B70A" stroke="#B45309" stroke-width=".8"/>' +
+    '<path d="M38 46 V34 M182 46 V34" stroke="#78350F" stroke-width="1.2"/><path class="tp-bob" d="M38 34 L50 38 L38 42 Z M182 34 L194 38 L182 42 Z" fill="#F97316"/>' +
+    '<path d="M80 110 L96 66 M140 110 L124 66 M96 66 H124" fill="none" stroke="#92400E" stroke-width="3"/>' +
+    '<g class="tp-bob"><path d="M110 66 L94 86 M110 66 L126 86" stroke="#B45309" stroke-width="1.2"/>' +
+    '<path d="M90 86 Q110 112 130 86 Z" fill="#F5B70A" stroke="#92400E" stroke-width="1"/>' +
+    '<circle cx="104" cy="84" r="6" fill="#7DB3E8"/><path d="M99 80 L101 75 L104 78 L107 75 L109 80 Z" fill="#F5B70A"/></g>';
+  return tpSvg(s);
+}
 
 // Ganesh Chaturthi: a pandal arch hung with marigolds, Ganpati's silhouette in its glow, modaks,
 // gulal in the air.

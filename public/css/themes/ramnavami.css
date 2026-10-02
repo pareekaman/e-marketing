@@ -1,0 +1,72 @@
+/* Ram Navami — saffron of the dhwaj and the gold of the Suryavansh's sun, at Ayodhya. */
+:root[data-theme="ramnavami"] {
+  --brand-1:#FDBA74; --brand-2:#F97316; --brand-2-rgb:249,115,22;
+  --accent:#C2410C; --accent-dark:#7C2D12; --accent-light:#EA580C;
+  --accent-rgb:194,65,12; --accent-light-rgb:234,88,12;
+  --page-bg:#FFF9F0; --sidebar-top:#7C2D12; --sidebar-bottom:#431407;
+}
+
+/* Decoration (js/themes/ramnavami.js): the cradle before Ayodhya bottom-right, Hanuman ji
+   bottom-left, the greeting above him. */
+.rn-scene { right:96px; bottom:0; width:210px; transition:translate .3s var(--ease);
+  filter:drop-shadow(0 0 10px rgba(253,224,71,.5)) drop-shadow(0 4px 6px rgba(0,0,0,.2)); }
+.rn-scene svg { overflow:visible; }
+.rn-cradle { transform-box:view-box; transform-origin:110px 110px; animation:rn-rock 2.6s ease-in-out infinite alternate; }
+@keyframes rn-rock { from { transform:rotate(-8deg); } to { transform:rotate(8deg); } }
+.rn-rays { transform-box:view-box; transform-origin:110px 70px; animation:rn-turn 30s linear infinite; }
+@keyframes rn-turn { to { transform:rotate(360deg); } }
+.rn-flag { transform-box:fill-box; transform-origin:0 50%; animation:rn-flutter .7s ease-in-out infinite alternate; }
+@keyframes rn-flutter { from { transform:scaleX(1) skewY(0); } to { transform:scaleX(.85) skewY(8deg); } }
+.rn-hanuman { left:76px; bottom:0; width:120px; transition:translate .3s var(--ease); filter:drop-shadow(0 0 8px rgba(249,115,22,.45)) drop-shadow(0 4px 5px rgba(0,0,0,.25)); }
+.rn-greet { position:absolute; left:84px; bottom:172px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
+  color:#fff; padding:7px 14px; border-radius:999px; background:linear-gradient(135deg,#C2410C,#F97316 55%,#EAB308);
+  box-shadow:0 0 0 2px rgba(255,255,255,.85), 0 0 18px rgba(249,115,22,.55); transition:translate .3s var(--ease);
+  animation:rn-greet 2.4s ease-in-out infinite alternate; }
+@keyframes rn-greet { from { transform:translateY(0); } to { transform:translateY(-4px); } }
+.sidebar:hover ~ #themeDecor .rn-hanuman, .sidebar:hover ~ #themeDecor .rn-greet { translate:172px 0; }
+@media (prefers-reduced-motion: reduce) { .rn-cradle, .rn-rays, .rn-flag, .rn-greet { animation:none; } .rn-hanuman, .rn-greet, .rn-scene { transition:none; } }
+
+/* Ram Navami skin: Ayodhya in festival across the whole UI. Only under data-theme="ramnavami". */
+/* the sun's rays from the top of the page, faint bows and arrows over it */
+:root[data-theme="ramnavami"] body {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cpath d='M40 20 Q60 50 40 80' fill='none' stroke='%23C2410C' stroke-opacity='.12' stroke-width='2'/%3E%3Cpath d='M40 20 V80' stroke='%23C2410C' stroke-opacity='.1'/%3E%3Cpath d='M30 50 H80 M76 46 L82 50 L76 54' fill='none' stroke='%23C2410C' stroke-opacity='.12' stroke-width='1.4'/%3E%3C/svg%3E") repeat 0 0 / 160px 160px,
+    repeating-conic-gradient(from 0deg at 50% -40px, rgba(251,146,60,.1) 0deg 6deg, transparent 6deg 18deg),
+    radial-gradient(700px 300px at 50% -60px, rgba(253,224,71,.5), rgba(251,146,60,.15) 45%, transparent 75%),
+    var(--page-bg);
+  background-attachment:fixed;
+}
+:root[data-theme="ramnavami"] .ov-card, :root[data-theme="ramnavami"] .chart-card, :root[data-theme="ramnavami"] .task-table-card {
+  background:
+    linear-gradient(90deg,#C2410C,#F97316 30%,#FDE047 50%,#F97316 70%,#C2410C) top / 100% 3px no-repeat,
+    linear-gradient(180deg, #FFF3E2, #fff 60px);
+  box-shadow:0 0 0 1px rgba(194,65,12,.1), 0 12px 26px -16px rgba(194,65,12,.45);
+}
+:root[data-theme="ramnavami"] .ov-card::before { background:linear-gradient(180deg,#FDE047,#F97316,#C2410C); }
+/* a line of saffron flags under the header */
+:root[data-theme="ramnavami"] .topbar::after {
+  content:''; position:absolute; left:0; right:0; bottom:-14px; height:14px; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='14'%3E%3Cpath d='M0 2 H36' stroke='%2378350F' stroke-width='1.2'/%3E%3Cpath d='M10 2 L26 2 L18 13 Z' fill='%23F97316'/%3E%3Cpath d='M14 4 L22 4 L18 9 Z' fill='%23FDE047'/%3E%3C/svg%3E") repeat-x left top / 36px 14px;
+}
+:root[data-theme="ramnavami"] .topbar-title {
+  background:linear-gradient(90deg,#7C2D12,#C2410C 45%,#F59E0B); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+/* the sidebar: saffron, the sun glowing at its top, "राम" written faintly down it */
+:root[data-theme="ramnavami"] .sidebar {
+  background:
+    radial-gradient(160px 140px at 50% -10px, rgba(253,224,71,.45), transparent 70%),
+    linear-gradient(180deg,var(--sidebar-top) 0%,var(--sidebar-bottom) 100%);
+}
+:root[data-theme="ramnavami"] .sidebar::before {
+  content:''; position:absolute; left:0; right:0; top:0; height:calc(100% + 120px); z-index:-1; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='120'%3E%3Ctext x='20' y='40' font-size='16' font-weight='700' fill='%23FED7AA' fill-opacity='.14' font-family='Nirmala UI, Mangal, sans-serif'%3E%E0%A4%B0%E0%A4%BE%E0%A4%AE%3C/text%3E%3Ctext x='46' y='100' font-size='14' font-weight='700' fill='%23FED7AA' fill-opacity='.1' font-family='Nirmala UI, Mangal, sans-serif'%3E%E0%A4%B0%E0%A4%BE%E0%A4%AE%3C/text%3E%3C/svg%3E") repeat 0 0 / 90px 120px;
+  animation:rn-scroll 16s linear infinite;
+}
+@keyframes rn-scroll { from { transform:translateY(0); } to { transform:translateY(-120px); } }
+:root[data-theme="ramnavami"] .nav-item.active {
+  background:linear-gradient(90deg,rgba(253,186,116,.38),rgba(253,186,116,.08)); color:#FFEDD5;
+  box-shadow:inset 0 0 0 1px rgba(253,186,116,.35);
+}
+:root[data-theme="ramnavami"] .nav-item.active::before { background:linear-gradient(180deg,#FDE047,#F97316); }
+:root[data-theme="ramnavami"] ::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#FDE047,#F97316,#C2410C); background-clip:content-box; }
+@media (prefers-reduced-motion: reduce) { :root[data-theme="ramnavami"] .sidebar::before { animation:none; } }
