@@ -22,15 +22,18 @@
 /* The sidebar widens from 60px to 232px on hover and sits above this layer: step aside with it. */
 .sidebar:hover ~ #themeDecor .td-splat-1 { translate:172px 0; }
 .td-splat-2 { right:110px; bottom:-14px; transform:rotate(12deg); }
-/* pichkari bottom-left, water gun bottom-right; each jolts while it squirts (js/themes/holi.js) */
-.hl-gun { filter:drop-shadow(0 4px 5px rgba(0,0,0,.25)); }
-.hl-pichkari { left:190px; bottom:60px; width:120px; transform:rotate(-35deg); transition:translate .3s var(--ease); }
-.hl-watergun { right:250px; bottom:40px; width:120px; transform:rotate(35deg); }
-.hl-plunger { transition:transform .5s ease-in; }
-.hl-firing .hl-plunger { transform:translateX(28px); }
-.hl-firing { animation:hl-jolt .12s ease-in-out 5 alternate; }
-.hl-pichkari.hl-firing { animation-name:hl-jolt-p; }
-@keyframes hl-jolt { from { transform:rotate(35deg); } to { transform:rotate(35deg) translateX(4px); } }
-@keyframes hl-jolt-p { from { transform:rotate(-35deg); } to { transform:rotate(-35deg) translateX(-4px); } }
-.sidebar:hover ~ #themeDecor .hl-pichkari { translate:172px 0; }
-@media (prefers-reduced-motion: reduce) { .hl-firing, .hl-firing .hl-plunger { animation:none; transform:none; } }
+/* two children playing Holi with each other (js/themes/holi.js) */
+.hl-kid { bottom:0; width:96px; filter:drop-shadow(0 4px 5px rgba(0,0,0,.22)); }
+.hl-kid-a { left:250px; transition:translate .3s var(--ease); }
+.hl-kid-b { left:600px; }
+.sidebar:hover ~ #themeDecor .hl-kid-a { translate:172px 0; }
+/* kid A pushes the plunger in while spraying */
+.hl-plunger { transition:transform .7s linear; }
+.hl-spraying .hl-plunger { transform:translateX(12px); }
+/* kid B swings the gulal arm forward from behind the head (he faces left, so it turns anticlockwise) */
+.hl-throw-arm { transform-box:view-box; transform-origin:54px 55px; transition:transform .25s ease-in; }
+.hl-throwing .hl-throw-arm { transform:rotate(-125deg); }
+/* whoever is hit flinches and laughs */
+.hl-hit { animation:hl-hit .45s ease-in-out; }
+@keyframes hl-hit { 0%,100% { transform:none; } 25% { transform:translateX(-4px) rotate(-4deg); } 60% { transform:translateX(3px) rotate(3deg); } }
+@media (prefers-reduced-motion: reduce) { .hl-plunger, .hl-throw-arm { transition:none; } .hl-hit { animation:none; } }
