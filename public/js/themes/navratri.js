@@ -70,8 +70,8 @@ ThemeDecor.register('navratri', function (d) {
       '<path d="M45 63 Q50 76 55 63" fill="none" stroke="#F8FAFC" stroke-width="1.6" stroke-dasharray="0.1 2.6" stroke-linecap="round"/>' +
       arm(-1, '#1C1917', '#F5B70A') + arm(1, '#1C1917', '#F5B70A') + head(false) + '</g></svg>';
   }
-  d.svg(girl(), 'td-dancer td-dancer-1');
-  d.svg(boy(), 'td-dancer td-dancer-2');
+  d.svg(girl(), 'td-dancer td-dancer-1 td-drag');
+  d.svg(boy(), 'td-dancer td-dancer-2 td-drag');
 
 
   // Maa Durga riding her tiger, in a friendly cartoon style: big round face with sparkling eyes,
@@ -159,7 +159,7 @@ ThemeDecor.register('navratri', function (d) {
          '</g>';
     return s + '</svg>';
   }
-  d.svg(durga(), 'td-durga');
+  var durgaEl = d.svg(durga(), 'td-durga td-drag');
   // Aarti thali: a brass plate with a lit diya, circling in front of her.
   d.svg('<svg viewBox="0 0 50 34" xmlns="http://www.w3.org/2000/svg">' +
     '<ellipse cx="25" cy="14" rx="11" ry="9" fill="#FFB300" fill-opacity=".35"/>' +
@@ -167,10 +167,11 @@ ThemeDecor.register('navratri', function (d) {
     '<path d="M18 18 Q25 24 32 18 Z" fill="#B45309"/>' +
     '<ellipse cx="25" cy="24" rx="22" ry="6" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
     '<circle cx="12" cy="23" r="2.4" fill="#F97316"/><circle cx="38" cy="23" r="2.4" fill="#F97316"/><circle cx="17" cy="26" r="1.6" fill="#DC2626"/><circle cx="33" cy="26" r="1.6" fill="#DC2626"/></svg>', 'td-aarti');
+  durgaEl.appendChild(d.layer.lastChild); // the thali travels with her when she is dragged
 
   // Greeting, in Hindi as with Diwali's.
   var greet = document.createElement('div');
-  greet.className = 'td-item nv-greet';
+  greet.className = 'td-item nv-greet td-drag';
   greet.textContent = '🪔 शुभ नवरात्रि';
   d.layer.appendChild(greet);
 

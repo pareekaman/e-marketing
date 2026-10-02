@@ -224,8 +224,8 @@ ThemeDecor.register('dussehra', function (d) {
       '<polygon points="13,9 0,1.5 5,9 0,16.5" fill="#DC2626"/></svg>' }
   };
 
-  var ramEl = d.svg(ram, 'td-ram');
-  var ravEl = d.svg(ravan, 'td-ravan');
+  var ramEl = d.svg(ram, 'td-ram td-drag');
+  var ravEl = d.svg(ravan, 'td-ravan td-drag');
   // Flashes, sparks and fire belong in front of the figures (the hit lands on Ravan's body).
   d.canvas.style.zIndex = '1';
 

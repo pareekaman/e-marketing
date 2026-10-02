@@ -15,8 +15,8 @@ ThemeDecor.register('holi', function (d) {
     return s + '</svg>';
   }
 
-  d.svg(splat(['#EC4899', '#FACC15', '#22D3EE'], 1), 'td-splat td-splat-1');
-  d.svg(splat(['#4ADE80', '#A855F7', '#F97316'], 3), 'td-splat td-splat-2');
+  d.svg(splat(['#EC4899', '#FACC15', '#22D3EE'], 1), 'td-splat td-splat-1 td-drag');
+  d.svg(splat(['#4ADE80', '#A855F7', '#F97316'], 3), 'td-splat td-splat-2 td-drag');
 
   var puffs = [], timer = 0.3;
   function spawn(w, h) {

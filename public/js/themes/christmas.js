@@ -29,7 +29,7 @@ ThemeDecor.register('christmas', function (d) {
     '<rect x="40" y="38" width="58" height="12" rx="6" fill="#fff" stroke="#CBD5E1" stroke-width="1"/><circle cx="98" cy="30" r="8" fill="#fff" stroke="#CBD5E1" stroke-width="1"/>' +
     '</g></g></svg>';
 
-  d.svg(santa, 'td-santa');
+  d.svg(santa, 'td-santa td-drag');
   d.svg('', 'td-lights');
   d.svg('', 'td-lights td-lights-b');
 

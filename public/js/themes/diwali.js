@@ -47,9 +47,9 @@ ThemeDecor.register('diwali', function (d) {
       '<path d="M6 32 Q32 38 58 32" fill="none" stroke="#FFC107" stroke-width="2"/></svg>';
   }
 
-  d.svg(rangoli(), 'td-rangoli');
-  d.svg(diya(), 'td-diya td-diya-1');
-  d.svg(diya(), 'td-diya td-diya-2');
+  d.svg(rangoli(), 'td-rangoli td-drag');
+  d.svg(diya(), 'td-diya td-diya-1 td-drag');
+  d.svg(diya(), 'td-diya td-diya-2 td-drag');
 
   // String lights (jhalar) along the top: a wire and four bulb layers that twinkle in a chase (css).
   var jhalar = document.createElement('div');
@@ -59,7 +59,7 @@ ThemeDecor.register('diwali', function (d) {
 
   // The greeting, in Hindi as asked for, above the rangoli.
   var greet = document.createElement('div');
-  greet.className = 'td-item td-greet';
+  greet.className = 'td-item td-greet td-drag';
   greet.textContent = '🪔 शुभ दीपावली';
   d.layer.appendChild(greet);
 
@@ -78,7 +78,7 @@ ThemeDecor.register('diwali', function (d) {
     '<path d="M30 24 V82 M18 24 L22 82 M42 24 L38 82" stroke="#F5C518" stroke-width=".8" opacity=".7"/>' +
     '<path d="M8 53 H52" stroke="#F5C518" stroke-width="2"/>' +
     '<path d="M30 44 L32.6 50 L39 50.4 L34 54.4 L35.8 60.6 L30 57 L24.2 60.6 L26 54.4 L21 50.4 L27.4 50 Z" fill="#FFF7C2" stroke="#F59E0B" stroke-width=".8"/>' +
-    '<path d="M18 82 H42 L38 88 H22 Z" fill="#F5C518" stroke="#B45309" stroke-width=".8"/>' + tassels + '</svg>', 'td-lantern');
+    '<path d="M18 82 H42 L38 88 H22 Z" fill="#F5C518" stroke="#B45309" stroke-width=".8"/>' + tassels + '</svg>', 'td-lantern td-drag');
 
   // Gold sparkles that twinkle here and there, beside the crackers.
   var fw = d.fireworks({ colors: ['#FFC107', '#FF7043', '#E91E63', '#66BB6A', '#FFFFFF', '#AB47BC'], gap: [2.2, 4.5] });

@@ -103,12 +103,59 @@
     };
   }
 
+  // Characters a theme marks .td-drag can be picked up and dropped anywhere. They take the pointer
+  // (the rest of the layer stays click-through), so they do cover what is under them. The spot is
+  // kept per viewer in localStorage, per theme and figure; double-click puts one back.
+  function enableDrag(name) {
+    [].forEach.call(st.layer.querySelectorAll('.td-drag'), function (el) {
+      var key = 'tdPos:' + name + ':' + el.className.replace(/\btd-(item|drag)\b/g, '').trim();
+      function clamp(p) {
+        return { l: Math.max(0, Math.min(p.l, st.layer.clientWidth - el.offsetWidth)),
+                 t: Math.max(0, Math.min(p.t, st.layer.clientHeight - el.offsetHeight)) };
+      }
+      function place(p) { el.style.left = p.l + 'px'; el.style.top = p.t + 'px'; el.style.right = 'auto'; el.style.bottom = 'auto'; }
+      var saved = null;
+      try { saved = JSON.parse(localStorage.getItem(key)); } catch (e) {}
+      if (saved && isFinite(saved.l) && isFinite(saved.t)) place(clamp(saved));
+      el.style.pointerEvents = 'auto'; el.style.cursor = 'grab'; el.style.touchAction = 'none';
+      el.title = 'Drag to move · double-click to put back';
+      // A double-click is spotted here rather than with dblclick: the preventDefault on pointerdown
+      // (so a drag does not select page text) stops Chrome from firing dblclick at all.
+      var lastDown = 0;
+      function reset() {
+        el.style.left = el.style.top = el.style.right = el.style.bottom = '';
+        try { localStorage.removeItem(key); } catch (e) {}
+      }
+      el.addEventListener('pointerdown', function (e) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        var now = Date.now();
+        if (now - lastDown < 350) { lastDown = 0; reset(); return; }
+        lastDown = now;
+        el.setPointerCapture(e.pointerId);
+        el.style.cursor = 'grabbing';
+        var sx = e.clientX, sy = e.clientY, ol = el.offsetLeft, ot = el.offsetTop, p = null;
+        function move(ev) {
+          if (!p && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 4) return; // a click, not a drag
+          p = clamp({ l: ol + ev.clientX - sx, t: ot + ev.clientY - sy }); place(p);
+        }
+        function up() {
+          el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up);
+          el.style.cursor = 'grab';
+          if (p) { lastDown = 0; try { localStorage.setItem(key, JSON.stringify(p)); } catch (e2) {} }
+        }
+        el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+      });
+    });
+  }
+
   function mount(name) {
     var factory = registry[name];
     if (!factory) return;
     ensureLayer(); sizeCanvas();
     st.inst = factory({ layer: st.layer, canvas: st.canvas, svg: addSvg, rand: rand, pick: pick, fireworks: makeFireworks }) || {};
     sizeCanvas(); // again: now that the instance's scale is known
+    enableDrag(name);
     st.mounted = true;
     if (!(reducedMq && reducedMq.matches)) start();
   }
