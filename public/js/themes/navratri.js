@@ -437,13 +437,83 @@ ThemeDecor.register('navratri', function (d) {
     return s + '</svg>';
   }
 
+  // Day 5 — Maa Skandamata, mother of Skanda (Kartikeya): seated on a great lotus in a lotus pond with
+  // baby Skanda on her lap, holding his little spear; four arms (two lotuses, one round her son, one
+  // raised in blessing); in lotus pink and gold. Her lion rests in front; Skanda's peacock stands
+  // behind, its tail fanned.
+  function skandamata() {
+    var skin = '#F8CFA9', line = '#5B3A1A', s, k, a;
+    s = '<svg viewBox="0 0 220 210" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<radialGradient id="nvHalo"><stop offset="0" stop-color="#FFF1F7"/><stop offset=".6" stop-color="#F9A8D4" stop-opacity=".8"/><stop offset="1" stop-color="#EC4899" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="nvGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE58A"/><stop offset=".55" stop-color="#F5B70A"/><stop offset="1" stop-color="#C98A06"/></linearGradient>' +
+      '<linearGradient id="nvPond" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5EEAD4"/><stop offset="1" stop-color="#0D9488" stop-opacity=".1"/></linearGradient></defs>';
+    // the peacock behind: a fanned tail of eyes, its blue neck and crest
+    s += '<g opacity=".95">';
+    for (k = 0; k < 9; k++) {
+      a = (-150 + k * 15) * Math.PI / 180;
+      var ex = 186 + Math.cos(a) * 34, ey = 120 + Math.sin(a) * 34;
+      s += '<path d="M186 120 L' + ex.toFixed(1) + ' ' + ey.toFixed(1) + '" stroke="#15803D" stroke-width="1.2"/>' +
+           '<ellipse cx="' + ex.toFixed(1) + '" cy="' + ey.toFixed(1) + '" rx="5" ry="6.4" fill="#16A34A"/><circle cx="' + ex.toFixed(1) + '" cy="' + ey.toFixed(1) + '" r="3" fill="#1D4ED8"/><circle cx="' + ex.toFixed(1) + '" cy="' + ey.toFixed(1) + '" r="1.3" fill="#FDE047"/>';
+    }
+    s += '<path d="M186 140 Q192 118 184 104 Q182 96 188 92" fill="none" stroke="#1D4ED8" stroke-width="6" stroke-linecap="round"/>' +
+         '<circle cx="189" cy="91" r="4" fill="#1D4ED8"/><path d="M192 90 l5 1.5 l-5 1.5 Z" fill="#F59E0B"/><path d="M188 87 l-1 -6 M190 87 l1 -6 M186 87 l-3 -5" stroke="#1D4ED8" stroke-width="1"/><circle cx="190" cy="90" r=".9" fill="#fff"/></g>';
+    s += '<g class="nv-halo"><circle cx="128" cy="62" r="58" fill="url(#nvHalo)"/></g>';
+    // the pond, with lily pads and a few small lotuses
+    s += '<ellipse cx="110" cy="196" rx="110" ry="16" fill="url(#nvPond)"/>' +
+         '<ellipse cx="30" cy="194" rx="12" ry="4" fill="#22C55E"/><ellipse cx="196" cy="196" rx="12" ry="4" fill="#16A34A"/>' +
+         '<path d="M196 192 Q190 182 196 176 Q202 182 196 192 Z" fill="#F472B6" stroke="#BE185D" stroke-width=".7"/>';
+    // four arms: lotuses held high on both sides, the lower right one raised in blessing
+    var arm = function (x1, y1, x2, y2) { return '<path d="M' + x1 + ' ' + y1 + ' L' + x2 + ' ' + y2 + '" stroke="' + skin + '" stroke-width="7" stroke-linecap="round"/><circle cx="' + x2 + '" cy="' + y2 + '" r="4.2" fill="' + skin + '" stroke="' + line + '" stroke-width=".8"/>'; };
+    var lotus = function (x, y) { return '<path d="M' + x + ' ' + y + ' V' + (y - 12) + '" stroke="#16A34A" stroke-width="2"/><path d="M' + x + ' ' + (y - 12) + ' q-12 -8 -8 -20 q8 6 8 20 q0 -14 8 -20 q4 12 -8 20 Z M' + x + ' ' + (y - 14) + ' q-4 -12 0 -22 q4 10 0 22 Z" fill="#F472B6" stroke="#BE185D" stroke-width="1"/>'; };
+    s += arm(110, 106, 78, 78) + lotus(78, 76) + arm(146, 106, 178, 78) + lotus(178, 76) +
+         '<path d="M150 114 L172 120 L176 104" fill="none" stroke="' + skin + '" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>' +
+         '<path d="M171 104 V92 M174 103 V89 M177 103 V89 M180 104 V93" stroke="' + skin + '" stroke-width="2.6" stroke-linecap="round"/><circle cx="176" cy="100" r="1.5" fill="#DC2626"/>';
+    // the great lotus she sits on
+    for (k = -3; k <= 3; k++) s += '<path d="M' + (128 + k * 15) + ' 186 Q' + (118 + k * 17) + ' 168 ' + (128 + k * 15) + ' 156 Q' + (138 + k * 13) + ' 168 ' + (128 + k * 15) + ' 186 Z" fill="' + (k % 2 ? '#F9A8D4' : '#F472B6') + '" stroke="#BE185D" stroke-width=".9"/>';
+    // seated body: a lotus-pink saree with a gold border, the pallu across her
+    s += '<path d="M104 104 Q128 94 152 104 L160 150 Q128 160 96 150 Z" fill="#EC4899" stroke="' + line + '" stroke-width="1.4"/>' +
+         '<path d="M112 104 Q128 98 144 104 L142 118 Q128 122 114 118 Z" fill="#BE185D"/>' +
+         '<path d="M92 148 Q128 160 164 148 L158 172 Q128 180 98 172 Z" fill="#DB2777" stroke="' + line + '" stroke-width="1.2"/>' +
+         '<path d="M98 172 Q128 180 158 172" fill="none" stroke="#F5B70A" stroke-width="4"/>' +
+         '<path d="M106 104 Q130 124 156 148" fill="none" stroke="#F5B70A" stroke-width="4"/>' +
+         '<path d="M114 106 Q128 118 142 106" fill="none" stroke="#F5B70A" stroke-width="2.6"/>';
+    // baby Skanda on her lap: a little crown, a peacock feather, his spear (vel); her arm round him
+    s += '<path d="M118 150 Q114 134 126 130 Q138 134 134 150 Q126 156 118 150 Z" fill="#FDE047" stroke="' + line + '" stroke-width="1"/>' +
+         '<path d="M118 148 Q126 152 134 148" fill="none" stroke="#DC2626" stroke-width="2.4"/>' +
+         '<circle cx="126" cy="122" r="10" fill="' + skin + '" stroke="' + line + '" stroke-width="1"/>' +
+         '<path d="M117 118 Q126 108 135 118 Q126 114 117 118 Z" fill="#1C120B"/>' +
+         '<path d="M119 113 L121 106 L124 110 L126 104 L128 110 L131 106 L133 113 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width=".6"/>' +
+         '<path d="M132 108 Q138 98 136 92" fill="none" stroke="#15803D" stroke-width="1.2"/><ellipse cx="136" cy="92" rx="2.4" ry="3" fill="#16A34A"/><circle cx="136" cy="92" r="1.3" fill="#1D4ED8"/>' +
+         '<path d="M122 122 Q123 120 124 122 M128 122 Q129 120 130 122" fill="none" stroke="#1C1917" stroke-width="1" stroke-linecap="round"/>' +
+         '<path d="M123 127 Q126 129.4 129 127" fill="none" stroke="#9F1239" stroke-width="1.1" stroke-linecap="round"/><circle cx="126" cy="117" r="1" fill="#DC2626"/>' +
+         '<path d="M140 154 L144 116" stroke="#7C2D12" stroke-width="2"/><path d="M144 108 Q140 116 144 120 Q148 116 144 108 Z" fill="#CBD5E1" stroke="#64748B" stroke-width=".7"/>' +
+         '<path d="M136 140 Q138 136 142 138" stroke="' + skin + '" stroke-width="5" stroke-linecap="round" fill="none"/>' +
+         '<path d="M106 112 L104 136 Q110 152 122 150" fill="none" stroke="' + skin + '" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>';
+    s += mataFace(skin, line, '#1C120B');
+    s += '<path d="M100 40 Q128 26 156 40 L152 30 Q128 18 104 30 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         '<path d="M112 28 Q128 4 144 28 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         '<path d="M128 22 q-6 -4 -4 -10 q4 3 4 10 q0 -7 4 -10 q2 6 -4 10 Z" fill="#F472B6" stroke="#BE185D" stroke-width=".6"/>' +
+         '<path d="M128 36 V44" stroke="#F5B70A" stroke-width="1.4"/><circle cx="128" cy="46" r="2.4" fill="#EC4899" stroke="#F5B70A" stroke-width="1"/>';
+    // her lion, resting in front at her feet
+    s += '<g class="nv-lion-head">' +
+         '<circle cx="46" cy="176" r="24" fill="#B45309"/>' +
+         '<ellipse cx="46" cy="178" rx="16" ry="15" fill="#F0B94A" stroke="' + line + '" stroke-width="1.2"/>' +
+         '<circle cx="34" cy="166" r="4" fill="#F0B94A" stroke="' + line + '" stroke-width=".8"/><circle cx="58" cy="166" r="4" fill="#F0B94A" stroke="' + line + '" stroke-width=".8"/>' +
+         '<path d="M38 175 Q41 172 44 175 M48 175 Q51 172 54 175" fill="none" stroke="#1C1917" stroke-width="1.6" stroke-linecap="round"/>' +
+         '<ellipse cx="46" cy="186" rx="8" ry="6" fill="#FDE7C8"/><path d="M43 182 Q46 180 49 182 Q46 185 43 182 Z" fill="#7C2D12"/>' +
+         '<path d="M46 185 Q43 189 40 188 M46 185 Q49 189 52 188" fill="none" stroke="' + line + '" stroke-width="1" stroke-linecap="round"/>' +
+         '</g>';
+    return s + '</svg>';
+  }
+
   // The nine days (data-nv-day on <html>, set by core.js from the owner's choice); 0 or a day not
   // built yet shows Maa Durga on her tiger.
   var NV_DAYS = {
     1: { name: 'माँ शैलपुत्री', build: shailputri, petals: ['#FFFFFF', '#FEE2E2', '#F87171', '#DC2626', '#FDE68A'] },
     2: { name: 'माँ ब्रह्मचारिणी', build: brahmacharini, petals: ['#FB923C', '#F97316', '#FFFFFF', '#86EFAC', '#22C55E'] },
     3: { name: 'माँ चंद्रघंटा', build: chandraghanta, petals: ['#FBBF24', '#F59E0B', '#FDE68A', '#3B82F6', '#1D4ED8'] },
-    4: { name: 'माँ कूष्मांडा', build: kushmanda, petals: ['#F97316', '#FDBA74', '#FDE047', '#22C55E', '#15803D'] }
+    4: { name: 'माँ कूष्मांडा', build: kushmanda, petals: ['#F97316', '#FDBA74', '#FDE047', '#22C55E', '#15803D'] },
+    5: { name: 'माँ स्कंदमाता', build: skandamata, petals: ['#F472B6', '#EC4899', '#F9A8D4', '#FFFFFF', '#5EEAD4'] }
   };
   var DAY = NV_DAYS[+document.documentElement.getAttribute('data-nv-day')] || null;
   var durgaEl = d.svg(DAY ? DAY.build() : durga(), 'td-durga td-drag');
