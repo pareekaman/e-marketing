@@ -3,9 +3,13 @@
      1. an arrow, which breaks on his armour;
      2. the Nagastra: serpents wind round him, and he throws them off;
      3. Shiva's Trishul: lightning crackles all over him;
-     4. Vishnu's Sudarshan Chakra: it cuts through his heads, which grow back, and returns to Ram;
-     5. the Brahmastra, at his navel: he burns and collapses, "Happy Dussehra" appears where he
-        stood and crackers go up. Five seconds later he rises again and the story repeats.
+     4. Vishnu's Sudarshan Chakra: it cuts through his heads, which grow back, and returns to Ram.
+        Then Vibhishan comes to Ram's side, kneels, and tells him to strike at Ravan's navel;
+     5. the Brahmastra, at his navel: he burns and collapses, and "Happy Dussehra" appears where
+        he stood. Everyone rejoices for a few seconds (Hanuman and the vanar sena spring up along
+        the foot of the page, crackers go up); then the Pushpak Viman comes for Ram with Sita and
+        Lakshman aboard and flies them away, watched by Hanuman, the vanaras and Vibhishan with
+        folded hands. Ram is back in his place, Ravan rises again, and the story repeats.
    Each astra (2-5) is first invoked as in the epics: Ram raises the bow and arrow to the sky and
    chants its mantra while the astra gathers on the arrow's tip. Every shot steers after Ravan in
    flight, so it still finds him if he is dragged somewhere else while it flies.
@@ -215,6 +219,245 @@ ThemeDecor.register('dussehra', function (d) {
     '<path d="M76 27 Q70 22 64 24 M83 26 Q86 20 92 21" fill="none" stroke="#1F2A44" stroke-width="1.6" stroke-linecap="round"/>' +
     '</svg>';
 
+  // The rest of the cast, who come in towards the end. Their arm poses are groups switched by classes
+  // on the figure (see the CSS): am-fold (hands folded) and am-up (arms raised); am-head and
+  // am-pupil turn to watch the Pushpak Viman go.
+  // Vibhishan, Ravan's brother, come over to Ram's side: kneeling and facing right, a gold crown with
+  // a blue jewel, a Vaishnava tilak, a short beard, royal blue silk. While he speaks he points at
+  // Ravan (vb-point), his lips moving (vb-talk); otherwise his hands are folded.
+  var VIBHISHAN =
+    '<svg viewBox="0 0 160 170" xmlns="http://www.w3.org/2000/svg"><defs>' +
+    '<linearGradient id="tdVbSkin" gradientUnits="userSpaceOnUse" x1="40" y1="10" x2="110" y2="170"><stop offset="0" stop-color="#DDA878"/><stop offset="1" stop-color="#9C6338"/></linearGradient>' +
+    '<linearGradient id="tdVbSilk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3B82F6"/><stop offset="1" stop-color="#1E3A8A"/></linearGradient>' +
+    '<linearGradient id="tdVbGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF1A8"/><stop offset=".5" stop-color="#F5C518"/><stop offset="1" stop-color="#C98A06"/></linearGradient>' +
+    '</defs>' +
+    // hair falling behind his shoulders
+    '<path d="M53 30 C45 42 44 58 48 72 C52 76 58 74 60 68 C58 56 60 44 64 34 Z" fill="#1F1A17"/>' +
+    // one knee on the ground, its shin lying back along it; the other foot planted ahead, knee up
+    '<path d="M57 160 L28 162" stroke="url(#tdVbSkin)" stroke-width="9" stroke-linecap="round"/>' +
+    '<path d="M35 157.5 V166.5" stroke="#F5C518" stroke-width="2.6"/>' +
+    '<path d="M46 110 L70 112 L67 164 L50 164 Z" fill="url(#tdVbSilk)" stroke="#1E3A8A" stroke-width="1"/>' +
+    '<path d="M102 116 L104 157" stroke="url(#tdVbSkin)" stroke-width="9" stroke-linecap="round"/>' +
+    '<path d="M98 157 Q104 162 118 163 Q120 168 112 168 H98 Z" fill="#9C6338"/>' +
+    '<path d="M99 151 H109" stroke="#F5C518" stroke-width="2.6"/>' +
+    '<path d="M48 104 Q72 99 104 103 Q111 112 107 123 Q80 127 54 129 Z" fill="url(#tdVbSilk)" stroke="#1E3A8A" stroke-width="1"/>' +
+    '<path d="M104 103 Q111 112 107 123" fill="none" stroke="#F5C518" stroke-width="2.4"/>' +
+    '<path d="M60 108 Q76 110 92 108 M62 116 Q78 118 96 116" fill="none" stroke="#1E3A8A" stroke-width="1" opacity=".6"/>' +
+    // pointing: the far hand rests on his knee, behind the body
+    '<g class="vb-point"><path d="M56 68 L60 94 L90 101" fill="none" stroke="url(#tdVbSkin)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<circle cx="92" cy="101" r="4.4" fill="url(#tdVbSkin)" stroke="#6B3E1E" stroke-width=".7"/></g>' +
+    // neck, torso, gold sash at the waist, a yellow angavastram over the shoulder, a gold necklace
+    '<path d="M60 50 L60 66 L70 66 L70 50 Z" fill="url(#tdVbSkin)"/>' +
+    '<path d="M46 70 Q58 60 74 64 Q80 78 78 94 Q78 108 72 116 L50 116 Q44 100 46 84 Z" fill="url(#tdVbSkin)" stroke="#6B3E1E" stroke-width="1"/>' +
+    '<path d="M64 82 Q70 86 76 82" fill="none" stroke="#6B3E1E" stroke-opacity=".35" stroke-width="1.1"/>' +
+    '<path d="M47 109 H77 V117 H47 Z" fill="url(#tdVbGold)" stroke="#8A5A00" stroke-width=".7"/>' +
+    '<path d="M48 68 C58 72 66 84 76 109 L70 113 C62 93 54 82 46 76 Z" fill="#FACC15" stroke="#CA8A04" stroke-width=".7"/>' +
+    '<path d="M58 67 Q66 78 74 67" fill="none" stroke="#F5C518" stroke-width="2.4"/><circle cx="66" cy="75" r="2.2" fill="#2563EB" stroke="#F5C518" stroke-width=".6"/>' +
+    // pointing at Ravan as he speaks...
+    '<g class="vb-point"><path d="M68 68 L90 64 L112 58.5" fill="none" stroke="url(#tdVbSkin)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M77.6 62.2 L79.2 70.2 M104.3 55.8 L106.5 64.5" stroke="#F5C518" stroke-width="2.6"/>' +
+    '<circle cx="114" cy="58" r="4.6" fill="url(#tdVbSkin)" stroke="#6B3E1E" stroke-width=".7"/>' +
+    '<path d="M117.5 56.4 L127 54" stroke="#C98E5E" stroke-width="2.6" stroke-linecap="round"/></g>' +
+    // ...otherwise his hands folded
+    '<g class="am-fold"><path d="M68 68 L72 92 L86 80" fill="none" stroke="url(#tdVbSkin)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M65.6 80.7 L74.4 79.3" stroke="#F5C518" stroke-width="2.6"/>' +
+    '<path d="M88 66 Q93.5 75 89.5 86 Q84 77 88 66 Z" fill="url(#tdVbSkin)" stroke="#6B3E1E" stroke-width=".8"/></g>' +
+    // head: ear and earring, beard and moustache, lips, eye, nose, tilak, crown
+    '<g class="am-head">' +
+    '<ellipse cx="66" cy="40" rx="14" ry="15.5" fill="url(#tdVbSkin)" stroke="#6B3E1E" stroke-width="1"/>' +
+    '<path d="M52.5 38 C52 30 57 25.5 64 25 L64 31 C59 31.5 56.5 35 56.5 44 Z" fill="#1F1A17"/>' +
+    '<ellipse cx="58.6" cy="42.5" rx="2.8" ry="4" fill="#C98E5E" stroke="#6B3E1E" stroke-width=".7"/>' +
+    '<circle cx="58.6" cy="48.4" r="2.2" fill="#F5C518" stroke="#8A5A00" stroke-width=".5"/>' +
+    '<path d="M56.5 46 Q58 56 68 58.5 Q77 58.5 80 52 Q75 54 70 53 Q62 52 60 44.5 Z" fill="#1F1A17"/>' +
+    '<path d="M73 49.2 Q78 47.2 81.2 49.6 Q78.2 50.8 76 50.2 Q73.5 52 70 51.4 Q72 50.2 73 49.2 Z" fill="#1F1A17"/>' +
+    '<path d="M71 51 Q67 51.4 66 48.2" fill="none" stroke="#1F1A17" stroke-width="1.2" stroke-linecap="round"/>' +
+    '<path d="M73.4 53.6 Q76.5 55.4 79.6 53.4" fill="none" stroke="#C0504D" stroke-width="1.5" stroke-linecap="round"/>' +
+    '<g class="vb-talk"><ellipse class="td-chant-mouth" cx="76.6" cy="54" rx="2.3" ry="1.7" fill="#5B1F0E"/></g>' +
+    '<path d="M70 37.6 Q74 35 78 37.6 Q74 39.6 70 37.6 Z" fill="#fff"/><circle class="am-pupil" cx="75.4" cy="37.5" r="1.4" fill="#1F1A17"/>' +
+    '<path d="M69.5 33.4 Q74 31.4 78.6 33" fill="none" stroke="#1F1A17" stroke-width="1.4" stroke-linecap="round"/>' +
+    '<path d="M79.4 38 Q82.6 43 79.2 45.6" fill="none" stroke="#6B3E1E" stroke-width="1.1" stroke-linecap="round"/>' +
+    '<path d="M71.6 27.5 L72.2 32 M74.6 27.5 L74.2 32" stroke="#FFFFFF" stroke-width="1.1"/><path d="M73.2 28.5 V32.2" stroke="#DC2626" stroke-width="1"/>' +
+    '<path d="M51 27.5 L52.5 20.5 H79.5 L81 27.5 Z" fill="url(#tdVbGold)" stroke="#8A5A00" stroke-width=".8"/>' +
+    '<path d="M54.5 20.5 L57.5 11.5 H74.5 L77.5 20.5 Z" fill="url(#tdVbGold)" stroke="#8A5A00" stroke-width=".8"/>' +
+    '<path d="M60 11.5 L63 4 H69 L72 11.5 Z" fill="url(#tdVbGold)" stroke="#8A5A00" stroke-width=".8"/>' +
+    '<circle cx="66" cy="2" r="2" fill="#F5C518" stroke="#8A5A00" stroke-width=".5"/>' +
+    '<path d="M53.5 24 H78.5" stroke="#DC2626" stroke-width="1.4" stroke-dasharray="1.5 2"/>' +
+    '<ellipse cx="66" cy="16" rx="2.4" ry="3" fill="#2563EB" stroke="#1E3A8A" stroke-width=".6"/>' +
+    '</g></svg>';
+
+  // Hanuman, facing us: saffron-orange, a gold crown, his tail curled up behind him, a red dhoti.
+  // Hands folded, his gada stands beside him; cheering, he raises it overhead.
+  var HANUMAN =
+    '<svg viewBox="0 0 130 180" xmlns="http://www.w3.org/2000/svg"><defs>' +
+    '<linearGradient id="tdHnSkin" gradientUnits="userSpaceOnUse" x1="40" y1="10" x2="90" y2="180"><stop offset="0" stop-color="#FDBA74"/><stop offset="1" stop-color="#E4572E"/></linearGradient>' +
+    '<radialGradient id="tdHnGold" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#FFF7C2"/><stop offset=".55" stop-color="#F5C518"/><stop offset="1" stop-color="#B7791F"/></radialGradient>' +
+    '</defs>' +
+    '<path d="M84 122 C112 126 122 104 114 82 C108 66 116 52 126 54" fill="none" stroke="url(#tdHnSkin)" stroke-width="7" stroke-linecap="round"/>' +
+    '<circle cx="126.5" cy="54" r="4.2" fill="#C2410C"/>' +
+    '<g class="am-fold"><path d="M22 177 L26 112" stroke="#92400E" stroke-width="4" stroke-linecap="round"/>' +
+    '<circle cx="27" cy="101" r="11" fill="url(#tdHnGold)" stroke="#8A5A00" stroke-width="1"/>' +
+    '<path d="M18 101 H36 M27 90 V112 M20 94 Q27 101 20 108 M34 94 Q27 101 34 108" fill="none" stroke="#B7791F" stroke-width="1.1"/>' +
+    '<circle cx="27" cy="88" r="2.6" fill="#F5C518" stroke="#8A5A00" stroke-width=".6"/></g>' +
+    // legs, anklets; the dhoti with a gold border and a gold waistband
+    '<path d="M55 150 L54 172 M76 150 L77 172" stroke="url(#tdHnSkin)" stroke-width="10" stroke-linecap="round"/>' +
+    '<ellipse cx="52" cy="176" rx="8" ry="3.6" fill="#C2410C"/><ellipse cx="79" cy="176" rx="8" ry="3.6" fill="#C2410C"/>' +
+    '<path d="M49 167 H60 M71 167 H82" stroke="#F5C518" stroke-width="2.6" stroke-linecap="round"/>' +
+    '<path d="M42 114 H88 L93 150 Q79 156 66 149 Q53 156 38 150 Z" fill="#DC2626" stroke="#7F1D1D" stroke-width="1"/>' +
+    '<path d="M38 150 Q53 156 66 149 Q79 156 93 150" fill="none" stroke="#F5C518" stroke-width="2.4"/>' +
+    '<path d="M66 121 L66 148" stroke="#7F1D1D" stroke-width="1" opacity=".6"/>' +
+    '<path d="M42 113 H88 V121 H42 Z" fill="#F5C518" stroke="#B7791F" stroke-width=".8"/>' +
+    // a strong chest, sacred thread, necklace
+    '<path d="M40 74 Q65 64 90 74 L86 116 H44 Z" fill="url(#tdHnSkin)" stroke="#9A3412" stroke-width="1"/>' +
+    '<path d="M48 86 Q56 92 64 86 M66 86 Q74 92 82 86 M60 100 H70 M60 107 H70" fill="none" stroke="#9A3412" stroke-opacity=".45" stroke-width="1.2"/>' +
+    '<path d="M46 76 L84 112" stroke="#FFF7ED" stroke-width="1.4"/>' +
+    '<path d="M50 74 Q65 88 80 74" fill="none" stroke="#F5C518" stroke-width="2.6"/><circle cx="65" cy="83" r="2.6" fill="#DC2626" stroke="#F5C518" stroke-width=".8"/>' +
+    '<g class="am-fold"><path d="M43 77 L34 100 L60 92 M87 77 L96 100 L70 92" fill="none" stroke="url(#tdHnSkin)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M34.3 86.9 L42.7 90.1 M87.3 90.1 L95.7 86.9" stroke="#F5C518" stroke-width="2.6"/>' +
+    '<path d="M65 76 Q71 88 65 100 Q59 88 65 76 Z" fill="#FDBA74" stroke="#9A3412" stroke-width=".8"/><path d="M65 79 V98" stroke="#9A3412" stroke-width=".6"/></g>' +
+    '<g class="am-up"><path d="M43 76 L30 56 L22 36 M87 76 L100 56 L106 36" fill="none" stroke="url(#tdHnSkin)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<circle cx="21" cy="33" r="5.5" fill="url(#tdHnSkin)" stroke="#9A3412" stroke-width=".8"/>' +
+    '<path d="M104 40 L114 6" stroke="#92400E" stroke-width="4" stroke-linecap="round"/>' +
+    '<circle cx="115.5" cy="0" r="10" fill="url(#tdHnGold)" stroke="#8A5A00" stroke-width="1"/>' +
+    '<circle cx="106" cy="34" r="5.5" fill="url(#tdHnSkin)" stroke="#9A3412" stroke-width=".8"/></g>' +
+    // head: ears, a pale face round the eyes and muzzle, a sindoor tilak, a jewelled crown
+    '<g class="am-head">' +
+    '<circle cx="45" cy="46" r="7" fill="url(#tdHnSkin)"/><circle cx="85" cy="46" r="7" fill="url(#tdHnSkin)"/>' +
+    '<circle cx="45" cy="46" r="3.8" fill="#FBD5B0"/><circle cx="85" cy="46" r="3.8" fill="#FBD5B0"/>' +
+    '<circle cx="65" cy="44" r="19" fill="url(#tdHnSkin)" stroke="#9A3412" stroke-width="1"/>' +
+    '<path d="M65 36 Q52 29 49 41 Q48 53 56 60 Q65 66 74 60 Q82 53 81 41 Q78 29 65 36 Z" fill="#FDE7C8"/>' +
+    '<ellipse cx="58" cy="44" rx="3.8" ry="4.2" fill="#fff"/><ellipse cx="72" cy="44" rx="3.8" ry="4.2" fill="#fff"/>' +
+    '<circle class="am-pupil" cx="58.4" cy="44.6" r="2" fill="#1F1A17"/><circle class="am-pupil" cx="71.6" cy="44.6" r="2" fill="#1F1A17"/>' +
+    '<path d="M53 38 Q58 35 62 38 M68 38 Q72 35 77 38" fill="none" stroke="#7C2D12" stroke-width="1.4" stroke-linecap="round"/>' +
+    '<ellipse cx="65" cy="56" rx="10" ry="7" fill="#FFF1E0" stroke="#E8A87C" stroke-width=".8"/>' +
+    '<circle cx="62.5" cy="52.5" r="1" fill="#7C2D12"/><circle cx="67.5" cy="52.5" r="1" fill="#7C2D12"/>' +
+    '<path d="M58.5 57 Q65 63.5 71.5 57" fill="none" stroke="#7C2D12" stroke-width="1.4" stroke-linecap="round"/>' +
+    '<path d="M65 32 V37.5" stroke="#DC2626" stroke-width="2.2" stroke-linecap="round"/>' +
+    '<path d="M47 29 L51 14 L57.5 21 L65 5 L72.5 21 L79 14 L83 29 Z" fill="url(#tdHnGold)" stroke="#8A5A00" stroke-width=".9"/>' +
+    '<path d="M47 27 H83 V31 H47 Z" fill="#F5C518" stroke="#8A5A00" stroke-width=".7"/>' +
+    '<circle cx="65" cy="20" r="2.4" fill="#DC2626"/><circle cx="51.5" cy="22" r="1.3" fill="#16A34A"/><circle cx="78.5" cy="22" r="1.3" fill="#16A34A"/>' +
+    '<circle cx="45" cy="54" r="2.4" fill="#F5C518" stroke="#8A5A00" stroke-width=".5"/><circle cx="85" cy="54" r="2.4" fill="#F5C518" stroke="#8A5A00" stroke-width=".5"/>' +
+    '</g></svg>';
+
+  // A vanar of the sena: smaller, its fur and loincloth coloured per monkey.
+  function vanar(fur, cloth) {
+    return '<svg viewBox="0 0 80 110" xmlns="http://www.w3.org/2000/svg">' +
+      '<path d="M52 84 C70 86 76 68 70 56 C66 48 72 40 78 42" fill="none" stroke="' + fur + '" stroke-width="5" stroke-linecap="round"/>' +
+      '<path d="M34 92 L33 105 M46 92 L47 105" stroke="' + fur + '" stroke-width="7" stroke-linecap="round"/>' +
+      '<ellipse cx="32" cy="107" rx="5.5" ry="2.6" fill="#5B3410"/><ellipse cx="48" cy="107" rx="5.5" ry="2.6" fill="#5B3410"/>' +
+      '<path d="M27 52 Q40 46 53 52 L51 84 H29 Z" fill="' + fur + '" stroke="#3F2408" stroke-width=".8"/>' +
+      '<ellipse cx="40" cy="70" rx="8" ry="10" fill="#E9C79A"/>' +
+      '<path d="M27 80 H53 L55 94 Q40 99 25 94 Z" fill="' + cloth + '" stroke="#3F2408" stroke-width=".7"/>' +
+      '<g class="am-fold"><path d="M29 56 L23 72 L38 66 M51 56 L57 72 L42 66" fill="none" stroke="' + fur + '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M40 56 Q44 63 40 71 Q36 63 40 56 Z" fill="#E9C79A" stroke="#3F2408" stroke-width=".6"/></g>' +
+      '<g class="am-up"><path d="M29 55 L22 40 L18 28 M51 55 L58 40 L62 28" fill="none" stroke="' + fur + '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<circle cx="17.5" cy="26" r="3.6" fill="#E9C79A"/><circle cx="62.5" cy="26" r="3.6" fill="#E9C79A"/></g>' +
+      '<g class="am-head">' +
+      '<circle cx="27" cy="30" r="5.5" fill="' + fur + '"/><circle cx="53" cy="30" r="5.5" fill="' + fur + '"/>' +
+      '<circle cx="27" cy="30" r="2.8" fill="#E9C79A"/><circle cx="53" cy="30" r="2.8" fill="#E9C79A"/>' +
+      '<circle cx="40" cy="29" r="13" fill="' + fur + '" stroke="#3F2408" stroke-width=".8"/>' +
+      '<path d="M37 16 Q40 11 43 16" fill="none" stroke="' + fur + '" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M40 23 Q31 19 29.5 29 Q29.5 39 40 42 Q50.5 39 50.5 29 Q49 19 40 23 Z" fill="#E9C79A"/>' +
+      '<ellipse cx="35.5" cy="28.5" rx="2.6" ry="2.9" fill="#fff"/><ellipse cx="44.5" cy="28.5" rx="2.6" ry="2.9" fill="#fff"/>' +
+      '<circle class="am-pupil" cx="35.8" cy="29" r="1.4" fill="#1F1A17"/><circle class="am-pupil" cx="44.2" cy="29" r="1.4" fill="#1F1A17"/>' +
+      '<ellipse cx="40" cy="36.5" rx="6.5" ry="4.5" fill="#F5DDBA" stroke="#C9A06E" stroke-width=".6"/>' +
+      '<circle cx="38.4" cy="34.6" r=".7" fill="#3F2408"/><circle cx="41.6" cy="34.6" r=".7" fill="#3F2408"/>' +
+      '<path d="M36 37.5 Q40 41 44 37.5" fill="none" stroke="#3F2408" stroke-width="1" stroke-linecap="round"/>' +
+      '</g></svg>';
+  }
+
+  // The Pushpak Viman: a golden flying chariot on clouds, with a swan prow, a canopy hung with
+  // marigolds and a domed roof flying a saffron flag. Lakshman (left) and Sita (right) are aboard;
+  // Ram's seat in the middle (pv-ram) fills when he boards.
+  var PUSHPAK = (function () {
+    var i, x, s = '<svg viewBox="0 0 260 200" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<linearGradient id="tdPvGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF3B0"/><stop offset=".5" stop-color="#F5C518"/><stop offset="1" stop-color="#C98A06"/></linearGradient>' +
+      '<linearGradient id="tdPvHull" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FDE68A"/><stop offset=".55" stop-color="#F59E0B"/><stop offset="1" stop-color="#B45309"/></linearGradient>' +
+      '<linearGradient id="tdPvRam" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A5D4F7"/><stop offset="1" stop-color="#4A8CCB"/></linearGradient>' +
+      '<radialGradient id="tdPvGlow"><stop offset="0" stop-color="#FFF3B0" stop-opacity=".75"/><stop offset="1" stop-color="#FFD54F" stop-opacity="0"/></radialGradient>' +
+      '<radialGradient id="tdPvHalo"><stop offset="0" stop-color="#FFF6D5"/><stop offset=".6" stop-color="#FFD54F" stop-opacity=".7"/><stop offset="1" stop-color="#FFB300" stop-opacity="0"/></radialGradient>' +
+      '</defs><ellipse cx="130" cy="100" rx="132" ry="92" fill="url(#tdPvGlow)"/>';
+    // pillars between the seats, with marigolds swung between them
+    [50, 104, 156, 210].forEach(function (px) {
+      s += '<rect x="' + (px - 2.5) + '" y="40" width="5" height="72" fill="url(#tdPvGold)" stroke="#8A5A00" stroke-width=".6"/>';
+    });
+    s += '<path d="M53 51 Q77 59 101 51 M107 51 Q130 59 153 51 M159 51 Q183 59 207 51" fill="none" stroke="#F59E0B" stroke-width="3.6" stroke-dasharray="0.1 4" stroke-linecap="round"/>';
+    // Lakshman: fair, his bow over his shoulder, a saffron sash
+    s += '<path d="M64 60 Q50 92 62 124" fill="none" stroke="#7C2D12" stroke-width="2.6" stroke-linecap="round"/>' +
+      '<path d="M67 74 Q64 92 66 104 H90 Q92 92 89 74 Z" fill="#1F2A44"/>' +
+      '<path d="M60 126 Q60 100 78 98 Q96 100 96 126 Z" fill="#F2C29A" stroke="#B7791F" stroke-width=".8"/>' +
+      '<path d="M62 104 Q74 108 94 122 L92 126 Q76 114 61 110 Z" fill="#F59E0B"/>' +
+      '<rect x="74" y="88" width="8" height="12" fill="#F2C29A"/>' +
+      '<ellipse cx="78" cy="80" rx="11" ry="12" fill="#F6CFA8" stroke="#B7791F" stroke-width=".8"/>' +
+      '<path d="M67 77 Q68 66 78 66 Q88 66 89 77 Q84 70 78 70 Q72 70 67 77 Z" fill="#1F2A44"/>' +
+      '<ellipse cx="78" cy="63" rx="7" ry="5.5" fill="#1F2A44"/><path d="M72 66 Q78 69 84 66" stroke="#EA580C" stroke-width="2" fill="none"/>' +
+      '<path d="M73 79.5 Q74.5 77.8 76 79.5 M80 79.5 Q81.5 77.8 83 79.5" fill="none" stroke="#1F2A44" stroke-width="1.2" stroke-linecap="round"/>' +
+      '<path d="M74.5 85.5 Q78 88.2 81.5 85.5" fill="none" stroke="#9F1239" stroke-width="1.1" stroke-linecap="round"/>' +
+      '<path d="M76.6 71.5 L77.3 75.5 Q78 76.4 78.7 75.5 L79.4 71.5" fill="none" stroke="#F97316" stroke-width="1"/>' +
+      '<circle cx="66.8" cy="84" r="1.8" fill="#F5C518"/><circle cx="89.2" cy="84" r="1.8" fill="#F5C518"/>';
+    // Ram, haloed, blue, a rudraksha mala, the same saffron sash
+    s += '<g class="pv-ram"><circle cx="130" cy="79" r="20" fill="url(#tdPvHalo)"/>' +
+      '<path d="M116 60 Q102 92 114 124" fill="none" stroke="#7C2D12" stroke-width="2.6" stroke-linecap="round"/>' +
+      '<path d="M119 74 Q116 92 118 104 H142 Q144 92 141 74 Z" fill="#1F2A44"/>' +
+      '<path d="M112 126 Q112 100 130 98 Q148 100 148 126 Z" fill="url(#tdPvRam)" stroke="#1E3F73" stroke-width=".8"/>' +
+      '<path d="M114 104 Q126 108 146 122 L144 126 Q128 114 113 110 Z" fill="#F97316"/>' +
+      '<path d="M121 100 Q130 112 139 100" fill="none" stroke="#78350F" stroke-width="2.4" stroke-dasharray="0.1 3" stroke-linecap="round"/>' +
+      '<rect x="126" y="88" width="8" height="12" fill="#7FB5E6"/>' +
+      '<ellipse cx="130" cy="80" rx="11" ry="12" fill="url(#tdPvRam)" stroke="#1E3F73" stroke-width=".8"/>' +
+      '<path d="M119 77 Q120 66 130 66 Q140 66 141 77 Q136 70 130 70 Q124 70 119 77 Z" fill="#1F2A44"/>' +
+      '<ellipse cx="130" cy="63" rx="7" ry="5.5" fill="#1F2A44"/><path d="M124 66 Q130 69 136 66" stroke="#EA580C" stroke-width="2" fill="none"/>' +
+      '<path d="M125 79.5 Q126.5 77.8 128 79.5 M132 79.5 Q133.5 77.8 135 79.5" fill="none" stroke="#111827" stroke-width="1.2" stroke-linecap="round"/>' +
+      '<path d="M126.5 85.5 Q130 88.2 133.5 85.5" fill="none" stroke="#7F1D1D" stroke-width="1.1" stroke-linecap="round"/>' +
+      '<path d="M128.6 71.5 L129.3 75.5 Q130 76.4 130.7 75.5 L131.4 71.5" fill="none" stroke="#F97316" stroke-width="1"/><path d="M130 72 V75.2" stroke="#DC2626" stroke-width=".7"/>' +
+      '<circle cx="118.8" cy="84" r="1.8" fill="#F5C518"/><circle cx="141.2" cy="84" r="1.8" fill="#F5C518"/></g>';
+    // Sita: a red sari, its pallu over her head, a small gold crown, sindoor and a bindi, a nose ring
+    s += '<path d="M163 126 Q161 84 182 64 Q203 84 201 126 Z" fill="#DC2626" stroke="#F5C518" stroke-width="1.6"/>' +
+      '<path d="M166 126 Q166 102 182 99 Q198 102 198 126 Z" fill="#B91C1C" stroke="#F5C518" stroke-width="1.2"/>' +
+      '<rect x="178.5" y="89" width="7" height="11" fill="#F8D5B5"/>' +
+      '<path d="M176 99 Q182 106 188 99" fill="none" stroke="#F5C518" stroke-width="1.8"/>' +
+      '<ellipse cx="182" cy="81" rx="10" ry="11.5" fill="#F9D9BE" stroke="#C08457" stroke-width=".7"/>' +
+      '<path d="M172.5 78 Q173.5 69 182 68.5 Q190.5 69 191.5 78 Q187 72.5 182 72.5 Q177 72.5 172.5 78 Z" fill="#1F1A17"/>' +
+      '<path d="M182 68.8 V72.4" stroke="#DC2626" stroke-width="1.1"/>' +
+      '<path d="M171 70 L174 61 L178.5 65.5 L182 58.5 L185.5 65.5 L190 61 L193 70 Z" fill="url(#tdPvGold)" stroke="#8A5A00" stroke-width=".7"/>' +
+      '<circle cx="182" cy="64.6" r="1.5" fill="#DC2626"/><circle cx="182" cy="75.6" r="1.2" fill="#DC2626"/>' +
+      '<path d="M177 80.5 Q178.5 78.8 180 80.5 M184 80.5 Q185.5 78.8 187 80.5" fill="none" stroke="#1F1A17" stroke-width="1.2" stroke-linecap="round"/>' +
+      '<path d="M178.6 86.6 Q182 89 185.4 86.6" fill="none" stroke="#BE123C" stroke-width="1.3" stroke-linecap="round"/>' +
+      '<circle cx="184.6" cy="84.4" r="1" fill="none" stroke="#F5C518" stroke-width=".6"/>' +
+      '<path d="M172 86 v3 M192 86 v3" stroke="#F5C518" stroke-width="1.6" stroke-linecap="round"/>';
+    // the roof: a dome flying a flag and two small domes, on a canopy edged with a red valance
+    s += '<path d="M98 33 Q98 9 130 3 Q162 9 162 33 Z" fill="url(#tdPvGold)" stroke="#8A5A00" stroke-width=".9"/>' +
+      '<path d="M130 3 L110 33 M130 3 L120 33 M130 3 L140 33 M130 3 L150 33" stroke="#C98A06" stroke-width=".8"/>' +
+      '<path d="M36 33 Q36 22 46 20 Q56 22 56 33 Z M204 33 Q204 22 214 20 Q224 22 224 33 Z" fill="url(#tdPvGold)" stroke="#8A5A00" stroke-width=".8"/>' +
+      '<path d="M130 -2 V-22" stroke="#8A5A00" stroke-width="1.4"/><path d="M130 -22 L147 -17 L130 -12 Z" fill="#F97316"/>' +
+      '<circle cx="130" cy="0" r="3.6" fill="#F5C518" stroke="#8A5A00" stroke-width=".6"/>' +
+      '<path d="M28 44 H232 L224 32 H36 Z" fill="url(#tdPvGold)" stroke="#8A5A00" stroke-width=".8"/><path d="M30 44 V46.5';
+    for (i = 0; i < 16; i++) s += ' a6.25 4 0 0 0 12.5 0';
+    s += ' V44 Z" fill="#B91C1C" stroke="#F5C518" stroke-width="1"/>';
+    // the railing in front of the seats, then the hull with a red band and a row of lotuses
+    s += '<path d="M32 112 H226" stroke="#C98A06" stroke-width="3.4" stroke-linecap="round"/><path d="';
+    for (x = 38; x <= 222; x += 10) s += 'M' + x + ' 113 V127 ';
+    s += '" stroke="#F5C518" stroke-width="2.4"/>' +
+      '<path d="M18 126 H240 Q232 160 196 168 H62 Q26 160 18 126 Z" fill="url(#tdPvHull)" stroke="#92400E" stroke-width="1.2"/>' +
+      '<path d="M24 136 H234" stroke="#B91C1C" stroke-width="2.6"/><path d="M30 129.5 H228" stroke="#FFF7C2" stroke-width="1.2" stroke-opacity=".8"/>';
+    for (i = 0; i < 7; i++) {
+      x = 60 + i * 23;
+      s += '<path d="M' + (x - 6) + ' 153 Q' + (x - 3) + ' 146 ' + x + ' 144 Q' + (x + 3) + ' 146 ' + (x + 6) + ' 153 Q' + x + ' 156 ' + (x - 6) + ' 153 Z" fill="#F9A8D4" stroke="#BE185D" stroke-width=".6"/>';
+    }
+    // a swan's neck and head at the prow, a gold curl at the stern
+    var neck = 'M232 130 C250 124 254 106 247 94 C242 85 249 75 259 77';
+    s += '<path d="' + neck + '" fill="none" stroke="#C98A06" stroke-width="8.5" stroke-linecap="round"/>' +
+      '<path d="' + neck + '" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>' +
+      '<circle cx="259" cy="77" r="5.5" fill="#FFFFFF" stroke="#C98A06" stroke-width="1"/>' +
+      '<path d="M263.5 75 L273 78 L263.5 80.5 Z" fill="#F97316"/><circle cx="260.5" cy="75.5" r="1" fill="#111827"/>' +
+      '<path d="M20 128 C8 120 6 102 16 96 C24 92 30 102 22 106" fill="none" stroke="#C98A06" stroke-width="5" stroke-linecap="round"/>';
+    // the clouds it rides on: a bank of overlapping puffs on a flat base, shaded blue underneath
+    var puffs = [[48, 182, 11], [68, 177, 14], [91, 183, 15], [114, 176, 16], [138, 183, 16], [161, 177, 15], [184, 183, 14], [206, 178, 12]];
+    s += '<g fill="#DBEAFE"><ellipse cx="127" cy="192" rx="88" ry="9"/>';
+    puffs.forEach(function (c) { s += '<circle cx="' + c[0] + '" cy="' + (c[1] + 3) + '" r="' + c[2] + '"/>'; });
+    s += '</g><g fill="#FFFFFF"><ellipse cx="127" cy="189" rx="86" ry="8"/>';
+    puffs.forEach(function (c) { s += '<circle cx="' + c[0] + '" cy="' + c[1] + '" r="' + c[2] + '"/>'; });
+    return s + '</g></svg>';
+  })();
+
   // The five weapons, in the order Ram looses them. Each is drawn pointing right, its point at `tip`
   // (px; the chakra's is its centre), `w` px long. It flies at `speed` px/s, turning at up to `turn`
   // rad/s towards its mark (Ravan's navel, or his heads for the chakra), and leaves the bow aimed
@@ -294,6 +537,9 @@ ThemeDecor.register('dussehra', function (d) {
   var dead = false, celebrate = false, label = null, rocketIn = 0;
   var burn = null;     // { until, x } while Ravan is burning
   var invoking = null; // the astra being invoked: light pours down onto the raised arrow's tip
+  var vibEl = null;    // Vibhishan, from his advice to the end of the round
+  var vimEl = null, vimTrail = false; // the Pushpak Viman, and whether it is trailing sparkles
+  var boardAnim = null; // Ram rising into the Pushpak Viman; cancelled when he is back in his place
   var timers = [], shots = [], shotRaf = 0, shotLast = 0;
   var parts = [], fire = [], smoke = [], debris = [], rings = [], flashes = [], rockets = [], bolts = [];
   var CRACKER = ['#FFB300', '#FF7043', '#FFD54F', '#EF5350', '#FFFFFF', '#FF9800'];
@@ -632,6 +878,84 @@ ThemeDecor.register('dussehra', function (d) {
     setPose('aim');
   }
 
+  // After the chakra, Vibhishan comes to Ram's side (his right, or his left if there is no room),
+  // kneels, points at Ravan and tells him where his life lies. Placed from where Ram is now, since
+  // Ram may have been dragged anywhere.
+  async function advise() {
+    var r = ramEl.getBoundingClientRect(), W = d.layer.clientWidth;
+    vibEl = d.svg(VIBHISHAN, 'td-vibhishan');
+    var w = vibEl.offsetWidth, h = w * 170 / 160, left = r.right + 4;
+    if (left + w > W - 8) left = Math.max(0, r.left - w - 4);
+    vibEl.style.left = Math.round(left) + 'px';
+    vibEl.style.top = Math.round(r.bottom - h) + 'px';
+    await wait(700); if (dead) return;
+    vibEl.classList.add('vb-talking');
+    var b = document.createElement('div');
+    b.className = 'td-say';
+    b.innerHTML = '<b></b><span></span>';
+    b.firstChild.textContent = 'हे प्रभु!\nइसकी नाभि में बाण मारिए';
+    b.lastChild.textContent = 'Vibhishan';
+    vibEl.appendChild(b);
+    await wait(2800); if (dead) return;
+    b.classList.add('td-say-out');
+    timers.push(setTimeout(function () { b.remove(); }, 400));
+    vibEl.classList.remove('vb-talking');
+    await wait(400);
+  }
+
+  // Hanuman with the vanar sena around him, springing up along the foot of the page, cheering.
+  var SENA = [{ dx: -238, w: 56, fur: '#8D5524', cloth: '#DC2626' }, { dx: -146, w: 64, fur: '#A0652D', cloth: '#F59E0B' },
+              { dx: 146, w: 64, fur: '#7C4A1E', cloth: '#16A34A' }, { dx: 238, w: 56, fur: '#9A5B2A', cloth: '#7C3AED' }];
+  function vanarSena() {
+    var cx = d.layer.clientWidth / 2, out = [d.svg(HANUMAN, 'td-army td-hanuman am-cheer')];
+    out[0].style.left = Math.round(cx - out[0].offsetWidth / 2) + 'px';
+    SENA.forEach(function (v, i) {
+      var el = d.svg(vanar(v.fur, v.cloth), 'td-army td-vanar am-cheer');
+      el.style.width = v.w + 'px';
+      el.style.left = Math.round(cx + v.dx - v.w / 2) + 'px';
+      el.style.animationDelay = (0.08 * (i + 1)) + 's';
+      out.push(el);
+    });
+    return out;
+  }
+
+  // The Pushpak Viman flies in from the top-left to hover just over Ram (clear of the sidebar), Sita
+  // and Lakshman aboard; he rises into his seat; then it flies off over the top-right of the page.
+  function pushpak() {
+    var r = ramEl.getBoundingClientRect(), W = d.layer.clientWidth;
+    vimEl = d.svg(PUSHPAK, 'td-vimana');
+    vimEl.style.left = '0px'; vimEl.style.top = '0px';
+    var w = vimEl.offsetWidth, h = w * 200 / 260;
+    var pv = { el: vimEl, w: w, h: h, x: Math.max(64, Math.min(W - w - 8, r.left + r.width * 0.425 - w / 2)), y: Math.max(28, r.top - h - 6) };
+    vimEl.animate([
+      { transform: 'translate(' + (-w - 40) + 'px,' + (-h - 60) + 'px) scale(.6)' },
+      { transform: 'translate(' + pv.x + 'px,' + pv.y + 'px) scale(1)' }
+    ], { duration: 1700, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' });
+    vimTrail = true;
+    return pv;
+  }
+  function board(pv) {
+    boardAnim = ramEl.animate([{ transform: 'translateY(0)', opacity: 1 }, { transform: 'translateY(-70px)', opacity: 0 }],
+                              { duration: 600, easing: 'ease-in', fill: 'forwards' });
+    timers.push(setTimeout(function () {
+      pv.el.classList.add('pv-full');
+      spray(pv.x + pv.w * 0.5, pv.y + pv.h * 0.42, 40, ['#FFD54F', '#FFFFFF', '#FDE68A', '#93C5FD'], [40, 160], 60);
+    }, 350));
+  }
+  function depart(pv) {
+    var W = d.layer.clientWidth;
+    pv.el.animate([
+      { transform: 'translate(' + pv.x + 'px,' + pv.y + 'px) scale(1)' },
+      { transform: 'translate(' + (pv.x + 70) + 'px,' + (pv.y - 60) + 'px) scale(.95)', offset: 0.25 },
+      { transform: 'translate(' + (W + 40) + 'px,' + (-pv.h - 120) + 'px) scale(.5)' }
+    ], { duration: 4200, easing: 'ease-in', fill: 'forwards' });
+  }
+  // Ram back in his place for the next round.
+  function ramReturns() {
+    if (boardAnim) { boardAnim.cancel(); boardAnim = null; }
+    ramEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 500, easing: 'ease-out' });
+  }
+
   // Anchored to the layer's right/bottom (as Ravan is), measured from the layer itself so a page
   // scrollbar does not shift it off his spot.
   function showLabel(center) {
@@ -688,6 +1012,7 @@ ThemeDecor.register('dussehra', function (d) {
     for (var i = 0; i < ASTRAS.length; i++) {
       a = ASTRAS[i];
       if (i) { await whenClear(500); if (dead) return; }
+      if (a.key === 'brahma') { await advise(); if (dead) return; } // Vibhishan: "strike at his navel"
       if (a.mantra) { await invoke(a); if (dead) return; }
       await turnTo(aimAngle(a) + a.loft, a.mantra ? 420 : 320); if (dead) return;
       await wait(140); if (dead) return;
@@ -722,16 +1047,39 @@ ThemeDecor.register('dussehra', function (d) {
     await wait(800); if (dead) return;
     ravEl.style.display = 'none';
 
-    // 7. Victory, then five seconds of crackers before Ravan rises for the next round.
+    // 7. Everyone rejoices for a few seconds: Ram, Vibhishan, and Hanuman with the vanar sena, who
+    //    spring up along the foot of the page; "Happy Dussehra" where Ravan stood, crackers above.
     await wait(300); if (dead) return;
     setBow(ramEl, true);
     ramEl.classList.remove('td-joy'); ramEl.classList.add('td-win');
     showLabel(spot);
     celebrate = true; rocketIn = 0.3;
-    await wait(5000); if (dead) return;
-    celebrate = false;
-    hideLabel();
+    if (vibEl) vibEl.classList.add('vb-joy');
+    var below = vanarSena();
+    if (vibEl) below.push(vibEl);
+    await wait(2800); if (dead) return;
+
+    // 8. The Pushpak Viman comes for Ram, Sita and Lakshman aboard. He takes his seat and they fly
+    //    away, while Hanuman, the vanar sena and Vibhishan watch them go with folded hands.
+    below.forEach(function (el) { el.classList.remove('am-cheer', 'vb-joy'); });
     ramEl.classList.remove('td-win');
+    var pv = pushpak();
+    await wait(1700); if (dead) return;
+    board(pv);
+    await wait(800); if (dead) return;
+    below.forEach(function (el) { el.classList.add('am-look'); });
+    depart(pv);
+    await wait(4300); if (dead) return;
+
+    // 9. They are gone. Everyone below bows out, Ram is back in his place, and Ravan rises again.
+    celebrate = false; vimTrail = false;
+    hideLabel();
+    pv.el.remove(); vimEl = null;
+    below.forEach(function (el) { el.classList.add('td-gone'); });
+    timers.push(setTimeout(function () { below.forEach(function (el) { el.remove(); }); }, 1000));
+    vibEl = null;
+    await wait(600); if (dead) return;
+    ramReturns();
     setPose('aim'); setAng(0);
     [].forEach.call(ravEl.querySelectorAll('.td-lodged, .td-coil'), function (x) { x.remove(); });
     ravEl.style.display = '';
@@ -776,6 +1124,15 @@ ThemeDecor.register('dussehra', function (d) {
         var an = d.rand(0, 6.2832), rad = d.rand(45, big ? 120 : 80), T = d.rand(0.35, 0.55);
         var sx = tp.x + Math.cos(an) * rad, sy = tp.y + Math.sin(an) * rad;
         parts.push({ x: sx, y: sy, vx: (tp.x - sx) / T, vy: (tp.y - sy) / T, g: 0, drag: 1, r: d.rand(1.2, 2.4), life: 1, decay: 1 / T, c: d.pick(invoking.trail) });
+      }
+    }
+
+    // golden sparkles streaming from under the Pushpak Viman as it flies
+    if (vimTrail && vimEl) {
+      var vr = vimEl.getBoundingClientRect();
+      for (var vn = 40 * dt, vk = Math.floor(vn) + (Math.random() < vn % 1 ? 1 : 0); vk > 0 && parts.length < 900; vk--) {
+        parts.push({ x: vr.left + vr.width * d.rand(0.1, 0.6), y: vr.top + vr.height * d.rand(0.8, 0.95), vx: d.rand(-40, 0), vy: d.rand(10, 40),
+                     g: 20, drag: 0.96, r: d.rand(1.2, 2.6), life: 1, decay: d.rand(0.9, 1.6), c: d.pick(['#FFD54F', '#FFFFFF', '#FFB300', '#FDE68A']) });
       }
     }
 
@@ -873,7 +1230,7 @@ ThemeDecor.register('dussehra', function (d) {
       if (p.y <= p.ty) { blast(p.x, p.y); rockets.splice(i, 1); }
     }
 
-    return !!(invoking || shots.length || bolts.length || parts.length || fire.length || smoke.length || debris.length ||
+    return !!(invoking || vimTrail || shots.length || bolts.length || parts.length || fire.length || smoke.length || debris.length ||
               rings.length || flashes.length || rockets.length || burn);
   }
 

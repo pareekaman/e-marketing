@@ -147,6 +147,58 @@
 .td-glare { position:absolute; inset:0; z-index:2; pointer-events:none; animation:td-glare .95s ease-out forwards; }
 @keyframes td-glare { 0% { opacity:0; } 14% { opacity:1; } 100% { opacity:0; } }
 
+/* The rest of the cast, from the chakra to the end of the round. Arm poses inside each figure:
+   am-fold (hands folded, the default) and am-up (arms raised, shown with am-cheer); am-look turns
+   the head (am-head) and eyes (am-pupil) after the Pushpak Viman as it goes; td-gone takes them away. */
+.am-head { transform-box:fill-box; transform-origin:50% 90%; }
+@keyframes td-hop-joy { from { transform:translateY(0); } to { transform:translateY(-10px); } }
+/* Vibhishan kneels at Ram's side: while he speaks (vb-talking) he points at Ravan, lips moving.
+   He steps aside with Ram when the sidebar opens. */
+.td-vibhishan { width:100px; transition:translate .3s var(--ease); animation:td-vb-in .6s ease-out both;
+  filter:drop-shadow(0 0 6px rgba(59,130,246,.45)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+.sidebar:hover ~ #themeDecor .td-vibhishan { translate:172px 0; }
+@keyframes td-vb-in { from { opacity:0; transform:translateX(-26px); } to { opacity:1; transform:none; } }
+.td-vibhishan .vb-point, .td-vibhishan .vb-talk { display:none; }
+.td-vibhishan.vb-talking .vb-point, .td-vibhishan.vb-talking .vb-talk { display:inline; }
+.td-vibhishan.vb-talking .am-fold { display:none; }
+.td-vibhishan.vb-joy svg { animation:td-hop-joy .4s cubic-bezier(.3,.7,.4,1) 6 alternate; }
+.td-vibhishan.am-look .am-head { animation:td-look-up .8s ease-out forwards; }
+.td-vibhishan.am-look .am-pupil { animation:td-look-eye .8s ease-out forwards; }
+@keyframes td-look-up { to { transform:rotate(-12deg); } }
+@keyframes td-look-eye { to { transform:translate(.6px,-1.2px); } }
+.td-vibhishan.td-gone { animation:td-vb-out .6s ease-in forwards; }
+@keyframes td-vb-out { to { opacity:0; transform:translateY(12px); } }
+/* his words, in a bubble over his head pointing down at his mouth (Devanagari: a system font) */
+.td-say { position:absolute; left:30%; bottom:calc(100% + 8px); z-index:3; pointer-events:none; white-space:nowrap; text-align:center;
+  padding:6px 12px 5px; border-radius:14px; background:linear-gradient(180deg,#FFFBEB,#FEF3C7);
+  box-shadow:0 0 0 1.5px #2563EB, 0 0 14px -2px rgba(37,99,235,.6), 0 8px 18px -8px rgba(0,0,0,.4);
+  transform-origin:18px 100%; animation:td-m-in .45s cubic-bezier(.34,1.56,.64,1) both; }
+.td-say b { display:block; white-space:pre; font:700 14px/1.4 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif; color:#1E3A8A; }
+.td-say span { display:block; font:700 9.5px/1.2 'Inter',sans-serif; letter-spacing:.6px; text-transform:uppercase; color:#1E3A8A; opacity:.7; }
+.td-say::after { content:''; position:absolute; left:14px; bottom:-6px; width:11px; height:11px; background:#FEF3C7;
+  transform:rotate(45deg); box-shadow:1.5px 1.5px 0 0 #2563EB; }
+.td-say.td-say-out { animation:td-m-out .35s ease-in forwards; }
+/* Hanuman and the vanar sena along the foot of the page; each one's delay is set inline */
+.td-army { bottom:0; animation:td-army-in .6s cubic-bezier(.34,1.56,.64,1) both; filter:drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+.td-hanuman { width:116px; filter:drop-shadow(0 0 8px rgba(249,115,22,.55)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+@keyframes td-army-in { from { transform:translateY(105%); } to { transform:translateY(0); } }
+.td-army .am-up { display:none; }
+.td-army.am-cheer .am-up { display:inline; }
+.td-army.am-cheer .am-fold { display:none; }
+.td-army.am-cheer svg { animation:td-hop-joy .4s cubic-bezier(.3,.7,.4,1) infinite alternate; }
+.td-army.am-look .am-head { animation:td-follow 4.3s ease-in-out forwards; }
+.td-army.am-look .am-pupil { animation:td-follow-eye 4.3s ease-in-out forwards; }
+@keyframes td-follow { from { transform:rotate(-9deg); } to { transform:rotate(9deg); } }
+@keyframes td-follow-eye { from { transform:translate(-1.2px,-1.6px); } to { transform:translate(1.2px,-1.6px); } }
+.td-army.td-gone { animation:td-army-out .6s ease-in forwards; }
+@keyframes td-army-out { to { transform:translateY(105%); opacity:0; } }
+/* the Pushpak Viman, bobbing on its clouds; Ram's seat fills when he boards (pv-full) */
+.td-vimana { width:230px; z-index:2; filter:drop-shadow(0 0 14px rgba(255,214,102,.75)) drop-shadow(0 6px 10px rgba(0,0,0,.22)); }
+.td-vimana svg { animation:td-pv-bob 1.4s ease-in-out infinite alternate; }
+@keyframes td-pv-bob { from { transform:translateY(-3px); } to { transform:translateY(3px); } }
+.td-vimana .pv-ram { opacity:0; transition:opacity .5s ease-out; }
+.td-vimana.pv-full .pv-ram { opacity:1; }
+
 /* Dussehra skin: the evening of Vijayadashami across the whole UI. Only under data-theme="dussehra". */
 /* a sunset glow over the top of the page */
 :root[data-theme="dussehra"] body {
