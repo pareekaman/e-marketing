@@ -1,0 +1,77 @@
+/* Makar Sankranti — the clear winter sky full of kites and the warm orange of the sun turning north. */
+:root[data-theme="sankranti"] {
+  --brand-1:#FDBA74; --brand-2:#F97316; --brand-2-rgb:249,115,22;
+  --accent:#0369A1; --accent-dark:#0C4A6E; --accent-light:#0EA5E9;
+  --accent-rgb:3,105,161; --accent-light-rgb:14,165,233;
+  --page-bg:#F2F9FF; --sidebar-top:#0C4A6E; --sidebar-bottom:#082F49;
+}
+
+/* Decoration (js/themes/sankranti.js): the boy flying his kite bottom-left, the laddoos and the sun
+   bottom-right, the greeting above the boy, and the kite-fight cry where a kite is cut. */
+.sk-boy { left:70px; bottom:0; width:130px; transition:translate .3s var(--ease); filter:drop-shadow(0 4px 5px rgba(0,0,0,.2)); }
+.sk-pull { transform-box:view-box; transform-origin:78px 68px; animation:sk-pull 1.6s ease-in-out infinite alternate; }
+@keyframes sk-pull { from { transform:rotate(0); } to { transform:rotate(-5deg); } }
+.sk-charkhi { transform-box:fill-box; transform-origin:center; animation:sk-spin 1.2s linear infinite; }
+@keyframes sk-spin { to { transform:rotate(360deg); } }
+.sk-laddoo { right:100px; bottom:0; width:170px; transition:translate .3s var(--ease); filter:drop-shadow(0 4px 5px rgba(0,0,0,.2)); }
+.sk-laddoo svg { overflow:visible; }
+.sk-sun { transform-box:view-box; transform-origin:96px 44px; animation:sk-turn 30s linear infinite; }
+@keyframes sk-turn { to { transform:rotate(360deg); } }
+.sk-greet { position:absolute; left:84px; bottom:172px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
+  color:#fff; padding:7px 14px; border-radius:999px; background:linear-gradient(135deg,#0369A1,#0EA5E9 50%,#F97316);
+  box-shadow:0 0 0 2px rgba(255,255,255,.85), 0 0 18px rgba(14,165,233,.5); transition:translate .3s var(--ease);
+  animation:sk-greet 2.4s ease-in-out infinite alternate; }
+@keyframes sk-greet { from { transform:translateY(0); } to { transform:translateY(-4px); } }
+.sk-cry { position:absolute; z-index:2; pointer-events:none; white-space:nowrap; transform:translateX(-50%); opacity:0;
+  font:800 18px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif; color:#fff; padding:7px 14px; border-radius:14px;
+  background:linear-gradient(135deg,#F97316,#DC2626); box-shadow:0 0 0 2px rgba(255,255,255,.9), 0 8px 20px -6px rgba(220,38,38,.6); }
+.sk-cry.sk-cry-on { animation:sk-cry 2.2s ease-out forwards; }
+@keyframes sk-cry { 0% { opacity:0; transform:translateX(-50%) scale(.4); } 15% { opacity:1; transform:translateX(-50%) scale(1.1); } 25% { transform:translateX(-50%) scale(1); } 80% { opacity:1; } 100% { opacity:0; transform:translateX(-50%) translateY(-16px); } }
+.sidebar:hover ~ #themeDecor .sk-boy, .sidebar:hover ~ #themeDecor .sk-greet { translate:172px 0; }
+@media (prefers-reduced-motion: reduce) { .sk-pull, .sk-charkhi, .sk-sun, .sk-greet { animation:none; } .sk-boy, .sk-greet, .sk-laddoo { transition:none; } }
+
+/* Makar Sankranti skin: a sky of kites across the whole UI. Only under data-theme="sankranti". */
+/* faint kites and their strings over the page, the winter sun from above */
+:root[data-theme="sankranti"] body {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='170' height='170'%3E%3Cpath d='M40 20 L52 36 L40 52 L28 36 Z' fill='%230EA5E9' fill-opacity='.12'/%3E%3Cpath d='M40 52 Q60 90 30 140' fill='none' stroke='%230369A1' stroke-opacity='.1'/%3E%3Cpath d='M120 90 L130 104 L120 118 L110 104 Z' fill='%23F97316' fill-opacity='.12'/%3E%3C/svg%3E") repeat 0 0 / 170px 170px,
+    radial-gradient(800px 320px at 85% -100px, rgba(253,186,116,.45), transparent 70%),
+    linear-gradient(180deg, rgba(186,230,253,.45) 0, rgba(186,230,253,0) 300px),
+    var(--page-bg);
+  background-attachment:fixed;
+}
+/* cards: a manja string in kite colours along the top */
+:root[data-theme="sankranti"] .ov-card, :root[data-theme="sankranti"] .chart-card, :root[data-theme="sankranti"] .task-table-card {
+  background:
+    repeating-linear-gradient(90deg,#DC2626 0 14px,#FACC15 14px 28px,#16A34A 28px 42px,#2563EB 42px 56px,#DB2777 56px 70px) top / 100% 3px no-repeat,
+    linear-gradient(180deg, #EEF8FF, #fff 60px);
+  box-shadow:0 0 0 1px rgba(3,105,161,.1), 0 12px 26px -16px rgba(3,105,161,.4);
+}
+:root[data-theme="sankranti"] .ov-card::before { background:linear-gradient(180deg,#FDBA74,#F97316,#0EA5E9); }
+/* little kites strung along under the header */
+:root[data-theme="sankranti"] .topbar::after {
+  content:''; position:absolute; left:0; right:0; bottom:-14px; height:14px; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='14'%3E%3Cpath d='M0 2 H48' stroke='%2378350F' stroke-width='.8'/%3E%3Cpath d='M24 2 L30 7 L24 13 L18 7 Z' fill='%23F97316'/%3E%3Cpath d='M24 2 L18 7 L24 13 Z' fill='%23FACC15'/%3E%3C/svg%3E") repeat-x left top / 48px 14px;
+}
+:root[data-theme="sankranti"] .topbar-title {
+  background:linear-gradient(90deg,#0C4A6E,#0369A1 45%,#F97316); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+/* the sidebar: deep sky blue, small kites drifting up it */
+:root[data-theme="sankranti"] .sidebar {
+  background:
+    radial-gradient(200px 150px at 50% 108%, rgba(249,115,22,.4), transparent 70%),
+    linear-gradient(180deg,var(--sidebar-top) 0%,var(--sidebar-bottom) 100%);
+}
+:root[data-theme="sankranti"] .sidebar::before {
+  content:''; position:absolute; left:0; right:0; top:0; height:calc(100% + 160px); z-index:-1; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='160'%3E%3Cpath d='M20 20 L27 29 L20 38 L13 29 Z' fill='%23FACC15' fill-opacity='.45'/%3E%3Cpath d='M20 38 Q26 50 18 60' fill='none' stroke='%23fff' stroke-opacity='.25'/%3E%3Cpath d='M66 96 L72 104 L66 112 L60 104 Z' fill='%23F97316' fill-opacity='.45'/%3E%3Cpath d='M66 112 Q72 124 64 134' fill='none' stroke='%23fff' stroke-opacity='.25'/%3E%3C/svg%3E") repeat 0 0 / 90px 160px;
+  animation:sk-drift 14s linear infinite;
+}
+@keyframes sk-drift { from { transform:translateY(0); } to { transform:translateY(-160px); } }
+:root[data-theme="sankranti"] .nav-item.active {
+  background:linear-gradient(90deg,rgba(253,186,116,.35),rgba(253,186,116,.08)); color:#FFEDD5;
+  box-shadow:inset 0 0 0 1px rgba(253,186,116,.35);
+}
+:root[data-theme="sankranti"] .nav-item.active::before { background:linear-gradient(180deg,#FACC15,#F97316,#0EA5E9); }
+:root[data-theme="sankranti"] ::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#FDBA74,#F97316,#0369A1); background-clip:content-box; }
+@media (prefers-reduced-motion: reduce) { :root[data-theme="sankranti"] .sidebar::before { animation:none; } }

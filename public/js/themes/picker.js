@@ -19,8 +19,25 @@ const THEME_CHOICES = [
   { key: 'ganesh', icon: '🐘', name: 'Ganesh Chaturthi', note: 'Ganpati Bappa in his pandal, dhol and modaks', c: { side: '#7F1D1D', page: '#FFF8EE', accent: '#B91C1C', brand: '#F97316' }, art: tpArtGanesh },
   { key: 'ramnavami', icon: '🚩', name: 'Ram Navami', note: 'Baby Ram in his cradle, Ayodhya and Hanuman ji', c: { side: '#7C2D12', page: '#FFF9F0', accent: '#C2410C', brand: '#F97316' }, art: tpArtRamNavami },
   { key: 'rakhi', icon: '🎀', name: 'Raksha Bandhan', note: 'A sister ties a rakhi, a thali and a gift', c: { side: '#831843', page: '#FFF7FB', accent: '#BE185D', brand: '#EC4899' }, art: tpArtRakhi },
-  { key: 'mahavir', icon: '🙏', name: 'Mahavir Jayanti', note: 'Bhagwan Mahavir in meditation, ahimsa', c: { side: '#78350F', page: '#FFFDF7', accent: '#C2410C', brand: '#F59E0B' }, art: tpArtMahavir }
+  { key: 'mahavir', icon: '🙏', name: 'Mahavir Jayanti', note: 'Bhagwan Mahavir in meditation, ahimsa', c: { side: '#78350F', page: '#FFFDF7', accent: '#C2410C', brand: '#F59E0B' }, art: tpArtMahavir },
+  { key: 'sankranti', icon: '🪁', name: 'Makar Sankranti', note: 'Kites in the sky, til-gud and the sun', c: { side: '#0C4A6E', page: '#F2F9FF', accent: '#0369A1', brand: '#F97316' }, art: tpArtSankranti }
 ];
+
+// Makar Sankranti: a winter sky full of kites with their strings, the sun low on one side.
+function tpArtSankranti() {
+  let s = '<defs><linearGradient id="tpSkBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7DD3FC"/><stop offset="1" stop-color="#E0F2FE"/></linearGradient>' +
+    '<radialGradient id="tpSkSun"><stop offset="0" stop-color="#FFFBEB"/><stop offset=".5" stop-color="#FDE047"/><stop offset="1" stop-color="#F97316" stop-opacity="0"/></radialGradient></defs>' +
+    '<rect width="220" height="110" fill="url(#tpSkBg)"/>' +
+    '<circle class="gl" cx="188" cy="86" r="26" fill="url(#tpSkSun)"/>' +
+    '<path d="M0 104 H220 V110 H0 Z" fill="#E7CBA9"/>';
+  [[40, 30, '#DC2626', '#FACC15'], [86, 18, '#2563EB', '#FFFFFF'], [130, 34, '#16A34A', '#F97316'], [170, 20, '#DB2777', '#FDE047'], [60, 62, '#7C3AED', '#F9A8D4']].forEach(function (k, i) {
+    s += '<path d="M' + k[0] + ' ' + (k[1] + 12) + ' Q' + (k[0] + 20) + ' ' + (k[1] + 60) + ' ' + (k[0] - 10) + ' 110" fill="none" stroke="#475569" stroke-width=".6" opacity=".6"/>' +
+      '<g class="tp-bob"' + tpDelay(i, 0.3) + '><path d="M' + k[0] + ' ' + (k[1] - 12) + ' L' + (k[0] + 9) + ' ' + k[1] + ' L' + k[0] + ' ' + (k[1] + 12) + ' Z" fill="' + k[2] + '"/>' +
+      '<path d="M' + k[0] + ' ' + (k[1] - 12) + ' L' + (k[0] - 9) + ' ' + k[1] + ' L' + k[0] + ' ' + (k[1] + 12) + ' Z" fill="' + k[3] + '"/>' +
+      '<path d="M' + k[0] + ' ' + (k[1] + 12) + ' q-3 5 0 10 q3 5 0 10" fill="none" stroke="' + k[2] + '" stroke-width="1.4"/></g>';
+  });
+  return tpSvg(s);
+}
 
 // Mahavir Jayanti: a seated figure in meditation in a golden halo under the three-tiered chhatra,
 // lotuses at the foot, a diya.
