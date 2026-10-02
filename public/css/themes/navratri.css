@@ -368,3 +368,45 @@
 .nv-garba .nv-arm-r { animation-name:nv-clap-r; animation-duration:1.2s; }
 @keyframes nv-clap-l { 0%,100% { transform:rotate(-24deg); } 50% { transform:rotate(4deg); } }
 @keyframes nv-clap-r { 0%,100% { transform:rotate(24deg); } 50% { transform:rotate(-4deg); } }
+
+/* Navratri Day 7 — Maa Kalaratri: the night of the storm, indigo and black with lightning blue and a
+   touch of red; lightning flashes through the sidebar. The cards stay light so the work stays
+   readable. Only with data-nv-day="7". The lightning in her figure flickers (.nv-bolt). */
+:root[data-theme="navratri"][data-nv-day="7"] {
+  --brand-1:#818CF8; --brand-2:#4F46E5; --brand-2-rgb:79,70,229;
+  --accent:#312E81; --accent-dark:#1E1B4B; --accent-light:#4F46E5;
+  --accent-rgb:49,46,129; --accent-light-rgb:79,70,229;
+  --page-bg:#EEF0F8; --sidebar-top:#0B0B1A; --sidebar-bottom:#000000;
+}
+:root[data-theme="navratri"][data-nv-day="7"] body {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cpath d='M40 20 L30 50 L40 48 L28 80' fill='none' stroke='%234F46E5' stroke-opacity='.12' stroke-width='2'/%3E%3Ccircle cx='130' cy='120' r='1.4' fill='%23312E81' fill-opacity='.25'/%3E%3Ccircle cx='150' cy='40' r='1' fill='%23312E81' fill-opacity='.25'/%3E%3C/svg%3E") repeat 0 0 / 180px 180px,
+    linear-gradient(180deg, rgba(30,27,75,.32) 0, rgba(30,27,75,0) 300px),
+    var(--page-bg);
+  background-attachment:fixed;
+}
+:root[data-theme="navratri"][data-nv-day="7"] .ov-card, :root[data-theme="navratri"][data-nv-day="7"] .chart-card, :root[data-theme="navratri"][data-nv-day="7"] .task-table-card {
+  background:
+    linear-gradient(90deg,#0B0B1A,#312E81 30%,#A5F3FC 50%,#312E81 70%,#0B0B1A) top / 100% 3px no-repeat,
+    linear-gradient(180deg, #EEF0FF, #fff 60px);
+  outline:none; box-shadow:0 0 0 1px rgba(49,46,129,.15), 0 12px 26px -16px rgba(30,27,75,.6);
+}
+:root[data-theme="navratri"][data-nv-day="7"] .ov-card::before { background:linear-gradient(180deg,#A5F3FC,#4F46E5,#0B0B1A); }
+:root[data-theme="navratri"][data-nv-day="7"] .topbar-title {
+  background:linear-gradient(90deg,#0B0B1A,#312E81 45%,#DC2626); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+/* the black sidebar: a storm, lightning flashing through it now and then */
+:root[data-theme="navratri"][data-nv-day="7"] .sidebar { background:linear-gradient(180deg,var(--sidebar-top),var(--sidebar-bottom)); }
+:root[data-theme="navratri"][data-nv-day="7"] .sidebar::before {
+  content:''; position:absolute; inset:0; z-index:-1; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='220'%3E%3Cpath d='M30 10 L20 60 L32 58 L16 120 L28 118 L18 170' fill='none' stroke='%23A5F3FC' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat 50% 30% / 60px 220px,
+    radial-gradient(160px 220px at 50% 35%, rgba(165,243,252,.25), transparent 70%);
+  opacity:0; animation:nv-storm 6s linear infinite;
+}
+@keyframes nv-storm { 0%,86%,90%,100% { opacity:0; } 87%,89%,92% { opacity:1; } 94% { opacity:.2; } }
+:root[data-theme="navratri"][data-nv-day="7"] .nav-item.active { background:linear-gradient(90deg,rgba(129,140,248,.35),rgba(129,140,248,.08)); color:#E0E7FF; box-shadow:inset 0 0 0 1px rgba(165,243,252,.3); }
+:root[data-theme="navratri"][data-nv-day="7"] .nav-item.active::before { background:linear-gradient(180deg,#A5F3FC,#4F46E5,#DC2626); }
+:root[data-theme="navratri"][data-nv-day="7"] .nv-greet { background:linear-gradient(135deg,#0B0B1A,#312E81 55%,#DC2626); box-shadow:0 0 0 2px rgba(255,255,255,.85), 0 0 18px rgba(79,70,229,.6); }
+.nv-bolt { animation:nv-bolt 3s linear infinite; }
+@keyframes nv-bolt { 0%,80%,86%,100% { opacity:.25; } 82%,84%,90% { opacity:1; } }
+@media (prefers-reduced-motion: reduce) { :root[data-theme="navratri"][data-nv-day="7"] .sidebar::before, .nv-bolt { animation:none; } }

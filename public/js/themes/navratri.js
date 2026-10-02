@@ -614,6 +614,73 @@ ThemeDecor.register('navratri', function (d) {
     return s + '</svg>';
   }
 
+  // Day 7 — Maa Kalaratri, the fierce form who is still Shubhankari, the bringer of good: dark as the
+  // night, her hair loose and wild, a third eye, a garland that crackles like lightning, four arms
+  // (a curved khadga, an iron hook, abhaya and varada), riding a donkey under a stormy night sky.
+  // The lightning flickers (nv-bolt).
+  function kalaratri() {
+    var skin = '#3B3F6B', line = '#11132B', s;
+    s = '<svg viewBox="0 0 220 210" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<radialGradient id="nvHalo"><stop offset="0" stop-color="#E0E7FF"/><stop offset=".5" stop-color="#818CF8" stop-opacity=".7"/><stop offset="1" stop-color="#312E81" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="nvGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE58A"/><stop offset=".55" stop-color="#F5B70A"/><stop offset="1" stop-color="#C98A06"/></linearGradient>' +
+      '<linearGradient id="nvBlade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#F1F5F9"/><stop offset=".5" stop-color="#FFFFFF"/><stop offset="1" stop-color="#94A3B8"/></linearGradient></defs>';
+    // the storm behind her: dark clouds and two forks of lightning
+    s += '<g opacity=".9"><ellipse cx="40" cy="40" rx="40" ry="16" fill="#1E1B4B"/><ellipse cx="70" cy="30" rx="30" ry="14" fill="#312E81"/>' +
+         '<ellipse cx="190" cy="36" rx="36" ry="15" fill="#1E1B4B"/><ellipse cx="166" cy="26" rx="26" ry="12" fill="#312E81"/></g>' +
+         '<g class="nv-bolt"><path d="M44 50 L34 78 L44 76 L30 112" fill="none" stroke="#A5F3FC" stroke-width="2.6" stroke-linejoin="round"/>' +
+         '<path d="M186 48 L196 74 L186 72 L200 104" fill="none" stroke="#A5F3FC" stroke-width="2.6" stroke-linejoin="round"/></g>';
+    s += '<g class="nv-halo"><circle cx="128" cy="62" r="60" fill="url(#nvHalo)"/></g>';
+    // her hair, loose and wild, spread out behind her
+    s += '<path d="M128 14 C92 12 70 34 74 62 C62 74 66 96 80 108 C72 96 82 88 88 98 C84 112 96 120 104 116 L152 116 C160 120 172 112 168 98 C174 88 184 96 176 108 C190 96 194 74 182 62 C186 34 164 12 128 14 Z" fill="#0B0B1A"/>' +
+         '<path d="M80 60 Q70 48 76 36 M176 60 Q186 48 180 36 M86 88 Q76 82 72 70 M170 88 Q180 82 184 70" fill="none" stroke="#0B0B1A" stroke-width="4" stroke-linecap="round"/>';
+    // the donkey: grey body, tail, a red saddle cloth, legs
+    s += '<path class="nv-tail" d="M194 156 Q208 166 206 186" fill="none" stroke="#9CA3AF" stroke-width="3.6" stroke-linecap="round"/><path d="M203 184 q4 6 2 12 q-6 -3 -6 -10 Z" fill="#374151"/>' +
+         '<path d="M62 152 Q66 128 112 130 Q178 128 194 150 Q200 174 186 192 L72 194 Q58 178 62 152 Z" fill="#9CA3AF" stroke="#374151" stroke-width="1.6"/>' +
+         '<path d="M112 130 L176 130 L180 166 L108 168 Z" fill="#7F1D1D" stroke="#A5F3FC" stroke-width="2"/>' +
+         '<path d="M86 192 v-18 M108 193 v-18 M164 193 v-20 M182 192 v-18" stroke="#9CA3AF" stroke-width="10" stroke-linecap="round"/>' +
+         '<path d="M80 196 h12 M102 197 h12 M158 197 h12 M176 196 h12" stroke="#1F2937" stroke-width="5" stroke-linecap="round"/>';
+    // upper arms: a curved khadga raised (viewer's left), an iron hook (viewer's right)
+    s += '<path d="M106 106 L84 84 L80 62" fill="none" stroke="' + skin + '" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+         '<path d="M78 58 Q60 34 70 4 Q72 30 86 54 Z" fill="url(#nvBlade)" stroke="#64748B" stroke-width="1"/>' +
+         '<path d="M72 60 H90" stroke="url(#nvGold)" stroke-width="4" stroke-linecap="round"/>' +
+         '<circle cx="80" cy="62" r="4.6" fill="' + skin + '" stroke="' + line + '" stroke-width=".8"/>' +
+         '<path d="M150 106 L172 86 L176 64" fill="none" stroke="' + skin + '" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+         '<path d="M176 64 V30" stroke="#4B5563" stroke-width="3"/><path d="M176 30 Q176 18 186 18 Q194 20 190 30" fill="none" stroke="#4B5563" stroke-width="3" stroke-linecap="round"/>' +
+         '<path d="M188 30 l4 -1 l-2 4 Z" fill="#4B5563"/>' +
+         '<circle cx="176" cy="64" r="4.6" fill="' + skin + '" stroke="' + line + '" stroke-width=".8"/>';
+    // seated body: a black saree with a red border, a garland of lightning round her neck
+    s += '<path d="M104 104 Q128 94 152 104 L160 150 Q128 160 96 150 Z" fill="#111827" stroke="' + line + '" stroke-width="1.4"/>' +
+         '<path d="M112 104 Q128 98 144 104 L142 118 Q128 122 114 118 Z" fill="#7F1D1D"/>' +
+         '<path d="M96 150 Q128 160 160 150 L152 174 Q118 182 92 170 Z" fill="#0B0B1A" stroke="' + line + '" stroke-width="1.2"/>' +
+         '<path d="M92 170 Q118 182 152 174" fill="none" stroke="#DC2626" stroke-width="5"/>' +
+         '<path d="M106 104 Q130 124 156 148" fill="none" stroke="#DC2626" stroke-width="4"/>' +
+         '<path class="nv-bolt" d="M110 104 L116 112 L120 106 L126 116 L130 108 L136 116 L140 106 L144 112 L148 104" fill="none" stroke="#A5F3FC" stroke-width="2" stroke-linejoin="round"/>' +
+         '<path d="M98 172 L92 186 M112 176 L108 190" stroke="' + skin + '" stroke-width="7" stroke-linecap="round"/>';
+    // lower hands in front: abhaya and varada
+    s += '<path d="M112 128 L118 120" stroke="' + skin + '" stroke-width="6" stroke-linecap="round"/>' +
+         '<path d="M115 121 V110 M118 120 V108 M121 120 V108 M124 121 V111" stroke="' + skin + '" stroke-width="2.6" stroke-linecap="round"/>' +
+         '<path d="M144 128 L140 140" stroke="' + skin + '" stroke-width="6" stroke-linecap="round"/>' +
+         '<path d="M137 140 V150 M140 141 V152 M143 141 V152 M146 140 V149" stroke="' + skin + '" stroke-width="2.6" stroke-linecap="round"/><circle cx="141.5" cy="144" r="1.4" fill="#DC2626"/>';
+    s += mataFace(skin, line, '#0B0B1A');
+    // fierce: glowing eyes ringed red, a third eye on her brow, her tongue out, no crown, a red tilak
+    s += '<circle cx="116" cy="65.6" r="5.4" fill="none" stroke="#EF4444" stroke-width="1.2" opacity=".8"/><circle cx="140" cy="65.6" r="5.4" fill="none" stroke="#EF4444" stroke-width="1.2" opacity=".8"/>' +
+         '<path d="M106 53 L122 57 M150 53 L134 57" stroke="#0B0B1A" stroke-width="2.4" stroke-linecap="round"/>' +
+         '<path d="M123 46 Q128 40 133 46 Q128 52 123 46 Z" fill="#FDE68A" stroke="#DC2626" stroke-width="1"/><circle cx="128" cy="46" r="1.8" fill="#DC2626"/>' +
+         '<path d="M124 85 Q128 96 132 85 Z" fill="#DC2626"/>' +
+         '<path d="M118 30 Q128 24 138 30" fill="none" stroke="#DC2626" stroke-width="2.4" stroke-linecap="round"/>';
+    // the donkey's head in front: long ears, a pale muzzle, a red tassel
+    s += '<g class="nv-lion-head">' +
+         '<path d="M62 146 Q50 112 58 106 Q66 112 70 140 Z M96 146 Q108 112 100 106 Q92 112 88 140 Z" fill="#9CA3AF" stroke="#374151" stroke-width="1.2"/>' +
+         '<path d="M60 136 Q50 116 58 112 Q62 118 64 132 Z M98 136 Q108 116 100 112 Q96 118 94 132 Z" fill="#F9A8D4"/>' +
+         '<path d="M58 144 Q79 130 100 144 Q104 170 92 188 Q79 196 66 188 Q54 170 58 144 Z" fill="#9CA3AF" stroke="#374151" stroke-width="1.6"/>' +
+         '<ellipse cx="79" cy="182" rx="14" ry="10" fill="#E5E7EB"/><ellipse cx="74" cy="182" rx="2" ry="2.6" fill="#374151"/><ellipse cx="84" cy="182" rx="2" ry="2.6" fill="#374151"/>' +
+         '<circle cx="68" cy="160" r="4" fill="#111827"/><circle cx="90" cy="160" r="4" fill="#111827"/><circle cx="69" cy="158.6" r="1.4" fill="#fff"/><circle cx="91" cy="158.6" r="1.4" fill="#fff"/>' +
+         '<path d="M72 144 Q79 136 86 144" fill="none" stroke="#111827" stroke-width="5" stroke-linecap="round"/>' +
+         '<path d="M79 140 V150" stroke="#DC2626" stroke-width="2.4"/><circle cx="79" cy="152" r="2.6" fill="#DC2626"/>' +
+         '</g>';
+    return s + '</svg>';
+  }
+
   // The nine days (data-nv-day on <html>, set by core.js from the owner's choice); 0 or a day not
   // built yet shows Maa Durga on her tiger.
   var NV_DAYS = {
@@ -622,7 +689,8 @@ ThemeDecor.register('navratri', function (d) {
     3: { name: 'माँ चंद्रघंटा', build: chandraghanta, petals: ['#FBBF24', '#F59E0B', '#FDE68A', '#3B82F6', '#1D4ED8'] },
     4: { name: 'माँ कूष्मांडा', build: kushmanda, petals: ['#F97316', '#FDBA74', '#FDE047', '#22C55E', '#15803D'] },
     5: { name: 'माँ स्कंदमाता', build: skandamata, petals: ['#F472B6', '#EC4899', '#F9A8D4', '#FFFFFF', '#5EEAD4'] },
-    6: { name: 'माँ कात्यायनी', build: katyayani, petals: ['#DC2626', '#B91C1C', '#F5B70A', '#FDE68A', '#7F1D1D'] }
+    6: { name: 'माँ कात्यायनी', build: katyayani, petals: ['#DC2626', '#B91C1C', '#F5B70A', '#FDE68A', '#7F1D1D'] },
+    7: { name: 'माँ कालरात्रि', build: kalaratri, petals: ['#312E81', '#4C1D95', '#A5F3FC', '#DC2626', '#E0E7FF'] }
   };
   var DAY = NV_DAYS[+document.documentElement.getAttribute('data-nv-day')] || null;
   var durgaEl = d.svg(DAY ? DAY.build() : durga(), 'td-durga td-drag');
