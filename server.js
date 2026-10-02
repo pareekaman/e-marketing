@@ -9412,7 +9412,23 @@ app.get('/api/theme', requireAuth, async (req, res) => {
     const theme = row && APP_THEMES.includes(row.value) ? row.value : 'normal';
     const canChange = (await readIdSetting('theme_admin_ids')).includes(Number(req.session.userId));
     const [[mine]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [themeOffKey(req)]);
-    res.json({ theme, themes: APP_THEMES, canChange, off: !!(mine && mine.value === '1') });
+    const [[nv]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [NAVRATRI_DAY_KEY]);
+    const navratriDay = nv ? Math.min(9, Math.max(0, parseInt(nv.value, 10) || 0)) : 0;
+    res.json({ theme, themes: APP_THEMES, canChange, off: !!(mine && mine.value === '1'), navratriDay });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Which of the nine days of Navratri the Navratri theme shows (1-9, each a form of the Mata), or 0
+// for the general Navratri look. Set by the theme owner in the picker, like the theme itself.
+const NAVRATRI_DAY_KEY = 'navratri_day';
+app.put('/api/theme/navratri-day', requireAuth, async (req, res) => {
+  try {
+    if (!(await readIdSetting('theme_admin_ids')).includes(Number(req.session.userId)))
+      return res.status(403).json({ error: 'Only the theme owner can change the theme' });
+    const day = Number(req.body && req.body.day);
+    if (!Number.isInteger(day) || day < 0 || day > 9) return res.status(400).json({ error: 'Day must be 0 to 9' });
+    await db.query('INSERT INTO app_settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)', [NAVRATRI_DAY_KEY, String(day)]);
+    res.json({ success: true, day });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

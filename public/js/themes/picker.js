@@ -176,7 +176,35 @@ function paintThemePicker() {
         preview +
         '<div class="tp-name">' + t.icon + ' ' + t.name + (active ? '<span class="tp-badge">✓ Active</span>' : '') + '</div>' +
         '<div class="tp-note">' + t.note + '</div></button>';
+    }).join('') + '</div>' + (_themeCurrent === 'navratri' ? nvDayRow() : '');
+}
+
+// Navratri's nine days, each a form of the Mata (js/themes/navratri.js NV_DAYS); 0 is the general
+// look. The owner picks which day everyone sees. Days not built yet are left out.
+const NV_DAY_CHOICES = [
+  { day: 0, name: 'All nine days', note: 'Maa Durga on her tiger' },
+  { day: 1, name: 'Day 1 · Shailputri', note: 'Daughter of the Himalaya, on Nandi' }
+];
+let _nvDayCurrent = 0;
+function nvDayRow() {
+  return '<div class="tp-head" style="margin-top:22px"><div class="tp-title">Navratri Day</div>' +
+    '<div class="tp-sub">Each day of Navratri honours a different form of the Mata. Pick the day everyone sees.</div></div>' +
+    '<div class="tp-days">' + NV_DAY_CHOICES.map(c => {
+      const on = c.day === _nvDayCurrent;
+      return '<button type="button" class="tp-day' + (on ? ' tp-active' : '') + '" aria-pressed="' + on + '" onclick="setNavratriDay(' + c.day + ')">' +
+        '<b>' + c.name + '</b><span>' + c.note + '</span></button>';
     }).join('') + '</div>';
+}
+async function setNavratriDay(day) {
+  if (_themeSaving || day === _nvDayCurrent) return;
+  _themeSaving = true;
+  const r = await api('/api/theme/navratri-day', 'PUT', { day });
+  _themeSaving = false;
+  if (r.error) { showToast(r.error, 'error'); return; }
+  _nvDayCurrent = _nvDay = r.day;
+  if (!_themeOff) applyAppTheme('navratri');
+  paintThemePicker();
+  showToast((NV_DAY_CHOICES.find(c => c.day === r.day) || {}).name + ' applied for everyone');
 }
 
 async function renderThemePicker() {
@@ -186,6 +214,7 @@ async function renderThemePicker() {
   const r = await api('/api/theme');
   if (r.error) { box.innerHTML = '<div class="empty">Could not load the current theme.</div>'; return; }
   _themeCurrent = r.theme;
+  _nvDayCurrent = r.navratriDay || 0;
   paintThemePicker();
 }
 

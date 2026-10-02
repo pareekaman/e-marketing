@@ -51,3 +51,12 @@
 .theme-toggle input:checked + .tt-track { background:linear-gradient(90deg,var(--brand-1),var(--brand-2)); }
 .theme-toggle input:checked + .tt-track .tt-knob { transform:translateX(15px); }
 .theme-toggle input:focus-visible + .tt-track { outline:2px solid var(--brand-2); outline-offset:2px; }
+
+/* Navratri day chips, under the theme cards while Navratri is the theme (picker.js nvDayRow) */
+.tp-days { display:flex; flex-wrap:wrap; gap:10px; }
+.tp-day { display:flex; flex-direction:column; gap:3px; text-align:left; padding:10px 14px; border:1.5px solid #e2e8f0; border-radius:12px;
+  background:#fff; cursor:pointer; font-family:'Inter',sans-serif; min-width:170px; }
+.tp-day b { font-size:13px; color:#1e293b; }
+.tp-day span { font-size:11.5px; color:#64748b; }
+.tp-day:hover { border-color:#BE185D; }
+.tp-day.tp-active { border-color:#BE185D; box-shadow:0 0 0 3px rgba(190,24,93,.15); background:#FFF1F7; }

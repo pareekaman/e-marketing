@@ -176,8 +176,17 @@ function applyAppTheme(theme) {
   if (t === 'normal') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', t);
   try { localStorage.setItem('appTheme', t); } catch (e) {}
-  if (window.ThemeDecor) ThemeDecor.apply(t); // festival decoration layer, js/themes/
+  // Navratri: which day's Mata (data-nv-day, 1-9) the theme shows; none for the general look.
+  const root = document.documentElement, day = t === 'navratri' && _nvDay ? String(_nvDay) : null;
+  const dayChanged = root.getAttribute('data-nv-day') !== day;
+  if (day) root.setAttribute('data-nv-day', day); else root.removeAttribute('data-nv-day');
+  try { localStorage.setItem('appNvDay', day || ''); } catch (e) {}
+  if (window.ThemeDecor) {
+    if (dayChanged && t === 'navratri') ThemeDecor.apply('normal'); // rebuild the decoration for the new day
+    ThemeDecor.apply(t); // festival decoration layer, js/themes/
+  }
 }
+let _nvDay = 0;
 // Someone who leaves the app open all day still picks up a theme the admin changed:
 // on coming back to the tab, re-check at most every 5 minutes.
 let _themeCheckedAt = Date.now();
@@ -192,6 +201,7 @@ async function loadAppTheme() {
     const t = await r.json();
     _companyTheme = t.theme;
     _themeOff = !!t.off;
+    _nvDay = t.navratriDay || 0;
     applyAppTheme(_themeOff ? 'normal' : t.theme);
     syncThemeToggle();
     // The Theme tab is for the theme owner(s) only (theme_admin_ids on the server), not every admin.

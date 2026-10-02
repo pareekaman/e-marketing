@@ -40,6 +40,7 @@
 /* Apply the last-seen festival theme before first paint so there is no flash;
    core.js confirms it against /api/theme once the session is known. */
 try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) && _t !== 'normal') document.documentElement.setAttribute('data-theme', _t); } catch (e) {}
+try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9]$/.test(_d)) document.documentElement.setAttribute('data-nv-day', _d); } catch (e) {}
 </script>
 </head>
 <body>
