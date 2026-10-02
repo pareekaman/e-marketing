@@ -18,8 +18,28 @@ const THEME_CHOICES = [
   { key: 'shivratri', icon: '🔱', name: 'Maha Shivratri', note: 'Shiv ji in meditation, Kailash at night', c: { side: '#0F172A', page: '#F3F5FA', accent: '#3730A3', brand: '#6366F1' }, art: tpArtShivratri },
   { key: 'ganesh', icon: '🐘', name: 'Ganesh Chaturthi', note: 'Ganpati Bappa in his pandal, dhol and modaks', c: { side: '#7F1D1D', page: '#FFF8EE', accent: '#B91C1C', brand: '#F97316' }, art: tpArtGanesh },
   { key: 'ramnavami', icon: '🚩', name: 'Ram Navami', note: 'Baby Ram in his cradle, Ayodhya and Hanuman ji', c: { side: '#7C2D12', page: '#FFF9F0', accent: '#C2410C', brand: '#F97316' }, art: tpArtRamNavami },
-  { key: 'rakhi', icon: '🎀', name: 'Raksha Bandhan', note: 'A sister ties a rakhi, a thali and a gift', c: { side: '#831843', page: '#FFF7FB', accent: '#BE185D', brand: '#EC4899' }, art: tpArtRakhi }
+  { key: 'rakhi', icon: '🎀', name: 'Raksha Bandhan', note: 'A sister ties a rakhi, a thali and a gift', c: { side: '#831843', page: '#FFF7FB', accent: '#BE185D', brand: '#EC4899' }, art: tpArtRakhi },
+  { key: 'mahavir', icon: '🙏', name: 'Mahavir Jayanti', note: 'Bhagwan Mahavir in meditation, ahimsa', c: { side: '#78350F', page: '#FFFDF7', accent: '#C2410C', brand: '#F59E0B' }, art: tpArtMahavir }
 ];
+
+// Mahavir Jayanti: a seated figure in meditation in a golden halo under the three-tiered chhatra,
+// lotuses at the foot, a diya.
+function tpArtMahavir() {
+  let s = '<defs><linearGradient id="tpMvBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFBEB"/><stop offset="1" stop-color="#FDE68A"/></linearGradient>' +
+    '<radialGradient id="tpMvHalo"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".6" stop-color="#FDE68A" stop-opacity=".8"/><stop offset="1" stop-color="#F59E0B" stop-opacity="0"/></radialGradient></defs>' +
+    '<rect width="220" height="110" fill="url(#tpMvBg)"/>' +
+    '<circle class="gl" cx="110" cy="46" r="34" fill="url(#tpMvHalo)"/>' +
+    '<path d="M98 8 Q110 2 122 8 Z M94 13 Q110 5 126 13 Z" fill="#F5B70A" stroke="#B45309" stroke-width=".6"/>' +
+    '<path d="M86 96 Q96 78 110 80 Q124 78 134 96 Z" fill="#F8FAFC" stroke="#CBD5E1" stroke-width=".8"/>' +
+    '<path d="M100 58 Q110 54 120 58 L122 86 H98 Z" fill="#E9C9A4"/>' +
+    '<ellipse cx="110" cy="42" rx="11" ry="13" fill="#E9C9A4"/><path d="M99 38 Q99 26 110 26 Q121 26 121 38 Q117 32 110 32 Q103 32 99 38 Z" fill="#3B2A1A"/>' +
+    '<path d="M104 44 q2 1.6 4 0 M112 44 q2 1.6 4 0" fill="none" stroke="#3B2A1A" stroke-width="1"/>' +
+    '<path d="M70 104 H150" stroke="#F59E0B" stroke-width="3"/>';
+  for (let k = -3; k <= 3; k++) s += '<path d="M' + (110 + k * 12) + ' 102 Q' + (104 + k * 13) + ' 94 ' + (110 + k * 12) + ' 88 Q' + (116 + k * 11) + ' 94 ' + (110 + k * 12) + ' 102 Z" fill="#F9A8D4" stroke="#DB2777" stroke-width=".6"/>';
+  s += '<path d="M30 100 Q40 106 50 100 Z" fill="#B45309"/><path class="fl" d="M40 86 C44 91 44 95 40 98 C36 95 36 91 40 86 Z" fill="#F97316"/>' +
+       '<path d="M170 100 Q180 106 190 100 Z" fill="#B45309"/><path class="fl" style="animation-delay:-.4s" d="M180 86 C184 91 184 95 180 98 C176 95 176 91 180 86 Z" fill="#F97316"/>';
+  return tpSvg(s);
+}
 
 // Raksha Bandhan: a big rakhi on its thread, a puja thali with a lit diya, a gift, little hearts.
 function tpArtRakhi() {

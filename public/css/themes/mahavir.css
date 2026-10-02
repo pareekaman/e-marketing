@@ -1,0 +1,71 @@
+/* Mahavir Jayanti — the white of peace with saffron and gold, calm and bright. */
+:root[data-theme="mahavir"] {
+  --brand-1:#FCD34D; --brand-2:#F59E0B; --brand-2-rgb:245,158,11;
+  --accent:#C2410C; --accent-dark:#7C2D12; --accent-light:#EA580C;
+  --accent-rgb:194,65,12; --accent-light-rgb:234,88,12;
+  --page-bg:#FFFDF7; --sidebar-top:#78350F; --sidebar-bottom:#451A03;
+}
+
+/* Decoration (js/themes/mahavir.js): Bhagwan Mahavir in meditation bottom-right, the Ahimsa hand
+   with a diya bottom-left, the greeting above it. */
+.mv-mahavir { right:96px; bottom:0; width:190px; transition:translate .3s var(--ease);
+  filter:drop-shadow(0 0 12px rgba(253,230,138,.7)) drop-shadow(0 4px 6px rgba(0,0,0,.18)); }
+.mv-mahavir svg { overflow:visible; }
+.mv-halo { transform-box:fill-box; transform-origin:center; animation:mv-halo 3.4s ease-in-out infinite alternate; }
+@keyframes mv-halo { from { opacity:.65; transform:scale(.96); } to { opacity:1; transform:scale(1.04); } }
+.mv-ahimsa { left:80px; bottom:0; width:110px; transition:translate .3s var(--ease); filter:drop-shadow(0 4px 5px rgba(0,0,0,.2)); }
+.mv-ahimsa svg { overflow:visible; }
+.mv-flame { transform-box:fill-box; transform-origin:50% 100%; animation:mv-flicker 1s ease-in-out infinite alternate; }
+@keyframes mv-flicker { from { transform:scale(1,.9) skewX(-3deg); } to { transform:scale(1.06,1.1) skewX(3deg); } }
+.mv-greet { position:absolute; left:84px; bottom:162px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
+  color:#fff; padding:7px 14px; border-radius:999px; background:linear-gradient(135deg,#C2410C,#F59E0B 60%,#FCD34D);
+  box-shadow:0 0 0 2px rgba(255,255,255,.85), 0 0 18px rgba(245,158,11,.55); transition:translate .3s var(--ease);
+  animation:mv-greet 2.6s ease-in-out infinite alternate; }
+@keyframes mv-greet { from { transform:translateY(0); } to { transform:translateY(-4px); } }
+.sidebar:hover ~ #themeDecor .mv-ahimsa, .sidebar:hover ~ #themeDecor .mv-greet { translate:172px 0; }
+@media (prefers-reduced-motion: reduce) { .mv-halo, .mv-flame, .mv-greet { animation:none; } .mv-ahimsa, .mv-greet, .mv-mahavir { transition:none; } }
+
+/* Mahavir Jayanti skin: peace across the whole UI. Only under data-theme="mahavir". */
+/* faint lotuses and dots of light over the page, a soft golden glow from above */
+:root[data-theme="mahavir"] body {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cpath d='M40 50 q-10 -7 -7 -17 q7 5 7 17 q0 -12 7 -17 q3 10 -7 17 Z M40 50 q-4 -10 0 -19 q4 9 0 19 Z' fill='%23F59E0B' fill-opacity='.13'/%3E%3Ccircle cx='110' cy='110' r='2.2' fill='%23F59E0B' fill-opacity='.2'/%3E%3C/svg%3E") repeat 0 0 / 150px 150px,
+    radial-gradient(1000px 380px at 50% -140px, rgba(253,230,138,.5), transparent 70%),
+    var(--page-bg);
+  background-attachment:fixed;
+}
+/* cards: white with a fine saffron-and-gold edge */
+:root[data-theme="mahavir"] .ov-card, :root[data-theme="mahavir"] .chart-card, :root[data-theme="mahavir"] .task-table-card {
+  background:
+    linear-gradient(90deg,#C2410C,#F59E0B 30%,#FDE68A 50%,#F59E0B 70%,#C2410C) top / 100% 3px no-repeat,
+    linear-gradient(180deg, #FFFAEB, #fff 60px);
+  box-shadow:0 0 0 1px rgba(245,158,11,.14), 0 12px 26px -16px rgba(194,65,12,.35);
+}
+:root[data-theme="mahavir"] .ov-card::before { background:linear-gradient(180deg,#FDE68A,#F59E0B,#C2410C); }
+/* a row of small lotuses under the header */
+:root[data-theme="mahavir"] .topbar::after {
+  content:''; position:absolute; left:0; right:0; bottom:-12px; height:12px; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='12'%3E%3Cpath d='M17 11 q-7 -3 -6 -9 q4 2 6 9 q2 -7 6 -9 q1 6 -6 9 Z M17 11 q-2 -5 0 -10 q2 5 0 10 Z' fill='%23F59E0B'/%3E%3C/svg%3E") repeat-x left center / 34px 12px;
+}
+:root[data-theme="mahavir"] .topbar-title {
+  background:linear-gradient(90deg,#7C2D12,#C2410C 45%,#F59E0B); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+/* the sidebar: warm brown with soft light rising like a lamp's glow */
+:root[data-theme="mahavir"] .sidebar {
+  background:
+    radial-gradient(200px 160px at 50% 108%, rgba(253,230,138,.4), transparent 70%),
+    linear-gradient(180deg,var(--sidebar-top) 0%,var(--sidebar-bottom) 100%);
+}
+:root[data-theme="mahavir"] .sidebar::before {
+  content:''; position:absolute; left:0; right:0; top:0; height:calc(100% + 120px); z-index:-1; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='120'%3E%3Ccircle cx='16' cy='20' r='1.4' fill='%23FDE68A' fill-opacity='.8'/%3E%3Ccircle cx='60' cy='56' r='1' fill='%23fff' fill-opacity='.7'/%3E%3Ccircle cx='34' cy='96' r='1.6' fill='%23FDE68A' fill-opacity='.7'/%3E%3C/svg%3E") repeat 0 0 / 80px 120px;
+  animation:mv-rise 10s linear infinite;
+}
+@keyframes mv-rise { from { transform:translateY(0); } to { transform:translateY(-120px); } }
+:root[data-theme="mahavir"] .nav-item.active {
+  background:linear-gradient(90deg,rgba(253,230,138,.35),rgba(253,230,138,.08)); color:#FEF3C7;
+  box-shadow:inset 0 0 0 1px rgba(253,230,138,.35);
+}
+:root[data-theme="mahavir"] .nav-item.active::before { background:linear-gradient(180deg,#FFFFFF,#FCD34D,#F59E0B); }
+:root[data-theme="mahavir"] ::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#FDE68A,#F59E0B,#C2410C); background-clip:content-box; }
+@media (prefers-reduced-motion: reduce) { :root[data-theme="mahavir"] .sidebar::before { animation:none; } }
