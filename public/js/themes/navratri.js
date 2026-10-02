@@ -7,22 +7,57 @@ ThemeDecor.register('navratri', function (d) {
   toran.className = 'td-item td-toran';
   d.layer.appendChild(toran);
 
-  // A dandiya pair, both with arms raised and sticks overhead. Arms are groups turning about the
-  // shoulder (.nv-arm-l / .nv-arm-r, origins in navratri.css), the skirt twirls (.nv-skirt) and the
-  // whole dancer steps (.nv-body).
+  // A pair of dancers, bottom-left. Arms are groups turning about the shoulder (.nv-arm-l /
+  // .nv-arm-r, origins in navratri.css), the skirt twirls (.nv-skirt) and the whole dancer steps
+  // (.nv-body). Each day of Navratri they dance something different, in different clothes:
+  //   dance  'dandiya' (sticks overhead, struck together) or 'garba' (no sticks, clapping overhead)
+  //   step   'a' sway, 'b' hop, 'c' spin (the classes nv-st-a/b/c pick the keyframes)
+  //   g      the girl: ghagra, its border, choli, dupatta, and the ghagra's motif and its colour
+  //   b      the boy: kurta, vest and its trim, dhoti
+  var NV_DANCE = {
+    0: { dance: 'dandiya', step: 'a', g: { skirt: '#15803D', border: '#DB2777', choli: '#16A34A', drape: '#EC4899', motif: 'flowers', mc: '#F472B6' }, b: { kurta: '#1C1917', vest: '#1C1917', trim: '#F5B70A', dhoti: '#DC2626' } },
+    1: { dance: 'garba', step: 'b', g: { skirt: '#FFFFFF', border: '#DC2626', choli: '#DC2626', drape: '#FCA5A5', motif: 'mirrors', mc: '#DC2626' }, b: { kurta: '#FFFFFF', vest: '#DC2626', trim: '#F5B70A', dhoti: '#B91C1C' } },
+    2: { dance: 'dandiya', step: 'c', g: { skirt: '#F97316', border: '#15803D', choli: '#15803D', drape: '#FDE047', motif: 'stripes', mc: '#FDE047' }, b: { kurta: '#15803D', vest: '#F97316', trim: '#FDE047', dhoti: '#FFF7ED' } },
+    3: { dance: 'garba', step: 'a', g: { skirt: '#1D4ED8', border: '#F5B70A', choli: '#F5B70A', drape: '#93C5FD', motif: 'mirrors', mc: '#FDE68A' }, b: { kurta: '#F5B70A', vest: '#1E3A8A', trim: '#FDE68A', dhoti: '#1D4ED8' } },
+    4: { dance: 'dandiya', step: 'b', g: { skirt: '#FDE047', border: '#F97316', choli: '#22C55E', drape: '#F97316', motif: 'zigzag', mc: '#F97316' }, b: { kurta: '#F97316', vest: '#15803D', trim: '#FDE047', dhoti: '#FDE047' } },
+    5: { dance: 'garba', step: 'c', g: { skirt: '#EC4899', border: '#0D9488', choli: '#14B8A6', drape: '#F9A8D4', motif: 'paisley', mc: '#5EEAD4' }, b: { kurta: '#0D9488', vest: '#EC4899', trim: '#FBCFE8', dhoti: '#F9A8D4' } },
+    6: { dance: 'dandiya', step: 'a', g: { skirt: '#B91C1C', border: '#F5B70A', choli: '#7F1D1D', drape: '#F5B70A', motif: 'stripes', mc: '#F5B70A' }, b: { kurta: '#7F1D1D', vest: '#F5B70A', trim: '#B91C1C', dhoti: '#FFF7ED' } },
+    7: { dance: 'garba', step: 'b', g: { skirt: '#312E81', border: '#C0C7D4', choli: '#1E1B4B', drape: '#A78BFA', motif: 'mirrors', mc: '#E2E8F0' }, b: { kurta: '#1E1B4B', vest: '#64748B', trim: '#E2E8F0', dhoti: '#4C1D95' } },
+    8: { dance: 'dandiya', step: 'c', g: { skirt: '#FDF2F8', border: '#DB2777', choli: '#F472B6', drape: '#FFFFFF', motif: 'flowers', mc: '#DB2777' }, b: { kurta: '#FFFFFF', vest: '#F472B6', trim: '#F5B70A', dhoti: '#FBCFE8' } },
+    9: { dance: 'garba', step: 'a', g: { skirt: '#7E22CE', border: '#F5B70A', choli: '#F5B70A', drape: '#C084FC', motif: 'zigzag', mc: '#FDE68A' }, b: { kurta: '#F5B70A', vest: '#7E22CE', trim: '#FDE68A', dhoti: '#7E22CE' } }
+  };
+  var DANCE = NV_DANCE[+document.documentElement.getAttribute('data-nv-day')] || NV_DANCE[0];
+  var GARBA = DANCE.dance === 'garba';
   var SKIN = '#E8A87C', INK = '#3B2410';
   function stick(x1, y1, x2, y2) {
     return '<path d="M' + x1 + ' ' + y1 + ' L' + x2 + ' ' + y2 + '" stroke="#B45309" stroke-width="3.4" stroke-linecap="round"/>' +
            '<path d="M' + x1 + ' ' + y1 + ' L' + x2 + ' ' + y2 + '" stroke="#FDE047" stroke-width="3.4" stroke-dasharray="3 3" stroke-linecap="round"/>' +
            '<circle cx="' + x2 + '" cy="' + y2 + '" r="2.4" fill="#DC2626"/>';
   }
+  // Dandiya: arms up and out, a stick in each hand. Garba: no sticks, the hands meet overhead to clap.
   function arm(side, sleeve, cuff) {
-    var sx = 50 + side * 10, hx = 50 + side * 18;
+    var sx = 50 + side * 10, hx = GARBA ? 50 + side * 4 : 50 + side * 18, hy = GARBA ? 18 : 22;
     return '<g class="nv-arm nv-arm-' + (side < 0 ? 'l' : 'r') + '">' +
-      '<path d="M' + sx + ' 64 L' + (50 + side * 20) + ' 44 L' + hx + ' 22" fill="none" stroke="' + SKIN + '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M' + sx + ' 64 L' + (50 + side * 20) + ' 44 L' + hx + ' ' + hy + '" fill="none" stroke="' + SKIN + '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
       '<path d="M' + sx + ' 64 L' + (50 + side * 17) + ' 52" stroke="' + sleeve + '" stroke-width="8" stroke-linecap="round"/>' +
-      '<path d="M' + (hx - 3.5) + ' 29 h7" stroke="' + cuff + '" stroke-width="3"/>' +
-      stick(hx, 22, hx - side * 20, 6) + '<circle cx="' + hx + '" cy="22" r="3.4" fill="' + SKIN + '"/></g>';
+      '<path d="M' + ((50 + side * 20 + hx) / 2 - 3.5) + ' ' + ((44 + hy) / 2 + 2) + ' h7" stroke="' + cuff + '" stroke-width="3"/>' +
+      (GARBA ? '' : stick(hx, 22, hx - side * 20, 6)) + '<circle cx="' + hx + '" cy="' + hy + '" r="3.4" fill="' + SKIN + '"/></g>';
+  }
+  // The pattern on the ghagra, between its waist (y 84) and border (y 129).
+  function motif(kind, c) {
+    var s = '', pts = [[26, 116], [40, 122], [56, 122], [72, 116], [50, 106], [34, 102], [66, 102]];
+    if (kind === 'flowers') {
+      pts.forEach(function (p) { s += '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="2.4" fill="' + c + '"/><circle cx="' + p[0] + '" cy="' + p[1] + '" r="1" fill="#FDE047"/>'; });
+    } else if (kind === 'mirrors') { // sheesha work: little round mirrors ringed in colour
+      pts.forEach(function (p) { s += '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="2.8" fill="#E2E8F0" stroke="' + c + '" stroke-width="1.3"/><circle cx="' + (p[0] - .8) + '" cy="' + (p[1] - .8) + '" r=".8" fill="#fff"/>'; });
+    } else if (kind === 'stripes') { // leheriya: panels flaring from the waist
+      [-38, -22, -8, 8, 22, 38].forEach(function (dx) { s += '<path d="M' + (50 + dx * .3) + ' 86 L' + (50 + dx) + ' 130" stroke="' + c + '" stroke-width="3" stroke-opacity=".85"/>'; });
+    } else if (kind === 'zigzag') {
+      [98, 112].forEach(function (y) { var d = 'M' + (40 - (y - 84) * .7) + ' ' + y; for (var x = 40 - (y - 84) * .7 + 5, k = 0; x < 60 + (y - 84) * .7; x += 5, k++) d += ' L' + x.toFixed(1) + ' ' + (y + (k % 2 ? 0 : -4)); s += '<path d="' + d + '" fill="none" stroke="' + c + '" stroke-width="1.8"/>'; });
+    } else if (kind === 'paisley') { // kairi: teardrops curling at the tip
+      pts.forEach(function (p) { s += '<path d="M' + p[0] + ' ' + (p[1] + 3) + ' q-4 -2 -2 -6 q2 -3 5 -1 q-2 0 -1 2 q2 3 -2 5 Z" fill="' + c + '"/>'; });
+    }
+    return s;
   }
   function head(girl) {
     var s = '<rect x="46" y="52" width="8" height="10" fill="' + SKIN + '"/>' +
@@ -40,38 +75,41 @@ ThemeDecor.register('navratri', function (d) {
     }
     return s;
   }
-  function girl() {
+  function girl(o) {
     return '<svg viewBox="0 0 100 160" xmlns="http://www.w3.org/2000/svg"><g class="nv-body">' +
       '<path d="M44 140 L42 152 M56 140 L58 152" stroke="' + SKIN + '" stroke-width="5" stroke-linecap="round"/>' +
-      // pink dupatta streaming out behind
-      '<path d="M42 64 Q22 70 8 92 Q24 86 34 92 Q30 80 44 74 Z" fill="#EC4899" stroke="#F59E0B" stroke-width="1.6"/>' +
-      // flared green ghagra with pink-and-gold border and flowers
-      '<g class="nv-skirt"><path d="M42 84 L58 84 Q86 104 96 138 Q50 152 4 138 Q14 104 42 84 Z" fill="#15803D"/>' +
-      '<path d="M4 138 Q50 152 96 138 L93 129 Q50 143 7 129 Z" fill="#DB2777"/>' +
-      '<path d="M5.5 133.5 Q50 147.5 94.5 133.5" fill="none" stroke="#F5B70A" stroke-width="1.6" stroke-dasharray="2 3"/>' +
-      '<g fill="#F472B6"><circle cx="26" cy="116" r="2.4"/><circle cx="40" cy="122" r="2.4"/><circle cx="56" cy="122" r="2.4"/><circle cx="72" cy="116" r="2.4"/><circle cx="50" cy="106" r="2.2"/><circle cx="34" cy="102" r="2.2"/><circle cx="66" cy="102" r="2.2"/></g>' +
-      '<g fill="#FDE047"><circle cx="26" cy="116" r="1"/><circle cx="40" cy="122" r="1"/><circle cx="56" cy="122" r="1"/><circle cx="72" cy="116" r="1"/></g></g>' +
-      // green choli with a pink drape
-      '<path d="M40 62 Q50 58 60 62 L59 86 L41 86 Z" fill="#16A34A" stroke="#14532D" stroke-width=".8"/>' +
-      '<path d="M41 62 Q48 74 59 84 L59 78 Q52 72 46 62 Z" fill="#EC4899"/>' +
+      // dupatta streaming out behind
+      '<path d="M42 64 Q22 70 8 92 Q24 86 34 92 Q30 80 44 74 Z" fill="' + o.drape + '" stroke="#F59E0B" stroke-width="1.6"/>' +
+      // the flared ghagra, its border and gold edging, and the day's motif
+      '<g class="nv-skirt"><path d="M42 84 L58 84 Q86 104 96 138 Q50 152 4 138 Q14 104 42 84 Z" fill="' + o.skirt + '" stroke="rgba(0,0,0,.18)" stroke-width=".8"/>' +
+      motif(o.motif, o.mc) +
+      '<path d="M4 138 Q50 152 96 138 L93 129 Q50 143 7 129 Z" fill="' + o.border + '"/>' +
+      '<path d="M5.5 133.5 Q50 147.5 94.5 133.5" fill="none" stroke="#F5B70A" stroke-width="1.6" stroke-dasharray="2 3"/></g>' +
+      // choli with a drape across it
+      '<path d="M40 62 Q50 58 60 62 L59 86 L41 86 Z" fill="' + o.choli + '" stroke="rgba(0,0,0,.3)" stroke-width=".8"/>' +
+      '<path d="M41 62 Q48 74 59 84 L59 78 Q52 72 46 62 Z" fill="' + o.drape + '"/>' +
       '<path d="M44 64 Q50 70 56 64" fill="none" stroke="#F5B70A" stroke-width="1.6"/>' +
-      arm(-1, '#16A34A', '#15803D') + arm(1, '#16A34A', '#15803D') + head(true) + '</g></svg>';
+      arm(-1, o.choli, o.border) + arm(1, o.choli, o.border) + head(true) + '</g></svg>';
   }
-  function boy() {
+  function boy(o) {
     return '<svg viewBox="0 0 100 160" xmlns="http://www.w3.org/2000/svg"><g class="nv-body">' +
-      // red dhoti, puffed
-      '<path d="M38 108 Q30 134 36 148 L48 148 L50 118 L52 148 L64 148 Q70 134 62 108 Z" fill="#DC2626" stroke="#7F1D1D" stroke-width="1"/>' +
-      '<path d="M42 118 Q44 132 41 144 M58 118 Q56 132 59 144" fill="none" stroke="#991B1B" stroke-width="1"/>' +
+      // dhoti, puffed
+      '<path d="M38 108 Q30 134 36 148 L48 148 L50 118 L52 148 L64 148 Q70 134 62 108 Z" fill="' + o.dhoti + '" stroke="rgba(0,0,0,.35)" stroke-width="1"/>' +
+      '<path d="M42 118 Q44 132 41 144 M58 118 Q56 132 59 144" fill="none" stroke="rgba(0,0,0,.2)" stroke-width="1"/>' +
       '<path d="M41 148 L40 153 M59 148 L60 153" stroke="' + SKIN + '" stroke-width="5" stroke-linecap="round"/>' +
-      // black kurta flaring as he turns, gold-embroidered vest
-      '<g class="nv-skirt"><path d="M40 62 Q50 58 60 62 L64 96 Q78 112 82 120 Q50 128 18 120 Q22 112 36 96 Z" fill="#1C1917" stroke="#000" stroke-width=".8"/></g>' +
-      '<path d="M41 63 L43 100 L49 100 L48 64 Z M59 63 L57 100 L51 100 L52 64 Z" fill="#1C1917" stroke="#F5B70A" stroke-width="1.6"/>' +
-      '<path d="M44 72 h2 M44 80 h2 M44 88 h2 M54 72 h2 M54 80 h2 M54 88 h2" stroke="#F5B70A" stroke-width="1.6" stroke-linecap="round"/>' +
+      // kediyu: the kurta flaring as he turns, an embroidered vest over it
+      '<g class="nv-skirt"><path d="M40 62 Q50 58 60 62 L64 96 Q78 112 82 120 Q50 128 18 120 Q22 112 36 96 Z" fill="' + o.kurta + '" stroke="rgba(0,0,0,.35)" stroke-width=".8"/>' +
+      '<path d="M22 116 Q50 124 78 116" fill="none" stroke="' + o.trim + '" stroke-width="2" stroke-dasharray="3 2"/></g>' +
+      '<path d="M41 63 L43 100 L49 100 L48 64 Z M59 63 L57 100 L51 100 L52 64 Z" fill="' + o.vest + '" stroke="' + o.trim + '" stroke-width="1.6"/>' +
+      '<path d="M44 72 h2 M44 80 h2 M44 88 h2 M54 72 h2 M54 80 h2 M54 88 h2" stroke="' + o.trim + '" stroke-width="1.6" stroke-linecap="round"/>' +
       '<path d="M45 63 Q50 76 55 63" fill="none" stroke="#F8FAFC" stroke-width="1.6" stroke-dasharray="0.1 2.6" stroke-linecap="round"/>' +
-      arm(-1, '#1C1917', '#F5B70A') + arm(1, '#1C1917', '#F5B70A') + head(false) + '</g></svg>';
+      arm(-1, o.kurta, o.trim) + arm(1, o.kurta, o.trim) + head(false) + '</g></svg>';
   }
-  d.svg(girl(), 'td-dancer td-dancer-1 td-drag');
-  d.svg(boy(), 'td-dancer td-dancer-2 td-drag');
+  // The dance goes on the inner svg, not the dancer: the dancer's classes key where a viewer has
+  // dragged it, and that spot should not change from day to day.
+  [d.svg(girl(DANCE.g), 'td-dancer td-dancer-1 td-drag'), d.svg(boy(DANCE.b), 'td-dancer td-dancer-2 td-drag')].forEach(function (el) {
+    el.firstChild.setAttribute('class', 'nv-' + DANCE.dance + ' nv-st-' + DANCE.step);
+  });
 
 
   // Maa Durga riding her tiger, in a friendly cartoon style: big round face with sparkling eyes,

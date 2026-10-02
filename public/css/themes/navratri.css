@@ -355,3 +355,16 @@
 .nv-flash { animation:nv-flash 2.4s ease-in-out infinite; }
 @keyframes nv-flash { 0%,70%,100% { filter:none; } 80% { filter:brightness(1.5) drop-shadow(0 0 6px #fff); } }
 @media (prefers-reduced-motion: reduce) { :root[data-theme="navratri"][data-nv-day="6"] .sidebar::before, .nv-flash { animation:none; } }
+
+/* The day's dance (navratri.js NV_DANCE, classes on each dancer's svg): step b hops, step c spins
+   round; garba arms clap overhead instead of striking sticks. Step a is the sway above. */
+.nv-st-b .nv-body { animation-name:nv-hop; animation-duration:1.6s; }
+@keyframes nv-hop { 0%,100% { transform:translateY(0); } 30% { transform:translateY(-11px) rotate(-4deg); } 50% { transform:translateY(0); } 80% { transform:translateY(-11px) rotate(4deg); } }
+.nv-st-c .nv-body { animation-name:nv-turn; animation-duration:3.2s; }
+@keyframes nv-turn { 0%,100% { transform:scaleX(1) translateY(0); } 25% { transform:scaleX(.15) translateY(-5px); } 50% { transform:scaleX(-1) translateY(0); } 75% { transform:scaleX(-.15) translateY(-5px); } }
+.nv-st-c .nv-skirt { animation-name:nv-twirl-wide; }
+@keyframes nv-twirl-wide { 0%,50%,100% { transform:scaleX(1); } 25%,75% { transform:scaleX(1.25); } }
+.nv-garba .nv-arm-l { animation-name:nv-clap-l; animation-duration:1.2s; }
+.nv-garba .nv-arm-r { animation-name:nv-clap-r; animation-duration:1.2s; }
+@keyframes nv-clap-l { 0%,100% { transform:rotate(-24deg); } 50% { transform:rotate(4deg); } }
+@keyframes nv-clap-r { 0%,100% { transform:rotate(24deg); } 50% { transform:rotate(-4deg); } }
