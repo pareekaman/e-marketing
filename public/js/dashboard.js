@@ -221,7 +221,8 @@ async function loadDashboardPerfCharts(){
   const lb = await api(`/api/dashboard/leaderboard?start=${fromEl.value}&end=${toEl.value}&scope=${team ? 'team' : 'all'}`);
   const scoreData = lb && lb.scores, activityData = lb && lb.activity;
   const scopeLabel = document.getElementById('dashPerfScopeLabel');
-  if (scopeLabel) scopeLabel.textContent = lb && lb.scope === 'team' ? `· ${lb.department || 'My Team'}` : '· Whole company';
+  // Named only when narrowed to a team; the whole-company view carries no label.
+  if (scopeLabel) scopeLabel.textContent = lb && lb.scope === 'team' ? `· ${lb.department || 'My Team'}` : '';
 
   if (perfGrid) perfGrid.style.opacity = '1';
 
