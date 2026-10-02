@@ -5,6 +5,73 @@ ThemeDecor.register('christmas', function (d) {
   d.svg('', 'td-lights');
   d.svg('', 'td-lights td-lights-b');
 
+  // A Christmas tree, bottom-left: four snow-edged tiers, a glowing star (.xt-glow), tinsel,
+  // baubles, fairy lights that twinkle in turn (.xt-light) and presents underneath.
+  function christmasTree() {
+    var s = '<svg viewBox="0 0 160 222" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<linearGradient id="tdXtGreen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2F9E55"/><stop offset="1" stop-color="#14532D"/></linearGradient>' +
+      '<radialGradient id="tdXtStar"><stop offset="0" stop-color="#FFF7C2"/><stop offset=".5" stop-color="#FDE047" stop-opacity=".7"/><stop offset="1" stop-color="#FACC15" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="tdXtGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF1A8"/><stop offset=".55" stop-color="#F5B70A"/><stop offset="1" stop-color="#C98A06"/></linearGradient></defs>';
+    // trunk and a red tub with a gold band, standing in a heap of snow
+    s += '<rect x="72" y="176" width="16" height="22" fill="#6B4226"/>' +
+         '<ellipse cx="80" cy="214" rx="76" ry="6.5" fill="#fff" opacity=".95"/>' +
+         '<path d="M58 196 H102 L98 216 H62 Z" fill="#B91C1C" stroke="#7F1D1D" stroke-width="1"/><rect x="58" y="196" width="44" height="4" fill="url(#tdXtGold)"/>';
+    // the tiers, widest first, each with a scalloped hem, a shaded right side and snow on the hem
+    [[96, 178, 68, 7], [70, 146, 56, 6], [44, 112, 44, 5], [24, 78, 32, 4]].forEach(function (t) {
+      var apex = t[0], base = t[1], x0 = 80 - t[2], x1 = 80 + t[2], step = (x1 - x0) / t[3], hem = '';
+      for (var i = 0; i < t[3]; i++) {
+        var a = x0 + i * step, b = a + step;
+        hem += ' Q' + ((a + b) / 2).toFixed(1) + ' ' + (base + 7) + ' ' + b.toFixed(1) + ' ' + base;
+      }
+      s += '<path d="M80 ' + apex + ' L' + x0 + ' ' + base + hem + ' Z" fill="url(#tdXtGreen)"/>' +
+           '<path d="M80 ' + apex + ' L80 ' + (base + 3) + ' L' + x1 + ' ' + base + ' Z" fill="#0B3D1E" opacity=".25"/>' +
+           '<path d="M' + x0 + ' ' + base + hem + '" fill="none" stroke="#fff" stroke-width="2.4" stroke-dasharray="14 6" stroke-linecap="round" opacity=".9"/>';
+    });
+    // gold tinsel swooping round the tree
+    [['M48 98 Q80 108 110 90'], ['M38 130 Q80 142 116 120'], ['M26 164 Q80 178 124 150']].forEach(function (g) {
+      s += '<path d="' + g[0] + '" fill="none" stroke="#F5C518" stroke-width="2.4" stroke-dasharray="3 2"/>' +
+           '<path d="' + g[0] + '" fill="none" stroke="#FFF7C2" stroke-width=".8"/>';
+    });
+    // baubles
+    [[70, 52, '#DC2626'], [92, 46, '#F5B70A'], [60, 86, '#2563EB'], [98, 82, '#DC2626'], [80, 96, '#A855F7'], [50, 120, '#F5B70A'],
+     [76, 124, '#DC2626'], [108, 118, '#2563EB'], [40, 156, '#DC2626'], [66, 160, '#2563EB'], [96, 158, '#F5B70A'], [124, 150, '#A855F7']].forEach(function (b) {
+      s += '<rect x="' + (b[0] - 1.4) + '" y="' + (b[1] - 6.4) + '" width="2.8" height="2.4" fill="#F5C518"/>' +
+           '<circle cx="' + b[0] + '" cy="' + b[1] + '" r="4.3" fill="' + b[2] + '"/>' +
+           '<circle cx="' + (b[0] - 1.4) + '" cy="' + (b[1] - 1.5) + '" r="1.3" fill="#fff" opacity=".75"/>';
+    });
+    // fairy lights strung along four curves, each bulb lighting up a beat after the last
+    var LIGHT = ['#FDE047', '#EF4444', '#3B82F6', '#22C55E', '#F472B6'], n = 0;
+    [[56, 64, 80, 74, 100, 58, 5], [46, 100, 80, 112, 110, 92, 6], [34, 138, 80, 150, 120, 126, 7], [26, 170, 80, 180, 132, 160, 8]].forEach(function (c) {
+      for (var k = 0; k < c[6]; k++) {
+        var u = (k + 0.5) / c[6], v = 1 - u;
+        var x = v * v * c[0] + 2 * u * v * c[2] + u * u * c[4], y = v * v * c[1] + 2 * u * v * c[3] + u * u * c[5], col = LIGHT[n % LIGHT.length];
+        s += '<g class="xt-light" style="animation-delay:' + (-(n * 0.23) % 1.4).toFixed(2) + 's">' +
+             '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="4.6" fill="' + col + '" opacity=".3"/>' +
+             '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="2.2" fill="' + col + '"/></g>';
+        n++;
+      }
+    });
+    // the star on top, glowing
+    var star = '';
+    for (var p = 0; p < 10; p++) {
+      var ang = -Math.PI / 2 + p * Math.PI / 5, rr = p % 2 ? 5.6 : 13;
+      star += (p ? ' L' : 'M') + (80 + rr * Math.cos(ang)).toFixed(1) + ' ' + (18 + rr * Math.sin(ang)).toFixed(1);
+    }
+    s += '<circle class="xt-glow" cx="80" cy="18" r="18" fill="url(#tdXtStar)"/>' +
+         '<path d="' + star + ' Z" fill="url(#tdXtGold)" stroke="#B45309" stroke-width="1"/>';
+    // presents under the tree
+    function present(x, y, w, h, box, ribbon) {
+      return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="1.5" fill="' + box + '"/>' +
+             '<rect x="' + (x + w / 2 - 2) + '" y="' + y + '" width="4" height="' + h + '" fill="' + ribbon + '"/>' +
+             '<rect x="' + x + '" y="' + (y + h / 2 - 2) + '" width="' + w + '" height="4" fill="' + ribbon + '"/>' +
+             '<ellipse cx="' + (x + w / 2 - 4) + '" cy="' + (y - 2.5) + '" rx="4.5" ry="3" fill="' + ribbon + '"/>' +
+             '<ellipse cx="' + (x + w / 2 + 4) + '" cy="' + (y - 2.5) + '" rx="4.5" ry="3" fill="' + ribbon + '"/>';
+    }
+    s += present(14, 190, 32, 24, '#DC2626', '#F5C518') + present(114, 194, 28, 20, '#2563EB', '#F8FAFC') + present(98, 203, 16, 12, '#16A34A', '#DC2626');
+    return s + '</svg>';
+  }
+  d.svg(christmasTree(), 'td-xtree td-drag');
+
   // The sleigh, drawn facing right (team in front); .sl-flip turns it round when he flies left.
   // .sl-wave is Santa's waving arm, .sl-sack where the gifts come from.
   //

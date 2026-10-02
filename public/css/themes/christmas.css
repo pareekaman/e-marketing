@@ -39,3 +39,11 @@
 .sl-say::after { content:''; position:absolute; left:18px; bottom:-8px; border:7px solid transparent; border-top-color:#DC2626; border-bottom:0; }
 .sl-say.sl-show { opacity:1; }
 @media (prefers-reduced-motion: reduce) { .rd-deer, .rd-fl, .rd-hl, .rd-head, .rd-glow, .sl-wave { animation:none; } }
+/* the Christmas tree, bottom-left: twinkling fairy lights and a glowing star */
+.td-xtree { left:74px; bottom:0; width:150px; filter:drop-shadow(0 4px 6px rgba(0,0,0,.25)); transition:translate .3s var(--ease); }
+.sidebar:hover ~ #themeDecor .td-xtree { translate:172px 0; }
+.xt-light { animation:xt-twinkle 1.4s ease-in-out infinite alternate; }
+@keyframes xt-twinkle { from { opacity:.2; } to { opacity:1; } }
+.xt-glow { transform-box:fill-box; transform-origin:center; animation:xt-glow 1.8s ease-in-out infinite alternate; }
+@keyframes xt-glow { from { opacity:.45; transform:scale(.88); } to { opacity:1; transform:scale(1.15); } }
+@media (prefers-reduced-motion: reduce) { .xt-light, .xt-glow { animation:none; } .td-xtree { transition:none; } }
