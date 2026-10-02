@@ -104,6 +104,15 @@ app.get('/api/clients', requireAuth, async (req, res) => {
     if (!(await canViewBillingName(req.session))) {
       for (const r of rows) delete r.billing_name;
     }
+    // Kickstart date for the Client Master rows. Its own query, so the pickers
+    // sharing this route keep working on an instance that lacks the column.
+    if (req.query.scope === 'master') {
+      try {
+        const [ks] = await db.query(`SELECT id, DATE_FORMAT(kickstart_date, '%Y-%m-%d') AS d FROM clients WHERE kickstart_date IS NOT NULL`);
+        const ksMap = Object.fromEntries(ks.map(k => [k.id, k.d]));
+        for (const r of rows) r.kickstart_date = ksMap[r.id] || null;
+      } catch {}
+    }
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -244,6 +253,7 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
     const name = req.body.name == null ? null : String(req.body.name).trim();
     const brandName = req.body.brand_name == null ? null : String(req.body.brand_name).trim();
     const billingName = req.body.billing_name == null ? null : String(req.body.billing_name).trim();
+    const kickstartDate = req.body.kickstart_date == null ? null : String(req.body.kickstart_date).trim();
     const handlerRaw = req.body.handler_id;
     const handlerId = handlerRaw === undefined ? undefined
                     : (handlerRaw == null || handlerRaw === '') ? null
@@ -259,6 +269,11 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Not allowed to change the billing name' });
     }
     if (!handlerOnly && billingName === '') return res.status(400).json({ error: 'Billing name cannot be empty' });
+    // Required on Add Client, so it is set, never cleared, from here.
+    if (!handlerOnly && kickstartDate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(kickstartDate)) {
+      return res.status(400).json({ error: 'Kickstart meeting date required' });
+    }
+    if (kickstartDate !== null) await ensureKickstartColumn();
     // Only update fields that were sent.
     const sets = [], params = [];
     // Structural fields — full editors only; a handler cannot rename/reassign.
@@ -266,6 +281,7 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
       if (name !== null) { sets.push('name=?'); params.push(name); }
       if (brandName !== null) { sets.push('brand_name=?'); params.push(brandName); }
       if (billingName !== null) { sets.push('billing_name=?'); params.push(billingName); }
+      if (kickstartDate !== null) { sets.push('kickstart_date=?'); params.push(kickstartDate); }
       if (handlerId !== undefined) { sets.push('handler_id=?'); params.push(handlerId); }
     }
     // Active flag — a handler may retire their own client. Not structural: it
@@ -465,9 +481,15 @@ app.get('/api/clients/:id/stats', requireAuth, async (req, res) => {
       .slice(0, 20);
 
     const seesBilling = await canViewBillingName(req.session);
+    // Own query, so an instance where the column is not there yet still loads.
+    let kickstartDate = null;
+    try {
+      const [[k]] = await db.query(`SELECT DATE_FORMAT(kickstart_date, '%Y-%m-%d') AS d FROM clients WHERE id=?`, [id]);
+      kickstartDate = k?.d || null;
+    } catch {}
     res.json({
       client: {
-        id: client.id, name: client.name, brand_name: client.brand_name,
+        id: client.id, name: client.name, brand_name: client.brand_name, kickstart_date: kickstartDate,
         ...(seesBilling ? { billing_name: client.billing_name } : {}),
         logo_url: client.logo_url,
         handler_id: client.handler_id, handler_name: client.handler_name, handler_email: client.handler_email,

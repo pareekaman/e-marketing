@@ -441,6 +441,10 @@ function cmRenderList(){
     const nameBit = label !== c.name
       ? ` · <span style="color:#475569;font-weight:600">🏢 ${dtEscape(c.name)}</span>`
       : '';
+    // Kickstart date on the row itself; an amber nudge when it is still unset.
+    const kickBit = c.kickstart_date
+      ? ` · <span style="color:#b45309;font-weight:600">🚀 ${dtEscape(cmInvDate(c.kickstart_date))}</span>`
+      : ` · <span style="color:#94a3b8">🚀 No kickstart date</span>`;
     const billingBit = (cmCanSeeBilling() && c.billing_name)
       ? ` · <span style="color:#0369a1;font-weight:600">🧾 ${dtEscape(c.billing_name)}</span>`
       : '';
@@ -452,7 +456,7 @@ function cmRenderList(){
           <div class="cm-avatar" style="${avatarStyle}">${initials}</div>
           <div class="cm-client-meta">
             <span class="cm-client-name">${safeName}</span>
-            <div class="cm-client-id">Client #${c.id}${nameBit}${billingBit} · ${handlerLabel}</div>
+            <div class="cm-client-id">Client #${c.id}${nameBit}${billingBit}${kickBit} · ${handlerLabel}</div>
           </div>
         </div>
         <div class="cm-client-actions">
@@ -818,6 +822,16 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
     </div>
 
     <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
+      <div class="card-head-title" style="margin-bottom:10px">🚀 Kickstart Meeting Date <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on the client's portal</span></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="date" id="cmKickstart_${id}" value="${dtEscape(client.kickstart_date || '')}"
+               style="min-width:200px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px"/>
+        <button class="btn btn-primary" style="padding:7px 16px;font-size:12px" onclick="cmSaveKickstart(${id})">💾 Save</button>
+      </div>
+      ${client.kickstart_date ? '' : '<div style="font-size:11px;color:#b45309;margin-top:7px">Not set yet — pick the date and save.</div>'}
+    </div>
+
+    <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">🏷 Brand Name <span style="font-weight:400;color:#94a3b8;font-size:12px">— the name this client trades under</span></div>
       </div>
@@ -997,6 +1011,18 @@ async function cmSaveWaGroup(id){
 // who is not a full editor never sees this card, because the server would drop
 // the field and answer {noop:true}, leaving the input showing a value that was
 // never written (the same trap the is_active toggle hit).
+async function cmSaveKickstart(id){
+  const value = document.getElementById('cmKickstart_' + id)?.value || '';
+  if (!value) { showToast('Pick the kickstart meeting date', 'error'); return; }
+  const r = await api('/api/clients/' + id, 'PUT', { kickstart_date: value });
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  if (r && r.noop) { showToast('You do not have permission to change this client', 'error'); return; }
+  // Keep the list row in step so going back shows the date without a reload.
+  const client = CM_ALL.find(c => String(c.id) === String(id));
+  if (client) { client.kickstart_date = value; cmRenderList(); }
+  showToast('✅ Kickstart date saved');
+}
+
 async function cmSaveBrandName(id){
   const input = document.getElementById('cmBrandName_' + id);
   if (!input) return;
