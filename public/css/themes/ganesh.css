@@ -1,0 +1,84 @@
+/* Ganesh Chaturthi — sindoor red, saffron and marigold yellow, as in every pandal. */
+:root[data-theme="ganesh"] {
+  --brand-1:#FACC15; --brand-2:#F97316; --brand-2-rgb:249,115,22;
+  --accent:#B91C1C; --accent-dark:#7F1D1D; --accent-light:#DC2626;
+  --accent-rgb:185,28,28; --accent-light-rgb:220,38,38;
+  --page-bg:#FFF8EE; --sidebar-top:#7F1D1D; --sidebar-bottom:#450A0A;
+}
+
+/* Decoration (js/themes/ganesh.js): Ganpati under his pandal bottom-right, the dhol player
+   bottom-left, the greeting above him. */
+.gc-ganpati { right:96px; bottom:0; width:200px; transition:translate .3s var(--ease);
+  filter:drop-shadow(0 0 12px rgba(250,204,21,.55)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+.gc-ganpati svg { overflow:visible; }
+.gc-ear { transform-box:fill-box; animation:gc-ear 1.6s ease-in-out infinite alternate; }
+.gc-ear-l { transform-origin:100% 40%; }
+.gc-ear-r { transform-origin:0 40%; animation-delay:-.8s; }
+@keyframes gc-ear { from { transform:scaleX(1); } to { transform:scaleX(.82); } }
+.gc-trunk { transform-box:view-box; transform-origin:110px 106px; animation:gc-trunk 3s ease-in-out infinite alternate; }
+@keyframes gc-trunk { from { transform:rotate(-4deg); } to { transform:rotate(5deg); } }
+.gc-toran { transform-box:view-box; transform-origin:110px 54px; animation:gc-toran 4s ease-in-out infinite alternate; }
+@keyframes gc-toran { from { transform:skewX(-2deg); } to { transform:skewX(2deg); } }
+.gc-mouse { transform-box:fill-box; transform-origin:50% 100%; animation:gc-nibble .5s ease-in-out infinite alternate; }
+@keyframes gc-nibble { from { transform:translateY(0); } to { transform:translateY(-1.5px); } }
+.gc-dhol { left:76px; bottom:0; width:140px; transition:translate .3s var(--ease); filter:drop-shadow(0 4px 5px rgba(0,0,0,.25)); }
+.gc-beat { transform-box:view-box; animation:gc-beat .5s ease-in-out infinite alternate; }
+.gc-beat-l { transform-origin:44px 76px; }
+.gc-beat-r { transform-origin:70px 74px; animation-delay:-.25s; }
+@keyframes gc-beat { from { transform:rotate(0); } to { transform:rotate(-12deg); } }
+.gc-flame { transform-box:fill-box; transform-origin:50% 100%; animation:gc-flicker .9s ease-in-out infinite alternate; }
+@keyframes gc-flicker { from { transform:scale(1,.9); } to { transform:scale(1.1,1.12); } }
+.gc-greet { position:absolute; left:84px; bottom:172px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
+  color:#fff; padding:7px 14px; border-radius:999px; background:linear-gradient(135deg,#B91C1C,#EA580C 55%,#EAB308);
+  box-shadow:0 0 0 2px rgba(255,255,255,.85), 0 0 18px rgba(234,88,12,.55); transition:translate .3s var(--ease);
+  animation:gc-greet 2.4s ease-in-out infinite alternate; }
+@keyframes gc-greet { from { transform:translateY(0); } to { transform:translateY(-4px); } }
+.sidebar:hover ~ #themeDecor .gc-dhol, .sidebar:hover ~ #themeDecor .gc-greet { translate:172px 0; }
+@media (prefers-reduced-motion: reduce) { .gc-ear, .gc-trunk, .gc-toran, .gc-mouse, .gc-beat, .gc-flame, .gc-greet { animation:none; } .gc-dhol, .gc-greet, .gc-ganpati { transition:none; } }
+
+/* Ganesh Chaturthi skin: a pandal across the whole UI. Only under data-theme="ganesh". */
+/* modaks and blades of durva grass scattered over the page, a warm saffron light from above */
+:root[data-theme="ganesh"] body {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cpath d='M32 46 Q30 36 40 28 Q50 36 48 46 Q40 49 32 46 Z' fill='%23F59E0B' fill-opacity='.14'/%3E%3Cpath d='M40 28 V46' stroke='%23D97706' stroke-opacity='.2'/%3E%3Cpath d='M100 110 Q104 96 112 92 M104 110 Q106 98 100 90 M108 110 Q112 100 118 98' fill='none' stroke='%2316A34A' stroke-opacity='.18' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") repeat 0 0 / 150px 150px,
+    radial-gradient(1000px 380px at 50% -140px, rgba(249,115,22,.25), transparent 70%),
+    var(--page-bg);
+  background-attachment:fixed;
+}
+/* cards: a sindoor-and-marigold edge with a row of marigolds, a warm wash */
+:root[data-theme="ganesh"] .ov-card, :root[data-theme="ganesh"] .chart-card, :root[data-theme="ganesh"] .task-table-card {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='10'%3E%3Ccircle cx='7' cy='5' r='4' fill='%23F97316'/%3E%3Ccircle cx='7' cy='5' r='2.2' fill='%23FACC15'/%3E%3C/svg%3E") repeat-x left top / 14px 10px,
+    linear-gradient(180deg, #FFF1E2 10px, #fff 62px);
+  box-shadow:0 0 0 1px rgba(185,28,28,.1), 0 12px 26px -16px rgba(185,28,28,.45);
+}
+:root[data-theme="ganesh"] .ov-card::before { background:linear-gradient(180deg,#FACC15,#F97316,#B91C1C); }
+/* a toran of mango leaves and marigolds under the header */
+:root[data-theme="ganesh"] .topbar::after {
+  content:''; position:absolute; left:0; right:0; bottom:-14px; height:14px; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='14'%3E%3Cpath d='M0 2 H40' stroke='%23B91C1C' stroke-width='1.4'/%3E%3Cpath d='M10 2 Q13 8 10 13 Q7 8 10 2 Z' fill='%2316A34A'/%3E%3Ccircle cx='30' cy='6' r='4.4' fill='%23F97316'/%3E%3Ccircle cx='30' cy='6' r='2.4' fill='%23FACC15'/%3E%3C/svg%3E") repeat-x left top / 40px 14px;
+}
+:root[data-theme="ganesh"] .topbar-title {
+  background:linear-gradient(90deg,#7F1D1D,#DC2626 45%,#F97316); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+/* the sidebar: deep sindoor, strings of marigolds hanging down its sides, swaying */
+:root[data-theme="ganesh"] .sidebar {
+  background:
+    radial-gradient(200px 150px at 50% 108%, rgba(250,204,21,.4), transparent 70%),
+    linear-gradient(180deg,var(--sidebar-top) 0%,var(--sidebar-bottom) 100%);
+}
+:root[data-theme="ganesh"] .sidebar::before {
+  content:''; position:absolute; inset:0; z-index:-1; pointer-events:none; transform-origin:50% 0;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='14'%3E%3Ccircle cx='6' cy='7' r='4.4' fill='%23F97316' fill-opacity='.85'/%3E%3Ccircle cx='6' cy='7' r='2.2' fill='%23FACC15'/%3E%3C/svg%3E") repeat-y 2px 0 / 12px 14px,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='14'%3E%3Ccircle cx='6' cy='7' r='4.4' fill='%23FACC15' fill-opacity='.85'/%3E%3Ccircle cx='6' cy='7' r='2.2' fill='%23F97316'/%3E%3C/svg%3E") repeat-y right 2px top 0 / 12px 14px;
+  opacity:.75; animation:gc-sway 4s ease-in-out infinite alternate;
+}
+@keyframes gc-sway { from { transform:skewX(-1deg); } to { transform:skewX(1deg); } }
+:root[data-theme="ganesh"] .nav-item.active {
+  background:linear-gradient(90deg,rgba(250,204,21,.35),rgba(250,204,21,.08)); color:#FEF3C7;
+  box-shadow:inset 0 0 0 1px rgba(250,204,21,.32);
+}
+:root[data-theme="ganesh"] .nav-item.active::before { background:linear-gradient(180deg,#FACC15,#F97316,#DC2626); }
+:root[data-theme="ganesh"] ::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#FACC15,#F97316,#B91C1C); background-clip:content-box; }
+@media (prefers-reduced-motion: reduce) { :root[data-theme="ganesh"] .sidebar::before { animation:none; } }

@@ -15,8 +15,34 @@ const THEME_CHOICES = [
   { key: 'diwali',    icon: '🪔', name: 'Diwali',    note: 'Lights, rangoli and diyas',  c: { side: '#2D1240', page: '#FDF5E6', accent: '#C2410C', brand: '#F29900' }, art: tpArtDiwali },
   { key: 'christmas', icon: '🎄', name: 'Christmas', note: 'Santa, snowfall and lights',  c: { side: '#0F2E1C', page: '#F3F8F4', accent: '#C62828', brand: '#2E7D32' }, art: tpArtChristmas },
   { key: 'janmashtami', icon: '🦚', name: 'Janmashtami', note: 'Krishna, his flute and the dahi handi', c: { side: '#0B1E4A', page: '#F4F8FF', accent: '#1D4ED8', brand: '#EAB308' }, art: tpArtJanmashtami },
-  { key: 'shivratri', icon: '🔱', name: 'Maha Shivratri', note: 'Shiv ji in meditation, Kailash at night', c: { side: '#0F172A', page: '#F3F5FA', accent: '#3730A3', brand: '#6366F1' }, art: tpArtShivratri }
+  { key: 'shivratri', icon: '🔱', name: 'Maha Shivratri', note: 'Shiv ji in meditation, Kailash at night', c: { side: '#0F172A', page: '#F3F5FA', accent: '#3730A3', brand: '#6366F1' }, art: tpArtShivratri },
+  { key: 'ganesh', icon: '🐘', name: 'Ganesh Chaturthi', note: 'Ganpati Bappa in his pandal, dhol and modaks', c: { side: '#7F1D1D', page: '#FFF8EE', accent: '#B91C1C', brand: '#F97316' }, art: tpArtGanesh }
 ];
+
+// Ganesh Chaturthi: a pandal arch hung with marigolds, Ganpati's silhouette in its glow, modaks,
+// gulal in the air.
+function tpArtGanesh() {
+  let s = '<defs><linearGradient id="tpGcBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FDE68A"/><stop offset="1" stop-color="#FB923C"/></linearGradient>' +
+    '<radialGradient id="tpGcGlow"><stop offset="0" stop-color="#FFFBEB"/><stop offset="1" stop-color="#FDE68A" stop-opacity="0"/></radialGradient></defs>' +
+    '<rect width="220" height="110" fill="url(#tpGcBg)"/>' +
+    '<circle class="gl" cx="110" cy="60" r="44" fill="url(#tpGcGlow)"/>' +
+    '<path d="M40 110 V26 M180 110 V26" stroke="#B91C1C" stroke-width="6"/>' +
+    '<path d="M34 28 Q110 -14 186 28 L186 20 Q110 -24 34 20 Z" fill="#B91C1C"/>' +
+    '<path d="M40 30 Q110 70 180 30" fill="none" stroke="#F97316" stroke-width="6" stroke-dasharray="0.1 8" stroke-linecap="round"/>' +
+    '<path d="M40 30 Q110 70 180 30" fill="none" stroke="#FACC15" stroke-width="6" stroke-dasharray="0.1 8" stroke-dashoffset="4" stroke-linecap="round"/>' +
+    // Ganpati: ears, head, crown, trunk, belly
+    '<g class="tp-bob"><path d="M96 58 Q80 52 82 68 Q84 80 98 74 Z M124 58 Q140 52 138 68 Q136 80 122 74 Z" fill="#E76F2E"/>' +
+    '<ellipse cx="110" cy="94" rx="20" ry="16" fill="#E76F2E"/>' +
+    '<path d="M96 62 Q96 48 110 47 Q124 48 124 62 Q124 76 110 80 Q96 76 96 62 Z" fill="#F4A259"/>' +
+    '<path d="M110 70 Q110 86 104 92 Q100 98 106 100" fill="none" stroke="#F4A259" stroke-width="6" stroke-linecap="round"/>' +
+    '<path d="M100 48 L104 36 L110 44 L116 36 L120 48 Z" fill="#F5B70A"/><circle cx="104" cy="62" r="1.4" fill="#1C1917"/><circle cx="116" cy="62" r="1.4" fill="#1C1917"/>' +
+    '<path d="M107 52 L110 58 L113 52" fill="none" stroke="#DC2626" stroke-width="1.6"/></g>' +
+    // modaks on a plate
+    '<ellipse cx="160" cy="102" rx="18" ry="4" fill="#D97706"/>' +
+    [150, 160, 170].map(function (x) { return '<path d="M' + (x - 5) + ' 100 Q' + (x - 6) + ' 93 ' + x + ' 88 Q' + (x + 6) + ' 93 ' + (x + 5) + ' 100 Z" fill="#FEF3C7" stroke="#D97706" stroke-width=".7"/>'; }).join('');
+  for (let k = 0; k < 10; k++) s += '<circle class="tw"' + tpDelay(k, 0.23) + ' cx="' + ((k * 41) % 200 + 10) + '" cy="' + ((k * 29) % 60 + 30) + '" r="2.2" fill="' + ['#DC2626', '#EC4899', '#F97316'][k % 3] + '" opacity=".7"/>';
+  return tpSvg(s);
+}
 
 // Maha Shivratri: Kailash under a crescent moon, a shivling with a kalash dripping water on it,
 // a trishul with its damru, "ॐ" glowing.

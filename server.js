@@ -9403,7 +9403,7 @@ function nextWorkingDay(user, fromDateStr, holidaysSet) {
 
 // Festival theme — one company-wide value in app_settings. Only the people in theme_admin_ids
 // (PEOPLE_SETTINGS_BY_ID — Naman Gupta) may change it; being an admin is not enough.
-const APP_THEMES = ['normal', 'navratri', 'dussehra', 'holi', 'diwali', 'christmas', 'janmashtami', 'shivratri'];
+const APP_THEMES = ['normal', 'navratri', 'dussehra', 'holi', 'diwali', 'christmas', 'janmashtami', 'shivratri', 'ganesh'];
 const APP_THEME_KEY = 'active_theme';
 
 app.get('/api/theme', requireAuth, async (req, res) => {
