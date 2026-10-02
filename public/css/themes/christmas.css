@@ -16,10 +16,21 @@
 @keyframes td-blink { from { opacity:.35; } to { opacity:1; } }
 @media (prefers-reduced-motion: reduce) { .td-lights { animation:none; } }
 /* Santa's sleigh, flown all over the page from js/themes/christmas.js (transform set every frame) */
-.td-sleigh { left:0; top:0; width:230px; filter:drop-shadow(0 6px 8px rgba(0,0,0,.25)); }
-.sl-leg { transform-box:fill-box; transform-origin:50% 0; animation:sl-gallop .5s ease-in-out infinite alternate; }
-.sl-leg-b { animation-delay:-.25s; }
-@keyframes sl-gallop { from { transform:rotate(-22deg); } to { transform:rotate(22deg); } }
+.td-sleigh { left:0; top:0; width:400px; filter:drop-shadow(0 6px 8px rgba(0,0,0,.25)); }
+/* the reindeer gallop: front legs reach forward as the hind legs drive back, then both gather;
+   the body bobs and the head nods on the same beat (each animal's delay is set inline) */
+.rd-deer { animation:rd-bob .62s ease-in-out infinite alternate; }
+@keyframes rd-bob { from { transform:translateY(0); } to { transform:translateY(-3px); } }
+.rd-fl, .rd-hl { transform-box:fill-box; transform-origin:50% 0; animation:.62s ease-in-out infinite alternate; }
+.rd-fl { animation-name:rd-front; }
+.rd-hl { animation-name:rd-hind; }
+@keyframes rd-front { from { transform:rotate(28deg); } to { transform:rotate(-38deg); } }
+@keyframes rd-hind { from { transform:rotate(-30deg); } to { transform:rotate(26deg); } }
+.rd-head { transform-box:fill-box; transform-origin:0 100%; animation:rd-nod .62s ease-in-out infinite alternate; }
+@keyframes rd-nod { from { transform:rotate(2deg); } to { transform:rotate(-3deg); } }
+/* Rudolph's nose glows */
+.rd-glow { animation:rd-glow 1s ease-in-out infinite alternate; }
+@keyframes rd-glow { from { opacity:.35; } to { opacity:1; } }
 .sl-wave { transform-box:view-box; transform-origin:74px 42px; animation:sl-wave .6s ease-in-out infinite alternate; }
 @keyframes sl-wave { from { transform:rotate(-14deg); } to { transform:rotate(18deg); } }
 /* his speech bubble */
@@ -27,4 +38,4 @@
   border-radius:14px; border:2px solid #DC2626; box-shadow:0 4px 12px rgba(0,0,0,.15); opacity:0; transition:opacity .3s; }
 .sl-say::after { content:''; position:absolute; left:18px; bottom:-8px; border:7px solid transparent; border-top-color:#DC2626; border-bottom:0; }
 .sl-say.sl-show { opacity:1; }
-@media (prefers-reduced-motion: reduce) { .sl-leg, .sl-wave { animation:none; } }
+@media (prefers-reduced-motion: reduce) { .rd-deer, .rd-fl, .rd-hl, .rd-head, .rd-glow, .sl-wave { animation:none; } }

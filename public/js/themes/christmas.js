@@ -5,28 +5,82 @@ ThemeDecor.register('christmas', function (d) {
   d.svg('', 'td-lights');
   d.svg('', 'td-lights td-lights-b');
 
-  // The sleigh, drawn facing right (reindeer in front); .sl-flip turns it round when he flies left.
-  // .sl-leg galloping legs, .sl-wave Santa's waving arm, .sl-sack where the gifts come from.
-  function reindeer(x, rudolph) {
-    return '<g transform="translate(' + x + ' 0)">' +
-      '<path class="sl-leg" d="M8 58 L2 76 M14 58 L12 77" stroke="#7C4A1E" stroke-width="4" stroke-linecap="round"/>' +
-      '<path class="sl-leg sl-leg-b" d="M34 58 L40 76 M40 58 L46 75" stroke="#7C4A1E" stroke-width="4" stroke-linecap="round"/>' +
-      '<ellipse cx="26" cy="52" rx="22" ry="11" fill="#A0522D" stroke="#5C3317" stroke-width="1.2"/>' +
-      '<ellipse cx="26" cy="56" rx="14" ry="5" fill="#D2A06A"/>' +
-      '<path d="M44 46 L52 30" stroke="#A0522D" stroke-width="8" stroke-linecap="round"/>' +
-      '<ellipse cx="57" cy="27" rx="10" ry="7" fill="#A0522D" stroke="#5C3317" stroke-width="1.2"/>' +
-      '<path d="M52 20 L48 8 M50 13 L44 10 M56 20 L58 6 M57 12 L63 8" stroke="#7C4A1E" stroke-width="2.2" stroke-linecap="round"/>' +
-      '<circle cx="58" cy="25" r="1.6" fill="#111"/>' +
-      '<circle cx="66" cy="29" r="' + (rudolph ? 3.6 : 2.4) + '" fill="' + (rudolph ? '#EF4444' : '#3B2410') + '"/>' +
-      '<path d="M46 47 Q52 46 56 42" stroke="#DC2626" stroke-width="2" fill="none"/>' +
-      '<circle cx="47" cy="47" r="1.8" fill="#F5C518"/>' +
-      '</g>';
+  // The sleigh, drawn facing right (team in front); .sl-flip turns it round when he flies left.
+  // .sl-wave is Santa's waving arm, .sl-sack where the gifts come from.
+  //
+  // Santa's team, as in the poem: eight reindeer in four pairs (Dasher and Dancer, Prancer and
+  // Vixen, Comet and Cupid, Donner and Blitzen) led by Rudolph and his glowing red nose.
+  // Each reindeer is drawn side-on facing right in its own coordinates (antlers up to y -27,
+  // hooves down to y 70); far = the one on the far side of a pair, drawn behind and darker.
+  // It gallops: .rd-fl / .rd-hl legs swing from the top of their box, .rd-deer bobs, .rd-head nods.
+  var SLEIGH_W = 506; // viewBox width, used to mirror the drawing
+  function reindeer(X, Y, far, rudolph, delay) {
+    var leg = far ? '#3B2516' : '#563720', farLeg = far ? '#2E1D11' : '#43291A', hoof = '#20150C';
+    var mane = far ? '#CBBCA4' : '#EFE5D3', antler = far ? '#6F5538' : '#94734F', dark = far ? '#3A2416' : '#4A2E1A';
+    var coat = far ? 'url(#tdRdFar)' : 'url(#tdRdCoat)';
+    function at(extra) { return ' style="animation-delay:' + (delay + (extra || 0)).toFixed(2) + 's"'; }
+    function front(dx, col, extra) {
+      return '<g class="rd-fl"' + at(extra) + '>' +
+        '<path d="M' + (47 + dx) + ' 41 L' + (48 + dx) + ' 55" stroke="' + col + '" stroke-width="4.4" stroke-linecap="round"/>' +
+        '<path d="M' + (48 + dx) + ' 55 L' + (49 + dx) + ' 67" stroke="' + col + '" stroke-width="2.4" stroke-linecap="round"/>' +
+        '<path d="M' + (47.3 + dx) + ' 66.6 h3.6 l.4 2.8 h-4.2 Z" fill="' + hoof + '"/></g>';
+    }
+    function hind(dx, col, extra) {
+      return '<g class="rd-hl"' + at(extra) + '>' +
+        '<path d="M' + (15 + dx) + ' 39 L' + (19 + dx) + ' 51 L' + (13 + dx) + ' 58" fill="none" stroke="' + col + '" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="M' + (13 + dx) + ' 58 L' + (14 + dx) + ' 67" stroke="' + col + '" stroke-width="2.4" stroke-linecap="round"/>' +
+        '<path d="M' + (12.3 + dx) + ' 66.6 h3.6 l.4 2.8 h-4.2 Z" fill="' + hoof + '"/></g>';
+    }
+    // a many-pointed antler: the main beam sweeping back and up, tines forward, a brow tine low
+    function antlerPath(dx, dy) {
+      function m(x, y) { return (x + dx).toFixed(1) + ' ' + (y + dy).toFixed(1); }
+      return '<path d="M' + m(62.5, 8) + ' C' + m(60.5, 2) + ' ' + m(59, -4) + ' ' + m(56, -10) + ' C' + m(54, -14.5) + ' ' + m(54.5, -19) + ' ' + m(57.5, -23) + '" fill="none" stroke-width="2.3" stroke-linecap="round"/>' +
+        '<path d="M' + m(60.4, 1.5) + ' L' + m(65, -2.5) + ' L' + m(66, -6.5) + ' M' + m(57.6, -6) + ' L' + m(62, -9.5) + ' L' + m(63.5, -13.5) +
+        ' M' + m(55.2, -13) + ' L' + m(51, -16.5) + ' M' + m(56, -19) + ' L' + m(60.5, -21.5) + ' M' + m(57.5, -23) + ' L' + m(56, -27) +
+        ' M' + m(63.4, 6.2) + ' L' + m(68, 3.6) + ' L' + m(70, 0.6) + '" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>';
+    }
+    return '<g transform="translate(' + X + ' ' + Y + ')"><g class="rd-deer"' + at() + '>' +
+      // the legs on its far side, then the body, then the near legs
+      front(-3, farLeg, -0.1) + hind(-3, farLeg, -0.1) +
+      '<path d="M11 31 L6.5 29.5 L9 34 Z" fill="' + mane + '"/>' +
+      '<path d="M12 33 C12 26 22 23.5 33 25 C42 26 49 25 53 29 C57 33 57.5 41 52.5 45 C46 49 24 49.5 15 46.5 C9.5 44.5 9.5 38 12 33 Z" fill="' + coat + '"/>' +
+      '<path d="M17 45 C26 48 44 48 51 44 C46 46.5 26 47.5 17 45 Z" fill="' + mane + '" opacity=".55"/>' +
+      '<ellipse cx="12.8" cy="36" rx="3.2" ry="5" fill="' + (far ? '#D9D0C2' : '#F5EFE6') + '"/>' +
+      // harness: a red girth strap with a gold buckle
+      '<path d="M43 25.6 C42.4 34 43 41 44 47.5" fill="none" stroke="#B91C1C" stroke-width="2.6"/><circle cx="43.3" cy="36" r="1.3" fill="#F5C518"/>' +
+      front(0, leg) + hind(0, leg) +
+      // neck with its shaggy white throat, a collar of bells, head and antlers
+      '<g class="rd-head"' + at() + '>' +
+        '<g stroke="' + (far ? '#5E4630' : '#7A5C3D') + '">' + antlerPath(3.5, 0.5) + '</g>' +
+        '<path d="M47 31 C50 24 54 18 59 13 L66 16.5 C62 22 59 29 55 36 C52 37 49 35 47 31 Z" fill="' + coat + '"/>' +
+        '<path d="M55.5 35.5 C58 31 61 25 64.5 18.5 L64 23 L66 22.5 L63 28 L65 28 L60.5 33 L62 33.5 L57 38 Z" fill="' + mane + '"/>' +
+        '<path d="M50.5 29 C53 33 55 36 55.5 37" fill="none" stroke="#B91C1C" stroke-width="2.6"/><circle cx="52" cy="31.6" r="1.2" fill="#F5C518"/><circle cx="54" cy="34.6" r="1.2" fill="#F5C518"/>' +
+        '<path d="M60.5 9.5 C58 6.5 55.5 6.5 54 8 C56 9.8 58.4 10.8 60.5 10.6 Z" fill="' + coat + '"/>' +
+        '<path d="M58 12.5 C59.5 7.5 66 6 70.5 9 L77.5 13.8 C79 15 78.3 17.6 75.8 17.8 L67 18.6 C62.5 18.8 57.6 16.8 58 12.5 Z" fill="' + coat + '"/>' +
+        '<path d="M71 10.5 L77.5 13.8 C79 15 78.3 17.6 75.8 17.8 L72 18 C73 15 72.5 12.5 71 10.5 Z" fill="' + dark + '"/>' +
+        '<ellipse cx="65.2" cy="11.2" rx="1.4" ry="1.1" fill="#140C07"/><circle cx="65.6" cy="10.8" r=".4" fill="#fff"/>' +
+        '<g stroke="' + antler + '">' + antlerPath(0, 0) + '</g>' +
+        (rudolph
+          ? '<circle class="rd-glow" cx="78.4" cy="15.2" r="6.5" fill="url(#tdRdNose)"/><circle cx="78.4" cy="15.2" r="2.6" fill="#EF4444"/><circle cx="77.6" cy="14.4" r=".8" fill="#FCA5A5"/>'
+          : '<ellipse cx="78" cy="15.4" rx="1.6" ry="1.3" fill="#1A120B"/>') +
+      '</g></g></g>';
   }
+  // four pairs, the far one of each a little up and behind, then Rudolph alone in front;
+  // each animal runs a step out of time with the next so the team does not move as one
+  var team = '';
+  for (var k = 0; k < 4; k++) {
+    team += reindeer(145 + k * 70, 17, true, false, -(k * 0.13 + 0.06)) + reindeer(140 + k * 70, 22, false, false, -(k * 0.13));
+  }
+  team += reindeer(420, 22, false, true, -0.52);
   var sleigh =
-    '<svg viewBox="0 0 270 110" xmlns="http://www.w3.org/2000/svg"><g class="sl-flip">' +
-    // reins from the sleigh to the reindeer
-    '<path d="M112 56 Q150 50 172 50 L232 48" fill="none" stroke="#7C2D12" stroke-width="1.6"/>' +
-    reindeer(150, false) + reindeer(196, true) +
+    '<svg viewBox="0 -10 ' + SLEIGH_W + ' 112" xmlns="http://www.w3.org/2000/svg"><defs>' +
+    '<linearGradient id="tdRdCoat" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6E4A2E"/><stop offset=".6" stop-color="#9C7452"/><stop offset="1" stop-color="#B8946E"/></linearGradient>' +
+    '<linearGradient id="tdRdFar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4F3420"/><stop offset="1" stop-color="#6E5139"/></linearGradient>' +
+    '<radialGradient id="tdRdNose"><stop offset="0" stop-color="#FF5A5A" stop-opacity=".95"/><stop offset="1" stop-color="#FF2D2D" stop-opacity="0"/></radialGradient>' +
+    '</defs><g class="sl-flip">' +
+    // reins from the sleigh past every girth strap to Rudolph
+    '<path d="M124 56 L463 58" fill="none" stroke="#7C2D12" stroke-width="1.4"/>' +
+    team +
     // sack of gifts behind Santa
     '<g class="sl-sack"><ellipse cx="22" cy="44" rx="20" ry="22" fill="#A16207" stroke="#713F12" stroke-width="1.4"/>' +
     '<rect x="10" y="16" width="14" height="13" rx="1.5" fill="#38BDF8" stroke="#0369A1" stroke-width=".8"/><path d="M17 16 V29 M10 22.5 H24" stroke="#fff" stroke-width="1.8"/>' +
@@ -58,7 +112,7 @@ ThemeDecor.register('christmas', function (d) {
   // path does not repeat soon). He faces the way he is going and tilts with the climb.
   var T = 0, facing = 1, pos = { x: 0, y: 0 }, vel = { x: 0, y: 0 };
   function route(t, w, h) {
-    return { x: (w - 270) * (0.5 + 0.5 * Math.sin(t * 0.17)) + 20,
+    return { x: Math.max(0, w - sleighEl.offsetWidth - 20) * (0.5 + 0.5 * Math.sin(t * 0.17)) + 10,
              y: Math.max(40, (h - 200) * (0.5 + 0.5 * Math.sin(t * 0.29 + 1))) };
   }
   function place(w, h) {
@@ -68,9 +122,10 @@ ThemeDecor.register('christmas', function (d) {
     if (Math.abs(vel.x) > 4) facing = vel.x > 0 ? 1 : -1;
     var tilt = Math.max(-12, Math.min(12, (vel.y / Math.max(30, Math.abs(vel.x))) * 12 * facing));
     sleighEl.style.transform = 'translate(' + p.x.toFixed(1) + 'px,' + p.y.toFixed(1) + 'px) rotate(' + tilt.toFixed(1) + 'deg)';
-    flip.setAttribute('transform', facing > 0 ? '' : 'matrix(-1 0 0 1 270 0)');
+    flip.setAttribute('transform', facing > 0 ? '' : 'matrix(-1 0 0 1 ' + SLEIGH_W + ' 0)');
     // the bubble sits above Santa's head, which is at the back of the sleigh
-    var headX = facing > 0 ? p.x + 40 : p.x + 160;
+    // Santa's head is at x 62 of the drawing (mirrored when he faces left)
+    var headX = p.x + (facing > 0 ? 62 : SLEIGH_W - 62) / SLEIGH_W * sleighEl.offsetWidth - 16;
     // kept on screen: near the right edge or the top it slides in rather than running off
     var bx = Math.max(8, Math.min(headX, w - say.offsetWidth - 12)), by = Math.max(6, p.y - 34);
     say.style.transform = 'translate(' + bx.toFixed(1) + 'px,' + by.toFixed(1) + 'px)';
