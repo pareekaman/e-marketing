@@ -185,7 +185,8 @@ const NV_DAY_CHOICES = [
   { day: 0, name: 'All nine days', note: 'Maa Durga on her tiger' },
   { day: 1, name: 'Day 1 · Shailputri', note: 'Daughter of the Himalaya, on Nandi' },
   { day: 2, name: 'Day 2 · Brahmacharini', note: 'In tapasya, with japa mala and kamandal' },
-  { day: 3, name: 'Day 3 · Chandraghanta', note: 'Bell-shaped moon, ten arms, on a lion' }
+  { day: 3, name: 'Day 3 · Chandraghanta', note: 'Bell-shaped moon, ten arms, on a lion' },
+  { day: 4, name: 'Day 4 · Kushmanda', note: 'Creator of the universe, the sun behind her' }
 ];
 let _nvDayCurrent = 0;
 function nvDayRow() {

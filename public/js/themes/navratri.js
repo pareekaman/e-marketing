@@ -363,12 +363,87 @@ ThemeDecor.register('navratri', function (d) {
     return s + '</svg>';
   }
 
+  // Day 4 — Maa Kushmanda, who made the universe with her smile: a blazing sun behind her with planets
+  // and a spiral of stars, eight arms (kamandal, bow, arrow, lotus, a pot of amrit, chakra, gada,
+  // japa mala), in green with an orange border, riding a lioness. The sun turns (nv-sun).
+  function kushmanda() {
+    var skin = '#F7C99B', line = '#5B3A1A', s, k, a;
+    s = '<svg viewBox="0 0 220 210" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<radialGradient id="nvHalo"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".35" stop-color="#FDE047"/><stop offset=".7" stop-color="#FB923C" stop-opacity=".7"/><stop offset="1" stop-color="#F97316" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="nvGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE58A"/><stop offset=".55" stop-color="#F5B70A"/><stop offset="1" stop-color="#C98A06"/></linearGradient></defs>';
+    // the cosmos behind her: a spiral of stars, two planets, and the sun turning behind her head
+    s += '<path d="M128 62 m-70 0 a70 40 -20 1 0 140 0 a70 40 -20 1 0 -140 0" fill="none" stroke="#A78BFA" stroke-opacity=".35" stroke-width="1.4" stroke-dasharray="2 4"/>';
+    [[30, 40, 1.6], [200, 30, 1.4], [16, 110, 1.2], [210, 120, 1.8], [60, 12, 1.2], [176, 8, 1.4]].forEach(function (p) { s += '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + p[2] + '" fill="#7C3AED"/>'; });
+    s += '<circle cx="36" cy="66" r="9" fill="#60A5FA" stroke="#1D4ED8" stroke-width="1"/><path d="M27 66 Q36 60 45 66" fill="none" stroke="#86EFAC" stroke-width="2"/>' +
+         '<circle cx="202" cy="70" r="7" fill="#F87171" stroke="#B91C1C" stroke-width="1"/><ellipse cx="202" cy="70" rx="12" ry="3" fill="none" stroke="#FCD34D" stroke-width="1.2"/>';
+    s += '<g class="nv-halo"><g class="nv-sun">';
+    for (k = 0; k < 12; k++) {
+      a = k * Math.PI / 6;
+      s += '<path d="M' + (128 + Math.cos(a - 0.12) * 44).toFixed(1) + ' ' + (62 + Math.sin(a - 0.12) * 44).toFixed(1) + ' L' + (128 + Math.cos(a) * 68).toFixed(1) + ' ' + (62 + Math.sin(a) * 68).toFixed(1) + ' L' + (128 + Math.cos(a + 0.12) * 44).toFixed(1) + ' ' + (62 + Math.sin(a + 0.12) * 44).toFixed(1) + ' Z" fill="#FDBA74" fill-opacity=".85"/>';
+    }
+    s += '</g><circle cx="128" cy="62" r="50" fill="url(#nvHalo)"/></g>';
+    // the lioness: tail, tawny body, a saddle cloth, legs
+    s += '<path class="nv-tail" d="M196 168 Q216 150 206 128 Q200 118 192 124" fill="none" stroke="#C2853A" stroke-width="6" stroke-linecap="round"/><circle cx="191" cy="123" r="4.6" fill="#7C4A1E"/>' +
+         '<path d="M60 150 Q70 128 120 130 Q182 128 198 152 Q204 178 188 196 L70 198 Q56 182 60 150 Z" fill="#D9A15A" stroke="' + line + '" stroke-width="1.6"/>' +
+         '<path d="M112 130 L176 130 L180 166 L108 168 Z" fill="#16A34A" stroke="#F97316" stroke-width="3"/>' +
+         '<path d="M86 196 v-18 M110 197 v-18 M164 197 v-20 M184 196 v-18" stroke="#D9A15A" stroke-width="12" stroke-linecap="round"/>' +
+         '<path d="M78 200 h16 M102 200 h16 M156 200 h16 M176 200 h16" stroke="#FDE7C8" stroke-width="6" stroke-linecap="round"/>';
+    // eight arms
+    var held = {
+      kamandal: '<path d="M-8 -2 Q-9 14 0 16 Q9 14 8 -2 Z" fill="url(#nvGold)" stroke="#92400E" stroke-width="1"/><path d="M-7 -2 Q0 -10 7 -2" fill="none" stroke="#92400E" stroke-width="1.6"/>',
+      bow: '<path d="M-8 -30 Q12 -14 -8 4" fill="none" stroke="#7C2D12" stroke-width="3"/><path d="M-8 -30 V4" stroke="#E5E7EB" stroke-width="1"/>',
+      arrow: '<path d="M0 4 V-34" stroke="#7C2D12" stroke-width="2"/><path d="M0 -40 L-4 -32 H4 Z" fill="#CBD5E1"/><path d="M-3 4 L0 0 L3 4" fill="none" stroke="#DC2626" stroke-width="1.6"/>',
+      lotus: '<path d="M0 0 V-14" stroke="#16A34A" stroke-width="2"/><path d="M0 -14 Q-9 -22 -6 -30 Q0 -26 0 -14 Q0 -26 6 -30 Q9 -22 0 -14 Z" fill="#F472B6" stroke="#BE185D" stroke-width="1"/>',
+      amrit: '<path d="M-7 0 Q-10 -14 0 -16 Q10 -14 7 0 Z" fill="#F59E0B" stroke="#92400E" stroke-width="1"/><path d="M-4 -16 V-20 H4 V-16" fill="#FDE68A" stroke="#92400E" stroke-width=".8"/><circle cx="0" cy="-24" r="3" fill="#86EFAC" opacity=".8"/>',
+      chakra: '<g transform="translate(0 -12)"><circle r="9" fill="#FDE7C8" stroke="#E11D48" stroke-width="2.4"/><circle r="3" fill="#E11D48"/></g><path d="M0 0 V-3" stroke="#7C2D12" stroke-width="2.4"/>',
+      gada: '<path d="M0 2 V-26" stroke="#7C2D12" stroke-width="3"/><circle cx="0" cy="-30" r="7" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>',
+      mala: '<path d="M0 0 Q-10 14 0 22 Q10 14 0 0" fill="none" stroke="#7C2D12" stroke-width="2.6" stroke-dasharray="0.1 3.4" stroke-linecap="round"/>'
+    };
+    [[-165, 'bow'], [-140, 'chakra'], [-115, 'gada'], [-195, 'kamandal'],
+     [-15, 'lotus'], [-40, 'arrow'], [-65, 'amrit'], [15, 'mala']].forEach(function (a) {
+      var ang = a[0] * Math.PI / 180, sx = 128 + Math.cos(ang) * 8, sy = 104;
+      var hx = sx + Math.cos(ang) * 72, hy = sy + Math.sin(ang) * 58;
+      s += '<path d="M' + sx.toFixed(1) + ' ' + sy + ' L' + hx.toFixed(1) + ' ' + hy.toFixed(1) + '" stroke="' + skin + '" stroke-width="6.5" stroke-linecap="round"/>' +
+           '<path d="M' + (sx + (hx - sx) * 0.8).toFixed(1) + ' ' + (sy + (hy - sy) * 0.8).toFixed(1) + ' l0.1 0" stroke="#F97316" stroke-width="7.5" stroke-linecap="round"/>' +
+           '<g transform="translate(' + hx.toFixed(1) + ' ' + hy.toFixed(1) + ')">' + held[a[1]] + '</g>' +
+           '<circle cx="' + hx.toFixed(1) + '" cy="' + hy.toFixed(1) + '" r="4" fill="' + skin + '" stroke="' + line + '" stroke-width=".8"/>';
+    });
+    // seated body: a green saree with an orange border, an orange blouse
+    s += '<path d="M104 104 Q128 94 152 104 L160 150 Q128 160 96 150 Z" fill="#15803D" stroke="' + line + '" stroke-width="1.4"/>' +
+         '<path d="M112 104 Q128 98 144 104 L142 118 Q128 122 114 118 Z" fill="#F97316"/>' +
+         '<path d="M96 150 Q128 160 160 150 L152 174 Q118 182 92 170 Z" fill="#166534" stroke="' + line + '" stroke-width="1.2"/>' +
+         '<path d="M92 170 Q118 182 152 174" fill="none" stroke="#F97316" stroke-width="5"/><path d="M93 166 Q118 178 153 170" fill="none" stroke="#FDE047" stroke-width="1.4"/>' +
+         '<path d="M106 104 Q130 124 156 148" fill="none" stroke="#F97316" stroke-width="5"/>' +
+         '<path d="M114 106 Q128 118 142 106" fill="none" stroke="#F5B70A" stroke-width="2.6"/><circle cx="128" cy="114" r="3" fill="#16A34A" stroke="#F5B70A" stroke-width="1.2"/>' +
+         '<path d="M98 172 L92 186 M112 176 L108 190" stroke="' + skin + '" stroke-width="7" stroke-linecap="round"/>';
+    s += mataFace(skin, line, '#1C120B');
+    // a broad, beaming smile (her smile made the universe) over the plainer one, and a sun on her crown
+    s += '<path d="M118 82 Q128 92 138 82 Q128 86 118 82 Z" fill="#9F1239"/><path d="M120 83 Q128 87 136 83" fill="none" stroke="#fff" stroke-width="1.2"/>' +
+         '<path d="M100 40 Q128 26 156 40 L152 30 Q128 18 104 30 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         '<path d="M112 28 Q128 4 144 28 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         '<circle cx="128" cy="16" r="5" fill="#F97316" stroke="#FDE047" stroke-width="1.6"/>' +
+         '<path d="M128 36 V44" stroke="#F5B70A" stroke-width="1.4"/><circle cx="128" cy="46" r="2.4" fill="#16A34A" stroke="#F5B70A" stroke-width="1"/>';
+    // the lioness's head in front: no mane, round ears, a gentle face
+    s += '<g class="nv-lion-head">' +
+         '<circle cx="56" cy="140" r="9" fill="#D9A15A" stroke="' + line + '" stroke-width="1.4"/><circle cx="56" cy="140" r="4.5" fill="#FBCFE8"/>' +
+         '<circle cx="102" cy="140" r="9" fill="#D9A15A" stroke="' + line + '" stroke-width="1.4"/><circle cx="102" cy="140" r="4.5" fill="#FBCFE8"/>' +
+         '<ellipse cx="79" cy="164" rx="30" ry="27" fill="#E2AE68" stroke="' + line + '" stroke-width="1.6"/>' +
+         '<ellipse cx="79" cy="177" rx="16" ry="11" fill="#FDF3E1"/>' +
+         '<path d="M65 158 Q69 154 73 158 Q69 161 65 158 Z M85 158 Q89 154 93 158 Q89 161 85 158 Z" fill="#1C1917"/>' +
+         '<path d="M75 170 Q79 166 83 170 Q79 174 75 170 Z" fill="#9A3412"/>' +
+         '<path d="M79 174 Q75 180 71 177 M79 174 Q83 180 87 177" fill="none" stroke="' + line + '" stroke-width="1.4" stroke-linecap="round"/>' +
+         '<path d="M64 174 h-10 M64 178 h-9 M94 174 h10 M94 178 h9" stroke="' + line + '" stroke-width=".8"/>' +
+         '</g>';
+    return s + '</svg>';
+  }
+
   // The nine days (data-nv-day on <html>, set by core.js from the owner's choice); 0 or a day not
   // built yet shows Maa Durga on her tiger.
   var NV_DAYS = {
     1: { name: 'माँ शैलपुत्री', build: shailputri, petals: ['#FFFFFF', '#FEE2E2', '#F87171', '#DC2626', '#FDE68A'] },
     2: { name: 'माँ ब्रह्मचारिणी', build: brahmacharini, petals: ['#FB923C', '#F97316', '#FFFFFF', '#86EFAC', '#22C55E'] },
-    3: { name: 'माँ चंद्रघंटा', build: chandraghanta, petals: ['#FBBF24', '#F59E0B', '#FDE68A', '#3B82F6', '#1D4ED8'] }
+    3: { name: 'माँ चंद्रघंटा', build: chandraghanta, petals: ['#FBBF24', '#F59E0B', '#FDE68A', '#3B82F6', '#1D4ED8'] },
+    4: { name: 'माँ कूष्मांडा', build: kushmanda, petals: ['#F97316', '#FDBA74', '#FDE047', '#22C55E', '#15803D'] }
   };
   var DAY = NV_DAYS[+document.documentElement.getAttribute('data-nv-day')] || null;
   var durgaEl = d.svg(DAY ? DAY.build() : durga(), 'td-durga td-drag');
