@@ -167,10 +167,25 @@
     if (st.layer) { st.layer.remove(); st.layer = null; st.canvas = null; st.ctx = null; }
   }
 
+  // A theme first shown after the page has loaded (picked in the admin portal, or found by core.js's
+  // re-check) has its script fetched fresh, while its stylesheet is the one the page loaded with. If
+  // the site changed in between, script and styles no longer match (unsized figures, two poses at
+  // once), so fetch the stylesheet again too. The old sheet stays until the new one has loaded.
+  function refreshCss(name) {
+    var old = document.querySelector('link[rel="stylesheet"][href^="/css/themes/' + name + '.css"]');
+    if (!old) return;
+    var l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = '/css/themes/' + name + '.css?v=' + Date.now();
+    l.onload = function () { old.remove(); };
+    old.parentNode.insertBefore(l, old.nextSibling);
+  }
+
   function load(name) {
     if (registry[name]) return mount(name);
     if (requested[name]) return;
     requested[name] = true;
+    if (document.readyState === 'complete') refreshCss(name);
     var s = document.createElement('script');
     s.src = '/js/themes/' + name + '.js';
     s.onload = function () { if (st.name === name && !st.mounted && registry[name] && window.innerWidth >= MIN_WIDTH) mount(name); };

@@ -221,7 +221,8 @@ ThemeDecor.register('dussehra', function (d) {
 
   // The rest of the cast, who come in towards the end. Their arm poses are groups switched by classes
   // on the figure (see the CSS): am-fold (hands folded) and am-up (arms raised); am-head and
-  // am-pupil turn to watch the Pushpak Viman go.
+  // am-pupil turn to watch the Pushpak Viman go. The poses not shown at first carry display="none",
+  // so a figure never shows two at once even before its styles apply. Sizes are set by the JS.
   // Vibhishan, Ravan's brother, come over to Ram's side: kneeling and facing right, a gold crown with
   // a blue jewel, a Vaishnava tilak, a short beard, royal blue silk. While he speaks he points at
   // Ravan (vb-point), his lips moving (vb-talk); otherwise his hands are folded.
@@ -244,7 +245,7 @@ ThemeDecor.register('dussehra', function (d) {
     '<path d="M104 103 Q111 112 107 123" fill="none" stroke="#F5C518" stroke-width="2.4"/>' +
     '<path d="M60 108 Q76 110 92 108 M62 116 Q78 118 96 116" fill="none" stroke="#1E3A8A" stroke-width="1" opacity=".6"/>' +
     // pointing: the far hand rests on his knee, behind the body
-    '<g class="vb-point"><path d="M56 68 L60 94 L90 101" fill="none" stroke="url(#tdVbSkin)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<g class="vb-point" display="none"><path d="M56 68 L60 94 L90 101" fill="none" stroke="url(#tdVbSkin)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<circle cx="92" cy="101" r="4.4" fill="url(#tdVbSkin)" stroke="#6B3E1E" stroke-width=".7"/></g>' +
     // neck, torso, gold sash at the waist, a yellow angavastram over the shoulder, a gold necklace
     '<path d="M60 50 L60 66 L70 66 L70 50 Z" fill="url(#tdVbSkin)"/>' +
@@ -254,7 +255,7 @@ ThemeDecor.register('dussehra', function (d) {
     '<path d="M48 68 C58 72 66 84 76 109 L70 113 C62 93 54 82 46 76 Z" fill="#FACC15" stroke="#CA8A04" stroke-width=".7"/>' +
     '<path d="M58 67 Q66 78 74 67" fill="none" stroke="#F5C518" stroke-width="2.4"/><circle cx="66" cy="75" r="2.2" fill="#2563EB" stroke="#F5C518" stroke-width=".6"/>' +
     // pointing at Ravan as he speaks...
-    '<g class="vb-point"><path d="M68 68 L90 64 L112 58.5" fill="none" stroke="url(#tdVbSkin)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<g class="vb-point" display="none"><path d="M68 68 L90 64 L112 58.5" fill="none" stroke="url(#tdVbSkin)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<path d="M77.6 62.2 L79.2 70.2 M104.3 55.8 L106.5 64.5" stroke="#F5C518" stroke-width="2.6"/>' +
     '<circle cx="114" cy="58" r="4.6" fill="url(#tdVbSkin)" stroke="#6B3E1E" stroke-width=".7"/>' +
     '<path d="M117.5 56.4 L127 54" stroke="#C98E5E" stroke-width="2.6" stroke-linecap="round"/></g>' +
@@ -272,7 +273,7 @@ ThemeDecor.register('dussehra', function (d) {
     '<path d="M73 49.2 Q78 47.2 81.2 49.6 Q78.2 50.8 76 50.2 Q73.5 52 70 51.4 Q72 50.2 73 49.2 Z" fill="#1F1A17"/>' +
     '<path d="M71 51 Q67 51.4 66 48.2" fill="none" stroke="#1F1A17" stroke-width="1.2" stroke-linecap="round"/>' +
     '<path d="M73.4 53.6 Q76.5 55.4 79.6 53.4" fill="none" stroke="#C0504D" stroke-width="1.5" stroke-linecap="round"/>' +
-    '<g class="vb-talk"><ellipse class="td-chant-mouth" cx="76.6" cy="54" rx="2.3" ry="1.7" fill="#5B1F0E"/></g>' +
+    '<g class="vb-talk" display="none"><ellipse class="td-chant-mouth" cx="76.6" cy="54" rx="2.3" ry="1.7" fill="#5B1F0E"/></g>' +
     '<path d="M70 37.6 Q74 35 78 37.6 Q74 39.6 70 37.6 Z" fill="#fff"/><circle class="am-pupil" cx="75.4" cy="37.5" r="1.4" fill="#1F1A17"/>' +
     '<path d="M69.5 33.4 Q74 31.4 78.6 33" fill="none" stroke="#1F1A17" stroke-width="1.4" stroke-linecap="round"/>' +
     '<path d="M79.4 38 Q82.6 43 79.2 45.6" fill="none" stroke="#6B3E1E" stroke-width="1.1" stroke-linecap="round"/>' +
@@ -314,7 +315,7 @@ ThemeDecor.register('dussehra', function (d) {
     '<g class="am-fold"><path d="M43 77 L34 100 L60 92 M87 77 L96 100 L70 92" fill="none" stroke="url(#tdHnSkin)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<path d="M34.3 86.9 L42.7 90.1 M87.3 90.1 L95.7 86.9" stroke="#F5C518" stroke-width="2.6"/>' +
     '<path d="M65 76 Q71 88 65 100 Q59 88 65 76 Z" fill="#FDBA74" stroke="#9A3412" stroke-width=".8"/><path d="M65 79 V98" stroke="#9A3412" stroke-width=".6"/></g>' +
-    '<g class="am-up"><path d="M43 76 L30 56 L22 36 M87 76 L100 56 L106 36" fill="none" stroke="url(#tdHnSkin)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<g class="am-up" display="none"><path d="M43 76 L30 56 L22 36 M87 76 L100 56 L106 36" fill="none" stroke="url(#tdHnSkin)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<circle cx="21" cy="33" r="5.5" fill="url(#tdHnSkin)" stroke="#9A3412" stroke-width=".8"/>' +
     '<path d="M104 40 L114 6" stroke="#92400E" stroke-width="4" stroke-linecap="round"/>' +
     '<circle cx="115.5" cy="0" r="10" fill="url(#tdHnGold)" stroke="#8A5A00" stroke-width="1"/>' +
@@ -349,7 +350,7 @@ ThemeDecor.register('dussehra', function (d) {
       '<path d="M27 80 H53 L55 94 Q40 99 25 94 Z" fill="' + cloth + '" stroke="#3F2408" stroke-width=".7"/>' +
       '<g class="am-fold"><path d="M29 56 L23 72 L38 66 M51 56 L57 72 L42 66" fill="none" stroke="' + fur + '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
       '<path d="M40 56 Q44 63 40 71 Q36 63 40 56 Z" fill="#E9C79A" stroke="#3F2408" stroke-width=".6"/></g>' +
-      '<g class="am-up"><path d="M29 55 L22 40 L18 28 M51 55 L58 40 L62 28" fill="none" stroke="' + fur + '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<g class="am-up" display="none"><path d="M29 55 L22 40 L18 28 M51 55 L58 40 L62 28" fill="none" stroke="' + fur + '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
       '<circle cx="17.5" cy="26" r="3.6" fill="#E9C79A"/><circle cx="62.5" cy="26" r="3.6" fill="#E9C79A"/></g>' +
       '<g class="am-head">' +
       '<circle cx="27" cy="30" r="5.5" fill="' + fur + '"/><circle cx="53" cy="30" r="5.5" fill="' + fur + '"/>' +
@@ -395,7 +396,7 @@ ThemeDecor.register('dussehra', function (d) {
       '<path d="M76.6 71.5 L77.3 75.5 Q78 76.4 78.7 75.5 L79.4 71.5" fill="none" stroke="#F97316" stroke-width="1"/>' +
       '<circle cx="66.8" cy="84" r="1.8" fill="#F5C518"/><circle cx="89.2" cy="84" r="1.8" fill="#F5C518"/>';
     // Ram, haloed, blue, a rudraksha mala, the same saffron sash
-    s += '<g class="pv-ram"><circle cx="130" cy="79" r="20" fill="url(#tdPvHalo)"/>' +
+    s += '<g class="pv-ram" opacity="0"><circle cx="130" cy="79" r="20" fill="url(#tdPvHalo)"/>' +
       '<path d="M116 60 Q102 92 114 124" fill="none" stroke="#7C2D12" stroke-width="2.6" stroke-linecap="round"/>' +
       '<path d="M119 74 Q116 92 118 104 H142 Q144 92 141 74 Z" fill="#1F2A44"/>' +
       '<path d="M112 126 Q112 100 130 98 Q148 100 148 126 Z" fill="url(#tdPvRam)" stroke="#1E3F73" stroke-width=".8"/>' +
@@ -538,11 +539,12 @@ ThemeDecor.register('dussehra', function (d) {
   var burn = null;     // { until, x } while Ravan is burning
   var invoking = null; // the astra being invoked: light pours down onto the raised arrow's tip
   var vibEl = null;    // Vibhishan, from his advice to the end of the round
-  var vimEl = null, vimTrail = false; // the Pushpak Viman, and whether it is trailing sparkles
+  var vimEl = null, vimTrail = false, shower = false; // the Pushpak Viman; trailing sparkles; showering flowers
   var boardAnim = null; // Ram rising into the Pushpak Viman; cancelled when he is back in his place
   var timers = [], shots = [], shotRaf = 0, shotLast = 0;
-  var parts = [], fire = [], smoke = [], debris = [], rings = [], flashes = [], rockets = [], bolts = [];
+  var parts = [], fire = [], smoke = [], debris = [], rings = [], flashes = [], rockets = [], bolts = [], petals = [];
   var CRACKER = ['#FFB300', '#FF7043', '#FFD54F', '#EF5350', '#FFFFFF', '#FF9800'];
+  var PETAL = ['#F59E0B', '#FB923C', '#FBBF24', '#F472B6', '#EC4899', '#E11D48', '#FFF7ED']; // marigold, rose, jasmine
 
   // Soft round sprites for fire and smoke, drawn once and stamped every frame.
   function sprite(rgb) {
@@ -881,20 +883,39 @@ ThemeDecor.register('dussehra', function (d) {
   // After the chakra, Vibhishan comes to Ram's side (his right, or his left if there is no room),
   // kneels, points at Ravan and tells him where his life lies. Placed from where Ram is now, since
   // Ram may have been dragged anywhere.
+  // His words come out of his mouth one after another (td-w, each a little later), in a bubble whose
+  // tail runs down to his lips.
+  var SAYING = ['हे प्रभु!', 'इसकी नाभि में बाण मारिए'];
+  var SAY_TAIL = '<svg class="td-say-tail" viewBox="0 0 22 18" xmlns="http://www.w3.org/2000/svg">' +
+    '<path d="M10 0 H20 Q13 10 1 17 Q8 9 10 0 Z" fill="#FEF3C7"/>' +
+    '<path d="M20 0 Q13 10 1 17 Q8 9 10 0" fill="none" stroke="#2563EB" stroke-width="1.5" stroke-linejoin="round"/></svg>';
   async function advise() {
-    var r = ramEl.getBoundingClientRect(), W = d.layer.clientWidth;
+    var r = ramEl.getBoundingClientRect(), W = d.layer.clientWidth, w = 100, h = w * 170 / 160, left = r.right + 4;
     vibEl = d.svg(VIBHISHAN, 'td-vibhishan');
-    var w = vibEl.offsetWidth, h = w * 170 / 160, left = r.right + 4;
+    vibEl.style.width = w + 'px';
     if (left + w > W - 8) left = Math.max(0, r.left - w - 4);
     vibEl.style.left = Math.round(left) + 'px';
     vibEl.style.top = Math.round(r.bottom - h) + 'px';
     await wait(700); if (dead) return;
     vibEl.classList.add('vb-talking');
-    var b = document.createElement('div');
+    var b = document.createElement('div'), n = 0;
     b.className = 'td-say';
-    b.innerHTML = '<b></b><span></span>';
-    b.firstChild.textContent = 'हे प्रभु!\nइसकी नाभि में बाण मारिए';
-    b.lastChild.textContent = 'Vibhishan';
+    SAYING.forEach(function (line) {
+      var row = document.createElement('b');
+      line.split(' ').forEach(function (word, j) {
+        var sp = document.createElement('span');
+        sp.className = 'td-w';
+        sp.textContent = word;
+        sp.style.animationDelay = (0.25 + 0.2 * n++) + 's';
+        if (j) row.appendChild(document.createTextNode(' '));
+        row.appendChild(sp);
+      });
+      b.appendChild(row);
+    });
+    var who = document.createElement('small');
+    who.textContent = 'Vibhishan';
+    b.appendChild(who);
+    b.insertAdjacentHTML('beforeend', SAY_TAIL);
     vibEl.appendChild(b);
     await wait(2800); if (dead) return;
     b.classList.add('td-say-out');
@@ -904,28 +925,27 @@ ThemeDecor.register('dussehra', function (d) {
   }
 
   // Hanuman with the vanar sena around him, springing up along the foot of the page, cheering.
-  var SENA = [{ dx: -238, w: 56, fur: '#8D5524', cloth: '#DC2626' }, { dx: -146, w: 64, fur: '#A0652D', cloth: '#F59E0B' },
-              { dx: 146, w: 64, fur: '#7C4A1E', cloth: '#16A34A' }, { dx: 238, w: 56, fur: '#9A5B2A', cloth: '#7C3AED' }];
+  var SENA = [{ dx: 0, w: 100, hanuman: true }, { dx: -196, w: 46, fur: '#8D5524', cloth: '#DC2626' }, { dx: -118, w: 52, fur: '#A0652D', cloth: '#F59E0B' },
+              { dx: 118, w: 52, fur: '#7C4A1E', cloth: '#16A34A' }, { dx: 196, w: 46, fur: '#9A5B2A', cloth: '#7C3AED' }];
   function vanarSena() {
-    var cx = d.layer.clientWidth / 2, out = [d.svg(HANUMAN, 'td-army td-hanuman am-cheer')];
-    out[0].style.left = Math.round(cx - out[0].offsetWidth / 2) + 'px';
-    SENA.forEach(function (v, i) {
-      var el = d.svg(vanar(v.fur, v.cloth), 'td-army td-vanar am-cheer');
+    var cx = d.layer.clientWidth / 2;
+    return SENA.map(function (v, i) {
+      var el = d.svg(v.hanuman ? HANUMAN : vanar(v.fur, v.cloth), 'td-army am-cheer ' + (v.hanuman ? 'td-hanuman' : 'td-vanar'));
       el.style.width = v.w + 'px';
       el.style.left = Math.round(cx + v.dx - v.w / 2) + 'px';
-      el.style.animationDelay = (0.08 * (i + 1)) + 's';
-      out.push(el);
+      el.style.bottom = '0px';
+      el.style.animationDelay = (0.08 * i) + 's';
+      return el;
     });
-    return out;
   }
 
   // The Pushpak Viman flies in from the top-left to hover just over Ram (clear of the sidebar), Sita
   // and Lakshman aboard; he rises into his seat; then it flies off over the top-right of the page.
   function pushpak() {
     var r = ramEl.getBoundingClientRect(), W = d.layer.clientWidth;
+    var w = 230, h = w * 200 / 260;
     vimEl = d.svg(PUSHPAK, 'td-vimana');
-    vimEl.style.left = '0px'; vimEl.style.top = '0px';
-    var w = vimEl.offsetWidth, h = w * 200 / 260;
+    vimEl.style.width = w + 'px'; vimEl.style.left = '0px'; vimEl.style.top = '0px';
     var pv = { el: vimEl, w: w, h: h, x: Math.max(64, Math.min(W - w - 8, r.left + r.width * 0.425 - w / 2)), y: Math.max(28, r.top - h - 6) };
     vimEl.animate([
       { transform: 'translate(' + (-w - 40) + 'px,' + (-h - 60) + 'px) scale(.6)' },
@@ -937,13 +957,15 @@ ThemeDecor.register('dussehra', function (d) {
   function board(pv) {
     boardAnim = ramEl.animate([{ transform: 'translateY(0)', opacity: 1 }, { transform: 'translateY(-70px)', opacity: 0 }],
                               { duration: 600, easing: 'ease-in', fill: 'forwards' });
-    timers.push(setTimeout(function () {
-      pv.el.classList.add('pv-full');
+    timers.push(setTimeout(function () { // he appears in his seat (hidden until now by its opacity="0")
+      pv.el.querySelector('.pv-ram').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 500, easing: 'ease-out', fill: 'forwards' });
       spray(pv.x + pv.w * 0.5, pv.y + pv.h * 0.42, 40, ['#FFD54F', '#FFFFFF', '#FDE68A', '#93C5FD'], [40, 160], 60);
     }, 350));
   }
+  // As it flies away it showers flowers on everyone below (petals, drawn on the canvas).
   function depart(pv) {
     var W = d.layer.clientWidth;
+    shower = true;
     pv.el.animate([
       { transform: 'translate(' + pv.x + 'px,' + pv.y + 'px) scale(1)' },
       { transform: 'translate(' + (pv.x + 70) + 'px,' + (pv.y - 60) + 'px) scale(.95)', offset: 0.25 },
@@ -1072,7 +1094,7 @@ ThemeDecor.register('dussehra', function (d) {
     await wait(4300); if (dead) return;
 
     // 9. They are gone. Everyone below bows out, Ram is back in his place, and Ravan rises again.
-    celebrate = false; vimTrail = false;
+    celebrate = false; vimTrail = false; shower = false; // the last flowers are still falling
     hideLabel();
     pv.el.remove(); vimEl = null;
     below.forEach(function (el) { el.classList.add('td-gone'); });
@@ -1134,6 +1156,25 @@ ThemeDecor.register('dussehra', function (d) {
         parts.push({ x: vr.left + vr.width * d.rand(0.1, 0.6), y: vr.top + vr.height * d.rand(0.8, 0.95), vx: d.rand(-40, 0), vy: d.rand(10, 40),
                      g: 20, drag: 0.96, r: d.rand(1.2, 2.6), life: 1, decay: d.rand(0.9, 1.6), c: d.pick(['#FFD54F', '#FFFFFF', '#FFB300', '#FDE68A']) });
       }
+      // ...and, once Ram is aboard and it is leaving, flowers dropped from it over everyone below
+      for (var fn = shower ? 36 * dt : 0, fk = Math.floor(fn) + (Math.random() < fn % 1 ? 1 : 0); fk > 0 && petals.length < 260; fk--) {
+        petals.push({ x: vr.left + vr.width * d.rand(0.15, 0.85), y: vr.top + vr.height * d.rand(0.6, 0.8), vx: d.rand(-40, 40), vy: d.rand(-30, 20),
+                      rot: d.rand(0, 6.2832), va: d.rand(-5, 5), ph: d.rand(0, 6.2832), s: d.rand(0.8, 1.4), c: d.pick(PETAL), life: 9 });
+      }
+    }
+
+    // falling petals: they sway and turn as they drop, at no more than 120px/s
+    ctx.globalCompositeOperation = 'source-over';
+    for (i = petals.length - 1; i >= 0; i--) {
+      p = petals[i];
+      p.life -= dt; p.vx *= 0.98; p.vy = Math.min(p.vy + 110 * dt, 120); p.rot += p.va * dt;
+      p.x += (p.vx + Math.sin(now / 400 + p.ph) * 24) * dt; p.y += p.vy * dt;
+      if (p.life <= 0 || p.y > h + 12) { petals.splice(i, 1); continue; }
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, p.life); ctx.fillStyle = p.c;
+      ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.scale(p.s, p.s);
+      ctx.beginPath(); ctx.ellipse(0, 0, 4.6, 2.4, 0, 0, 6.2832); ctx.fill();
+      ctx.restore();
     }
 
     // fire and smoke while Ravan burns, following him down as he falls; embers once he is gone
@@ -1230,7 +1271,7 @@ ThemeDecor.register('dussehra', function (d) {
       if (p.y <= p.ty) { blast(p.x, p.y); rockets.splice(i, 1); }
     }
 
-    return !!(invoking || vimTrail || shots.length || bolts.length || parts.length || fire.length || smoke.length || debris.length ||
+    return !!(invoking || vimTrail || petals.length || shots.length || bolts.length || parts.length || fire.length || smoke.length || debris.length ||
               rings.length || flashes.length || rockets.length || burn);
   }
 
