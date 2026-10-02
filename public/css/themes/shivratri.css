@@ -1,0 +1,75 @@
+/* Maha Shivratri — the night of Shiva: deep night blue and ash grey, with the white of Kailash. */
+:root[data-theme="shivratri"] {
+  --brand-1:#A5B4FC; --brand-2:#6366F1; --brand-2-rgb:99,102,241;
+  --accent:#3730A3; --accent-dark:#1E1B4B; --accent-light:#4F46E5;
+  --accent-rgb:55,48,163; --accent-light-rgb:79,70,229;
+  --page-bg:#F3F5FA; --sidebar-top:#0F172A; --sidebar-bottom:#020617;
+}
+
+/* Decoration (js/themes/shivratri.js): Shiv ji in meditation bottom-right, the shivling with Nandi
+   bottom-left, the greeting above the shivling. */
+.sv-shiva { right:100px; bottom:0; width:170px; transition:translate .3s var(--ease);
+  filter:drop-shadow(0 0 12px rgba(165,180,252,.6)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+.sv-shiva svg { overflow:visible; }
+.sv-ganga { animation:sv-flow 1.2s linear infinite; }
+@keyframes sv-flow { to { stroke-dashoffset:-22; } }
+.sv-snake { transform-box:fill-box; transform-origin:30% 100%; animation:sv-sway 2.6s ease-in-out infinite alternate; }
+@keyframes sv-sway { from { transform:rotate(-6deg); } to { transform:rotate(6deg); } }
+.sv-linga { left:76px; bottom:0; width:190px; transition:translate .3s var(--ease); filter:drop-shadow(0 4px 5px rgba(0,0,0,.25)); }
+.sv-drop { animation:sv-drop 1.2s ease-in infinite; }
+@keyframes sv-drop { 0% { transform:translateY(0); opacity:0; } 10% { opacity:1; } 85% { opacity:1; } 100% { transform:translateY(28px); opacity:0; } }
+.sv-greet { position:absolute; left:96px; bottom:178px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
+  color:#fff; padding:7px 14px; border-radius:999px; background:linear-gradient(135deg,#1E1B4B,#3730A3 55%,#0EA5E9);
+  box-shadow:0 0 0 2px rgba(255,255,255,.8), 0 0 18px rgba(99,102,241,.55); transition:translate .3s var(--ease);
+  animation:sv-greet 2.4s ease-in-out infinite alternate; }
+@keyframes sv-greet { from { transform:translateY(0); } to { transform:translateY(-4px); } }
+.sidebar:hover ~ #themeDecor .sv-linga, .sidebar:hover ~ #themeDecor .sv-greet { translate:172px 0; }
+@media (prefers-reduced-motion: reduce) { .sv-ganga, .sv-snake, .sv-drop, .sv-greet { animation:none; } .sv-linga, .sv-greet, .sv-shiva { transition:none; } }
+
+/* Maha Shivratri skin: Kailash at night across the whole UI. Only under data-theme="shivratri". */
+/* the snowy peak of Kailash along the top, faint rudraksha beads over the page */
+:root[data-theme="shivratri"] body {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='130'%3E%3Cpath d='M0 130 L60 80 L100 100 L170 30 L210 60 L250 40 L320 96 L360 78 L420 120 L420 130 Z' fill='%23C7D2FE' fill-opacity='.45'/%3E%3Cpath d='M170 30 L152 52 L170 46 L182 58 L192 48 Z M250 40 L238 56 L250 52 L260 60 Z' fill='%23FFFFFF'/%3E%3C/svg%3E") repeat-x left 0 top 0 / 420px 130px,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='130' height='130'%3E%3Ccircle cx='30' cy='40' r='3' fill='%237C2D12' fill-opacity='.12'/%3E%3Ccircle cx='96' cy='96' r='2.4' fill='%237C2D12' fill-opacity='.1'/%3E%3C/svg%3E") repeat 0 0 / 130px 130px,
+    radial-gradient(1000px 360px at 50% -120px, rgba(99,102,241,.2), transparent 70%),
+    var(--page-bg);
+  background-attachment:fixed;
+}
+/* cards: the tripundra, three lines of ash with a red dot, across the top; an ash-grey wash */
+:root[data-theme="shivratri"] .ov-card, :root[data-theme="shivratri"] .chart-card, :root[data-theme="shivratri"] .task-table-card {
+  background:
+    radial-gradient(circle at 50% 4px, #DC2626 0 2.4px, transparent 2.6px) top / 100% 10px no-repeat,
+    linear-gradient(180deg, #CBD5E1 0 1.5px, transparent 1.5px 3.5px, #CBD5E1 3.5px 5px, transparent 5px 7px, #CBD5E1 7px 8.5px, transparent 8.5px) top / 100% 9px no-repeat,
+    linear-gradient(180deg, #EEF2FF, #fff 60px);
+  box-shadow:0 0 0 1px rgba(55,48,163,.1), 0 12px 26px -16px rgba(30,27,75,.5);
+}
+:root[data-theme="shivratri"] .ov-card::before { background:linear-gradient(180deg,#E0E7FF,#6366F1,#1E1B4B); }
+/* a row of rudraksha and a trishul under the header */
+:root[data-theme="shivratri"] .topbar::after {
+  content:''; position:absolute; left:0; right:0; bottom:-14px; height:14px; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='14'%3E%3Cg fill='%237C2D12'%3E%3Ccircle cx='6' cy='7' r='3'/%3E%3Ccircle cx='16' cy='7' r='3'/%3E%3Ccircle cx='26' cy='7' r='3'/%3E%3Ccircle cx='54' cy='7' r='3'/%3E%3Ccircle cx='64' cy='7' r='3'/%3E%3Ccircle cx='74' cy='7' r='3'/%3E%3C/g%3E%3Cpath d='M40 13 V3 M34 6 Q34 1 40 0 Q46 1 46 6' fill='none' stroke='%23475569' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x left center / 80px 14px;
+}
+:root[data-theme="shivratri"] .topbar-title {
+  background:linear-gradient(90deg,#1E1B4B,#3730A3 50%,#0EA5E9); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+/* the sidebar: the night over Kailash, a crescent moon, snow drifting down */
+:root[data-theme="shivratri"] .sidebar {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cpath d='M22 20 A12 12 0 1 0 40 36 A10 10 0 1 1 22 20 Z' fill='%23F8FAFC'/%3E%3C/svg%3E") no-repeat 50% 14px / 34px 34px,
+    radial-gradient(220px 160px at 50% 108%, rgba(199,210,254,.25), transparent 70%),
+    linear-gradient(180deg,var(--sidebar-top) 0%,var(--sidebar-bottom) 100%);
+}
+:root[data-theme="shivratri"] .sidebar::before {
+  content:''; position:absolute; left:0; right:0; top:-100px; height:calc(100% + 100px); z-index:-1; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='100'%3E%3Ccircle cx='10' cy='12' r='1.2' fill='%23fff' fill-opacity='.75'/%3E%3Ccircle cx='52' cy='28' r='.9' fill='%23fff' fill-opacity='.6'/%3E%3Ccircle cx='30' cy='54' r='1.4' fill='%23E0E7FF' fill-opacity='.7'/%3E%3Ccircle cx='70' cy='66' r='1' fill='%23fff' fill-opacity='.8'/%3E%3Ccircle cx='18' cy='86' r='.8' fill='%23fff' fill-opacity='.6'/%3E%3C/svg%3E") repeat 0 0 / 80px 100px;
+  animation:sv-snow 9s linear infinite;
+}
+@keyframes sv-snow { from { transform:translateY(0); } to { transform:translateY(100px); } }
+:root[data-theme="shivratri"] .nav-item.active {
+  background:linear-gradient(90deg,rgba(165,180,252,.3),rgba(165,180,252,.06)); color:#E0E7FF;
+  box-shadow:inset 0 0 0 1px rgba(199,210,254,.3);
+}
+:root[data-theme="shivratri"] .nav-item.active::before { background:linear-gradient(180deg,#F8FAFC,#A5B4FC,#6366F1); }
+:root[data-theme="shivratri"] ::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#A5B4FC,#6366F1,#1E1B4B); background-clip:content-box; }
+@media (prefers-reduced-motion: reduce) { :root[data-theme="shivratri"] .sidebar::before { animation:none; } }

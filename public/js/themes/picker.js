@@ -14,8 +14,32 @@ const THEME_CHOICES = [
   { key: 'holi',      icon: '🎨', name: 'Holi',      note: 'Colour splashes and gulal',   c: { side: '#2E1065', page: '#FBF7FF', accent: '#C026D3', brand: '#F59E0B' }, art: tpArtHoli },
   { key: 'diwali',    icon: '🪔', name: 'Diwali',    note: 'Lights, rangoli and diyas',  c: { side: '#2D1240', page: '#FDF5E6', accent: '#C2410C', brand: '#F29900' }, art: tpArtDiwali },
   { key: 'christmas', icon: '🎄', name: 'Christmas', note: 'Santa, snowfall and lights',  c: { side: '#0F2E1C', page: '#F3F8F4', accent: '#C62828', brand: '#2E7D32' }, art: tpArtChristmas },
-  { key: 'janmashtami', icon: '🦚', name: 'Janmashtami', note: 'Krishna, his flute and the dahi handi', c: { side: '#0B1E4A', page: '#F4F8FF', accent: '#1D4ED8', brand: '#EAB308' }, art: tpArtJanmashtami }
+  { key: 'janmashtami', icon: '🦚', name: 'Janmashtami', note: 'Krishna, his flute and the dahi handi', c: { side: '#0B1E4A', page: '#F4F8FF', accent: '#1D4ED8', brand: '#EAB308' }, art: tpArtJanmashtami },
+  { key: 'shivratri', icon: '🔱', name: 'Maha Shivratri', note: 'Shiv ji in meditation, Kailash at night', c: { side: '#0F172A', page: '#F3F5FA', accent: '#3730A3', brand: '#6366F1' }, art: tpArtShivratri }
 ];
+
+// Maha Shivratri: Kailash under a crescent moon, a shivling with a kalash dripping water on it,
+// a trishul with its damru, "ॐ" glowing.
+function tpArtShivratri() {
+  let s = '<defs><linearGradient id="tpSvBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#020617"/><stop offset="1" stop-color="#312E81"/></linearGradient>' +
+    '<linearGradient id="tpSvStone" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1F2937"/><stop offset=".45" stop-color="#4B5563"/><stop offset="1" stop-color="#111827"/></linearGradient></defs>' +
+    '<rect width="220" height="110" fill="url(#tpSvBg)"/>';
+  for (let k = 0; k < 16; k++) s += '<circle class="tw"' + tpDelay(k, 0.19) + ' cx="' + ((k * 43) % 212 + 4) + '" cy="' + ((k * 17) % 40 + 4) + '" r="' + (k % 3 ? .9 : 1.4) + '" fill="#fff"/>';
+  s += '<path class="gl" d="M30 14 A10 10 0 1 0 46 28 A8 8 0 1 1 30 14 Z" fill="#F8FAFC"/>' +
+       '<path d="M0 86 L50 50 L80 66 L120 24 L150 52 L180 40 L220 72 L220 110 L0 110 Z" fill="#475569"/>' +
+       '<path d="M120 24 L108 40 L120 36 L130 46 L138 38 Z M50 50 L42 60 L50 58 L56 64 Z M180 40 L172 50 L180 48 L186 54 Z" fill="#F8FAFC"/>' +
+       // the shivling with the kalash dripping on it
+       '<path d="M70 100 Q70 88 104 87 Q138 88 138 100 Q138 106 104 107 Q70 106 70 100 Z" fill="url(#tpSvStone)"/>' +
+       '<path d="M92 92 V74 Q92 64 104 64 Q116 64 116 74 V92 Z" fill="url(#tpSvStone)"/>' +
+       '<path d="M96 76 H112 M96 79 H112 M96 82 H112" stroke="#F8FAFC" stroke-width="1.2"/><circle cx="104" cy="79" r="1.6" fill="#DC2626"/>' +
+       '<path d="M96 40 Q95 54 104 56 Q113 54 112 40 Z" fill="#F5B70A" stroke="#92400E" stroke-width=".8"/>' +
+       '<circle class="fly" cx="104" cy="60" r="1.6" fill="#7DD3FC"/>' +
+       // the trishul and damru
+       '<path d="M170 106 V52" stroke="#78350F" stroke-width="2.4"/><path d="M162 62 Q162 52 170 48 Q178 52 178 62 M170 48 V42" fill="none" stroke="#CBD5E1" stroke-width="2.4" stroke-linecap="round"/>' +
+       '<path d="M164 70 H176 L172 75 L176 80 H164 L168 75 Z" fill="#B45309"/>' +
+       '<text class="gl" x="40" y="96" font-size="22" font-weight="700" fill="#A5B4FC" font-family="Nirmala UI, Mangal, sans-serif">ॐ</text>';
+  return tpSvg(s);
+}
 
 // Janmashtami: midnight over the Yamuna, a crescent moon, the dahi handi swinging, a flute with a
 // peacock feather, music notes floating up.
