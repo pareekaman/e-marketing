@@ -32,8 +32,11 @@
 .dash-perf-dates{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:#64748b;font-weight:600;}
 .dash-perf-dates input[type="date"]{padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit;background:#fff;color:#1e293b;transition:border-color .15s,box-shadow .15s;}
 .dash-perf-dates input[type="date"]:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.15);}
-.dash-perf-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
-.dash-perf-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;}
+/* minmax(0,1fr), not 1fr: a plain 1fr column will not shrink below its content,
+   and a chart canvas keeps the width it was drawn at, so zooming in pushed the
+   third card off the right edge. min-width:0 lets the card (and its chart) shrink. */
+.dash-perf-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;}
+.dash-perf-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;min-width:0;}
 .dash-perf-card h4{font-size:13px;font-weight:700;color:#1e293b;margin:0 0 10px;display:flex;align-items:center;gap:6px;}
 .dash-perf-card .perf-chart-wrap{position:relative;height:200px;}
 .dash-perf-card .perf-empty{font-size:12px;color:#94a3b8;text-align:center;padding:60px 10px;}
