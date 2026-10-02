@@ -1,5 +1,6 @@
 /* Janmashtami decoration: Shri Krishna playing his flute beside a cow (bottom-right), baby Krishna
-   eating butter from a pot (bottom-left), a dahi handi swinging from the top, a "शुभ जन्माष्टमी"
+   eating butter from a pot (bottom-left), govindas building a human pyramid to break the dahi handi
+   (bottom-centre, a looping story), a "शुभ जन्माष्टमी"
    greeting, music notes rising from the flute and peacock feathers drifting down (the canvas).
    Movement is css (css/themes/janmashtami.css). */
 ThemeDecor.register('janmashtami', function (d) {
@@ -129,7 +130,123 @@ ThemeDecor.register('janmashtami', function (d) {
   var cEl = d.svg(cow, 'jm-cow');
   kEl.appendChild(cEl); // the cow stays beside him when he is dragged
   d.svg(baby, 'jm-baby td-drag');
-  d.svg(handi, 'jm-handi td-drag');
+  // Dahi handi: the pot hangs from a rope between two poles at the foot of the page, and a team of
+  // govindas builds a human pyramid to break it — three below, two on their shoulders, one on top who
+  // smashes the pot. Curd and marigolds fly, "हाथी घोड़ा पालकी, जय कन्हैया लाल की!" rings out, they
+  // climb down, a new pot is hung, and it begins again. The scene is placed and sized inline, in a
+  // 300 x 400 box; it is not draggable (it is large, and would take the clicks under it).
+  function govinda(shirt, band, reach) {
+    var arms = reach
+      ? '<path d="M17 34 L12 18 L16 4 M33 34 L38 18 L34 4" fill="none" stroke="#C68B59" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>'
+      : '<path d="M17 34 L2 32 M33 34 L48 32" stroke="#C68B59" stroke-width="5" stroke-linecap="round"/>';
+    return '<svg viewBox="0 0 50 90" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto;overflow:visible">' +
+      arms +
+      '<path d="M19 66 L17 86 M31 66 L33 86" stroke="#C68B59" stroke-width="5.5" stroke-linecap="round"/>' +
+      '<path d="M15 86 h5 M30 86 h5" stroke="#3B2410" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M16 58 H34 L35 70 H27 L25 64 L23 70 H15 Z" fill="#1E3A8A"/>' +
+      '<path d="M15 32 Q25 28 35 32 L34 60 H16 Z" fill="' + shirt + '" stroke="rgba(0,0,0,.25)" stroke-width=".8"/>' +
+      '<path d="M25 32 V60" stroke="rgba(255,255,255,.5)" stroke-width="1" stroke-dasharray="2 2"/>' +
+      '<circle cx="25" cy="20" r="10" fill="#C68B59" stroke="#7C4A1E" stroke-width=".8"/>' +
+      '<path d="M15 18 Q16 9 25 9 Q34 9 35 18 Q31 13 25 13 Q19 13 15 18 Z" fill="#1C1917"/>' +
+      '<path d="M15 16 Q25 12 35 16" fill="none" stroke="' + band + '" stroke-width="3"/><path d="M35 16 l5 4 M35 16 l6 0" stroke="' + band + '" stroke-width="2" stroke-linecap="round"/>' +
+      '<path d="M21 21 q1.4 -1.4 2.8 0 M26.2 21 q1.4 -1.4 2.8 0" fill="none" stroke="#1C1917" stroke-width="1.1" stroke-linecap="round"/>' +
+      '<path d="M21 25 Q25 29 29 25 Q25 27 21 25 Z" fill="#7F1D1D"/>' +
+      '</svg>';
+  }
+  var scene = document.createElement('div');
+  scene.className = 'td-item jm-handi-scene';
+  scene.style.cssText = 'position:absolute;left:calc(50% - 150px);bottom:0;width:300px;height:400px;pointer-events:none';
+  scene.innerHTML =
+    '<svg viewBox="0 0 300 400" xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0;width:300px;height:400px;overflow:visible">' +
+    '<path d="M12 40 V400 M288 40 V400" stroke="#92400E" stroke-width="6" stroke-linecap="round"/>' +
+    '<circle cx="12" cy="40" r="5" fill="#F5B70A"/><circle cx="288" cy="40" r="5" fill="#F5B70A"/>' +
+    '<path d="M12 46 Q150 140 288 46" fill="none" stroke="#B45309" stroke-width="2"/>' +
+    '<path d="M12 50 Q150 146 288 50" fill="none" stroke="#F97316" stroke-width="5" stroke-dasharray="0.1 9" stroke-linecap="round"/>' +
+    '<path d="M12 50 Q150 146 288 50" fill="none" stroke="#FACC15" stroke-width="5" stroke-dasharray="0.1 9" stroke-dashoffset="4.5" stroke-linecap="round"/>' +
+    '</svg>';
+  d.layer.appendChild(scene);
+  var pot = document.createElement('div');
+  pot.className = 'jm-pot';
+  pot.style.cssText = 'position:absolute;left:122px;top:92px;width:56px;transform-origin:50% 0';
+  pot.innerHTML = handi;
+  pot.firstChild.style.cssText = 'display:block;width:100%;height:auto;overflow:visible';
+  scene.appendChild(pot);
+  // the two halves the pot breaks into
+  var shards = [-1, 1].map(function (side) {
+    var sh = document.createElement('div');
+    sh.className = 'jm-shard';
+    sh.style.cssText = 'position:absolute;left:' + (side < 0 ? 122 : 150) + 'px;top:143px;width:28px;opacity:0';
+    sh.innerHTML = '<svg viewBox="0 0 28 48" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto">' +
+      (side < 0 ? '<path d="M28 2 L20 10 L26 18 L18 28 L24 38 L22 46 Q4 44 2 26 Q0 6 28 2 Z"/>' : '<path d="M0 2 L8 10 L2 18 L10 28 L4 38 L6 46 Q24 44 26 26 Q28 6 0 2 Z"/>').replace('/>', ' fill="#C2410C" stroke="#7C2D12" stroke-width="1.2"/>') + '</svg>';
+    scene.appendChild(sh);
+    return { el: sh, side: side };
+  });
+  // the pyramid: [x, feet y, shirt, band, reaching?] per govinda, in three tiers
+  var TIERS = [
+    [[70, 400, '#F97316', '#DC2626'], [125, 400, '#16A34A', '#F5B70A'], [180, 400, '#DC2626', '#FACC15']],
+    [[97, 340, '#2563EB', '#F97316'], [152, 340, '#F59E0B', '#16A34A']],
+    [[125, 280, '#DB2777', '#F5B70A', true]]
+  ];
+  var tierEls = TIERS.map(function (tier) {
+    return tier.map(function (g) {
+      var el = document.createElement('div');
+      el.className = 'jm-govinda';
+      el.style.cssText = 'position:absolute;left:' + g[0] + 'px;top:' + (g[1] - 90) + 'px;width:50px;opacity:0;transform:translateY(40px)';
+      el.innerHTML = govinda(g[2], g[3], !!g[4]);
+      scene.appendChild(el);
+      return el;
+    });
+  });
+  var cry = document.createElement('div');
+  cry.className = 'jm-cry';
+  cry.innerHTML = '<b>हाथी घोड़ा पालकी,</b><b>जय कन्हैया लाल की!</b>';
+  cry.style.cssText = 'position:absolute;left:50%;top:-18px;transform:translateX(-50%);opacity:0';
+  scene.appendChild(cry);
+
+  var timers = [], splash = null;
+  function at(ms, fn) { timers.push(setTimeout(fn, ms)); }
+  function show(el, on, ms) {
+    el.style.transition = 'opacity ' + ms + 'ms ease-out, transform ' + ms + 'ms cubic-bezier(.34,1.4,.64,1)';
+    el.style.opacity = on ? '1' : '0';
+    el.style.transform = on ? 'none' : 'translateY(40px)';
+  }
+  function round() {
+    tierEls[0].forEach(function (el, i) { at(300 + i * 150, function () { show(el, true, 500); }); });
+    tierEls[1].forEach(function (el, i) { at(1500 + i * 250, function () { show(el, true, 600); }); });
+    at(2700, function () { show(tierEls[2][0], true, 700); });
+    at(3700, function () { tierEls[2][0].classList.add('jm-smash'); });
+    at(4000, function () { // the pot breaks
+      var r = pot.getBoundingClientRect(), b = d.layer.getBoundingClientRect();
+      splash = { x: r.left - b.left + r.width / 2, y: r.top - b.top + r.height * 0.75 };
+      pot.style.visibility = 'hidden';
+      shards.forEach(function (s) { s.el.style.transition = 'none'; s.el.style.opacity = '1'; s.el.style.transform = 'none';
+        s.el.getBoundingClientRect(); // restart from the pot
+        s.el.style.transition = 'transform 1.1s cubic-bezier(.4,0,1,1), opacity 1.1s ease-in';
+        s.el.style.transform = 'translate(' + (s.side * 70) + 'px,300px) rotate(' + (s.side * 160) + 'deg)'; s.el.style.opacity = '0'; });
+      cry.style.transition = 'opacity .4s ease-out, transform .5s cubic-bezier(.34,1.56,.64,1)';
+      cry.style.opacity = '1'; cry.style.transform = 'translateX(-50%) scale(1)';
+      scene.classList.add('jm-cheer');
+    });
+    at(4400, function () { tierEls[2][0].classList.remove('jm-smash'); });
+    at(8200, function () { // the cry fades, they climb down
+      cry.style.opacity = '0';
+      scene.classList.remove('jm-cheer');
+      [2, 1, 0].forEach(function (t, k) { tierEls[t].forEach(function (el) { at(k * 500, function () { show(el, false, 450); }); }); });
+    });
+    at(10000, function () { // a new pot is hung
+      pot.style.visibility = ''; pot.style.transition = 'none'; pot.style.transform = 'translateY(-40px)'; pot.style.opacity = '0';
+      pot.getBoundingClientRect();
+      pot.style.transition = 'transform .8s cubic-bezier(.34,1.56,.64,1), opacity .6s'; pot.style.transform = 'none'; pot.style.opacity = '1';
+    });
+    at(11800, round);
+  }
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    pot.style.visibility = 'hidden'; // under reduced motion: the moment of victory, still
+    tierEls.forEach(function (t) { t.forEach(function (el) { el.style.opacity = '1'; el.style.transform = 'none'; }); });
+    cry.style.opacity = '1';
+  } else {
+    round();
+  }
   var greet = document.createElement('div');
   greet.className = 'td-item jm-greet td-drag';
   greet.textContent = '🦚 शुभ जन्माष्टमी';
@@ -151,10 +268,28 @@ ThemeDecor.register('janmashtami', function (d) {
     ctx.fillStyle = '#FDE047'; ctx.beginPath(); ctx.ellipse(0, -3, 1.2, 1.6, 0, 0, 6.2832); ctx.fill();
     ctx.restore();
   }
+  var drops = []; // curd, butter and marigolds flying from the broken pot
   return {
     scale: 0.75,
+    stop: function () { timers.forEach(clearTimeout); },
     frame: function (ctx, dt, w, h) {
       t += dt;
+      if (splash) {
+        for (i = 0; i < 70; i++) {
+          var a = d.rand(-Math.PI, 0), sp = d.rand(60, 260), fl = i % 3 === 0;
+          drops.push({ x: splash.x, y: splash.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40, r: fl ? d.rand(3, 5) : d.rand(2, 4.5), life: 1,
+                       c: fl ? d.pick(['#F97316', '#FACC15', '#EA580C']) : d.pick(['#FFFFFF', '#FFFBEB', '#FEF3C7']), fl: fl });
+        }
+        splash = null;
+      }
+      for (i = drops.length - 1; i >= 0; i--) {
+        var q = drops[i];
+        q.vy += 420 * dt; q.vx *= 0.99; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt * 0.6;
+        if (q.life <= 0 || q.y > h + 10) { drops.splice(i, 1); continue; }
+        ctx.globalAlpha = Math.min(1, q.life * 1.5); ctx.fillStyle = q.c;
+        ctx.strokeStyle = 'rgba(180,140,90,.5)'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, 6.2832); ctx.fill(); if (!q.fl) ctx.stroke();
+      }
       ctx.globalAlpha = 0.85;
       for (i = 0; i < feathers.length; i++) {
         var f = feathers[i];

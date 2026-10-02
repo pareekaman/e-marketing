@@ -7,7 +7,7 @@
 }
 
 /* Decoration (js/themes/janmashtami.js): Krishna with his flute and a cow bottom-right, baby Krishna
-   with his butter bottom-left, the dahi handi swinging from the top between the filters and the buttons, the greeting above the baby. */
+   with his butter bottom-left, the dahi handi scene at the foot of the page (below), the greeting above the baby. */
 .jm-krishna { right:104px; bottom:0; width:120px; transition:translate .3s var(--ease);
   filter:drop-shadow(0 0 10px rgba(250,204,21,.5)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
 .jm-cow { position:absolute; left:-100px; bottom:0; width:110px; }
@@ -19,7 +19,6 @@
 .jm-baby { left:76px; bottom:0; width:110px; transition:translate .3s var(--ease); filter:drop-shadow(0 4px 5px rgba(0,0,0,.25)); }
 .jm-eat { transform-box:view-box; transform-origin:36px 72px; animation:jm-eat 1.6s ease-in-out infinite; }
 @keyframes jm-eat { 0%,40%,100% { transform:rotate(0); } 60%,80% { transform:rotate(-14deg); } }
-.jm-handi { left:44%; top:0; width:52px; transform-origin:50% 0; animation:jm-swing 3s ease-in-out infinite alternate; }
 @keyframes jm-swing { from { transform:rotate(-7deg); } to { transform:rotate(7deg); } }
 .jm-greet { position:absolute; left:84px; bottom:128px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
   color:#fff; padding:7px 14px; border-radius:999px; background:linear-gradient(135deg,#1E3A8A,#1D4ED8 55%,#EAB308);
@@ -27,7 +26,7 @@
   animation:jm-greet 2.4s ease-in-out infinite alternate; }
 @keyframes jm-greet { from { transform:translateY(0); } to { transform:translateY(-4px); } }
 .sidebar:hover ~ #themeDecor .jm-baby, .sidebar:hover ~ #themeDecor .jm-greet { translate:172px 0; }
-@media (prefers-reduced-motion: reduce) { .jm-play, .jm-cow-head, .jm-eat, .jm-handi, .jm-greet { animation:none; } .jm-baby, .jm-greet, .jm-krishna { transition:none; } }
+@media (prefers-reduced-motion: reduce) { .jm-play, .jm-cow-head, .jm-eat, .jm-greet { animation:none; } .jm-baby, .jm-greet, .jm-krishna { transition:none; } }
 
 /* Janmashtami skin: midnight blue and peacock, across the whole UI. Only under data-theme="janmashtami". */
 /* peacock feathers scattered faintly over the page, a soft blue light from above */
@@ -76,3 +75,20 @@
 :root[data-theme="janmashtami"] .nav-item.active::before { background:linear-gradient(180deg,#FDE047,#EAB308,#3B82F6); }
 :root[data-theme="janmashtami"] ::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#FACC15,#3B82F6,#1E3A8A); background-clip:content-box; }
 @media (prefers-reduced-motion: reduce) { :root[data-theme="janmashtami"] .sidebar::before { animation:none; } }
+
+/* Dahi handi (js/themes/janmashtami.js): the govinda pyramid at the foot of the page, the pot on its
+   rope swinging, the top govinda smashing it (.jm-smash), everyone cheering (.jm-cheer), and the cry
+   "हाथी घोड़ा पालकी, जय कन्हैया लाल की!" (.jm-cry). The scene is placed inline. */
+.jm-pot { animation:jm-swing 2.4s ease-in-out infinite alternate; }
+.jm-govinda { filter:drop-shadow(0 3px 3px rgba(0,0,0,.25)); }
+.jm-smash svg { animation:jm-smash .3s ease-in-out 1; transform-origin:50% 100%; }
+@keyframes jm-smash { 0% { transform:none; } 50% { transform:translateY(-14px) scale(1.06); } 100% { transform:none; } }
+.jm-cheer .jm-govinda svg { animation:jm-jump .45s ease-in-out infinite alternate; }
+.jm-cheer .jm-govinda:nth-child(odd) svg { animation-delay:-.22s; }
+@keyframes jm-jump { from { transform:translateY(0); } to { transform:translateY(-4px); } }
+.jm-cry { white-space:nowrap; text-align:center; padding:8px 18px; border-radius:16px; z-index:3;
+  font:800 17px/1.35 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif; color:#fff;
+  background:linear-gradient(135deg,#F97316,#DB2777 50%,#1D4ED8); transform:translateX(-50%) scale(.4);
+  box-shadow:0 0 0 2.5px rgba(255,255,255,.9), 0 10px 24px -8px rgba(29,78,216,.6), 0 0 24px rgba(250,204,21,.6); }
+.jm-cry b { display:block; }
+@media (prefers-reduced-motion: reduce) { .jm-pot, .jm-cheer .jm-govinda svg { animation:none; } }
