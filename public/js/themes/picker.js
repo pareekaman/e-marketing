@@ -13,8 +13,33 @@ const THEME_CHOICES = [
   { key: 'dussehra',  icon: '🏹', name: 'Dussehra',  note: 'Shri Ram defeats Ravan',      c: { side: '#3B0D0D', page: '#FBF1E6', accent: '#B91C1C', brand: '#F57C00' }, art: tpArtDussehra },
   { key: 'holi',      icon: '🎨', name: 'Holi',      note: 'Colour splashes and gulal',   c: { side: '#2E1065', page: '#FBF7FF', accent: '#C026D3', brand: '#F59E0B' }, art: tpArtHoli },
   { key: 'diwali',    icon: '🪔', name: 'Diwali',    note: 'Lights, rangoli and diyas',  c: { side: '#2D1240', page: '#FDF5E6', accent: '#C2410C', brand: '#F29900' }, art: tpArtDiwali },
-  { key: 'christmas', icon: '🎄', name: 'Christmas', note: 'Santa, snowfall and lights',  c: { side: '#0F2E1C', page: '#F3F8F4', accent: '#C62828', brand: '#2E7D32' }, art: tpArtChristmas }
+  { key: 'christmas', icon: '🎄', name: 'Christmas', note: 'Santa, snowfall and lights',  c: { side: '#0F2E1C', page: '#F3F8F4', accent: '#C62828', brand: '#2E7D32' }, art: tpArtChristmas },
+  { key: 'janmashtami', icon: '🦚', name: 'Janmashtami', note: 'Krishna, his flute and the dahi handi', c: { side: '#0B1E4A', page: '#F4F8FF', accent: '#1D4ED8', brand: '#EAB308' }, art: tpArtJanmashtami }
 ];
+
+// Janmashtami: midnight over the Yamuna, a crescent moon, the dahi handi swinging, a flute with a
+// peacock feather, music notes floating up.
+function tpArtJanmashtami() {
+  let s = '<defs><linearGradient id="tpJmBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0B1E4A"/><stop offset="1" stop-color="#1D4ED8"/></linearGradient></defs>' +
+    '<rect width="220" height="110" fill="url(#tpJmBg)"/>' +
+    '<path class="gl" d="M176 16 A12 12 0 1 0 194 32 A10 10 0 1 1 176 16 Z" fill="#FEF9C3"/>';
+  for (let k = 0; k < 14; k++) s += '<circle class="tw"' + tpDelay(k, 0.21) + ' cx="' + ((k * 37) % 210 + 5) + '" cy="' + ((k * 23) % 50 + 6) + '" r="' + (k % 3 ? 1 : 1.5) + '" fill="#fff"/>';
+  s += '<path d="M0 92 Q55 84 110 92 Q165 100 220 90 L220 110 L0 110 Z" fill="#1E3A8A" opacity=".8"/>' +
+       '<path d="M10 98 Q40 94 70 98 M120 100 Q150 96 190 100" stroke="#93C5FD" stroke-width="1" opacity=".6" fill="none"/>' +
+       // the dahi handi on its rope
+       '<g class="tp-bob"><path d="M60 0 V30" stroke="#FCD34D" stroke-width="1.2"/>' +
+       '<circle cx="60" cy="10" r="3" fill="#F97316"/><circle cx="60" cy="20" r="3" fill="#FACC15"/>' +
+       '<path d="M48 44 Q46 30 60 28 Q74 30 72 44 Q72 56 60 57 Q48 56 48 44 Z" fill="#C2410C" stroke="#7C2D12" stroke-width="1"/>' +
+       '<path d="M50 38 Q60 43 70 38" fill="none" stroke="#FDE68A" stroke-width="1.2"/><path d="M53 29 Q57 24 60 27 Q63 23 67 29 Z" fill="#FFFBEB"/></g>' +
+       // the flute with a peacock feather, and notes rising
+       '<path d="M96 76 L176 62" stroke="#B45309" stroke-width="4" stroke-linecap="round"/>' +
+       '<g fill="#3B2410"><circle cx="140" cy="68.5" r="1"/><circle cx="150" cy="66.8" r="1"/><circle cx="160" cy="65" r="1"/></g>' +
+       '<path d="M108 74 Q100 82 102 92" stroke="#DC2626" stroke-width="1.6" fill="none"/>' +
+       '<g transform="translate(100 60) rotate(-30)"><path d="M0 18 V-8" stroke="#15803D" stroke-width="1.2"/><ellipse cx="0" cy="-2" rx="7" ry="11" fill="#16A34A"/>' +
+       '<ellipse cx="0" cy="-4" rx="4.4" ry="5.4" fill="#0EA5E9"/><ellipse cx="0" cy="-3.4" rx="2.6" ry="3.2" fill="#1E3A8A"/><ellipse cx="0" cy="-3" rx="1.2" ry="1.6" fill="#FDE047"/></g>' +
+       '<text class="fly" x="182" y="54" font-size="12" fill="#FDE68A">♪</text><text class="fly" style="animation-delay:-.6s" x="196" y="42" font-size="10" fill="#BFDBFE">♫</text>';
+  return tpSvg(s);
+}
 
 function tpSvg(inner) {
   return '<svg class="tp-art" viewBox="0 0 220 110" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">' + inner + '</svg>';

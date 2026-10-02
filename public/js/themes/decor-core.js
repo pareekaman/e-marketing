@@ -173,10 +173,11 @@
   // once), so fetch the stylesheet again too. The old sheet stays until the new one has loaded.
   function refreshCss(name) {
     var old = document.querySelector('link[rel="stylesheet"][href^="/css/themes/' + name + '.css"]');
-    if (!old) return;
     var l = document.createElement('link');
     l.rel = 'stylesheet';
     l.href = '/css/themes/' + name + '.css?v=' + Date.now();
+    // a theme added after the page was loaded has no <link> on it at all: add one
+    if (!old) { document.head.appendChild(l); return; }
     l.onload = function () { old.remove(); };
     old.parentNode.insertBefore(l, old.nextSibling);
   }

@@ -1,0 +1,78 @@
+/* Janmashtami — Krishna's peacock blue and his pitambar's gold, at midnight, when he was born. */
+:root[data-theme="janmashtami"] {
+  --brand-1:#FACC15; --brand-2:#EAB308; --brand-2-rgb:234,179,8;
+  --accent:#1D4ED8; --accent-dark:#1E3A8A; --accent-light:#3B82F6;
+  --accent-rgb:29,78,216; --accent-light-rgb:59,130,246;
+  --page-bg:#F4F8FF; --sidebar-top:#0B1E4A; --sidebar-bottom:#050D24;
+}
+
+/* Decoration (js/themes/janmashtami.js): Krishna with his flute and a cow bottom-right, baby Krishna
+   with his butter bottom-left, the dahi handi swinging from the top between the filters and the buttons, the greeting above the baby. */
+.jm-krishna { right:104px; bottom:0; width:120px; transition:translate .3s var(--ease);
+  filter:drop-shadow(0 0 10px rgba(250,204,21,.5)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+.jm-cow { position:absolute; left:-100px; bottom:0; width:110px; }
+.jm-krishna svg, .jm-cow svg { overflow:visible; }
+.jm-play { transform-box:fill-box; transform-origin:center; animation:jm-play .5s ease-in-out infinite alternate; }
+@keyframes jm-play { from { transform:translateY(0); } to { transform:translateY(-1.2px); } }
+.jm-cow-head { transform-box:fill-box; transform-origin:80% 20%; animation:jm-nod 3.4s ease-in-out infinite; }
+@keyframes jm-nod { 0%,100% { transform:rotate(0); } 50% { transform:rotate(6deg); } }
+.jm-baby { left:76px; bottom:0; width:110px; transition:translate .3s var(--ease); filter:drop-shadow(0 4px 5px rgba(0,0,0,.25)); }
+.jm-eat { transform-box:view-box; transform-origin:36px 72px; animation:jm-eat 1.6s ease-in-out infinite; }
+@keyframes jm-eat { 0%,40%,100% { transform:rotate(0); } 60%,80% { transform:rotate(-14deg); } }
+.jm-handi { left:44%; top:0; width:52px; transform-origin:50% 0; animation:jm-swing 3s ease-in-out infinite alternate; }
+@keyframes jm-swing { from { transform:rotate(-7deg); } to { transform:rotate(7deg); } }
+.jm-greet { position:absolute; left:84px; bottom:128px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
+  color:#fff; padding:7px 14px; border-radius:999px; background:linear-gradient(135deg,#1E3A8A,#1D4ED8 55%,#EAB308);
+  box-shadow:0 0 0 2px rgba(255,255,255,.8), 0 0 18px rgba(29,78,216,.5); transition:translate .3s var(--ease);
+  animation:jm-greet 2.4s ease-in-out infinite alternate; }
+@keyframes jm-greet { from { transform:translateY(0); } to { transform:translateY(-4px); } }
+.sidebar:hover ~ #themeDecor .jm-baby, .sidebar:hover ~ #themeDecor .jm-greet { translate:172px 0; }
+@media (prefers-reduced-motion: reduce) { .jm-play, .jm-cow-head, .jm-eat, .jm-handi, .jm-greet { animation:none; } .jm-baby, .jm-greet, .jm-krishna { transition:none; } }
+
+/* Janmashtami skin: midnight blue and peacock, across the whole UI. Only under data-theme="janmashtami". */
+/* peacock feathers scattered faintly over the page, a soft blue light from above */
+:root[data-theme="janmashtami"] body {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cg transform='translate(40 44) rotate(-25)'%3E%3Cpath d='M0 16 V-10' stroke='%2315803D' stroke-opacity='.25' stroke-width='1'/%3E%3Cellipse cx='0' cy='-2' rx='6' ry='9' fill='%2316A34A' fill-opacity='.12'/%3E%3Cellipse cx='0' cy='-3' rx='3.6' ry='4.4' fill='%230EA5E9' fill-opacity='.18'/%3E%3Cellipse cx='0' cy='-2.6' rx='1.6' ry='2' fill='%231E3A8A' fill-opacity='.25'/%3E%3C/g%3E%3Ctext x='112' y='120' font-size='16' fill='%231D4ED8' fill-opacity='.1'%3E%E2%99%AA%3C/text%3E%3C/svg%3E") repeat 0 0 / 160px 160px,
+    radial-gradient(1000px 380px at 50% -140px, rgba(59,130,246,.22), transparent 70%),
+    var(--page-bg);
+  background-attachment:fixed;
+}
+/* cards: a gold-and-blue edge like his pitambar's border, a pale blue wash */
+:root[data-theme="janmashtami"] .ov-card, :root[data-theme="janmashtami"] .chart-card, :root[data-theme="janmashtami"] .task-table-card {
+  background:
+    linear-gradient(180deg,#1E3A8A 0 2px,#FACC15 2px 4px,transparent 4px) top / 100% 4px no-repeat,
+    linear-gradient(180deg, #EEF4FF, #fff 60px);
+  box-shadow:0 0 0 1px rgba(29,78,216,.1), 0 12px 26px -16px rgba(30,58,138,.45);
+}
+:root[data-theme="janmashtami"] .ov-card::before { background:linear-gradient(180deg,#FACC15,#3B82F6,#1E3A8A); }
+/* a flute with peacock feathers under the header */
+:root[data-theme="janmashtami"] .topbar::after {
+  content:''; position:absolute; left:0; right:0; bottom:-12px; height:12px; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='70' height='12'%3E%3Cpath d='M4 6 H46' stroke='%2392400E' stroke-width='2.4' stroke-linecap='round'/%3E%3Cg fill='%233B2410'%3E%3Ccircle cx='24' cy='6' r='.8'/%3E%3Ccircle cx='30' cy='6' r='.8'/%3E%3Ccircle cx='36' cy='6' r='.8'/%3E%3C/g%3E%3Cpath d='M42 6 h4' stroke='%23F5B70A' stroke-width='2.6'/%3E%3Cellipse cx='58' cy='6' rx='4' ry='5' fill='%2316A34A'/%3E%3Cellipse cx='58' cy='6' rx='2.4' ry='3' fill='%230EA5E9'/%3E%3Ccircle cx='58' cy='6' r='1.2' fill='%231E3A8A'/%3E%3C/svg%3E") repeat-x left center / 70px 12px;
+}
+:root[data-theme="janmashtami"] .topbar-title {
+  background:linear-gradient(90deg,#1E3A8A,#1D4ED8 50%,#CA8A04); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+/* the sidebar at midnight: a crescent moon, stars twinkling over the Yamuna */
+:root[data-theme="janmashtami"] .sidebar {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='130'%3E%3Ccircle cx='14' cy='16' r='.9' fill='%23fff'/%3E%3Ccircle cx='62' cy='34' r='1.2' fill='%23FDE68A'/%3E%3Ccircle cx='36' cy='72' r='.8' fill='%23fff'/%3E%3Ccircle cx='78' cy='98' r='1' fill='%23fff'/%3E%3Ccircle cx='20' cy='118' r='1.1' fill='%23BFDBFE'/%3E%3C/svg%3E") repeat 0 0 / 90px 130px,
+    radial-gradient(70px 70px at 50% 44px, rgba(254,249,195,.35), transparent 70%),
+    linear-gradient(180deg,var(--sidebar-top) 0%,var(--sidebar-bottom) 100%);
+}
+:root[data-theme="janmashtami"] .sidebar::before {
+  content:''; position:absolute; inset:0; z-index:-1; pointer-events:none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cpath d='M22 20 A12 12 0 1 0 40 36 A10 10 0 1 1 22 20 Z' fill='%23FEF9C3'/%3E%3C/svg%3E") no-repeat 50% 14px / 34px 34px,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='110' height='140'%3E%3Cpath d='M28 30 L29.5 34 L34 35 L29.5 36 L28 40 L26.5 36 L22 35 L26.5 34 Z' fill='%23FEF9C3'/%3E%3Cpath d='M84 100 L85 103 L88 104 L85 105 L84 108 L83 105 L80 104 L83 103 Z' fill='%23fff'/%3E%3C/svg%3E") repeat 0 60px / 110px 140px;
+  animation:jm-twinkle 2.8s ease-in-out infinite alternate;
+}
+@keyframes jm-twinkle { from { opacity:.55; } to { opacity:1; } }
+:root[data-theme="janmashtami"] .nav-item.active {
+  background:linear-gradient(90deg,rgba(250,204,21,.32),rgba(250,204,21,.08)); color:#FEF9C3;
+  box-shadow:inset 0 0 0 1px rgba(250,204,21,.32);
+}
+:root[data-theme="janmashtami"] .nav-item.active::before { background:linear-gradient(180deg,#FDE047,#EAB308,#3B82F6); }
+:root[data-theme="janmashtami"] ::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#FACC15,#3B82F6,#1E3A8A); background-clip:content-box; }
+@media (prefers-reduced-motion: reduce) { :root[data-theme="janmashtami"] .sidebar::before { animation:none; } }
