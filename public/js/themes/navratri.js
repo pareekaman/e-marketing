@@ -105,11 +105,54 @@ ThemeDecor.register('navratri', function (d) {
       '<path d="M45 63 Q50 76 55 63" fill="none" stroke="#F8FAFC" stroke-width="1.6" stroke-dasharray="0.1 2.6" stroke-linecap="round"/>' +
       arm(-1, o.kurta, o.trim) + arm(1, o.kurta, o.trim) + head(false) + '</g></svg>';
   }
-  // The dance goes on the inner svg, not the dancer: the dancer's classes key where a viewer has
-  // dragged it, and that spot should not change from day to day.
-  [d.svg(girl(DANCE.g), 'td-dancer td-dancer-1 td-drag'), d.svg(boy(DANCE.b), 'td-dancer td-dancer-2 td-drag')].forEach(function (el) {
-    el.firstChild.setAttribute('class', 'nv-' + DANCE.dance + ' nv-st-' + DANCE.step);
-  });
+  // On a dandiya day a pair dances; on a garba day eight dancers, girls and boys by turns, circle a
+  // garbo (the pierced clay pot with a lamp inside), as garba is danced. The dance goes on the inner
+  // svg, not the dancer: the dancer's classes key where a viewer has dragged it, and that spot
+  // should not change from day to day.
+  var ring = null; // { el, items: [{ el }], a } on garba days: draw() turns the circle
+  if (!GARBA) {
+    [d.svg(girl(DANCE.g), 'td-dancer td-dancer-1 td-drag'), d.svg(boy(DANCE.b), 'td-dancer td-dancer-2 td-drag')].forEach(function (el) {
+      el.firstChild.setAttribute('class', 'nv-' + DANCE.dance + ' nv-st-' + DANCE.step);
+    });
+  } else {
+    var g = DANCE.g, b = DANCE.b;
+    // two looks for each, the day's colours swapped about, so the circle is not all one outfit
+    var looks = [girl(g), boy(b),
+      girl({ skirt: g.border, border: g.skirt, choli: g.drape, drape: g.choli, motif: g.motif, mc: g.mc }),
+      boy({ kurta: b.vest, vest: b.kurta, trim: b.trim, dhoti: b.dhoti })];
+    var re = document.createElement('div');
+    re.className = 'td-item td-garba-ring td-drag';
+    re.style.position = 'absolute'; // as d.svg() gives the other figures
+    re.innerHTML = '<svg class="nv-garbo" viewBox="0 0 40 50" xmlns="http://www.w3.org/2000/svg">' +
+      '<ellipse cx="20" cy="47" rx="16" ry="3" fill="#000" fill-opacity=".15"/>' +
+      '<path d="M6 30 Q4 16 20 14 Q36 16 34 30 Q34 46 20 47 Q6 46 6 30 Z" fill="#C2410C" stroke="#7C2D12" stroke-width="1"/>' +
+      '<path d="M12 14 H28 L26 8 H14 Z" fill="#9A3412" stroke="#7C2D12" stroke-width=".8"/>' +
+      '<g fill="#FDE047">' + [[12, 24], [20, 22], [28, 24], [10, 32], [17, 31], [24, 31], [31, 32], [14, 39], [21, 40], [27, 39]].map(function (q) { return '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="1.5"/>'; }).join('') + '</g>' +
+      '<path d="M8 28 Q20 34 32 28" fill="none" stroke="#FDE68A" stroke-width="1" stroke-dasharray="2 2"/>' +
+      '<path class="nv-flame" d="M20 -2 C24 3 24 7 20 9 C16 7 16 3 20 -2 Z" fill="#F97316"/><circle cx="20" cy="5" r="7" fill="#FDE047" fill-opacity=".3"/></svg>';
+    d.layer.appendChild(re);
+    ring = { el: re, items: [], a: 0 };
+    for (var gi = 0; gi < 8; gi++) {
+      var it = document.createElement('div');
+      it.className = 'nv-ring-dancer';
+      it.innerHTML = looks[gi % 4];
+      it.firstChild.setAttribute('class', 'nv-garba nv-st-' + DANCE.step);
+      it.firstChild.style.animationDelay = (-0.3 * gi) + 's';
+      re.appendChild(it);
+      ring.items.push(it);
+    }
+    placeRing();
+  }
+  // The circle as seen from the front and a little above: an ellipse round the garbo, the dancers
+  // at the front larger and in front of those behind.
+  function placeRing() {
+    var cx = 160, cy = 118, rx = 124, ry = 30, w = 54, h = w * 1.6;
+    ring.items.forEach(function (it, i) {
+      var a = ring.a + i * Math.PI / 4, x = cx + Math.cos(a) * rx, y = cy + Math.sin(a) * ry, k = 0.72 + 0.28 * (Math.sin(a) + 1) / 2;
+      it.style.transform = 'translate(' + (x - w / 2).toFixed(1) + 'px,' + (y - h).toFixed(1) + 'px) scale(' + k.toFixed(3) + ')';
+      it.style.zIndex = Math.round(y);
+    });
+  }
 
 
   // Maa Durga riding her tiger, in a friendly cartoon style: big round face with sparkling eyes,
@@ -717,6 +760,7 @@ ThemeDecor.register('navratri', function (d) {
     scale: 0.75,
     frame: function (ctx, dt, w, h) {
       t += dt;
+      if (ring) { ring.a += 0.45 * dt; placeRing(); } // the garba circle goes round, slowly
       ctx.globalAlpha = 0.9;
       for (var j = 0; j < petals.length; j++) {
         var p = petals[j];

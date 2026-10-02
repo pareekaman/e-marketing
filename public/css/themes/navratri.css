@@ -410,3 +410,14 @@
 .nv-bolt { animation:nv-bolt 3s linear infinite; }
 @keyframes nv-bolt { 0%,80%,86%,100% { opacity:.25; } 82%,84%,90% { opacity:1; } }
 @media (prefers-reduced-motion: reduce) { :root[data-theme="navratri"][data-nv-day="7"] .sidebar::before, .nv-bolt { animation:none; } }
+
+/* Garba days: eight dancers circling the garbo, bottom-left (navratri.js placeRing turns the
+   circle; each dancer is placed by transform, the garbo sits at the centre at depth 118). */
+.td-garba-ring { left:64px; bottom:0; width:320px; height:150px; transition:translate .3s var(--ease); }
+.sidebar:hover ~ #themeDecor .td-garba-ring { translate:172px 0; }
+.nv-garbo { position:absolute; left:142px; top:73px; width:36px; height:45px; z-index:118; overflow:visible;
+  filter:drop-shadow(0 0 8px rgba(253,224,71,.7)); }
+.nv-ring-dancer { position:absolute; left:0; top:0; width:54px; transform-origin:50% 100%; will-change:transform;
+  filter:drop-shadow(0 3px 3px rgba(0,0,0,.22)); }
+.nv-ring-dancer svg { display:block; width:100%; height:auto; overflow:visible; }
+@media (prefers-reduced-motion: reduce) { .td-garba-ring { transition:none; } }
