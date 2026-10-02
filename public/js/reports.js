@@ -448,7 +448,12 @@ async function loadDailyReports(){
     } else {
       qs = '?month=' + monthInput.value;
     }
-    DR_DATA = await api('/api/daily-tasks/report' + qs);
+    // Client name -> ids of its handlers, so a chosen doer's own clients can be
+    // listed first in the client filter. Loaded alongside the report.
+    const [report, clientRows] = await Promise.all([api('/api/daily-tasks/report' + qs), api('/api/clients').catch(() => [])]);
+    DR_CLIENT_HANDLERS = new Map((Array.isArray(clientRows) ? clientRows : []).map(c => [c.name,
+      new Set([c.handler_id, ...String(c.handler_ids || '').split(',')].filter(Boolean).map(String))]));
+    DR_DATA = report;
     if (DR_DATA.error) throw new Error(DR_DATA.error);
     renderDRStats();
     renderDRSummary();
@@ -529,23 +534,62 @@ function renderDREntriesUserDropdown(){
   sel.innerHTML = html;
 }
 
-function renderDREntriesClientDropdown(){
-  const sel = document.getElementById('drClientFilter');
-  if (!sel) return;
-  const cur = sel.value;
-  const clients = [...new Set(drBaseEntries().map(e => e.client_name).filter(Boolean))].sort();
-  let html = '<option value="">All Clients</option>';
-  for (const c of clients) {
-    const selected = cur === c ? 'selected' : '';
-    html += `<option value="${dtEscape(c)}" ${selected}>${dtEscape(c)}</option>`;
-  }
-  sel.innerHTML = html;
+// Client filter — any number of clients. Empty set = all clients.
+let DR_CLIENT_SEL = new Set();
+let DR_CLIENT_OPTS = [];
+let DR_CLIENT_HANDLERS = new Map();
+// With a doer chosen, the clients they handle come first (then the rest, A-Z).
+function drDoerHandles(name){
+  const doer = document.getElementById('drUserFilter')?.value || '';
+  return !!doer && !!DR_CLIENT_HANDLERS.get(name)?.has(String(doer));
 }
+function renderDREntriesClientDropdown(){
+  DR_CLIENT_OPTS = [...new Set(drBaseEntries().map(e => e.client_name).filter(Boolean))]
+    .sort((a, b) => (drDoerHandles(b) - drDoerHandles(a)) || a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  // A ticked client that no longer appears (other type/range) drops out.
+  DR_CLIENT_SEL = new Set([...DR_CLIENT_SEL].filter(c => DR_CLIENT_OPTS.includes(c)));
+  drRenderClientList();
+  drUpdateClientBtn();
+}
+function drRenderClientList(){
+  const box = document.getElementById('drClientList');
+  if (!box) return;
+  const q = (document.getElementById('drClientSearch')?.value || '').toLowerCase().trim();
+  const list = DR_CLIENT_OPTS.filter(c => !q || c.toLowerCase().includes(q));
+  box.innerHTML = `<label class="multi-select-item" style="font-weight:600;border-bottom:1px solid #e2e8f0">
+      <input type="checkbox" ${DR_CLIENT_SEL.size ? '' : 'checked'} onchange="drClientAll()" style="width:14px;height:14px;min-width:0;padding:0;margin:0;flex:none;accent-color:#F39C12"/> All Clients</label>` +
+    (list.length ? list.map((c, i) => `${i && drDoerHandles(list[i - 1]) && !drDoerHandles(c) ? '<div style="border-top:1px dashed #e2e8f0;margin:2px 0"></div>' : ''}<label class="multi-select-item"${drDoerHandles(c) ? ' title="Handled by the chosen doer"' : ''}>
+      <input type="checkbox" ${DR_CLIENT_SEL.has(c) ? 'checked' : ''} data-client="${dtEscape(c)}" onchange="drClientToggle(this)" style="width:14px;height:14px;min-width:0;padding:0;margin:0;flex:none;accent-color:#F39C12"/> ${dtEscape(c)}${drDoerHandles(c) ? ' <span style="margin-left:auto;font-size:10px;font-weight:700;color:#15803d;background:#dcfce7;padding:1px 6px;border-radius:5px">Handler</span>' : ''}</label>`).join('')
+      : '<div style="padding:10px 12px;font-size:12px;color:#94a3b8">No clients match</div>');
+}
+function drUpdateClientBtn(){
+  const el = document.getElementById('drClientBtnText');
+  if (!el) return;
+  const n = DR_CLIENT_SEL.size;
+  el.textContent = !n ? 'All Clients' : n <= 2 ? [...DR_CLIENT_SEL].join(', ') : `${n} clients`;
+}
+function drClientToggle(cb){
+  const c = cb.dataset.client;
+  if (cb.checked) DR_CLIENT_SEL.add(c); else DR_CLIENT_SEL.delete(c);
+  drRenderClientList(); drUpdateClientBtn(); renderDREntries();
+}
+function drClientAll(){
+  DR_CLIENT_SEL.clear();
+  drRenderClientList(); drUpdateClientBtn(); renderDREntries();
+}
+function drToggleClientDrop(ev){
+  if (ev) ev.stopPropagation();
+  const dd = document.getElementById('drClientDrop');
+  if (!dd) return;
+  const open = dd.classList.toggle('open');
+  if (open) { const s = document.getElementById('drClientSearch'); if (s) { s.value = ''; drRenderClientList(); s.focus(); } }
+}
+document.addEventListener('click', () => document.getElementById('drClientDrop')?.classList.remove('open'));
 
 function drClearEntryFilters(){
   const s = document.getElementById('drSearch'); if (s) s.value = '';
   const u = document.getElementById('drUserFilter'); if (u) u.value = '';
-  const c = document.getElementById('drClientFilter'); if (c) c.value = '';
+  DR_CLIENT_SEL.clear();
   const ty = document.getElementById('drTypeFilter'); if (ty) ty.value = 'daily';
   renderDREntriesUserDropdown(); renderDREntriesClientDropdown();
   renderDREntries();
@@ -572,10 +616,9 @@ function drFilteredEntries(){
   if (!DR_DATA) return [];
   const search = (document.getElementById('drSearch')?.value || '').toLowerCase();
   const userId = document.getElementById('drUserFilter')?.value || '';
-  const client = document.getElementById('drClientFilter')?.value || '';
   let entries = drBaseEntries();
   if (userId) entries = entries.filter(e => String(e.user_id) === String(userId));
-  if (client) entries = entries.filter(e => e.client_name === client);
+  if (DR_CLIENT_SEL.size) entries = entries.filter(e => DR_CLIENT_SEL.has(e.client_name));
   if (search) {
     entries = entries.filter(e =>
       String(e.doer_name || '').toLowerCase().includes(search) ||
@@ -695,7 +738,7 @@ function drExportPDF(){
     ? `${DR_DATA.from} → ${DR_DATA.to}`
     : DR_DATA.month;
   const userId = document.getElementById('drUserFilter')?.value || '';
-  const client  = document.getElementById('drClientFilter')?.value || '';
+  const client  = [...DR_CLIENT_SEL].join(', ');
   const search  = document.getElementById('drSearch')?.value || '';
   const filterLine = [
     userId ? `Doer: ${entries[0]?.doer_name || userId}` : '',

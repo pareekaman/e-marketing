@@ -78,6 +78,9 @@ app.get('/api/clients', requireAuth, async (req, res) => {
               (SELECT GROUP_CONCAT(u2.name ORDER BY u2.name SEPARATOR '||')
                FROM client_handlers ch JOIN users u2 ON ch.user_id = u2.id
                WHERE ch.client_id = c.id) AS all_handler_names,
+              -- Handler user ids, for matching a person to their clients by id.
+              (SELECT GROUP_CONCAT(ch.user_id SEPARATOR ',')
+               FROM client_handlers ch WHERE ch.client_id = c.id) AS handler_ids,
               -- Distinct departments across every handler on this client, by id —
               -- not by matching all_handler_names back to a name, which breaks on
               -- two people sharing a name. client_handlers always carries the

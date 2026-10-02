@@ -1172,12 +1172,23 @@ try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) &
           <option value="extra">Extra Working (approved)</option>
           <option value="all">Daily Task + Extra Working</option>
         </select>
-        <select id="drUserFilter" onchange="renderDREntries()">
+        <select id="drUserFilter" onchange="renderDREntriesClientDropdown();renderDREntries()">
           <option value="">All Doers</option>
         </select>
-        <select id="drClientFilter" onchange="renderDREntries()">
-          <option value="">All Clients</option>
-        </select>
+        <!-- Several clients at once: a checkbox list, not a <select>. -->
+        <div class="multi-select-wrap" id="drClientMulti" style="min-width:220px">
+          <button type="button" id="drClientBtn" onclick="drToggleClientDrop(event)"
+            style="width:100%;padding:9px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#1e293b;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left">
+            <span id="drClientBtnText" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">All Clients</span><span style="color:#94a3b8">▾</span>
+          </button>
+          <div class="multi-select-dropdown" id="drClientDrop" style="max-height:320px;min-width:260px" onclick="event.stopPropagation()">
+            <div style="padding:8px;border-bottom:1px solid #e2e8f0;position:sticky;top:0;background:#fff">
+              <input type="text" id="drClientSearch" data-no-search placeholder="Search clients…" oninput="drRenderClientList()"
+                style="width:100%;box-sizing:border-box;min-width:0;padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px"/>
+            </div>
+            <div id="drClientList"></div>
+          </div>
+        </div>
         <button class="dt-btn" onclick="drClearEntryFilters()" style="font-size:12px">✕ Clear</button>
         <span id="drFilterSummary" style="font-size:12px;color:#64748b;font-weight:600;margin-left:auto"></span>
       </div>
