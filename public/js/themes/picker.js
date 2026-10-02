@@ -17,8 +17,27 @@ const THEME_CHOICES = [
   { key: 'janmashtami', icon: '🦚', name: 'Janmashtami', note: 'Krishna, his flute and the dahi handi', c: { side: '#0B1E4A', page: '#F4F8FF', accent: '#1D4ED8', brand: '#EAB308' }, art: tpArtJanmashtami },
   { key: 'shivratri', icon: '🔱', name: 'Maha Shivratri', note: 'Shiv ji in meditation, Kailash at night', c: { side: '#0F172A', page: '#F3F5FA', accent: '#3730A3', brand: '#6366F1' }, art: tpArtShivratri },
   { key: 'ganesh', icon: '🐘', name: 'Ganesh Chaturthi', note: 'Ganpati Bappa in his pandal, dhol and modaks', c: { side: '#7F1D1D', page: '#FFF8EE', accent: '#B91C1C', brand: '#F97316' }, art: tpArtGanesh },
-  { key: 'ramnavami', icon: '🚩', name: 'Ram Navami', note: 'Baby Ram in his cradle, Ayodhya and Hanuman ji', c: { side: '#7C2D12', page: '#FFF9F0', accent: '#C2410C', brand: '#F97316' }, art: tpArtRamNavami }
+  { key: 'ramnavami', icon: '🚩', name: 'Ram Navami', note: 'Baby Ram in his cradle, Ayodhya and Hanuman ji', c: { side: '#7C2D12', page: '#FFF9F0', accent: '#C2410C', brand: '#F97316' }, art: tpArtRamNavami },
+  { key: 'rakhi', icon: '🎀', name: 'Raksha Bandhan', note: 'A sister ties a rakhi, a thali and a gift', c: { side: '#831843', page: '#FFF7FB', accent: '#BE185D', brand: '#EC4899' }, art: tpArtRakhi }
 ];
+
+// Raksha Bandhan: a big rakhi on its thread, a puja thali with a lit diya, a gift, little hearts.
+function tpArtRakhi() {
+  let s = '<defs><linearGradient id="tpRkBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FCE7F3"/><stop offset="1" stop-color="#F9A8D4"/></linearGradient></defs>' +
+    '<rect width="220" height="110" fill="url(#tpRkBg)"/>' +
+    '<path d="M10 42 Q60 30 110 42 Q160 54 210 42" fill="none" stroke="#DB2777" stroke-width="2.4"/>' +
+    '<path d="M10 42 Q60 30 110 42 Q160 54 210 42" fill="none" stroke="#F5B70A" stroke-width="1" stroke-dasharray="4 4"/>' +
+    '<g class="tp-bob">';
+  for (let k = 0; k < 10; k++) { const a = k * Math.PI / 5; s += '<ellipse cx="' + (110 + Math.cos(a) * 12).toFixed(1) + '" cy="' + (42 + Math.sin(a) * 12).toFixed(1) + '" rx="8" ry="4" transform="rotate(' + (k * 36) + ' ' + (110 + Math.cos(a) * 12).toFixed(1) + ' ' + (42 + Math.sin(a) * 12).toFixed(1) + ')" fill="' + (k % 2 ? '#EC4899' : '#BE185D') + '"/>'; }
+  s += '<circle cx="110" cy="42" r="9" fill="#F5B70A" stroke="#B45309"/><circle class="gl" cx="110" cy="42" r="4" fill="#fff"/></g>' +
+    '<ellipse cx="54" cy="96" rx="36" ry="8" fill="#F59E0B" stroke="#92400E"/>' +
+    '<path d="M36 92 Q42 97 48 92 Z" fill="#B45309"/><path class="fl" d="M42 80 C46 85 46 89 42 91 C38 89 38 85 42 80 Z" fill="#F97316"/>' +
+    '<ellipse cx="62" cy="92" rx="6" ry="2.6" fill="#DC2626"/><circle cx="76" cy="92" r="3.6" fill="#F59E0B"/>' +
+    '<rect x="152" y="70" width="34" height="28" rx="2" fill="#7C3AED"/><path d="M169 70 V98 M152 84 H186" stroke="#FACC15" stroke-width="3"/>' +
+    '<path d="M169 70 q-10 -12 -15 -3 q5 5 15 3 q10 -12 15 -3 q-5 5 -15 3" fill="#FACC15"/>';
+  for (let k = 0; k < 6; k++) s += '<path class="tw"' + tpDelay(k, 0.3) + ' transform="translate(' + (20 + k * 36) + ' ' + (14 + (k % 2) * 56) + ') scale(.5)" d="M0 4 C-6 -4 -12 4 0 12 C12 4 6 -4 0 4 Z" fill="#E11D48" opacity=".6"/>';
+  return tpSvg(s);
+}
 
 // Ram Navami: the sun rising over Ayodhya's domes, saffron flags, a rocking cradle.
 function tpArtRamNavami() {

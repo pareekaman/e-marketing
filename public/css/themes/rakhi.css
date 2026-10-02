@@ -1,0 +1,70 @@
+/* Raksha Bandhan — the pinks and golds of a rakhi thread, warm and festive. */
+:root[data-theme="rakhi"] {
+  --brand-1:#F9A8D4; --brand-2:#EC4899; --brand-2-rgb:236,72,153;
+  --accent:#BE185D; --accent-dark:#831843; --accent-light:#DB2777;
+  --accent-rgb:190,24,93; --accent-light-rgb:219,39,119;
+  --page-bg:#FFF7FB; --sidebar-top:#831843; --sidebar-bottom:#4A0D2E;
+}
+
+/* Decoration (js/themes/rakhi.js): the sister and brother bottom-right, the thali bottom-left,
+   the greeting above the thali. */
+.rk-pair { right:96px; bottom:0; width:220px; transition:translate .3s var(--ease);
+  filter:drop-shadow(0 0 10px rgba(249,168,212,.5)) drop-shadow(0 4px 6px rgba(0,0,0,.22)); }
+.rk-pair svg { overflow:visible; }
+.rk-tie { transform-box:view-box; transform-origin:64px 98px; animation:rk-tie 1.4s ease-in-out infinite alternate; }
+@keyframes rk-tie { from { transform:rotate(0); } to { transform:rotate(4deg); } }
+.rk-band { animation:rk-glow 2.8s ease-in-out infinite; }
+@keyframes rk-glow { 0%,60%,100% { filter:none; } 75% { filter:brightness(1.4) drop-shadow(0 0 5px #FDE047); } }
+.rk-gift { transform-box:fill-box; transform-origin:50% 100%; animation:rk-gift 1.8s ease-in-out infinite alternate; }
+@keyframes rk-gift { from { transform:translateY(0); } to { transform:translateY(-4px) rotate(-3deg); } }
+.rk-thali { left:76px; bottom:6px; width:170px; transition:translate .3s var(--ease); filter:drop-shadow(0 4px 5px rgba(0,0,0,.2)); }
+.rk-flame { transform-box:fill-box; transform-origin:50% 100%; animation:rk-flicker .9s ease-in-out infinite alternate; }
+@keyframes rk-flicker { from { transform:scale(1,.9) skewX(-3deg); } to { transform:scale(1.08,1.1) skewX(3deg); } }
+.rk-greet { position:absolute; left:92px; bottom:118px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
+  color:#fff; padding:7px 14px; border-radius:999px; background:linear-gradient(135deg,#BE185D,#EC4899 55%,#F59E0B);
+  box-shadow:0 0 0 2px rgba(255,255,255,.85), 0 0 18px rgba(236,72,153,.55); transition:translate .3s var(--ease);
+  animation:rk-greet 2.4s ease-in-out infinite alternate; }
+@keyframes rk-greet { from { transform:translateY(0); } to { transform:translateY(-4px); } }
+.sidebar:hover ~ #themeDecor .rk-thali, .sidebar:hover ~ #themeDecor .rk-greet { translate:172px 0; }
+@media (prefers-reduced-motion: reduce) { .rk-tie, .rk-band, .rk-gift, .rk-flame, .rk-greet { animation:none; } .rk-thali, .rk-greet, .rk-pair { transition:none; } }
+
+/* Raksha Bandhan skin: rakhi threads across the whole UI. Only under data-theme="rakhi". */
+/* little rakhis scattered faintly over the page, a soft pink light from above */
+:root[data-theme="rakhi"] body {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cg transform='translate(44 44) rotate(-20)'%3E%3Cpath d='M-16 0 H16' stroke='%23EC4899' stroke-opacity='.18' stroke-width='1.4'/%3E%3Ccircle r='7' fill='%23F472B6' fill-opacity='.14'/%3E%3Ccircle r='3' fill='%23F59E0B' fill-opacity='.25'/%3E%3C/g%3E%3Ccircle cx='112' cy='110' r='2.4' fill='%23F59E0B' fill-opacity='.18'/%3E%3C/svg%3E") repeat 0 0 / 150px 150px,
+    radial-gradient(1000px 360px at 50% -140px, rgba(249,168,212,.35), transparent 70%),
+    var(--page-bg);
+  background-attachment:fixed;
+}
+/* cards: a twisted thread of pink and gold along the top */
+:root[data-theme="rakhi"] .ov-card, :root[data-theme="rakhi"] .chart-card, :root[data-theme="rakhi"] .task-table-card {
+  background:
+    repeating-linear-gradient(135deg,#EC4899 0 5px,#F5B70A 5px 8px,#BE185D 8px 13px,#FDE68A 13px 16px) top / 100% 4px no-repeat,
+    linear-gradient(180deg, #FFF0F7, #fff 60px);
+  box-shadow:0 0 0 1px rgba(190,24,93,.1), 0 12px 26px -16px rgba(190,24,93,.45);
+}
+:root[data-theme="rakhi"] .ov-card::before { background:linear-gradient(180deg,#FDE68A,#EC4899,#BE185D); }
+/* a row of rakhis on a thread under the header */
+:root[data-theme="rakhi"] .topbar::after {
+  content:''; position:absolute; left:0; right:0; bottom:-12px; height:12px; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='50' height='12'%3E%3Cpath d='M0 6 H50' stroke='%23DB2777' stroke-width='1.2'/%3E%3Cg transform='translate(25 6)'%3E%3Cg fill='%23EC4899'%3E%3Cellipse cx='4' cy='0' rx='3' ry='1.7'/%3E%3Cellipse cx='-4' cy='0' rx='3' ry='1.7'/%3E%3Cellipse cx='0' cy='4' rx='1.7' ry='3'/%3E%3Cellipse cx='0' cy='-4' rx='1.7' ry='3'/%3E%3C/g%3E%3Ccircle r='2.6' fill='%23F5B70A'/%3E%3C/g%3E%3C/svg%3E") repeat-x left center / 50px 12px;
+}
+:root[data-theme="rakhi"] .topbar-title {
+  background:linear-gradient(90deg,#831843,#DB2777 50%,#F59E0B); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+/* the sidebar: rakhi threads in pink and gold winding down it */
+:root[data-theme="rakhi"] .sidebar { background:linear-gradient(180deg,var(--sidebar-top) 0%,var(--sidebar-bottom) 100%); }
+:root[data-theme="rakhi"] .sidebar::before {
+  content:''; position:absolute; left:0; right:0; top:0; height:calc(100% + 120px); z-index:-1; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='120'%3E%3Cpath d='M30 0 Q50 30 30 60 Q10 90 30 120' fill='none' stroke='%23F9A8D4' stroke-opacity='.25' stroke-width='2'/%3E%3Cpath d='M30 0 Q10 30 30 60 Q50 90 30 120' fill='none' stroke='%23FDE68A' stroke-opacity='.2' stroke-width='2'/%3E%3Ccircle cx='30' cy='60' r='4' fill='%23F5B70A' fill-opacity='.4'/%3E%3C/svg%3E") repeat 0 0 / 60px 120px;
+  animation:rk-wind 14s linear infinite;
+}
+@keyframes rk-wind { from { transform:translateY(0); } to { transform:translateY(-120px); } }
+:root[data-theme="rakhi"] .nav-item.active {
+  background:linear-gradient(90deg,rgba(249,168,212,.35),rgba(249,168,212,.08)); color:#FCE7F3;
+  box-shadow:inset 0 0 0 1px rgba(249,168,212,.35);
+}
+:root[data-theme="rakhi"] .nav-item.active::before { background:linear-gradient(180deg,#FDE68A,#EC4899); }
+:root[data-theme="rakhi"] ::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#FDE68A,#EC4899,#BE185D); background-clip:content-box; }
+@media (prefers-reduced-motion: reduce) { :root[data-theme="rakhi"] .sidebar::before { animation:none; } }
