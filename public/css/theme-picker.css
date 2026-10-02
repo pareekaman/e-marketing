@@ -5,10 +5,32 @@
 .tp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:16px; }
 .tp-card { text-align:left; font-family:inherit; background:#fff; border:2px solid #e2e8f0; border-radius:14px; padding:12px; cursor:pointer;
   transition:transform .15s var(--ease), box-shadow .15s var(--ease), border-color .15s var(--ease); }
-.tp-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-md); }
-.tp-card:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.tp-card.tp-active { border-color:var(--accent); box-shadow:0 0 0 3px rgba(var(--accent-rgb),.15); }
-.tp-prev { display:flex; height:92px; border-radius:9px; overflow:hidden; border:1px solid #e2e8f0; margin-bottom:10px; }
+/* each card carries its festival's own accent in --tp-acc (set inline by picker.js) */
+.tp-card { --tp-acc:var(--accent); }
+.tp-card:hover { transform:translateY(-3px); box-shadow:var(--shadow-md); border-color:var(--tp-acc); }
+.tp-card:focus-visible { outline:2px solid var(--tp-acc); outline-offset:2px; }
+.tp-card.tp-active { border-color:var(--tp-acc);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--tp-acc) 22%, transparent), 0 14px 28px -14px var(--tp-acc); }
+.tp-prev { display:flex; height:104px; border-radius:9px; overflow:hidden; border:1px solid #e2e8f0; margin-bottom:10px; }
+/* a festival's little scene fills the preview */
+.tp-scene { border-color:transparent; }
+.tp-art { display:block; width:100%; height:100%; }
+/* the scene comes alive on hover, and stays alive on the active card */
+.tp-card:hover .tw, .tp-active .tw { animation:tp-tw 1.2s ease-in-out infinite alternate; }
+@keyframes tp-tw { from { opacity:.2; } to { opacity:1; } }
+.tp-card:hover .fl, .tp-active .fl { transform-box:fill-box; transform-origin:50% 100%; animation:tp-fl .7s ease-in-out infinite alternate; }
+@keyframes tp-fl { from { transform:scale(1,.85) skewX(-4deg); } to { transform:scale(1.05,1.1) skewX(4deg); } }
+.tp-card:hover .gl, .tp-active .gl { transform-box:fill-box; transform-origin:center; animation:tp-gl 1.4s ease-in-out infinite alternate; }
+@keyframes tp-gl { from { opacity:.45; transform:scale(.9); } to { opacity:1; transform:scale(1.15); } }
+.tp-card:hover .fly, .tp-active .fly { animation:tp-fly 1.6s linear infinite; }
+@keyframes tp-fly { to { stroke-dashoffset:-48; } }
+.tp-card:hover .tp-bob, .tp-active .tp-bob { animation:tp-bob .45s ease-in-out infinite alternate; }
+@keyframes tp-bob { to { transform:translateY(-2.5px); } }
+.tp-card:hover .tp-sleigh, .tp-active .tp-sleigh { animation:tp-sleigh 3s ease-in-out infinite alternate; }
+@keyframes tp-sleigh { from { transform:translate(-8px, 3px); } to { transform:translate(8px, -3px); } }
+@media (prefers-reduced-motion: reduce) {
+  .tp-card .tw, .tp-card .fl, .tp-card .gl, .tp-card .fly, .tp-card .tp-bob, .tp-card .tp-sleigh { animation:none; }
+}
 .tp-side { width:16%; flex-shrink:0; }
 .tp-body { flex:1; padding:10px; display:flex; flex-direction:column; gap:7px; }
 .tp-row { display:flex; gap:6px; align-items:center; }
@@ -17,5 +39,5 @@
 .tp-line { height:6px; border-radius:3px; background:rgba(15,23,42,.10); }
 .tp-line.tp-short { width:60%; }
 .tp-name { display:flex; align-items:center; gap:6px; font-size:14px; font-weight:700; color:#1e293b; }
-.tp-badge { margin-left:auto; font-size:11px; font-weight:600; color:#fff; background:var(--accent); padding:2px 8px; border-radius:20px; }
+.tp-badge { margin-left:auto; font-size:11px; font-weight:600; color:#fff; background:var(--tp-acc); padding:2px 8px; border-radius:20px; }
 .tp-note { font-size:12px; color:#64748b; margin-top:3px; }
