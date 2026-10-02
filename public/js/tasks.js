@@ -1637,7 +1637,8 @@ function formatDate(d) {
 // BULK UPLOAD
 // ══════════════════════════════════════════════════════
 function downloadSample() {
-  const csv = `doer_email,approver_email,due_date,priority,approval,description,remarks,client_name\npriyanka@test.com,aman@test.com,2026-04-01,high,yes,Complete sales report,Follow up needed,Ambraee\npooja@test.com,aman@test.com,2026-04-02,medium,no,Prepare presentation,,Sohan Health Care`;
+  // status is optional: "done" creates the task already marked done.
+  const csv = `doer_email,approver_email,due_date,priority,approval,description,remarks,client_name,status\npriyanka@test.com,aman@test.com,2026-04-01,high,yes,Complete sales report,Follow up needed,Ambraee,\npooja@test.com,aman@test.com,2026-04-02,medium,no,Prepare presentation,,Sohan Health Care,done`;
   downloadFile(csv,'delegation_sample.csv');
 }
 
@@ -1736,7 +1737,7 @@ async function uploadCSV() {
   const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
   // A row that cannot be read is left out and reported, never saved half-right.
   const problems = [];
-  let count = 0;
+  let count = 0, doneCount = 0;
   for (let n = 1; n < rows.length; n++) {
     progress(n, rows.length - 1);
     const r = rows[n];
@@ -1748,7 +1749,11 @@ async function uploadCSV() {
     const clientName = get(r, 'client_name');
     const client_id = clientName ? clientByName[clientKey(clientName)] : null;
     const doer = (allUsers || []).find(u => (u.email || '').toLowerCase() === email);
+    // Optional status column: done / completed marks the new task done at once.
+    const rawStatus = get(r, 'status').toLowerCase();
+    const markDone = ['done', 'completed', 'complete'].includes(rawStatus);
     const why = !email ? 'no doer_email'
+      : (rawStatus && !markDone && rawStatus !== 'pending') ? `status "${rawStatus}" should be done or pending (or left empty)`
       : !doer ? `no user with the email ${email}`
       : !description ? 'no description'
       : !date ? `due date "${rawDate}" is not a date — use YYYY-MM-DD or MM/DD/YYYY`
@@ -1765,12 +1770,19 @@ async function uploadCSV() {
     });
     if (res && res.error) { problems.push(`Row ${n + 1}: ${res.error}`); continue; }
     count++;
+    if (markDone) {
+      // A holiday/week-off skip creates nothing, so there is no row to close.
+      if (!res || !res.id) { problems.push(`Row ${n + 1}: created but not marked done${res && res.skipped ? ' (date is a holiday or week-off, so no task was made)' : ''}`); continue; }
+      const st = await api(`/api/tasks/${res.id}/status`, 'PUT', { status: 'completed', type: 'delegation' });
+      if (st && st.error) problems.push(`Row ${n + 1}: created but not marked done — ${st.error}`);
+      else doneCount++;
+    }
   }
   if (count) { closeModal('delegateModal'); loadDashboard(true); }
   if (problems.length) {
-    appAlert(`${count} task${count === 1 ? '' : 's'} created. ${problems.length} row${problems.length === 1 ? ' was' : 's were'} not:\n\n${problems.join('\n')}`, 'Bulk upload');
+    appAlert(`${count} task${count === 1 ? '' : 's'} created${doneCount ? ` (${doneCount} marked done)` : ''}. ${problems.length} row${problems.length === 1 ? ' was' : 's were'} not:\n\n${problems.join('\n')}`, 'Bulk upload');
   } else {
-    showToast(`✅ ${count} tasks uploaded!`);
+    showToast(`✅ ${count} tasks uploaded${doneCount ? ` · ${doneCount} marked done` : ''}!`);
   }
   } finally {
     _csvUploading = false;

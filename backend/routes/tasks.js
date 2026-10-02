@@ -142,6 +142,8 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
 app.post('/api/tasks', requireAuth, async (req, res) => {
   try {
     const { type, desc, assignedTo, approverEmail, approver, date, priority, approval, remarks, client_id, clientId, url } = req.body;
+    // Returned so a caller (the CSV upload) can act on the row it just made.
+    let newTaskId = null;
     // Delegation only: assigner leaves the due date to the doer (their occupancy).
     const doerWillSet = (req.body.doerSetsDueDate === true || req.body.doerSetsDueDate === 'true')
       && (type || 'checklist') === 'delegation';
@@ -274,7 +276,8 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
       // approval inserts in server.js: those arrive from outside and the doer
       // really has not seen them, whoever the row names as assigner.
       const selfAssigned = String(assignedBy) === String(targetUser);
-      await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,due_time,status,priority,approval,remarks,client_id,url,awaiting_due_date,seen_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, dueTime, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0, selfAssigned ? new Date() : null]);
+      const [insD] = await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,due_time,status,priority,approval,remarks,client_id,url,awaiting_due_date,seen_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, dueTime, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0, selfAssigned ? new Date() : null]);
+      newTaskId = insD.insertId;
       // 📧 Send delegation email + 📱 WhatsApp (non-blocking — fire and forget)
       (async () => {
         const target = await getNotifyTarget(targetUser);
@@ -330,9 +333,10 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         desc, assignedTo: targetUser, assignedBy: req.session.userId,
         clientId: enforcedClientId, dueDate: effectiveDate });
       if (dupId) return res.json({ success: true, duplicate: true, id: dupId });
-      await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks,client_id) VALUES (?,?,?,?,?,?,?,?)`, [desc, targetUser, req.session.userId, effectiveDate, 'pending', priority||'low', remarks||'', enforcedClientId]);
+      const [insC] = await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks,client_id) VALUES (?,?,?,?,?,?,?,?)`, [desc, targetUser, req.session.userId, effectiveDate, 'pending', priority||'low', remarks||'', enforcedClientId]);
+      newTaskId = insC.insertId;
     }
-    res.json({ success: true, adjusted, effectiveDate, adjustedReason });
+    res.json({ success: true, id: newTaskId, adjusted, effectiveDate, adjustedReason });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
