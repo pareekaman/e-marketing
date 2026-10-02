@@ -22,3 +22,15 @@
 /* The sidebar widens from 60px to 232px on hover and sits above this layer: step aside with it. */
 .sidebar:hover ~ #themeDecor .td-splat-1 { translate:172px 0; }
 .td-splat-2 { right:110px; bottom:-14px; transform:rotate(12deg); }
+/* pichkari bottom-left, water gun bottom-right; each jolts while it squirts (js/themes/holi.js) */
+.hl-gun { filter:drop-shadow(0 4px 5px rgba(0,0,0,.25)); }
+.hl-pichkari { left:190px; bottom:60px; width:120px; transform:rotate(-35deg); transition:translate .3s var(--ease); }
+.hl-watergun { right:250px; bottom:40px; width:120px; transform:rotate(35deg); }
+.hl-plunger { transition:transform .5s ease-in; }
+.hl-firing .hl-plunger { transform:translateX(28px); }
+.hl-firing { animation:hl-jolt .12s ease-in-out 5 alternate; }
+.hl-pichkari.hl-firing { animation-name:hl-jolt-p; }
+@keyframes hl-jolt { from { transform:rotate(35deg); } to { transform:rotate(35deg) translateX(4px); } }
+@keyframes hl-jolt-p { from { transform:rotate(-35deg); } to { transform:rotate(-35deg) translateX(-4px); } }
+.sidebar:hover ~ #themeDecor .hl-pichkari { translate:172px 0; }
+@media (prefers-reduced-motion: reduce) { .hl-firing, .hl-firing .hl-plunger { animation:none; transform:none; } }
