@@ -121,7 +121,9 @@ ThemeDecor.register('navratri', function (d) {
       girl({ skirt: g.border, border: g.skirt, choli: g.drape, drape: g.choli, motif: g.motif, mc: g.mc }),
       boy({ kurta: b.vest, vest: b.kurta, trim: b.trim, dhoti: b.dhoti })];
     var re = document.createElement('div');
-    re.className = 'td-item td-garba-ring td-drag';
+    // td-garba-circle, not the first name td-garba-ring: a spot saved while the circle was misplaced
+    // (it once landed over the theme picker) is keyed by the old name and so left behind.
+    re.className = 'td-item td-garba-circle td-drag';
     // Placed and sized here, not only in the CSS: a tab that loaded an older stylesheet would
     // otherwise drop the circle wherever it fell (it once landed over the theme picker).
     re.style.cssText = 'position:absolute;left:64px;bottom:0;width:320px;height:150px';
