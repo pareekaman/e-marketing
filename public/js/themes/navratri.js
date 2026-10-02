@@ -122,8 +122,10 @@ ThemeDecor.register('navratri', function (d) {
       boy({ kurta: b.vest, vest: b.kurta, trim: b.trim, dhoti: b.dhoti })];
     var re = document.createElement('div');
     re.className = 'td-item td-garba-ring td-drag';
-    re.style.position = 'absolute'; // as d.svg() gives the other figures
-    re.innerHTML = '<svg class="nv-garbo" viewBox="0 0 40 50" xmlns="http://www.w3.org/2000/svg">' +
+    // Placed and sized here, not only in the CSS: a tab that loaded an older stylesheet would
+    // otherwise drop the circle wherever it fell (it once landed over the theme picker).
+    re.style.cssText = 'position:absolute;left:64px;bottom:0;width:320px;height:150px';
+    re.innerHTML = '<svg class="nv-garbo" viewBox="0 0 40 50" xmlns="http://www.w3.org/2000/svg" style="position:absolute;left:142px;top:73px;width:36px;height:45px;z-index:118;overflow:visible">' +
       '<ellipse cx="20" cy="47" rx="16" ry="3" fill="#000" fill-opacity=".15"/>' +
       '<path d="M6 30 Q4 16 20 14 Q36 16 34 30 Q34 46 20 47 Q6 46 6 30 Z" fill="#C2410C" stroke="#7C2D12" stroke-width="1"/>' +
       '<path d="M12 14 H28 L26 8 H14 Z" fill="#9A3412" stroke="#7C2D12" stroke-width=".8"/>' +
@@ -135,8 +137,10 @@ ThemeDecor.register('navratri', function (d) {
     for (var gi = 0; gi < 8; gi++) {
       var it = document.createElement('div');
       it.className = 'nv-ring-dancer';
+      it.style.cssText = 'position:absolute;left:0;top:0;width:54px;transform-origin:50% 100%';
       it.innerHTML = looks[gi % 4];
       it.firstChild.setAttribute('class', 'nv-garba nv-st-' + DANCE.step);
+      it.firstChild.style.cssText = 'display:block;width:100%;height:auto;overflow:visible';
       it.firstChild.style.animationDelay = (-0.3 * gi) + 's';
       re.appendChild(it);
       ring.items.push(it);

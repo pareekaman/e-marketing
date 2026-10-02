@@ -182,10 +182,13 @@
   }
 
   function load(name) {
+    // Every time a theme is shown after the page has loaded (picked in the admin portal, a new
+    // Navratri day, core.js's re-check), not only the first: its script may already be here while
+    // its stylesheet is still the one the page opened with.
+    if (document.readyState === 'complete') refreshCss(name);
     if (registry[name]) return mount(name);
     if (requested[name]) return;
     requested[name] = true;
-    if (document.readyState === 'complete') refreshCss(name);
     var s = document.createElement('script');
     s.src = '/js/themes/' + name + '.js';
     s.onload = function () { if (st.name === name && !st.mounted && registry[name] && window.innerWidth >= MIN_WIDTH) mount(name); };
