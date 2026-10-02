@@ -1148,6 +1148,13 @@ ThemeDecor.register('dussehra', function (d) {
     await wait(380); if (dead) return;
     ravState('td-burn');
     burn = { until: performance.now() + 3400, x: spot.x };
+    // with his last breath; on a box over him rather than inside him, so his burning filter does not darken it
+    var rb = ravEl.getBoundingClientRect(), lb = d.layer.getBoundingClientRect(), box = document.createElement('div');
+    box.style.cssText = 'position:absolute;pointer-events:none;left:' + (rb.left - lb.left) + 'px;top:' + (rb.top - lb.top) + 'px;width:' + rb.width + 'px;height:' + rb.height + 'px';
+    d.layer.appendChild(box);
+    timers.push(setTimeout(function () { box.remove(); }, 4000));
+    var last = speak(box, ['राम! राम! राम!'], 'Ravan', 'td-say-rv', TAUNT_TAIL, 0.35);
+    if (last.getBoundingClientRect().left < 8) last.classList.add('td-say-flip');
     setPose('cheer'); ramEl.classList.add('td-joy'); // Ram raises his bow and beams as Ravan burns
     await wait(1300); if (dead) return;
     ravState('td-fall');
@@ -1156,6 +1163,7 @@ ThemeDecor.register('dussehra', function (d) {
     blast(spot.x - 70, spot.y - 60);
     await wait(260); if (dead) return;
     blast(spot.x + 60, spot.y - 120);
+    unsay(last);
     await wait(800); if (dead) return;
     ravEl.style.display = 'none';
 
