@@ -242,10 +242,61 @@ ThemeDecor.register('navratri', function (d) {
     return s + '</svg>';
   }
 
+  // Day 2 — Maa Brahmacharini, the goddess of tapasya: she walks barefoot and has no mount. White
+  // with a saffron border, her hair in a jata tied with rudraksha instead of a crown, a japa mala
+  // in her right hand and a kamandal in her left; she stands on a lotus in a forest hermitage, a
+  // sacred fire burning before her.
+  function brahmacharini() {
+    var skin = '#F6CBA5', line = '#5B3A1A', s, i;
+    s = '<svg viewBox="0 0 220 210" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<radialGradient id="nvHalo"><stop offset="0" stop-color="#FFF7ED"/><stop offset=".6" stop-color="#FED7AA" stop-opacity=".8"/><stop offset="1" stop-color="#FB923C" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="nvGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE58A"/><stop offset=".55" stop-color="#F5B70A"/><stop offset="1" stop-color="#C98A06"/></linearGradient>' +
+      '<linearGradient id="nvLeaf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4ADE80"/><stop offset="1" stop-color="#15803D" stop-opacity=".2"/></linearGradient></defs>';
+    // the forest behind her: two trees, a hut of the hermitage
+    s += '<g opacity=".9"><path d="M34 160 V96" stroke="#78350F" stroke-width="6"/><circle cx="34" cy="80" r="26" fill="url(#nvLeaf)"/><circle cx="20" cy="96" r="16" fill="url(#nvLeaf)"/>' +
+         '<path d="M196 160 V90" stroke="#78350F" stroke-width="6"/><circle cx="196" cy="74" r="24" fill="url(#nvLeaf)"/><circle cx="210" cy="92" r="14" fill="url(#nvLeaf)"/>' +
+         '<path d="M150 150 L172 124 L194 150 Z" fill="#CA8A04" opacity=".55"/><rect x="156" y="150" width="32" height="18" fill="#A16207" opacity=".45"/></g>';
+    s += '<g class="nv-halo"><circle cx="128" cy="62" r="56" fill="url(#nvHalo)"/></g>';
+    // the lotus she stands on
+    s += '<path d="M90 196 Q128 214 166 196 Q150 186 128 188 Q106 186 90 196 Z" fill="#F9A8D4" stroke="#BE185D" stroke-width="1"/>';
+    for (i = -2; i <= 2; i++) s += '<path d="M' + (128 + i * 14) + ' 194 Q' + (122 + i * 14) + ' 180 ' + (128 + i * 14) + ' 172 Q' + (134 + i * 14) + ' 180 ' + (128 + i * 14) + ' 194 Z" fill="#F472B6" stroke="#BE185D" stroke-width=".8"/>';
+    // standing body: bare feet, a white saree to the ankles with a saffron border, the pallu over her shoulder
+    s += '<path d="M118 186 l-6 6 h10 Z M138 186 l6 6 h-10 Z" fill="' + skin + '" stroke="' + line + '" stroke-width=".7"/>' +
+         '<path d="M106 104 Q128 96 150 104 L162 186 Q128 194 94 186 Z" fill="#FFFFFF" stroke="' + line + '" stroke-width="1.4"/>' +
+         '<path d="M94 186 Q128 194 162 186" fill="none" stroke="#F97316" stroke-width="5"/>' +
+         '<path d="M116 106 Q128 100 140 106 L138 118 Q128 121 118 118 Z" fill="#F97316"/>' +
+         '<path d="M108 104 Q136 126 156 176" fill="none" stroke="#F97316" stroke-width="5"/><path d="M110 108 Q137 130 154 178" fill="none" stroke="#FDE68A" stroke-width="1.2"/>' +
+         '<path d="M118 130 Q122 160 116 184 M138 132 Q136 160 142 184" fill="none" stroke="#E2E8F0" stroke-width="1.2"/>';
+    // right arm (viewer's left): a japa mala of rudraksha hanging from her fingers
+    s += '<path d="M108 108 L96 130 L100 148" fill="none" stroke="' + skin + '" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+         '<path d="M100 150 Q86 168 100 178 Q114 168 100 150" fill="none" stroke="#7C2D12" stroke-width="3.2" stroke-dasharray="0.1 4" stroke-linecap="round"/>' +
+         '<circle cx="100" cy="179" r="2.6" fill="#DC2626"/><circle cx="100" cy="148" r="4.4" fill="' + skin + '" stroke="' + line + '" stroke-width=".8"/>' +
+         '<path d="M97 133 l5 2.4" stroke="#7C2D12" stroke-width="3" stroke-dasharray="0.1 2.6" stroke-linecap="round"/>';
+    // left arm (viewer's right): a brass kamandal held by its handle
+    s += '<path d="M148 108 L162 128 L160 144" fill="none" stroke="' + skin + '" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+         '<path d="M150 150 Q148 170 160 174 Q172 170 170 150 Z" fill="url(#nvGold)" stroke="#92400E" stroke-width="1"/>' +
+         '<path d="M152 150 Q160 138 168 150" fill="none" stroke="#92400E" stroke-width="2"/><path d="M170 156 Q178 154 180 148" fill="none" stroke="#B45309" stroke-width="2.6" stroke-linecap="round"/>' +
+         '<circle cx="160" cy="144" r="4.4" fill="' + skin + '" stroke="' + line + '" stroke-width=".8"/>';
+    s += mataFace(skin, line, '#1C120B');
+    // no crown: the hair gathered in a jata on top, bound with rudraksha; a tripundra of ash on her brow
+    s += '<ellipse cx="128" cy="22" rx="16" ry="12" fill="#1C120B"/>' +
+         '<path d="M112 28 Q128 34 144 28" fill="none" stroke="#7C2D12" stroke-width="3.4" stroke-dasharray="0.1 4" stroke-linecap="round"/>' +
+         '<path d="M118 18 Q128 22 138 18" fill="none" stroke="#7C2D12" stroke-width="3" stroke-dasharray="0.1 4" stroke-linecap="round"/>' +
+         '<path d="M118 47 H138 M119 50 H137" stroke="#F1F5F9" stroke-width="1.3" stroke-linecap="round"/>' +
+         '<path d="M112 102 Q128 114 144 102" fill="none" stroke="#7C2D12" stroke-width="3.2" stroke-dasharray="0.1 4" stroke-linecap="round"/>';
+    // the sacred fire before her: a havan kund of brick, flames, curling smoke
+    s += '<path d="M40 190 H76 L72 204 H44 Z" fill="#B45309" stroke="#78350F" stroke-width="1"/><path d="M40 190 H76" stroke="#FDE68A" stroke-width="1.4"/>' +
+         '<path class="nv-flame" d="M58 160 C68 172 68 182 58 190 C48 182 48 172 58 160 Z" fill="#F97316"/>' +
+         '<path class="nv-flame" d="M58 170 C63 176 63 182 58 188 C53 182 53 176 58 170 Z" fill="#FDE047"/>' +
+         '<path d="M58 156 Q52 146 58 136 Q64 126 58 116" fill="none" stroke="#94A3B8" stroke-width="2" stroke-opacity=".6" stroke-linecap="round"/>';
+    return s + '</svg>';
+  }
+
   // The nine days (data-nv-day on <html>, set by core.js from the owner's choice); 0 or a day not
   // built yet shows Maa Durga on her tiger.
   var NV_DAYS = {
-    1: { name: 'माँ शैलपुत्री', build: shailputri, petals: ['#FFFFFF', '#FEE2E2', '#F87171', '#DC2626', '#FDE68A'] }
+    1: { name: 'माँ शैलपुत्री', build: shailputri, petals: ['#FFFFFF', '#FEE2E2', '#F87171', '#DC2626', '#FDE68A'] },
+    2: { name: 'माँ ब्रह्मचारिणी', build: brahmacharini, petals: ['#FB923C', '#F97316', '#FFFFFF', '#86EFAC', '#22C55E'] }
   };
   var DAY = NV_DAYS[+document.documentElement.getAttribute('data-nv-day')] || null;
   var durgaEl = d.svg(DAY ? DAY.build() : durga(), 'td-durga td-drag');
