@@ -37,3 +37,62 @@
 .hl-hit { animation:hl-hit .45s ease-in-out; }
 @keyframes hl-hit { 0%,100% { transform:none; } 25% { transform:translateX(-4px) rotate(-4deg); } 60% { transform:translateX(3px) rotate(3deg); } }
 @media (prefers-reduced-motion: reduce) { .hl-plunger, .hl-throw-arm { transition:none; } .hl-hit { animation:none; } }
+
+/* Holi skin: the whole UI, not just the corners, plays Holi. Only under data-theme="holi". */
+/* gulal smudged into the corners of every card, a different pair of colours card to card */
+:root[data-theme="holi"] .ov-card,
+:root[data-theme="holi"] .task-table-card,
+:root[data-theme="holi"] .chart-card {
+  background:
+    radial-gradient(120px 80px at 100% 0%, rgba(236,72,153,.32), transparent 70%),
+    radial-gradient(130px 90px at 0% 100%, rgba(250,204,21,.32), transparent 70%),
+    #fff;
+}
+:root[data-theme="holi"] .ov-card:nth-child(4n+2),
+:root[data-theme="holi"] .chart-card:nth-child(4n+2) {
+  background:
+    radial-gradient(120px 80px at 100% 0%, rgba(34,211,238,.32), transparent 70%),
+    radial-gradient(130px 90px at 0% 100%, rgba(168,85,247,.32), transparent 70%),
+    #fff;
+}
+:root[data-theme="holi"] .ov-card:nth-child(4n+3),
+:root[data-theme="holi"] .chart-card:nth-child(4n+3) {
+  background:
+    radial-gradient(120px 80px at 100% 0%, rgba(74,222,128,.32), transparent 70%),
+    radial-gradient(130px 90px at 0% 100%, rgba(249,115,22,.32), transparent 70%),
+    #fff;
+}
+:root[data-theme="holi"] .ov-card:nth-child(4n+4),
+:root[data-theme="holi"] .chart-card:nth-child(4n+4) {
+  background:
+    radial-gradient(120px 80px at 100% 0%, rgba(168,85,247,.32), transparent 70%),
+    radial-gradient(130px 90px at 0% 100%, rgba(34,211,238,.32), transparent 70%),
+    #fff;
+}
+/* the hover bar on a stat card runs through the colours */
+:root[data-theme="holi"] .ov-card::before { background:linear-gradient(180deg,#EC4899,#F97316,#FACC15,#4ADE80,#22D3EE,#A855F7); }
+/* a rainbow stripe under the header */
+:root[data-theme="holi"] .topbar::after {
+  content:''; position:absolute; left:0; right:0; bottom:-1px; height:3px; pointer-events:none;
+  background:linear-gradient(90deg,#EC4899,#F97316,#FACC15,#4ADE80,#22D3EE,#A855F7,#EC4899);
+}
+/* page titles in colour */
+:root[data-theme="holi"] .topbar-title {
+  background:linear-gradient(90deg,#DB2777,#F97316 35%,#7C3AED 70%,#0891B2); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+/* splashes of colour over the purple sidebar */
+:root[data-theme="holi"] .sidebar {
+  background:
+    radial-gradient(140px 100px at 15% 12%, rgba(236,72,153,.38), transparent 70%),
+    radial-gradient(120px 100px at 90% 48%, rgba(250,204,21,.26), transparent 70%),
+    radial-gradient(140px 110px at 20% 88%, rgba(34,211,238,.32), transparent 70%),
+    linear-gradient(180deg,var(--sidebar-top) 0%,var(--sidebar-bottom) 100%);
+}
+/* the active menu item glows pink-to-gold */
+:root[data-theme="holi"] .nav-item.active {
+  background:linear-gradient(90deg,rgba(236,72,153,.38),rgba(250,204,21,.16)); color:#FDE68A;
+  box-shadow:inset 0 0 0 1px rgba(250,204,21,.35);
+}
+:root[data-theme="holi"] .nav-item.active::before { background:linear-gradient(180deg,#FACC15,#EC4899,#22D3EE); }
+/* and even the scrollbar */
+:root[data-theme="holi"] ::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#EC4899,#FACC15,#22D3EE); background-clip:content-box; }
