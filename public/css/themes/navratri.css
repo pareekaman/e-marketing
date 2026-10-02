@@ -184,3 +184,43 @@
 :root[data-theme="navratri"][data-nv-day="2"] .nav-item.active::before { background:linear-gradient(180deg,#FDBA74,#EA580C); }
 :root[data-theme="navratri"][data-nv-day="2"] .nv-greet { background:linear-gradient(135deg,#EA580C,#C2410C 50%,#15803D); box-shadow:0 0 0 2px rgba(255,255,255,.85), 0 0 18px rgba(234,88,12,.5); }
 @media (prefers-reduced-motion: reduce) { :root[data-theme="navratri"][data-nv-day="2"] .sidebar::before { animation:none; } }
+
+/* Navratri Day 3 — Maa Chandraghanta: royal blue and gold, temple bells chiming along the top,
+   a golden moonlit glow. Only with data-nv-day="3". Her own bell swings too (.nv-bell). */
+:root[data-theme="navratri"][data-nv-day="3"] {
+  --brand-1:#FBBF24; --brand-2:#D97706; --brand-2-rgb:217,119,6;
+  --accent:#1D4ED8; --accent-dark:#1E3A8A; --accent-light:#3B82F6;
+  --accent-rgb:29,78,216; --accent-light-rgb:59,130,246;
+  --page-bg:#F7F8FF; --sidebar-top:#1E3A8A; --sidebar-bottom:#0B1A4A;
+}
+:root[data-theme="navratri"][data-nv-day="3"] body {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cpath d='M30 30 A10 10 0 1 0 44 30 A8 8 0 1 1 30 30 Z' fill='%23F59E0B' fill-opacity='.12'/%3E%3Cpath d='M86 86 L88 80 L90 86 L96 88 L90 90 L88 96 L86 90 L80 88 Z' fill='%231D4ED8' fill-opacity='.1'/%3E%3C/svg%3E") repeat 0 0 / 120px 120px,
+    radial-gradient(1000px 380px at 50% -140px, rgba(251,191,36,.3), transparent 70%),
+    var(--page-bg);
+  background-attachment:fixed;
+}
+:root[data-theme="navratri"][data-nv-day="3"] .ov-card, :root[data-theme="navratri"][data-nv-day="3"] .chart-card, :root[data-theme="navratri"][data-nv-day="3"] .task-table-card {
+  background:
+    linear-gradient(90deg,#1E3A8A,#F5B70A 30%,#FDE68A 50%,#F5B70A 70%,#1E3A8A) top / 100% 3px no-repeat,
+    linear-gradient(180deg, #EEF2FF, #fff 60px);
+  outline:none; box-shadow:0 0 0 1px rgba(29,78,216,.12), 0 12px 26px -16px rgba(30,58,138,.4);
+}
+:root[data-theme="navratri"][data-nv-day="3"] .ov-card::before { background:linear-gradient(180deg,#FDE68A,#F59E0B,#1D4ED8); }
+:root[data-theme="navratri"][data-nv-day="3"] .topbar-title {
+  background:linear-gradient(90deg,#1E3A8A,#1D4ED8 45%,#D97706); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+/* a row of temple bells under the header, swinging */
+:root[data-theme="navratri"][data-nv-day="3"] .topbar::after {
+  content:''; position:absolute; left:0; right:0; bottom:-18px; height:18px; pointer-events:none; transform-origin:50% 0;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='18'%3E%3Cpath d='M24 0 V4' stroke='%2392400E' stroke-width='1.4'/%3E%3Cpath d='M17 15 Q18 4 24 4 Q30 4 31 15 Z' fill='%23F5B70A' stroke='%2392400E' stroke-width='.8'/%3E%3Ccircle cx='24' cy='16' r='1.6' fill='%2392400E'/%3E%3C/svg%3E") repeat-x left top / 48px 18px;
+  animation:nv-chime 1.6s ease-in-out infinite alternate;
+}
+@keyframes nv-chime { from { transform:skewX(-6deg); } to { transform:skewX(6deg); } }
+:root[data-theme="navratri"][data-nv-day="3"] .sidebar { background:radial-gradient(220px 160px at 50% 0%, rgba(251,191,36,.3), transparent 70%), linear-gradient(180deg,var(--sidebar-top),var(--sidebar-bottom)); }
+:root[data-theme="navratri"][data-nv-day="3"] .nav-item.active { background:linear-gradient(90deg,rgba(251,191,36,.38),rgba(251,191,36,.08)); color:#FDE68A; box-shadow:inset 0 0 0 1px rgba(251,191,36,.35); }
+:root[data-theme="navratri"][data-nv-day="3"] .nav-item.active::before { background:linear-gradient(180deg,#FDE68A,#F59E0B); }
+:root[data-theme="navratri"][data-nv-day="3"] .nv-greet { background:linear-gradient(135deg,#1E3A8A,#1D4ED8 50%,#D97706); box-shadow:0 0 0 2px rgba(255,255,255,.85), 0 0 18px rgba(251,191,36,.6); }
+.nv-bell { transform-box:fill-box; transform-origin:50% 0; animation:nv-bell 1.2s ease-in-out infinite alternate; }
+@keyframes nv-bell { from { transform:rotate(-14deg); } to { transform:rotate(14deg); } }
+@media (prefers-reduced-motion: reduce) { :root[data-theme="navratri"][data-nv-day="3"] .topbar::after, .nv-bell { animation:none; } }

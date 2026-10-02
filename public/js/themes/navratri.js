@@ -292,11 +292,83 @@ ThemeDecor.register('navratri', function (d) {
     return s + '</svg>';
   }
 
+  // Day 3 — Maa Chandraghanta: a half moon shaped like a bell on her brow, a golden glow, ten arms
+  // holding her weapons and a bell, one raised in blessing; in royal blue and gold, riding a lion
+  // with a great mane (not Durga's tiger). Her bell swings (nv-bell).
+  function chandraghanta() {
+    var skin = '#F8CC8E', line = '#5B3A1A', s;
+    s = '<svg viewBox="0 0 220 210" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<radialGradient id="nvHalo"><stop offset="0" stop-color="#FFFBEB"/><stop offset=".55" stop-color="#FCD34D" stop-opacity=".85"/><stop offset="1" stop-color="#F59E0B" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="nvGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE58A"/><stop offset=".55" stop-color="#F5B70A"/><stop offset="1" stop-color="#C98A06"/></linearGradient>' +
+      '<radialGradient id="nvMane" cx=".5" cy=".5" r=".5"><stop offset=".5" stop-color="#B45309"/><stop offset="1" stop-color="#78350F"/></radialGradient></defs>';
+    // a halo of golden rays
+    s += '<g class="nv-halo"><circle cx="128" cy="62" r="62" fill="url(#nvHalo)"/>';
+    for (var k = 0; k < 16; k++) { var a = k * Math.PI / 8; s += '<path d="M' + (128 + Math.cos(a) * 40).toFixed(1) + ' ' + (62 + Math.sin(a) * 40).toFixed(1) + ' L' + (128 + Math.cos(a) * 60).toFixed(1) + ' ' + (62 + Math.sin(a) * 60).toFixed(1) + '" stroke="#FBBF24" stroke-width="2" stroke-opacity=".6"/>'; }
+    s += '</g>';
+    // the lion: tail with a tuft (behind), golden body, legs
+    s += '<path class="nv-tail" d="M196 168 Q216 150 206 128 Q200 118 192 124" fill="none" stroke="#D97706" stroke-width="6" stroke-linecap="round"/><circle cx="191" cy="123" r="6" fill="#78350F"/>' +
+         '<path d="M60 150 Q70 128 120 130 Q182 128 198 152 Q204 178 188 196 L70 198 Q56 182 60 150 Z" fill="#E7A33A" stroke="' + line + '" stroke-width="1.6"/>' +
+         '<path d="M112 130 L176 130 L180 166 L108 168 Z" fill="#1E3A8A" stroke="#F5B70A" stroke-width="3"/>' +
+         '<path d="M86 196 v-18 M110 197 v-18 M164 197 v-20 M184 196 v-18" stroke="#E7A33A" stroke-width="12" stroke-linecap="round"/>' +
+         '<path d="M78 200 h16 M102 200 h16 M156 200 h16 M176 200 h16" stroke="#FDE7C8" stroke-width="6" stroke-linecap="round"/>';
+    // ten arms fanned out, each with its weapon; the lowest right one is raised in blessing
+    var held = {
+      trishul: '<path d="M0 0 V-34 M-8 -28 Q-8 -38 0 -44 Q8 -38 8 -28 M0 -44 V-48" fill="none" stroke="#CBD5E1" stroke-width="3" stroke-linecap="round"/>',
+      gada: '<path d="M0 2 V-26" stroke="#7C2D12" stroke-width="3"/><circle cx="0" cy="-30" r="7" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>',
+      sword: '<path d="M0 2 V-6 M-5 -6 H5" stroke="#7C2D12" stroke-width="3" stroke-linecap="round"/><path d="M-3 -6 L0 -40 L3 -6 Z" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="1"/>',
+      bow: '<path d="M-8 -30 Q12 -14 -8 4" fill="none" stroke="#7C2D12" stroke-width="3"/><path d="M-8 -30 V4" stroke="#E5E7EB" stroke-width="1"/>',
+      arrow: '<path d="M0 4 V-34" stroke="#7C2D12" stroke-width="2"/><path d="M0 -40 L-4 -32 H4 Z" fill="#CBD5E1"/><path d="M-3 4 L0 0 L3 4" fill="none" stroke="#DC2626" stroke-width="1.6"/>',
+      lotus: '<path d="M0 0 V-14" stroke="#16A34A" stroke-width="2"/><path d="M0 -14 Q-9 -22 -6 -30 Q0 -26 0 -14 Q0 -26 6 -30 Q9 -22 0 -14 Z" fill="#F472B6" stroke="#BE185D" stroke-width="1"/>',
+      mala: '<path d="M0 0 Q-10 14 0 22 Q10 14 0 0" fill="none" stroke="#7C2D12" stroke-width="2.6" stroke-dasharray="0.1 3.4" stroke-linecap="round"/>',
+      kamandal: '<path d="M-8 -2 Q-9 14 0 16 Q9 14 8 -2 Z" fill="url(#nvGold)" stroke="#92400E" stroke-width="1"/><path d="M-7 -2 Q0 -10 7 -2" fill="none" stroke="#92400E" stroke-width="1.6"/>',
+      bell: '<g class="nv-bell"><path d="M0 0 V-6" stroke="#92400E" stroke-width="2"/><path d="M-9 14 Q-8 -6 0 -6 Q8 -6 9 14 Z" fill="url(#nvGold)" stroke="#92400E" stroke-width="1"/><circle cx="0" cy="16" r="2.6" fill="#92400E"/></g>',
+      abhaya: '<path d="M-5 0 V-12 M-2 -1 V-15 M1 -1 V-15 M4 0 V-12" stroke="' + skin + '" stroke-width="2.6" stroke-linecap="round"/><circle cx="0" cy="-4" r="1.6" fill="#DC2626"/>'
+    };
+    [[-170, 'trishul'], [-150, 'sword'], [-130, 'bow'], [-110, 'gada'], [-195, 'bell'],
+     [-10, 'lotus'], [-30, 'arrow'], [-50, 'kamandal'], [-70, 'mala'], [15, 'abhaya']].forEach(function (a) {
+      var ang = a[0] * Math.PI / 180, sx = 128 + Math.cos(ang) * 8, sy = 104;
+      var hx = sx + Math.cos(ang) * 74, hy = sy + Math.sin(ang) * 60; // long enough to clear her hair
+      s += '<path d="M' + sx.toFixed(1) + ' ' + sy + ' L' + hx.toFixed(1) + ' ' + hy.toFixed(1) + '" stroke="' + skin + '" stroke-width="6.5" stroke-linecap="round"/>' +
+           '<path d="M' + (sx + (hx - sx) * 0.8).toFixed(1) + ' ' + (sy + (hy - sy) * 0.8).toFixed(1) + ' l0.1 0" stroke="#F5B70A" stroke-width="7.5" stroke-linecap="round"/>' +
+           '<g transform="translate(' + hx.toFixed(1) + ' ' + hy.toFixed(1) + ')">' + held[a[1]] + '</g>' +
+           '<circle cx="' + hx.toFixed(1) + '" cy="' + hy.toFixed(1) + '" r="4" fill="' + skin + '" stroke="' + line + '" stroke-width=".8"/>';
+    });
+    // seated body: a royal-blue saree with a broad gold border and gold armour at the chest
+    s += '<path d="M104 104 Q128 94 152 104 L160 150 Q128 160 96 150 Z" fill="#1D4ED8" stroke="' + line + '" stroke-width="1.4"/>' +
+         '<path d="M110 104 Q128 98 146 104 L144 122 Q128 128 112 122 Z" fill="url(#nvGold)" stroke="#92400E" stroke-width=".8"/>' +
+         '<path d="M118 112 L128 120 L138 112" fill="none" stroke="#DC2626" stroke-width="2"/>' +
+         '<path d="M96 150 Q128 160 160 150 L152 174 Q118 182 92 170 Z" fill="#1E3A8A" stroke="' + line + '" stroke-width="1.2"/>' +
+         '<path d="M92 170 Q118 182 152 174" fill="none" stroke="#F5B70A" stroke-width="5"/>' +
+         '<path d="M106 104 Q130 124 156 148" fill="none" stroke="#F5B70A" stroke-width="4"/>' +
+         '<path d="M98 172 L92 186 M112 176 L108 190" stroke="' + skin + '" stroke-width="7" stroke-linecap="round"/>';
+    s += mataFace(skin, line, '#1C120B');
+    // a tall gold crown, and on her brow the half moon in the shape of a bell
+    s += '<path d="M100 40 Q128 26 156 40 L152 28 Q128 16 104 28 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         '<path d="M108 28 L114 8 L121 20 L128 0 L135 20 L142 8 L148 28 Z" fill="url(#nvGold)" stroke="#B45309" stroke-width="1"/>' +
+         '<circle cx="128" cy="14" r="2.6" fill="#2563EB"/><circle cx="116" cy="22" r="1.6" fill="#DC2626"/><circle cx="140" cy="22" r="1.6" fill="#DC2626"/>' +
+         '<path d="M119 40 Q128 52 137 40 Q128 46 119 40 Z" fill="#F8FAFC" stroke="#94A3B8" stroke-width=".8"/>' +
+         '<path d="M124 44 Q124 37 128 37 Q132 37 132 44 Z" fill="url(#nvGold)" stroke="#92400E" stroke-width=".6"/>';
+    // the lion's head in front: a great mane, a proud face
+    s += '<g class="nv-lion-head">' +
+         '<circle cx="79" cy="162" r="40" fill="url(#nvMane)"/>' +
+         '<path d="M44 150 l-8 -6 M44 170 l-9 2 M52 190 l-6 6 M114 150 l8 -6 M114 170 l9 2 M106 190 l6 6 M79 122 v-8 M60 128 l-5 -7 M98 128 l5 -7" stroke="#78350F" stroke-width="5" stroke-linecap="round"/>' +
+         '<ellipse cx="79" cy="164" rx="26" ry="25" fill="#F0B94A" stroke="' + line + '" stroke-width="1.4"/>' +
+         '<circle cx="58" cy="144" r="6" fill="#F0B94A" stroke="' + line + '" stroke-width="1"/><circle cx="100" cy="144" r="6" fill="#F0B94A" stroke="' + line + '" stroke-width="1"/>' +
+         '<ellipse cx="79" cy="176" rx="14" ry="10" fill="#FDE7C8"/>' +
+         '<path d="M66 158 Q70 154 74 158 Q70 161 66 158 Z M84 158 Q88 154 92 158 Q88 161 84 158 Z" fill="#1C1917"/>' +
+         '<path d="M64 153 L74 155 M94 153 L84 155" stroke="#78350F" stroke-width="2" stroke-linecap="round"/>' +
+         '<path d="M74 168 Q79 164 84 168 Q79 173 74 168 Z" fill="#7C2D12"/>' +
+         '<path d="M79 172 Q74 180 69 177 M79 172 Q84 180 89 177" fill="none" stroke="' + line + '" stroke-width="1.4" stroke-linecap="round"/>' +
+         '</g>';
+    return s + '</svg>';
+  }
+
   // The nine days (data-nv-day on <html>, set by core.js from the owner's choice); 0 or a day not
   // built yet shows Maa Durga on her tiger.
   var NV_DAYS = {
     1: { name: 'माँ शैलपुत्री', build: shailputri, petals: ['#FFFFFF', '#FEE2E2', '#F87171', '#DC2626', '#FDE68A'] },
-    2: { name: 'माँ ब्रह्मचारिणी', build: brahmacharini, petals: ['#FB923C', '#F97316', '#FFFFFF', '#86EFAC', '#22C55E'] }
+    2: { name: 'माँ ब्रह्मचारिणी', build: brahmacharini, petals: ['#FB923C', '#F97316', '#FFFFFF', '#86EFAC', '#22C55E'] },
+    3: { name: 'माँ चंद्रघंटा', build: chandraghanta, petals: ['#FBBF24', '#F59E0B', '#FDE68A', '#3B82F6', '#1D4ED8'] }
   };
   var DAY = NV_DAYS[+document.documentElement.getAttribute('data-nv-day')] || null;
   var durgaEl = d.svg(DAY ? DAY.build() : durga(), 'td-durga td-drag');
