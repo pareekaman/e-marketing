@@ -335,7 +335,7 @@ function cmOpenAddModal() {
       </label>`).join('');
 
   document.getElementById('cmAddHandlerCount').textContent = 'Select handlers';
-  document.getElementById('cmAddDeptCount').textContent = 'All Departments';
+  document.getElementById('cmAddDeptCount').textContent = 'Select department';
   document.getElementById('cmAddHandlerDropdown').style.display = 'none';
 
   document.getElementById('clientAddModal').classList.add('open');
@@ -374,6 +374,12 @@ function cmSetStatus(s){
   cmRenderList();
 }
 
+// A client's departments: its own (set on Add Client / the detail page) plus
+// those of its handlers, so clients from before the field still filter.
+function cmClientDepts(c){
+  return [...new Set(((c.departments || '') + '||' + (c.handler_departments || '')).split('||').filter(Boolean))];
+}
+
 // Search + department + status card. The list and the Excel export both read
 // this, so the download always matches what is on screen.
 function cmFilteredClients(){
@@ -390,14 +396,14 @@ function cmFilteredClients(){
   // multi-handler model the detail view already manages) — it matches the
   // filter if ANY of them is in the chosen department, not only the primary.
   if (dept) {
-    filtered = filtered.filter(c => (c.handler_departments || '').split('||').includes(dept));
+    filtered = filtered.filter(c => cmClientDepts(c).includes(dept));
   }
   if (CM_STATUS) filtered = filtered.filter(c => cmIsActive(c) === (CM_STATUS === 'active'));
   // A-Z by the title each row shows (brand, else client name). A department
   // set for this user in Access Control puts its clients (any handler in it)
   // at the top; everything else follows, nothing is hidden.
   const first = (ME && ME.cm_priority_dept) || '';
-  const inFirst = c => first && (c.handler_departments || '').split('||').includes(first) ? 1 : 0;
+  const inFirst = c => first && cmClientDepts(c).includes(first) ? 1 : 0;
   return [...filtered].sort((a, b) => (inFirst(b) - inFirst(a)) ||
     clientLabel(a).localeCompare(clientLabel(b), undefined, { sensitivity: 'base' }));
 }
@@ -822,6 +828,20 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
     </div>
 
     <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
+      <div class="card-head-title" style="margin-bottom:10px">🏢 Departments <span style="font-weight:400;color:#94a3b8;font-size:12px">— the teams this client belongs to</span></div>
+      <div id="cmDepts_${id}" style="display:flex;flex-wrap:wrap;gap:6px 14px">
+        ${[...new Set(CM_USERS.filter(u => u.role !== 'client').map(u => u.department || '').filter(Boolean))].sort().map(d => `
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;text-transform:none;letter-spacing:0;color:#334155;cursor:pointer">
+            <input type="checkbox" value="${dtEscape(d)}" ${(client.departments || '').split('||').includes(d) ? 'checked' : ''} style="width:14px;height:14px;margin:0;accent-color:#4f46e5"/>${dtEscape(d)}
+          </label>`).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px;flex-wrap:wrap">
+        <span style="font-size:11px;color:${client.departments ? '#94a3b8' : '#b45309'}">${client.departments ? 'Handlers\' departments count too when filtering.' : 'Not set yet — tick the departments and save.'}</span>
+        <button class="btn btn-primary" style="padding:7px 16px;font-size:12px" onclick="cmSaveDepartments(${id})">💾 Save</button>
+      </div>
+    </div>
+
+    <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
       <div class="card-head-title" style="margin-bottom:10px">🚀 Kickstart Meeting Date <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on the client's portal</span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <input type="date" id="cmKickstart_${id}" value="${dtEscape(client.kickstart_date || '')}"
@@ -1011,6 +1031,17 @@ async function cmSaveWaGroup(id){
 // who is not a full editor never sees this card, because the server would drop
 // the field and answer {noop:true}, leaving the input showing a value that was
 // never written (the same trap the is_active toggle hit).
+async function cmSaveDepartments(id){
+  const departments = [...document.querySelectorAll(`#cmDepts_${id} input:checked`)].map(cb => cb.value);
+  if (!departments.length) { showToast('Select at least one department', 'error'); return; }
+  const r = await api('/api/clients/' + id, 'PUT', { departments });
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  if (r && r.noop) { showToast('You do not have permission to change this client', 'error'); return; }
+  const client = CM_ALL.find(c => String(c.id) === String(id));
+  if (client) { client.departments = departments.join('||'); cmRenderList(); }
+  showToast('✅ Departments saved');
+}
+
 async function cmSaveKickstart(id){
   const value = document.getElementById('cmKickstart_' + id)?.value || '';
   if (!value) { showToast('Pick the kickstart meeting date', 'error'); return; }
@@ -1266,12 +1297,14 @@ async function cmAdd(){
   const billing_name = document.getElementById('cmFormBillingName').value.trim();
   const kickstart_date = document.getElementById('cmFormKickstart').value;
   const handler_ids = [...document.querySelectorAll('.cmAddHandlerCb:checked')].map(cb => parseInt(cb.value));
+  const departments = [...document.querySelectorAll('.cmAddDeptCb:checked')].map(cb => cb.value);
   const handler_id = handler_ids[0] || null;
   const login_email = document.getElementById('cmFormLoginEmail').value.trim();
   const login_password = document.getElementById('cmFormLoginPassword').value;
   if (!name) { err.textContent = 'Client name required'; err.style.display = 'block'; return; }
   if (!brand_name) { err.textContent = 'Brand name required'; err.style.display = 'block'; return; }
   if (!kickstart_date) { err.textContent = 'Kickstart meeting date required'; err.style.display = 'block'; return; }
+  if (!departments.length) { err.textContent = 'Select at least one department'; err.style.display = 'block'; return; }
   // Only demanded of the people who can see the input — the server applies the
   // same rule, so everyone else creates the client with no billing name and one
   // of the named viewers fills it in later.
@@ -1282,7 +1315,7 @@ async function cmAdd(){
   }
   try {
     const r = await api('/api/clients', 'POST', {
-      name, brand_name, kickstart_date, handler_id, handler_ids, login_email, login_password,
+      name, brand_name, kickstart_date, departments, handler_id, handler_ids, login_email, login_password,
       // Omitted entirely for anyone who cannot see the field — the server would
       // drop it anyway, but there is no reason to send a value it must ignore.
       ...(cmCanSeeBilling() ? { billing_name } : {}),
@@ -1418,7 +1451,9 @@ function cmAddFilterHandlers() {
   const selected = [...document.querySelectorAll('.cmAddDeptCb:checked')].map(cb => cb.value);
   const total = document.querySelectorAll('.cmAddDeptCb').length;
   const countEl = document.getElementById('cmAddDeptCount');
-  if (countEl) countEl.textContent = (!selected.length || selected.length === total) ? 'All Departments' : `${selected.length} selected`;
+  // These ticks are also the client's own departments, so name them.
+  if (countEl) countEl.textContent = !selected.length ? 'Select department'
+    : selected.length <= 2 ? selected.join(', ') : `${selected.length} departments`;
   const allCb = document.getElementById('cmAddAllDeptsCb');
   if (allCb) allCb.checked = (!selected.length || selected.length === total);
   const showAll = !selected.length || selected.length === total;

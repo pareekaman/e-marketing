@@ -112,6 +112,11 @@ app.get('/api/clients', requireAuth, async (req, res) => {
         const ksMap = Object.fromEntries(ks.map(k => [k.id, k.d]));
         for (const r of rows) r.kickstart_date = ksMap[r.id] || null;
       } catch {}
+      try {
+        const [ds] = await db.query(`SELECT id, departments FROM clients WHERE departments IS NOT NULL AND departments <> ''`);
+        const dMap = Object.fromEntries(ds.map(k => [k.id, k.departments]));
+        for (const r of rows) r.departments = dMap[r.id] || null;
+      } catch {}
     }
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -148,6 +153,18 @@ app.put('/api/clients/:id/logo', requireAuth, requireClientsEditor, async (req, 
 // The startup migration adds clients.kickstart_date, but a fresh serverless
 // instance can take a request before it has run; adding the column here too
 // (once per instance) keeps the first Add Client from failing on it.
+// Departments arrive as an array of names; stored '||'-joined, de-duplicated.
+function cleanDepartments(v) {
+  if (!Array.isArray(v)) return null;
+  const list = [...new Set(v.map(d => String(d || '').trim().slice(0, 100)).filter(Boolean))];
+  return list.join('||').slice(0, 500);
+}
+let _deptCol = null;
+function ensureDepartmentsColumn() {
+  if (!_deptCol) _deptCol = db.query('ALTER TABLE clients ADD COLUMN departments VARCHAR(500) DEFAULT NULL')
+    .catch(e => { if (e.code !== 'ER_DUP_FIELDNAME') { _deptCol = null; throw e; } });
+  return _deptCol;
+}
 let _kickstartCol = null;
 function ensureKickstartColumn() {
   if (!_kickstartCol) _kickstartCol = db.query('ALTER TABLE clients ADD COLUMN kickstart_date DATE DEFAULT NULL')
@@ -159,6 +176,7 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
   try {
     const name = (req.body.name || '').trim();
     const kickstartDate = String(req.body.kickstart_date || '').trim();
+    const departments = cleanDepartments(req.body.departments) || '';
     const brandName = (req.body.brand_name || '').trim();
     const billingName = (req.body.billing_name || '').trim();
     const handlerRaw = req.body.handler_id;
@@ -177,6 +195,7 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
     // that predates them has neither — see the migration notes in server.js.
     if (!brandName) return res.status(400).json({ error: 'Brand name required' });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(kickstartDate)) return res.status(400).json({ error: 'Kickstart meeting date required' });
+    if (!departments) return res.status(400).json({ error: 'Select at least one department' });
     // A handler is optional (the user asked for that on 2026-10-01). A client
     // without one has no department, so it shows only under All Departments
     // in Client Master until someone assigns a handler.
@@ -193,8 +212,9 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
       return res.status(400).json({ error: 'Both login email and password required to provision client login' });
     }
     await ensureKickstartColumn();
-    const [r] = await db.query('INSERT INTO clients (name, brand_name, billing_name, kickstart_date, handler_id) VALUES (?, ?, ?, ?, ?)',
-      [name, brandName, seesBilling ? billingName : null, kickstartDate, handlerIds[0] || null]);
+    await ensureDepartmentsColumn();
+    const [r] = await db.query('INSERT INTO clients (name, brand_name, billing_name, kickstart_date, departments, handler_id) VALUES (?, ?, ?, ?, ?, ?)',
+      [name, brandName, seesBilling ? billingName : null, kickstartDate, departments, handlerIds[0] || null]);
     const newClientId = r.insertId;
     // The full handler list, in client_handlers — the primary handler_id column
     // above is only ever the first of these, kept for the routes/rows that
@@ -254,6 +274,7 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
     const brandName = req.body.brand_name == null ? null : String(req.body.brand_name).trim();
     const billingName = req.body.billing_name == null ? null : String(req.body.billing_name).trim();
     const kickstartDate = req.body.kickstart_date == null ? null : String(req.body.kickstart_date).trim();
+    const departments = req.body.departments === undefined ? null : cleanDepartments(req.body.departments);
     const handlerRaw = req.body.handler_id;
     const handlerId = handlerRaw === undefined ? undefined
                     : (handlerRaw == null || handlerRaw === '') ? null
@@ -274,6 +295,8 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Kickstart meeting date required' });
     }
     if (kickstartDate !== null) await ensureKickstartColumn();
+    if (!handlerOnly && departments === '') return res.status(400).json({ error: 'Select at least one department' });
+    if (departments !== null) await ensureDepartmentsColumn();
     // Only update fields that were sent.
     const sets = [], params = [];
     // Structural fields — full editors only; a handler cannot rename/reassign.
@@ -282,6 +305,7 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
       if (brandName !== null) { sets.push('brand_name=?'); params.push(brandName); }
       if (billingName !== null) { sets.push('billing_name=?'); params.push(billingName); }
       if (kickstartDate !== null) { sets.push('kickstart_date=?'); params.push(kickstartDate); }
+      if (departments !== null) { sets.push('departments=?'); params.push(departments); }
       if (handlerId !== undefined) { sets.push('handler_id=?'); params.push(handlerId); }
     }
     // Active flag — a handler may retire their own client. Not structural: it
@@ -487,9 +511,14 @@ app.get('/api/clients/:id/stats', requireAuth, async (req, res) => {
       const [[k]] = await db.query(`SELECT DATE_FORMAT(kickstart_date, '%Y-%m-%d') AS d FROM clients WHERE id=?`, [id]);
       kickstartDate = k?.d || null;
     } catch {}
+    let clientDepartments = null;
+    try {
+      const [[k]] = await db.query('SELECT departments FROM clients WHERE id=?', [id]);
+      clientDepartments = k?.departments || null;
+    } catch {}
     res.json({
       client: {
-        id: client.id, name: client.name, brand_name: client.brand_name, kickstart_date: kickstartDate,
+        id: client.id, name: client.name, brand_name: client.brand_name, kickstart_date: kickstartDate, departments: clientDepartments,
         ...(seesBilling ? { billing_name: client.billing_name } : {}),
         logo_url: client.logo_url,
         handler_id: client.handler_id, handler_name: client.handler_name, handler_email: client.handler_email,

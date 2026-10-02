@@ -4492,6 +4492,10 @@ const _clientsTableMigrationsPromise = (async () => {
   // Kickstart meeting date — required when adding a client, NULLable for the
   // same reason as brand/billing: every client added before it has none.
   await sa(`ALTER TABLE clients ADD COLUMN kickstart_date DATE DEFAULT NULL AFTER billing_name`);
+  // The client's own department(s), '||'-joined like handler_departments.
+  // Required on Add Client; before it, a client had a department only through
+  // its handlers.
+  await sa(`ALTER TABLE clients ADD COLUMN departments VARCHAR(500) DEFAULT NULL AFTER kickstart_date`);
   // Handler = the user (account manager) responsible for this client. Drives the
   // default doer in the "Delegate Task" shortcut on the Client Master row.
   await sa(`ALTER TABLE clients ADD COLUMN handler_id INT DEFAULT NULL AFTER name`);
