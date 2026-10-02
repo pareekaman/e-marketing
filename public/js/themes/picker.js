@@ -20,8 +20,27 @@ const THEME_CHOICES = [
   { key: 'ramnavami', icon: '🚩', name: 'Ram Navami', note: 'Baby Ram in his cradle, Ayodhya and Hanuman ji', c: { side: '#7C2D12', page: '#FFF9F0', accent: '#C2410C', brand: '#F97316' }, art: tpArtRamNavami },
   { key: 'rakhi', icon: '🎀', name: 'Raksha Bandhan', note: 'A sister ties a rakhi, a thali and a gift', c: { side: '#831843', page: '#FFF7FB', accent: '#BE185D', brand: '#EC4899' }, art: tpArtRakhi },
   { key: 'mahavir', icon: '🙏', name: 'Mahavir Jayanti', note: 'Bhagwan Mahavir in meditation, ahimsa', c: { side: '#78350F', page: '#FFFDF7', accent: '#C2410C', brand: '#F59E0B' }, art: tpArtMahavir },
-  { key: 'sankranti', icon: '🪁', name: 'Makar Sankranti', note: 'Kites in the sky, til-gud and the sun', c: { side: '#0C4A6E', page: '#F2F9FF', accent: '#0369A1', brand: '#F97316' }, art: tpArtSankranti }
+  { key: 'sankranti', icon: '🪁', name: 'Makar Sankranti', note: 'Kites in the sky, til-gud and the sun', c: { side: '#0C4A6E', page: '#F2F9FF', accent: '#0369A1', brand: '#F97316' }, art: tpArtSankranti },
+  { key: 'chhath', icon: '🌅', name: 'Chhath Puja', note: 'Arghya to the setting sun at the ghat', c: { side: '#7C2D12', page: '#FFF7F0', accent: '#0369A1', brand: '#EA580C' }, art: tpArtChhath }
 ];
+
+// Chhath Puja: the sun setting over the river, its reflection, a figure raising a soop, diyas afloat.
+function tpArtChhath() {
+  let s = '<defs><linearGradient id="tpChBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FDBA74"/><stop offset=".6" stop-color="#F9A8D4"/><stop offset="1" stop-color="#FDE68A"/></linearGradient>' +
+    '<radialGradient id="tpChSun"><stop offset="0" stop-color="#FFF7ED"/><stop offset=".5" stop-color="#FB923C"/><stop offset="1" stop-color="#EA580C" stop-opacity="0"/></radialGradient></defs>' +
+    '<rect width="220" height="110" fill="url(#tpChBg)"/>' +
+    '<circle class="gl" cx="140" cy="62" r="38" fill="url(#tpChSun)"/><circle cx="140" cy="62" r="18" fill="#FB923C"/>' +
+    '<path d="M0 72 Q55 68 110 72 Q165 76 220 72 V110 H0 Z" fill="#0EA5E9" opacity=".85"/>' +
+    '<path d="M122 80 H158 M128 88 H152 M134 96 H146" stroke="#FDBA74" stroke-width="2.4" stroke-linecap="round"/>' +
+    '<path d="M54 100 Q52 72 62 60 L74 60 Q82 72 80 100 Z" fill="#FACC15" stroke="#DC2626" stroke-width="1"/>' +
+    '<circle cx="68" cy="54" r="6" fill="#C98B5B"/><path d="M62 54 L56 34 M74 54 L80 34" stroke="#C98B5B" stroke-width="3" stroke-linecap="round"/>' +
+    '<path class="tp-bob" d="M50 34 Q68 24 86 34 Q68 40 50 34 Z" fill="#CA8A04" stroke="#92400E" stroke-width=".8"/>';
+  [[30, 90], [100, 98], [190, 92]].forEach(function (p, i) {
+    s += '<path d="M' + (p[0] - 5) + ' ' + p[1] + ' Q' + p[0] + ' ' + (p[1] + 4) + ' ' + (p[0] + 5) + ' ' + p[1] + ' Z" fill="#B45309"/>' +
+      '<path class="fl"' + tpDelay(i, 0.4) + ' d="M' + p[0] + ' ' + (p[1] - 7) + ' C' + (p[0] + 2) + ' ' + (p[1] - 4) + ' ' + (p[0] + 2) + ' ' + (p[1] - 2) + ' ' + p[0] + ' ' + (p[1] - 1) + ' C' + (p[0] - 2) + ' ' + (p[1] - 2) + ' ' + (p[0] - 2) + ' ' + (p[1] - 4) + ' ' + p[0] + ' ' + (p[1] - 7) + ' Z" fill="#F97316"/>';
+  });
+  return tpSvg(s);
+}
 
 // Makar Sankranti: a winter sky full of kites with their strings, the sun low on one side.
 function tpArtSankranti() {
