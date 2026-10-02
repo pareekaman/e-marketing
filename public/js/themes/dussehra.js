@@ -1192,7 +1192,8 @@ ThemeDecor.register('dussehra', function (d) {
     await wait(4300); if (dead) return;
 
     // 9. They are gone. Everyone below bows out, Ram is back in his place, and Ravan rises again.
-    celebrate = false; vimTrail = false; shower = false; // the last flowers are still falling
+    celebrate = false; vimTrail = false; shower = false;
+    petals.forEach(function (q) { q.life = Math.min(q.life, 0.9); }); // the flowers still falling fade out before the next round
     hideLabel();
     pv.el.remove(); vimEl = null;
     below.forEach(function (el) { el.classList.add('td-gone'); });
