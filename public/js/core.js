@@ -297,7 +297,13 @@ async function init() {
     if (fbNav) {
       fbNav.style.display = 'none'; // hidden until access confirmed
       api('/api/feedback/access').then(r => {
-        if (r && r.canAccess && canSee('feedback')) fbNav.style.display = 'flex';
+        if (r && r.canAccess && canSee('feedback')) {
+          fbNav.style.display = 'flex';
+          // Unseen-escalation count, on the same 30s rhythm as the other badges.
+          loadFeedbackBadge();
+          if (window._badgeTimerFb) clearInterval(window._badgeTimerFb);
+          window._badgeTimerFb = setInterval(loadFeedbackBadge, 30000);
+        }
         refreshNavGroupVisibility();
       }).catch(() => {});
     }

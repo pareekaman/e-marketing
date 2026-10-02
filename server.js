@@ -4593,6 +4593,10 @@ const _clientsTableMigrationsPromise = (async () => {
     KEY idx_cfb_employee (employee_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   await sa(`ALTER TABLE client_feedback ADD COLUMN recipients TEXT`);
+  // Escalation badge: when the client last edited it, and when each user last
+  // opened the Escalation page. New or edited since then = unseen.
+  await sa(`ALTER TABLE client_feedback ADD COLUMN updated_at TIMESTAMP NULL DEFAULT NULL`);
+  await sa(`ALTER TABLE users ADD COLUMN feedback_seen_at TIMESTAMP NULL DEFAULT NULL`);
   // Allow "client" as a login role + back-link users to clients so the client
   // portal can resolve "my client" from the session.
   await sa(`ALTER TABLE users MODIFY COLUMN role ENUM('admin','hod','pc','user','client') DEFAULT 'user'`);
@@ -7956,6 +7960,45 @@ app.get('/api/feedback/access', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ canAccess: false }); }
 });
 
+// Sidebar badge: escalations sent to this user that are new, or edited by the
+// client, since they last opened the Escalation page. Per user — one person
+// opening the page clears only their own count. The first check for someone
+// who has never had a mark starts them at now, so the past is not one big
+// number. Columns are added here too in case this instance has not migrated.
+let _fbSeenCols = null;
+function ensureFeedbackSeenColumns() {
+  if (!_fbSeenCols) _fbSeenCols = (async () => {
+    for (const sql of ['ALTER TABLE client_feedback ADD COLUMN updated_at TIMESTAMP NULL DEFAULT NULL',
+                       'ALTER TABLE users ADD COLUMN feedback_seen_at TIMESTAMP NULL DEFAULT NULL']) {
+      try { await db.query(sql); } catch (e) { if (e.code !== 'ER_DUP_FIELDNAME') { _fbSeenCols = null; throw e; } }
+    }
+  })();
+  return _fbSeenCols;
+}
+app.get('/api/feedback/unseen', requireAuth, async (req, res) => {
+  try {
+    await ensureFeedbackSeenColumns();
+    const uid = req.session.userId;
+    const [[me]] = await db.query('SELECT feedback_seen_at FROM users WHERE id=?', [uid]);
+    if (!me) return res.json({ count: 0 });
+    if (!me.feedback_seen_at) {
+      await db.query('UPDATE users SET feedback_seen_at=NOW() WHERE id=?', [uid]);
+      return res.json({ count: 0 });
+    }
+    const [[r]] = await db.query(
+      `SELECT COUNT(*) AS n FROM client_feedback
+        WHERE FIND_IN_SET(?, recipients) AND COALESCE(updated_at, created_at) > ?`, [uid, me.feedback_seen_at]);
+    res.json({ count: Number(r.n) || 0 });
+  } catch (err) { res.json({ count: 0 }); }
+});
+app.post('/api/feedback/seen', requireAuth, async (req, res) => {
+  try {
+    await ensureFeedbackSeenColumns();
+    await db.query('UPDATE users SET feedback_seen_at=NOW() WHERE id=?', [req.session.userId]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Feedback view — only show entries where this user is in the recipients list.
 app.get('/api/feedback', requireAuth, async (req, res) => {
   try {
@@ -8008,8 +8051,10 @@ app.put('/api/client-portal/feedback/:id', requireAuth, async (req, res) => {
     if (!r || r < 1 || r > 5) return res.status(400).json({ error: 'Rating must be 1–5' });
     const recipientsStr = portalFeedbackRecipients(recipients, (await portalFeedbackAudience(u.client_id)).recipientIds);
     if (!recipientsStr) return res.status(400).json({ error: 'Please select at least one recipient.' });
+    // updated_at puts an edited escalation back in the recipients' badge.
+    await ensureFeedbackSeenColumns().catch(() => {});
     const [result] = await db.query(
-      'UPDATE client_feedback SET rating=?, description=?, recipients=? WHERE id=? AND client_id=?',
+      'UPDATE client_feedback SET rating=?, description=?, recipients=?, updated_at=NOW() WHERE id=? AND client_id=?',
       [r, (description || '').trim(), recipientsStr, parseInt(req.params.id), u.client_id]);
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Feedback not found' });
     res.json({ success: true });

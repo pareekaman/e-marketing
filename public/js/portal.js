@@ -465,7 +465,25 @@ async function cpSubmitFeedback() {
 }
 
 // ── Admin feedback view ───────────────────────────────
+// Sidebar badge for escalations this user has not seen yet (sidebar and the
+// mobile nav clone both carry .nav-feedback-badge).
+async function loadFeedbackBadge() {
+  // Already on the page: everything is being seen, so keep it at zero.
+  if (document.getElementById('page-feedback')?.classList.contains('active')) return setFeedbackBadge(0);
+  const r = await api('/api/feedback/unseen').catch(() => null);
+  setFeedbackBadge(r && r.count ? r.count : 0);
+}
+function setFeedbackBadge(n) {
+  document.querySelectorAll('.nav-feedback-badge').forEach(b => {
+    b.textContent = n > 99 ? '99+' : n;
+    b.style.display = n > 0 ? 'flex' : 'none';
+  });
+}
+
 async function loadFeedbackAdmin() {
+  // Opening the page counts as seeing every escalation on it.
+  setFeedbackBadge(0);
+  api('/api/feedback/seen', 'POST', {}).catch(() => {});
   const wrap = document.getElementById('feedbackContent');
   if (!wrap) return;
   wrap.innerHTML = '<div class="empty" style="padding:40px">Loading…</div>';
