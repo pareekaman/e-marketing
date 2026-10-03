@@ -1053,6 +1053,19 @@ function refreshNavGroupVisibility() {
 }
 
 function navigate(page, el) {
+  // A click before /api/me has answered (slow database) used to throw on
+  // ME.role and leave the page stuck. Remember the last click and replay it
+  // once the session has loaded.
+  if (!ME) {
+    window._pendingNav = [page, el];
+    if (!window._pendingNavTimer) window._pendingNavTimer = setInterval(() => {
+      if (!ME) return;
+      clearInterval(window._pendingNavTimer); window._pendingNavTimer = null;
+      const p = window._pendingNav; window._pendingNav = null;
+      if (p) navigate(p[0], p[1]);
+    }, 300);
+    return;
+  }
   // MIS page — admin and HOD (App Role) only
   // Mirrors requireMisViewer: the admin/hod floor AND the page key, so a
   // revoked hod cannot open a tab whose every request would 403.

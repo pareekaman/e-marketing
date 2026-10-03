@@ -530,10 +530,20 @@ app.delete('/api/subtasks/:id', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/tasks/bulk-checklist', requireAuth, requireAdmin, async (req, res) => {
+// The Checklist form's "Generate Tasks" posts here. It was admin-only while the
+// form itself was offered to anyone with create_checklist, so everyone else got
+// "Admin only". Same permission as a single checklist task now, and the same
+// doer rule as POST /api/tasks: a pc's checklist is always their own.
+app.post('/api/tasks/bulk-checklist', requireAuth, async (req, res) => {
   try {
-    const { desc, assignedTo, priority, remarks, dates, client_id, clientId } = req.body;
+    if (!(await userCanDo(req.session, 'create_checklist'))) {
+      return res.status(403).json({ error: 'You do not have access to create checklist tasks' });
+    }
+    const { desc, priority, remarks, dates, client_id, clientId } = req.body;
+    const assignedTo = req.session.role === 'pc' ? req.session.userId : req.body.assignedTo;
     if (!desc || !assignedTo || !dates || !dates.length) return res.status(400).json({ error: 'Missing fields' });
+    // A daily checklist for a year is ~365 dates; anything far past that is a mistake.
+    if (!Array.isArray(dates) || dates.length > 800) return res.status(400).json({ error: 'Too many dates in one go' });
     const cidRaw = client_id != null ? client_id : clientId;
     const cid = (() => { const n = parseInt(cidRaw, 10); return Number.isFinite(n) && n > 0 ? n : null; })();
 
