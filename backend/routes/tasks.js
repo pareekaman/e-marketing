@@ -846,20 +846,25 @@ app.delete('/api/tasks/:id', requireAuth, async (req, res) => {
 app.delete('/api/tasks/:id/checklist-series', requireAuth, async (req, res) => {
   try {
     if (!await canModifyTask(req, req.params.id, 'checklist')) return res.status(403).json({ error: 'Not allowed' });
-    const [[task]] = await db.query('SELECT description, assigned_to FROM checklist_tasks WHERE id=?', [req.params.id]);
+    // Same permission the single-row delete asks for.
+    if (!(await userCanDo(req.session, 'delete_task'))) return res.status(403).json({ error: 'You do not have delete access to tasks' });
+    const [[task]] = await db.query('SELECT description, assigned_to, assigned_by FROM checklist_tasks WHERE id=?', [req.params.id]);
     if (!task) return res.status(404).json({ error: 'Task not found' });
     const includePast = req.query.includePast === '1';
     const dateClause = includePast ? '' : ' AND due_date >= CURDATE()';
+    // A series is one assigner's recurring task for one doer. Matching on
+    // description + doer alone also swept up a same-named checklist someone
+    // else had set for that person, without their delete rights being asked.
     const [doomed] = await db.query(
-      `SELECT * FROM checklist_tasks WHERE description=? AND assigned_to=?${dateClause}`,
-      [task.description, task.assigned_to]);
+      `SELECT * FROM checklist_tasks WHERE description=? AND assigned_to=? AND assigned_by <=> ?${dateClause}`,
+      [task.description, task.assigned_to, task.assigned_by]);
     await archiveDeleted('checklist_tasks', doomed, req, {
       summary: r => `Checklist series: ${r.description || ''}`,
       reason: 'Recurring checklist series deleted',
     });
     const [result] = await db.query(
-      `DELETE FROM checklist_tasks WHERE description=? AND assigned_to=?${dateClause}`,
-      [task.description, task.assigned_to]
+      `DELETE FROM checklist_tasks WHERE description=? AND assigned_to=? AND assigned_by <=> ?${dateClause}`,
+      [task.description, task.assigned_to, task.assigned_by]
     );
     res.json({ success: true, deleted: result.affectedRows || 0 });
   } catch (err) { res.status(500).json({ error: err.message }); }
