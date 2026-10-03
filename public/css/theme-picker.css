@@ -96,3 +96,11 @@
 .tp-preview-bar button { font:600 12px 'Inter',sans-serif; border:0; border-radius:999px; padding:6px 12px; cursor:pointer; }
 .tp-pv-apply { background:var(--brand-2); color:#fff; }
 .tp-pv-exit { background:#fff; color:#1e293b; }
+
+/* The dashboard switch is now three buttons: Full / Lite / Off (core.js setMyThemeMode). */
+.theme-toggle { gap:4px; padding:4px 4px 4px 12px; cursor:default; }
+.theme-toggle .tt-label { margin-right:4px; }
+.theme-toggle button { font:600 12px/1 'Inter',sans-serif; border:0; background:transparent; color:#64748b; padding:6px 10px; border-radius:999px; cursor:pointer; }
+.theme-toggle button:hover { color:#1e293b; background:#f1f5f9; }
+.theme-toggle button.on { color:#fff; background:linear-gradient(90deg,var(--brand-1),var(--brand-2)); }
+.theme-toggle button:focus-visible { outline:2px solid var(--brand-2); outline-offset:1px; }

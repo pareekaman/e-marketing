@@ -9414,7 +9414,8 @@ app.get('/api/theme', requireAuth, async (req, res) => {
     const [[mine]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [themeOffKey(req)]);
     const [[nv]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [NAVRATRI_DAY_KEY]);
     const navratriDay = nv ? Math.min(9, Math.max(0, parseInt(nv.value, 10) || 0)) : 0;
-    res.json({ theme, themes: APP_THEMES, canChange, off: !!(mine && mine.value === '1'), navratriDay });
+    const mode = mine && mine.value === 'lite' ? 'lite' : mine && mine.value === '1' ? 'off' : 'full';
+    res.json({ theme, themes: APP_THEMES, canChange, off: mode === 'off', mode, navratriDay });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -9432,15 +9433,17 @@ app.put('/api/theme/navratri-day', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Anyone may switch the festival theme off for themselves (the slider on the dashboard); it stays
-// on for everyone else. Kept per account as theme_off:<user id> = '1'; switching it back on deletes it.
+// Anyone may choose how much of the festival theme they see (the switch on the dashboard): full,
+// lite (colours and a light decoration, no figures) or off; everyone else is unaffected. Kept per
+// account as theme_off:<user id> = '1' (off) or 'lite'; full deletes it. { off } is still accepted.
 function themeOffKey(req) { return 'theme_off:' + Number(req.session.userId); }
 app.put('/api/theme/mine', requireAuth, async (req, res) => {
   try {
-    const off = !!(req.body && req.body.off);
-    if (off) await db.query('INSERT INTO app_settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)', [themeOffKey(req), '1']);
-    else await db.query('DELETE FROM app_settings WHERE key_name=?', [themeOffKey(req)]);
-    res.json({ success: true, off });
+    const b = req.body || {};
+    const mode = ['full', 'lite', 'off'].includes(b.mode) ? b.mode : (b.off ? 'off' : 'full');
+    if (mode === 'full') await db.query('DELETE FROM app_settings WHERE key_name=?', [themeOffKey(req)]);
+    else await db.query('INSERT INTO app_settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)', [themeOffKey(req), mode === 'off' ? '1' : 'lite']);
+    res.json({ success: true, off: mode === 'off', mode });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

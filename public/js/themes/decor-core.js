@@ -193,7 +193,7 @@
     requested[name] = true;
     var s = document.createElement('script');
     s.src = '/js/themes/' + name + '.js';
-    s.onload = function () { if (st.name === name && !st.mounted && registry[name] && window.innerWidth >= MIN_WIDTH) mount(name); };
+    s.onload = function () { if (st.name === name && !st.mounted && registry[name] && wantFull()) mount(name); };
     s.onerror = function () { requested[name] = false; };
     document.head.appendChild(s);
   }
@@ -257,19 +257,30 @@
     if (!(reducedMq && reducedMq.matches)) start();
   }
 
+  // The light version on any screen, by the person's choice (core.js: Lite on the dashboard switch).
+  var forceLite = false;
+  function wantFull() { return window.innerWidth >= MIN_WIDTH && !forceLite; }
+  function setLite(on) {
+    if (forceLite === !!on) return;
+    forceLite = !!on;
+    if (!st.name) return;
+    teardown();
+    if (wantFull()) load(st.name); else mountLite(st.name);
+  }
+
   function apply(name) {
     if (!name || name === 'normal' || !/^[a-z]+$/.test(name)) name = null;
     if (name === st.name) return;
     teardown();
     st.name = name;
     if (!name) return;
-    if (window.innerWidth >= MIN_WIDTH) load(name); else mountLite(name);
+    if (wantFull()) load(name); else mountLite(name);
   }
 
   // Crossing MIN_WIDTH swaps the full decoration for the light one and back.
   window.addEventListener('resize', function () {
     if (!st.name) return;
-    var wide = window.innerWidth >= MIN_WIDTH;
+    var wide = wantFull();
     if (wide && st.mounted === 'lite') { teardown(); load(st.name); }
     else if (!wide && st.mounted && st.mounted !== 'lite') { teardown(); mountLite(st.name); }
     else if (!st.mounted) { if (wide) load(st.name); else mountLite(st.name); }
@@ -278,5 +289,5 @@
   document.addEventListener('visibilitychange', function () { if (document.hidden) pause(); else start(); });
   document.addEventListener('DOMContentLoaded', function () { apply(document.documentElement.getAttribute('data-theme')); });
 
-  window.ThemeDecor = { register: function (name, factory) { registry[name] = factory; }, apply: apply };
+  window.ThemeDecor = { register: function (name, factory) { registry[name] = factory; }, apply: apply, setLite: setLite };
 })();

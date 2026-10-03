@@ -200,30 +200,43 @@ async function loadAppTheme() {
     if (!r.ok) return;
     const t = await r.json();
     _companyTheme = t.theme;
-    _themeOff = !!t.off;
+    _themeMode = t.mode || (t.off ? 'off' : 'full');
+    _themeOff = _themeMode === 'off';
     _nvDay = t.navratriDay || 0;
+    if (window.ThemeDecor && ThemeDecor.setLite) ThemeDecor.setLite(_themeMode === 'lite');
     applyAppTheme(_themeOff ? 'normal' : t.theme);
     syncThemeToggle();
     // The Theme tab is for the theme owner(s) only (theme_admin_ids on the server), not every admin.
     if (t.canChange && typeof showThemeTab === 'function') showThemeTab();
   } catch (e) {}
 }
-// The dashboard slider: each person can switch the festival theme off for themselves. It shows only
-// while the company has a festival theme on; with Normal there is nothing to switch.
-let _companyTheme = 'normal', _themeOff = false;
+// The dashboard switch: each person chooses how much of the festival theme they see — Full, Lite
+// (the colours and a light decoration, no figures; for slower computers) or Off. It shows only while
+// the company has a festival theme on; with Normal there is nothing to choose.
+let _companyTheme = 'normal', _themeOff = false, _themeMode = 'full';
 function syncThemeToggle() {
   const box = document.getElementById('themeToggle');
   if (!box) return;
   box.style.display = _companyTheme === 'normal' ? 'none' : '';
-  document.getElementById('themeToggleInput').checked = !_themeOff;
+  box.querySelectorAll('button[data-mode]').forEach(b => {
+    const on = b.dataset.mode === _themeMode;
+    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+  });
 }
-async function setMyThemeOff(off) {
-  _themeOff = off;
-  applyAppTheme(off ? 'normal' : _companyTheme);
+function useThemeMode(mode) {
+  _themeMode = mode; _themeOff = mode === 'off';
+  if (window.ThemeDecor && ThemeDecor.setLite) ThemeDecor.setLite(mode === 'lite');
+  applyAppTheme(_themeOff ? 'normal' : _companyTheme);
   syncThemeToggle();
-  const r = await api('/api/theme/mine', 'PUT', { off });
-  if (r && r.error) { showToast(r.error, 'error'); _themeOff = !off; applyAppTheme(_themeOff ? 'normal' : _companyTheme); syncThemeToggle(); }
 }
+async function setMyThemeMode(mode) {
+  if (mode === _themeMode) return;
+  const was = _themeMode;
+  useThemeMode(mode);
+  const r = await api('/api/theme/mine', 'PUT', { mode });
+  if (r && r.error) { showToast(r.error, 'error'); useThemeMode(was); }
+}
+function setMyThemeOff(off) { return setMyThemeMode(off ? 'off' : 'full'); }
 
 async function init() {
   try {
