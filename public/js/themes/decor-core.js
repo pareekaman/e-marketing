@@ -228,7 +228,9 @@
       var day = name === 'navratri' ? NV_NAMES[+document.documentElement.getAttribute('data-nv-day')] : '';
       b.innerHTML = '<i></i><span></span>';
       b.firstChild.textContent = cfg.e;
-      b.lastChild.textContent = ' ' + cfg.t + (day ? ' · ' + day : '');
+      // the person's first name, once signed in (core.js sets ME)
+      var who = typeof ME !== 'undefined' && ME && ME.name ? String(ME.name).trim().split(/\s+/)[0] + ' ji, ' : '';
+      b.lastChild.textContent = ' ' + who + cfg.t + (day ? ' · ' + day : '');
       d.layer.appendChild(b);
       // after a few seconds it shrinks to its emoji, so it does not sit over the page's content
       var shrink = setTimeout(function () { b.classList.add('td-lite-min'); }, 6000);
