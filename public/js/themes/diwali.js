@@ -136,13 +136,13 @@ ThemeDecor.register('diwali', function (d) {
     say.textContent = 'हा हा हा!';
     el.appendChild(say);
     strip.appendChild(el);
-    return { el: el, x: (i + 0.5) / LOOKS.length, to: Math.random(), sp: d.rand(.035, .06), dir: 1, hold: 0, sooty: 0, panic: 0 };
+    return { el: el, x: (i + 0.5) / LOOKS.length, to: Math.random(), sp: d.rand(.06, .095), dir: 1, hold: 0, sooty: 0, panic: 0 };
   });
   var kidTimers = [], bombs = [], smoke = [], kparts = [], fountains = [], throwIn = 1.2;
   function stripBox() { var r = strip.getBoundingClientRect(), b = d.layer.getBoundingClientRect(); return { x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height }; }
   function head(k, s) { return { x: s.x + k.x * (s.w - 46) + 23, y: s.y + s.h - 70 * 46 / 60 }; }
   function sparks(x, y, n, spd, cols, life) {
-    for (var i = 0; i < n && kparts.length < 500; i++) {
+    for (var i = 0; i < n && kparts.length < 700; i++) {
       var an = d.rand(0, Math.PI * 2), v = d.rand(spd * 0.3, spd);
       kparts.push({ x: x, y: y, vx: Math.cos(an) * v, vy: Math.sin(an) * v - 40, life: life || d.rand(0.4, 0.8), c: d.pick(cols) });
     }
@@ -197,12 +197,12 @@ ThemeDecor.register('diwali', function (d) {
   function hit(q, at, s) {
     var tg = q.at, by = q.by;
     if (q.kind === 'bomb') {          // blackened with soot, hair on end, laughing
-      sparks(at.x, at.y, 40, 170, ['#FFFFFF', '#FDE047', '#F97316', '#DC2626']);
+      sparks(at.x, at.y, 70, 200, ['#FFFFFF', '#FDE047', '#F97316', '#DC2626']);
       for (var m = 0; m < 6; m++) smoke.push({ x: at.x + d.rand(-10, 10), y: at.y + d.rand(-8, 8), r: d.rand(8, 14), life: 1, vy: d.rand(-30, -15) });
       tg.el.classList.add('dk-sooty'); tg.sooty = 3.2; tg.hold = 1.4;
       laugh(tg, 1800, 'हा हा हा!');
     } else if (q.kind === 'rocket') { // shot into the air, spinning
-      sparks(at.x, at.y, 30, 150, ['#FDE047', '#F97316', '#DC2626', '#FFFFFF']);
+      sparks(at.x, at.y, 55, 180, ['#FDE047', '#F97316', '#DC2626', '#FFFFFF']);
       tg.hold = 0.9; react(tg, 'dk-spin', 900);
       laugh(tg, 1600, 'ऊईईई!');
     } else if (q.kind === 'anar') {   // a fountain at their feet: they hop about
@@ -237,7 +237,7 @@ ThemeDecor.register('diwali', function (d) {
       k.el.style.transform = 'translateX(' + (k.x * (s.w - 46)).toFixed(1) + 'px)';
       k.el.firstChild.style.transform = 'scaleX(' + k.dir + ')';
     }
-    if (!still && (throwIn -= dt) <= 0) { lob(); throwIn = d.rand(2, 3.2); }
+    if (!still && (throwIn -= dt) <= 0) { lob(); throwIn = d.rand(1.3, 2.2); }
     // crackers in flight: each steers to where its target child is now
     for (i = bombs.length - 1; i >= 0; i--) {
       var q = bombs[i]; q.t += dt;
@@ -253,7 +253,7 @@ ThemeDecor.register('diwali', function (d) {
       if (fo.life <= 0) { fountains.splice(i, 1); continue; }
       ctx.fillStyle = '#B45309'; ctx.globalAlpha = 1;
       ctx.beginPath(); ctx.moveTo(fo.x - 5, fo.y); ctx.lineTo(fo.x - 2, fo.y - 9); ctx.lineTo(fo.x + 2, fo.y - 9); ctx.lineTo(fo.x + 5, fo.y); ctx.fill();
-      for (var n = 0; n < 5 && kparts.length < 500; n++) kparts.push({ x: fo.x, y: fo.y - 9, vx: d.rand(-50, 50), vy: d.rand(-200, -120), life: d.rand(.5, .9), c: d.pick(['#FDE047', '#FFFFFF', '#FB923C']) });
+      for (var n = 0; n < 9 && kparts.length < 700; n++) kparts.push({ x: fo.x, y: fo.y - 9, vx: d.rand(-50, 50), vy: d.rand(-200, -120), life: d.rand(.5, .9), c: d.pick(['#FDE047', '#FFFFFF', '#FB923C']) });
     }
     for (i = smoke.length - 1; i >= 0; i--) {
       p = smoke[i]; p.life -= dt * 0.8; p.r += 18 * dt; p.y += p.vy * dt;
@@ -272,9 +272,68 @@ ThemeDecor.register('diwali', function (d) {
   }
 
   // Gold sparkles that twinkle here and there, beside the crackers.
-  // Crackers bursting all over the sky: two sets, in different colours, going up every second or so.
-  var fw = d.fireworks({ colors: ['#FFC107', '#FF7043', '#E91E63', '#66BB6A', '#FFFFFF', '#AB47BC'], gap: [0.8, 1.6] });
-  var fw2 = d.fireworks({ colors: ['#38BDF8', '#FDE047', '#F472B6', '#A3E635', '#FB923C'], gap: [1.1, 2.2] });
+  // Crackers bursting all over the sky, Diwali's own: rockets climb with glittering trails and burst
+  // as one of five shells — a peony (a full sphere), a ring, a willow (gold that droops and trails),
+  // a crackle (sparks that flicker and pop) or a two-colour burst. Every few seconds a volley of three
+  // or four goes up together.
+  var SKY = ['#FFC107', '#FF7043', '#E91E63', '#66BB6A', '#FFFFFF', '#AB47BC', '#38BDF8', '#FDE047', '#F472B6', '#A3E635'];
+  var rockets = [], stars = [], rocketIn = 0.3, volleyIn = 4;
+  function launch(w, h) {
+    rockets.push({ x: d.rand(w * 0.12, w * 0.92), y: h + 6, vy: -d.rand(430, 560), vx: d.rand(-25, 25), ty: d.rand(h * 0.1, h * 0.42),
+                   kind: d.pick(['peony', 'peony', 'ring', 'willow', 'crackle', 'duo']), c: d.pick(SKY), c2: d.pick(SKY) });
+  }
+  function burst(r) {
+    var n, i, a, v;
+    if (r.kind === 'ring') {
+      for (n = 44, i = 0; i < n; i++) { a = i * 6.2832 / n; stars.push({ x: r.x, y: r.y, vx: Math.cos(a) * 170, vy: Math.sin(a) * 170, life: 1.1, decay: .8, c: r.c, g: 40, drag: .975 }); }
+      for (i = 0; i < 16; i++) { a = d.rand(0, 6.2832); v = d.rand(20, 70); stars.push({ x: r.x, y: r.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1, decay: .9, c: '#FFFFFF', g: 40, drag: .97 }); }
+    } else if (r.kind === 'willow') {
+      for (n = 70, i = 0; i < n; i++) { a = d.rand(0, 6.2832); v = d.rand(60, 150); stars.push({ x: r.x, y: r.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1.8, decay: .45, c: d.pick(['#FDE68A', '#F59E0B', '#FBBF24']), g: 70, drag: .985, trail: true }); }
+    } else {
+      for (n = r.kind === 'peony' ? 80 : 64, i = 0; i < n; i++) {
+        a = d.rand(0, 6.2832); v = d.rand(70, 210);
+        stars.push({ x: r.x, y: r.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1.2, decay: d.rand(.6, .9), c: r.kind === 'duo' ? (i % 2 ? r.c : r.c2) : r.c,
+                     g: 70, drag: .975, crackle: r.kind === 'crackle' });
+      }
+    }
+    flashes.push({ x: r.x, y: r.y, life: 1, c: r.c });
+  }
+  var flashes = [];
+  function sky(ctx, dt, w, h) {
+    if ((rocketIn -= dt) <= 0) { launch(w, h); rocketIn = d.rand(0.35, 0.8); }
+    if ((volleyIn -= dt) <= 0) { for (var v = 0; v < 3 + (Math.random() < .5 ? 1 : 0); v++) launch(w, h); volleyIn = d.rand(4, 7); }
+    var i, p;
+    ctx.globalCompositeOperation = 'lighter';
+    for (i = rockets.length - 1; i >= 0; i--) {
+      p = rockets[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 120 * dt;
+      stars.push({ x: p.x + d.rand(-1.5, 1.5), y: p.y + 6, vx: d.rand(-12, 12), vy: d.rand(10, 40), life: .45, decay: 1.8, c: '#FDE68A', g: 30, drag: .95 });
+      ctx.globalAlpha = 1; ctx.fillStyle = '#FFF7C2'; ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, 6.2832); ctx.fill();
+      if (p.y <= p.ty || p.vy >= -40) { burst(p); rockets.splice(i, 1); }
+    }
+    for (i = flashes.length - 1; i >= 0; i--) {
+      p = flashes[i]; p.life -= dt * 4;
+      if (p.life <= 0) { flashes.splice(i, 1); continue; }
+      var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 60);
+      g.addColorStop(0, 'rgba(255,250,220,' + (0.6 * p.life).toFixed(2) + ')'); g.addColorStop(1, 'rgba(255,200,80,0)');
+      ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, 60, 0, 6.2832); ctx.fill();
+    }
+    if (stars.length > 900) stars.splice(0, stars.length - 900);
+    for (i = stars.length - 1; i >= 0; i--) {
+      p = stars[i]; p.life -= p.decay * dt;
+      if (p.life <= 0) {
+        if (p.crackle && !p.popped) { // a crackle star pops into a few white sparks as it dies
+          for (var k = 0; k < 3; k++) stars.push({ x: p.x, y: p.y, vx: d.rand(-40, 40), vy: d.rand(-40, 40), life: .25, decay: 3, c: '#FFFFFF', g: 0, drag: .9, popped: true });
+        }
+        stars.splice(i, 1); continue;
+      }
+      p.vx *= p.drag; p.vy = p.vy * p.drag + p.g * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      var al = Math.min(1, p.life) * (p.crackle ? (Math.random() < .5 ? 1 : .3) : 1);
+      ctx.globalAlpha = al; ctx.fillStyle = p.c;
+      var sz = p.trail ? 2.6 : 3.2; ctx.fillRect(p.x - sz / 2, p.y - sz / 2, sz, sz);
+      if (p.trail) { ctx.globalAlpha = al * .4; ctx.fillRect(p.x - .8, p.y - 7, 1.6, 7); }
+    }
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  }
   var sparkles = [], sparkIn = 0;
   // Sky lanterns (kandils let go) rising slowly across the sky, flickering.
   var floaters = [];
@@ -298,8 +357,8 @@ ThemeDecor.register('diwali', function (d) {
     scale: 0.75,
     stop: function () { kidTimers.forEach(clearTimeout); },
     frame: function (ctx, dt, w, h) {
-      var busy = fw.frame(ctx, dt, w, h);
-      fw2.frame(ctx, dt, w, h);
+      var busy = true;
+      sky(ctx, dt, w, h);
       for (var fj = 0; fj < floaters.length; fj++) {
         var fo = floaters[fj];
         fo.y -= (fo.vy * dt) / h;

@@ -122,8 +122,8 @@
 .dk-kid svg { transform-origin:50% 50%; }
 .dk-leg1, .dk-leg2 { transform-box:view-box; }
 .dk-leg1 { transform-origin:26px 76px; } .dk-leg2 { transform-origin:34px 76px; }
-.dk-running .dk-leg1 { animation:dk-step .5s ease-in-out infinite alternate; }
-.dk-running .dk-leg2 { animation:dk-step .5s ease-in-out infinite alternate-reverse; }
+.dk-running .dk-leg1 { animation:dk-step .4s ease-in-out infinite alternate; }
+.dk-running .dk-leg2 { animation:dk-step .4s ease-in-out infinite alternate-reverse; }
 @keyframes dk-step { from { transform:rotate(-18deg); } to { transform:rotate(18deg); } }
 .dk-arm { transform-box:fill-box; transform-origin:0 0; }
 .dk-throwing .dk-arm { animation:dk-throw .45s ease-out; }
