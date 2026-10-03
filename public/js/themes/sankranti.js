@@ -13,26 +13,40 @@ ThemeDecor.register('sankranti', function (d) {
     '<path d="M0 128 H140 V160 H0 Z" fill="#E7CBA9" stroke="#A16207" stroke-width="1"/>' +
     '<path d="M0 128 H140" stroke="#A16207" stroke-width="3"/>' +
     '<path d="M10 140 h20 M44 146 h22 M84 140 h22 M116 146 h18" stroke="#C9A06E" stroke-width="1.4"/>' +
-    // legs, shorts, a striped t-shirt
-    '<path d="M60 128 L58 106 M74 128 L76 106" stroke="' + SKIN + '" stroke-width="7" stroke-linecap="round"/>' +
-    '<path d="M54 128 h10 M70 128 h10" stroke="#1E3A8A" stroke-width="4" stroke-linecap="round"/>' +
-    '<path d="M54 96 H80 L82 110 H52 Z" fill="#1E3A8A"/>' +
+    '<defs><linearGradient id="skBoyShade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".25"/></linearGradient>' +
+    '<linearGradient id="skBoyLimb" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#D99C6A"/><stop offset="1" stop-color="#A86E40"/></linearGradient>' +
+    '<radialGradient id="skBoyFace" cx=".4" cy=".38" r=".7"><stop offset="0" stop-color="#E0A472"/><stop offset=".7" stop-color="' + SKIN + '"/><stop offset="1" stop-color="#9C6338"/></radialGradient></defs>' +
+    '<ellipse cx="67" cy="129" rx="22" ry="2.6" fill="#7C4A1E" opacity=".3"/>' +
+    // legs, sandals, shorts, a striped t-shirt
+    '<path d="M60 126 L58 106 M74 126 L76 106" stroke="url(#skBoyLimb)" stroke-width="7" stroke-linecap="round"/>' +
+    '<path d="M53 129 Q53 124 59 124 Q64 124 64 129 Z M70 129 Q70 124 75 124 Q81 124 81 129 Z" fill="#1E3A8A" stroke="#172554" stroke-width=".8"/>' +
+    '<path d="M54 96 H80 L82 110 H52 Z" fill="#1E3A8A"/><path d="M54 96 H80 L82 110 H52 Z" fill="url(#skBoyShade)"/>' +
+    '<path d="M67 100 V110 M58 104 l-1 6 M76 104 l1 6" stroke="#172554" stroke-width=".8"/>' +
+    '<path d="M62 59 Q67 63 72 59 L72 64 H62 Z" fill="#A86E40"/>' +
     '<path d="M54 64 Q67 58 80 64 L80 98 H54 Z" fill="#FACC15" stroke="#CA8A04" stroke-width="1"/>' +
     '<path d="M54 74 H80 M54 84 H80" stroke="#F97316" stroke-width="3"/>' +
+    '<path d="M54 64 Q67 58 80 64 L80 98 H54 Z" fill="url(#skBoyShade)"/>' +
+    '<path d="M61 61 Q67 66 73 61" fill="none" stroke="#CA8A04" stroke-width="1.2"/><path d="M60 88 Q62 94 60 98 M73 88 Q71 94 73 98" fill="none" stroke="#CA8A04" stroke-width=".7" opacity=".7"/>' +
     // the arm raised high holding the string (the canvas draws the string from (90, 12)), the
     // other arm holding the charkhi at his side, spinning (.sk-charkhi)
-    '<g class="sk-pull"><path d="M78 68 L88 40 L90 14" fill="none" stroke="' + SKIN + '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
-    '<circle cx="90" cy="12" r="4" fill="' + SKIN + '"/></g>' +
-    '<path d="M56 68 L44 90 L40 100" fill="none" stroke="' + SKIN + '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<g class="sk-pull"><path d="M78 68 L88 40 L90 14" fill="none" stroke="url(#skBoyLimb)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<ellipse cx="90" cy="13" rx="4.2" ry="4.6" fill="' + SKIN + '" stroke="#7C4A1E" stroke-width=".7"/><path d="M87.5 11 h4.5 M87.5 13.5 h4.5" stroke="#7C4A1E" stroke-width=".5"/></g>' +
+    '<path d="M56 68 L44 90 L40 100" fill="none" stroke="url(#skBoyLimb)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<g class="sk-charkhi"><circle cx="38" cy="104" r="12" fill="#DC2626" stroke="#7F1D1D" stroke-width="1.4"/>' +
     '<circle cx="38" cy="104" r="7" fill="#FDE68A" stroke="#B45309" stroke-width="1"/>' +
     '<path d="M38 92 V116 M26 104 H50" stroke="#7F1D1D" stroke-width="1.6"/></g>' +
     '<path d="M38 116 V128" stroke="#7C2D12" stroke-width="3" stroke-linecap="round"/>' +
     // head: a cap, eyes looking up at the kite, a big grin
-    '<circle cx="67" cy="44" r="14" fill="' + SKIN + '" stroke="#7C4A1E" stroke-width="1"/>' +
-    '<path d="M53 42 Q53 28 67 28 Q81 28 81 42 Z" fill="#DC2626"/><path d="M80 40 H92" stroke="#DC2626" stroke-width="3.4" stroke-linecap="round"/>' +
-    '<circle cx="62" cy="44" r="2" fill="#fff"/><circle cx="72" cy="44" r="2" fill="#fff"/><circle cx="62.6" cy="43" r="1.1" fill="#1C1917"/><circle cx="72.6" cy="43" r="1.1" fill="#1C1917"/>' +
-    '<path d="M60 50 Q67 57 74 50 Q67 53 60 50 Z" fill="#7F1D1D"/>' +
+    '<ellipse cx="53.4" cy="46" rx="2.6" ry="3.6" fill="' + SKIN + '" stroke="#7C4A1E" stroke-width=".8"/><ellipse cx="80.6" cy="46" rx="2.6" ry="3.6" fill="' + SKIN + '" stroke="#7C4A1E" stroke-width=".8"/>' +
+    '<path d="M54 44 Q53 60 67 60 Q81 60 80 44 Q80 30 67 30 Q54 30 54 44 Z" fill="url(#skBoyFace)" stroke="#7C4A1E" stroke-width="1"/>' +
+    '<path d="M54 41 Q56 37 60 38 M80 41 Q78 37 74 38" fill="#1C1917" stroke="#1C1917" stroke-width="1.6"/>' +
+    '<path d="M53 42 Q53 28 67 28 Q81 28 81 42 Z" fill="#DC2626"/><path d="M53 42 Q53 28 67 28 Q81 28 81 42 Z" fill="url(#skBoyShade)"/><path d="M67 28 V41" stroke="#991B1B" stroke-width=".7"/><path d="M80 40 H92" stroke="#B91C1C" stroke-width="3.4" stroke-linecap="round"/>' +
+    '<path d="M59 41.5 Q62 40 64.5 41.5 M69.5 41.5 Q72 40 75 41.5" fill="none" stroke="#3B2314" stroke-width="1" stroke-linecap="round"/>' +
+    '<path d="M59.4 45 Q62 42.4 64.6 45 Q62 47 59.4 45 Z M69.4 45 Q72 42.4 74.6 45 Q72 47 69.4 45 Z" fill="#fff" stroke="#3B2314" stroke-width=".5"/>' +
+    '<circle cx="62.4" cy="44.3" r="1.3" fill="#3B2314"/><circle cx="72.4" cy="44.3" r="1.3" fill="#3B2314"/><circle cx="62.8" cy="43.8" r=".45" fill="#fff"/><circle cx="72.8" cy="43.8" r=".45" fill="#fff"/>' +
+    '<path d="M67.4 46 Q68.4 49 66.6 49.4" fill="none" stroke="#8A5530" stroke-width=".8" stroke-linecap="round"/>' +
+    '<ellipse cx="59" cy="50" rx="2.4" ry="1.4" fill="#F87171" opacity=".35"/><ellipse cx="75" cy="50" rx="2.4" ry="1.4" fill="#F87171" opacity=".35"/>' +
+    '<path d="M61 52 Q67 58 73 52 Q67 54 61 52 Z" fill="#7F1D1D"/><path d="M62 52.4 Q67 54.2 72 52.4 L71.4 53.4 Q67 54.8 62.6 53.4 Z" fill="#fff"/>' +
     '</svg>';
 
   // Til-gud laddoos on a brass thali, a bowl of sesame, the rising sun behind (.sk-sun turns).
