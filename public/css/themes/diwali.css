@@ -114,3 +114,26 @@
 :root[data-theme="diwali"] .nav-item.active::before { background:linear-gradient(180deg,#FDE68A,#F59E0B); box-shadow:0 0 10px rgba(245,158,11,.8); }
 :root[data-theme="diwali"] ::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#FDE68A,#F59E0B,#B45309); background-clip:content-box; }
 @media (prefers-reduced-motion: reduce) { :root[data-theme="diwali"] .topbar::after, :root[data-theme="diwali"] .sidebar::before { animation:none; } }
+
+/* The children with their crackers (js/themes/diwali.js, placed inline bottom-right): the thrower's
+   arm swings (.dk-throwing), the one hit by a pop cracker jumps (.dk-jump), the chakri spins, and
+   "पटाक!" pops up where the cracker burst (.dk-pop). */
+.dk-kid { filter:drop-shadow(0 3px 3px rgba(0,0,0,.25)); }
+.dk-kid svg { transform-origin:50% 100%; animation:dk-bob 1.6s ease-in-out infinite alternate; }
+.dk-boy svg { animation-delay:-.8s; }
+@keyframes dk-bob { from { transform:translateY(0); } to { transform:translateY(-2px); } }
+.dk-arm { transform-box:fill-box; }
+.dk-girl .dk-arm { transform-origin:0 0; }
+.dk-boy .dk-arm { transform-origin:100% 0; }
+.dk-throwing .dk-arm { animation:dk-throw .45s ease-out; }
+@keyframes dk-throw { 0% { transform:rotate(0); } 40% { transform:rotate(-40deg); } 100% { transform:rotate(0); } }
+.dk-jump svg { animation:dk-jump .7s cubic-bezier(.3,.7,.4,1); }
+@keyframes dk-jump { 0%,100% { transform:translateY(0); } 35% { transform:translateY(-22px) rotate(-4deg); } 60% { transform:translateY(-6px); } }
+.dk-chakri { transform-box:fill-box; transform-origin:center; animation:dk-spin .4s linear infinite; }
+@keyframes dk-spin { to { transform:rotate(360deg); } }
+.dk-pop { position:absolute; z-index:2; pointer-events:none; white-space:nowrap; opacity:0; transform:translateX(-50%);
+  font:800 14px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif; color:#fff; padding:5px 10px; border-radius:12px;
+  background:linear-gradient(135deg,#F97316,#DC2626); box-shadow:0 0 0 2px rgba(255,255,255,.9), 0 6px 14px -4px rgba(220,38,38,.6); }
+.dk-pop.dk-pop-on { animation:dk-pop 1.1s ease-out forwards; }
+@keyframes dk-pop { 0% { opacity:0; transform:translateX(-50%) scale(.3); } 18% { opacity:1; transform:translateX(-50%) scale(1.15); } 30% { transform:translateX(-50%) scale(1); } 75% { opacity:1; } 100% { opacity:0; transform:translateX(-50%) translateY(-12px); } }
+@media (prefers-reduced-motion: reduce) { .dk-kid svg, .dk-chakri, .dk-throwing .dk-arm, .dk-jump svg { animation:none; } }
