@@ -59,12 +59,23 @@ ThemeDecor.register('navratri', function (d) {
     }
     return s;
   }
+  // shared shading: the face, and a shadow laid over the right side of the clothes
+  var NV_DEFS = '<defs><radialGradient id="nvFace" cx=".38" cy=".35" r=".75"><stop offset="0" stop-color="#F5C6A0"/><stop offset=".6" stop-color="' + SKIN + '"/><stop offset="1" stop-color="#C98A5E"/></radialGradient>' +
+    '<linearGradient id="nvShade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity=".18"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".24"/></linearGradient></defs>';
   function head(girl) {
-    var s = '<rect x="46" y="52" width="8" height="10" fill="' + SKIN + '"/>' +
-      '<circle cx="50" cy="44" r="10.5" fill="' + SKIN + '" stroke="' + INK + '" stroke-width=".8"/>' +
-      '<path d="M44.5 44 Q46.5 41.5 48.5 44 M51.5 44 Q53.5 41.5 55.5 44" fill="none" stroke="' + INK + '" stroke-width="1.3" stroke-linecap="round"/>' +
-      '<path d="M45 49 Q50 54.5 55 49 Z" fill="#9F1239"/><path d="M46.5 49.4 Q50 51 53.5 49.4" stroke="#fff" stroke-width=".9" fill="none"/>' +
-      '<ellipse cx="44" cy="48" rx="2.2" ry="1.4" fill="#F9A8D4" opacity=".8"/><ellipse cx="56" cy="48" rx="2.2" ry="1.4" fill="#F9A8D4" opacity=".8"/>';
+    // lit from the upper left: a shaded neck, ears, a softly shaded face; brows, open eyes with a
+    // catch-light, a nose, rosy cheeks and a smile
+    var s = NV_DEFS + '<path d="M46 52 H54 V61 Q50 62.6 46 61 Z" fill="#C98A5E"/>' +
+      '<ellipse cx="39.6" cy="45" rx="2" ry="2.8" fill="' + SKIN + '"/><ellipse cx="60.4" cy="45" rx="2" ry="2.8" fill="#C98A5E"/>' +
+      '<path d="M40 43 Q39.6 33.6 50 33.6 Q60.4 33.6 60 43 Q60.4 51 55 54 Q50 56.4 45 54 Q39.6 51 40 43 Z" fill="url(#nvFace)" stroke="' + INK + '" stroke-width=".4"/>' +
+      '<path d="M43.6 40.6 Q45.6 39.6 47.6 40.4 M52.4 40.4 Q54.4 39.6 56.4 40.6" stroke="#1C1917" stroke-width=".9" fill="none" stroke-linecap="round"/>' +
+      '<ellipse cx="45.7" cy="43.6" rx="2" ry="1.6" fill="#fff"/><ellipse cx="54.3" cy="43.6" rx="2" ry="1.6" fill="#fff"/>' +
+      '<circle cx="46" cy="43.7" r="1.2" fill="#3F2A1D"/><circle cx="54.6" cy="43.7" r="1.2" fill="#3F2A1D"/>' +
+      '<circle cx="46.4" cy="43.2" r=".4" fill="#fff"/><circle cx="55" cy="43.2" r=".4" fill="#fff"/>' +
+      '<path d="M43.6 42.6 Q45.7 41.4 47.8 42.6 M52.2 42.6 Q54.3 41.4 56.4 42.6" stroke="#1C1917" stroke-width=".6" fill="none"/>' +
+      '<path d="M50 44.4 Q49 47 50.6 47.4" stroke="#C98A5E" stroke-width=".8" fill="none" stroke-linecap="round"/>' +
+      '<path d="M46.4 49.2 Q50 53 53.6 49.2 Q50 50.4 46.4 49.2 Z" fill="#9F1239"/><path d="M47.4 49.6 Q50 50.6 52.6 49.6 L52.2 50.4 Q50 51.2 47.8 50.4 Z" fill="#fff"/>' +
+      '<ellipse cx="44" cy="47.6" rx="2" ry="1.2" fill="#F9A8D4" opacity=".55"/><ellipse cx="56" cy="47.6" rx="2" ry="1.2" fill="#F9A8D4" opacity=".55"/>';
     if (girl) {
       s += '<path d="M39.5 44 Q39 31 50 31 Q61 31 60.5 44 Q57 36 50 36 Q43 36 39.5 44 Z" fill="#1C1917"/>' +
            '<circle cx="40" cy="38" r="4.2" fill="#1C1917"/><circle cx="38" cy="36" r="1.8" fill="#F472B6"/><circle cx="41" cy="34.6" r="1.6" fill="#FFF"/>' +
@@ -83,6 +94,8 @@ ThemeDecor.register('navratri', function (d) {
       // the flared ghagra, its border and gold edging, and the day's motif
       '<g class="nv-skirt"><path d="M42 84 L58 84 Q86 104 96 138 Q50 152 4 138 Q14 104 42 84 Z" fill="' + o.skirt + '" stroke="rgba(0,0,0,.18)" stroke-width=".8"/>' +
       motif(o.motif, o.mc) +
+      '<path d="M42 84 L58 84 Q86 104 96 138 Q50 152 4 138 Q14 104 42 84 Z" fill="url(#nvShade)"/>' +
+      '<path d="M46 86 Q34 110 26 142 M50 86 V148 M54 86 Q66 110 74 142" stroke="#000" stroke-opacity=".1" stroke-width="1.2" fill="none"/>' +
       '<path d="M4 138 Q50 152 96 138 L93 129 Q50 143 7 129 Z" fill="' + o.border + '"/>' +
       '<path d="M5.5 133.5 Q50 147.5 94.5 133.5" fill="none" stroke="#F5B70A" stroke-width="1.6" stroke-dasharray="2 3"/></g>' +
       // choli with a drape across it
@@ -99,6 +112,7 @@ ThemeDecor.register('navratri', function (d) {
       '<path d="M41 148 L40 153 M59 148 L60 153" stroke="' + SKIN + '" stroke-width="5" stroke-linecap="round"/>' +
       // kediyu: the kurta flaring as he turns, an embroidered vest over it
       '<g class="nv-skirt"><path d="M40 62 Q50 58 60 62 L64 96 Q78 112 82 120 Q50 128 18 120 Q22 112 36 96 Z" fill="' + o.kurta + '" stroke="rgba(0,0,0,.35)" stroke-width=".8"/>' +
+      '<path d="M40 62 Q50 58 60 62 L64 96 Q78 112 82 120 Q50 128 18 120 Q22 112 36 96 Z" fill="url(#nvShade)"/>' +
       '<path d="M22 116 Q50 124 78 116" fill="none" stroke="' + o.trim + '" stroke-width="2" stroke-dasharray="3 2"/></g>' +
       '<path d="M41 63 L43 100 L49 100 L48 64 Z M59 63 L57 100 L51 100 L52 64 Z" fill="' + o.vest + '" stroke="' + o.trim + '" stroke-width="1.6"/>' +
       '<path d="M44 72 h2 M44 80 h2 M44 88 h2 M54 72 h2 M54 80 h2 M54 88 h2" stroke="' + o.trim + '" stroke-width="1.6" stroke-linecap="round"/>' +
@@ -886,7 +900,7 @@ ThemeDecor.register('navratri', function (d) {
 
   // Greeting, in Hindi as with Diwali's.
   var greet = document.createElement('div');
-  greet.className = 'td-item nv-greet td-drag';
+  greet.className = 'td-item nv-greet'; // not draggable: a label, and moved by mistake it hides under the dancers
   greet.textContent = '🪔 शुभ नवरात्रि' + (DAY ? ' · ' + DAY.name : '');
   d.layer.appendChild(greet);
 
