@@ -51,6 +51,50 @@
     // frame() returns false when it drew nothing, so an idle canvas is left untouched (no repaint).
     st.dirty = st.inst.frame(st.ctx, dt, st.w, st.h) !== false;
     st.ctx.globalAlpha = 1;
+    if (drawTaps(st.ctx, dt)) st.dirty = true;
+  }
+
+  // A click anywhere on the page under a festival theme throws off a little burst in the theme's
+  // own way: sparks for Diwali and Dussehra, a puff of gulal for Holi, snowflakes for Christmas and
+  // Shivratri, petals for the rest. The click itself goes through untouched; typing fields are left out.
+  var taps = [];
+  var TAP_KIND = { diwali: 'spark', dussehra: 'spark', holi: 'gulal', christmas: 'snow', shivratri: 'snow' };
+  document.addEventListener('pointerdown', function (e) {
+    if (!st.mounted || !st.name || !LITE[st.name] || (reducedMq && reducedMq.matches)) return;
+    if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    var kind = TAP_KIND[st.name] || 'petal', cols = LITE[st.name].p, i, a, v;
+    for (i = 0; i < (kind === 'gulal' ? 26 : 18) && taps.length < 300; i++) {
+      a = rand(0, 6.2832); v = kind === 'spark' ? rand(80, 220) : kind === 'gulal' ? rand(30, 120) : rand(40, 130);
+      taps.push({ x: e.clientX, y: e.clientY, vx: Math.cos(a) * v, vy: Math.sin(a) * v - (kind === 'snow' ? 20 : 40), life: 1,
+                  decay: kind === 'spark' ? rand(1.6, 2.4) : rand(1, 1.5), r: kind === 'gulal' ? rand(4, 9) : rand(2, 4), rot: rand(0, 6.28),
+                  c: pick(kind === 'spark' ? ['#FFFFFF', '#FDE047', '#F97316', '#FB923C'] : cols), k: kind });
+    }
+    if (!st.raf) start();
+  }, { passive: true });
+  function drawTaps(ctx, dt) {
+    if (!taps.length) return false;
+    for (var i = taps.length - 1; i >= 0; i--) {
+      var p = taps[i];
+      p.life -= p.decay * dt;
+      if (p.life <= 0) { taps.splice(i, 1); continue; }
+      p.vx *= 0.95; p.vy = p.vy * 0.95 + (p.k === 'snow' ? 30 : p.k === 'gulal' ? 10 : 160) * dt;
+      p.x += p.vx * dt; p.y += p.vy * dt; p.rot += 4 * dt;
+      ctx.globalAlpha = Math.min(1, p.life * 1.4) * (p.k === 'gulal' ? 0.55 : 1);
+      ctx.fillStyle = p.c;
+      if (p.k === 'petal') {
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.beginPath(); ctx.ellipse(0, 0, p.r * 1.4, p.r * .7, 0, 0, 6.2832); ctx.fill(); ctx.restore();
+      } else if (p.k === 'snow') {
+        ctx.strokeStyle = p.c === '#FFFFFF' ? '#93C5FD' : p.c; ctx.lineWidth = 1.2;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        for (var k = 0; k < 3; k++) { ctx.rotate(1.047); ctx.beginPath(); ctx.moveTo(-p.r * 1.5, 0); ctx.lineTo(p.r * 1.5, 0); ctx.stroke(); }
+        ctx.restore();
+      } else {
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.k === 'gulal' ? p.r * (1.6 - p.life * .6) : p.r * .7, 0, 6.2832); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+    return true;
   }
   function start() { if (!st.raf && st.inst && st.inst.frame && !document.hidden) { st.last = performance.now(); st.raf = requestAnimationFrame(loop); } }
   function pause() { if (st.raf) { cancelAnimationFrame(st.raf); st.raf = 0; } }
