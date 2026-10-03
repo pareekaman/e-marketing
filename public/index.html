@@ -512,7 +512,16 @@
      petals, js/themes/decor-core.js) floats over it. */
   :root[data-theme] body{ background:radial-gradient(900px 420px at 50% -120px, rgba(var(--brand-2-rgb),.22), transparent 70%), var(--page-bg); background-attachment:fixed; }
   :root[data-theme] .btn-login{ background:linear-gradient(135deg,var(--brand-1),var(--brand-2)); }
-  :root[data-theme] .td-lite{ bottom:16px; }
+  :root[data-theme] .td-lite{ display:none; }
+  /* the festival's greeting: over the mascots, large, and in place of "Welcome back" */
+  .fest-hello{ display:none; }
+  :root[data-theme] .fest-hello{ display:block; position:absolute; left:50%; top:16%; transform:translateX(-50%); text-align:center; white-space:nowrap;
+    font:800 44px/1.15 'Nirmala UI','Mangal','Noto Sans Devanagari','Inter',sans-serif; color:transparent; -webkit-background-clip:text; background-clip:text;
+    background-image:linear-gradient(90deg,var(--accent-dark),var(--brand-2) 50%,var(--accent)); animation:festIn .9s cubic-bezier(.34,1.56,.64,1) both; }
+  :root[data-theme] .fest-hello small{ display:block; margin-top:8px; font:600 16px/1.3 'Inter',sans-serif; color:#64748b; -webkit-text-fill-color:#64748b; }
+  @keyframes festIn{ from{ opacity:0; transform:translateX(-50%) translateY(14px) scale(.85); } to{ opacity:1; transform:translateX(-50%) none; } }
+  .art-panel{ position:relative; }
+  @media (max-width:900px){ :root[data-theme] .fest-hello{ display:none; } }
 
   .error{
     background:#fef2f2;border:1px solid #fecaca;
@@ -648,7 +657,7 @@
   </div>
 
   <!-- Form -->
-  <h2>Welcome back 👋</h2>
+  <h2 id="loginHello">Welcome back 👋</h2>
   <p class="sub">Sign in to your account</p>
 
   <div class="error" id="err"></div>
@@ -786,6 +795,27 @@
     if (t.theme === 'navratri' && t.navratriDay) root.setAttribute('data-nv-day', String(t.navratriDay));
     ThemeDecor.setLite(true);
     ThemeDecor.apply(t.theme);
+    // the festival's greeting, over the mascots and in place of "Welcome back"
+    var G = { navratri: ['🪔', 'Happy Navratri', 'शुभ नवरात्रि'], dussehra: ['🏹', 'Happy Dussehra', 'विजयादशमी की शुभकामनाएँ'],
+      holi: ['🎨', 'Happy Holi', 'होली की शुभकामनाएँ'], diwali: ['🪔', 'Happy Diwali', 'शुभ दीपावली'],
+      christmas: ['🎄', 'Merry Christmas', 'Season’s greetings'], janmashtami: ['🦚', 'Happy Janmashtami', 'जय श्री कृष्ण'],
+      shivratri: ['🔱', 'Happy Maha Shivratri', 'हर हर महादेव'], ganesh: ['🌺', 'Happy Ganesh Chaturthi', 'गणपति बाप्पा मोरया'],
+      ramnavami: ['🚩', 'Happy Ram Navami', 'जय श्री राम'], rakhi: ['🎀', 'Happy Raksha Bandhan', 'शुभ रक्षाबंधन'],
+      mahavir: ['🙏', 'Happy Mahavir Jayanti', 'जय जिनेन्द्र'], sankranti: ['🪁', 'Happy Makar Sankranti', 'शुभ मकर संक्रांति'],
+      chhath: ['🌅', 'Happy Chhath Puja', 'जय छठी मइया'] }[t.theme];
+    if (!G) return;
+    var h = document.getElementById('loginHello');
+    if (h) h.textContent = G[0] + ' ' + G[1] + '!';
+    var art = document.querySelector('.art-panel');
+    if (art) {
+      var big = document.createElement('div');
+      big.className = 'fest-hello';
+      big.textContent = G[2];
+      var sm = document.createElement('small');
+      sm.textContent = 'from the E-Marketing family';
+      big.appendChild(sm);
+      art.appendChild(big);
+    }
   }).catch(function () {});
 })();
 </script>
