@@ -297,6 +297,10 @@
 
   /* ── Inventory: 4 stat cards become 2x2 ── */
   #invStats{grid-template-columns:repeat(2,1fr) !important;}
+
+  /* ── Approvals: tabs wrap to a second row instead of squeezing ── */
+  .appr-tabs{flex-wrap:wrap;max-width:100%;}
+  .appr-tabs .tab{white-space:nowrap;}
 }
 
 /* ── Extra small (phones <380px) ── */
