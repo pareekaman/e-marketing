@@ -297,7 +297,8 @@ async function loadCreditCards() {
     if (firstBank) { _ccActiveBank = firstBank; if (dd) dd.value = firstBank; }
   }
   if (_ccActiveBank && dd) dd.value = _ccActiveBank;
-  if (_ccActiveBank) ccRenderDetail();
+  // With no bank picked this draws the overview; skipping it left "Loading…" up.
+  ccRenderDetail();
 }
 
 function ccSelectBank(bank) {
