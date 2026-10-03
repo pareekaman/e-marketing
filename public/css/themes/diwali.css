@@ -144,3 +144,19 @@
 .dk-dance svg { animation:dk-hop .25s ease-in-out infinite alternate; }
 @keyframes dk-hop { from { translate:-3px 0; rotate:-8deg; } to { translate:3px -12px; rotate:8deg; } }
 @media (prefers-reduced-motion: reduce) { .dk-spin svg, .dk-dance svg { animation:none; } }
+
+/* The sky-shot box by the diyas (it shakes while it fires, .dw-firing), and the wish from the
+   E-Marketing family that shows across the top after each round's finale (.dw-wish-on). */
+.dw-skyshot { filter:drop-shadow(0 3px 3px rgba(0,0,0,.3)); }
+.dw-skyshot.dw-firing svg { animation:dw-recoil .14s ease-in-out infinite alternate; }
+@keyframes dw-recoil { from { transform:translateY(0); } to { transform:translateY(1.5px) scaleY(.96); } }
+.dw-wish { position:absolute; left:50%; top:72px; z-index:3; pointer-events:none; text-align:center; white-space:nowrap; opacity:0;
+  transform:translateX(-50%) scale(.5); padding:12px 28px 13px; border-radius:20px; color:#fff;
+  background:linear-gradient(135deg,#B45309,#DC2626 40%,#BE185D 70%,#7E22CE);
+  box-shadow:0 0 0 3px rgba(253,230,138,.95), 0 0 40px rgba(245,158,11,.7), 0 16px 34px -12px rgba(0,0,0,.45); }
+.dw-wish b { display:block; font:700 15px/1.3 'Nirmala UI','Mangal','Noto Sans Devanagari','Inter',sans-serif; color:#FDE68A; }
+.dw-wish span { display:block; font:800 24px/1.3 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif; text-shadow:0 2px 8px rgba(0,0,0,.35); }
+.dw-wish.dw-wish-on { animation:dw-wish 7s ease-out forwards; }
+@keyframes dw-wish { 0% { opacity:0; transform:translateX(-50%) scale(.5); } 8% { opacity:1; transform:translateX(-50%) scale(1.08); } 13% { transform:translateX(-50%) scale(1); }
+  85% { opacity:1; transform:translateX(-50%) scale(1); } 100% { opacity:0; transform:translateX(-50%) translateY(-10px) scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .dw-skyshot.dw-firing svg { animation:none; } }

@@ -288,9 +288,9 @@ ThemeDecor.register('diwali', function (d) {
       for (n = 44, i = 0; i < n; i++) { a = i * 6.2832 / n; stars.push({ x: r.x, y: r.y, vx: Math.cos(a) * 170, vy: Math.sin(a) * 170, life: 1.1, decay: .8, c: r.c, g: 40, drag: .975 }); }
       for (i = 0; i < 16; i++) { a = d.rand(0, 6.2832); v = d.rand(20, 70); stars.push({ x: r.x, y: r.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1, decay: .9, c: '#FFFFFF', g: 40, drag: .97 }); }
     } else if (r.kind === 'willow') {
-      for (n = 70, i = 0; i < n; i++) { a = d.rand(0, 6.2832); v = d.rand(60, 150); stars.push({ x: r.x, y: r.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1.8, decay: .45, c: d.pick(['#FDE68A', '#F59E0B', '#FBBF24']), g: 70, drag: .985, trail: true }); }
+      for (n = 56, i = 0; i < n; i++) { a = d.rand(0, 6.2832); v = d.rand(60, 150); stars.push({ x: r.x, y: r.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1.8, decay: .45, c: d.pick(['#FDE68A', '#F59E0B', '#FBBF24']), g: 70, drag: .985, trail: true }); }
     } else {
-      for (n = r.kind === 'peony' ? 80 : 64, i = 0; i < n; i++) {
+      for (n = r.kind === 'peony' ? 64 : 52, i = 0; i < n; i++) {
         a = d.rand(0, 6.2832); v = d.rand(70, 210);
         stars.push({ x: r.x, y: r.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1.2, decay: d.rand(.6, .9), c: r.kind === 'duo' ? (i % 2 ? r.c : r.c2) : r.c,
                      g: 70, drag: .975, crackle: r.kind === 'crackle' });
@@ -299,7 +299,43 @@ ThemeDecor.register('diwali', function (d) {
     flashes.push({ x: r.x, y: r.y, life: 1, c: r.c });
   }
   var flashes = [];
+  // A sky-shot box on the ground by the diyas. Every half minute it fires a round: twelve shots one
+  // after another, then a finale of five together, and then the wish from the E-Marketing family
+  // shows across the top of the page.
+  var shotBox = d.svg('<svg viewBox="0 0 40 34" xmlns="http://www.w3.org/2000/svg">' +
+    '<rect x="2" y="8" width="36" height="24" rx="2" fill="#DC2626" stroke="#7F1D1D" stroke-width="1"/>' +
+    '<path d="M2 16 H38 M2 24 H38" stroke="#FACC15" stroke-width="2"/>' +
+    '<g fill="#1C1917">' + [8, 16, 24, 32].map(function (x) { return '<circle cx="' + x + '" cy="8" r="2.4"/>'; }).join('') + '</g>' +
+    '<path d="M20 32 Q26 36 30 33" fill="none" stroke="#A16207" stroke-width="1.2"/></svg>', 'dw-skyshot');
+  shotBox.style.cssText += ';left:326px;bottom:2px;width:40px';
+  var wish = document.createElement('div');
+  wish.className = 'td-item dw-wish';
+  wish.innerHTML = '<b>E-Marketing परिवार की ओर से</b><span>दीपावली की हार्दिक शुभकामनाएँ</span>';
+  d.layer.appendChild(wish);
+  var shotRound = { next: 6, fired: 0, gap: 0, on: false };
+  function shotFrom() { var r = shotBox.getBoundingClientRect(), b = d.layer.getBoundingClientRect(); return { x: r.left - b.left + r.width / 2, y: r.top - b.top + 6 }; }
+  function fireShot(h, big) {
+    var o = shotFrom();
+    rockets.push({ x: o.x + d.rand(-4, 4), y: o.y, vy: -d.rand(560, 680), vx: d.rand(-120, 200), ty: d.rand(h * 0.08, h * 0.4),
+                   kind: big ? d.pick(['peony', 'willow', 'ring']) : d.pick(['peony', 'crackle', 'duo', 'ring']), c: d.pick(SKY), c2: d.pick(SKY) });
+    sparksAt(o.x, o.y);
+  }
+  function sparksAt(x, y) { for (var i = 0; i < 10; i++) stars.push({ x: x, y: y, vx: d.rand(-40, 40), vy: d.rand(-120, -40), life: .4, decay: 2, c: '#FDE68A', g: 200, drag: .96 }); }
+  function skyShots(dt, h) {
+    var r = shotRound;
+    if (!r.on) { if ((r.next -= dt) <= 0) { r.on = true; r.fired = 0; r.gap = 0; shotBox.classList.add('dw-firing'); } return; }
+    if ((r.gap -= dt) > 0) return;
+    if (r.fired < 12) { fireShot(h, false); r.fired++; r.gap = 0.28; return; }
+    // the finale, then the wish
+    for (var i = 0; i < 5; i++) fireShot(h, true);
+    r.on = false; r.next = 30; shotBox.classList.remove('dw-firing');
+    wishTimer = setTimeout(function () {
+      wish.classList.remove('dw-wish-on'); void wish.offsetWidth; wish.classList.add('dw-wish-on');
+    }, 1100);
+  }
+  var wishTimer = 0;
   function sky(ctx, dt, w, h) {
+    skyShots(dt, h);
     if ((rocketIn -= dt) <= 0) { launch(w, h); rocketIn = d.rand(0.35, 0.8); }
     if ((volleyIn -= dt) <= 0) { for (var v = 0; v < 3 + (Math.random() < .5 ? 1 : 0); v++) launch(w, h); volleyIn = d.rand(4, 7); }
     var i, p;
@@ -317,7 +353,7 @@ ThemeDecor.register('diwali', function (d) {
       g.addColorStop(0, 'rgba(255,250,220,' + (0.6 * p.life).toFixed(2) + ')'); g.addColorStop(1, 'rgba(255,200,80,0)');
       ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, 60, 0, 6.2832); ctx.fill();
     }
-    if (stars.length > 900) stars.splice(0, stars.length - 900);
+    if (stars.length > 650) stars.splice(0, stars.length - 650);
     for (i = stars.length - 1; i >= 0; i--) {
       p = stars[i]; p.life -= p.decay * dt;
       if (p.life <= 0) {
@@ -355,7 +391,7 @@ ThemeDecor.register('diwali', function (d) {
   }
   return {
     scale: 0.75,
-    stop: function () { kidTimers.forEach(clearTimeout); },
+    stop: function () { kidTimers.forEach(clearTimeout); clearTimeout(wishTimer); },
     frame: function (ctx, dt, w, h) {
       var busy = true;
       sky(ctx, dt, w, h);
