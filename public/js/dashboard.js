@@ -123,16 +123,19 @@ async function loadDashboard(light = false) {
         empFilter.appendChild(opt);
       });
     }
+  }
 
-    {
-      const btns = [];
-      if (ME.role === 'admin') btns.push(`<button class="btn btn-yellow" onclick="openHoliday()">🗓 Holidays</button>`);
-      if (canDo('create_checklist')) btns.push(`<button class="btn btn-green" onclick="openChecklist()">+ Checklist</button>`);
-      if (canDo('create_task'))      btns.push(`<button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>`);
-      if (canDo('transfer_task'))    btns.push(`<button class="btn" style="background:#7c3aed;color:#fff" onclick="openNewTransferModal()">🔀 Transfer</button>`);
-      const db2 = document.getElementById('dashBtns');
-      if (db2) db2.innerHTML = btns.join('');
-    }
+  // Outside the role gate: the permissions alone decide, so any employee
+  // granted Delegate / Checklist / Transfer gets the button (the routes check
+  // the same keys). Until now a plain user never saw them here.
+  {
+    const btns = [];
+    if (ME.role === 'admin') btns.push(`<button class="btn btn-yellow" onclick="openHoliday()">🗓 Holidays</button>`);
+    if (canDo('create_checklist')) btns.push(`<button class="btn btn-green" onclick="openChecklist()">+ Checklist</button>`);
+    if (canDo('create_task'))      btns.push(`<button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>`);
+    if (canDo('transfer_task'))    btns.push(`<button class="btn" style="background:#7c3aed;color:#fff" onclick="openNewTransferModal()">🔀 Transfer</button>`);
+    const db2 = document.getElementById('dashBtns');
+    if (db2) db2.innerHTML = btns.join('');
   }
   // Outside the role gate above: the one person it is shown to is matched by
   // name, not by role, and the innerHTML assignment just wiped the button.
