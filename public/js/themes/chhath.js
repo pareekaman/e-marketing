@@ -16,7 +16,10 @@ ThemeDecor.register('chhath', function (d) {
     '<svg viewBox="0 0 230 220" xmlns="http://www.w3.org/2000/svg"><defs>' +
     '<radialGradient id="chSun"><stop offset="0" stop-color="#FFF7ED"/><stop offset=".35" stop-color="#FDBA74"/><stop offset=".7" stop-color="#F97316" stop-opacity=".7"/><stop offset="1" stop-color="#EA580C" stop-opacity="0"/></radialGradient>' +
     '<linearGradient id="chWater" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#38BDF8" stop-opacity=".85"/><stop offset="1" stop-color="#0369A1" stop-opacity=".9"/></linearGradient>' +
-    '<linearGradient id="chSoop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FCD34D"/><stop offset="1" stop-color="#B45309"/></linearGradient></defs>' +
+    '<linearGradient id="chSoop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FCD34D"/><stop offset="1" stop-color="#B45309"/></linearGradient>' +
+    '<linearGradient id="chVratiShade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#7C2D12" stop-opacity=".28"/></linearGradient>' +
+    '<linearGradient id="chVratiLimb" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#DDA070"/><stop offset="1" stop-color="#A8703F"/></linearGradient>' +
+    '<radialGradient id="chVratiFace" cx=".4" cy=".4" r=".7"><stop offset="0" stop-color="#E2A676"/><stop offset=".7" stop-color="' + SKIN + '"/><stop offset="1" stop-color="#9A6238"/></radialGradient></defs>' +
     // the setting sun, large and low, its glow pulsing (.ch-sun)
     '<circle class="ch-sun" cx="150" cy="80" r="70" fill="url(#chSun)"/>' +
     '<circle cx="150" cy="80" r="32" fill="#FB923C"/><circle cx="150" cy="80" r="32" fill="#FDE047" fill-opacity=".35"/>' +
@@ -28,10 +31,14 @@ ThemeDecor.register('chhath', function (d) {
     '<path d="M54 196 Q52 150 66 116 L96 116 Q110 150 108 196 Z" fill="#FACC15" stroke="#CA8A04" stroke-width="1"/>' +
     '<path d="M54 196 Q81 204 108 196" fill="none" stroke="#DC2626" stroke-width="4"/>' +
     '<path d="M62 120 Q80 150 100 196" fill="none" stroke="#DC2626" stroke-width="3"/>' +
+    '<path d="M54 196 Q52 150 66 116 L96 116 Q110 150 108 196 Z" fill="url(#chVratiShade)"/>' +
+    '<path d="M72 124 Q70 160 72 192 M80 124 Q80 160 82 194 M88 124 Q90 160 92 192" fill="none" stroke="#CA8A04" stroke-width=".8" opacity=".7"/>' +
     '<path d="M50 164 Q81 172 112 164" fill="none" stroke="#38BDF8" stroke-width="5" opacity=".7"/>' +
     // arms raised high holding the soop up to the sun
-    '<path d="M66 118 L60 92 L72 64 M96 118 L104 92 L94 64" fill="none" stroke="' + SKIN + '" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M66 118 L60 92 L72 64 M96 118 L104 92 L94 64" fill="none" stroke="url(#chVratiLimb)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<path d="M62 90 l6 2 M102 90 l-6 2" stroke="#DC2626" stroke-width="3"/>' +
+    '<path d="M68 72 l4 -1.4 M92 72 l-4 -1.4" stroke="#F5B70A" stroke-width="2"/>' +
+    '<ellipse cx="72" cy="64" rx="4" ry="3.4" fill="' + SKIN + '" stroke="' + LINE + '" stroke-width=".7"/><ellipse cx="94" cy="64" rx="4" ry="3.4" fill="' + SKIN + '" stroke="' + LINE + '" stroke-width=".7"/>' +
     '<g class="ch-offer"><path d="M50 64 Q83 40 116 64 Q83 76 50 64 Z" fill="url(#chSoop)" stroke="#92400E" stroke-width="1.2"/>' +
     '<path d="M56 62 Q83 46 110 62 M62 58 L70 66 M74 54 L80 68 M88 54 L92 68 M100 56 L104 66" fill="none" stroke="#92400E" stroke-width=".7"/>' +
     // on the soop: thekua, a bunch of bananas, a coconut, a lamp
@@ -40,12 +47,19 @@ ThemeDecor.register('chhath', function (d) {
     '<circle cx="100" cy="52" r="6" fill="#78350F"/><path d="M98 46 q2 -6 6 -4" fill="none" stroke="#A16207" stroke-width="1.4"/>' +
     '<path d="M108 58 Q112 62 116 58 Z" fill="#B45309"/><path class="ch-flame" d="M112 48 C114.6 52 114.6 55 112 57 C109.4 55 109.4 52 112 48 Z" fill="#F97316"/></g>' +
     // her head, looking up at the sun: the pallu over her hair, sindoor, a nose ring
-    '<circle cx="81" cy="98" r="12" fill="' + SKIN + '" stroke="' + LINE + '" stroke-width="1"/>' +
+    '<path d="M76 108 Q81 112 86 108 L86 116 H76 Z" fill="#A86E40"/>' +
+    '<path d="M69 96 Q68 112 81 112 Q94 112 93 96 Q93 86 81 86 Q69 86 69 96 Z" fill="url(#chVratiFace)" stroke="' + LINE + '" stroke-width="1"/>' +
     '<path d="M67 104 Q66 82 81 82 Q96 82 95 104 Q92 92 81 90 Q70 92 67 104 Z" fill="#FACC15" stroke="#DC2626" stroke-width="1.6"/>' +
+    '<path d="M67 104 Q66 82 81 82 Q96 82 95 104 Q92 92 81 90 Q70 92 67 104 Z" fill="url(#chVratiShade)"/>' +
+    '<path d="M71 96 Q73 90 81 90 Q89 90 91 96 Q88 92 81 92 Q74 92 71 96 Z" fill="#1C1917"/>' +
     '<path d="M81 86 V92" stroke="#DC2626" stroke-width="1.6"/><circle cx="81" cy="94" r="1.4" fill="#DC2626"/>' +
-    '<path d="M75 98 q2 -2 4 0 M83 98 q2 -2 4 0" fill="none" stroke="#1C1917" stroke-width="1.1" stroke-linecap="round"/>' +
-    '<path d="M77 104 Q81 107 85 104" fill="none" stroke="#9F1239" stroke-width="1.2" stroke-linecap="round"/>' +
-    '<circle cx="85" cy="102" r="1.6" fill="none" stroke="#F5B70A" stroke-width=".9"/>' +
+    '<path d="M74.4 96.2 Q76.6 95 78.8 96 M83.2 96 Q85.4 95 87.6 96.2" fill="none" stroke="#3B2314" stroke-width=".8" stroke-linecap="round"/>' +
+    '<path d="M74.6 98.6 Q76.8 96.6 79 98.6 Q76.8 99.8 74.6 98.6 Z M83 98.6 Q85.2 96.6 87.4 98.6 Q85.2 99.8 83 98.6 Z" fill="#fff" stroke="#1C1917" stroke-width=".55"/>' +
+    '<circle cx="76.8" cy="98" r="1" fill="#2B1A10"/><circle cx="85.2" cy="98" r="1" fill="#2B1A10"/><circle cx="77.1" cy="97.6" r=".35" fill="#fff"/><circle cx="85.5" cy="97.6" r=".35" fill="#fff"/>' +
+    '<path d="M81.4 99.6 Q82.2 102 80.6 102.4" fill="none" stroke="#8A5530" stroke-width=".7" stroke-linecap="round"/>' +
+    '<ellipse cx="75" cy="103" rx="2" ry="1.1" fill="#F87171" opacity=".35"/><ellipse cx="87" cy="103" rx="2" ry="1.1" fill="#F87171" opacity=".35"/>' +
+    '<path d="M77.6 105 Q81 108.6 84.4 105 Q81 106 77.6 105 Z" fill="#9F1239"/><path d="M78.4 105.3 Q81 106.3 83.6 105.3 L83.2 106 Q81 106.8 78.8 106 Z" fill="#fff"/>' +
+    '<circle cx="84.6" cy="102.4" r="1.6" fill="none" stroke="#F5B70A" stroke-width=".9"/>' +
     // diyas floating on the water
     diya(30, 180, 0) + diya(130, 206, -.8) + diya(196, 196, -1.6) + diya(176, 172, -.4) +
     '</svg>';
