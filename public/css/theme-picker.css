@@ -60,3 +60,13 @@
 .tp-day span { font-size:11.5px; color:#64748b; }
 .tp-day:hover { border-color:#BE185D; }
 .tp-day.tp-active { border-color:#BE185D; box-shadow:0 0 0 3px rgba(190,24,93,.15); background:#FFF1F7; }
+
+/* Phones: the light festival decoration (decor-core.js LITE) — a greeting badge resting above the
+   bottom nav bar, bobbing gently. It takes no taps. */
+.td-lite { position:absolute; left:12px; bottom:calc(74px + env(safe-area-inset-bottom, 0px)); z-index:2; pointer-events:none;
+  white-space:nowrap; padding:6px 12px; border-radius:999px; color:#fff;
+  font:700 13px/1.1 'Nirmala UI','Mangal','Noto Sans Devanagari','Inter',sans-serif;
+  box-shadow:0 0 0 2px rgba(255,255,255,.85), 0 6px 16px -6px rgba(0,0,0,.35);
+  animation:td-lite-bob 2.6s ease-in-out infinite alternate; }
+@keyframes td-lite-bob { from { transform:translateY(0); } to { transform:translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .td-lite { animation:none; } }

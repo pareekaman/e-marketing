@@ -3,7 +3,8 @@
    Each festival lives in its own file, js/themes/<festival>.js, loaded only when that
    theme is active, and registers itself with ThemeDecor.register(name, factory).
    The factory receives a small API and returns { frame(ctx, dt, w, h)?, stop()? }.
-   Off on narrow screens (<768px); the canvas is not animated under prefers-reduced-motion. */
+   On narrow screens (<768px) a light version is shown instead (LITE below); the canvas is not
+   animated under prefers-reduced-motion. */
 (function () {
   'use strict';
   var MIN_WIDTH = 768;
@@ -197,18 +198,73 @@
     document.head.appendChild(s);
   }
 
+  // On a phone (below MIN_WIDTH) the festival's own figures would cover the work, so instead a light
+  // version is shown for every theme: a small greeting badge resting above the bottom nav bar, and a
+  // few petals in the festival's colours drifting down. Nothing in it takes a tap. Styles: .td-lite in
+  // css/theme-picker.css (loaded on every page).
+  var LITE = {
+    navratri:    { e: '🪔', t: 'शुभ नवरात्रि',        c: ['#F97316', '#BE185D'], p: ['#F97316', '#FACC15', '#DB2777'] },
+    dussehra:    { e: '🏹', t: 'Happy Dussehra',      c: ['#F57C00', '#B91C1C'], p: ['#FFB300', '#FF7043', '#EF5350'] },
+    holi:        { e: '🎨', t: 'Happy Holi',          c: ['#EC4899', '#8B5CF6'], p: ['#EC4899', '#22C55E', '#FACC15', '#3B82F6', '#A855F7'] },
+    diwali:      { e: '🪔', t: 'शुभ दीपावली',         c: ['#F59E0B', '#C2410C'], p: ['#FDE68A', '#F59E0B', '#FB923C'] },
+    christmas:   { e: '🎄', t: 'Merry Christmas',     c: ['#C62828', '#2E7D32'], p: ['#FFFFFF', '#E0F2FE', '#FFFFFF'] },
+    janmashtami: { e: '🦚', t: 'शुभ जन्माष्टमी',       c: ['#1D4ED8', '#EAB308'], p: ['#16A34A', '#0EA5E9', '#FACC15'] },
+    shivratri:   { e: '🔱', t: 'हर हर महादेव',        c: ['#1E1B4B', '#0EA5E9'], p: ['#E0E7FF', '#FFFFFF', '#A5B4FC'] },
+    ganesh:      { e: '🌺', t: 'गणपति बाप्पा मोरया!', c: ['#B91C1C', '#EAB308'], p: ['#DC2626', '#F97316', '#FACC15'] },
+    ramnavami:   { e: '🚩', t: 'जय श्री राम',          c: ['#C2410C', '#EAB308'], p: ['#F97316', '#FACC15', '#F472B6'] },
+    rakhi:       { e: '🎀', t: 'शुभ रक्षाबंधन',         c: ['#BE185D', '#F59E0B'], p: ['#EC4899', '#F5B70A', '#7C3AED'] },
+    mahavir:     { e: '🙏', t: 'जय जिनेन्द्र',          c: ['#C2410C', '#FCD34D'], p: ['#FFFFFF', '#FDE68A', '#FACC15'] },
+    sankranti:   { e: '🪁', t: 'शुभ मकर संक्रांति',     c: ['#0369A1', '#F97316'], p: ['#DC2626', '#2563EB', '#16A34A', '#FACC15'] },
+    chhath:      { e: '🌅', t: 'जय छठी मइया',          c: ['#EA580C', '#0369A1'], p: ['#FDBA74', '#FDE047', '#F97316'] }
+  };
+  function lite(name) {
+    var cfg = LITE[name];
+    return function (d) {
+      var b = document.createElement('div');
+      b.className = 'td-lite';
+      b.style.background = 'linear-gradient(135deg,' + cfg.c[0] + ',' + cfg.c[1] + ')';
+      b.textContent = cfg.e + ' ' + cfg.t;
+      d.layer.appendChild(b);
+      var ps = [], i;
+      for (i = 0; i < 14; i++) ps.push({ x: Math.random(), y: Math.random(), r: rand(2.4, 4), vy: rand(14, 26), ph: rand(0, 6.28), a: rand(0, 6.28), c: pick(cfg.p) });
+      var t = 0;
+      return {
+        frame: function (ctx, dt, w, h) {
+          t += dt; ctx.globalAlpha = 0.7;
+          for (i = 0; i < ps.length; i++) {
+            var p = ps[i];
+            p.y += (p.vy * dt) / h; if (p.y > 1.03) { p.y = -0.03; p.x = Math.random(); }
+            ctx.save(); ctx.translate(p.x * w + Math.sin(t * 0.7 + p.ph) * 12, p.y * h); ctx.rotate(p.a + t * 0.5);
+            ctx.fillStyle = p.c; ctx.beginPath(); ctx.ellipse(0, 0, p.r, p.r * 0.55, 0, 0, 6.2832); ctx.fill(); ctx.restore();
+          }
+        }
+      };
+    };
+  }
+  function mountLite(name) {
+    if (!LITE[name]) return;
+    ensureLayer(); sizeCanvas();
+    st.inst = lite(name)({ layer: st.layer, canvas: st.canvas });
+    st.mounted = 'lite';
+    if (!(reducedMq && reducedMq.matches)) start();
+  }
+
   function apply(name) {
     if (!name || name === 'normal' || !/^[a-z]+$/.test(name)) name = null;
     if (name === st.name) return;
     teardown();
     st.name = name;
-    if (name && window.innerWidth >= MIN_WIDTH) load(name);
+    if (!name) return;
+    if (window.innerWidth >= MIN_WIDTH) load(name); else mountLite(name);
   }
 
+  // Crossing MIN_WIDTH swaps the full decoration for the light one and back.
   window.addEventListener('resize', function () {
     if (!st.name) return;
-    if (window.innerWidth < MIN_WIDTH) { if (st.mounted) teardown(); }
-    else if (!st.mounted) load(st.name);
+    var wide = window.innerWidth >= MIN_WIDTH;
+    if (wide && st.mounted === 'lite') { teardown(); load(st.name); }
+    else if (!wide && st.mounted && st.mounted !== 'lite') { teardown(); mountLite(st.name); }
+    else if (!st.mounted) { if (wide) load(st.name); else mountLite(st.name); }
     else sizeCanvas();
   });
   document.addEventListener('visibilitychange', function () { if (document.hidden) pause(); else start(); });
