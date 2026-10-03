@@ -80,6 +80,19 @@ ThemeDecor.register('diwali', function (d) {
     '<path d="M30 44 L32.6 50 L39 50.4 L34 54.4 L35.8 60.6 L30 57 L24.2 60.6 L26 54.4 L21 50.4 L27.4 50 Z" fill="#FFF7C2" stroke="#F59E0B" stroke-width=".8"/>' +
     '<path d="M18 82 H42 L38 88 H22 Z" fill="#F5C518" stroke="#B45309" stroke-width=".8"/>' + tassels + '</svg>', 'td-lantern td-drag');
 
+  // Three more kandils along the top, in other colours and sizes, swinging out of step.
+  [[0.30, 34, '#22C55E', '#0EA5E9', '#1D4ED8', 1.8], [0.52, 30, '#FDE047', '#F97316', '#DC2626', 2.6], [0.64, 38, '#F472B6', '#A855F7', '#6D28D9', 2.2]].forEach(function (k, n) {
+    var el = d.svg('<svg viewBox="0 0 60 130" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<linearGradient id="tdKandil' + n + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + k[2] + '"/><stop offset=".5" stop-color="' + k[3] + '"/><stop offset="1" stop-color="' + k[4] + '"/></linearGradient></defs>' +
+      '<path d="M30 0 V18" stroke="#7C2D12" stroke-width="1.5"/>' +
+      '<path d="M22 18 H38 L42 24 H18 Z" fill="#F5C518" stroke="#B45309" stroke-width=".8"/>' +
+      '<path d="M18 24 H42 L52 44 V62 L42 82 H18 L8 62 V44 Z" fill="url(#tdKandil' + n + ')" stroke="#F5C518" stroke-width="1.4"/>' +
+      '<ellipse class="td-lglow" cx="30" cy="53" rx="16" ry="20" fill="url(#tdKandilGlow)"/>' +
+      '<path d="M30 24 V82 M18 24 L22 82 M42 24 L38 82" stroke="#F5C518" stroke-width=".8" opacity=".7"/><path d="M8 53 H52" stroke="#F5C518" stroke-width="2"/>' +
+      '<path d="M18 82 H42 L38 88 H22 Z" fill="#F5C518" stroke="#B45309" stroke-width=".8"/>' + tassels + '</svg>', 'td-lantern td-lantern-' + (n + 2) + ' td-drag');
+    el.style.cssText += ';right:auto;left:' + (k[0] * 100) + '%;width:' + k[1] + 'px;animation-duration:' + k[5] + 's';
+  });
+
   // Six children running about along the foot of the page (between the diyas and the chatbot), now
   // and then one stops and lobs a cartoon bomb at another; it homes in on where that child has run,
   // bursts with a puff of smoke, and the child is left soot-black with hair on end — and both laugh,
@@ -123,7 +136,7 @@ ThemeDecor.register('diwali', function (d) {
     say.textContent = 'हा हा हा!';
     el.appendChild(say);
     strip.appendChild(el);
-    return { el: el, x: (i + 0.5) / LOOKS.length, to: Math.random(), sp: d.rand(.10, .18), dir: 1, hold: 0, sooty: 0, panic: 0 };
+    return { el: el, x: (i + 0.5) / LOOKS.length, to: Math.random(), sp: d.rand(.035, .06), dir: 1, hold: 0, sooty: 0, panic: 0 };
   });
   var kidTimers = [], bombs = [], smoke = [], kparts = [], fountains = [], throwIn = 1.2;
   function stripBox() { var r = strip.getBoundingClientRect(), b = d.layer.getBoundingClientRect(); return { x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height }; }
@@ -213,7 +226,7 @@ ThemeDecor.register('diwali', function (d) {
         if (k.hold > 0) k.hold -= dt;
         else {
           var dx = k.to - k.x;
-          var sp = k.sp * (k.panic > 0 ? 3 : 1);
+          var sp = k.sp * (k.panic > 0 ? 2.5 : 1);
           if (k.panic > 0) k.panic -= dt;
           if (Math.abs(dx) < 0.01) k.to = Math.random();
           else { k.dir = dx > 0 ? 1 : -1; k.x += Math.max(-sp * dt, Math.min(sp * dt, dx)); }
@@ -224,7 +237,7 @@ ThemeDecor.register('diwali', function (d) {
       k.el.style.transform = 'translateX(' + (k.x * (s.w - 46)).toFixed(1) + 'px)';
       k.el.firstChild.style.transform = 'scaleX(' + k.dir + ')';
     }
-    if (!still && (throwIn -= dt) <= 0) { lob(); throwIn = d.rand(1.2, 2); }
+    if (!still && (throwIn -= dt) <= 0) { lob(); throwIn = d.rand(2, 3.2); }
     // crackers in flight: each steers to where its target child is now
     for (i = bombs.length - 1; i >= 0; i--) {
       var q = bombs[i]; q.t += dt;
@@ -263,6 +276,19 @@ ThemeDecor.register('diwali', function (d) {
   var fw = d.fireworks({ colors: ['#FFC107', '#FF7043', '#E91E63', '#66BB6A', '#FFFFFF', '#AB47BC'], gap: [0.8, 1.6] });
   var fw2 = d.fireworks({ colors: ['#38BDF8', '#FDE047', '#F472B6', '#A3E635', '#FB923C'], gap: [1.1, 2.2] });
   var sparkles = [], sparkIn = 0;
+  // Sky lanterns (kandils let go) rising slowly across the sky, flickering.
+  var floaters = [];
+  for (var fi = 0; fi < 7; fi++) floaters.push({ x: Math.random(), y: Math.random(), vy: d.rand(10, 18), ph: d.rand(0, 6.28), s: d.rand(.7, 1.2) });
+  function floatLantern(ctx, x, y, s, fl) {
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+    var g = ctx.createRadialGradient(0, 2, 0, 0, 2, 22);
+    g.addColorStop(0, 'rgba(255,214,102,' + (0.45 * fl).toFixed(2) + ')'); g.addColorStop(1, 'rgba(255,152,0,0)');
+    ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 2, 22, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = 'rgba(249,115,22,' + (0.75 + 0.2 * fl).toFixed(2) + ')';
+    ctx.beginPath(); ctx.moveTo(-7, -9); ctx.lineTo(7, -9); ctx.lineTo(9, 9); ctx.lineTo(-9, 9); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,247,194,' + (0.6 + 0.3 * fl).toFixed(2) + ')'; ctx.beginPath(); ctx.ellipse(0, 6, 3, 2, 0, 0, 6.2832); ctx.fill();
+    ctx.restore();
+  }
   function star(ctx, x, y, r) {
     ctx.beginPath();
     ctx.moveTo(x, y - r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.quadraticCurveTo(x, y, x, y + r);
@@ -274,6 +300,12 @@ ThemeDecor.register('diwali', function (d) {
     frame: function (ctx, dt, w, h) {
       var busy = fw.frame(ctx, dt, w, h);
       fw2.frame(ctx, dt, w, h);
+      for (var fj = 0; fj < floaters.length; fj++) {
+        var fo = floaters[fj];
+        fo.y -= (fo.vy * dt) / h;
+        if (fo.y < -0.06) { fo.y = 1.06; fo.x = Math.random(); }
+        floatLantern(ctx, fo.x * w + Math.sin(Date.now() / 1500 + fo.ph) * 20, fo.y * h, fo.s, 0.7 + 0.3 * Math.sin(Date.now() / 200 + fo.ph));
+      }
       kidsFrame(ctx, dt); busy = true;
       sparkIn -= dt;
       if (sparkIn <= 0 && sparkles.length < 18) {
