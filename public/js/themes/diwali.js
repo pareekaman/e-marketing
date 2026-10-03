@@ -196,6 +196,7 @@ ThemeDecor.register('diwali', function (d) {
   // What each cracker does to the child it reaches.
   function hit(q, at, s) {
     var tg = q.at, by = q.by;
+    if (ThemeDecor.sound) ThemeDecor.sound(q.kind === 'bomb' || q.kind === 'rocket' ? 'pop' : 'whoosh', 0.35);
     if (q.kind === 'bomb') {          // blackened with soot, hair on end, laughing
       sparks(at.x, at.y, 70, 200, ['#FFFFFF', '#FDE047', '#F97316', '#DC2626']);
       for (var m = 0; m < 6; m++) smoke.push({ x: at.x + d.rand(-10, 10), y: at.y + d.rand(-8, 8), r: d.rand(8, 14), life: 1, vy: d.rand(-30, -15) });
@@ -297,6 +298,7 @@ ThemeDecor.register('diwali', function (d) {
       }
     }
     flashes.push({ x: r.x, y: r.y, life: 1, c: r.c });
+    if (ThemeDecor.sound) ThemeDecor.sound('bang', 0.18);
   }
   var flashes = [];
   // A sky-shot box on the ground by the diyas. Every half minute it fires a round: twelve shots one

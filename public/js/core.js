@@ -224,6 +224,16 @@ function syncThemeToggle() {
     const on = b.dataset.mode === _themeMode;
     b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
   });
+  const snd = document.getElementById('themeSoundBtn');
+  if (snd && window.ThemeDecor && ThemeDecor.soundOn) {
+    const on = ThemeDecor.soundOn();
+    snd.textContent = on ? '🔊' : '🔇'; snd.setAttribute('aria-pressed', on); snd.style.display = _themeOff ? 'none' : '';
+  }
+}
+function toggleFestSound() {
+  if (!window.ThemeDecor || !ThemeDecor.setSound) return;
+  ThemeDecor.setSound(!ThemeDecor.soundOn());
+  syncThemeToggle();
 }
 function useThemeMode(mode) {
   _themeMode = mode; _themeOff = mode === 'off';

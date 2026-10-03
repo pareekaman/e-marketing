@@ -57,6 +57,55 @@
   // A click anywhere on the page under a festival theme throws off a little burst in the theme's
   // own way: sparks for Diwali and Dussehra, a puff of gulal for Holi, snowflakes for Christmas and
   // Shivratri, petals for the rest. The click itself goes through untouched; typing fields are left out.
+  // Sounds, made here with Web Audio (no files), off until the person turns them on (the 🔊 button
+  // by the dashboard switch; kept per browser). sound(kind, vol): pop, bang, whoosh, chime, bell, flute.
+  var soundOn = false, actx = null, lastBang = 0;
+  try { soundOn = localStorage.getItem('festSound') === '1'; } catch (e) {}
+  function audio() {
+    if (!actx) { var C = window.AudioContext || window.webkitAudioContext; if (!C) return null; actx = new C(); }
+    if (actx.state === 'suspended') actx.resume();
+    return actx;
+  }
+  function noise(ac, dur) {
+    var b = ac.createBuffer(1, Math.max(1, Math.floor(ac.sampleRate * dur)), ac.sampleRate), d = b.getChannelData(0);
+    for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    var n = ac.createBufferSource(); n.buffer = b; return n;
+  }
+  function env(ac, g, t, peak, a, dec) {
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + dec);
+  }
+  function tone(ac, out, freq, t, type, peak, dec, vib) {
+    var o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (vib) { var l = ac.createOscillator(), lg = ac.createGain(); l.frequency.value = 5.5; lg.gain.value = freq * 0.012; l.connect(lg); lg.connect(o.frequency); l.start(t); l.stop(t + dec + 0.1); }
+    env(ac, g, t, peak, 0.01, dec); o.connect(g); g.connect(out); o.start(t); o.stop(t + dec + 0.05);
+  }
+  function sound(kind, vol) {
+    if (!soundOn) return;
+    var ac = audio(); if (!ac) return;
+    var t = ac.currentTime, out = ac.createGain(); out.gain.value = vol == null ? 0.5 : vol; out.connect(ac.destination);
+    var n, fl, g;
+    if (kind === 'pop' || kind === 'bang') {
+      var big = kind === 'bang';
+      n = noise(ac, big ? 0.6 : 0.15); fl = ac.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = big ? 900 : 3200;
+      g = ac.createGain(); env(ac, g, t, big ? 0.9 : 0.7, 0.003, big ? 0.55 : 0.12);
+      n.connect(fl); fl.connect(g); g.connect(out); n.start(t);
+      if (big) tone(ac, out, 70, t, 'sine', 0.8, 0.4);
+    } else if (kind === 'whoosh') {
+      n = noise(ac, 0.5); fl = ac.createBiquadFilter(); fl.type = 'bandpass'; fl.Q.value = 1.2;
+      fl.frequency.setValueAtTime(400, t); fl.frequency.exponentialRampToValueAtTime(2400, t + 0.35);
+      g = ac.createGain(); env(ac, g, t, 0.5, 0.08, 0.35); n.connect(fl); fl.connect(g); g.connect(out); n.start(t);
+    } else if (kind === 'chime') {
+      [1318, 1975].forEach(function (fq, i) { tone(ac, out, fq, t + i * 0.06, 'sine', 0.25, 0.8); });
+    } else if (kind === 'bell') {
+      [520, 1300, 2100].forEach(function (fq, i) { tone(ac, out, fq, t, 'sine', [0.35, 0.15, 0.08][i], 1.6 - i * 0.4); });
+    } else if (kind === 'flute') {
+      var notes = [587, 659, 784], fq = notes[Math.floor(Math.random() * notes.length)];
+      tone(ac, out, fq, t, 'sine', 0.3, 0.7, true); tone(ac, out, fq * 2, t, 'sine', 0.05, 0.6);
+    }
+  }
+  var TAP_SOUND = { spark: 'pop', gulal: 'whoosh', snow: 'chime' };
+  var THEME_SOUND = { janmashtami: 'flute', shivratri: 'bell', navratri: 'bell', ganesh: 'bell', ramnavami: 'bell', mahavir: 'bell', chhath: 'bell' };
   var taps = [];
   var TAP_KIND = { diwali: 'spark', dussehra: 'spark', holi: 'gulal', christmas: 'snow', shivratri: 'snow' };
   document.addEventListener('pointerdown', function (e) {
@@ -69,6 +118,7 @@
                   decay: kind === 'spark' ? rand(1.6, 2.4) : rand(1, 1.5), r: kind === 'gulal' ? rand(4, 9) : rand(2, 4), rot: rand(0, 6.28),
                   c: pick(kind === 'spark' ? ['#FFFFFF', '#FDE047', '#F97316', '#FB923C'] : cols), k: kind });
     }
+    sound(THEME_SOUND[st.name] || TAP_SOUND[kind] || 'chime', 0.45);
     if (!st.raf) start();
   }, { passive: true });
   function drawTaps(ctx, dt) {
@@ -336,6 +386,10 @@
   document.addEventListener('DOMContentLoaded', function () { apply(document.documentElement.getAttribute('data-theme')); });
 
   window.ThemeDecor = { register: function (name, factory) { registry[name] = factory; }, apply: apply, setLite: setLite,
+    // sounds for the themes' own effects (a burst in the sky, a cracker landing); bangs at most every 0.25 s
+    sound: function (kind, vol) { if (kind === 'bang') { var now = Date.now(); if (now - lastBang < 250) return; lastBang = now; } sound(kind, vol); },
+    soundOn: function () { return soundOn; },
+    setSound: function (on) { soundOn = !!on; try { localStorage.setItem('festSound', on ? '1' : '0'); } catch (e) {} if (on) sound('chime', 0.4); },
     // the greeting (emoji, words, two colours) for a theme, for other parts of the app to use
     greeting: function (name) { var g = LITE[name]; return g ? { e: g.e, t: g.t, c: g.c } : null; } };
 })();

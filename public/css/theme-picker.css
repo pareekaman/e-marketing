@@ -128,3 +128,6 @@
 .fest-name-hello:has(small) { border-radius:22px; text-align:center; }
 /* on a desktop (Lite chosen) the badge starts clear of the 60px sidebar */
 @media (min-width:768px) { .td-lite { left:72px; bottom:16px; } }
+
+/* the sound button at the end of the dashboard switch */
+.theme-toggle button.tt-sound { margin-left:2px; padding:5px 8px; font-size:14px; border-left:1px solid #e2e8f0; border-radius:0 999px 999px 0; }
