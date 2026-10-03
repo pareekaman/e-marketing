@@ -10,7 +10,10 @@ ThemeDecor.register('shivratri', function (d) {
   var shiva =
     '<svg viewBox="0 0 200 220" xmlns="http://www.w3.org/2000/svg"><defs>' +
     '<linearGradient id="svSkin" gradientUnits="userSpaceOnUse" x1="60" y1="30" x2="140" y2="200"><stop offset="0" stop-color="#B7D0EA"/><stop offset="1" stop-color="#5F86B5"/></linearGradient>' +
-    '<radialGradient id="svHalo"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".55" stop-color="#C7D2FE" stop-opacity=".7"/><stop offset="1" stop-color="#6366F1" stop-opacity="0"/></radialGradient></defs>' +
+    '<radialGradient id="svHalo"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".55" stop-color="#C7D2FE" stop-opacity=".7"/><stop offset="1" stop-color="#6366F1" stop-opacity="0"/></radialGradient>' +
+    '<radialGradient id="svFaceLit" cx=".38" cy=".36" r=".72"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".4"/><stop offset=".55" stop-color="#FFFFFF" stop-opacity="0"/><stop offset="1" stop-color="#1E3A66" stop-opacity=".35"/></radialGradient>' +
+    '<linearGradient id="svLit" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".3"/><stop offset=".5" stop-color="#FFFFFF" stop-opacity="0"/><stop offset="1" stop-color="#1E3A66" stop-opacity=".3"/></linearGradient></defs>' +
+    '<ellipse cx="100" cy="212" rx="78" ry="6" fill="#000" opacity=".25"/>' +
     '<circle cx="100" cy="66" r="58" fill="url(#svHalo)"/>' +
     // the trishul planted beside him with its damru tied on
     '<path d="M168 214 V24" stroke="#78350F" stroke-width="3.4" stroke-linecap="round"/>' +
@@ -23,9 +26,13 @@ ThemeDecor.register('shivratri', function (d) {
     // crossed legs, the soles turned up, a white dhoti over them
     '<path d="M44 182 Q60 160 100 166 Q140 160 156 182 Q130 194 100 190 Q70 194 44 182 Z" fill="url(#svSkin)" stroke="' + DEEP + '" stroke-width="1"/>' +
     '<path d="M62 174 Q100 184 138 174 Q140 162 100 160 Q60 162 62 174 Z" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>' +
+    '<path d="M76 166 Q80 174 78 180 M90 163 Q93 172 92 182 M110 163 Q107 172 108 182 M124 166 Q120 174 122 180" fill="none" stroke="#94A3B8" stroke-width=".9" stroke-opacity=".7"/>' +
+    '<path d="M44 182 Q60 160 100 166 Q140 160 156 182 Q130 194 100 190 Q70 194 44 182 Z" fill="url(#svLit)"/>' +
     '<ellipse cx="74" cy="176" rx="7" ry="4" fill="#F9A8D4" opacity=".8"/><ellipse cx="126" cy="176" rx="7" ry="4" fill="#F9A8D4" opacity=".8"/>' +
     // torso, ash stripes on the arms, rudraksha strings, the hands resting on the knees in dhyana mudra
     '<path d="M72 90 Q100 80 128 90 L130 162 L70 162 Z" fill="url(#svSkin)" stroke="' + DEEP + '" stroke-width="1"/>' +
+    '<path d="M72 90 Q100 80 128 90 L130 162 L70 162 Z" fill="url(#svLit)"/>' +
+    '<path d="M84 104 Q92 110 99 106 M101 106 Q108 110 116 104 M100 130 V140" fill="none" stroke="' + DEEP + '" stroke-opacity=".3" stroke-width="1.1" stroke-linecap="round"/>' +
     '<path d="M86 118 Q100 124 114 118" fill="none" stroke="' + DEEP + '" stroke-opacity=".35" stroke-width="1.2"/>' +
     '<path d="M74 92 L54 132 L66 168 M126 92 L146 132 L134 168" fill="none" stroke="url(#svSkin)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<path d="M57 120 l6 3 M58 125 l6 3 M143 120 l-6 3 M142 125 l-6 3" stroke="#F8FAFC" stroke-width="1.3"/>' +
@@ -43,7 +50,12 @@ ThemeDecor.register('shivratri', function (d) {
     '<path d="M130 70 V74 M130 74 l-1.4 2 M130 74 l1.4 2" stroke="#DC2626" stroke-width=".8"/></g>' +
     // head: face with eyes closed, the third eye, tripundra of ash, a red tilak, earrings
     '<path d="M80 66 Q76 92 92 98 L108 98 Q124 92 120 66 Z" fill="#3F2A1A"/>' +
+    '<path d="M93 82 V92 Q100 96 107 92 V82 Z" fill="#5F86B5"/>' +
+    '<ellipse cx="82.4" cy="68" rx="3" ry="5" fill="#8FB3D9" stroke="' + DEEP + '" stroke-width=".8"/><ellipse cx="117.6" cy="68" rx="3" ry="5" fill="#7A9FC9" stroke="' + DEEP + '" stroke-width=".8"/>' +
     '<ellipse cx="100" cy="66" rx="18" ry="20" fill="url(#svSkin)" stroke="' + DEEP + '" stroke-width="1"/>' +
+    '<ellipse cx="100" cy="66" rx="18" ry="20" fill="url(#svFaceLit)"/>' +
+    '<path d="M100 66 Q98 74 99 76 Q100.5 77 102 76" fill="none" stroke="' + DEEP + '" stroke-opacity=".6" stroke-width="1" stroke-linecap="round"/>' +
+    '<ellipse cx="90" cy="76" rx="3" ry="1.8" fill="#F9A8D4" opacity=".35"/><ellipse cx="110" cy="76" rx="3" ry="1.8" fill="#F9A8D4" opacity=".35"/>' +
     '<path d="M89 70 Q93 73 97 70 M103 70 Q107 73 111 70" fill="none" stroke="#1C1917" stroke-width="1.5" stroke-linecap="round"/>' +
     '<path d="M88 64 Q93 61 97 64 M103 64 Q107 61 112 64" fill="none" stroke="#1C1917" stroke-width="1.3" stroke-linecap="round"/>' +
     '<path d="M86 54 H114 M87 57 H113 M88 60 H112" stroke="#F8FAFC" stroke-width="1.3" stroke-linecap="round"/>' +
@@ -64,7 +76,8 @@ ThemeDecor.register('shivratri', function (d) {
   var linga =
     '<svg viewBox="0 0 200 170" xmlns="http://www.w3.org/2000/svg"><defs>' +
     '<linearGradient id="svStone" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1F2937"/><stop offset=".45" stop-color="#4B5563"/><stop offset="1" stop-color="#111827"/></linearGradient>' +
-    '<linearGradient id="svBrass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FDE68A"/><stop offset="1" stop-color="#B45309"/></linearGradient></defs>' +
+    '<linearGradient id="svBrass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FDE68A"/><stop offset="1" stop-color="#B45309"/></linearGradient>' +
+    '<linearGradient id="svNandiLit" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".5"/><stop offset=".5" stop-color="#FFFFFF" stop-opacity="0"/><stop offset="1" stop-color="#374151" stop-opacity=".35"/></linearGradient></defs>' +
     // the stand and the kalash with its pierced base
     '<path d="M150 10 V20 M150 10 H112 V18" fill="none" stroke="#78350F" stroke-width="3" stroke-linecap="round"/>' +
     '<path d="M100 20 Q98 46 112 50 Q126 46 124 20 Z" fill="url(#svBrass)" stroke="#92400E" stroke-width="1"/>' +
@@ -85,12 +98,17 @@ ThemeDecor.register('shivratri', function (d) {
     // Nandi seated before the shivling, gazing at it
     '<g class="sv-nandi">' +
     '<path d="M2 152 Q4 128 30 126 Q52 126 56 146 Q58 160 46 162 L8 162 Q0 160 2 152 Z" fill="#E5E7EB" stroke="#6B7280" stroke-width="1.2"/>' +
+    '<path d="M2 152 Q4 128 30 126 Q52 126 56 146 Q58 160 46 162 L8 162 Q0 160 2 152 Z" fill="url(#svNandiLit)"/>' +
+    '<path d="M10 162 Q12 154 22 156 Q30 158 28 162 Z" fill="#D1D5DB" stroke="#6B7280" stroke-width=".9"/><path d="M12 162 h4" stroke="#374151" stroke-width="1.6"/>' +
     '<path d="M20 128 Q24 118 32 126" fill="#E5E7EB" stroke="#6B7280" stroke-width="1"/>' +
     '<path d="M26 136 H48 L50 152 H24 Z" fill="#B91C1C" stroke="#F5B70A" stroke-width="1.4"/>' +
     '<path d="M48 120 Q44 110 48 106 M62 120 Q66 110 62 106" fill="none" stroke="#A8A29E" stroke-width="3" stroke-linecap="round"/>' +
     '<path d="M46 122 Q55 116 64 122 Q66 138 58 144 Q55 146 52 144 Q44 138 46 122 Z" fill="#F3F4F6" stroke="#6B7280" stroke-width="1.2"/>' +
-    '<ellipse cx="55" cy="141" rx="6" ry="4" fill="#9CA3AF"/>' +
-    '<circle cx="51" cy="130" r="1.6" fill="#1C1917"/><circle cx="59" cy="130" r="1.6" fill="#1C1917"/>' +
+    '<path d="M46 122 Q55 116 64 122 Q66 138 58 144 Q55 146 52 144 Q44 138 46 122 Z" fill="url(#svNandiLit)"/>' +
+    '<path d="M46 124 Q38 122 36 127 Q41 129 47 128 Z M64 124 Q72 122 74 127 Q69 129 63 128 Z" fill="#E5E7EB" stroke="#6B7280" stroke-width=".9"/><path d="M45 126 Q40 126 38.5 127 M65 126 Q70 126 71.5 127" stroke="#F9A8D4" stroke-width="1.2" stroke-linecap="round"/>' +
+    '<ellipse cx="55" cy="141" rx="6" ry="4" fill="#9CA3AF"/><ellipse cx="52.6" cy="141" rx="1.1" ry="1.5" fill="#374151"/><ellipse cx="57.4" cy="141" rx="1.1" ry="1.5" fill="#374151"/>' +
+    '<ellipse cx="51" cy="130" rx="2.2" ry="1.8" fill="#fff" stroke="#6B7280" stroke-width=".4"/><ellipse cx="59" cy="130" rx="2.2" ry="1.8" fill="#fff" stroke="#6B7280" stroke-width=".4"/>' +
+    '<circle cx="51.3" cy="130.2" r="1.4" fill="#1C1917"/><circle cx="59.3" cy="130.2" r="1.4" fill="#1C1917"/><circle cx="51.8" cy="129.6" r=".45" fill="#fff"/><circle cx="59.8" cy="129.6" r=".45" fill="#fff"/>' +
     '<path d="M49 125 H61" stroke="#F8FAFC" stroke-width="1"/><circle cx="55" cy="127" r="1" fill="#DC2626"/>' +
     '<path d="M48 146 Q55 150 62 146" fill="none" stroke="#DC2626" stroke-width="1.6"/><path d="M53 149 Q55 146 57 149 L57 152 H53 Z" fill="#F5B70A"/>' +
     '</g></svg>';
