@@ -438,7 +438,7 @@ function loadUserPerms(userId) {
               ${pg.readOnly ? `<span class="acc-ro" title="This page has no editable data — there is nothing for Editor to grant.">read-only</span>` : ''}
             </div>
             ${pg.note ? `<div style="font-size:11px;color:#64748b;margin-top:2px">🔒 ${esc(pg.note)}</div>` : ''}
-            ${pg.page === 'clients' && !dim ? accClientsFirstHtml(u) : ''}
+            ${pg.page === 'clients' && !dim ? accClientsFirstHtml(u) + accBillingHtml(u.id, perms) : ''}
           </div>
         </div>
         <select onchange="onAccLevelChange(${userId},'${pg.page}',this.value)" ${pg.locked?'disabled':''}
@@ -464,6 +464,23 @@ function loadUserPerms(userId) {
 // Client Master: which department's clients this person sees at the top of
 // the list. A display preference, not access, so it saves on change by itself
 // rather than waiting for Done.
+// Billing Name is shown to a named few; this grants it to one more person.
+// Part of the saved permissions (Done), unlike the clients-first dropdown.
+function accBillingHtml(userId, perms) {
+  const on = (perms.actions || []).includes('billing_name');
+  return `<label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#64748b;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:500">
+    <input type="checkbox" ${on ? 'checked' : ''} onchange="accSetBilling(${userId},this.checked)" style="width:13px;height:13px;margin:0;accent-color:#4f46e5"/>
+    Can see and add Billing Name
+  </label>`;
+}
+function accSetBilling(userId, on) {
+  const p = _accPerms[userId] || { pages: [], actions: [] };
+  p.actions = p.actions.filter(k => k !== 'billing_name');
+  if (on) p.actions.push('billing_name');
+  _accPerms[userId] = p;
+  accSyncDirty(userId);
+}
+
 function accClientsFirstHtml(u) {
   const depts = [...new Set(_accUsers.map(x => x.department || '').filter(Boolean))].sort();
   const cur = u.cm_priority_dept || '';
