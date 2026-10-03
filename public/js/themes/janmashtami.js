@@ -82,7 +82,10 @@ ThemeDecor.register('janmashtami', function (d) {
 
   // Baby Krishna sitting with his pot of butter, a hand going to his mouth (.jm-eat), butter on his cheek.
   var baby =
-    '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">' +
+    '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg"><defs>' +
+    '<radialGradient id="jmBabyF" cx=".38" cy=".35" r=".75"><stop offset="0" stop-color="#8CBBEA"/><stop offset=".6" stop-color="' + SKIN + '"/><stop offset="1" stop-color="#2F64A8"/></radialGradient>' +
+    '<linearGradient id="jmBabyS" x1="0" y1="0" x2="1" y2=".3"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></linearGradient></defs>' +
+    '<ellipse cx="66" cy="113" rx="44" ry="3" fill="#000" opacity=".16"/>' +
     // the pot of butter, spilling over
     '<path d="M74 92 Q70 70 90 66 Q110 70 106 92 Q104 110 90 112 Q76 110 74 92 Z" fill="#C2410C" stroke="#7C2D12" stroke-width="1.2"/>' +
     '<path d="M80 72 H100" stroke="#7C2D12" stroke-width="2"/><path d="M78 80 Q90 86 102 80" fill="none" stroke="#FDE68A" stroke-width="1.2" stroke-dasharray="2 2"/>' +
@@ -92,14 +95,23 @@ ThemeDecor.register('janmashtami', function (d) {
     '<path d="M30 100 Q30 86 50 86 Q70 86 70 100 Q60 108 50 106 Q40 108 30 100 Z" fill="#FDE047" stroke="#CA8A04" stroke-width="1"/>' +
     '<ellipse cx="34" cy="106" rx="9" ry="5" fill="' + SKIN + '"/><ellipse cx="66" cy="106" rx="9" ry="5" fill="' + SKIN + '"/>' +
     '<path d="M28 106 h6 M68 106 h6" stroke="#F5B70A" stroke-width="2.4" stroke-linecap="round"/>' +
-    '<ellipse cx="50" cy="76" rx="18" ry="16" fill="' + SKIN + '" stroke="' + DEEP + '" stroke-width="1"/>' +
+    '<path d="M30 100 Q30 86 50 86 Q70 86 70 100 Q60 108 50 106 Q40 108 30 100 Z" fill="url(#jmBabyS)"/>' +
+    '<path d="M40 90 Q42 98 40 105 M50 89 V106 M60 90 Q58 98 60 105" fill="none" stroke="#CA8A04" stroke-width=".7" opacity=".6"/>' +
+    '<ellipse cx="34" cy="106" rx="9" ry="5" fill="url(#jmBabyS)"/><ellipse cx="66" cy="106" rx="9" ry="5" fill="url(#jmBabyS)"/>' +
+    '<path d="M26 107 q1.4 -2.4 2.8 0 M28.6 107 q1.4 -2.4 2.8 0 M68.6 107 q1.4 -2.4 2.8 0 M71.2 107 q1.4 -2.4 2.8 0" fill="none" stroke="' + DEEP + '" stroke-width=".5" opacity=".6"/>' +
+    '<ellipse cx="50" cy="76" rx="18" ry="16" fill="url(#jmBabyF)" stroke="' + DEEP + '" stroke-width="1"/>' +
+    '<path d="M49 74 q1 2 2 0" fill="none" stroke="' + DEEP + '" stroke-width=".8" opacity=".6"/>' +
     '<path d="M34 80 Q50 86 66 80" fill="none" stroke="#111827" stroke-width="1"/><circle cx="50" cy="85" r="1.8" fill="#DC2626"/>' +
     // one hand dipped in the pot, the other carrying butter up to his mouth
     '<path d="M64 72 L78 74" stroke="' + SKIN + '" stroke-width="7" stroke-linecap="round"/><circle cx="79" cy="74" r="4" fill="' + SKIN + '"/>' +
     '<g class="jm-eat"><path d="M36 72 L30 60 L42 50" fill="none" stroke="' + SKIN + '" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<circle cx="43" cy="49" r="4.2" fill="' + SKIN + '"/><circle cx="46" cy="47" r="3.4" fill="#FFFBEB"/></g>' +
     // head: curls, a little peacock feather, big eyes, butter on his cheek, a cheeky grin
-    '<circle cx="50" cy="38" r="20" fill="' + SKIN + '" stroke="' + DEEP + '" stroke-width="1"/>' +
+    '<path d="M44 56 h12 v4 h-12 Z" fill="#2F64A8"/>' +
+    '<ellipse cx="30.4" cy="40" rx="3.6" ry="5" fill="' + SKIN + '" stroke="' + DEEP + '" stroke-width=".8"/><ellipse cx="69.6" cy="40" rx="3.6" ry="5" fill="' + SKIN + '" stroke="' + DEEP + '" stroke-width=".8"/>' +
+    '<path d="M30.6 37.6 q-1.4 2.4 0 4.8 M69.4 37.6 q1.4 2.4 0 4.8" fill="none" stroke="' + DEEP + '" stroke-width=".6" opacity=".6"/>' +
+    '<circle cx="30.4" cy="45.4" r="1.4" fill="#F5B70A"/><circle cx="69.6" cy="45.4" r="1.4" fill="#F5B70A"/>' +
+    '<circle cx="50" cy="38" r="20" fill="url(#jmBabyF)" stroke="' + DEEP + '" stroke-width="1"/>' +
     '<path d="M30 34 Q30 16 50 16 Q70 16 70 34 Q64 24 56 26 Q50 20 44 26 Q36 24 30 34 Z" fill="#111827"/>' +
     '<circle cx="34" cy="26" r="4" fill="#111827"/><circle cx="66" cy="26" r="4" fill="#111827"/>' +
     '<path d="M42 18 Q50 12 58 18" fill="none" stroke="#F5B70A" stroke-width="2.6"/>' +
@@ -107,7 +119,9 @@ ThemeDecor.register('janmashtami', function (d) {
     '<ellipse cx="42" cy="38" rx="4" ry="4.6" fill="#fff"/><ellipse cx="58" cy="38" rx="4" ry="4.6" fill="#fff"/>' +
     '<circle cx="43" cy="39" r="2.4" fill="#111827"/><circle cx="59" cy="39" r="2.4" fill="#111827"/><circle cx="44" cy="38" r=".9" fill="#fff"/><circle cx="60" cy="38" r=".9" fill="#fff"/>' +
     '<path d="M50 24 V30" stroke="#FDE047" stroke-width="2.2"/>' +
-    '<path d="M44 48 Q50 54 56 48 Q50 51 44 48 Z" fill="#7F1D1D"/>' +
+    '<path d="M38 32.4 Q42 30 46 32 M54 32 Q58 30 62 32.4" fill="none" stroke="#111827" stroke-width="1.2" stroke-linecap="round"/>' +
+    '<path d="M50 41 Q48.6 44 50.6 44.6" fill="none" stroke="' + DEEP + '" stroke-width=".9" stroke-linecap="round"/>' +
+    '<path d="M44 48 Q50 55 56 48 Q50 50 44 48 Z" fill="#7F1D1D"/><path d="M45.4 48.6 Q50 49.8 54.6 48.6 L54 49.8 Q50 50.8 46 49.8 Z" fill="#fff"/>' +
     '<ellipse cx="60" cy="47" rx="3.4" ry="2.2" fill="#FFFBEB"/><ellipse cx="38" cy="46" rx="3" ry="1.8" fill="#F9A8D4" opacity=".6"/>' +
     '</svg>';
 
@@ -135,22 +149,42 @@ ThemeDecor.register('janmashtami', function (d) {
   // smashes the pot. Curd and marigolds fly, "हाथी घोड़ा पालकी, जय कन्हैया लाल की!" rings out, they
   // climb down, a new pot is hung, and it begins again. The scene is placed and sized inline, in a
   // 300 x 400 box; it is not draggable (it is large, and would take the clicks under it).
+  var gvN = 0; // gradient ids must be unique across the six govindas in the page
   function govinda(shirt, band, reach) {
+    var n = 'jmGv' + (gvN++), S = '<stop offset="', E = '"/>', SK = '#C68B59', SKD = '#9A6334';
+    var defs = '<defs><linearGradient id="' + n + 's" x1="0" y1="0" x2="1" y2=".3">' + S + '0" stop-color="#fff" stop-opacity=".3' + E + S + '.45" stop-color="#fff" stop-opacity="0' + E + S + '1" stop-color="#000" stop-opacity=".25' + E + '</linearGradient>' +
+      '<radialGradient id="' + n + 'f" cx=".38" cy=".35" r=".75">' + S + '0" stop-color="#E3AE7E' + E + S + '.6" stop-color="' + SK + E + S + '1" stop-color="' + SKD + E + '</radialGradient>' +
+      '<linearGradient id="' + n + 'l" x1="0" y1="0" x2="1" y2="0">' + S + '0" stop-color="#D9A270' + E + S + '1" stop-color="' + SKD + E + '</linearGradient></defs>';
     var arms = reach
-      ? '<path d="M17 34 L12 18 L16 4 M33 34 L38 18 L34 4" fill="none" stroke="#C68B59" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>'
-      : '<path d="M17 34 L2 32 M33 34 L48 32" stroke="#C68B59" stroke-width="5" stroke-linecap="round"/>';
-    return '<svg viewBox="0 0 50 90" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto;overflow:visible">' +
+      ? '<path d="M17 34 L12 18 L16 4 M33 34 L38 18 L34 4" fill="none" stroke="url(#' + n + 'l)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="M14 6 Q16 0.6 19 4.4 Q18.4 8 16 8 Z M36 6 Q34 0.6 31 4.4 Q31.6 8 34 8 Z" fill="' + SK + '" stroke="' + SKD + '" stroke-width=".5"/>'
+      : '<path d="M17 34 L2 32 M33 34 L48 32" stroke="url(#' + n + 'l)" stroke-width="5" stroke-linecap="round"/>' +
+        '<ellipse cx="1.4" cy="32" rx="3" ry="2.6" fill="' + SK + '" stroke="' + SKD + '" stroke-width=".5"/><ellipse cx="48.6" cy="32" rx="3" ry="2.6" fill="' + SK + '" stroke="' + SKD + '" stroke-width=".5"/>';
+    return '<svg viewBox="0 0 50 90" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto;overflow:visible">' + defs +
       arms +
-      '<path d="M19 66 L17 86 M31 66 L33 86" stroke="#C68B59" stroke-width="5.5" stroke-linecap="round"/>' +
-      '<path d="M15 86 h5 M30 86 h5" stroke="#3B2410" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M19 66 L17 86 M31 66 L33 86" stroke="url(#' + n + 'l)" stroke-width="5.5" stroke-linecap="round"/>' +
+      '<path d="M18 76 q1.6 1 3 0 M29.6 76 q1.6 1 3 0" fill="none" stroke="' + SKD + '" stroke-width=".6"/>' +
+      '<path d="M13 89 Q13.6 84.4 17 84.6 Q20.6 84.6 21 89 Z M29 89 Q29.4 84.6 33 84.6 Q36.4 84.4 37 89 Z" fill="#3B2410"/>' +
       '<path d="M16 58 H34 L35 70 H27 L25 64 L23 70 H15 Z" fill="#1E3A8A"/>' +
+      '<path d="M16 58 H34 L35 70 H27 L25 64 L23 70 H15 Z" fill="url(#' + n + 's)"/>' +
+      '<path d="M19 60 L18.4 69 M31 60 L31.6 69" stroke="#000" stroke-opacity=".2" stroke-width=".7"/>' +
+      '<path d="M22 28 h6 v5 h-6 Z" fill="' + SKD + '"/>' +
       '<path d="M15 32 Q25 28 35 32 L34 60 H16 Z" fill="' + shirt + '" stroke="rgba(0,0,0,.25)" stroke-width=".8"/>' +
-      '<path d="M25 32 V60" stroke="rgba(255,255,255,.5)" stroke-width="1" stroke-dasharray="2 2"/>' +
-      '<circle cx="25" cy="20" r="10" fill="#C68B59" stroke="#7C4A1E" stroke-width=".8"/>' +
+      '<path d="M15 32 Q25 28 35 32 L34 60 H16 Z" fill="url(#' + n + 's)"/>' +
+      '<path d="M21.4 31 Q25 35 28.6 31" fill="none" stroke="rgba(0,0,0,.3)" stroke-width=".8"/>' +
+      '<path d="M19 40 Q20 50 19 58 M31 40 Q30 50 31 58" fill="none" stroke="#000" stroke-opacity=".14" stroke-width=".8"/>' +
+      '<path d="M25 33 V60" stroke="rgba(255,255,255,.5)" stroke-width="1" stroke-dasharray="2 2"/>' +
+      '<ellipse cx="15.2" cy="21" rx="2" ry="2.8" fill="' + SK + '" stroke="#7C4A1E" stroke-width=".5"/><ellipse cx="34.8" cy="21" rx="2" ry="2.8" fill="' + SK + '" stroke="#7C4A1E" stroke-width=".5"/>' +
+      '<ellipse cx="25" cy="20" rx="9.4" ry="10" fill="url(#' + n + 'f)" stroke="#7C4A1E" stroke-width=".7"/>' +
       '<path d="M15 18 Q16 9 25 9 Q34 9 35 18 Q31 13 25 13 Q19 13 15 18 Z" fill="#1C1917"/>' +
       '<path d="M15 16 Q25 12 35 16" fill="none" stroke="' + band + '" stroke-width="3"/><path d="M35 16 l5 4 M35 16 l6 0" stroke="' + band + '" stroke-width="2" stroke-linecap="round"/>' +
-      '<path d="M21 21 q1.4 -1.4 2.8 0 M26.2 21 q1.4 -1.4 2.8 0" fill="none" stroke="#1C1917" stroke-width="1.1" stroke-linecap="round"/>' +
-      '<path d="M21 25 Q25 29 29 25 Q25 27 21 25 Z" fill="#7F1D1D"/>' +
+      '<path d="M15.4 17.4 Q25 13.6 34.6 17.4" fill="none" stroke="#000" stroke-opacity=".2" stroke-width=".7"/>' +
+      '<path d="M20.4 18.6 q1.8 -1 3.4 0 M26.2 18.6 q1.6 -1 3.4 0" fill="none" stroke="#1C1917" stroke-width=".8" stroke-linecap="round"/>' +
+      '<path d="M20.4 21 Q22.1 19.6 23.8 21 Q22.1 22.2 20.4 21 Z M26.2 21 Q27.9 19.6 29.6 21 Q27.9 22.2 26.2 21 Z" fill="#fff"/>' +
+      '<circle cx="22.3" cy="21" r=".95" fill="#3B2410"/><circle cx="27.9" cy="21" r=".95" fill="#3B2410"/><circle cx="22.6" cy="20.6" r=".3" fill="#fff"/><circle cx="28.2" cy="20.6" r=".3" fill="#fff"/>' +
+      '<path d="M25 21.6 Q24.2 23.6 25.6 24" fill="none" stroke="#7C4A1E" stroke-width=".6" stroke-linecap="round"/>' +
+      '<ellipse cx="19.8" cy="24.4" rx="1.6" ry="1" fill="#F87171" opacity=".35"/><ellipse cx="30.2" cy="24.4" rx="1.6" ry="1" fill="#F87171" opacity=".35"/>' +
+      '<path d="M21.4 25.4 Q25 29.4 28.6 25.4 Z" fill="#7F1D1D"/><path d="M22.2 25.6 H27.8 L27.4 26.4 H22.6 Z" fill="#fff"/>' +
       '</svg>';
   }
   var scene = document.createElement('div');
