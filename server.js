@@ -9690,6 +9690,7 @@ function _meetingMsgBody(action, meeting, clientName, organizerName, attendeeNam
   };
   const headline = action === 'created' ? '📅 *New Meeting Scheduled*'
                  : action === 'rescheduled' ? '🔄 *Meeting Rescheduled*'
+                 : action === 'updated' ? '✏️ *Meeting Updated*'
                  : action === 'reminder' ? `⏰ *${fmtTime12(meeting.start_time)} Meeting starts soon!*`
                  : '❌ *Meeting Cancelled*';
   // Client group sees only the essentials — no organizer / team / agenda / client name.
@@ -9742,7 +9743,7 @@ async function sendMeetingNotification(meetingId, action) {
     // no client-group fanout. Resolved by user id.
     const targetIds = new Set(atts.map(a => a.id));
     if (m.organizer_id) targetIds.add(m.organizer_id);
-    const subjectMap = { created: 'New Meeting Scheduled', rescheduled: 'Meeting Rescheduled', cancelled: 'Meeting Cancelled', reminder: 'Meeting Reminder' };
+    const subjectMap = { created: 'New Meeting Scheduled', rescheduled: 'Meeting Rescheduled', updated: 'Meeting Updated', cancelled: 'Meeting Cancelled', reminder: 'Meeting Reminder' };
     const subject = `${subjectMap[action] || 'Meeting Update'} — ${m.title || ''}`;
     const dmResults = [];
     for (const uid of targetIds) {

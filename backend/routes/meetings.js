@@ -221,16 +221,23 @@ app.put('/api/meetings/:id', requireAuth, async (req, res) => {
   try {
     const id = req.params.id;
     const { title, agenda, client_id, meeting_date, start_time, end_time, meet_link, attendee_ids } = req.body;
-    const [[existing]] = await db.query('SELECT organizer_id, meeting_date, start_time, end_time FROM meetings WHERE id=?', [id]);
+    // Formatted in SQL: the driver returns meeting_date as a JS Date, and
+    // String(Date).slice(0,10) ("Wed Sep 23") never equalled the form's
+    // "2026-09-23" — so every edit counted as a reschedule, reset the
+    // reminder and emailed everyone "Meeting Rescheduled".
+    const [[existing]] = await db.query(
+      `SELECT organizer_id, DATE_FORMAT(meeting_date,'%Y-%m-%d') AS meeting_date,
+              TIME_FORMAT(start_time,'%H:%i') AS start_time, TIME_FORMAT(end_time,'%H:%i') AS end_time
+         FROM meetings WHERE id=?`, [id]);
     if (!existing) return res.status(404).json({ error: 'not found' });
     // Only the organizer, or an admin — the role, or Scheduler at the "Admin"
     // level in Access Control (admin_meetings); userCanDo says yes to every admin.
     if (existing.organizer_id !== req.session.userId && !(await userCanDo(req.session, 'admin_meetings'))) {
       return res.status(403).json({ error: 'only organizer or admin can edit' });
     }
-    const rescheduled = (meeting_date && meeting_date !== String(existing.meeting_date).slice(0,10))
-                    || (start_time && start_time !== String(existing.start_time).slice(0,5))
-                    || (end_time   && end_time   !== String(existing.end_time).slice(0,5));
+    const rescheduled = (meeting_date && String(meeting_date).slice(0,10) !== existing.meeting_date)
+                    || (start_time && String(start_time).slice(0,5) !== existing.start_time)
+                    || (end_time   && String(end_time).slice(0,5)   !== existing.end_time);
     await db.query(
       `UPDATE meetings SET
          title=COALESCE(?,title), agenda=?, client_id=?,
@@ -248,7 +255,8 @@ app.put('/api/meetings/:id', requireAuth, async (req, res) => {
           values.flat());
       }
     }
-    sendMeetingNotification(id, rescheduled ? 'rescheduled' : 'created').catch(e => console.error('notify err:', e.message));
+    // An edit that keeps the date and time is an update, not a new meeting.
+    sendMeetingNotification(id, rescheduled ? 'rescheduled' : 'updated').catch(e => console.error('notify err:', e.message));
     res.json({ ok: true, rescheduled });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
