@@ -80,23 +80,42 @@ ThemeDecor.register('ganesh', function (d) {
   // A devotee beating a big dhol slung at his side (the sticks strike, .gc-beat), saffron cap,
   // a thali of modaks and a diya at his feet.
   var dhol =
-    '<svg viewBox="0 0 150 160" xmlns="http://www.w3.org/2000/svg">' +
-    '<path d="M48 150 L46 120 M64 150 L66 120" stroke="#C68B59" stroke-width="7" stroke-linecap="round"/>' +
-    '<path d="M44 152 h8 M62 152 h8" stroke="#3B2410" stroke-width="4" stroke-linecap="round"/>' +
+    '<svg viewBox="0 0 150 160" xmlns="http://www.w3.org/2000/svg"><defs>' +
+    '<radialGradient id="gcDvF" cx=".38" cy=".35" r=".75"><stop offset="0" stop-color="#E3AE7E"/><stop offset=".6" stop-color="#C68B59"/><stop offset="1" stop-color="#9A6334"/></radialGradient>' +
+    '<linearGradient id="gcDvL" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#D9A270"/><stop offset="1" stop-color="#9A6334"/></linearGradient>' +
+    '<linearGradient id="gcDvK" x1="0" y1="0" x2="1" y2=".3"><stop offset="0" stop-color="#fff" stop-opacity=".5"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#64748B" stop-opacity=".3"/></linearGradient></defs>' +
+    '<ellipse cx="86" cy="154" rx="62" ry="3.4" fill="#000" opacity=".16"/>' +
+    '<path d="M48 150 L46 120 M64 150 L66 120" stroke="url(#gcDvL)" stroke-width="7" stroke-linecap="round"/>' +
+    '<path d="M42 154 Q43 148 48 148.4 Q53 148.4 53.6 154 Z M60 154 Q60.4 148.4 65 148.4 Q70 148 70.6 154 Z" fill="#3B2410"/>' +
+    '<path d="M44 147 Q47 149.4 52 147 M61 147 Q64 149.4 69 147" fill="none" stroke="#F5B70A" stroke-width="1.2"/>' +
+    '<path d="M51 60 h10 v8 h-10 Z" fill="#9A6334"/>' +
     '<path d="M40 70 Q56 62 72 70 L74 122 H38 Z" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>' +
+    '<path d="M40 70 Q56 62 72 70 L74 122 H38 Z" fill="url(#gcDvK)"/>' +
+    '<path d="M46 80 Q47 100 44 120 M56 74 V121 M66 80 Q65 100 68 120" fill="none" stroke="#94A3B8" stroke-width=".8" opacity=".6"/>' +
+    '<path d="M50 67 Q56 72 62 67" fill="none" stroke="#CBD5E1" stroke-width="1"/>' +
     '<path d="M40 70 L72 116" stroke="#F97316" stroke-width="4"/>' +
-    '<circle cx="56" cy="50" r="13" fill="#C68B59" stroke="#7C4A1E" stroke-width="1"/>' +
-    '<path d="M43 46 Q56 32 69 46 Z" fill="#F97316"/><path d="M43 46 H69" stroke="#FACC15" stroke-width="2"/>' +
-    '<path d="M51 52 q2 -2 4 0 M58 52 q2 -2 4 0" fill="none" stroke="#1C1917" stroke-width="1.2" stroke-linecap="round"/>' +
-    '<path d="M50 58 Q56 64 62 58 Q56 61 50 58 Z" fill="#7F1D1D"/><path d="M56 40 v5" stroke="#DC2626" stroke-width="2"/>' +
+    '<ellipse cx="43.4" cy="52" rx="2.6" ry="3.6" fill="#C68B59" stroke="#7C4A1E" stroke-width=".7"/><ellipse cx="68.6" cy="52" rx="2.6" ry="3.6" fill="#C68B59" stroke="#7C4A1E" stroke-width=".7"/>' +
+    '<circle cx="56" cy="50" r="13" fill="url(#gcDvF)" stroke="#7C4A1E" stroke-width="1"/>' +
+    '<path d="M43.2 45 Q42.8 50 44.8 53 L46.4 46 Z M68.8 45 Q69.2 50 67.2 53 L65.6 46 Z" fill="#1C1917"/>' +
+    '<path d="M43 46 Q56 32 69 46 Z" fill="#F97316"/><path d="M43 46 Q56 32 69 46 Z" fill="url(#gcDvK)"/><path d="M43 46 H69" stroke="#FACC15" stroke-width="2"/>' +
+    '<path d="M50 49.4 q2.4 -1.4 4.4 0 M57.6 49.4 q2.4 -1.4 4.4 0" fill="none" stroke="#1C1917" stroke-width=".9" stroke-linecap="round"/>' +
+    '<path d="M50.2 52.6 Q52.4 50.8 54.6 52.6 Q52.4 54 50.2 52.6 Z M57.4 52.6 Q59.6 50.8 61.8 52.6 Q59.6 54 57.4 52.6 Z" fill="#fff"/>' +
+    '<circle cx="52.6" cy="52.5" r="1.2" fill="#3B2410"/><circle cx="59.8" cy="52.5" r="1.2" fill="#3B2410"/><circle cx="53" cy="52" r=".4" fill="#fff"/><circle cx="60.2" cy="52" r=".4" fill="#fff"/>' +
+    '<path d="M56 53.4 Q55 56 56.8 56.6" fill="none" stroke="#7C4A1E" stroke-width=".8" stroke-linecap="round"/>' +
+    '<ellipse cx="49" cy="57" rx="2.2" ry="1.3" fill="#F87171" opacity=".35"/><ellipse cx="63" cy="57" rx="2.2" ry="1.3" fill="#F87171" opacity=".35"/>' +
+    '<path d="M51 58.4 Q56 64 61 58.4 Z" fill="#7F1D1D"/><path d="M52 58.6 H60 L59.4 59.8 H52.6 Z" fill="#fff"/><path d="M56 40 v5" stroke="#DC2626" stroke-width="2"/>' +
     // the dhol, a barrel drum with laced heads, slung across him
     '<path d="M70 86 Q72 72 100 72 Q128 72 130 86 V108 Q128 122 100 122 Q72 122 70 108 Z" fill="#B91C1C" stroke="#7F1D1D" stroke-width="1.2"/>' +
     '<ellipse cx="70" cy="97" rx="6" ry="25" fill="#FEF3C7" stroke="#92400E" stroke-width="1.4"/><ellipse cx="130" cy="97" rx="6" ry="25" fill="#FEF3C7" stroke="#92400E" stroke-width="1.4"/>' +
     '<path d="M74 76 L126 118 M74 118 L126 76 M88 72 L112 122 M112 72 L88 122" stroke="#F5B70A" stroke-width="1" opacity=".8"/>' +
     '<path d="M44 72 Q76 66 100 72" fill="none" stroke="#7C2D12" stroke-width="2"/>' +
     // arms with sticks striking both heads
-    '<g class="gc-beat gc-beat-l"><path d="M44 76 L42 98 L60 98" fill="none" stroke="#C68B59" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="M60 98 L72 88" stroke="#78350F" stroke-width="3" stroke-linecap="round"/></g>' +
-    '<g class="gc-beat gc-beat-r"><path d="M70 74 L104 64 L130 72" fill="none" stroke="#C68B59" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="M130 72 L140 90" stroke="#78350F" stroke-width="3" stroke-linecap="round"/></g>' +
+    '<g class="gc-beat gc-beat-l"><path d="M44 76 L42 98 L60 98" fill="none" stroke="url(#gcDvL)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="M60 98 L72 88" stroke="#78350F" stroke-width="3" stroke-linecap="round"/>' +
+    '<path d="M44 76 L43 86" stroke="#fff" stroke-width="8" stroke-linecap="round"/><path d="M44 76 L43 86" stroke="#CBD5E1" stroke-width="8" stroke-opacity=".4" stroke-linecap="round"/>' +
+    '<ellipse cx="60.4" cy="97.6" rx="3.6" ry="3.2" fill="#C68B59" stroke="#7C4A1E" stroke-width=".6"/></g>' +
+    '<g class="gc-beat gc-beat-r"><path d="M70 74 L104 64 L130 72" fill="none" stroke="url(#gcDvL)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="M130 72 L140 90" stroke="#78350F" stroke-width="3" stroke-linecap="round"/>' +
+    '<path d="M70 74 L82 70.6" stroke="#fff" stroke-width="8" stroke-linecap="round"/><path d="M70 74 L82 70.6" stroke="#CBD5E1" stroke-width="8" stroke-opacity=".4" stroke-linecap="round"/>' +
+    '<ellipse cx="130.4" cy="72.6" rx="3.6" ry="3.2" fill="#C68B59" stroke="#7C4A1E" stroke-width=".6"/></g>' +
     // the thali of modaks and a diya at his feet
     '<ellipse cx="112" cy="148" rx="26" ry="6" fill="url(#gcThali)" stroke="#B45309" stroke-width="1"/>' +
     '<defs><linearGradient id="gcThali" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FDE68A"/><stop offset="1" stop-color="#D97706"/></linearGradient></defs>' +
