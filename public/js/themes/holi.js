@@ -91,6 +91,111 @@ ThemeDecor.register('holi', function (d) {
     return { vx: (b.x - a.x) / tf, vy: (b.y - a.y) / tf - 0.5 * g * tf };
   }
 
+  // Holika Dahan, told before the colours each round (story clock S, seconds):
+  //   0     Holika sits on the pyre with little Prahlad in her lap; he prays "नारायण… नारायण…"
+  //   2.2   she gloats; 3.4 the pyre is lit and the fire climbs
+  //   6.2   a gust lifts her fire-proof chunri off her and wraps it round Prahlad
+  //   7.4   Holika burns away to ash; Prahlad, untouched, glows gold
+  //   11    the fire sinks and the wish appears; 15.5 the scene fades and the children play
+  // Under reduced motion the ending is shown, still: Prahlad safe under the chunri.
+  function hkSvg() {
+    var s = '<svg viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">' +
+      // the pyre: crossed logs and cow-dung cakes
+      '<g>' + [[14, 150, 146, 128], [14, 128, 146, 150], [24, 140, 136, 118], [24, 118, 136, 140]].map(function (l) {
+        return '<path d="M' + l[0] + ' ' + l[1] + ' L' + l[2] + ' ' + l[3] + '" stroke="#78350F" stroke-width="7" stroke-linecap="round"/>' +
+               '<path d="M' + l[0] + ' ' + (l[1] - 1.5) + ' L' + l[2] + ' ' + (l[3] - 1.5) + '" stroke="#A16207" stroke-width="2" stroke-linecap="round" opacity=".6"/>';
+      }).join('') +
+      '<circle cx="40" cy="146" r="5" fill="#57534E"/><circle cx="120" cy="146" r="5" fill="#57534E"/><circle cx="80" cy="150" r="5" fill="#44403C"/></g>' +
+      // Holika, seated: dark red-and-black saree, a cruel smile, gold jewellery
+      '<g class="hk-holika">' +
+        '<path d="M44 118 Q46 86 62 74 L98 74 Q114 86 116 118 Z" fill="#7F1D1D"/>' +
+        '<path d="M50 118 Q80 104 110 118" stroke="#111" stroke-width="5" fill="none"/>' +
+        '<path d="M62 74 Q60 52 70 46 L90 46 Q100 52 98 74 Z" fill="#991B1B"/>' +
+        '<path d="M64 60 L96 70" stroke="#FACC15" stroke-width="2"/>' +
+        '<rect x="76" y="34" width="8" height="10" fill="#A16207"/>' +
+        '<circle cx="80" cy="26" r="12" fill="#A16207" stroke="#3B2410" stroke-width=".8"/>' +
+        '<path d="M67 26 Q66 10 80 11 Q94 10 93 26 Q90 17 80 17 Q70 17 67 26 Z" fill="#0C0A09"/><circle cx="80" cy="9" r="5" fill="#0C0A09"/>' +
+        '<path d="M73 23 L78 25 M87 23 L82 25" stroke="#0C0A09" stroke-width="1.6" stroke-linecap="round"/>' +
+        '<circle cx="75.5" cy="27" r="1.3" fill="#111"/><circle cx="84.5" cy="27" r="1.3" fill="#111"/>' +
+        '<path d="M74 32 Q80 37 86 32" stroke="#7F1D1D" stroke-width="1.6" fill="none"/>' +
+        '<circle cx="80" cy="20.5" r="1.3" fill="#DC2626"/><circle cx="68.5" cy="30" r="1.6" fill="#FACC15"/><circle cx="91.5" cy="30" r="1.6" fill="#FACC15"/>' +
+      '</g>' +
+      // her chunri, the shawl the fire cannot burn
+      '<path class="hk-chunri hk-chunri-h" d="M64 22 Q80 4 96 22 L104 70 Q80 62 56 70 Z" fill="#F59E0B" fill-opacity=".72" stroke="#FDE047" stroke-width="1.5"/>' +
+      // Prahlad in her lap: yellow dhoti, hands folded, a tilak
+      '<g class="hk-prahlad">' +
+        '<circle class="hk-halo" cx="82" cy="84" r="30" fill="#FDE047" opacity="0"/>' +
+        '<path d="M70 106 Q82 98 96 106 L94 116 Q82 112 70 116 Z" fill="#FACC15"/>' +
+        '<path d="M73 86 Q82 82 91 86 L93 106 L71 106 Z" fill="#D99A6C"/>' +
+        '<path d="M82 88 L79 96 M82 88 L85 96" stroke="#C2834F" stroke-width="3.2" stroke-linecap="round"/>' +
+        '<path d="M82 87 L82 95" stroke="#E8B48A" stroke-width="2.6" stroke-linecap="round"/>' +
+        '<circle cx="82" cy="76" r="9" fill="#D99A6C" stroke="#3B2410" stroke-width=".7"/>' +
+        '<path d="M73 74 Q73 65 82 65 Q91 65 91 74 Q88 69 82 69 Q76 69 73 74 Z" fill="#1C1917"/><circle cx="82" cy="64" r="2.5" fill="#1C1917"/>' +
+        '<path d="M78 76 Q79 77.4 80.4 76 M83.6 76 Q85 77.4 86 76" stroke="#3B2410" stroke-width="1" fill="none" stroke-linecap="round"/>' +
+        '<path d="M80 80 Q82 81.6 84 80" stroke="#9F1239" stroke-width="1" fill="none"/>' +
+        '<path d="M82 70 L82 73.4" stroke="#DC2626" stroke-width="1.4" stroke-linecap="round"/>' +
+      '</g>' +
+      '<path class="hk-chunri hk-chunri-p" d="M70 72 Q82 58 94 72 L98 108 Q82 102 66 108 Z" fill="#F59E0B" fill-opacity=".55" stroke="#FDE047" stroke-width="1.5"/>' +
+      '</svg>';
+    return s + '<div class="hk-say hk-say-p"></div><div class="hk-say hk-say-h"></div>';
+  }
+  var hk = d.svg(hkSvg(), 'hk-scene td-drag');
+  var sayP = hk.querySelector('.hk-say-p'), sayH = hk.querySelector('.hk-say-h');
+  var wish = document.createElement('div');
+  wish.className = 'hk-wish';
+  wish.innerHTML = '<b>Happy Holi!</b><span>बुराई पर अच्छाई की जीत</span>';
+  hk.appendChild(wish);
+  var STORY = 15.5, PLAY = 16, S = 0, beat = '', fire = [], ash = [], heat = 0;
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) hk.classList.add('hk-gust', 'hk-burnt', 'hk-safe', 'hk-done');
+  function say(el, text) { el.textContent = text || ''; el.classList.toggle('on', !!text); }
+  // the story's moments, each run once as the clock passes it
+  var BEATS = [
+    [0, 'start', function () { hk.className = hk.className.replace(/\s*hk-(gust|burnt|safe|done|out)/g, ''); say(sayP, 'नारायण… नारायण…'); say(sayH, ''); heat = 0; }],
+    [2.2, 'gloat', function () { say(sayH, 'आज तू नहीं बचेगा!'); }],
+    [3.4, 'light', function () { say(sayH, ''); if (ThemeDecor.sound) ThemeDecor.sound('whoosh', 0.4); }],
+    [6.2, 'gust', function () { hk.classList.add('hk-gust'); if (ThemeDecor.sound) ThemeDecor.sound('whoosh', 0.3); }],
+    [7.4, 'burn', function () { hk.classList.add('hk-burnt'); say(sayH, 'आह!'); if (ThemeDecor.sound) ThemeDecor.sound('bang', 0.25); }],
+    [9, 'safe', function () { hk.classList.add('hk-safe'); say(sayH, ''); say(sayP, 'जय श्री हरि!'); if (ThemeDecor.sound) ThemeDecor.sound('bell', 0.35); }],
+    [11, 'wish', function () { hk.classList.add('hk-done'); say(sayP, ''); if (ThemeDecor.sound) ThemeDecor.sound('chime', 0.4); }],
+    [14.6, 'out', function () { hk.classList.add('hk-out'); }]
+  ];
+  function story(ctx, dt) {
+    var was = S;
+    S += dt;
+    BEATS.forEach(function (b) { if (was <= b[0] && S > b[0] || (b[0] === 0 && was === 0)) b[2](); });
+    // the fire: climbs from 3.4 s, roars 5–10 s, sinks to embers by 13 s
+    var target = S < 3.4 ? 0 : S < 10 ? 1 : S < 13 ? 0.25 : 0;
+    heat += (target - heat) * Math.min(1, dt * 1.6);
+    var r = hk.getBoundingClientRect(), k = r.width / 160;
+    var n = Math.round(heat * 9);
+    for (var i = 0; i < n && fire.length < 260; i++) {
+      fire.push({ x: r.left + d.rand(22, 138) * k, y: r.top + d.rand(118, 140) * k, vx: d.rand(-12, 12), vy: -d.rand(50, 120) * (0.5 + heat * 0.7),
+                  r: d.rand(5, 11) * k, life: 1, decay: d.rand(1.1, 1.8) });
+    }
+    if (hk.classList.contains('hk-burnt') && !hk.classList.contains('hk-safe') && ash.length < 120) {
+      for (i = 0; i < 4; i++) ash.push({ x: r.left + d.rand(48, 112) * k, y: r.top + d.rand(10, 110) * k, vx: d.rand(-20, 20), vy: -d.rand(20, 60), life: 1 });
+    }
+
+    for (i = fire.length - 1; i >= 0; i--) {
+      var p = fire[i];
+      p.life -= p.decay * dt; if (p.life <= 0) { fire.splice(i, 1); continue; }
+      p.x += (p.vx + Math.sin(S * 7 + i) * 14) * dt; p.y += p.vy * dt;
+      ctx.globalAlpha = Math.min(1, p.life * 1.1) * 0.85;
+      ctx.fillStyle = p.life > 0.7 ? '#FDE047' : p.life > 0.4 ? '#F97316' : '#DC2626';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (0.5 + p.life * 0.6), 0, 6.2832); ctx.fill();
+    }
+
+    for (i = ash.length - 1; i >= 0; i--) {
+      var a = ash[i];
+      a.life -= 0.6 * dt; if (a.life <= 0) { ash.splice(i, 1); continue; }
+      a.x += a.vx * dt; a.y += a.vy * dt;
+      ctx.globalAlpha = a.life * 0.7; ctx.fillStyle = '#44403C';
+      ctx.fillRect(a.x, a.y, 2.2, 2.2);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   var puffs = [], timer = 0.3;
   function spawn(w, h) {
     var x = d.rand(w * 0.1, w * 0.95), y = d.rand(h * 0.15, h * 0.85), c = d.pick(colors), n = 34;
@@ -128,6 +233,11 @@ ThemeDecor.register('holi', function (d) {
     scale: 0.75, // the water drops are small; keep them crisp
     frame: function (ctx, dt, w, h) {
       var i, p;
+      // each round: the Holika Dahan story, then the children play with colour
+      if (!reduced && S < STORY + PLAY) {
+        if (S < STORY) { story(ctx, dt); kidA.classList.remove('hl-spraying'); kidB.classList.remove('hl-throwing'); return true; }
+        S += dt;
+      } else if (!reduced) { S = 0; return true; }
       timer -= dt;
       if (timer <= 0) { spawn(w, h); timer = d.rand(1.6, 3); }
       for (i = puffs.length - 1; i >= 0; i--) {
