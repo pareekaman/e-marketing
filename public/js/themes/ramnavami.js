@@ -8,7 +8,8 @@ ThemeDecor.register('ramnavami', function (d) {
     '<svg viewBox="0 0 220 210" xmlns="http://www.w3.org/2000/svg"><defs>' +
     '<radialGradient id="rnSun"><stop offset="0" stop-color="#FFFBEB"/><stop offset=".45" stop-color="#FDE047"/><stop offset="1" stop-color="#F97316" stop-opacity="0"/></radialGradient>' +
     '<linearGradient id="rnGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE58A"/><stop offset=".55" stop-color="#F5B70A"/><stop offset="1" stop-color="#C98A06"/></linearGradient>' +
-    '<linearGradient id="rnBaby" gradientUnits="userSpaceOnUse" x1="80" y1="90" x2="140" y2="150"><stop offset="0" stop-color="#A5D4F7"/><stop offset="1" stop-color="#4A8CCB"/></linearGradient></defs>' +
+    '<linearGradient id="rnBaby" gradientUnits="userSpaceOnUse" x1="80" y1="90" x2="140" y2="150"><stop offset="0" stop-color="#A5D4F7"/><stop offset="1" stop-color="#4A8CCB"/></linearGradient>' +
+    '<radialGradient id="rnBabyLit" cx=".38" cy=".36" r=".7"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".35"/><stop offset=".6" stop-color="#FFFFFF" stop-opacity="0"/><stop offset="1" stop-color="#1E3F73" stop-opacity=".3"/></radialGradient></defs>' +
     // the rising sun with its rays (.rn-rays turn)
     '<g class="rn-rays">' + Array.from({ length: 16 }, function (_, k) { var a = k * Math.PI / 8; return '<path d="M' + (110 + Math.cos(a) * 46).toFixed(1) + ' ' + (70 + Math.sin(a) * 46).toFixed(1) + ' L' + (110 + Math.cos(a) * 72).toFixed(1) + ' ' + (70 + Math.sin(a) * 72).toFixed(1) + '" stroke="#FDBA74" stroke-width="3" stroke-opacity=".7" stroke-linecap="round"/>'; }).join('') + '</g>' +
     '<circle cx="110" cy="70" r="50" fill="url(#rnSun)"/>' +
@@ -35,8 +36,15 @@ ThemeDecor.register('ramnavami', function (d) {
     '<circle cx="98" cy="138" r="13" fill="url(#rnBaby)" stroke="#1E3F73" stroke-width="1"/>' +
     '<path d="M86 134 Q88 122 98 122 Q108 122 110 134 Q104 128 98 128 Q92 128 86 134 Z" fill="#1F2A44"/>' +
     '<path d="M88 126 L91 116 L95 122 L98 113 L101 122 L105 116 L108 126 Z" fill="url(#rnGold)" stroke="#B45309" stroke-width=".7"/>' +
-    '<path d="M93 139 q2 -2 4 0 M100 139 q2 -2 4 0" fill="none" stroke="#111827" stroke-width="1.2" stroke-linecap="round"/>' +
-    '<path d="M95 145 Q98 148 101 145" fill="none" stroke="#7F1D1D" stroke-width="1.2" stroke-linecap="round"/>' +
+    '<circle cx="98" cy="138" r="13" fill="url(#rnBabyLit)"/>' +
+    '<ellipse cx="85.6" cy="139" rx="2" ry="3" fill="#6AA3D8" stroke="#1E3F73" stroke-width=".6"/><circle cx="85.4" cy="142" r="1" fill="#F5B70A"/>' +
+    '<path d="M91.6 135.4 Q94 134.2 96.4 135.4 M99.6 135.4 Q102 134.2 104.4 135.4" fill="none" stroke="#1F2A44" stroke-width=".8" stroke-linecap="round"/>' +
+    '<ellipse cx="94" cy="138.6" rx="2.2" ry="1.7" fill="#fff"/><ellipse cx="102" cy="138.6" rx="2.2" ry="1.7" fill="#fff"/>' +
+    '<circle cx="94.3" cy="138.7" r="1.25" fill="#111827"/><circle cx="102.3" cy="138.7" r="1.25" fill="#111827"/><circle cx="94.7" cy="138.2" r=".4" fill="#fff"/><circle cx="102.7" cy="138.2" r=".4" fill="#fff"/>' +
+    '<path d="M97.6 140.6 Q98.2 142.4 99.2 141.8" fill="none" stroke="#1E3F73" stroke-width=".7" stroke-linecap="round"/>' +
+    '<ellipse cx="91.6" cy="143" rx="2" ry="1.2" fill="#F472B6" opacity=".45"/><ellipse cx="104.4" cy="143" rx="2" ry="1.2" fill="#F472B6" opacity=".45"/>' +
+    '<path d="M95.4 144.6 Q98.2 147.6 101 144.6 Z" fill="#9F1239" stroke="#7F1D1D" stroke-width=".7" stroke-linejoin="round"/><path d="M96.4 144.9 H100 L99.6 145.6 H96.8 Z" fill="#fff"/>' +
+    '<path d="M86 150 Q98 144 112 150" fill="none" stroke="#CA8A04" stroke-width=".8" stroke-opacity=".7"/><path d="M100 152 Q112 146 126 152" fill="none" stroke="#CA8A04" stroke-width=".8" stroke-opacity=".7"/>' +
     '<path d="M98 128 V134" stroke="#F97316" stroke-width="1.6"/>' +
     '<circle cx="116" cy="144" r="4" fill="url(#rnBaby)"/><path d="M116 140 q-5 -4 -3 -9 q3 2 3 9 q0 -7 3 -9 q2 5 -3 9 Z" fill="#F472B6"/>' +
     '</g></svg>';
@@ -44,21 +52,37 @@ ThemeDecor.register('ramnavami', function (d) {
   // Hanuman ji kneeling with folded hands, "राम" on his heart, his gada beside him.
   var hanuman =
     '<svg viewBox="0 0 130 170" xmlns="http://www.w3.org/2000/svg"><defs>' +
-    '<linearGradient id="rnHn" gradientUnits="userSpaceOnUse" x1="40" y1="10" x2="90" y2="170"><stop offset="0" stop-color="#FDBA74"/><stop offset="1" stop-color="#E4572E"/></linearGradient></defs>' +
+    '<linearGradient id="rnHn" gradientUnits="userSpaceOnUse" x1="40" y1="10" x2="90" y2="170"><stop offset="0" stop-color="#FDBA74"/><stop offset="1" stop-color="#E4572E"/></linearGradient>' +
+    '<radialGradient id="rnHnFace" cx=".42" cy=".38" r=".7"><stop offset="0" stop-color="#FFF4E4"/><stop offset=".7" stop-color="#FBE0BE"/><stop offset="1" stop-color="#EBC096"/></radialGradient>' +
+    '<linearGradient id="rnHnLit" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FFFFFF" stop-opacity=".28"/><stop offset=".5" stop-color="#FFFFFF" stop-opacity="0"/><stop offset="1" stop-color="#7C2D12" stop-opacity=".28"/></linearGradient>' +
+    '<linearGradient id="rnDhoti" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#EF4444"/><stop offset="1" stop-color="#991B1B"/></linearGradient></defs>' +
+    '<ellipse cx="66" cy="165" rx="52" ry="5" fill="#000" opacity=".22"/>' +
     '<path d="M96 120 C122 122 126 96 118 80 C112 68 120 56 128 58" fill="none" stroke="url(#rnHn)" stroke-width="6" stroke-linecap="round"/>' +
     '<path d="M18 168 L20 104" stroke="#92400E" stroke-width="4" stroke-linecap="round"/><circle cx="21" cy="94" r="11" fill="#F5B70A" stroke="#8A5A00" stroke-width="1"/>' +
-    '<path d="M44 148 Q40 130 60 126 L86 128 Q98 140 94 160 L48 162 Z" fill="#DC2626" stroke="#7F1D1D" stroke-width="1"/>' +
+    '<path d="M44 148 Q40 130 60 126 L86 128 Q98 140 94 160 L48 162 Z" fill="url(#rnDhoti)" stroke="#7F1D1D" stroke-width="1"/>' +
+    '<path d="M58 132 Q56 146 60 160 M70 130 Q70 146 72 160 M82 132 Q86 146 84 160" fill="none" stroke="#7F1D1D" stroke-width="1" stroke-opacity=".5"/>' +
+    '<path d="M34 162 Q36 154 48 156 L52 163 Q44 166 34 162 Z" fill="url(#rnHn)" stroke="#9A3412" stroke-width=".8"/>' +
     '<path d="M48 162 h46" stroke="#F5B70A" stroke-width="3"/>' +
+    '<path d="M58 54 L58 66 Q65 70 72 66 L72 54 Z" fill="#C2410C"/>' +
     '<path d="M44 70 Q65 60 86 70 L84 128 H46 Z" fill="url(#rnHn)" stroke="#9A3412" stroke-width="1"/>' +
+    '<path d="M44 70 Q65 60 86 70 L84 128 H46 Z" fill="url(#rnHnLit)"/>' +
+    '<path d="M54 100 Q58 104 62 100 M68 100 Q72 104 76 100" fill="none" stroke="#9A3412" stroke-opacity=".4" stroke-width="1"/>' +
     '<path d="M50 76 Q65 72 80 76 Q78 92 65 95 Q52 92 50 76 Z" fill="#FDE68A" opacity=".85"/>' +
     '<text x="65" y="89" text-anchor="middle" font-size="12" font-weight="700" fill="#B91C1C" font-family="Nirmala UI, Mangal, sans-serif">राम</text>' +
     '<path d="M46 74 L36 108 L60 116 M84 74 L94 108 L70 116" fill="none" stroke="url(#rnHn)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<path d="M65 102 Q71 114 65 126 Q59 114 65 102 Z" fill="#FDBA74" stroke="#9A3412" stroke-width=".8"/>' +
     '<circle cx="47" cy="44" r="6" fill="url(#rnHn)"/><circle cx="83" cy="44" r="6" fill="url(#rnHn)"/>' +
+    '<circle cx="47" cy="44" r="3" fill="#FBCFA0"/><circle cx="83" cy="44" r="3" fill="#FBCFA0"/>' +
+    '<circle cx="46" cy="50" r="1.8" fill="#F5B70A"/><circle cx="84" cy="50" r="1.8" fill="#F5B70A"/>' +
     '<circle cx="65" cy="42" r="17" fill="url(#rnHn)" stroke="#9A3412" stroke-width="1"/>' +
     '<path d="M65 34 Q53 28 51 40 Q50 52 58 58 Q65 62 72 58 Q80 52 79 40 Q77 28 65 34 Z" fill="#FDE7C8"/>' +
-    '<path d="M57 42 q3 2 6 0 M67 42 q3 2 6 0" fill="none" stroke="#7C2D12" stroke-width="1.3" stroke-linecap="round"/>' +
-    '<ellipse cx="65" cy="53" rx="8" ry="5.4" fill="#FFF1E0"/><path d="M59 54 Q65 59 71 54" fill="none" stroke="#7C2D12" stroke-width="1.2" stroke-linecap="round"/>' +
+    '<path d="M65 34 Q53 28 51 40 Q50 52 58 58 Q65 62 72 58 Q80 52 79 40 Q77 28 65 34 Z" fill="url(#rnHnFace)"/>' +
+    '<path d="M55 38 Q59 35.6 63 37.6 M67 37.6 Q71 35.6 75 38" fill="none" stroke="#7C2D12" stroke-width="1.3" stroke-linecap="round"/>' +
+    '<path d="M56 42.4 Q59.5 39.4 63 42.4 Q59.5 44.6 56 42.4 Z M67 42.4 Q70.5 39.4 74 42.4 Q70.5 44.6 67 42.4 Z" fill="#FFFFFF" stroke="#7C2D12" stroke-width=".6"/>' +
+    '<circle cx="60" cy="42.3" r="1.6" fill="#3B1D0E"/><circle cx="70" cy="42.3" r="1.6" fill="#3B1D0E"/><circle cx="60.6" cy="41.7" r=".5" fill="#fff"/><circle cx="70.6" cy="41.7" r=".5" fill="#fff"/>' +
+    '<ellipse cx="56" cy="48" rx="2.6" ry="1.6" fill="#F87171" opacity=".35"/><ellipse cx="74" cy="48" rx="2.6" ry="1.6" fill="#F87171" opacity=".35"/>' +
+    '<ellipse cx="65" cy="53" rx="8" ry="5.4" fill="#FFF1E0"/><path d="M63.4 49 Q65 50.6 66.6 49" fill="none" stroke="#9A3412" stroke-width="1" stroke-linecap="round"/>' +
+    '<path d="M59.6 54 Q65 59.6 70.4 54 Z" fill="#7F1D1D" stroke="#7C2D12" stroke-width=".9" stroke-linejoin="round"/><path d="M60.8 54.4 H69.2 L68.6 55.6 H61.4 Z" fill="#fff"/>' +
     '<path d="M65 30 V35" stroke="#DC2626" stroke-width="2" stroke-linecap="round"/>' +
     '<path d="M48 29 L52 16 L58 22 L65 8 L72 22 L78 16 L82 29 Z" fill="#F5B70A" stroke="#8A5A00" stroke-width=".8"/>' +
     '</svg>';
