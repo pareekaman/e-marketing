@@ -79,3 +79,9 @@
   border-top:2px solid var(--brand-1);
 }
 :root[data-theme] .mobile-bottom-nav .nav-item { color:rgba(255,255,255,.72); }
+/* after a few seconds the badge shrinks to its emoji, so it does not sit over the page's content */
+.td-lite span { display:inline-block; max-width:260px; overflow:hidden; vertical-align:bottom; transition:max-width .5s ease, opacity .4s ease; }
+.td-lite i { font-style:normal; }
+.td-lite { transition:padding .5s ease; }
+.td-lite.td-lite-min { padding:6px 8px; }
+.td-lite.td-lite-min span { max-width:0; opacity:0; }

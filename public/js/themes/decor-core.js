@@ -217,18 +217,26 @@
     sankranti:   { e: '🪁', t: 'शुभ मकर संक्रांति',     c: ['#0369A1', '#F97316'], p: ['#DC2626', '#2563EB', '#16A34A', '#FACC15'] },
     chhath:      { e: '🌅', t: 'जय छठी मइया',          c: ['#EA580C', '#0369A1'], p: ['#FDBA74', '#FDE047', '#F97316'] }
   };
+  var NV_NAMES = ['', 'माँ शैलपुत्री', 'माँ ब्रह्मचारिणी', 'माँ चंद्रघंटा', 'माँ कूष्मांडा', 'माँ स्कंदमाता', 'माँ कात्यायनी', 'माँ कालरात्रि', 'माँ महागौरी', 'माँ सिद्धिदात्री'];
   function lite(name) {
     var cfg = LITE[name];
     return function (d) {
       var b = document.createElement('div');
       b.className = 'td-lite';
       b.style.background = 'linear-gradient(135deg,' + cfg.c[0] + ',' + cfg.c[1] + ')';
-      b.textContent = cfg.e + ' ' + cfg.t;
+      // Navratri: the day's Mata after the greeting (data-nv-day, set by core.js)
+      var day = name === 'navratri' ? NV_NAMES[+document.documentElement.getAttribute('data-nv-day')] : '';
+      b.innerHTML = '<i></i><span></span>';
+      b.firstChild.textContent = cfg.e;
+      b.lastChild.textContent = ' ' + cfg.t + (day ? ' · ' + day : '');
       d.layer.appendChild(b);
+      // after a few seconds it shrinks to its emoji, so it does not sit over the page's content
+      var shrink = setTimeout(function () { b.classList.add('td-lite-min'); }, 6000);
       var ps = [], i;
       for (i = 0; i < 14; i++) ps.push({ x: Math.random(), y: Math.random(), r: rand(2.4, 4), vy: rand(14, 26), ph: rand(0, 6.28), a: rand(0, 6.28), c: pick(cfg.p) });
       var t = 0;
       return {
+        stop: function () { clearTimeout(shrink); },
         frame: function (ctx, dt, w, h) {
           t += dt; ctx.globalAlpha = 0.7;
           for (i = 0; i < ps.length; i++) {
