@@ -18,6 +18,8 @@ html,body{overflow-x:hidden;}
   --ease-spring:cubic-bezier(.34,1.56,.64,1);
 }
 ::selection{background:rgba(var(--accent-rgb),.18);color:#1e1b4b;}
+/* Form controls don't inherit the page font by default and fall back to Arial */
+button,input,select,textarea{font-family:inherit;}
 body{
   font-family:'Inter',sans-serif;color:#1e293b;min-height:100vh;
   -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
