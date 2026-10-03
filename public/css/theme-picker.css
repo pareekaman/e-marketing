@@ -70,3 +70,12 @@
   animation:td-lite-bob 2.6s ease-in-out infinite alternate; }
 @keyframes td-lite-bob { from { transform:translateY(0); } to { transform:translateY(-4px); } }
 @media (prefers-reduced-motion: reduce) { .td-lite { animation:none; } }
+
+/* Phones: under any festival theme the bottom nav bar takes the theme's sidebar colours, with a thin
+   line of its brand colour along the top (the active tab already takes the theme's .nav-item.active).
+   The bar only shows on phones (css/mobile.css), so this does nothing on a desktop. */
+:root[data-theme] .mobile-bottom-nav {
+  background:linear-gradient(180deg,var(--sidebar-top),var(--sidebar-bottom));
+  border-top:2px solid var(--brand-1);
+}
+:root[data-theme] .mobile-bottom-nav .nav-item { color:rgba(255,255,255,.72); }
