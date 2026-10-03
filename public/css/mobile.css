@@ -294,6 +294,9 @@
   #dashUserSwitcher{max-width:150px !important;}
   /* The searchable dropdown swaps the <select> for an .ss-input, so cap that too */
   #topbarActions .ss-input{max-width:150px !important;min-width:0;}
+
+  /* ── Inventory: 4 stat cards become 2x2 ── */
+  #invStats{grid-template-columns:repeat(2,1fr) !important;}
 }
 
 /* ── Extra small (phones <380px) ── */
