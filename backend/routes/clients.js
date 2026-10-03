@@ -35,7 +35,56 @@ module.exports = function registerClientRoutes(app, deps) {
     _dmsLogActivity,
     _dmsIsSafeUrl,
     DMS_MIME_TYPES,
+    getSheetsClient,
   } = deps;
+
+// ── Onboarding FMS feed ─────────────────────────────────────────────────────────
+// A new client becomes the next row of the Onboarding FMS's "Pre-Order FMS" tab:
+// A conversion date+time, B brand name, C departments, D mobile, E the person
+// who added it (the CRM). The FMS then filters each CRM's steps on column E.
+// Points at the user's COPY of the sheet while it is being tried out; set
+// CLIENT_FMS_SHEET_ID to move it to the original. Rows 7+ hold clients; the
+// first one whose B is empty is the next free row (its formulas are already
+// in F onward). Failure never blocks adding the client — it comes back as a
+// warning instead.
+const CLIENT_FMS_SHEET_ID = process.env.CLIENT_FMS_SHEET_ID || '1TrDtCbK_v_GulwF2fRVh6fKZ_fW5k_p0AnyofztbC-Y';
+const CLIENT_FMS_TAB = process.env.CLIENT_FMS_TAB || 'Pre-Order FMS';
+const CLIENT_FMS_FIRST_ROW = 7;
+async function addClientToOnboardingFms({ brand, departments, mobile, crmName }) {
+  if (!CLIENT_FMS_SHEET_ID) return;
+  const sheets = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+  const tab = `'${CLIENT_FMS_TAB.replace(/'/g, "''")}'`;
+  const col = await sheets.spreadsheets.values.get({ spreadsheetId: CLIENT_FMS_SHEET_ID, range: `${tab}!B${CLIENT_FMS_FIRST_ROW}:B` });
+  const vals = col.data.values || [];
+  let free = vals.findIndex(r => !String((r && r[0]) || '').trim());
+  if (free < 0) free = vals.length;
+  const row = CLIENT_FMS_FIRST_ROW + free;
+  // The date as a Sheets serial number in IST, so the column's own date
+  // format shows it and the step formulas can do arithmetic on it.
+  const serial = (Date.now() + 5.5 * 3600 * 1000) / 86400000 + 25569;
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: CLIENT_FMS_SHEET_ID, range: `${tab}!A${row}:E${row}`, valueInputOption: 'RAW',
+    requestBody: { values: [[serial, brand, departments, mobile, crmName]] },
+  });
+  // Column A is formatted as a bare date; this cell shows the time as well.
+  try {
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: CLIENT_FMS_SHEET_ID, fields: 'sheets.properties' });
+    const sh = (meta.data.sheets || []).find(s => s.properties.title === CLIENT_FMS_TAB);
+    if (sh) await sheets.spreadsheets.batchUpdate({ spreadsheetId: CLIENT_FMS_SHEET_ID, requestBody: { requests: [{
+      repeatCell: {
+        range: { sheetId: sh.properties.sheetId, startRowIndex: row - 1, endRowIndex: row, startColumnIndex: 0, endColumnIndex: 1 },
+        cell: { userEnteredFormat: { numberFormat: { type: 'DATE_TIME', pattern: 'dd/mm/yyyy hh:mm:ss' } } },
+        fields: 'userEnteredFormat.numberFormat',
+      } }] } });
+  } catch (e) { /* the value is right either way; only its display is affected */ }
+  return row;
+}
+let _mobileCol = null;
+function ensureMobileColumn() {
+  if (!_mobileCol) _mobileCol = db.query('ALTER TABLE clients ADD COLUMN mobile_no VARCHAR(20) DEFAULT NULL')
+    .catch(e => { if (e.code !== 'ER_DUP_FIELDNAME') { _mobileCol = null; throw e; } });
+  return _mobileCol;
+}
 
 // Build the WHERE clause that limits the client list to what the caller may see
 // on the Client Master page. Returns null when they may see everything.
@@ -180,6 +229,7 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
     const name = (req.body.name || '').trim();
     const kickstartDate = String(req.body.kickstart_date || '').trim();
     const departments = cleanDepartments(req.body.departments) || '';
+    const mobile = String(req.body.mobile_no || '').replace(/[^\d+]/g, '').slice(0, 20);
     const brandName = (req.body.brand_name || '').trim();
     const billingName = (req.body.billing_name || '').trim();
     const handlerRaw = req.body.handler_id;
@@ -199,6 +249,7 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
     if (!brandName) return res.status(400).json({ error: 'Brand name required' });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(kickstartDate)) return res.status(400).json({ error: 'Kickstart meeting date required' });
     if (!departments) return res.status(400).json({ error: 'Select at least one department' });
+    if (mobile.replace(/\D/g, '').length < 7) return res.status(400).json({ error: 'Mobile number required' });
     // A handler is optional (the user asked for that on 2026-10-01). A client
     // without one has no department, so it shows only under All Departments
     // in Client Master until someone assigns a handler.
@@ -219,6 +270,17 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
     const [r] = await db.query('INSERT INTO clients (name, brand_name, billing_name, kickstart_date, departments, handler_id) VALUES (?, ?, ?, ?, ?, ?)',
       [name, brandName, seesBilling ? billingName : null, kickstartDate, departments, handlerIds[0] || null]);
     const newClientId = r.insertId;
+    await ensureMobileColumn().then(() => db.query('UPDATE clients SET mobile_no=? WHERE id=?', [mobile, newClientId])).catch(() => {});
+    // Onboarding FMS row. Awaited so the result can be reported, but never fatal.
+    let fmsWarning = null;
+    try {
+      const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+      await addClientToOnboardingFms({ brand: brandName, departments: departments.split('||').join(', '), mobile, crmName: (me && me.name) || '' });
+    } catch (e) {
+      console.error('Onboarding FMS row failed:', e.message);
+      fmsWarning = 'Client added, but it could not be added to the Onboarding FMS sheet: ' + e.message;
+    }
+    if (fmsWarning) res.locals.fmsWarning = fmsWarning;
     // The full handler list, in client_handlers — the primary handler_id column
     // above is only ever the first of these, kept for the routes/rows that
     // still read it directly. Same pattern PUT /api/clients/:id/handlers uses.
@@ -237,7 +299,7 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
         // admin knows the client exists but login was not set up.
         return res.status(201).json({
           success: true, client_id: newClientId,
-          warning: e.code === 'ER_DUP_ENTRY' ? 'Client added but login email already in use' : 'Client added but login provisioning failed: ' + e.message
+          warning: (e.code === 'ER_DUP_ENTRY' ? 'Client added but login email already in use' : 'Client added but login provisioning failed: ' + e.message) + (res.locals.fmsWarning ? ' ' + res.locals.fmsWarning : '')
         });
       }
     }
@@ -248,7 +310,7 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
         .then(folder => db.query('UPDATE clients SET drive_folder_id=? WHERE id=?', [folder.id, newClientId]))
         .catch(e => console.error('DMS auto-folder creation failed for client', newClientId, e.message));
     }
-    res.json({ success: true, client_id: newClientId });
+    res.json({ success: true, client_id: newClientId, ...(res.locals.fmsWarning ? { warning: res.locals.fmsWarning } : {}) });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Client already exists' });
     res.status(500).json({ error: err.message });

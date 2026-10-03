@@ -8156,6 +8156,7 @@ require('./backend/routes/clients')(app, {
   _dmsLogActivity,
   _dmsIsSafeUrl,
   DMS_MIME_TYPES,
+  getSheetsClient,
 });
 
 // ══════════════════════════════════════════════════════

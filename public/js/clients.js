@@ -305,6 +305,7 @@ function cmOpenAddModal() {
   document.getElementById('cmFormBrandName').value = '';
   document.getElementById('cmFormBillingName').value = '';
   document.getElementById('cmFormKickstart').value = '';
+  document.getElementById('cmFormMobile').value = '';
   // Hidden by default in the markup so it never flashes for the wrong person
   // between page load and this running.
   const billingGroup = document.getElementById('cmFormBillingNameGroup');
@@ -1296,6 +1297,7 @@ async function cmAdd(){
   const brand_name = document.getElementById('cmFormBrandName').value.trim();
   const billing_name = document.getElementById('cmFormBillingName').value.trim();
   const kickstart_date = document.getElementById('cmFormKickstart').value;
+  const mobile_no = document.getElementById('cmFormMobile').value.trim();
   const handler_ids = [...document.querySelectorAll('.cmAddHandlerCb:checked')].map(cb => parseInt(cb.value));
   const departments = [...document.querySelectorAll('.cmAddDeptCb:checked')].map(cb => cb.value);
   const handler_id = handler_ids[0] || null;
@@ -1303,6 +1305,7 @@ async function cmAdd(){
   const login_password = document.getElementById('cmFormLoginPassword').value;
   if (!name) { err.textContent = 'Client name required'; err.style.display = 'block'; return; }
   if (!brand_name) { err.textContent = 'Brand name required'; err.style.display = 'block'; return; }
+  if (mobile_no.replace(/\D/g, '').length < 7) { err.textContent = 'Mobile number required'; err.style.display = 'block'; return; }
   if (!kickstart_date) { err.textContent = 'Kickstart meeting date required'; err.style.display = 'block'; return; }
   if (!departments.length) { err.textContent = 'Select at least one department'; err.style.display = 'block'; return; }
   // Only demanded of the people who can see the input — the server applies the
@@ -1315,7 +1318,7 @@ async function cmAdd(){
   }
   try {
     const r = await api('/api/clients', 'POST', {
-      name, brand_name, kickstart_date, departments, handler_id, handler_ids, login_email, login_password,
+      name, brand_name, mobile_no, kickstart_date, departments, handler_id, handler_ids, login_email, login_password,
       // Omitted entirely for anyone who cannot see the field — the server would
       // drop it anyway, but there is no reason to send a value it must ignore.
       ...(cmCanSeeBilling() ? { billing_name } : {}),
