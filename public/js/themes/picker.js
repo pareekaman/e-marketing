@@ -343,7 +343,9 @@ function paintThemePicker() {
       return '<button type="button" class="tp-card' + (active ? ' tp-active' : '') + '" style="--tp-acc:' + t.c.accent + '" aria-pressed="' + active + '" onclick="setAppTheme(\'' + t.key + '\')">' +
         preview +
         '<div class="tp-name">' + t.icon + ' ' + t.name + (active ? '<span class="tp-badge">✓ Active</span>' : '') + '</div>' +
-        '<div class="tp-note">' + t.note + '</div></button>';
+        '<div class="tp-note">' + t.note + '</div>' +
+        (active || t.key === 'normal' ? '' : '<span class="tp-try" role="button" tabindex="0" onclick="event.stopPropagation(); previewTheme(\'' + t.key + '\')">👁 Preview</span>') +
+        '</button>';
     }).join('') + '</div>' + (_themeCurrent === 'navratri' ? nvDayRow() : '');
 }
 
@@ -394,7 +396,36 @@ async function renderThemePicker() {
   paintThemePicker();
 }
 
+// Preview: the owner tries a theme on their own screen only (nothing is saved, nobody else sees it).
+// A bar across the top offers to apply it for everyone or to go back.
+let _previewing = null;
+function previewTheme(key) {
+  const choice = THEME_CHOICES.find(t => t.key === key);
+  if (!choice) return;
+  _previewing = key;
+  applyAppTheme(key);
+  let bar = document.getElementById('tpPreviewBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'tpPreviewBar';
+    bar.className = 'tp-preview-bar';
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = '<span>👁 Previewing <b></b> — only you can see this</span>' +
+    '<button type="button" class="tp-pv-apply">Apply for everyone</button><button type="button" class="tp-pv-exit">Exit preview</button>';
+  bar.querySelector('b').textContent = choice.icon + ' ' + choice.name;
+  bar.querySelector('.tp-pv-apply').onclick = () => { endPreview(false); setAppTheme(key); };
+  bar.querySelector('.tp-pv-exit').onclick = () => endPreview(true);
+}
+function endPreview(restore) {
+  const bar = document.getElementById('tpPreviewBar');
+  if (bar) bar.remove();
+  if (restore && _previewing) applyAppTheme(_themeOff ? 'normal' : _companyTheme);
+  _previewing = null;
+}
+
 async function setAppTheme(key) {
+  if (_previewing) endPreview(false);
   if (_themeSaving || key === _themeCurrent) return;
   const choice = THEME_CHOICES.find(t => t.key === key);
   if (!choice) return;

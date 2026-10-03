@@ -85,3 +85,14 @@
 .td-lite { transition:padding .5s ease; }
 .td-lite.td-lite-min { padding:6px 8px; }
 .td-lite.td-lite-min span { max-width:0; opacity:0; }
+
+/* Preview: a small link on each theme card, and the bar shown while the owner previews a theme */
+.tp-try { display:inline-block; margin-top:8px; font-size:12px; font-weight:600; color:var(--tp-acc); padding:4px 10px; border-radius:999px;
+  border:1.5px solid var(--tp-acc); background:#fff; }
+.tp-try:hover { background:var(--tp-acc); color:#fff; }
+.tp-preview-bar { position:fixed; left:50%; top:10px; transform:translateX(-50%); z-index:900; display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  justify-content:center; max-width:calc(100vw - 24px); padding:8px 10px 8px 16px; border-radius:999px; background:#1e293b; color:#fff;
+  font:500 13px/1.3 'Inter',sans-serif; box-shadow:0 10px 30px -10px rgba(0,0,0,.5); }
+.tp-preview-bar button { font:600 12px 'Inter',sans-serif; border:0; border-radius:999px; padding:6px 12px; cursor:pointer; }
+.tp-pv-apply { background:var(--brand-2); color:#fff; }
+.tp-pv-exit { background:#fff; color:#1e293b; }
