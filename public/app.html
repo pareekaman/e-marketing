@@ -1615,9 +1615,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
   <div id="page-logs" class="page">
     <div class="page-header">
       <!-- No h2 here: the topbar already shows this page's title. -->
-      <div style="display:flex;gap:8px;align-items:center;margin-left:auto">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-left:auto;max-width:100%">
         <input id="logsSearch" type="text" placeholder="Search…" oninput="renderLogs()"
-          style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
+          style="flex:1 1 140px;min-width:0;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
         <select id="logsFilterTable" onchange="renderLogs()"
           style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
           <option value="">All Types</option>
