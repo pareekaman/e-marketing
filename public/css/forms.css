@@ -54,8 +54,8 @@
 .dt-btn{padding:10px 18px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;letter-spacing:.2px;}
 .dt-btn-add{background:#fff;color:#475569;border:1.5px solid #e2e8f0;}
 .dt-btn-add:hover{background:#f1f5f9;color:#0f172a;border-color:#cbd5e1;}
-.dt-btn-submit{background:linear-gradient(135deg,var(--brand-1),var(--brand-2));color:#fff;box-shadow:0 1px 2px rgba(var(--brand-2-rgb),.25);}
-.dt-btn-submit:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(var(--brand-2-rgb),.35);}
+.dt-btn-submit{background:linear-gradient(135deg,var(--accent-light),var(--accent));color:#fff;box-shadow:0 1px 2px rgba(var(--accent-rgb),.25);}
+.dt-btn-submit:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(var(--accent-rgb),.35);}
 .dt-btn-submit:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none;}
 
 .dt-history{margin-top:28px;padding-top:22px;border-top:1px solid #e2e8f0;}
@@ -91,8 +91,12 @@
 .cm-add-row{display:flex;gap:8px;align-items:center;flex:1;min-width:240px;}
 .cm-add-row input{flex:1;min-width:140px;padding:10px 14px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit;}
 .cm-add-row input:focus{border-color:var(--brand-2);box-shadow:0 0 0 3px rgba(var(--brand-2-rgb),.12);}
-.cm-btn-primary{background:linear-gradient(135deg,var(--brand-1),var(--brand-2));color:#fff;border:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 2px rgba(var(--brand-2-rgb),.25);transition:transform .1s,box-shadow .15s;}
-.cm-btn-primary:hover{box-shadow:0 4px 12px rgba(var(--brand-2-rgb),.3);transform:translateY(-1px);}
+.cm-btn-primary{background:linear-gradient(135deg,var(--accent-light),var(--accent));color:#fff;border:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 1px 2px rgba(var(--accent-rgb),.25);transition:transform .1s,box-shadow .15s;}
+.cm-btn-primary:hover{box-shadow:0 4px 12px rgba(var(--accent-rgb),.3);transform:translateY(-1px);}
+/* Leaves' main button takes the app accent too; features.css (loaded later) still
+   paints it orange, so this needs the extra .page to win. */
+.page .lv-add-btn{background:linear-gradient(135deg,var(--accent-light),var(--accent));box-shadow:0 4px 14px rgba(var(--accent-rgb),.35);}
+.page .lv-add-btn:hover{box-shadow:0 8px 20px rgba(var(--accent-rgb),.45);}
 .cm-btn-ghost{background:#fff;color:#475569;border:1.5px solid #e2e8f0;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .15s;}
 .cm-btn-ghost:hover{background:#f1f5f9;color:#0f172a;border-color:#cbd5e1;}
 
