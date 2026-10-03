@@ -123,9 +123,9 @@ ThemeDecor.register('diwali', function (d) {
     say.textContent = 'हा हा हा!';
     el.appendChild(say);
     strip.appendChild(el);
-    return { el: el, x: (i + 0.5) / LOOKS.length, to: Math.random(), sp: d.rand(.10, .18), dir: 1, hold: 0, sooty: 0 };
+    return { el: el, x: (i + 0.5) / LOOKS.length, to: Math.random(), sp: d.rand(.10, .18), dir: 1, hold: 0, sooty: 0, panic: 0 };
   });
-  var kidTimers = [], bombs = [], smoke = [], kparts = [], throwIn = 1.2;
+  var kidTimers = [], bombs = [], smoke = [], kparts = [], fountains = [], throwIn = 1.2;
   function stripBox() { var r = strip.getBoundingClientRect(), b = d.layer.getBoundingClientRect(); return { x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height }; }
   function head(k, s) { return { x: s.x + k.x * (s.w - 46) + 23, y: s.y + s.h - 70 * 46 / 60 }; }
   function sparks(x, y, n, spd, cols, life) {
@@ -134,17 +134,74 @@ ThemeDecor.register('diwali', function (d) {
       kparts.push({ x: x, y: y, vx: Math.cos(an) * v, vy: Math.sin(an) * v - 40, life: life || d.rand(0.4, 0.8), c: d.pick(cols) });
     }
   }
-  function laugh(k, ms) {
+  // what the child says: the one hit reacts to the cracker, the thrower laughs
+  function laugh(k, ms, text) {
+    k.el.querySelector('.dk-laugh').textContent = text || 'हा हा!';
     k.el.classList.add('dk-laughing');
     kidTimers.push(setTimeout(function () { k.el.classList.remove('dk-laughing'); }, ms));
   }
+  // a short-lived reaction class on a child (spinning in the air, dancing about)
+  function react(k, cls, ms) {
+    k.el.classList.add(cls);
+    kidTimers.push(setTimeout(function () { k.el.classList.remove(cls); }, ms));
+  }
+  // Four crackers, each thrown its own way and each with its own reaction (see hit()).
+  var KINDS = { bomb: { dur: 0.9, arc: 70 }, rocket: { dur: 0.45, arc: 10 }, anar: { dur: 0.8, arc: 50 }, phuljhadi: { dur: 0.8, arc: 40 } };
   function lob() {
     var a = Math.floor(Math.random() * KIDS.length), b = (a + 1 + Math.floor(Math.random() * (KIDS.length - 1))) % KIDS.length;
     var th = KIDS[a], tg = KIDS[b], s = stripBox(), from = head(th, s);
     th.hold = 0.6; th.dir = tg.x > th.x ? 1 : -1;
     th.el.classList.add('dk-throwing');
     kidTimers.push(setTimeout(function () { th.el.classList.remove('dk-throwing'); }, 450));
-    bombs.push({ x: from.x, y: from.y - 10, x0: from.x, y0: from.y - 10, t: 0, dur: 0.9, by: th, at: tg });
+    var kind = d.pick(['bomb', 'rocket', 'anar', 'phuljhadi']);
+    bombs.push({ kind: kind, x: from.x, y: from.y - 10, x0: from.x, y0: from.y - 10, t: 0, dur: KINDS[kind].dur, by: th, at: tg });
+  }
+  function drawCracker(ctx, q, ang) {
+    var x = q.x, y = q.y;
+    ctx.globalAlpha = 1;
+    if (q.kind === 'bomb') {
+      ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.arc(x, y, 5.5, 0, 6.2832); ctx.fill();
+      ctx.fillStyle = '#6B7280'; ctx.beginPath(); ctx.arc(x - 1.8, y - 1.8, 1.6, 0, 6.2832); ctx.fill();
+      ctx.strokeStyle = '#A16207'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(x + 3, y - 4); ctx.quadraticCurveTo(x + 7, y - 9, x + 5, y - 12); ctx.stroke();
+      sparks(x + 5, y - 12, 2, 40, ['#FDE047', '#F97316', '#FFFFFF'], 0.25);
+    } else if (q.kind === 'rocket') {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+      ctx.fillStyle = '#DC2626'; ctx.fillRect(-9, -2.6, 13, 5.2);
+      ctx.fillStyle = '#FACC15'; ctx.beginPath(); ctx.moveTo(4, -2.6); ctx.lineTo(9, 0); ctx.lineTo(4, 2.6); ctx.fill();
+      ctx.strokeStyle = '#78350F'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(-20, 0); ctx.stroke();
+      ctx.restore();
+      for (var n = 0; n < 4; n++) kparts.push({ x: x - Math.cos(ang) * 10, y: y - Math.sin(ang) * 10, vx: -Math.cos(ang) * d.rand(40, 90) + d.rand(-20, 20), vy: -Math.sin(ang) * d.rand(40, 90) + d.rand(-20, 20), life: .35, c: d.pick(['#F97316', '#FDE047', '#DC2626']) });
+    } else if (q.kind === 'anar') {
+      ctx.fillStyle = '#B45309'; ctx.beginPath(); ctx.moveTo(x - 5, y + 5); ctx.lineTo(x - 2, y - 4); ctx.lineTo(x + 2, y - 4); ctx.lineTo(x + 5, y + 5); ctx.fill();
+      ctx.strokeStyle = '#FDE68A'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - 3, y + 1); ctx.lineTo(x + 3, y + 1); ctx.stroke();
+    } else { // phuljhadi: a wire spinning end over end, its tip sparkling
+      var sp = q.t * 14, cx = Math.cos(sp) * 9, cy = Math.sin(sp) * 9;
+      ctx.strokeStyle = '#6B7280'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(x - cx, y - cy); ctx.lineTo(x + cx, y + cy); ctx.stroke();
+      sparks(x + cx, y + cy, 4, 60, ['#FFFFFF', '#FEF3C7', '#FDE047'], 0.3);
+    }
+  }
+  // What each cracker does to the child it reaches.
+  function hit(q, at, s) {
+    var tg = q.at, by = q.by;
+    if (q.kind === 'bomb') {          // blackened with soot, hair on end, laughing
+      sparks(at.x, at.y, 40, 170, ['#FFFFFF', '#FDE047', '#F97316', '#DC2626']);
+      for (var m = 0; m < 6; m++) smoke.push({ x: at.x + d.rand(-10, 10), y: at.y + d.rand(-8, 8), r: d.rand(8, 14), life: 1, vy: d.rand(-30, -15) });
+      tg.el.classList.add('dk-sooty'); tg.sooty = 3.2; tg.hold = 1.4;
+      laugh(tg, 1800, 'हा हा हा!');
+    } else if (q.kind === 'rocket') { // shot into the air, spinning
+      sparks(at.x, at.y, 30, 150, ['#FDE047', '#F97316', '#DC2626', '#FFFFFF']);
+      tg.hold = 0.9; react(tg, 'dk-spin', 900);
+      laugh(tg, 1600, 'ऊईईई!');
+    } else if (q.kind === 'anar') {   // a fountain at their feet: they hop about
+      fountains.push({ x: at.x, y: s.y + s.h - 2, life: 1.6 });
+      tg.hold = 1.6; react(tg, 'dk-dance', 1600);
+      laugh(tg, 1700, 'अरे बाप रे!');
+    } else {                          // a sparkler: they run for it, fast, the other way
+      sparks(at.x, at.y, 24, 110, ['#FFFFFF', '#FEF3C7', '#FDE047']);
+      tg.hold = 0; tg.panic = 1.6; tg.to = by.x < tg.x ? 1 : 0;
+      laugh(tg, 1500, 'भागो!');
+    }
+    laugh(by, 1500, 'हा हा!');
   }
   var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   function kidsFrame(ctx, dt) {
@@ -156,8 +213,10 @@ ThemeDecor.register('diwali', function (d) {
         if (k.hold > 0) k.hold -= dt;
         else {
           var dx = k.to - k.x;
+          var sp = k.sp * (k.panic > 0 ? 3 : 1);
+          if (k.panic > 0) k.panic -= dt;
           if (Math.abs(dx) < 0.01) k.to = Math.random();
-          else { k.dir = dx > 0 ? 1 : -1; k.x += Math.max(-k.sp * dt, Math.min(k.sp * dt, dx)); }
+          else { k.dir = dx > 0 ? 1 : -1; k.x += Math.max(-sp * dt, Math.min(sp * dt, dx)); }
         }
       }
       k.el.classList.toggle('dk-running', !still && k.hold <= 0);
@@ -166,23 +225,22 @@ ThemeDecor.register('diwali', function (d) {
       k.el.firstChild.style.transform = 'scaleX(' + k.dir + ')';
     }
     if (!still && (throwIn -= dt) <= 0) { lob(); throwIn = d.rand(1.2, 2); }
-    // bombs: a lob that steers to where the target child is now, its fuse sparking
+    // crackers in flight: each steers to where its target child is now
     for (i = bombs.length - 1; i >= 0; i--) {
       var q = bombs[i]; q.t += dt;
-      var kk = Math.min(1, q.t / q.dur), tgp = head(q.at, s);
-      q.x = q.x0 + (tgp.x - q.x0) * kk; q.y = q.y0 + (tgp.y - q.y0) * kk - Math.sin(Math.PI * kk) * 70;
-      ctx.globalAlpha = 1; ctx.fillStyle = '#111827';
-      ctx.beginPath(); ctx.arc(q.x, q.y, 5.5, 0, 6.2832); ctx.fill();
-      ctx.fillStyle = '#6B7280'; ctx.beginPath(); ctx.arc(q.x - 1.8, q.y - 1.8, 1.6, 0, 6.2832); ctx.fill();
-      ctx.strokeStyle = '#A16207'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(q.x + 3, q.y - 4); ctx.quadraticCurveTo(q.x + 7, q.y - 9, q.x + 5, q.y - 12); ctx.stroke();
-      sparks(q.x + 5, q.y - 12, 2, 40, ['#FDE047', '#F97316', '#FFFFFF'], 0.25);
-      if (kk >= 1) {
-        sparks(tgp.x, tgp.y, 40, 170, ['#FFFFFF', '#FDE047', '#F97316', '#DC2626']);
-        for (var m = 0; m < 6; m++) smoke.push({ x: tgp.x + d.rand(-10, 10), y: tgp.y + d.rand(-8, 8), r: d.rand(8, 14), life: 1, vy: d.rand(-30, -15) });
-        q.at.el.classList.add('dk-sooty'); q.at.sooty = 3.2; q.at.hold = 1.4;
-        laugh(q.at, 1800); laugh(q.by, 1800);
-        bombs.splice(i, 1);
-      }
+      var kk = Math.min(1, q.t / q.dur), tgp = head(q.at, s), feet = q.kind === 'anar';
+      var ty = feet ? s.y + s.h - 4 : tgp.y, px = q.x, py = q.y;
+      q.x = q.x0 + (tgp.x - q.x0) * kk; q.y = q.y0 + (ty - q.y0) * kk - Math.sin(Math.PI * kk) * KINDS[q.kind].arc;
+      drawCracker(ctx, q, Math.atan2(q.y - py, q.x - px));
+      if (kk >= 1) { hit(q, tgp, s); bombs.splice(i, 1); }
+    }
+    // an anar that landed at a child's feet keeps fountaining for a moment
+    for (i = fountains.length - 1; i >= 0; i--) {
+      var fo = fountains[i]; fo.life -= dt;
+      if (fo.life <= 0) { fountains.splice(i, 1); continue; }
+      ctx.fillStyle = '#B45309'; ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.moveTo(fo.x - 5, fo.y); ctx.lineTo(fo.x - 2, fo.y - 9); ctx.lineTo(fo.x + 2, fo.y - 9); ctx.lineTo(fo.x + 5, fo.y); ctx.fill();
+      for (var n = 0; n < 5 && kparts.length < 500; n++) kparts.push({ x: fo.x, y: fo.y - 9, vx: d.rand(-50, 50), vy: d.rand(-200, -120), life: d.rand(.5, .9), c: d.pick(['#FDE047', '#FFFFFF', '#FB923C']) });
     }
     for (i = smoke.length - 1; i >= 0; i--) {
       p = smoke[i]; p.life -= dt * 0.8; p.r += 18 * dt; p.y += p.vy * dt;
@@ -201,7 +259,9 @@ ThemeDecor.register('diwali', function (d) {
   }
 
   // Gold sparkles that twinkle here and there, beside the crackers.
-  var fw = d.fireworks({ colors: ['#FFC107', '#FF7043', '#E91E63', '#66BB6A', '#FFFFFF', '#AB47BC'], gap: [2.2, 4.5] });
+  // Crackers bursting all over the sky: two sets, in different colours, going up every second or so.
+  var fw = d.fireworks({ colors: ['#FFC107', '#FF7043', '#E91E63', '#66BB6A', '#FFFFFF', '#AB47BC'], gap: [0.8, 1.6] });
+  var fw2 = d.fireworks({ colors: ['#38BDF8', '#FDE047', '#F472B6', '#A3E635', '#FB923C'], gap: [1.1, 2.2] });
   var sparkles = [], sparkIn = 0;
   function star(ctx, x, y, r) {
     ctx.beginPath();
@@ -213,6 +273,7 @@ ThemeDecor.register('diwali', function (d) {
     stop: function () { kidTimers.forEach(clearTimeout); },
     frame: function (ctx, dt, w, h) {
       var busy = fw.frame(ctx, dt, w, h);
+      fw2.frame(ctx, dt, w, h);
       kidsFrame(ctx, dt); busy = true;
       sparkIn -= dt;
       if (sparkIn <= 0 && sparkles.length < 18) {

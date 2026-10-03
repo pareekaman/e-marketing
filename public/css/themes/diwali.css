@@ -138,3 +138,9 @@
 .dk-laughing svg { animation:dk-shake .18s ease-in-out 8 alternate; }
 @keyframes dk-shake { from { translate:0 0; } to { translate:0 -3px; } }
 @media (prefers-reduced-motion: reduce) { .dk-running .dk-leg1, .dk-running .dk-leg2, .dk-throwing .dk-arm, .dk-laughing svg { animation:none; } }
+/* hit by a rocket: up into the air with a full turn; hit by an anar: hopping about */
+.dk-spin svg { animation:dk-spin-up .9s cubic-bezier(.3,.7,.4,1); }
+@keyframes dk-spin-up { 0% { translate:0 0; rotate:0deg; } 45% { translate:0 -40px; rotate:200deg; } 100% { translate:0 0; rotate:360deg; } }
+.dk-dance svg { animation:dk-hop .25s ease-in-out infinite alternate; }
+@keyframes dk-hop { from { translate:-3px 0; rotate:-8deg; } to { translate:3px -12px; rotate:8deg; } }
+@media (prefers-reduced-motion: reduce) { .dk-spin svg, .dk-dance svg { animation:none; } }
