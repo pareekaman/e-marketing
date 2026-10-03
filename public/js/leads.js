@@ -37,7 +37,9 @@
 // Chart colours are read from the theme's CSS variables so the graphs follow
 // light/dark instead of hardcoding hex values.
 function cssVar(name, fallback) {
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  // The leads tokens live on #page-leads (leads.css), not on :root.
+  const host = document.getElementById('page-leads') || document.documentElement;
+  const v = getComputedStyle(host).getPropertyValue(name).trim();
   return v || fallback || 'var(--muted-foreground)';
 }
 
@@ -313,7 +315,7 @@ async function loadEnquiries(opts) {
   }
   _enqData = { rows: data.rows || [], keys: data.keys || [], headers: data.headers || [] };
   const u = document.getElementById('enqUpdated');
-  if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-IN', { hour12: true }); }
+  if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); }
   if (!silent) _enqAnimate = true; // animate the KPI numbers counting up on this fresh load
   renderEnquiries();
 }
@@ -766,7 +768,7 @@ async function loadMetaLeads(opts) {
   const data = await api('/api/meta-leads');
   if (!data || data.error) { if (tb && !silent) tb.innerHTML = `<tr><td colspan="7" class="empty" style="color:var(--destructive)">⚠️ ${escapeHtml((data && data.error) || 'Load failed')}</td></tr>`; return; }
   _metaLeads = { rows: data.rows || [], keys: data.keys || [], headers: data.headers || [] };
-  const u = document.getElementById('metaLeadsUpdated'); if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-IN', { hour12: true }); }
+  const u = document.getElementById('metaLeadsUpdated'); if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); }
   renderMetaLeads();
 }
 
@@ -785,12 +787,21 @@ function mlGroupOf(r) {
   return 'progress';
 }
 
-function mlStatusBadge(status) {
+// One colour per Meta lead status, shared by the table pill and the donut.
+const ML_PROGRESS_COLORS = { CONTACTED: '--chart-1', INTERESTED: '--warning', 'FOLLOW-UP': '--chart-5', CALLED: '--chart-4' };
+function mlStatusColor(status) {
   const s = (status || '').trim() || 'CREATED'; const up = s.toUpperCase();
-  let bg = 'color-mix(in srgb,var(--warning) 14%,transparent)', fg = 'var(--warning)';
-  if (up === 'CREATED' || up === 'NEW') { bg = 'color-mix(in srgb,var(--destructive) 12%,transparent)'; fg = 'var(--destructive)'; }
-  else if (/CONVERT|WON|MEETING/.test(up)) { bg = 'color-mix(in srgb,var(--success) 12%,transparent)'; fg = 'var(--success)'; }
-  else if (/JUNK|NOT INTEREST|LOST|WRONG/.test(up)) { bg = 'var(--muted)'; fg = 'var(--muted-foreground)'; }
+  const g = mlGroupOf({ lead_status: s });
+  if (g === 'new') return 'var(--destructive)';
+  if (g === 'won') return 'var(--success)';
+  if (g === 'lost') return 'var(--muted-foreground)';
+  return `var(${ML_PROGRESS_COLORS[up] || '--warning'})`;
+}
+
+function mlStatusBadge(status) {
+  const s = (status || '').trim() || 'CREATED';
+  const fg = mlStatusColor(s);
+  const bg = mlGroupOf({ lead_status: s }) === 'lost' ? 'var(--muted)' : `color-mix(in srgb,${fg} 13%,transparent)`;
   return `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${bg};color:${fg};white-space:nowrap">${escapeHtml(s)}</span>`;
 }
 
@@ -913,15 +924,8 @@ function renderMlChart(rows) {
   (rows || []).forEach(r => { const s = (r.lead_status || '').trim() || 'CREATED'; counts[s] = (counts[s] || 0) + 1; });
   const labels = Object.keys(counts);
   const data = labels.map(l => counts[l]);
-  const progPalette = [cssVar('--chart-1', '#3b6df4'), cssVar('--warning', '#f0a133'), cssVar('--chart-5', '#009fc2'), cssVar('--chart-4', '#ec305a')];
-  let pi = 0;
-  const colors = labels.map(l => {
-    const g = mlGroupOf({ lead_status: l });
-    if (g === 'new') return cssVar('--destructive');
-    if (g === 'won') return cssVar('--success');
-    if (g === 'lost') return cssVar('--muted-foreground');
-    return progPalette[(pi++) % progPalette.length];
-  });
+  // Canvas can't read var(), so resolve the same colour the table pill uses.
+  const colors = labels.map(l => cssVar(mlStatusColor(l).slice(4, -1), '#f0a133'));
   if (mlChartInst) mlChartInst.destroy();
   const legend = document.getElementById('mlChartLegend');
   if (!labels.length) { if (legend) legend.innerHTML = ''; return; }
@@ -1060,7 +1064,7 @@ async function loadGoogleAds(opts) {
   const data = await api('/api/google-ads');
   if (!data || data.error) { if (tb && !silent) tb.innerHTML = `<tr><td colspan="6" class="empty" style="color:var(--destructive)">⚠️ ${escapeHtml((data && data.error) || 'Load failed')}</td></tr>`; return; }
   _gadData = { rows: data.rows || [], keys: data.keys || [], headers: data.headers || [] };
-  const u = document.getElementById('gadUpdated'); if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-IN', { hour12: true }); }
+  const u = document.getElementById('gadUpdated'); if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); }
   renderGoogleAds();
 }
 
@@ -1310,7 +1314,7 @@ async function loadManual(opts) {
   const data = await api('/api/manual');
   if (!data || data.error) { if (tb && !silent) tb.innerHTML = `<tr><td colspan="8" class="empty" style="color:var(--destructive)">⚠️ ${escapeHtml((data && data.error) || 'Load failed')}</td></tr>`; return; }
   _manData = { rows: data.rows || [], keys: data.keys || [], headers: data.headers || [] };
-  const u = document.getElementById('manUpdated'); if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-IN', { hour12: true }); }
+  const u = document.getElementById('manUpdated'); if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); }
   renderManual();
 }
 
