@@ -27,13 +27,23 @@ ThemeDecor.register('holi', function (d) {
   var SKIN = '#D99A6C', INK = '#3B2410';
   function kid(dir, pichkari) {
     function X(x) { return (45 + dir * (x - 45)).toFixed(1); }
-    var s = '<svg viewBox="0 0 90 140" xmlns="http://www.w3.org/2000/svg">' +
-      // white pyjama and feet
+    // light from the viewer's upper left whichever way the child faces: the kurta shades off to the right
+    var g = 'hlK' + (dir > 0 ? 'a' : 'b');
+    var s = '<svg viewBox="0 0 90 140" xmlns="http://www.w3.org/2000/svg"><defs>' +
+      '<linearGradient id="' + g + '" x1="0" y1="0" x2="1" y2=".3"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".6" stop-color="#F1F5F9"/><stop offset="1" stop-color="#CBD5E1"/></linearGradient>' +
+      '<radialGradient id="' + g + 'f" cx=".38" cy=".35" r=".75"><stop offset="0" stop-color="#EDB98E"/><stop offset=".6" stop-color="' + SKIN + '"/><stop offset="1" stop-color="#B97A4E"/></radialGradient></defs>' +
+      '<ellipse cx="45" cy="138" rx="22" ry="2.4" fill="#000" opacity=".15"/>' +
+      // white pyjama, creased, and juttis with gold stitching
       '<path d="M' + X(37) + ' 100 L' + X(34) + ' 131 M' + X(53) + ' 100 L' + X(56) + ' 131" stroke="#F1F5F9" stroke-width="10" stroke-linecap="round"/>' +
-      '<ellipse cx="' + X(34) + '" cy="135" rx="7" ry="3.2" fill="#7C2D12"/><ellipse cx="' + X(57) + '" cy="135" rx="7" ry="3.2" fill="#7C2D12"/>' +
-      // white kurta
-      '<path d="M' + X(30) + ' 50 Q45 44 ' + X(60) + ' 50 L' + X(64) + ' 104 Q45 110 ' + X(26) + ' 104 Z" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>' +
-      '<path d="M45 50 V70" stroke="#CBD5E1" stroke-width="1"/>' +
+      '<path d="M' + X(40) + ' 104 L' + X(37.6) + ' 129 M' + X(56) + ' 104 L' + X(58.6) + ' 129" stroke="#CBD5E1" stroke-width="2.2" stroke-linecap="round"/>' +
+      '<path d="M' + X(35) + ' 116 l' + (dir * 3) + ' 1.6 M' + X(55) + ' 118 l' + (dir * 3) + ' 1.6" stroke="#CBD5E1" stroke-width=".8"/>' +
+      '<path d="M' + X(26) + ' 136.6 Q' + X(28) + ' 131 ' + X(35) + ' 131.4 Q' + X(42) + ' 132 ' + X(41) + ' 136.6 Z" fill="#7C2D12"/>' +
+      '<path d="M' + X(49) + ' 136.6 Q' + X(51) + ' 131 ' + X(58) + ' 131.4 Q' + X(65) + ' 132 ' + X(64) + ' 136.6 Z" fill="#7C2D12"/>' +
+      '<path d="M' + X(30) + ' 133.6 Q' + X(34) + ' 131.6 ' + X(38) + ' 133.6 M' + X(53) + ' 133.6 Q' + X(57) + ' 131.6 ' + X(61) + ' 133.6" stroke="#FACC15" stroke-width=".9" fill="none"/>' +
+      // white kurta, shaded, with a placket and buttons at the neck
+      '<path d="M' + X(30) + ' 50 Q45 44 ' + X(60) + ' 50 L' + X(64) + ' 104 Q45 110 ' + X(26) + ' 104 Z" fill="url(#' + g + ')" stroke="#CBD5E1" stroke-width="1"/>' +
+      '<path d="M' + X(33) + ' 60 Q' + X(34) + ' 84 ' + X(31) + ' 102 M' + X(56) + ' 60 Q' + X(57) + ' 84 ' + X(60) + ' 102" stroke="#CBD5E1" stroke-width=".8" fill="none"/>' +
+      '<path d="M45 48 V68" stroke="#CBD5E1" stroke-width="2.2"/><circle cx="45" cy="54" r=".9" fill="#94A3B8"/><circle cx="45" cy="59" r=".9" fill="#94A3B8"/><circle cx="45" cy="64" r=".9" fill="#94A3B8"/>' +
       '<g class="hl-stains"></g>';
     if (pichkari) {
       // both hands on a brass pichkari held level at the chest, aimed forward
@@ -53,12 +63,18 @@ ThemeDecor.register('holi', function (d) {
            '<circle class="hl-fist" cx="' + X(25) + '" cy="29" r="4.6" fill="#EC4899"/><circle cx="' + X(25) + '" cy="29" r="2.4" fill="' + SKIN + '"/></g>';
     }
     // head, laughing face, hair
-    s += '<rect x="41" y="40" width="8" height="10" fill="' + SKIN + '"/>' +
-         '<circle cx="45" cy="30" r="13" fill="' + SKIN + '" stroke="' + INK + '" stroke-width=".8"/>' +
-         '<path d="M32 28 Q31 15 45 15 Q59 15 58 28 Q54 21 45 21 Q36 21 32 28 Z" fill="#1C1917"/>' +
-         '<path d="M38 30 Q40.5 27 43 30 M47 30 Q49.5 27 52 30" fill="none" stroke="' + INK + '" stroke-width="1.4" stroke-linecap="round"/>' +
-         '<path d="M39 35 Q45 42 51 35 Z" fill="#9F1239"/><path d="M40.5 35.4 Q45 37 49.5 35.4" stroke="#fff" stroke-width="1" fill="none"/>' +
-         '<ellipse cx="36.5" cy="34" rx="2.6" ry="1.6" fill="#F472B6" opacity=".7"/><ellipse cx="53.5" cy="34" rx="2.6" ry="1.6" fill="#F472B6" opacity=".7"/>' +
+    s += '<path d="M41 40 H49 V48 Q45 50 41 48 Z" fill="#B97A4E"/>' +
+         '<ellipse cx="31.6" cy="31" rx="2.6" ry="3.6" fill="' + SKIN + '"/><ellipse cx="58.4" cy="31" rx="2.6" ry="3.6" fill="#B97A4E"/>' +
+         '<path d="M32.2 28 Q31.6 16 45 16.4 Q58.4 16 57.8 28 Q58.4 38 52 41.4 Q45 44.6 38 41.4 Q31.6 38 32.2 28 Z" fill="url(#' + g + 'f)" stroke="' + INK + '" stroke-width=".5"/>' +
+         '<path d="M31.4 28 Q30 13.6 45 13.6 Q60 13.6 58.6 28 Q57 21 52 19.4 Q46 23 36 21.6 Q33 23.6 31.4 28 Z" fill="#1C1917"/>' +
+         '<path d="M37 17 Q44 14.4 51 16" stroke="#57534E" stroke-width="1.2" fill="none" stroke-linecap="round"/>' +
+         // brows, laughing eyes with a catch-light, nose
+         '<path d="M36.6 24.6 Q39.6 23 42.4 24.4 M47.6 24.4 Q50.4 23 53.4 24.6" stroke="#1C1917" stroke-width="1.1" fill="none" stroke-linecap="round"/>' +
+         '<path d="M37.2 29.4 Q39.8 26.4 42.6 29.4 Q39.8 30.4 37.2 29.4 Z M47.4 29.4 Q50.2 26.4 52.8 29.4 Q50.2 30.4 47.4 29.4 Z" fill="#3F2A1D"/>' +
+         '<circle cx="40.6" cy="28.2" r=".55" fill="#fff"/><circle cx="50.8" cy="28.2" r=".55" fill="#fff"/>' +
+         '<path d="M45 29.6 Q43.6 33 45.8 33.4" stroke="#B97A4E" stroke-width="1" fill="none" stroke-linecap="round"/>' +
+         '<path d="M39 35 Q45 42.6 51 35 Q45 36.6 39 35 Z" fill="#9F1239"/><path d="M40.4 35.5 Q45 37.2 49.6 35.5 L49 36.6 Q45 38 41 36.6 Z" fill="#fff"/>' +
+         '<ellipse cx="36.5" cy="34" rx="2.6" ry="1.6" fill="#F472B6" opacity=".45"/><ellipse cx="53.5" cy="34" rx="2.6" ry="1.6" fill="#F472B6" opacity=".45"/>' +
          // a smear of colour already on the cheek
          '<circle cx="' + X(54) + '" cy="27" r="3" fill="' + (pichkari ? '#22D3EE' : '#FACC15') + '" opacity=".8"/>';
     return s + '</svg>';
