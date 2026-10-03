@@ -203,6 +203,7 @@ async function loadAppTheme() {
     _themeMode = t.mode || (t.off ? 'off' : 'full');
     _themeOff = _themeMode === 'off';
     _nvDay = t.navratriDay || 0;
+    _festMessage = t.message || '';
     if (window.ThemeDecor && ThemeDecor.setLite) ThemeDecor.setLite(_themeMode === 'lite');
     applyAppTheme(_themeOff ? 'normal' : t.theme);
     syncThemeToggle();
@@ -246,10 +247,18 @@ function greetByName(theme) {
   const text = document.createElement('span');
   text.textContent = g.t.replace(/!$/, '') + '! ' + g.e;
   b.append(name, ' ', text);
+  // the company's own message, if the theme owner has set one, on a second line
+  const stay = _festMessage ? 9000 : 6000;
+  if (_festMessage) {
+    const m = document.createElement('small');
+    m.textContent = _festMessage;
+    b.appendChild(m);
+  }
   document.body.appendChild(b);
-  setTimeout(() => b.classList.add('fest-name-out'), 6000);
-  setTimeout(() => b.remove(), 6700);
+  setTimeout(() => b.classList.add('fest-name-out'), stay);
+  setTimeout(() => b.remove(), stay + 700);
 }
+let _festMessage = '';
 
 async function setMyThemeMode(mode) {
   if (mode === _themeMode) return;

@@ -346,7 +346,15 @@ function paintThemePicker() {
         '<div class="tp-note">' + t.note + '</div>' +
         (active || t.key === 'normal' ? '' : '<span class="tp-try" role="button" tabindex="0" onclick="event.stopPropagation(); previewTheme(\'' + t.key + '\')">👁 Preview</span>') +
         '</button>';
-    }).join('') + '</div>' + (_themeCurrent === 'navratri' ? nvDayRow() : '');
+    }).join('') + '</div>' + (_themeCurrent === 'navratri' ? nvDayRow() : '') +
+    '<div class="tp-head" style="margin-top:22px"><div class="tp-title">Company message</div>' +
+    '<div class="tp-sub">Shown under each person\'s festival greeting when they open the app. Leave it empty for none.</div></div>' +
+    '<div class="tp-msg"><textarea id="tpMessage" maxlength="160" rows="2" placeholder="e.g. Warm wishes to you and your family from the E-Marketing family"></textarea>' +
+    '<div class="tp-msg-row"><span id="tpMessageCount">0 / 160</span><button type="button" class="btn btn-primary" onclick="saveFestMessage()">Save message</button></div></div>';
+  const ta = document.getElementById('tpMessage');
+  ta.value = _festMessage || '';
+  const count = () => { document.getElementById('tpMessageCount').textContent = ta.value.length + ' / 160'; };
+  ta.oninput = count; count();
 }
 
 // Navratri's nine days, each a form of the Mata (js/themes/navratri.js NV_DAYS); 0 is the general
@@ -393,6 +401,7 @@ async function renderThemePicker() {
   if (r.error) { box.innerHTML = '<div class="empty">Could not load the current theme.</div>'; return; }
   _themeCurrent = r.theme;
   _nvDayCurrent = r.navratriDay || 0;
+  _festMessage = r.message || '';
   paintThemePicker();
 }
 
@@ -422,6 +431,14 @@ function endPreview(restore) {
   if (bar) bar.remove();
   if (restore && _previewing) applyAppTheme(_themeOff ? 'normal' : _companyTheme);
   _previewing = null;
+}
+
+async function saveFestMessage() {
+  const ta = document.getElementById('tpMessage');
+  const r = await api('/api/theme/message', 'PUT', { message: ta.value });
+  if (r.error) { showToast(r.error, 'error'); return; }
+  _festMessage = r.message; ta.value = r.message;
+  showToast(r.message ? 'Message saved for everyone' : 'Message removed');
 }
 
 async function setAppTheme(key) {

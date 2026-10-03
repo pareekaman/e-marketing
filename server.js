@@ -9415,7 +9415,23 @@ app.get('/api/theme', requireAuth, async (req, res) => {
     const [[nv]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [NAVRATRI_DAY_KEY]);
     const navratriDay = nv ? Math.min(9, Math.max(0, parseInt(nv.value, 10) || 0)) : 0;
     const mode = mine && mine.value === 'lite' ? 'lite' : mine && mine.value === '1' ? 'off' : 'full';
-    res.json({ theme, themes: APP_THEMES, canChange, off: mode === 'off', mode, navratriDay });
+    const [[msg]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [FESTIVAL_MESSAGE_KEY]);
+    res.json({ theme, themes: APP_THEMES, canChange, off: mode === 'off', mode, navratriDay, message: msg ? msg.value : '' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// The company's own festival message, shown under each person's festival greeting (core.js
+// greetByName). Set by the theme owner in the picker; empty means none.
+const FESTIVAL_MESSAGE_KEY = 'festival_message';
+app.put('/api/theme/message', requireAuth, async (req, res) => {
+  try {
+    if (!(await readIdSetting('theme_admin_ids')).includes(Number(req.session.userId)))
+      return res.status(403).json({ error: 'Only the theme owner can change the theme' });
+    const message = String((req.body && req.body.message) || '').replace(/\s+/g, ' ').trim();
+    if (message.length > 160) return res.status(400).json({ error: 'Keep the message to 160 characters' });
+    if (message) await db.query('INSERT INTO app_settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)', [FESTIVAL_MESSAGE_KEY, message]);
+    else await db.query('DELETE FROM app_settings WHERE key_name=?', [FESTIVAL_MESSAGE_KEY]);
+    res.json({ success: true, message });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -116,3 +116,15 @@
 @keyframes fest-name-in { from { opacity:0; transform:translateX(-50%) translateY(-30px) scale(.7); } to { opacity:1; transform:translateX(-50%); } }
 @keyframes fest-name-out { to { opacity:0; transform:translateX(-50%) translateY(-24px); } }
 @media (prefers-reduced-motion: reduce) { .fest-name-hello, .fest-name-hello.fest-name-out { animation:none; } }
+
+/* The company message: in the picker, and as the second line of the greeting banner */
+.tp-msg { max-width:640px; }
+.tp-msg textarea { width:100%; box-sizing:border-box; padding:10px 12px; border:1.5px solid #e2e8f0; border-radius:10px; resize:vertical;
+  font:14px/1.4 'Inter','Nirmala UI',sans-serif; }
+.tp-msg textarea:focus { outline:none; border-color:var(--brand-2); }
+.tp-msg-row { display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:12px; color:#64748b; }
+.fest-name-hello small { display:block; margin-top:4px; font:600 13px/1.35 'Nirmala UI','Mangal','Inter',sans-serif; opacity:.95;
+  white-space:normal; max-width:520px; text-align:center; }
+.fest-name-hello:has(small) { border-radius:22px; text-align:center; }
+/* on a desktop (Lite chosen) the badge starts clear of the 60px sidebar */
+@media (min-width:768px) { .td-lite { left:72px; bottom:16px; } }
