@@ -620,7 +620,26 @@ function fmsAutoDetectSteps(headers, metaRows) {
   // Doer column is only filled when a header actually says "doer". Sheets that
   // name it something else ("SC Name", "Sales Rep Name") are left blank rather
   // than guessed at — a wrong doer column hides every row with no error shown.
-  const doerHdr = headers.find(h => h.index < planIdxs[0] && /doer/i.test(h.name || ''));
+  // A CRM column (a client's owner) works the same way, so it counts too.
+  const doerHdr = headers.find(h => h.index < planIdxs[0] && /doer|\bcrm\b/i.test(h.name || ''));
+
+  // Step doers from the sheet's own "Who" row, matched to users by full name,
+  // or by first name when exactly one user has it. Anything unmatched is left
+  // for the admin to pick, never guessed.
+  const whoRow = meta.find(r => String((r || [])[0] || '').trim().toLowerCase() === 'who') || [];
+  const users = (typeof fmsAllUsers !== 'undefined' && Array.isArray(fmsAllUsers)) ? fmsAllUsers : [];
+  const doersFor = text => {
+    const ids = [];
+    for (const part of String(text || '').split(/[,/&+]| and /i).map(s => s.trim().toLowerCase()).filter(Boolean)) {
+      let u = users.find(x => String(x.name || '').trim().toLowerCase() === part);
+      if (!u) {
+        const firsts = users.filter(x => String(x.name || '').trim().toLowerCase().split(/\s+/)[0] === part.split(/\s+/)[0]);
+        if (firsts.length === 1 && part.split(/\s+/).length === 1) u = firsts[0];
+      }
+      if (u && !ids.includes(u.id)) ids.push(u.id);
+    }
+    return ids;
+  };
 
   const STRUCTURAL = ['planned', 'plan', 'actual', 'time delay', 'status'];
 
@@ -641,7 +660,7 @@ function fmsAutoDetectSteps(headers, metaRows) {
 
     return {
       stepName: String(stepName).trim() || `Step ${n + 1}`,
-      doers: [],
+      doers: doersFor(whoRow[p]),
       planCol: colOf(p),
       actualCol: nameAt(p + 1) === 'actual' ? colOf(p + 1) : '',
       extraInput: extraRows.length ? 'yes' : 'no',
@@ -809,8 +828,8 @@ function buildStepBoxHTML(idx) {
       <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1.5px solid #e2e8f0;border-radius:8px;background:#f8fafc;max-height:160px;overflow-y:auto">
         ${headers.map(h => `
           <label style="display:flex;align-items:center;gap:4px;font-size:11px;font-weight:500;cursor:pointer;text-transform:none;letter-spacing:0;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;white-space:nowrap">
-            <input type="checkbox" ${showColsSelected.includes(h.index)?'checked':''}
-              onchange="if(this.checked){if(!fmsSteps[${idx}].showCols.includes(${h.index}))fmsSteps[${idx}].showCols.push(${h.index})}else{fmsSteps[${idx}].showCols=fmsSteps[${idx}].showCols.filter(x=>x!==${h.index})}"
+            <input type="checkbox" data-showcol="${h.index}" ${showColsSelected.includes(h.index)?'checked':''}
+              onchange="fmsShowColChanged(${idx},${h.index},this.checked)"
               style="accent-color:#4f46e5;width:12px;height:12px"/>
             ${esc(h.name)}
           </label>`).join('')}
@@ -863,6 +882,21 @@ function buildStepBoxHTML(idx) {
       <div id="fmsExtraRows_${idx}">${extraRowsHTML}</div>
       <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="addFMSExtraRow(${idx})">+ Add Row</button>
     </div>`;
+}
+
+// A column ticked or unticked on Step 1 is applied to every step, since the
+// same client columns usually belong on all of them; later steps can still be
+// adjusted on their own afterwards.
+function fmsShowColChanged(idx, colIndex, on) {
+  const apply = s => {
+    if (!s.showCols) s.showCols = [];
+    if (on) { if (!s.showCols.includes(colIndex)) s.showCols.push(colIndex); }
+    else s.showCols = s.showCols.filter(x => x !== colIndex);
+  };
+  if (idx === 0) {
+    fmsSteps.forEach(apply);
+    document.querySelectorAll(`input[data-showcol="${colIndex}"]`).forEach(cb => { cb.checked = on; });
+  } else apply(fmsSteps[idx]);
 }
 
 function addFMSShowCol(idx, colIndex) {
