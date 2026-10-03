@@ -362,30 +362,63 @@ ThemeDecor.register('dussehra', function (d) {
     '</g></svg>';
 
   // A vanar of the sena: smaller, its fur and loincloth coloured per monkey.
+  // Lit from the upper left: the fur is shaded (a gradient per monkey), with tufts at the cheeks and
+  // crown, a brow ridge over the eyes, a muzzle with nostrils, fingers, and a loincloth knotted at the
+  // waist with a gold border. Hooks as before: am-fold / am-up, am-head, am-pupil.
+  var vanarN = 0;
   function vanar(fur, cloth) {
-    return '<svg viewBox="0 0 80 110" xmlns="http://www.w3.org/2000/svg">' +
+    var n = 'tdVn' + (vanarN++), SK = '#E9C79A', SKD = '#C9A06E', INK = '#3F2408';
+    var defs = '<defs><linearGradient id="' + n + 'f" x1="0" y1="0" x2="1" y2=".5"><stop offset="0" stop-color="#fff" stop-opacity=".14"/><stop offset=".4" stop-color="' + fur + '"/><stop offset="1" stop-color="' + fur + '"/></linearGradient>' +
+      '<linearGradient id="' + n + 'd" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".25"/></linearGradient>' +
+      '<radialGradient id="' + n + 'm" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#F8E2C2"/><stop offset="1" stop-color="' + SK + '"/></radialGradient></defs>';
+    function hand(x, y) { return '<circle cx="' + x + '" cy="' + y + '" r="3.4" fill="' + SK + '"/><path d="M' + (x - 2.4) + ' ' + (y - 2) + ' v-2 M' + x + ' ' + (y - 2.8) + ' v-2.2 M' + (x + 2.4) + ' ' + (y - 2) + ' v-2" stroke="' + SK + '" stroke-width="1.5" stroke-linecap="round"/>'; }
+    return '<svg viewBox="0 0 80 110" xmlns="http://www.w3.org/2000/svg">' + defs +
+      '<ellipse cx="40" cy="108" rx="16" ry="2" fill="#000" opacity=".16"/>' +
+      // the tail, curling up behind
       '<path d="M52 84 C70 86 76 68 70 56 C66 48 72 40 78 42" fill="none" stroke="' + fur + '" stroke-width="5" stroke-linecap="round"/>' +
-      '<path d="M34 92 L33 105 M46 92 L47 105" stroke="' + fur + '" stroke-width="7" stroke-linecap="round"/>' +
-      '<ellipse cx="32" cy="107" rx="5.5" ry="2.6" fill="#5B3410"/><ellipse cx="48" cy="107" rx="5.5" ry="2.6" fill="#5B3410"/>' +
-      '<path d="M27 52 Q40 46 53 52 L51 84 H29 Z" fill="' + fur + '" stroke="#3F2408" stroke-width=".8"/>' +
-      '<ellipse cx="40" cy="70" rx="8" ry="10" fill="#E9C79A"/>' +
-      '<path d="M27 80 H53 L55 94 Q40 99 25 94 Z" fill="' + cloth + '" stroke="#3F2408" stroke-width=".7"/>' +
-      '<g class="am-fold"><path d="M29 56 L23 72 L38 66 M51 56 L57 72 L42 66" fill="none" stroke="' + fur + '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '<path d="M40 56 Q44 63 40 71 Q36 63 40 56 Z" fill="#E9C79A" stroke="#3F2408" stroke-width=".6"/></g>' +
-      '<g class="am-up" display="none"><path d="M29 55 L22 40 L18 28 M51 55 L58 40 L62 28" fill="none" stroke="' + fur + '" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '<circle cx="17.5" cy="26" r="3.6" fill="#E9C79A"/><circle cx="62.5" cy="26" r="3.6" fill="#E9C79A"/></g>' +
-      '<g class="am-head">' +
-      '<circle cx="27" cy="30" r="5.5" fill="' + fur + '"/><circle cx="53" cy="30" r="5.5" fill="' + fur + '"/>' +
-      '<circle cx="27" cy="30" r="2.8" fill="#E9C79A"/><circle cx="53" cy="30" r="2.8" fill="#E9C79A"/>' +
-      '<circle cx="40" cy="29" r="13" fill="' + fur + '" stroke="#3F2408" stroke-width=".8"/>' +
-      '<path d="M37 16 Q40 11 43 16" fill="none" stroke="' + fur + '" stroke-width="3" stroke-linecap="round"/>' +
-      '<path d="M40 23 Q31 19 29.5 29 Q29.5 39 40 42 Q50.5 39 50.5 29 Q49 19 40 23 Z" fill="#E9C79A"/>' +
-      '<ellipse cx="35.5" cy="28.5" rx="2.6" ry="2.9" fill="#fff"/><ellipse cx="44.5" cy="28.5" rx="2.6" ry="2.9" fill="#fff"/>' +
-      '<circle class="am-pupil" cx="35.8" cy="29" r="1.4" fill="#1F1A17"/><circle class="am-pupil" cx="44.2" cy="29" r="1.4" fill="#1F1A17"/>' +
-      '<ellipse cx="40" cy="36.5" rx="6.5" ry="4.5" fill="#F5DDBA" stroke="#C9A06E" stroke-width=".6"/>' +
-      '<circle cx="38.4" cy="34.6" r=".7" fill="#3F2408"/><circle cx="41.6" cy="34.6" r=".7" fill="#3F2408"/>' +
-      '<path d="M36 37.5 Q40 41 44 37.5" fill="none" stroke="#3F2408" stroke-width="1" stroke-linecap="round"/>' +
-      '</g></svg>';
+      '<path d="M53 83 C68 84 73 69 68 57" fill="none" stroke="#000" stroke-opacity=".18" stroke-width="1.6" stroke-linecap="round"/>' +
+      '<circle cx="78" cy="42" r="3" fill="' + fur + '"/>' +
+      // legs and feet
+      '<path d="M34 90 L33 104 M46 90 L47 104" stroke="' + fur + '" stroke-width="7.5" stroke-linecap="round"/>' +
+      '<path d="M48 91 L49 103" stroke="#000" stroke-opacity=".18" stroke-width="2.4" stroke-linecap="round"/>' +
+      '<path d="M27 107 Q28 102 33 102 Q37 102 38 107 Z M42 107 Q43 102 47 102 Q52 102 53 107 Z" fill="' + SKD + '"/>' +
+      '<path d="M34.5 44 H45.5 V54 H34.5 Z" fill="' + fur + '"/>' +
+      // body: furred, with a pale chest and belly
+      '<path d="M27 52 Q40 45 53 52 Q55 68 51 86 H29 Q25 68 27 52 Z" fill="url(#' + n + 'f)"/>' +
+      '<path d="M27 52 Q40 45 53 52 Q55 68 51 86 H29 Q25 68 27 52 Z" fill="url(#' + n + 'd)"/>' +
+      '<path d="M33 56 Q40 53 47 56 Q49 70 45 80 Q40 83 35 80 Q31 70 33 56 Z" fill="url(#' + n + 'm)"/>' +
+      '<path d="M36 62 Q40 64 44 62 M37 70 Q40 71.4 43 70" stroke="' + SKD + '" stroke-width=".8" fill="none"/>' +
+      // loincloth, knotted at the waist, a gold border
+      '<path d="M27 80 H53 L55 94 Q40 99 25 94 Z" fill="' + cloth + '"/>' +
+      '<path d="M27 80 H53 L55 94 Q40 99 25 94 Z" fill="url(#' + n + 'd)"/>' +
+      '<path d="M26 92.6 Q40 97.6 54 92.6" stroke="#F5C518" stroke-width="1.6" fill="none"/><path d="M27 81 H53" stroke="#F5C518" stroke-width="2"/>' +
+      '<path d="M40 82 L37 90 M40 82 L43.6 89" stroke="' + cloth + '" stroke-width="3" stroke-linecap="round"/><circle cx="40" cy="82" r="2" fill="' + cloth + '" stroke="#000" stroke-opacity=".25" stroke-width=".5"/>' +
+      // arms: folded in prayer (default) or flung up in joy
+      '<g class="am-fold"><path d="M29 56 L23 72 L38 66 M51 56 L57 72 L42 66" fill="none" stroke="' + fur + '" stroke-width="6.4" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M52 58 L56.4 70.6" stroke="#000" stroke-opacity=".18" stroke-width="2" stroke-linecap="round"/>' +
+      '<path d="M40 55 Q45 63 40 72 Q35 63 40 55 Z" fill="' + SK + '" stroke="' + SKD + '" stroke-width=".7"/><path d="M40 57 V71" stroke="' + SKD + '" stroke-width=".6"/></g>' +
+      '<g class="am-up" display="none"><path d="M29 55 L22 40 L18 29 M51 55 L58 40 L62 29" fill="none" stroke="' + fur + '" stroke-width="6.4" stroke-linecap="round" stroke-linejoin="round"/>' +
+      hand(17.5, 26) + hand(62.5, 26) + '</g>' +
+      '<g class="am-head"><g transform="translate(0 6)">' +
+      // ears
+      '<circle cx="26.6" cy="30" r="5.6" fill="' + fur + '"/><circle cx="53.4" cy="30" r="5.6" fill="' + fur + '"/>' +
+      '<circle cx="26.8" cy="30" r="3" fill="' + SKD + '"/><circle cx="53.2" cy="30" r="3" fill="' + SKD + '"/>' +
+      // the head, with tufts at the cheeks and a tuft on the crown
+      '<path d="M27 32 Q24 36 28 38 Q27.6 40.6 31 41 L32 36 Z M53 32 Q56 36 52 38 Q52.4 40.6 49 41 L48 36 Z" fill="' + fur + '"/>' +
+      '<circle cx="40" cy="29" r="13" fill="url(#' + n + 'f)"/>' +
+      '<path d="M44 17 Q52.6 22 52 33 Q50.6 24 44 17 Z" fill="#000" fill-opacity=".14"/>' +
+      '<path d="M36 17 Q37 10 40 13 Q41 8.6 43 13 Q46 11 44.6 17" fill="' + fur + '"/>' +
+      // the face: brow ridge, eyes with a catch-light, muzzle, nostrils, a grin
+      '<path d="M40 22.6 Q31 18.6 29.4 28.6 Q29.4 39 40 42.4 Q50.6 39 50.6 28.6 Q49 18.6 40 22.6 Z" fill="url(#' + n + 'm)"/>' +
+      '<path d="M31.6 25.6 Q35.6 22.6 39.4 25.4 M40.6 25.4 Q44.4 22.6 48.4 25.6" stroke="' + SKD + '" stroke-width="1.4" fill="none" stroke-linecap="round"/>' +
+      '<ellipse cx="35.5" cy="28.6" rx="2.5" ry="2.7" fill="#fff"/><ellipse cx="44.5" cy="28.6" rx="2.5" ry="2.7" fill="#fff"/>' +
+      '<g class="am-pupil"><circle cx="35.8" cy="29" r="1.5" fill="#3B2410"/><circle cx="36.3" cy="28.4" r=".5" fill="#fff"/></g>' +
+      '<g class="am-pupil"><circle cx="44.2" cy="29" r="1.5" fill="#3B2410"/><circle cx="44.7" cy="28.4" r=".5" fill="#fff"/></g>' +
+      '<ellipse cx="40" cy="36.4" rx="6.8" ry="4.8" fill="#F5DDBA"/>' +
+      '<path d="M33.6 37.6 Q40 42.8 46.4 37.6" stroke="' + SKD + '" stroke-width=".6" fill="none"/>' +
+      '<path d="M38 33.6 Q38.4 35 39 34.6 M42 33.6 Q41.6 35 41 34.6" stroke="' + INK + '" stroke-width=".9" fill="none" stroke-linecap="round"/>' +
+      '<path d="M35.6 37.4 Q40 41.6 44.4 37.4 Q40 39 35.6 37.4 Z" fill="#7F1D1D"/><path d="M36.8 37.8 Q40 38.8 43.2 37.8" stroke="#fff" stroke-width=".7" fill="none"/>' +
+      '</g></g></svg>';
   }
 
   // The Pushpak Viman: a golden flying chariot on clouds, with a swan prow, a canopy hung with
