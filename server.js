@@ -3052,11 +3052,16 @@ app.get('/api/dashboard/leaderboard', requireAuth, async (req, res) => {
     const hit = _leaderboardCache.get(key);
     if (hit && Date.now() - hit.at < 2 * 60 * 1000) return res.json(hit.data);
     const [scores, activity] = await Promise.all([computeMisAll(start, end, dept), computeActivity(start, end, dept)]);
+    // Profile photos are stored full size (often 1-2 MB of base64 each), and this
+    // goes to every employee's dashboard: a whole team's photos ran past Vercel's
+    // ~4.5 MB response cap, so the call failed and the charts showed no data.
+    // Only small photos ride along; the rest fall back to initials.
+    const thumb = img => (typeof img === 'string' && img.length <= 60 * 1024) ? img : null;
     const data = {
       scope: dept === null ? 'all' : 'team', department: dept,
-      scores: scores.map(u => ({ userId: u.userId, name: u.name, profileImage: u.profileImage || null,
+      scores: scores.map(u => ({ userId: u.userId, name: u.name, profileImage: thumb(u.profileImage),
         completedAll: u.completedAll, overallScore: u.overallScore })),
-      activity: activity.map(r => ({ userId: r.userId, name: r.name, profileImage: r.profileImage || null,
+      activity: activity.map(r => ({ userId: r.userId, name: r.name, profileImage: thumb(r.profileImage),
         activityScore: r.activityScore, active_tasks: r.active_tasks, delegated_to_others: r.delegated_to_others,
         revises_triggered: r.revises_triggered, leaves_submitted: r.leaves_submitted })),
     };
@@ -3509,7 +3514,9 @@ const SERVER_ROLE_DEFAULTS = {
           // neighbouring route asked for admin-or-hod. That split was arbitrary.
           actions: ['edit_task','delete_task','create_task','create_checklist','transfer_task','reopen_task','approve_revision','set_plan','delete_leave','edit_inventory','edit_clients'] },
   pc:   { pages: ['dashboard','alltasks','approvals','clients','leaves','meetings','daily','fms-tasks','inventory','dms','compliance','paymentreq','feedback','creditcards'],
-          actions: ['approve_revision','bulk_approve','create_task','reopen_task','edit_task','delete_task'] },
+          // create_checklist + transfer_task: every employee may delegate, add a
+          // checklist and transfer (decision 2026-10-03).
+          actions: ['approve_revision','bulk_approve','create_task','create_checklist','transfer_task','reopen_task','edit_task','delete_task'] },
   user: { pages: ['dashboard','alltasks','approvals','leaves','meetings','daily','inventory','compliance','clients','paymentreq','feedback','creditcards'],
           // transfer_task is a default for every user by decision (2026-08-31):
           // handing your own task to someone else is not an elevated act, and
@@ -3518,7 +3525,7 @@ const SERVER_ROLE_DEFAULTS = {
           // transfer only takes effect after an approval. Without this the
           // modal opened, took a date range and a target, and only then
           // answered "You do not have access to transfer tasks".
-          actions: ['create_task','edit_task','delete_task','transfer_task'] }
+          actions: ['create_task','create_checklist','edit_task','delete_task','transfer_task'] }
 };
 
 // Mirrors canSee()'s cascade exactly: an explicit user_permissions row wins
@@ -4868,6 +4875,34 @@ const _migrationMarkerPromise = (async () => {
     // No marker written → the next cold start simply migrates again, as before.
     console.warn('  ⚠️ Schema marker not stamped:', e.message);
   }
+})();
+
+// One-time: Delegate, Checklist and Transfer for every employee (decision
+// 2026-10-03). The role defaults above now carry all three; this adds them to
+// the saved Access Control rows too, which win over the defaults. Marker-
+// guarded so a later revoke in the panel sticks. Outside the migration blocks
+// on purpose: editing those replays every schema statement on deploy.
+(async () => {
+  try {
+    await _startupMigrationsPromise; await _clientsTableMigrationsPromise;
+    const [[done]] = await db.query(`SELECT value FROM app_settings WHERE key_name='perm_task_buttons_v1'`);
+    if (done) return;
+    const [rows] = await db.query(`SELECT id, user_permissions FROM users
+      WHERE role IN ('hod','pc','user') AND user_permissions IS NOT NULL AND user_permissions <> ''`);
+    let patched = 0;
+    for (const r of rows) {
+      let up; try { up = JSON.parse(r.user_permissions); } catch { continue; }
+      if (!up || !Array.isArray(up.pages)) continue;
+      const actions = Array.isArray(up.actions) ? up.actions : [];
+      const add = ['create_task', 'create_checklist', 'transfer_task'].filter(k => !actions.includes(k));
+      if (!add.length) continue;
+      await db.query('UPDATE users SET user_permissions=? WHERE id=?', [JSON.stringify({ pages: up.pages, actions: [...actions, ...add] }), r.id]);
+      patched++;
+    }
+    await db.query(`INSERT INTO app_settings (key_name, value) VALUES ('perm_task_buttons_v1', ?)
+      ON DUPLICATE KEY UPDATE value=VALUES(value)`, [`patched ${patched} of ${rows.length} rows`]);
+    console.log(`  ✅ Task buttons for everyone — ${patched} saved permission rows updated`);
+  } catch (e) { console.log('  ⚠️ Task buttons backfill skipped —', e.code || e.message); }
 })();
 
 // ── WhatsApp helper (Waumfy API) ──────────────────────
