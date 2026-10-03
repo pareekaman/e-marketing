@@ -98,21 +98,80 @@ ThemeDecor.register('diwali', function (d) {
   // bursts with a puff of smoke, and the child is left soot-black with hair on end — and both laugh,
   // "हा हा हा!". The soot wears off after a few seconds. The strip is placed inline and takes no taps;
   // the children are moved from frame() (KIDS), the bombs, sparks and smoke are on the canvas.
-  var SKIN = '#C68B59';
+  var SKIN = '#C68B59', SKIN_D = '#A86F42', SKIN_L = '#DDA778', kidN = 0;
+  // A child in festival clothes, drawn with light from the upper left: boys in a kurta-pyjama and
+  // juttis, girls in a choli, a flared lehenga with a gold border, a dupatta, a plait and a bindi.
+  // The hooks stay as before: .dk-leg1/.dk-leg2 swing about the hips (26,76)/(34,76), .dk-arm
+  // turns about the right shoulder, .dk-smile hides under .dk-soot.
   function kid(girl, shirt, bottom) {
-    return '<svg viewBox="0 0 60 100" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto;overflow:visible">' +
-      '<g class="dk-legs"><path class="dk-leg1" d="M26 76 L22 96" stroke="' + SKIN + '" stroke-width="5" stroke-linecap="round"/>' +
-      '<path class="dk-leg2" d="M34 76 L38 96" stroke="' + SKIN + '" stroke-width="5" stroke-linecap="round"/></g>' +
-      (girl ? '<path d="M18 52 H42 L50 82 Q30 88 10 82 Z" fill="' + bottom + '" stroke="rgba(0,0,0,.25)" stroke-width=".8"/><path d="M11 80 Q30 86 49 80" fill="none" stroke="#F5B70A" stroke-width="2"/>'
-            : '<path d="M19 66 H41 L42 80 H33 L30 72 L27 80 H18 Z" fill="' + bottom + '"/>') +
-      '<path d="M19 40 Q30 35 41 40 L42 ' + (girl ? 56 : 68) + ' H18 Z" fill="' + shirt + '" stroke="rgba(0,0,0,.25)" stroke-width=".8"/>' +
-      '<path d="M20 42 L13 54" stroke="' + SKIN + '" stroke-width="4.5" stroke-linecap="round"/>' +
-      '<g class="dk-arm"><path d="M40 42 L48 52 L54 44" fill="none" stroke="' + SKIN + '" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></g>' +
-      '<circle cx="30" cy="26" r="11" fill="' + SKIN + '" stroke="#7C4A1E" stroke-width=".8"/>' +
-      (girl ? '<path d="M19 26 Q18 13 30 13 Q42 13 41 26 Q37 18 30 18 Q23 18 19 26 Z" fill="#1C1917"/><circle cx="19" cy="30" r="4" fill="#1C1917"/><circle cx="18" cy="27" r="1.8" fill="#F472B6"/>'
-            : '<path d="M19 25 Q18 13 30 13 Q42 13 41 25 Q37 17 30 18 Q23 17 19 25 Z" fill="#1C1917"/>') +
-      '<path d="M25 26 q2 -2 4 0 M31 26 q2 -2 4 0" fill="none" stroke="#1C1917" stroke-width="1.2" stroke-linecap="round"/>' +
-      '<path class="dk-smile" d="M25 31 Q30 36 35 31 Q30 33.6 25 31 Z" fill="#7F1D1D"/>' +
+    var n = 'dk' + (kidN++), S = '<stop offset="', E = '"/>';
+    function shade(id, c) { return '<linearGradient id="' + id + '" x1="0" y1="0" x2="1" y2=".4">' + S + '0" stop-color="#fff" stop-opacity=".28' + E + S + '.45" stop-color="' + c + E + S + '1" stop-color="' + c + E + '</linearGradient>'; }
+    var defs = '<defs>' + shade(n + 's', shirt) + shade(n + 'b', bottom) +
+      '<radialGradient id="' + n + 'f" cx=".38" cy=".35" r=".75">' + S + '0" stop-color="' + SKIN_L + E + S + '.6" stop-color="' + SKIN + E + S + '1" stop-color="' + SKIN_D + E + '</radialGradient>' +
+      '<linearGradient id="' + n + 'k" x1="0" y1="0" x2="1" y2="0">' + S + '0" stop-color="#000" stop-opacity="0' + E + S + '1" stop-color="#000" stop-opacity=".22' + E + '</linearGradient></defs>';
+    var pant = girl ? SKIN : '#F5F0E6', shoe = girl ? '#B45309' : '#7C2D12';
+    function leg(cls, x0, x1) {
+      return '<g class="' + cls + '"><path d="M' + x0 + ' 76 L' + x1 + ' 94" stroke="' + pant + '" stroke-width="' + (girl ? 4.6 : 6) + '" stroke-linecap="round"/>' +
+        (girl ? '' : '<path d="M' + (x0 + 1.6) + ' 77 L' + (x1 + 1.6) + ' 93" stroke="#000" stroke-opacity=".1" stroke-width="2"/>') +
+        '<path d="M' + (x1 - 3.4) + ' 95.5 Q' + x1 + ' 91.6 ' + (x1 + 4.6) + ' 95 Q' + (x1 + 6) + ' 97.6 ' + (x1 + 2) + ' 97.6 L' + (x1 - 3) + ' 97.6 Z" fill="' + shoe + '"/>' +
+        '<path d="M' + (x1 - 2) + ' 95 Q' + x1 + ' 93.6 ' + (x1 + 3) + ' 95" stroke="#FACC15" stroke-width=".7" fill="none"/></g>';
+    }
+    var s = '<svg viewBox="0 0 60 100" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto;overflow:visible">' + defs +
+      '<ellipse cx="30" cy="98" rx="13" ry="1.8" fill="#000" opacity=".18"/>' +
+      '<g class="dk-legs">' + leg('dk-leg1', 26, 22) + leg('dk-leg2', 34, 38) + '</g>';
+    if (girl) {
+      // the lehenga: flared, pleated, a gold border at the hem
+      s += '<path d="M19 52 H41 Q47 66 51 83 Q30 89 9 83 Q13 66 19 52 Z" fill="url(#' + n + 'b)"/>' +
+           '<path d="M24 54 Q21 70 17 85 M30 54 V87 M36 54 Q39 70 43 85" stroke="#000" stroke-opacity=".12" stroke-width="1" fill="none"/>' +
+           '<path d="M9.6 81 Q30 87 50.4 81 L51 83.4 Q30 89.4 9 83.4 Z" fill="#F5B70A"/>' +
+           '<path d="M11 82.6 Q30 88 49 82.6" stroke="#B45309" stroke-width=".5" stroke-dasharray="1.2 1.6" fill="none"/>' +
+           // the choli
+           '<path d="M20 40 Q30 36 40 40 L41 54 Q30 56 19 54 Z" fill="url(#' + n + 's)"/>' +
+           '<path d="M19.4 52 Q30 54.6 40.6 52" stroke="#F5B70A" stroke-width="1.2" fill="none"/>' +
+           // a dupatta over the left shoulder, across to the right hip
+           '<path d="M21 39 Q32 50 43 62 L40 65 Q29 54 19 43 Z" fill="#FDE68A" fill-opacity=".8"/>' +
+           '<path d="M21 39 Q32 50 43 62" stroke="#F5B70A" stroke-width=".6" fill="none"/>';
+    } else {
+      // the kurta, to the knee, side slits, a gold placket at the neck
+      s += '<path d="M19 40 Q30 35.5 41 40 L43 74 L37 74 L36 70 L24 70 L23 74 L17 74 Z" fill="url(#' + n + 's)"/>' +
+           '<path d="M19 40 Q30 35.5 41 40 L43 74 L37 74 L36 70 L24 70 L23 74 L17 74 Z" fill="url(#' + n + 'k)"/>' +
+           '<path d="M30 38.6 V50" stroke="#F5B70A" stroke-width="1.8"/><circle cx="30" cy="42" r=".7" fill="#fff"/><circle cx="30" cy="45" r=".7" fill="#fff"/><circle cx="30" cy="48" r=".7" fill="#fff"/>' +
+           '<path d="M17.4 72 H23 M37 72 H42.6" stroke="#F5B70A" stroke-width="1"/>';
+    }
+    // the near arm: a sleeve, then the forearm and a hand
+    s += '<path d="M20.5 41 L16 50" stroke="' + shirt + '" stroke-width="5.4" stroke-linecap="round"/>' +
+         '<path d="M16 50 L13.6 55" stroke="' + SKIN + '" stroke-width="3.8" stroke-linecap="round"/><circle cx="13.3" cy="56" r="2.3" fill="' + SKIN + '"/>' +
+         (girl ? '<path d="M14.4 52.6 L17.2 53.8" stroke="#F5B70A" stroke-width="1.2"/>' : '') +
+         // the throwing arm, raised from the shoulder
+         '<g class="dk-arm"><path d="M39.5 41 L45 48" stroke="' + shirt + '" stroke-width="5.4" stroke-linecap="round"/>' +
+         '<path d="M45 48 L49 51 L53 45" fill="none" stroke="' + SKIN + '" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="53.4" cy="44" r="2.4" fill="' + SKIN + '"/></g>' +
+         // neck, then the head: ears, face, hair
+         '<path d="M27 33 H33 V40 Q30 41.4 27 40 Z" fill="' + SKIN_D + '"/>' +
+         '<ellipse cx="18.8" cy="27" rx="2" ry="2.8" fill="' + SKIN + '"/><ellipse cx="41.2" cy="27" rx="2" ry="2.8" fill="' + SKIN_D + '"/>' +
+         '<path d="M19.4 24 Q19 13.6 30 13.6 Q41 13.6 40.6 24 Q41 33 35 36.4 Q30 38.6 25 36.4 Q19 33 19.4 24 Z" fill="url(#' + n + 'f)"/>';
+    if (girl) {
+      s += '<path d="M18.8 26 Q17 12 30 12 Q43 12 41.2 26 Q40 19 36 17.4 Q31 21 22 20 Q20 22 18.8 26 Z" fill="#1C1917"/>' +
+           '<path d="M22 16 Q28 13 34 14.4" stroke="#57534E" stroke-width="1" fill="none" stroke-linecap="round"/>' +
+           // a plait down the back, tied with a ribbon
+           '<path d="M40.6 22 Q45 30 43 40" stroke="#1C1917" stroke-width="3.6" stroke-linecap="round" fill="none"/>' +
+           '<path d="M42.6 26 l2 1 M43.6 31 l2 1 M43.6 36 l2 1" stroke="#44403C" stroke-width=".8"/>' +
+           '<circle cx="43" cy="41" r="1.8" fill="' + bottom + '"/>' +
+           '<circle cx="30" cy="19.6" r="1.1" fill="#DC2626"/>' +
+           '<circle cx="18.9" cy="30.6" r="1.1" fill="#F5B70A"/><circle cx="41.1" cy="30.6" r="1.1" fill="#F5B70A"/>';
+    } else {
+      s += '<path d="M18.8 25 Q17 12 30 12 Q43 12 41.2 25 Q40 18.6 35 17 Q29 19.4 21 18 Q19.6 21 18.8 25 Z" fill="#1C1917"/>' +
+           '<path d="M24 15 Q30 13 36 15" stroke="#57534E" stroke-width="1" fill="none" stroke-linecap="round"/>';
+    }
+    // brows, open eyes with a catch-light, a nose, rosy cheeks
+    s += '<path d="M23.4 22.4 Q25.6 21.2 27.6 22.2 M32.4 22.2 Q34.4 21.2 36.6 22.4" stroke="#1C1917" stroke-width="1" fill="none" stroke-linecap="round"/>' +
+         '<ellipse cx="25.6" cy="25.6" rx="2.3" ry="1.8" fill="#fff"/><ellipse cx="34.4" cy="25.6" rx="2.3" ry="1.8" fill="#fff"/>' +
+         '<circle cx="25.9" cy="25.7" r="1.35" fill="#3F2A1D"/><circle cx="34.7" cy="25.7" r="1.35" fill="#3F2A1D"/>' +
+         '<circle cx="26.4" cy="25.1" r=".45" fill="#fff"/><circle cx="35.2" cy="25.1" r=".45" fill="#fff"/>' +
+         '<path d="M23.3 24.4 Q25.6 23 27.9 24.4 M32.1 24.4 Q34.4 23 36.7 24.4" stroke="#1C1917" stroke-width=".7" fill="none"/>' +
+         '<path d="M30 26.6 Q29 29.4 30.6 29.8" stroke="' + SKIN_D + '" stroke-width=".9" fill="none" stroke-linecap="round"/>' +
+         '<ellipse cx="23.4" cy="30" rx="2.2" ry="1.3" fill="#F472B6" opacity=".35"/><ellipse cx="36.6" cy="30" rx="2.2" ry="1.3" fill="#F472B6" opacity=".35"/>' +
+         '<g class="dk-smile"><path d="M26.4 31.4 Q30 35.6 33.6 31.4 Q30 32.6 26.4 31.4 Z" fill="#7F1D1D"/><path d="M27.4 31.8 Q30 32.8 32.6 31.8 L32.2 32.6 Q30 33.4 27.8 32.6 Z" fill="#fff"/></g>';
+    return s +
       // soot from a bomb: a black face, hair standing on end, white eyes, a big laughing mouth
       '<g class="dk-soot"><path d="M19 22 l-4 -10 l6 6 l1 -11 l4 9 l3 -11 l2 11 l5 -9 l0 11 l6 -6 l-4 10 Z" fill="#111"/>' +
       '<circle cx="30" cy="26" r="11.2" fill="#262626"/><circle cx="26" cy="24" r="2.4" fill="#fff"/><circle cx="34" cy="24" r="2.4" fill="#fff"/>' +
