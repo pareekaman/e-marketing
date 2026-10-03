@@ -80,92 +80,115 @@ ThemeDecor.register('diwali', function (d) {
     '<path d="M30 44 L32.6 50 L39 50.4 L34 54.4 L35.8 60.6 L30 57 L24.2 60.6 L26 54.4 L21 50.4 L27.4 50 Z" fill="#FFF7C2" stroke="#F59E0B" stroke-width=".8"/>' +
     '<path d="M18 82 H42 L38 88 H22 Z" fill="#F5C518" stroke="#B45309" stroke-width=".8"/>' + tassels + '</svg>', 'td-lantern td-drag');
 
-  // Two children playing with crackers (bottom-right): the girl waves a phuljhadi, an anar fountains
-  // and a chakri spins on the ground between them, and by turns each tosses a little pop cracker at
-  // the other's feet — it bursts with a "पटाक!" and the other jumps. Placed inline in a 300 x 170 box;
-  // the sparks are on the canvas, at points of that box (KS).
+  // Six children running about along the foot of the page (between the diyas and the chatbot), now
+  // and then one stops and lobs a cartoon bomb at another; it homes in on where that child has run,
+  // bursts with a puff of smoke, and the child is left soot-black with hair on end — and both laugh,
+  // "हा हा हा!". The soot wears off after a few seconds. The strip is placed inline and takes no taps;
+  // the children are moved from frame() (KIDS), the bombs, sparks and smoke are on the canvas.
   var SKIN = '#C68B59';
   function kid(girl, shirt, bottom) {
     return '<svg viewBox="0 0 60 100" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto;overflow:visible">' +
-      '<path d="M24 78 L22 96 M36 78 L38 96" stroke="' + SKIN + '" stroke-width="5" stroke-linecap="round"/>' +
-      '<path d="M18 97 h7 M35 97 h7" stroke="#3B2410" stroke-width="3" stroke-linecap="round"/>' +
+      '<g class="dk-legs"><path class="dk-leg1" d="M26 76 L22 96" stroke="' + SKIN + '" stroke-width="5" stroke-linecap="round"/>' +
+      '<path class="dk-leg2" d="M34 76 L38 96" stroke="' + SKIN + '" stroke-width="5" stroke-linecap="round"/></g>' +
       (girl ? '<path d="M18 52 H42 L50 82 Q30 88 10 82 Z" fill="' + bottom + '" stroke="rgba(0,0,0,.25)" stroke-width=".8"/><path d="M11 80 Q30 86 49 80" fill="none" stroke="#F5B70A" stroke-width="2"/>'
             : '<path d="M19 66 H41 L42 80 H33 L30 72 L27 80 H18 Z" fill="' + bottom + '"/>') +
       '<path d="M19 40 Q30 35 41 40 L42 ' + (girl ? 56 : 68) + ' H18 Z" fill="' + shirt + '" stroke="rgba(0,0,0,.25)" stroke-width=".8"/>' +
-      // the throwing arm (.dk-arm swings it)
-      '<g class="dk-arm"><path d="' + (girl ? 'M40 42 L48 52 L54 44' : 'M20 42 L12 52 L6 44') + '" fill="none" stroke="' + SKIN + '" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></g>' +
-      (girl ? '<path d="M20 42 L14 30 L18 20" fill="none" stroke="' + SKIN + '" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>' +
-              '<path d="M18 20 L22 4" stroke="#6B7280" stroke-width="1.6" stroke-linecap="round"/><circle cx="18" cy="20" r="2.6" fill="' + SKIN + '"/>'
-            : '<path d="M40 42 L46 54 L42 62" fill="none" stroke="' + SKIN + '" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>') +
+      '<path d="M20 42 L13 54" stroke="' + SKIN + '" stroke-width="4.5" stroke-linecap="round"/>' +
+      '<g class="dk-arm"><path d="M40 42 L48 52 L54 44" fill="none" stroke="' + SKIN + '" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></g>' +
       '<circle cx="30" cy="26" r="11" fill="' + SKIN + '" stroke="#7C4A1E" stroke-width=".8"/>' +
-      (girl ? '<path d="M19 26 Q18 13 30 13 Q42 13 41 26 Q37 18 30 18 Q23 18 19 26 Z" fill="#1C1917"/><circle cx="19" cy="30" r="4" fill="#1C1917"/><circle cx="18" cy="27" r="1.8" fill="#F472B6"/><circle cx="30" cy="21" r="1.2" fill="#DC2626"/>'
+      (girl ? '<path d="M19 26 Q18 13 30 13 Q42 13 41 26 Q37 18 30 18 Q23 18 19 26 Z" fill="#1C1917"/><circle cx="19" cy="30" r="4" fill="#1C1917"/><circle cx="18" cy="27" r="1.8" fill="#F472B6"/>'
             : '<path d="M19 25 Q18 13 30 13 Q42 13 41 25 Q37 17 30 18 Q23 17 19 25 Z" fill="#1C1917"/>') +
       '<path d="M25 26 q2 -2 4 0 M31 26 q2 -2 4 0" fill="none" stroke="#1C1917" stroke-width="1.2" stroke-linecap="round"/>' +
-      '<path d="M25 31 Q30 37 35 31 Q30 34 25 31 Z" fill="#7F1D1D"/>' +
+      '<path class="dk-smile" d="M25 31 Q30 36 35 31 Q30 33.6 25 31 Z" fill="#7F1D1D"/>' +
+      // soot from a bomb: a black face, hair standing on end, white eyes, a big laughing mouth
+      '<g class="dk-soot"><path d="M19 22 l-4 -10 l6 6 l1 -11 l4 9 l3 -11 l2 11 l5 -9 l0 11 l6 -6 l-4 10 Z" fill="#111"/>' +
+      '<circle cx="30" cy="26" r="11.2" fill="#262626"/><circle cx="26" cy="24" r="2.4" fill="#fff"/><circle cx="34" cy="24" r="2.4" fill="#fff"/>' +
+      '<circle cx="26.4" cy="24.4" r="1" fill="#111"/><circle cx="34.4" cy="24.4" r="1" fill="#111"/>' +
+      '<path d="M23 29 Q30 39 37 29 Z" fill="#fff"/><path d="M25 30.5 Q30 36 35 30.5" fill="#B91C1C"/>' +
+      '<path d="M18 46 l6 2 M34 50 l6 -1 M22 62 l5 1" stroke="#262626" stroke-width="2" stroke-linecap="round" opacity=".7"/></g>' +
       '</svg>';
   }
-  var scene = document.createElement('div');
-  scene.className = 'td-item dk-scene td-drag';
-  scene.style.cssText = 'position:absolute;right:110px;bottom:0;width:300px;height:170px';
-  scene.innerHTML =
-    // the anar (a clay cone) and the chakri (a coil on a pin), on the ground between the children
-    '<svg viewBox="0 0 300 170" xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0;width:300px;height:170px;overflow:visible">' +
-    '<path d="M140 170 L146 150 H154 L160 170 Z" fill="#B45309" stroke="#78350F" stroke-width="1"/><path d="M143 162 H157" stroke="#FDE68A" stroke-width="1.4"/>' +
-    '<g class="dk-chakri"><circle cx="112" cy="162" r="7" fill="none" stroke="#DC2626" stroke-width="2.6" stroke-dasharray="6 3"/><circle cx="112" cy="162" r="2" fill="#16A34A"/></g>' +
-    '</svg>' +
-    '<div class="dk-kid dk-girl" style="position:absolute;left:20px;bottom:0;width:60px">' + kid(true, '#DB2777', '#FACC15') + '</div>' +
-    '<div class="dk-kid dk-boy" style="position:absolute;left:220px;bottom:0;width:60px">' + kid(false, '#2563EB', '#F97316') + '</div>';
-  d.layer.appendChild(scene);
-  var girlEl = scene.querySelector('.dk-girl'), boyEl = scene.querySelector('.dk-boy');
-  var pop = document.createElement('div');
-  pop.className = 'dk-pop';
-  pop.textContent = 'पटाक!';
-  scene.appendChild(pop);
-  // points of the scene, in layer px: the sparkler tip, the anar's mouth, the chakri, hands and feet
-  var KS = { tip: [42, 74], anar: [150, 150], chakri: [112, 162], girlHand: [74, 114], boyHand: [226, 114], girlFeet: [50, 168], boyFeet: [250, 168] };
-  function at(k) {
-    var r = scene.getBoundingClientRect(), b = d.layer.getBoundingClientRect(), s = r.width / 300;
-    return { x: r.left - b.left + KS[k][0] * s, y: r.top - b.top + KS[k][1] * s };
-  }
-  var kidTimers = [], throws = [], turn = 0;
-  function toss() {
-    var fromGirl = turn++ % 2 === 0, thrower = fromGirl ? girlEl : boyEl, target = fromGirl ? boyEl : girlEl;
-    thrower.classList.add('dk-throwing');
-    kidTimers.push(setTimeout(function () { thrower.classList.remove('dk-throwing'); }, 450));
-    var a = at(fromGirl ? 'girlHand' : 'boyHand'), z = at(fromGirl ? 'boyFeet' : 'girlFeet');
-    throws.push({ x: a.x, y: a.y, x0: a.x, y0: a.y, x1: z.x, y1: z.y, t: 0, dur: 0.75, target: target, tk: fromGirl ? 'boyFeet' : 'girlFeet' });
-    kidTimers.push(setTimeout(toss, 3000));
-  }
-  if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) kidTimers.push(setTimeout(toss, 1500));
-  var kparts = [];
-  function sparks(x, y, n, spd, up, cols, life) {
+  var strip = document.createElement('div');
+  strip.className = 'td-item dk-strip';
+  strip.style.cssText = 'position:absolute;left:340px;right:110px;bottom:0;height:130px;pointer-events:none';
+  d.layer.appendChild(strip);
+  var LOOKS = [[true, '#DB2777', '#FACC15'], [false, '#2563EB', '#F97316'], [true, '#16A34A', '#F472B6'], [false, '#DC2626', '#1E3A8A'], [true, '#7C3AED', '#FDE047'], [false, '#F59E0B', '#15803D']];
+  var KIDS = LOOKS.map(function (l, i) {
+    var el = document.createElement('div');
+    el.className = 'dk-kid dk-running';
+    el.style.cssText = 'position:absolute;left:0;bottom:0;width:46px';
+    el.innerHTML = kid(l[0], l[1], l[2]);
+    var say = document.createElement('div');
+    say.className = 'dk-laugh';
+    say.textContent = 'हा हा हा!';
+    el.appendChild(say);
+    strip.appendChild(el);
+    return { el: el, x: (i + 0.5) / LOOKS.length, to: Math.random(), sp: d.rand(.10, .18), dir: 1, hold: 0, sooty: 0 };
+  });
+  var kidTimers = [], bombs = [], smoke = [], kparts = [], throwIn = 1.2;
+  function stripBox() { var r = strip.getBoundingClientRect(), b = d.layer.getBoundingClientRect(); return { x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height }; }
+  function head(k, s) { return { x: s.x + k.x * (s.w - 46) + 23, y: s.y + s.h - 70 * 46 / 60 }; }
+  function sparks(x, y, n, spd, cols, life) {
     for (var i = 0; i < n && kparts.length < 500; i++) {
-      var an = up ? d.rand(-Math.PI * 0.8, -Math.PI * 0.2) : d.rand(0, Math.PI * 2), v = d.rand(spd * 0.4, spd);
-      kparts.push({ x: x, y: y, vx: Math.cos(an) * v, vy: Math.sin(an) * v, life: life || d.rand(0.4, 0.8), c: d.pick(cols) });
+      var an = d.rand(0, Math.PI * 2), v = d.rand(spd * 0.3, spd);
+      kparts.push({ x: x, y: y, vx: Math.cos(an) * v, vy: Math.sin(an) * v - 40, life: life || d.rand(0.4, 0.8), c: d.pick(cols) });
     }
   }
+  function laugh(k, ms) {
+    k.el.classList.add('dk-laughing');
+    kidTimers.push(setTimeout(function () { k.el.classList.remove('dk-laughing'); }, ms));
+  }
+  function lob() {
+    var a = Math.floor(Math.random() * KIDS.length), b = (a + 1 + Math.floor(Math.random() * (KIDS.length - 1))) % KIDS.length;
+    var th = KIDS[a], tg = KIDS[b], s = stripBox(), from = head(th, s);
+    th.hold = 0.6; th.dir = tg.x > th.x ? 1 : -1;
+    th.el.classList.add('dk-throwing');
+    kidTimers.push(setTimeout(function () { th.el.classList.remove('dk-throwing'); }, 450));
+    bombs.push({ x: from.x, y: from.y - 10, x0: from.x, y0: from.y - 10, t: 0, dur: 0.9, by: th, at: tg });
+  }
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   function kidsFrame(ctx, dt) {
-    var tip = at('tip'), an = at('anar'), ck = at('chakri'), i, p;
-    sparks(tip.x, tip.y, 3, 70, false, ['#FFFFFF', '#FEF3C7', '#FDE047'], 0.35);  // the phuljhadi
-    sparks(an.x, an.y, 4, 150, true, ['#FDE047', '#FFFFFF', '#FB923C'], 0.9);        // the anar
-    var ca = Date.now() / 90;                                                         // the chakri
-    for (i = 0; i < 2; i++) kparts.push({ x: ck.x + Math.cos(ca + i * Math.PI) * 7, y: ck.y + Math.sin(ca + i * Math.PI) * 3, vx: -Math.sin(ca + i * Math.PI) * 60, vy: -20, life: 0.4, c: i ? '#F472B6' : '#FDE047' });
-    // pop crackers in flight: an arc from hand to the other child's feet, then a burst
-    for (i = throws.length - 1; i >= 0; i--) {
-      var q = throws[i]; q.t += dt;
-      var k = Math.min(1, q.t / q.dur);
-      q.x = q.x0 + (q.x1 - q.x0) * k; q.y = q.y0 + (q.y1 - q.y0) * k - Math.sin(Math.PI * k) * 60;
-      ctx.globalAlpha = 1; ctx.fillStyle = '#F8FAFC'; ctx.strokeStyle = '#DC2626'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(q.x, q.y, 3.2, 0, 6.2832); ctx.fill(); ctx.stroke();
-      if (k >= 1) {
-        sparks(q.x1, q.y1 - 2, 26, 130, true, ['#FFFFFF', '#FDE047', '#F97316', '#DC2626']);
-        var r = scene.getBoundingClientRect(), b = d.layer.getBoundingClientRect();
-        pop.style.left = (q.x1 - (r.left - b.left)) + 'px'; pop.style.top = (q.y1 - (r.top - b.top) - 128) + 'px';
-        pop.classList.remove('dk-pop-on'); void pop.offsetWidth; pop.classList.add('dk-pop-on');
-        var tg = q.target; tg.classList.add('dk-jump');
-        kidTimers.push(setTimeout(function () { tg.classList.remove('dk-jump'); }, 700));
-        throws.splice(i, 1);
+    var s = stripBox(), i, k, p;
+    // run about: each child heads for a spot, turns round, and picks a new one on arrival
+    for (i = 0; i < KIDS.length; i++) {
+      k = KIDS[i];
+      if (!still) {
+        if (k.hold > 0) k.hold -= dt;
+        else {
+          var dx = k.to - k.x;
+          if (Math.abs(dx) < 0.01) k.to = Math.random();
+          else { k.dir = dx > 0 ? 1 : -1; k.x += Math.max(-k.sp * dt, Math.min(k.sp * dt, dx)); }
+        }
       }
+      k.el.classList.toggle('dk-running', !still && k.hold <= 0);
+      if (k.sooty > 0 && (k.sooty -= dt) <= 0) k.el.classList.remove('dk-sooty');
+      k.el.style.transform = 'translateX(' + (k.x * (s.w - 46)).toFixed(1) + 'px)';
+      k.el.firstChild.style.transform = 'scaleX(' + k.dir + ')';
+    }
+    if (!still && (throwIn -= dt) <= 0) { lob(); throwIn = d.rand(1.2, 2); }
+    // bombs: a lob that steers to where the target child is now, its fuse sparking
+    for (i = bombs.length - 1; i >= 0; i--) {
+      var q = bombs[i]; q.t += dt;
+      var kk = Math.min(1, q.t / q.dur), tgp = head(q.at, s);
+      q.x = q.x0 + (tgp.x - q.x0) * kk; q.y = q.y0 + (tgp.y - q.y0) * kk - Math.sin(Math.PI * kk) * 70;
+      ctx.globalAlpha = 1; ctx.fillStyle = '#111827';
+      ctx.beginPath(); ctx.arc(q.x, q.y, 5.5, 0, 6.2832); ctx.fill();
+      ctx.fillStyle = '#6B7280'; ctx.beginPath(); ctx.arc(q.x - 1.8, q.y - 1.8, 1.6, 0, 6.2832); ctx.fill();
+      ctx.strokeStyle = '#A16207'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(q.x + 3, q.y - 4); ctx.quadraticCurveTo(q.x + 7, q.y - 9, q.x + 5, q.y - 12); ctx.stroke();
+      sparks(q.x + 5, q.y - 12, 2, 40, ['#FDE047', '#F97316', '#FFFFFF'], 0.25);
+      if (kk >= 1) {
+        sparks(tgp.x, tgp.y, 40, 170, ['#FFFFFF', '#FDE047', '#F97316', '#DC2626']);
+        for (var m = 0; m < 6; m++) smoke.push({ x: tgp.x + d.rand(-10, 10), y: tgp.y + d.rand(-8, 8), r: d.rand(8, 14), life: 1, vy: d.rand(-30, -15) });
+        q.at.el.classList.add('dk-sooty'); q.at.sooty = 3.2; q.at.hold = 1.4;
+        laugh(q.at, 1800); laugh(q.by, 1800);
+        bombs.splice(i, 1);
+      }
+    }
+    for (i = smoke.length - 1; i >= 0; i--) {
+      p = smoke[i]; p.life -= dt * 0.8; p.r += 18 * dt; p.y += p.vy * dt;
+      if (p.life <= 0) { smoke.splice(i, 1); continue; }
+      ctx.globalAlpha = 0.45 * p.life; ctx.fillStyle = '#4B5563';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.2832); ctx.fill();
     }
     ctx.globalCompositeOperation = 'lighter';
     for (i = kparts.length - 1; i >= 0; i--) {
@@ -174,7 +197,7 @@ ThemeDecor.register('diwali', function (d) {
       ctx.globalAlpha = Math.min(1, p.life * 2); ctx.fillStyle = p.c;
       ctx.fillRect(p.x - 1, p.y - 1, 2.2, 2.2);
     }
-    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
   }
 
   // Gold sparkles that twinkle here and there, beside the crackers.
