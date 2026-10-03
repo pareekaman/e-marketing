@@ -227,7 +227,7 @@ function syncThemeToggle() {
   const snd = document.getElementById('themeSoundBtn');
   if (snd && window.ThemeDecor && ThemeDecor.soundOn) {
     const on = ThemeDecor.soundOn();
-    snd.textContent = on ? '🔊' : '🔇'; snd.setAttribute('aria-pressed', on); snd.style.display = _themeOff ? 'none' : '';
+    snd.textContent = on ? '🔊 Sound on' : '🔇 Sound off'; snd.setAttribute('aria-pressed', on); snd.style.display = _themeOff ? 'none' : '';
   }
 }
 function toggleFestSound() {
@@ -243,12 +243,14 @@ function useThemeMode(mode) {
 }
 // Once a session, the festival greets the person by name: "Rahul ji, शुभ दीपावली! 🪔", across the
 // top of the page for a few seconds. Not with the theme off, nor under Normal.
-function greetByName(theme) {
+// again=true shows it even if already shown this session (the picker, right after a message is saved).
+function greetByName(theme, again) {
   const g = window.ThemeDecor && ThemeDecor.greeting && ThemeDecor.greeting(theme);
   const first = ME && ME.name ? String(ME.name).trim().split(/\s+/)[0] : '';
   if (!g || !first) return;
   const key = 'festHello:' + theme;
-  try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch (e) {}
+  try { if (!again && sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch (e) {}
+  document.querySelectorAll('.fest-name-hello').forEach(x => x.remove());
   const b = document.createElement('div');
   b.className = 'fest-name-hello';
   b.style.background = 'linear-gradient(135deg,' + g.c[0] + ',' + g.c[1] + ')';

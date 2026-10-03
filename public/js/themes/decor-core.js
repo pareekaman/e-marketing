@@ -99,6 +99,22 @@
       [1318, 1975].forEach(function (fq, i) { tone(ac, out, fq, t + i * 0.06, 'sine', 0.25, 0.8); });
     } else if (kind === 'bell') {
       [520, 1300, 2100].forEach(function (fq, i) { tone(ac, out, fq, t, 'sine', [0.35, 0.15, 0.08][i], 1.6 - i * 0.4); });
+    } else if (kind === 'giggle' || kind === 'wee' || kind === 'yelp') {
+      // a child's voice: a bright buzzy tone through a vowel-like filter. giggle = "ha ha ha",
+      // wee = a long rising squeal, yelp = a quick surprised "aa-ah"
+      var base = 520 + Math.random() * 160, beats = kind === 'giggle' ? 4 : 1;
+      for (var b = 0; b < beats; b++) {
+        var bt = t + b * 0.13, len = kind === 'wee' ? 0.75 : kind === 'yelp' ? 0.35 : 0.1;
+        var vo = ac.createOscillator(), vf = ac.createBiquadFilter(), vg = ac.createGain();
+        vo.type = 'sawtooth'; vf.type = 'bandpass'; vf.frequency.value = 1300; vf.Q.value = 2.5;
+        var f0 = base * (kind === 'giggle' ? 1 - b * 0.05 : 1);
+        vo.frequency.setValueAtTime(f0, bt);
+        if (kind === 'wee') vo.frequency.exponentialRampToValueAtTime(f0 * 2, bt + len);
+        else if (kind === 'yelp') { vo.frequency.exponentialRampToValueAtTime(f0 * 1.5, bt + 0.08); vo.frequency.exponentialRampToValueAtTime(f0 * 0.9, bt + len); }
+        else vo.frequency.exponentialRampToValueAtTime(f0 * 0.85, bt + len);
+        env(ac, vg, bt, 0.5, 0.015, len);
+        vo.connect(vf); vf.connect(vg); vg.connect(out); vo.start(bt); vo.stop(bt + len + 0.05);
+      }
     } else if (kind === 'flute') {
       var notes = [587, 659, 784], fq = notes[Math.floor(Math.random() * notes.length)];
       tone(ac, out, fq, t, 'sine', 0.3, 0.7, true); tone(ac, out, fq * 2, t, 'sine', 0.05, 0.6);

@@ -151,6 +151,7 @@ ThemeDecor.register('diwali', function (d) {
   function laugh(k, ms, text) {
     k.el.querySelector('.dk-laugh').textContent = text || 'हा हा!';
     k.el.classList.add('dk-laughing');
+    if (ThemeDecor.sound) ThemeDecor.sound(text === 'ऊईईई!' ? 'wee' : text === 'अरे बाप रे!' ? 'yelp' : 'giggle', 0.4);
     kidTimers.push(setTimeout(function () { k.el.classList.remove('dk-laughing'); }, ms));
   }
   // a short-lived reaction class on a child (spinning in the air, dancing about)

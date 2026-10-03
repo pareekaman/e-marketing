@@ -439,6 +439,8 @@ async function saveFestMessage() {
   if (r.error) { showToast(r.error, 'error'); return; }
   _festMessage = r.message; ta.value = r.message;
   showToast(r.message ? 'Message saved for everyone' : 'Message removed');
+  // show the greeting now, as people will see it when they next open the app
+  if (r.message && !_themeOff) greetByName(_themeCurrent, true);
 }
 
 async function setAppTheme(key) {
