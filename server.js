@@ -3469,7 +3469,7 @@ const VALID_UP_PAGES   = new Set(['dashboard','alltasks','approvals','mis','race
 // features that have no individually gated buttons. They are stored now so the
 // choice survives; a page starts honouring it as soon as its controls are
 // wired to canDo('edit_<page>'). Keep this in sync with PERM_TREE in app.html.
-const VALID_UP_ACTIONS = new Set(['edit_task','delete_task','create_task','create_checklist','approve_revision','bulk_approve','transfer_task','reopen_task','delete_leave','set_plan','hrm_schedule','hrm_update_status',
+const VALID_UP_ACTIONS = new Set(['billing_name','edit_task','delete_task','create_task','create_checklist','approve_revision','bulk_approve','transfer_task','reopen_task','delete_leave','set_plan','hrm_schedule','hrm_update_status',
   'edit_dashboard','edit_mis','edit_race','edit_fms','edit_fms_tasks','edit_clients','edit_compliance','edit_dailyreports','edit_meetings','edit_inventory','edit_dms','edit_paymentreq','edit_feedback','edit_users','edit_creditcards','edit_logs',
   // Unlike most edit_<page> keys this one is genuinely enforced: every write
   // route in routes/leads.js checks it, so View really is read-only there.
@@ -7688,8 +7688,17 @@ function canEditCreditCards(session) {
 // Hiding it in the UI alone would be theatre — GET /api/clients would still
 // carry the value to anyone with DevTools — so the routes drop the column for
 // everyone else rather than relying on the page not to draw it.
+// The named list, or a per-person grant ticked in Access Control (Client Master
+// row). Read straight off the saved row, not through userCanDo(): that answers
+// yes for every admin, and being an admin is deliberately not enough here.
 async function canViewBillingName(session) {
-  return (await readIdSetting('billing_name_viewer_ids')).includes(Number(session.userId));
+  if ((await readIdSetting('billing_name_viewer_ids')).includes(Number(session.userId))) return true;
+  try {
+    const [[row]] = await db.query('SELECT user_permissions FROM users WHERE id=?', [session.userId]);
+    const up = row && row.user_permissions ? JSON.parse(row.user_permissions) : null;
+    return !!(up && Array.isArray(up.actions) && up.actions.includes('billing_name')
+      && Array.isArray(up.pages) && up.pages.includes('clients'));
+  } catch { return false; }
 }
 
 // CREDIT CARDS routes now live in routes/credit-cards.js. The call sits exactly
