@@ -206,6 +206,7 @@ async function loadAppTheme() {
     if (window.ThemeDecor && ThemeDecor.setLite) ThemeDecor.setLite(_themeMode === 'lite');
     applyAppTheme(_themeOff ? 'normal' : t.theme);
     syncThemeToggle();
+    if (!_themeOff) greetByName(t.theme);
     // The Theme tab is for the theme owner(s) only (theme_admin_ids on the server), not every admin.
     if (t.canChange && typeof showThemeTab === 'function') showThemeTab();
   } catch (e) {}
@@ -229,6 +230,27 @@ function useThemeMode(mode) {
   applyAppTheme(_themeOff ? 'normal' : _companyTheme);
   syncThemeToggle();
 }
+// Once a session, the festival greets the person by name: "Rahul ji, शुभ दीपावली! 🪔", across the
+// top of the page for a few seconds. Not with the theme off, nor under Normal.
+function greetByName(theme) {
+  const g = window.ThemeDecor && ThemeDecor.greeting && ThemeDecor.greeting(theme);
+  const first = ME && ME.name ? String(ME.name).trim().split(/\s+/)[0] : '';
+  if (!g || !first) return;
+  const key = 'festHello:' + theme;
+  try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch (e) {}
+  const b = document.createElement('div');
+  b.className = 'fest-name-hello';
+  b.style.background = 'linear-gradient(135deg,' + g.c[0] + ',' + g.c[1] + ')';
+  const name = document.createElement('b');
+  name.textContent = first + ' ji,';
+  const text = document.createElement('span');
+  text.textContent = g.t.replace(/!$/, '') + '! ' + g.e;
+  b.append(name, ' ', text);
+  document.body.appendChild(b);
+  setTimeout(() => b.classList.add('fest-name-out'), 6000);
+  setTimeout(() => b.remove(), 6700);
+}
+
 async function setMyThemeMode(mode) {
   if (mode === _themeMode) return;
   const was = _themeMode;

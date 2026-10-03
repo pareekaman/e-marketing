@@ -289,5 +289,7 @@
   document.addEventListener('visibilitychange', function () { if (document.hidden) pause(); else start(); });
   document.addEventListener('DOMContentLoaded', function () { apply(document.documentElement.getAttribute('data-theme')); });
 
-  window.ThemeDecor = { register: function (name, factory) { registry[name] = factory; }, apply: apply, setLite: setLite };
+  window.ThemeDecor = { register: function (name, factory) { registry[name] = factory; }, apply: apply, setLite: setLite,
+    // the greeting (emoji, words, two colours) for a theme, for other parts of the app to use
+    greeting: function (name) { var g = LITE[name]; return g ? { e: g.e, t: g.t, c: g.c } : null; } };
 })();

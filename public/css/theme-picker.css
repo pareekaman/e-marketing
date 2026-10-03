@@ -104,3 +104,15 @@
 .theme-toggle button:hover { color:#1e293b; background:#f1f5f9; }
 .theme-toggle button.on { color:#fff; background:linear-gradient(90deg,var(--brand-1),var(--brand-2)); }
 .theme-toggle button:focus-visible { outline:2px solid var(--brand-2); outline-offset:1px; }
+
+/* The festival greeting by name, once a session (core.js greetByName) */
+.fest-name-hello { position:fixed; left:50%; top:14px; z-index:950; pointer-events:none; white-space:nowrap; max-width:calc(100vw - 24px);
+  overflow:hidden; text-overflow:ellipsis; padding:10px 22px; border-radius:999px; color:#fff;
+  font:700 17px/1.2 'Nirmala UI','Mangal','Noto Sans Devanagari','Inter',sans-serif; text-shadow:0 1px 3px rgba(0,0,0,.3);
+  box-shadow:0 0 0 3px rgba(255,255,255,.85), 0 14px 30px -10px rgba(0,0,0,.45);
+  transform:translateX(-50%); animation:fest-name-in .7s cubic-bezier(.34,1.56,.64,1) both; }
+.fest-name-hello b { font-weight:800; }
+.fest-name-hello.fest-name-out { animation:fest-name-out .6s ease-in forwards; }
+@keyframes fest-name-in { from { opacity:0; transform:translateX(-50%) translateY(-30px) scale(.7); } to { opacity:1; transform:translateX(-50%); } }
+@keyframes fest-name-out { to { opacity:0; transform:translateX(-50%) translateY(-24px); } }
+@media (prefers-reduced-motion: reduce) { .fest-name-hello, .fest-name-hello.fest-name-out { animation:none; } }
