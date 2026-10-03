@@ -292,6 +292,8 @@
   /* ── Topbar dashboard-switcher: don't let it push past the viewport ── */
   #topbarActions{min-width:0;max-width:60vw;}
   #dashUserSwitcher{max-width:150px !important;}
+  /* The searchable dropdown swaps the <select> for an .ss-input, so cap that too */
+  #topbarActions .ss-input{max-width:150px !important;min-width:0;}
 }
 
 /* ── Extra small (phones <380px) ── */
@@ -303,5 +305,6 @@
   .hrm-msg-grid{grid-template-columns:1fr;}
   #topbarActions span{display:none;}
   #dashUserSwitcher{max-width:110px !important;}
+  #topbarActions .ss-input{max-width:110px !important;}
 }
 
