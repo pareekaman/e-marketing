@@ -48,6 +48,44 @@
 @keyframes xt-glow { from { opacity:.45; transform:scale(.88); } to { opacity:1; transform:scale(1.15); } }
 @media (prefers-reduced-motion: reduce) { .xt-light, .xt-glow { animation:none; } .td-xtree { transition:none; } }
 
+/* Christmas Eve by the tree: Santa down the chimney, a present, a teddy (js/themes/christmas.js) */
+.xs-house { left:240px; bottom:0; width:200px; filter:drop-shadow(0 4px 6px rgba(0,0,0,.2)); transition:translate .3s var(--ease); }
+.sidebar:hover ~ #themeDecor .xs-house { translate:172px 0; }
+.td-sleigh, .sl-say { transition:opacity .6s ease; }
+.td-sleigh.xs-away, .sl-say.xs-away { opacity:0 !important; }
+.xs-santa { transform-box:view-box; transform:translateY(-150px); transition:transform 1.1s cubic-bezier(.3,.8,.4,1); }
+.xs-roof .xs-santa { transform:none; }
+.xs-roof.xs-down .xs-santa { transform:translateY(46px); transition-duration:1.2s; transition-timing-function:ease-in; }
+.xs-bye .xs-santa { transform:none; transition-duration:.6s; }
+.xs-gone .xs-santa { transform:translate(60px,-170px); transition:transform 1.1s ease-in; }
+.xs-wave { transform-box:view-box; transform-origin:151px 14px; }
+.xs-bye .xs-wave { animation:xs-wave .3s ease-in-out infinite alternate; }
+@keyframes xs-wave { to { transform:rotate(-30deg); } }
+.xs-win { transition:fill 1.2s ease; }
+.xs-morning .xs-win { fill:#BFDBFE; }
+.xs-sleep { transition:opacity .6s ease; }
+.xs-morning .xs-sleep { opacity:0; }
+.xs-gift { opacity:0; transform-box:view-box; transform-origin:179px 162px; transform:scale(.2); transition:opacity .4s ease, transform .5s cubic-bezier(.3,1.6,.5,1); }
+.xs-gift-in .xs-gift { opacity:1; transform:none; }
+.xs-lid { transform-box:view-box; transform-origin:166px 140px; transition:transform .5s cubic-bezier(.3,1.6,.5,1); }
+.xs-open .xs-lid { transform:translate(-6px,-14px) rotate(-35deg); }
+.xs-teddy { transform-box:view-box; transform:translateY(16px); opacity:0; transition:transform .6s cubic-bezier(.3,1.6,.5,1) .15s, opacity .2s ease .15s; }
+.xs-open .xs-teddy { transform:translateY(-6px); opacity:1; }
+.xs-kid { opacity:0; transform-box:view-box; transform:translateX(-30px); transition:opacity .4s ease, transform 1.2s ease-out; }
+.xs-morning .xs-kid { opacity:1; transform:none; }
+.xs-open .xs-kid { animation:xs-jump .35s ease-in-out 4 alternate .2s; }
+@keyframes xs-jump { to { transform:translateY(-8px); } }
+.xs-say { position:absolute; transform:translateX(-50%) scale(.5); opacity:0; white-space:nowrap; pointer-events:none; padding:3px 10px; border-radius:12px;
+  background:#fff; color:#B91C1C; font:700 13px/1.3 'Inter',sans-serif; box-shadow:0 2px 6px rgba(0,0,0,.18); transition:opacity .25s ease, transform .25s ease; }
+.xs-say.on { opacity:1; transform:translateX(-50%) scale(1); }
+.xs-say-k { left:35%; bottom:30%; color:#1E3A8A; }
+.xs-morning .xs-say-k { left:76%; bottom:42%; }
+.xs-say-s { left:62%; bottom:104%; background:#DC2626; color:#fff; }
+.xs-wish { position:absolute; left:50%; bottom:112%; transform:translateX(-50%) translateY(10px); opacity:0; white-space:nowrap; pointer-events:none;
+  font:800 26px/1.1 'Inter',sans-serif; color:#B91C1C; text-shadow:0 2px 0 #fff, 0 0 12px rgba(255,255,255,.9); transition:opacity .8s ease, transform .8s ease; }
+.xs-done .xs-wish { opacity:1; transform:translateX(-50%); }
+@media (prefers-reduced-motion: reduce) { .xs-house, .xs-house * { transition:none !important; animation:none !important; } }
+
 /* Christmas skin: snow on everything. Only under data-theme="christmas". */
 /* snowflakes drifting over the page, a frosty light from above */
 :root[data-theme="christmas"] body {

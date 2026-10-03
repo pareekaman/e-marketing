@@ -221,11 +221,109 @@ ThemeDecor.register('christmas', function (d) {
     ctx.restore();
   }
 
+  // A Christmas Eve story by the tree, on a loop (story clock S, seconds):
+  //   0    night; a child asleep in the window ("Zzz…")
+  //   1.5  Santa lands on the roof ("Ho ho ho!"); 3.4 he climbs down the chimney
+  //   5    a present appears by the door; 6.4 he pops out, waves and flies off
+  //   8.4  morning: the child runs out to the present; 10 it opens, a teddy pops up ("Thank you, Santa!")
+  //   12   "Merry Christmas!"; 16.5 the scene resets
+  // The flying sleigh hides while Santa is on the roof, so there are never two of him.
+  // Under reduced motion the morning is shown, still: the child with the teddy.
+  function houseSvg() {
+    var SK = '#E0A97E', INK = '#3B2410';
+    return '<svg viewBox="0 0 200 170" xmlns="http://www.w3.org/2000/svg">' +
+      '<defs><clipPath id="xsChim"><rect x="100" y="-120" width="80" height="148"/></clipPath></defs>' +
+      // Santa, standing in the chimney; clipped at its rim so he can sink inside
+      '<g clip-path="url(#xsChim)"><g class="xs-santa">' +
+        '<rect x="128" y="10" width="24" height="22" rx="4" fill="#DC2626"/><rect x="128" y="22" width="24" height="4" fill="#111"/><rect x="137" y="21.5" width="6" height="5" fill="#FACC15"/>' +
+        '<g class="xs-wave"><path d="M151 14 L160 2" stroke="#DC2626" stroke-width="5" stroke-linecap="round"/><circle cx="161" cy="1" r="3" fill="#F8FAFC"/></g>' +
+        '<path d="M129 14 L122 24" stroke="#DC2626" stroke-width="5" stroke-linecap="round"/>' +
+        '<circle cx="140" cy="2" r="8" fill="' + SK + '"/>' +
+        '<path d="M131 3 Q140 22 149 3 Q140 8 131 3 Z" fill="#F8FAFC"/>' +
+        '<circle cx="137" cy="0" r="1" fill="' + INK + '"/><circle cx="143" cy="0" r="1" fill="' + INK + '"/><circle cx="140" cy="3" r="1.6" fill="#F87171"/>' +
+        '<path d="M131 -4 Q140 -18 152 -10 L149 -4 Z" fill="#DC2626"/><circle cx="153" cy="-10" r="2.6" fill="#fff"/><rect x="130" y="-5" width="20" height="3.6" rx="1.8" fill="#fff"/>' +
+      '</g></g>' +
+      // the chimney, the house, snow on the roof
+      '<rect x="126" y="28" width="28" height="40" fill="#9A3412"/><rect x="122" y="24" width="36" height="7" fill="#7C2D12"/>' +
+      '<path d="M122 24 Q140 18 158 24 L158 27 L122 27 Z" fill="#fff"/>' +
+      '<rect x="34" y="78" width="132" height="84" fill="#FDE2C4" stroke="#B45309" stroke-width="1"/>' +
+      '<path d="M22 82 L100 34 L178 82 Z" fill="#B91C1C" stroke="#7F1D1D" stroke-width="1.2"/>' +
+      '<path d="M22 82 Q30 74 40 78 Q52 70 64 76 Q76 68 88 74 Q100 66 112 74 Q124 68 136 76 Q148 70 160 78 Q170 74 178 82 Q100 90 22 82 Z" fill="#fff"/>' +
+      // the window, dark at night and bright in the morning, the child asleep inside
+      '<rect class="xs-win" x="48" y="96" width="44" height="36" rx="3" fill="#1E3A8A" stroke="#7C2D12" stroke-width="2.5"/>' +
+      '<g class="xs-sleep"><rect x="52" y="118" width="36" height="12" rx="3" fill="#F8FAFC"/><circle cx="60" cy="116" r="6" fill="' + SK + '"/>' +
+        '<path d="M54 114 Q60 106 66 113" fill="#1C1917"/><path d="M57.5 117 Q59 118 60.5 117" stroke="' + INK + '" stroke-width=".9" fill="none"/>' +
+        '<rect x="64" y="116" width="24" height="12" rx="3" fill="#2563EB"/></g>' +
+      '<path d="M70 96 V132 M48 114 H92" stroke="#7C2D12" stroke-width="2"/>' +
+      // the door, with a wreath
+      '<rect x="114" y="112" width="30" height="50" rx="3" fill="#7C2D12"/><circle cx="139" cy="138" r="1.6" fill="#FACC15"/>' +
+      '<circle cx="129" cy="124" r="7" fill="none" stroke="#15803D" stroke-width="3.2"/><circle cx="129" cy="130" r="1.6" fill="#DC2626"/>' +
+      '<ellipse cx="100" cy="164" rx="98" ry="6" fill="#fff"/>' +
+      // the present by the door, its lid lifts, a teddy rises out of it
+      '<g class="xs-gift"><g class="xs-teddy"><circle cx="179" cy="134" r="7" fill="#B45309"/><circle cx="173.5" cy="128.5" r="2.6" fill="#B45309"/><circle cx="184.5" cy="128.5" r="2.6" fill="#B45309"/>' +
+        '<circle cx="176.6" cy="133" r="1" fill="#111"/><circle cx="181.4" cy="133" r="1" fill="#111"/><ellipse cx="179" cy="136.5" rx="2.6" ry="1.8" fill="#FDE68A"/></g>' +
+        '<rect x="168" y="142" width="22" height="20" fill="#16A34A"/><rect x="177" y="142" width="4" height="20" fill="#FACC15"/>' +
+        '<g class="xs-lid"><rect x="166" y="137" width="26" height="6" fill="#15803D"/><rect x="177" y="137" width="4" height="6" fill="#FACC15"/>' +
+        '<path d="M179 137 Q172 129 174 136 M179 137 Q186 129 184 136" stroke="#FACC15" stroke-width="2" fill="none"/></g></g>' +
+      // the child, out in the snow in the morning
+      '<g class="xs-kid"><path d="M150 142 L148 160 M156 142 L158 160" stroke="#1E3A8A" stroke-width="4" stroke-linecap="round"/>' +
+        '<path d="M144 126 Q153 122 162 126 L163 145 L143 145 Z" fill="#DC2626"/>' +
+        '<path class="xs-arm" d="M161 128 L168 120" stroke="#DC2626" stroke-width="4" stroke-linecap="round"/><path d="M145 128 L139 120" stroke="#DC2626" stroke-width="4" stroke-linecap="round"/>' +
+        '<circle cx="153" cy="114" r="8" fill="' + SK + '"/><path d="M145 112 Q153 100 161 112 Q153 107 145 112 Z" fill="#16A34A"/><circle cx="153" cy="103" r="2.4" fill="#fff"/>' +
+        '<circle cx="150.4" cy="113.6" r="1" fill="' + INK + '"/><circle cx="155.6" cy="113.6" r="1" fill="' + INK + '"/><path d="M150 117 Q153 120 156 117" stroke="#9F1239" stroke-width="1.1" fill="none"/></g>' +
+      '</svg><div class="xs-say xs-say-k"></div><div class="xs-say xs-say-s"></div><div class="xs-wish">Merry Christmas!</div>';
+  }
+  var xs = d.svg(houseSvg(), 'xs-house td-drag');
+  var sayK = xs.querySelector('.xs-say-k'), sayS = xs.querySelector('.xs-say-s');
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var S = 0, STORY = 16.5, sparkles = [];
+  if (reduced) xs.classList.add('xs-gift-in', 'xs-morning', 'xs-open', 'xs-done');
+  function speak(el, text) { el.textContent = text || ''; el.classList.toggle('on', !!text); }
+  function sparkle(fx, fy, n) {
+    var r = xs.getBoundingClientRect(), k = r.width / 200;
+    for (var i = 0; i < n; i++) {
+      var a = d.rand(0, 6.2832), v = d.rand(30, 110);
+      sparkles.push({ x: r.left + fx * k, y: r.top + fy * k, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 40, life: 1, c: d.pick(['#FDE047', '#F87171', '#4ADE80', '#60A5FA', '#FFFFFF']) });
+    }
+  }
+  function snd(k, v) { if (ThemeDecor.sound) ThemeDecor.sound(k, v); }
+  var XS_BEATS = [
+    [0, function () { xs.className = xs.className.replace(/\s*xs-[a-z-]+/g, '') + ' xs-house'; speak(sayK, 'Zzz…'); speak(sayS, ''); }],
+    [1.3, function () { sleighEl.classList.add('xs-away'); say.classList.add('xs-away'); }],
+    [1.5, function () { xs.classList.add('xs-roof'); speak(sayS, 'Ho ho ho!'); snd('bell', 0.35); }],
+    [3.4, function () { xs.classList.add('xs-down'); speak(sayS, ''); snd('whoosh', 0.3); }],
+    [5, function () { xs.classList.add('xs-gift-in'); sparkle(179, 150, 30); snd('chime', 0.4); }],
+    [6.4, function () { xs.classList.remove('xs-down'); xs.classList.add('xs-bye'); speak(sayS, 'Merry Christmas!'); }],
+    [7.6, function () { xs.classList.add('xs-gone'); speak(sayS, ''); }],
+    [8.2, function () { sleighEl.classList.remove('xs-away'); say.classList.remove('xs-away'); }],
+    [8.4, function () { xs.classList.add('xs-morning'); speak(sayK, 'Santa came!'); snd('giggle', 0.35); }],
+    [10, function () { xs.classList.add('xs-open'); speak(sayK, 'Thank you, Santa!'); sparkle(179, 138, 46); snd('chime', 0.45); }],
+    [12, function () { xs.classList.add('xs-done'); speak(sayK, ''); }]
+  ];
+  function story(ctx, dt) {
+    if (reduced) return;
+    var was = S;
+    S += dt;
+    if (S >= STORY) { S = 0; was = -1; }
+    XS_BEATS.forEach(function (b) { if (was < b[0] && S >= b[0]) b[1](); });
+    ctx.globalAlpha = 1;
+    for (var i = sparkles.length - 1; i >= 0; i--) {
+      var p = sparkles[i];
+      p.life -= 1.1 * dt; if (p.life <= 0) { sparkles.splice(i, 1); continue; }
+      p.vy += 90 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      ctx.globalAlpha = p.life; ctx.fillStyle = p.c;
+      ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+    }
+    ctx.globalAlpha = 1;
+  }
+  S = -0.001;
+
   return {
     scale: 0.75, // flakes are small and crisp, so this one keeps more resolution
     frame: function (ctx, dt, w, h) {
       t += dt; T += dt;
       place(w, h);
+      story(ctx, dt);
 
       // speech: a line every few seconds, shown for a while, alternating
       if (sayLeft > 0) { sayLeft -= dt; if (sayLeft <= 0) say.classList.remove('sl-show'); }
