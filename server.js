@@ -9447,6 +9447,17 @@ app.put('/api/theme/mine', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// The login page shows the festival theme too, before anyone has signed in: only the theme's name
+// and the Navratri day, nothing about any user.
+app.get('/api/theme/public', async (req, res) => {
+  try {
+    const [[row]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [APP_THEME_KEY]);
+    const [[nv]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [NAVRATRI_DAY_KEY]);
+    res.json({ theme: row && APP_THEMES.includes(row.value) ? row.value : 'normal',
+               navratriDay: nv ? Math.min(9, Math.max(0, parseInt(nv.value, 10) || 0)) : 0 });
+  } catch (err) { res.json({ theme: 'normal', navratriDay: 0 }); }
+});
+
 app.put('/api/theme', requireAuth, async (req, res) => {
   try {
     if (!(await readIdSetting('theme_admin_ids')).includes(Number(req.session.userId)))
