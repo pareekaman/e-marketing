@@ -47,7 +47,7 @@ function closeModal(id) {
 // In-app replacements for native alert()/confirm(). Both return Promises so the
 // existing call-sites can switch from `if (!confirm(...))` to
 // `if (!await appConfirm(...))` with no other plumbing.
-function _showAppPrompt({ title, message, buttons }) {
+function _showAppPrompt({ title, message, buttons, input }) {
   return new Promise(resolve => {
     const modal  = document.getElementById('appPromptModal');
     const titleEl = document.getElementById('appPromptTitle');
@@ -56,6 +56,15 @@ function _showAppPrompt({ title, message, buttons }) {
     titleEl.textContent = title || 'Notice';
     bodyEl.textContent  = message || '';
     footer.innerHTML = '';
+    // Optional text box (appPromptText). Setting textContent above has already
+    // emptied the body, so a box from an earlier prompt never lingers.
+    let field = null;
+    if (input) {
+      field = document.createElement('textarea');
+      field.placeholder = input.placeholder || '';
+      field.style.cssText = 'display:block;width:100%;min-height:70px;margin-top:10px;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;resize:vertical;white-space:normal';
+      bodyEl.appendChild(field);
+    }
     let settled = false;
     const finish = value => {
       if (settled) return;
@@ -68,7 +77,7 @@ function _showAppPrompt({ title, message, buttons }) {
       btn.type = 'button';
       btn.className = b.className || 'btn btn-primary';
       btn.textContent = b.label;
-      btn.addEventListener('click', () => finish(b.value));
+      btn.addEventListener('click', () => finish(b.takesInput ? (field ? field.value.trim() : '') : b.value));
       footer.appendChild(btn);
     });
     // ESC + the auto-injected ✕ on every modal resolve as "cancel"-ish.
@@ -79,7 +88,7 @@ function _showAppPrompt({ title, message, buttons }) {
     modal.classList.add('open');
     // Focus the primary action so Enter works.
     const primary = footer.querySelector('.btn-primary, .btn-danger, .btn-green') || footer.lastElementChild;
-    if (primary) primary.focus();
+    if (field) field.focus(); else if (primary) primary.focus();
   });
 }
 function appAlert(message, title = 'Notice') {
@@ -94,6 +103,17 @@ function appConfirm(message, title = 'Please confirm') {
     buttons: [
       { label: 'Cancel', className: 'btn btn-outline', value: false },
       { label: 'OK',     className: 'btn btn-primary', value: true }
+    ]
+  });
+}
+// In-app replacement for native prompt(). Resolves with the typed text ('' when
+// left empty), or a non-string on Cancel / Esc, so a cancelled prompt never acts.
+function appPromptText(message, { title = 'Please confirm', placeholder = '', okLabel = 'OK', okClass = 'btn btn-primary' } = {}) {
+  return _showAppPrompt({
+    title, message, input: { placeholder },
+    buttons: [
+      { label: 'Cancel', className: 'btn btn-outline', value: null },
+      { label: okLabel,  className: okClass, takesInput: true }
     ]
   });
 }

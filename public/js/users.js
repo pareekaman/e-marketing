@@ -433,7 +433,14 @@ async function approveAllRevises() {
 }
 
 async function handleApproval(id, action) {
-  const note = action === 'rejected' ? prompt('Reason for rejection (optional):') : '';
+  // The app's own pop-up, not the browser's prompt(). Cancel or Esc stops here;
+  // with prompt() a cancel returned null and the request was rejected anyway.
+  let note = '';
+  if (action === 'rejected') {
+    note = await appPromptText('Reason for rejection (optional):',
+      { title: 'Reject request', placeholder: 'Reason for rejection...', okLabel: 'Reject', okClass: 'btn btn-danger' });
+    if (typeof note !== 'string') return;
+  }
   const r = await api(`/api/approvals/${id}`,'PUT',{action, note: note||''});
   // The server can refuse — e.g. a completion whose sub-tasks are still open.
   // Without this the toast claimed success while nothing had changed.
