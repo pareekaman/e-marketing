@@ -566,6 +566,11 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         <div class="form-group"><label>Birthday</label><input type="date" id="pBirthday"/></div>
         <div class="form-group"><label>Joining Date</label><input type="date" id="pJoiningDate"/></div>
       </div>
+      <!-- Extra Working approval route — shown only to the person the server marks eligible (users.js loadEwRoute) -->
+      <!-- A bare switch with no visible text, at the user's request; aria-label names it for screen readers. -->
+      <div id="ewRouteBox" style="display:none;margin-bottom:18px">
+        <label class="dash-team-switch" style="cursor:pointer"><input type="checkbox" id="ewRouteToggle" aria-label="Send my Extra Working to Simran Gurnani only" onchange="setEwRoute(this.checked)"/><span></span></label>
+      </div>
       <div class="section-title">Change Password</div>
       <div class="form-group"><label>Current Password</label><input type="password" id="pCurrent" placeholder="Enter current password"/></div>
       <div class="form-group"><label>New Password</label><input type="password" id="pNew" placeholder="Enter new password"/></div>

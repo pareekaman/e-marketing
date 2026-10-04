@@ -554,6 +554,30 @@ async function saveProfile() {
   document.getElementById('pConfirm').value='';
 }
 
+// Extra Working approval route. Only Naman Gupta gets this switch — the server
+// says who is eligible. On: his new Extra Working goes to Simran Gurnani alone.
+async function loadEwRoute() {
+  const box = document.getElementById('ewRouteBox');
+  if (!box) return;
+  const r = await api('/api/profile/extra-working-route');
+  if (!r || r.error || !r.eligible) { box.style.display = 'none'; return; }
+  document.getElementById('ewRouteToggle').checked = !!r.on;
+  box.style.display = '';
+}
+
+async function setEwRoute(on) {
+  const sw = document.getElementById('ewRouteToggle');
+  sw.disabled = true;
+  const r = await api('/api/profile/extra-working-route', 'PUT', { on });
+  sw.disabled = false;
+  if (!r || r.error) {
+    sw.checked = !on;
+    showToast((r && r.error) || 'Could not save. Please try again.', 'error');
+    return;
+  }
+  showToast(on ? 'New Extra Working will go to Simran Gurnani only' : 'Extra Working goes to your usual approvers again');
+}
+
 // ══════════════════════════════════════════════════════
 // 📆 MONDAY WEEKLY CHECK-IN
 // ══════════════════════════════════════════════════════

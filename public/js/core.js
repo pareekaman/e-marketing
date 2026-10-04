@@ -313,6 +313,7 @@ async function init() {
     document.getElementById('pJoiningDate').value = ME.joining_date ? ME.joining_date.split('T')[0] : '';
     document.getElementById('profileNameDisplay').textContent = ME.name;
     document.getElementById('profileRoleDisplay').textContent = roleLabel;
+    if (typeof loadEwRoute === 'function') loadEwRoute();
 
     setAvatarDisplay(ME.profile_image, initials);
 

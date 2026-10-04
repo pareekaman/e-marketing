@@ -8862,6 +8862,60 @@ async function resolveLeaveApprover(userId) {
 // pending request in her Task Manager in addition to the assigned HOD.
 const LEAVE_OVERSEER_ID = 6;
 
+// Naman Gupta can send his Extra Working to Simran alone: no one is mailed
+// (she sees it in her Approvals tab), no HOD sees it in Approvals, and only
+// she can decide it. A switch on his
+// Profile page turns this on and off; it applies to requests filed while it
+// is on. Leave, half day and WFH always take the normal route.
+const EW_SIMRAN_ONLY_USER_ID = 41; // Naman Gupta (production id)
+const EW_SIMRAN_ONLY_KEY = 'ew_simran_only';
+
+async function ewSimranOnlyOn() {
+  try {
+    const [[row]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [EW_SIMRAN_ONLY_KEY]);
+    return !!row && row.value === '1';
+  } catch { return false; }
+}
+
+// leave_requests.sole_approver = 1 marks a request that only its approver_id
+// may see in Approvals or decide. Added on first use rather than in the
+// startup migration block, so it does not make the next deploy replay every
+// migration. Resolves false if the column cannot be had; callers then leave
+// the column out and everything works as it did before.
+let _soleApproverCol = null;
+function ensureSoleApproverColumn() {
+  if (!_soleApproverCol) _soleApproverCol = (async () => {
+    try {
+      const [cols] = await db.query(`SHOW COLUMNS FROM leave_requests LIKE 'sole_approver'`);
+      if (!cols.length) await db.query('ALTER TABLE leave_requests ADD COLUMN sole_approver TINYINT(1) NOT NULL DEFAULT 0');
+      return true;
+    } catch (e) {
+      if (e.code === 'ER_DUP_FIELDNAME') return true;
+      console.error('leave_requests.sole_approver:', e.message);
+      _soleApproverCol = null; // try again on the next request
+      return false;
+    }
+  })();
+  return _soleApproverCol;
+}
+
+// The Profile switch. Only Naman gets `eligible`, so only he sees it.
+app.get('/api/profile/extra-working-route', requireAuth, async (req, res) => {
+  const eligible = Number(req.session.userId) === EW_SIMRAN_ONLY_USER_ID;
+  res.json({ eligible, on: eligible ? await ewSimranOnlyOn() : false });
+});
+
+app.put('/api/profile/extra-working-route', requireAuth, async (req, res) => {
+  try {
+    if (Number(req.session.userId) !== EW_SIMRAN_ONLY_USER_ID)
+      return res.status(403).json({ error: 'Not available for your account' });
+    const on = req.body && req.body.on === true;
+    await db.query('INSERT INTO app_settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+      [EW_SIMRAN_ONLY_KEY, on ? '1' : '0']);
+    res.json({ success: true, on });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // List leaves — scope based on role + ?scope= filter
 //   scope=mine       → only my requests (default for users)
 //   scope=approvals  → requests awaiting my approval (hod/admin/pc)
@@ -8902,6 +8956,10 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
         } else {
           where += ' AND lr.approver_id=? AND lr.user_id<>?'; params.push(uid, uid);
         }
+      }
+      // A sole-approver request is in its own approver's list and no one else's.
+      if (await ensureSoleApproverColumn()) {
+        where += ' AND (lr.sole_approver=0 OR lr.approver_id=?)'; params.push(uid);
       }
     } else if (scope === 'team') {
       // Pull current user once so we can apply leave-viewer override and HOD dept-scoping.
@@ -9001,9 +9059,12 @@ app.get('/api/leaves/pending-count', requireAuth, async (req, res) => {
         `SELECT id FROM users WHERE COALESCE(user_role, role)='hod' AND department=?`,
         [meInfo.department]);
       const hodIds = deptHods.map(h => h.id);
+      // Same rule as the approvals list: a sole-approver request counts only for its approver.
+      const sole = await ensureSoleApproverColumn();
       const [[r]] = await db.query(
-        `SELECT COUNT(*) AS cnt FROM leave_requests WHERE approver_id IN (${hodIds.map(()=>'?').join(',')}) AND status='pending' AND user_id<>?`,
-        [...hodIds, uid]);
+        `SELECT COUNT(*) AS cnt FROM leave_requests WHERE approver_id IN (${hodIds.map(()=>'?').join(',')}) AND status='pending' AND user_id<>?` +
+        (sole ? ' AND (sole_approver=0 OR approver_id=?)' : ''),
+        sole ? [...hodIds, uid, uid] : [...hodIds, uid]);
       cnt = r.cnt || 0;
     } else {
       const [[r]] = await db.query(
@@ -9129,17 +9190,27 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
       });
     }
 
-    const approverId = await resolveLeaveApprover(uid);
+    let approverId = await resolveLeaveApprover(uid);
+
+    // Naman's Extra Working goes to Simran alone while his Profile switch is on.
+    const soleToSimran = leave_type === 'extra_working' &&
+      Number(uid) === EW_SIMRAN_ONLY_USER_ID && await ewSimranOnlyOn();
+    if (soleToSimran) {
+      if (!(await ensureSoleApproverColumn()))
+        return res.status(500).json({ error: 'Could not send this to Simran Gurnani. Please try again.' });
+      approverId = LEAVE_OVERSEER_ID;
+    }
 
     const [r] = await db.query(
       `INSERT INTO leave_requests
-       (user_id, leave_type, from_date, to_date, dates_json, reason, status, approver_id)
-       VALUES (?,?,?,?,?,?,'pending',?)`,
+       (user_id, leave_type, from_date, to_date, dates_json, reason, status, approver_id${soleToSimran ? ', sole_approver' : ''})
+       VALUES (?,?,?,?,?,?,'pending',?${soleToSimran ? ',1' : ''})`,
       [uid, leave_type, from_date, to_date, JSON.stringify(cleanDates), (reason || '').trim(), approverId]
     );
 
-    // Notify approver — email + WhatsApp (best-effort)
-    if (approverId && approverId !== uid) {
+    // Notify approver — email + WhatsApp (best-effort). A request sent to Simran
+    // alone mails no one: she finds it in her Approvals tab.
+    if (approverId && approverId !== uid && !soleToSimran) {
       const typeLabel = ({full_day:'Full Day Leave',half_day:'Half Day Leave',work_from_home:'Work From Home',extra_working:'Extra Working'})[leave_type];
       const datesLine = cleanDates.map(d => leave_type === 'extra_working' ? `${d.date} (${d.hours}h)` : d.date).join(', ');
       const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [uid]);
@@ -9219,6 +9290,11 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
     if (lr.status !== 'pending') return res.status(400).json({ error: 'Already decided' });
 
     const uid = req.session.userId;
+    // A sole-approver request (Naman's Extra Working sent to Simran alone) is
+    // decided by its approver only — not a same-department HOD, not an admin.
+    if (lr.sole_approver && Number(lr.approver_id) !== Number(uid)) {
+      return res.status(403).json({ error: 'Only the assigned approver can decide this request' });
+    }
     // Allow: admin always (the role, or Leave Tracker at "Admin" — admin_leaves),
     // assigned approver, OR any HOD in same department as the assigned approver
     if (lr.approver_id !== uid && !(await userCanDo(req.session, 'admin_leaves'))) {
