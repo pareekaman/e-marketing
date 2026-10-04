@@ -887,6 +887,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
           <button class="cm-btn-primary" id="cmAddBtn" onclick="cmOpenAddModal()">+ Add Client</button>
           <button class="cm-btn-ghost" onclick="cmToggleBulk()" id="cmBulkBtn">📂 Bulk Upload</button>
           <button class="cm-btn-ghost" onclick="cmExportExcel()">⬇ Excel</button>
+          <button class="cm-btn-ghost" id="cmCrmBtn" style="display:none" onclick="cmOpenCrmTransfer()">🔀 Transfer CRM</button>
         </div>
       </div>
 
@@ -3957,6 +3958,37 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <button class="btn btn-outline" onclick="closeModal('leaveDecisionModal')">Cancel</button>
       <button class="btn btn-danger" id="lvRejectBtn" onclick="submitLeaveDecision('reject')">Reject</button>
       <button class="btn btn-green" id="lvApproveBtn" onclick="submitLeaveDecision('approve')">Approve</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     CLIENT MASTER - TRANSFER CLIENTS TO ANOTHER CRM (clients.js cmOpenCrmTransfer)
+══════════════════════════════════════ -->
+<div class="modal-overlay" id="cmCrmModal">
+  <div class="modal" style="max-width:520px">
+    <h3>🔀 Transfer clients to another CRM</h3>
+    <div class="alert error" id="cmCrmErr"></div>
+    <div class="form-group">
+      <label>From</label>
+      <select id="cmCrmFrom" onchange="cmCrmRenderList()"></select>
+    </div>
+    <div class="form-group">
+      <label>Clients</label>
+      <input type="text" id="cmCrmSearch" placeholder="Search clients..." oninput="cmCrmRenderList()"/>
+      <label style="display:flex;align-items:center;gap:8px;margin:8px 0 6px;font-size:12px;font-weight:600;color:#475569;text-transform:none;letter-spacing:0;cursor:pointer">
+        <input type="checkbox" id="cmCrmAll" onchange="cmCrmToggleAll(this.checked)" style="width:14px;height:14px;margin:0;accent-color:#4f46e5"/>
+        Select all shown
+      </label>
+      <div id="cmCrmList" style="max-height:260px;overflow-y:auto;border:1.5px solid #e2e8f0;border-radius:8px"></div>
+    </div>
+    <div class="form-group">
+      <label>To CRM <span style="color:#dc2626">*</span></label>
+      <select id="cmCrmTo"></select>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between">
+      <button class="btn btn-outline" onclick="closeModal('cmCrmModal')">Cancel</button>
+      <button class="btn btn-primary" id="cmCrmGo" onclick="cmCrmTransfer()">🔀 Transfer 0 clients</button>
     </div>
   </div>
 </div>

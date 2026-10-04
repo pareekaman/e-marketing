@@ -43,6 +43,9 @@ function cmApplyRoleControls(){
   if (addBtn) addBtn.style.display = show;
   const bulkBtn = document.getElementById('cmBulkBtn');
   if (bulkBtn) bulkBtn.style.display = show;
+  // Moving clients between CRMs: Admin, or Client Master at the Admin level.
+  const crmBtn = document.getElementById('cmCrmBtn');
+  if (crmBtn) crmBtn.style.display = canDo('admin_clients') ? '' : 'none';
   // The Credentials Vault holds plaintext passwords, so the tab is admin-only.
   const vaultBtn = document.getElementById('cmTabVaultBtn');
   if (vaultBtn) vaultBtn.style.display = (ME.role === 'admin') ? '' : 'none';
@@ -270,6 +273,107 @@ async function cvDelete(id){
   if (r.error) { showToast(r.error, 'error'); return; }
   showToast('🗑 Credential deleted');
   cvLoad();
+}
+
+// ── CRM transfer (Admin / Client Master Admin level) ──────────────────────
+// Moves clients' "Added by" to another person with CRM access; their CRM
+// list follows. One client from its detail page, or many from the pop-up.
+let CM_CRM_USERS = null, CM_CRM_SEL = new Set();
+async function cmCrmUsers() {
+  if (!CM_CRM_USERS) {
+    const r = await api('/api/client-crm/users');
+    if (!Array.isArray(r)) { showToast((r && r.error) || 'Could not load CRMs', 'error'); return []; }
+    CM_CRM_USERS = r;
+  }
+  return CM_CRM_USERS;
+}
+function cmCrmOptions(users, selectedId) {
+  if (!users.length) return '<option value="">No one has CRM access yet</option>';
+  return '<option value="">Choose a CRM…</option>' + users.map(u =>
+    `<option value="${u.id}" ${String(u.id) === String(selectedId) ? 'selected' : ''}>${dtEscape(u.name)}</option>`).join('');
+}
+async function cmCrmFillOne(id) {
+  const c = CM_ALL.find(x => String(x.id) === String(id)) || {};
+  const users = await cmCrmUsers();
+  const sel = document.getElementById('cmCrmOne_' + id);
+  if (sel) sel.innerHTML = cmCrmOptions(users, c.added_by);
+  const note = document.getElementById('cmCrmOneNote_' + id);
+  if (note) note.innerHTML = c.added_by_name
+    ? `Currently: <b style="color:#475569">${dtEscape(c.added_by_name)}</b>`
+    : 'Not set. Pick a CRM and transfer.';
+  if (note && !users.length) note.innerHTML += ' · Tick "CRM access" in Access Control to list someone here.';
+}
+async function cmCrmSend(ids, toId) {
+  const r = await api('/api/client-crm/transfer', 'POST', { client_ids: ids, to_user_id: Number(toId) });
+  if (!r || r.error) { showToast((r && r.error) || 'Transfer failed', 'error'); return null; }
+  for (const c of CM_ALL) if (ids.map(String).includes(String(c.id))) { c.added_by = Number(toId); c.added_by_name = r.to; }
+  showToast(`🔀 ${r.moved} client${r.moved === 1 ? '' : 's'} moved to ${r.to}`);
+  return r;
+}
+async function cmCrmTransferOne(id) {
+  const toId = document.getElementById('cmCrmOne_' + id)?.value;
+  if (!toId) { showToast('Choose a CRM first', 'error'); return; }
+  if (await cmCrmSend([id], toId)) cmCrmFillOne(id);
+}
+async function cmOpenCrmTransfer() {
+  CM_CRM_SEL = new Set();
+  const users = await cmCrmUsers();
+  const owners = new Map();
+  for (const c of CM_ALL) {
+    const k = c.added_by ? String(c.added_by) : '';
+    const o = owners.get(k) || { name: c.added_by_name || 'No CRM', n: 0 };
+    o.n++; owners.set(k, o);
+  }
+  document.getElementById('cmCrmFrom').innerHTML = `<option value="*">All clients (${CM_ALL.length})</option>` +
+    [...owners].sort((a, b) => a[1].name.localeCompare(b[1].name))
+      .map(([k, o]) => `<option value="${k}">${dtEscape(o.name)} (${o.n})</option>`).join('');
+  document.getElementById('cmCrmTo').innerHTML = cmCrmOptions(users, '');
+  document.getElementById('cmCrmSearch').value = '';
+  document.getElementById('cmCrmErr').style.display = 'none';
+  cmCrmRenderList();
+  document.getElementById('cmCrmModal').classList.add('open');
+}
+function cmCrmShown() {
+  const from = document.getElementById('cmCrmFrom').value;
+  const q = document.getElementById('cmCrmSearch').value.toLowerCase().trim();
+  return CM_ALL.filter(c => (from === '*' || String(c.added_by || '') === from)
+    && (!q || ((c.name || '') + ' ' + (c.brand_name || '')).toLowerCase().includes(q)))
+    .sort((a, b) => clientLabel(a).localeCompare(clientLabel(b)));
+}
+function cmCrmRenderList() {
+  const shown = cmCrmShown();
+  document.getElementById('cmCrmList').innerHTML = shown.length ? shown.map(c => `
+    <label style="display:flex;align-items:center;gap:8px;margin:0;padding:7px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;font-weight:500;color:#1e293b;text-transform:none;letter-spacing:0;cursor:pointer">
+      <input type="checkbox" ${CM_CRM_SEL.has(c.id) ? 'checked' : ''} onchange="cmCrmPick(${c.id},this.checked)" style="width:14px;height:14px;margin:0;accent-color:#4f46e5"/>
+      <span style="flex:1;min-width:0">${dtEscape(clientLabel(c))}</span>
+      <span style="font-size:11px;color:#94a3b8;white-space:nowrap">${dtEscape(c.added_by_name || 'No CRM')}</span>
+    </label>`).join('') : '<div style="padding:16px;text-align:center;color:#94a3b8;font-size:13px">No clients match</div>';
+  const all = document.getElementById('cmCrmAll');
+  all.checked = shown.length > 0 && shown.every(c => CM_CRM_SEL.has(c.id));
+  cmCrmCount();
+}
+function cmCrmPick(id, on) { if (on) CM_CRM_SEL.add(id); else CM_CRM_SEL.delete(id); cmCrmRenderList(); }
+function cmCrmToggleAll(on) {
+  for (const c of cmCrmShown()) { if (on) CM_CRM_SEL.add(c.id); else CM_CRM_SEL.delete(c.id); }
+  cmCrmRenderList();
+}
+function cmCrmCount() {
+  const n = CM_CRM_SEL.size;
+  document.getElementById('cmCrmGo').textContent = `🔀 Transfer ${n} client${n === 1 ? '' : 's'}`;
+}
+async function cmCrmTransfer() {
+  const err = document.getElementById('cmCrmErr');
+  err.style.display = 'none';
+  const toId = document.getElementById('cmCrmTo').value;
+  if (!CM_CRM_SEL.size) { err.textContent = 'Select at least one client'; err.style.display = 'block'; return; }
+  if (!toId) { err.textContent = 'Choose the CRM to move them to'; err.style.display = 'block'; return; }
+  const btn = document.getElementById('cmCrmGo');
+  btn.disabled = true;
+  const r = await cmCrmSend([...CM_CRM_SEL], toId);
+  btn.disabled = false;
+  if (!r) return;
+  closeModal('cmCrmModal');
+  loadClients();
 }
 
 function cmExportExcel() {
@@ -553,6 +657,7 @@ async function cmShowDetail(id, from, to) {
     detail.innerHTML = cmRenderDetailHtml(s, id, Array.isArray(handlers) ? handlers : []);
     cmRenderLinksRows();
     cmInitHandlerWidget(id);
+    if (canDo('admin_clients')) cmCrmFillOne(id);
     cmDmsLoad(id);
     if (ME.canManageInvoices) cmInvLoad(id);
   } catch (e) {
@@ -854,6 +959,15 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
         <button class="btn btn-primary" style="padding:7px 16px;font-size:12px" onclick="cmSaveKickstart(${id})">💾 Save</button>
       </div>
       ${client.kickstart_date ? '' : '<div style="font-size:11px;color:#b45309;margin-top:7px">Not set yet — pick the date and save.</div>'}
+    </div>
+
+    <div class="task-table-card" style="${canDo('admin_clients') ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
+      <div class="card-head-title" style="margin-bottom:10px">🔀 CRM <span style="font-weight:400;color:#94a3b8;font-size:12px">— who added this client; it shows in their CRM list</span></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="cmCrmOne_${id}" style="min-width:220px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;background:#fff"><option value="">Loading…</option></select>
+        <button class="btn btn-primary" style="padding:7px 16px;font-size:12px" onclick="cmCrmTransferOne(${id})">🔀 Transfer</button>
+      </div>
+      <div id="cmCrmOneNote_${id}" style="font-size:11px;color:#94a3b8;margin-top:7px"></div>
     </div>
 
     <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">

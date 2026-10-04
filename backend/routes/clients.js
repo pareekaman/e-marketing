@@ -163,6 +163,43 @@ async function clientMasterScope(req) {
   };
 }
 
+// CRM transfer: Admin, or Client Master at the Admin level (userCanDo says yes
+// to every admin). Moves clients' added_by to another person with CRM access,
+// so each CRM's Client Master list follows. App only: the Onboarding FMS
+// sheet's column E is left as it is (the user's call, 2026-10-04). Paths sit
+// outside /api/clients/ so they can never be read as a client :id.
+async function crmUsers() {
+  const [rows] = await db.query(`SELECT id, name, user_permissions FROM users
+    WHERE role <> 'client' AND user_permissions IS NOT NULL AND user_permissions <> '' ORDER BY name`);
+  return rows.filter(r => {
+    try {
+      const up = JSON.parse(r.user_permissions);
+      return Array.isArray(up.actions) && up.actions.includes('crm_clients') && Array.isArray(up.pages) && up.pages.includes('clients');
+    } catch { return false; }
+  }).map(r => ({ id: r.id, name: r.name }));
+}
+app.get('/api/client-crm/users', requireAuth, async (req, res) => {
+  try {
+    if (!(await userCanDo(req.session, 'admin_clients'))) return res.status(403).json({ error: 'Admin only' });
+    res.json(await crmUsers());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/client-crm/transfer', requireAuth, async (req, res) => {
+  try {
+    if (!(await userCanDo(req.session, 'admin_clients'))) return res.status(403).json({ error: 'Admin only' });
+    const ids = [...new Set((Array.isArray(req.body.client_ids) ? req.body.client_ids : [])
+      .map(Number).filter(n => Number.isInteger(n) && n > 0))];
+    if (!ids.length) return res.status(400).json({ error: 'Select at least one client' });
+    const target = (await crmUsers()).find(u => u.id === Number(req.body.to_user_id));
+    if (!target) return res.status(400).json({ error: 'Choose a person who has CRM access' });
+    await ensureAddedByColumn();
+    const marks = ids.map(() => '?').join(',');
+    const [[{ n }]] = await db.query(`SELECT COUNT(*) AS n FROM clients WHERE id IN (${marks})`, ids);
+    await db.query(`UPDATE clients SET added_by=? WHERE id IN (${marks})`, [target.id, ...ids]);
+    res.json({ success: true, moved: n, to: target.name });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/clients', requireAuth, async (req, res) => {
   try {
     // `?scope=master` narrows the list to what the caller may see on Client
@@ -220,9 +257,9 @@ app.get('/api/clients', requireAuth, async (req, res) => {
         for (const r of rows) r.departments = dMap[r.id] || null;
       } catch {}
       try {
-        const [ab] = await db.query(`SELECT c.id, u.name FROM clients c JOIN users u ON u.id = c.added_by`);
-        const abMap = Object.fromEntries(ab.map(k => [k.id, k.name]));
-        for (const r of rows) r.added_by_name = abMap[r.id] || null;
+        const [ab] = await db.query(`SELECT c.id, c.added_by, u.name FROM clients c LEFT JOIN users u ON u.id = c.added_by WHERE c.added_by IS NOT NULL`);
+        const abMap = Object.fromEntries(ab.map(k => [k.id, k]));
+        for (const r of rows) { const k = abMap[r.id]; r.added_by = k ? k.added_by : null; r.added_by_name = k ? k.name : null; }
       } catch {}
     }
     res.json(rows);
