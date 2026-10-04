@@ -630,6 +630,45 @@ function drFilteredEntries(){
   return entries;
 }
 
+// All Entries, grouped: one row per doer per day, with each client's minutes
+// and the day's total; clicking a day shows its entries. With more than one
+// doer on screen, each doer gets a heading row and their days sit under it.
+// The PDF uses the same grouping (drGroupEntries).
+function drGroupEntries(entries){
+  const byDoer = new Map();
+  for (const e of entries) {
+    const dk = String(e.user_id);
+    if (!byDoer.has(dk)) byDoer.set(dk, { userId: e.user_id, name: e.doer_name || '—', min: 0, count: 0, days: new Map() });
+    const d = byDoer.get(dk);
+    const m = Number(e.duration_min) || 0;
+    d.min += m; d.count++;
+    if (!d.days.has(e.entry_date)) d.days.set(e.entry_date, { date: e.entry_date, min: 0, entries: [], clients: new Map(), ew: false });
+    const day = d.days.get(e.entry_date);
+    day.min += m;
+    day.entries.push(e);
+    if (e.extra_working) day.ew = true;
+    const c = e.client_name || '—';
+    day.clients.set(c, (day.clients.get(c) || 0) + m);
+  }
+  return [...byDoer.values()]
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+    .map(d => ({ ...d, days: [...d.days.values()].sort((a, b) => String(a.date).localeCompare(String(b.date))) }));
+}
+const drHr = m => `${(m / 60).toFixed(1)} hr`;
+const drWeekday = d => { const x = new Date(d + 'T00:00:00'); return isNaN(x) ? '' : x.toLocaleDateString('en-GB', { weekday: 'short' }); };
+const DR_EW_TAG = ' <span style="background:#dcfce7;color:#15803d;font-weight:700;font-size:10px;padding:1px 5px;border-radius:5px" title="Approved Extra Working">EW</span>';
+
+// Which days are open, by "userId|date", so a filter change keeps them open.
+const DR_OPEN_DAYS = new Set();
+function drToggleDay(row){
+  const key = row.dataset.key;
+  const open = !DR_OPEN_DAYS.has(key);
+  if (open) DR_OPEN_DAYS.add(key); else DR_OPEN_DAYS.delete(key);
+  row.nextElementSibling.style.display = open ? '' : 'none';
+  row.setAttribute('aria-expanded', open ? 'true' : 'false');
+  row.querySelector('.dr-caret').textContent = open ? '▾' : '▸';
+}
+
 function renderDREntries(){
   if (!DR_DATA) return;
   const wrap = document.getElementById('drEntriesWrap');
@@ -649,19 +688,41 @@ function renderDREntries(){
     return;
   }
 
+  const groups = drGroupEntries(entries);
+  const manyDoers = groups.length > 1;
   let html = `<table class="dr-table"><thead><tr>
-    <th>Date</th><th>User</th><th>Client</th><th>Department</th>
-    <th>Description</th><th>Time</th>
+    <th>Date</th><th>Clients</th><th style="text-align:center">Entries</th><th>Time</th>
   </tr></thead><tbody>`;
-  for (const e of entries) {
-    html += `<tr>
-      <td><b>${e.entry_date}</b>${e.extra_working ? ' <span style="background:#dcfce7;color:#15803d;font-weight:700;font-size:10px;padding:1px 5px;border-radius:5px" title="Approved Extra Working">EW</span>' : ''}</td>
-      <td>${dtEscape(e.doer_name)}</td>
-      <td>${e.client_name ? `<span class="pill-tag">${dtEscape(e.client_name)}</span>` : '—'}</td>
-      <td>${e.department ? `<span class="pill-dept">${dtEscape(e.department)}</span>` : '—'}</td>
-      <td>${dtEscape(e.description)}</td>
-      <td><span class="pill-min">${e.duration_min} min</span></td>
-    </tr>`;
+  for (const g of groups) {
+    if (manyDoers) {
+      html += `<tr><td colspan="4" style="background:#fff7ed;border-bottom:1px solid #fde68a;color:#7c2d12;font-weight:700">
+        👤 ${dtEscape(g.name)}
+        <span style="font-weight:600;color:#9a3412;margin-left:8px">${g.days.length} ${g.days.length===1?'day':'days'} · ${g.count} ${g.count===1?'entry':'entries'} · ${g.min} min (${drHr(g.min)})</span>
+      </td></tr>`;
+    }
+    for (const day of g.days) {
+      const key = `${g.userId}|${day.date}`;
+      const open = DR_OPEN_DAYS.has(key);
+      const chips = [...day.clients].map(([c, m]) =>
+        `<span class="pill-tag" style="margin:2px 6px 2px 0">${dtEscape(c)} · ${m} min</span>`).join('');
+      const rows = day.entries.map(e => `<tr>
+          <td style="width:1%;white-space:nowrap">${e.client_name ? `<span class="pill-tag">${dtEscape(e.client_name)}</span>` : '—'}${e.extra_working ? DR_EW_TAG : ''}</td>
+          <td style="width:1%;white-space:nowrap">${e.department ? `<span class="pill-dept">${dtEscape(e.department)}</span>` : '—'}</td>
+          <td>${dtEscape(e.description)}</td>
+          <td style="width:1%;white-space:nowrap"><span class="pill-min">${e.duration_min} min</span></td>
+        </tr>`).join('');
+      html += `<tr data-key="${dtEscape(key)}" onclick="drToggleDay(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();drToggleDay(this)}"
+          tabindex="0" role="button" aria-expanded="${open}" style="cursor:pointer" title="Show this day's entries">
+        <td style="white-space:nowrap"><span class="dr-caret" style="display:inline-block;width:14px;color:#c2410c">${open ? '▾' : '▸'}</span><b>${dtEscape(day.date)}</b>
+          <span style="font-size:11px;color:#94a3b8">${drWeekday(day.date)}</span>${day.ew ? DR_EW_TAG : ''}</td>
+        <td>${chips}</td>
+        <td style="text-align:center">${day.entries.length}</td>
+        <td style="white-space:nowrap"><span class="pill-min">${day.min} min</span> <span style="font-size:11px;color:#64748b">${drHr(day.min)}</span></td>
+      </tr>
+      <tr style="display:${open ? '' : 'none'}"><td colspan="4" style="background:#fffdf7;padding:4px 12px 10px 30px">
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px"><tbody>${rows}</tbody></table>
+      </td></tr>`;
+    }
   }
   html += `</tbody></table>`;
   wrap.innerHTML = html;
@@ -727,56 +788,106 @@ function drExportSummaryCSV(){
   showToast('✅ Summary CSV downloaded');
 }
 
+// PDF: a summary first (totals, per employee, per client), then the day-by-day
+// detail grouped by employee and date with every entry's description.
 function drExportPDF(){
   if (!DR_DATA) { showToast('No data to export', 'error'); return; }
   const entries = drFilteredEntries();
   if (!entries.length) { showToast('No entries match the current filters', 'error'); return; }
   const totalMin = entries.reduce((s,e) => s + (e.duration_min||0), 0);
-  const totalHr = (totalMin/60).toFixed(1);
-  const doers = new Set(entries.map(e => e.user_id)).size;
+  const groups = drGroupEntries(entries);
+  const doers = groups.length;
+  const dayCount = groups.reduce((s, g) => s + g.days.length, 0);
   const rangeLabel = DR_DATA.from && DR_DATA.to
     ? `${DR_DATA.from} → ${DR_DATA.to}`
     : DR_DATA.month;
   const userId = document.getElementById('drUserFilter')?.value || '';
   const client  = [...DR_CLIENT_SEL].join(', ');
   const search  = document.getElementById('drSearch')?.value || '';
+  const typeSel = document.getElementById('drTypeFilter');
+  const typeLabel = typeSel && typeSel.selectedIndex >= 0 ? typeSel.options[typeSel.selectedIndex].text : '';
   const filterLine = [
+    typeLabel ? `Type: ${typeLabel}` : '',
     userId ? `Doer: ${entries[0]?.doer_name || userId}` : '',
     client ? `Client: ${client}` : '',
     search ? `Search: "${search}"` : ''
   ].filter(Boolean).join(' · ') || 'No filters applied';
+  const dayLabel = d => { const x = new Date(d + 'T00:00:00'); return isNaN(x) ? d
+    : x.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }); };
+  const ew = ' <span class="ew">EW</span>';
 
-  const rowsHtml = entries.map(e => `
-    <tr>
-      <td>${dtEscape(e.entry_date)}</td>
-      <td>${dtEscape(e.doer_name)}</td>
-      <td>${dtEscape(e.client_name)}</td>
-      <td>${dtEscape(e.department || '—')}</td>
-      <td>${dtEscape(e.description||'')}</td>
-      <td style="text-align:right">${e.duration_min}</td>
-    </tr>`).join('');
+  // Per client, across everything shown.
+  const byClient = new Map();
+  for (const e of entries) {
+    const c = e.client_name || '—';
+    byClient.set(c, (byClient.get(c) || 0) + (Number(e.duration_min) || 0));
+  }
+  const clientRows = [...byClient].sort((a, b) => b[1] - a[1]).map(([c, m]) => `
+    <tr><td>${dtEscape(c)}</td><td class="num">${m}</td><td class="num">${(m/60).toFixed(1)}</td>
+    <td class="num">${totalMin ? Math.round(m * 100 / totalMin) : 0}%</td></tr>`).join('');
+  const doerRows = groups.map(g => `
+    <tr><td>${dtEscape(g.name)}</td><td class="num">${g.days.length}</td><td class="num">${g.count}</td>
+    <td class="num">${g.min}</td><td class="num">${(g.min/60).toFixed(1)}</td><td class="num">${Math.round(g.min / g.days.length)}</td></tr>`).join('');
 
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Daily Task Report — ${rangeLabel}</title>
+  const detail = groups.map(g => `
+    <h2>${dtEscape(g.name)} <span class="sub">${g.days.length} ${g.days.length===1?'day':'days'} · ${g.min} min (${(g.min/60).toFixed(1)} hr)</span></h2>
+    ${g.days.map(day => `
+      <div class="day">
+        <h3>${dtEscape(dayLabel(day.date))}${day.ew ? ew : ''} <span class="sub">${day.min} min (${(day.min/60).toFixed(1)} hr) · ${[...day.clients].map(([c, m]) => `${dtEscape(c)} ${m} min`).join(' · ')}</span></h3>
+        <table>
+          <thead><tr><th style="width:21%">Client</th><th style="width:17%">Department</th><th>Description</th><th class="num" style="width:8%">Min</th></tr></thead>
+          <tbody>${day.entries.map(e => `
+            <tr><td>${dtEscape(e.client_name || '—')}${e.extra_working ? ew : ''}</td><td>${dtEscape(e.department || '—')}</td>
+            <td>${dtEscape(e.description || '')}</td><td class="num">${e.duration_min}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>`).join('')}`).join('');
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Daily Task Report — ${dtEscape(rangeLabel)}</title>
     <style>
       body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0f172a;margin:24px;}
       h1{font-size:18px;margin:0 0 4px;}
+      h2{font-size:15px;margin:22px 0 8px;padding-bottom:4px;border-bottom:2px solid #f59e0b;}
+      h3{font-size:12.5px;margin:12px 0 5px;}
+      .sub{font-weight:400;color:#475569;font-size:11.5px;margin-left:6px;}
       .meta{font-size:12px;color:#475569;margin-bottom:6px;}
-      .summary{font-size:12px;color:#1e293b;background:#f1f5f9;padding:8px 12px;border-radius:6px;margin-bottom:14px;}
+      .kpis{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px;}
+      .kpi{background:#f1f5f9;border-radius:6px;padding:7px 12px;font-size:11px;color:#475569;}
+      .kpi b{display:block;font-size:15px;color:#0f172a;}
+      .cols{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start;}
+      .cols > div{flex:1 1 280px;}
+      .label{font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.4px;margin:6px 0 5px;}
       table{width:100%;border-collapse:collapse;font-size:11px;}
-      th,td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top;}
+      th,td{border:1px solid #cbd5e1;padding:5px 7px;text-align:left;vertical-align:top;}
       th{background:#0f172a;color:#fff;font-weight:700;}
       tr:nth-child(even) td{background:#f8fafc;}
-      tfoot td{font-weight:700;background:#e2e8f0;}
-      @media print{ body{margin:12mm;} }
+      .num{text-align:right;white-space:nowrap;}
+      .ew{background:#dcfce7;color:#15803d;font-weight:700;font-size:9px;padding:1px 4px;border-radius:4px;}
+      .day{page-break-inside:avoid;}
+      .day table{table-layout:fixed;}
+      .day td{overflow-wrap:anywhere;}
+      .total{margin-top:16px;font-size:12.5px;font-weight:700;text-align:right;}
+      @media print{ body{margin:12mm;} th{-webkit-print-color-adjust:exact;print-color-adjust:exact;} }
     </style></head><body>
     <h1>Daily Task Report</h1>
-    <div class="meta">Range: <b>${dtEscape(rangeLabel)}</b> · Generated: ${new Date().toLocaleString()}</div>
-    <div class="summary"><b>${entries.length}</b> entries · <b>${doers}</b> ${doers===1?'doer':'doers'} · <b>${totalMin}</b> min (${totalHr} hr) · ${dtEscape(filterLine)}</div>
-    <table>
-      <thead><tr><th>Date</th><th>Doer</th><th>Client</th><th>Department</th><th>Description</th><th style="text-align:right">Min</th></tr></thead>
-      <tbody>${rowsHtml}</tbody>
-      <tfoot><tr><td colspan="5" style="text-align:right">Total</td><td style="text-align:right">${totalMin}</td></tr></tfoot>
-    </table>
+    <div class="meta">Range: <b>${dtEscape(rangeLabel)}</b> · Generated: ${new Date().toLocaleString()} · ${dtEscape(filterLine)}</div>
+    <div class="kpis">
+      <div class="kpi"><b>${totalMin} min</b>${(totalMin/60).toFixed(1)} hours in all</div>
+      <div class="kpi"><b>${entries.length}</b>${entries.length===1?'entry':'entries'}</div>
+      <div class="kpi"><b>${doers}</b>${doers===1?'employee':'employees'}</div>
+      <div class="kpi"><b>${dayCount}</b>${doers===1?(dayCount===1?'day worked':'days worked'):'employee-days'}</div>
+      <div class="kpi"><b>${Math.round(totalMin / dayCount)} min</b>average per day</div>
+    </div>
+    <div class="cols">
+      ${doers > 1 ? `<div><div class="label">By employee</div>
+        <table><thead><tr><th>Employee</th><th class="num">Days</th><th class="num">Entries</th><th class="num">Min</th><th class="num">Hr</th><th class="num">Avg/day</th></tr></thead>
+        <tbody>${doerRows}</tbody></table></div>` : ''}
+      <div><div class="label">By client</div>
+        <table><thead><tr><th>Client</th><th class="num">Min</th><th class="num">Hr</th><th class="num">Share</th></tr></thead>
+        <tbody>${clientRows}</tbody></table></div>
+    </div>
+    <div class="label" style="margin-top:18px">Day by day</div>
+    ${detail}
+    <div class="total">Total: ${totalMin} min (${(totalMin/60).toFixed(1)} hr)</div>
     <script>window.addEventListener('load', () => { setTimeout(() => window.print(), 200); });<\/script>
   </body></html>`;
 
