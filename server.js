@@ -2775,7 +2775,7 @@ async function hodDeptOf(session) {
 
 // Per-employee combined score. dept = null covers everyone; a string limits it
 // to that department. Shared by /api/mis/all and the dashboard leaderboard.
-async function computeMisAll(start, end, dept) {
+async function computeMisAll(start, end, dept, { images = true } = {}) {
     // Same deptFilter logic as /api/mis — tasks JOIN users se filter
     let deptFilter = '';
     let deptParams = [start, end];
@@ -2955,7 +2955,7 @@ async function computeMisAll(start, end, dept) {
 
     // Attach profile photos (used as the race-tracker runner avatars).
     const ids = result.map(u => u.userId);
-    if (ids.length) {
+    if (images && ids.length) {
       const [imgs] = await db.query(`SELECT id, profile_image FROM users WHERE id IN (${ids.map(()=>'?').join(',')})`, ids);
       const imgBy = {};
       for (const r of imgs) imgBy[r.id] = r.profile_image || null;
@@ -2976,7 +2976,7 @@ app.get('/api/mis/all', requireAuth, requireMisViewer, async (req, res) => {
 // Composite "Most Active" ranking for the Dashboard. Aggregates per-user signals
 // of engagement in a date range: tasks they own, tasks they delegated to OTHERS,
 // revises they triggered on others' work, and leaves they filed.
-async function computeActivity(start, end, dept) {
+async function computeActivity(start, end, dept, { images = true } = {}) {
     let deptFilter = '';
     let deptParams = [];
     if (dept !== null) {
@@ -2984,7 +2984,7 @@ async function computeActivity(start, end, dept) {
       deptParams = [dept];
     }
     const [rows] = await db.query(
-      `SELECT u.id AS userId, u.name, u.department, u.profile_image AS profileImage,
+      `SELECT u.id AS userId, u.name, u.department, ${images ? 'u.profile_image' : 'NULL'} AS profileImage,
          COALESCE((SELECT COUNT(*) FROM delegation_tasks dt
                    WHERE dt.assigned_to=u.id AND dt.due_date BETWEEN ? AND ?), 0)
          + COALESCE((SELECT COUNT(*) FROM checklist_tasks ct
@@ -3041,6 +3041,65 @@ async function teamDeptOf(session) {
   if (!me || (me.role !== 'hod' && me.user_role !== 'hod')) return null;
   return me.department || '';
 }
+// Small copies of profile photos for places that draw many at once (the
+// dashboard leaderboard). Photos are stored as uploaded — often 1-2 MB of
+// base64 each — so sending a team's worth ran past Vercel's response cap.
+// A 96px JPEG (a few KB) is made once per photo and kept on the user row;
+// profile_thumb_src is the photo's MD5, so a new photo gets a new thumbnail.
+let _thumbCols = null;
+function ensureThumbColumns() {
+  if (!_thumbCols) _thumbCols = (async () => {
+    for (const sql of ['ALTER TABLE users ADD COLUMN profile_thumb MEDIUMTEXT DEFAULT NULL',
+                       'ALTER TABLE users ADD COLUMN profile_thumb_src CHAR(32) DEFAULT NULL']) {
+      try { await db.query(sql); } catch (e) { if (e.code !== 'ER_DUP_FIELDNAME') { _thumbCols = null; throw e; } }
+    }
+  })();
+  return _thumbCols;
+}
+async function makeAvatarThumb(dataUrl) {
+  // The upload also takes application/octet-stream; canvas reads the bytes either way.
+  const m = /^data:(?:image\/[a-z0-9.+-]+|application\/octet-stream);base64,(.+)$/i.exec(String(dataUrl || ''));
+  if (!m) return null;
+  const { createCanvas, loadImage } = require('canvas');
+  const img = await loadImage(Buffer.from(m[1], 'base64'));
+  const size = 96;   // drawn at 24px; 4x stays sharp on any screen
+  const c = createCanvas(size, size);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, size, size);
+  // Centre square crop, so a portrait photo is not squashed into the circle.
+  const s = Math.min(img.width, img.height);
+  ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+  return 'data:image/jpeg;base64,' + c.toBuffer('image/jpeg', { quality: 0.82 }).toString('base64');
+}
+// { userId: thumb } for those ids that have a photo. Missing or stale
+// thumbnails are made here, a few per call so a first load stays quick;
+// `pending` says some are still to come (the caller then skips its cache).
+async function avatarThumbs(ids) {
+  const out = {}; let pending = 0;
+  if (!ids.length) return { thumbs: out, pending };
+  await ensureThumbColumns();
+  const [rows] = await db.query(
+    `SELECT id, profile_thumb, profile_thumb_src, MD5(profile_image) AS src FROM users
+      WHERE id IN (${ids.map(() => '?').join(',')}) AND profile_image IS NOT NULL AND profile_image <> ''`, ids);
+  const started = Date.now();
+  for (const r of rows) {
+    if (r.profile_thumb_src === r.src) { if (r.profile_thumb) out[r.id] = r.profile_thumb; continue; }
+    if (Date.now() - started > 3000) { pending++; continue; }
+    try {
+      const [[u]] = await db.query('SELECT profile_image FROM users WHERE id=?', [r.id]);
+      const img = (u && u.profile_image) || '';
+      // A photo canvas cannot read (WebP, HEIC) is kept with an empty thumb so it
+      // is not tried again on every load; a small one is sent as it is instead.
+      let thumb = await makeAvatarThumb(img).catch(() => null);
+      if (!thumb) thumb = img.length <= 60 * 1024 ? img : '';
+      await db.query('UPDATE users SET profile_thumb=?, profile_thumb_src=? WHERE id=?', [thumb, r.src, r.id]);
+      if (thumb) out[r.id] = thumb;
+    } catch (e) { console.error('avatar thumb for user', r.id, 'failed:', e.message); }
+  }
+  return { thumbs: out, pending };
+}
+
 const _leaderboardCache = new Map();
 app.get('/api/dashboard/leaderboard', requireAuth, async (req, res) => {
   try {
@@ -3051,22 +3110,24 @@ app.get('/api/dashboard/leaderboard', requireAuth, async (req, res) => {
     const key = `${start}|${end}|${dept === null ? '*' : dept}`;
     const hit = _leaderboardCache.get(key);
     if (hit && Date.now() - hit.at < 2 * 60 * 1000) return res.json(hit.data);
-    const [scores, activity] = await Promise.all([computeMisAll(start, end, dept), computeActivity(start, end, dept)]);
-    // Profile photos are stored full size (often 1-2 MB of base64 each), and this
-    // goes to every employee's dashboard: a whole team's photos ran past Vercel's
-    // ~4.5 MB response cap, so the call failed and the charts showed no data.
-    // Only small photos ride along; the rest fall back to initials.
-    const thumb = img => (typeof img === 'string' && img.length <= 60 * 1024) ? img : null;
+    // Full-size photos stay in the database; the charts get the small copies.
+    const [scores, activity] = await Promise.all([
+      computeMisAll(start, end, dept, { images: false }), computeActivity(start, end, dept, { images: false })]);
+    const ids = [...new Set([...scores.map(u => u.userId), ...activity.map(r => r.userId)])];
+    const { thumbs, pending } = await avatarThumbs(ids).catch(e => {
+      console.error('leaderboard thumbs:', e.message); return { thumbs: {}, pending: 0 }; });
+    const thumb = id => thumbs[id] || null;
     const data = {
       scope: dept === null ? 'all' : 'team', department: dept,
-      scores: scores.map(u => ({ userId: u.userId, name: u.name, profileImage: thumb(u.profileImage),
+      scores: scores.map(u => ({ userId: u.userId, name: u.name, profileImage: thumb(u.userId),
         completedAll: u.completedAll, overallScore: u.overallScore })),
-      activity: activity.map(r => ({ userId: r.userId, name: r.name, profileImage: thumb(r.profileImage),
+      activity: activity.map(r => ({ userId: r.userId, name: r.name, profileImage: thumb(r.userId),
         activityScore: r.activityScore, active_tasks: r.active_tasks, delegated_to_others: r.delegated_to_others,
         revises_triggered: r.revises_triggered, leaves_submitted: r.leaves_submitted })),
     };
     if (_leaderboardCache.size > 50) _leaderboardCache.clear();
-    _leaderboardCache.set(key, { at: Date.now(), data });
+    // Not cached while thumbnails are still being made, so the next load shows them.
+    if (!pending) _leaderboardCache.set(key, { at: Date.now(), data });
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
