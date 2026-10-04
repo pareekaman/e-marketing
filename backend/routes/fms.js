@@ -34,6 +34,18 @@ app.get('/api/fms', requireAuth, requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// The Google account FMS sheets are read as: the GOOGLE_CREDENTIALS service
+// account (credentials.json locally). The Share Your Sheet notice shows it,
+// because a sheet shared with anyone else stays invisible to the sync. It
+// used to show a hard-coded personal email. Defined before /api/fms/:id.
+app.get('/api/fms/share-email', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const creds = process.env.GOOGLE_CREDENTIALS ? JSON.parse(process.env.GOOGLE_CREDENTIALS) : require('../../credentials.json');
+    if (!creds || !creds.client_email) throw new Error('no client_email');
+    res.json({ email: creds.client_email });
+  } catch (e) { res.status(500).json({ error: 'The Google account for sheets is not set up on the server' }); }
+});
+
 // IMPORTANT: This route must be defined BEFORE /api/fms/:id
 // to avoid being captured by the :id parameter wildcard.
 // Get unique values from a specific column of a Google Sheet

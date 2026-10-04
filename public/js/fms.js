@@ -562,10 +562,19 @@ function proceedToShareNotice() {
   startShareCountdown();
 }
 
+// The service account the server reads sheets as (GET /api/fms/share-email),
+// fetched once per page load.
+let _fmsShareEmail = '';
 function startShareCountdown() {
   // Set email via JS to avoid Cloudflare masking
   const emailEl = document.getElementById('fmsShareEmail');
-  if (emailEl) emailEl.textContent = 'pareek.aman' + '@' + 'e-marketing.com';
+  if (emailEl) {
+    emailEl.textContent = _fmsShareEmail || 'Loading…';
+    if (!_fmsShareEmail) api('/api/fms/share-email').then(r => {
+      _fmsShareEmail = (r && r.email) || '';
+      emailEl.textContent = _fmsShareEmail || 'Could not load the sharing email. Please ask an admin.';
+    });
+  }
 
   document.getElementById('fmsShareModal').classList.add('open');
   const btn = document.getElementById('fmsSkipBtn');
@@ -586,7 +595,8 @@ function startShareCountdown() {
 }
 
 function copyFMSEmail() {
-  const email = 'pareek.aman' + '@' + 'e-marketing.com';
+  const email = _fmsShareEmail;
+  if (!email) { showToast('The sharing email has not loaded yet', 'error'); return; }
   navigator.clipboard.writeText(email).then(()=>showToast('Email copied!')).catch(()=>{
     const el = document.createElement('textarea');
     el.value = email; document.body.appendChild(el);
