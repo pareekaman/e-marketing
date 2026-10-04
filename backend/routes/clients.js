@@ -86,6 +86,53 @@ function ensureMobileColumn() {
   return _mobileCol;
 }
 
+// Who added each client: clients.added_by -> users.id, set by Add Client and
+// Bulk Upload. Clients that predate the column are credited to Nikita
+// Khandelwal, the CRM who onboarded them (the user's call, 2026-10-04) - once,
+// guarded by an app_settings marker, so no client added later is touched.
+let _addedByCol = null;
+function ensureAddedByColumn() {
+  if (!_addedByCol) _addedByCol = (async () => {
+    try { await db.query('ALTER TABLE clients ADD COLUMN added_by INT DEFAULT NULL'); }
+    catch (e) { if (e.code !== 'ER_DUP_FIELDNAME') { _addedByCol = null; throw e; } }
+    try {
+      const [[done]] = await db.query(`SELECT value FROM app_settings WHERE key_name='clients_added_by_v1'`);
+      if (done) return;
+      const [[nikita]] = await db.query(
+        `SELECT id FROM users WHERE TRIM(name)='Nikita Khandelwal' AND role <> 'client' ORDER BY id LIMIT 1`);
+      if (!nikita) return;   // not on this instance; tried again on the next cold start
+      const [r] = await db.query('UPDATE clients SET added_by=? WHERE added_by IS NULL', [nikita.id]);
+      await db.query(`INSERT INTO app_settings (key_name, value) VALUES ('clients_added_by_v1', ?)
+        ON DUPLICATE KEY UPDATE value=VALUES(value)`, [`${r.affectedRows} clients credited to user ${nikita.id}`]);
+    } catch (e) { console.error('Client added_by backfill skipped:', e.message); }
+  })();
+  return _addedByCol;
+}
+
+// CRM access - the checkbox on the Client Master row in Access Control. Read
+// off the saved row like the Billing Name grant, not through userCanDo(),
+// which answers yes for every admin.
+async function hasCrmAccess(session) {
+  try {
+    const [[row]] = await db.query('SELECT user_permissions FROM users WHERE id=?', [session.userId]);
+    const up = row && row.user_permissions ? JSON.parse(row.user_permissions) : null;
+    return !!(up && Array.isArray(up.actions) && up.actions.includes('crm_clients')
+      && Array.isArray(up.pages) && up.pages.includes('clients'));
+  } catch { return false; }
+}
+
+// May this person open a client's detail card? Managers, Client Master at the
+// Admin level, its handlers, and whoever added it (a CRM's own clients).
+async function canOpenClient(session, client) {
+  if (['admin', 'hod', 'pc'].includes(session.role)) return true;
+  if (await userCanDo(session, 'admin_clients')) return true;
+  if (await isHandlerOf(session.userId, client)) return true;
+  try {
+    const [[r]] = await db.query('SELECT 1 AS ok FROM clients WHERE id=? AND added_by=?', [client.id, session.userId]);
+    return !!r;
+  } catch { return false; }
+}
+
 // Build the WHERE clause that limits the client list to what the caller may see
 // on the Client Master page. Returns null when they may see everything.
 //   admin / pc → everything.
@@ -104,6 +151,8 @@ async function clientMasterScope(req) {
   // an admin does, so it sees every client too.
   if (await userCanDo(req.session, 'admin_clients')) return null;
   const uid = req.session.userId;
+  // CRM access: only the clients this person added.
+  if (await hasCrmAccess(req.session)) return { sql: 'c.added_by = ?', params: [uid] };
   // Everyone else: only the clients they personally handle, by the primary
   // handler_id or a client_handlers row.
   return {
@@ -120,6 +169,7 @@ app.get('/api/clients', requireAuth, async (req, res) => {
     // Master. Without it the list stays unfiltered on purpose — the Daily Task,
     // Delegation, Checklist, Meetings and DMS pickers share this route and must
     // keep offering every client.
+    if (req.query.scope === 'master') await ensureAddedByColumn().catch(() => {});
     const scope = req.query.scope === 'master' ? await clientMasterScope(req) : null;
     const [rows] = await db.query(
       `SELECT c.id, c.name, c.brand_name, c.billing_name, c.handler_id, c.logo_url, COALESCE(c.is_active,1) AS is_active,
@@ -168,6 +218,11 @@ app.get('/api/clients', requireAuth, async (req, res) => {
         const [ds] = await db.query(`SELECT id, departments FROM clients WHERE departments IS NOT NULL AND departments <> ''`);
         const dMap = Object.fromEntries(ds.map(k => [k.id, k.departments]));
         for (const r of rows) r.departments = dMap[r.id] || null;
+      } catch {}
+      try {
+        const [ab] = await db.query(`SELECT c.id, u.name FROM clients c JOIN users u ON u.id = c.added_by`);
+        const abMap = Object.fromEntries(ab.map(k => [k.id, k.name]));
+        for (const r of rows) r.added_by_name = abMap[r.id] || null;
       } catch {}
     }
     res.json(rows);
@@ -267,8 +322,9 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
     }
     await ensureKickstartColumn();
     await ensureDepartmentsColumn();
-    const [r] = await db.query('INSERT INTO clients (name, brand_name, billing_name, kickstart_date, departments, handler_id) VALUES (?, ?, ?, ?, ?, ?)',
-      [name, brandName, seesBilling ? billingName : null, kickstartDate, departments, handlerIds[0] || null]);
+    await ensureAddedByColumn();
+    const [r] = await db.query('INSERT INTO clients (name, brand_name, billing_name, kickstart_date, departments, handler_id, added_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [name, brandName, seesBilling ? billingName : null, kickstartDate, departments, handlerIds[0] || null, req.session.userId]);
     const newClientId = r.insertId;
     await ensureMobileColumn().then(() => db.query('UPDATE clients SET mobile_no=? WHERE id=?', [mobile, newClientId])).catch(() => {});
     // Onboarding FMS row. Awaited so the result can be reported, but never fatal.
@@ -406,7 +462,7 @@ app.get('/api/clients/:id/handlers', requireAuth, async (req, res) => {
     // handle — so the Client Master detail card works for them, not just admins.
     if (!['admin', 'hod', 'pc'].includes(req.session.role)) {
       const [[c]] = await db.query('SELECT id, handler_id FROM clients WHERE id=?', [req.params.id]);
-      if (!c || !(await isHandlerOf(req.session.userId, c))) return res.status(403).json({ error: 'Forbidden' });
+      if (!c || !(await canOpenClient(req.session, c))) return res.status(403).json({ error: 'Forbidden' });
     }
     const [rows] = await db.query(
       `SELECT ch.user_id AS id, u.name, COALESCE(u.department,'') AS department
@@ -463,9 +519,10 @@ app.post('/api/clients/bulk', requireAuth, requireClientsEditor, async (req, res
 
     let added = 0, skipped = 0;
     const skippedNames = [];
+    await ensureAddedByColumn();
     for (const name of cleanNames) {
       try {
-        await db.query('INSERT INTO clients (name) VALUES (?)', [name]);
+        await db.query('INSERT INTO clients (name, added_by) VALUES (?, ?)', [name, req.session.userId]);
         added++;
       } catch (e) {
         if (e.code === 'ER_DUP_ENTRY') { skipped++; skippedNames.push(name); }
@@ -490,8 +547,7 @@ app.get('/api/clients/:id/stats', requireAuth, async (req, res) => {
     if (!client) return res.status(404).json({ error: 'Client not found' });
     // Managers see any client; a regular handler may open only the clients they
     // handle. Reuses the row just fetched (has id + handler_id) for the check.
-    if (!['admin', 'hod', 'pc'].includes(req.session.role) && !(await userCanDo(req.session, 'admin_clients'))
-        && !(await isHandlerOf(req.session.userId, client))) {
+    if (!(await canOpenClient(req.session, client))) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     client.system_links = parseSystemLinks(client.system_links);

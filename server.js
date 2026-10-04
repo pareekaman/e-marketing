@@ -3530,7 +3530,7 @@ const VALID_UP_PAGES   = new Set(['dashboard','alltasks','approvals','mis','race
 // features that have no individually gated buttons. They are stored now so the
 // choice survives; a page starts honouring it as soon as its controls are
 // wired to canDo('edit_<page>'). Keep this in sync with PERM_TREE in app.html.
-const VALID_UP_ACTIONS = new Set(['billing_name','edit_task','delete_task','create_task','create_checklist','approve_revision','bulk_approve','transfer_task','reopen_task','delete_leave','set_plan','hrm_schedule','hrm_update_status',
+const VALID_UP_ACTIONS = new Set(['billing_name','crm_clients','edit_task','delete_task','create_task','create_checklist','approve_revision','bulk_approve','transfer_task','reopen_task','delete_leave','set_plan','hrm_schedule','hrm_update_status',
   'edit_dashboard','edit_mis','edit_race','edit_fms','edit_fms_tasks','edit_clients','edit_compliance','edit_dailyreports','edit_meetings','edit_inventory','edit_dms','edit_paymentreq','edit_feedback','edit_users','edit_creditcards','edit_logs',
   // Unlike most edit_<page> keys this one is genuinely enforced: every write
   // route in routes/leads.js checks it, so View really is read-only there.
@@ -7158,6 +7158,11 @@ async function resolvePortalClientId(req) {
   // Not a manager — allow only if this user handles this client. Check both the
   // primary handler_id and the many-to-many client_handlers table.
   if (await isHandlerOf(req.session.userId, c)) return { id: c.id, preview: true };
+  // Whoever added the client (a CRM's own clients) may preview it too.
+  try {
+    const [[mine]] = await db.query('SELECT 1 AS ok FROM clients WHERE id=? AND added_by=?', [c.id, req.session.userId]);
+    if (mine) return { id: c.id, preview: true };
+  } catch {}
   return { error: 'Client portal only', status: 403 };
 }
 

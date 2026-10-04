@@ -438,7 +438,7 @@ function loadUserPerms(userId) {
               ${pg.readOnly ? `<span class="acc-ro" title="This page has no editable data — there is nothing for Editor to grant.">read-only</span>` : ''}
             </div>
             ${pg.note ? `<div style="font-size:11px;color:#64748b;margin-top:2px">🔒 ${esc(pg.note)}</div>` : ''}
-            ${pg.page === 'clients' && !dim ? accClientsFirstHtml(u) + accBillingHtml(u.id, perms) : ''}
+            ${pg.page === 'clients' && !dim ? accClientsFirstHtml(u) + accBillingHtml(u.id, perms) + accCrmHtml(u.id, perms) : ''}
           </div>
         </div>
         <select onchange="onAccLevelChange(${userId},'${pg.page}',this.value)" ${pg.locked?'disabled':''}
@@ -477,6 +477,23 @@ function accSetBilling(userId, on) {
   const p = _accPerms[userId] || { pages: [], actions: [] };
   p.actions = p.actions.filter(k => k !== 'billing_name');
   if (on) p.actions.push('billing_name');
+  _accPerms[userId] = p;
+  accSyncDirty(userId);
+}
+
+// CRM access: Client Master lists only the clients this person added. Saved
+// with the permissions (Done), like Billing Name.
+function accCrmHtml(userId, perms) {
+  const on = (perms.actions || []).includes('crm_clients');
+  return `<label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#64748b;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:500">
+    <input type="checkbox" ${on ? 'checked' : ''} onchange="accSetCrm(${userId},this.checked)" style="width:13px;height:13px;margin:0;accent-color:#4f46e5"/>
+    CRM access: sees only the clients they added
+  </label>`;
+}
+function accSetCrm(userId, on) {
+  const p = _accPerms[userId] || { pages: [], actions: [] };
+  p.actions = p.actions.filter(k => k !== 'crm_clients');
+  if (on) p.actions.push('crm_clients');
   _accPerms[userId] = p;
   accSyncDirty(userId);
 }

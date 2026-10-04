@@ -281,9 +281,9 @@ function cmExportExcel() {
   // Billing Name only for its named viewers (the server strips it for everyone
   // else anyway); the column is left out entirely rather than shipped blank.
   const bill = cmCanSeeBilling();
-  const header = ['#', 'Client Name', ...(bill ? ['Billing Name'] : []), 'Handler', 'Client ID', 'Status'];
+  const header = ['#', 'Client Name', ...(bill ? ['Billing Name'] : []), 'Handler', 'Added By', 'Client ID', 'Status'];
   const rows = list.map((c, i) => [i + 1, c.name || '', ...(bill ? [c.billing_name || ''] : []),
-    c.handler_name || '', c.id, cmIsActive(c) ? 'Active' : 'Inactive']);
+    c.handler_name || '', c.added_by_name || '', c.id, cmIsActive(c) ? 'Active' : 'Inactive']);
   // BOM so Excel reads UTF-8 (handles ₹, accents, etc.) correctly.
   const csv = '﻿' + [header, ...rows].map(r => r.map(cell).join(',')).join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -455,6 +455,10 @@ function cmRenderList(){
     const billingBit = (cmCanSeeBilling() && c.billing_name)
       ? ` · <span style="color:#0369a1;font-weight:600">🧾 ${dtEscape(c.billing_name)}</span>`
       : '';
+    // Who added the client (the CRM); clients from before 2026-10-04 carry Nikita Khandelwal.
+    const addedBit = c.added_by_name
+      ? ` · <span style="color:#64748b">Added by <b style="color:#475569">${dtEscape(c.added_by_name)}</b></span>`
+      : '';
     // is_active is absent on older rows — COALESCE'd to 1 server-side, so treat undefined as active.
     const isOn = c.is_active === undefined || !!Number(c.is_active);
     html += `<div class="cm-client-row${isOn ? '' : ' cm-inactive'}" data-cm-id="${c.id}" onclick="cmShowDetail(${c.id})">
@@ -463,7 +467,7 @@ function cmRenderList(){
           <div class="cm-avatar" style="${avatarStyle}">${initials}</div>
           <div class="cm-client-meta">
             <span class="cm-client-name">${safeName}</span>
-            <div class="cm-client-id">Client #${c.id}${nameBit}${billingBit}${kickBit} · ${handlerLabel}</div>
+            <div class="cm-client-id">Client #${c.id}${nameBit}${billingBit}${kickBit} · ${handlerLabel}${addedBit}</div>
           </div>
         </div>
         <div class="cm-client-actions">
