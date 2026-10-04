@@ -580,9 +580,8 @@ async function setEwRoute(on) {
   if (!r || r.error) {
     sw.checked = !on;
     showToast((r && r.error) || 'Could not save. Please try again.', 'error');
-    return;
   }
-  showToast(on ? 'New Extra Working will go to Simran Gurnani only' : 'Extra Working goes to your usual approvers again');
+  // Saved silently — the user asked for no message on success.
 }
 
 // ══════════════════════════════════════════════════════
