@@ -902,6 +902,7 @@ async function submitRevise() {
   err.style.display = 'none';
 
   if (!newDate) { err.textContent='Please select a new date'; err.style.display='block'; return; }
+  if (!reason)  { err.textContent='Please enter a reason for the revision'; err.style.display='block'; return; }
 
   // Send revise request with new date
   const r = await api(`/api/tasks/${taskId}/status`,'PUT',{

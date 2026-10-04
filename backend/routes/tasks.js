@@ -590,6 +590,10 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     if (!ALLOWED_STATUS[tt].includes(status)) {
       return res.status(400).json({ error: `status must be one of: ${ALLOWED_STATUS[tt].join(', ')}` });
     }
+    // The assigner approves or rejects a revision on its reason, so one is required.
+    if (status === 'revised' && !String(reason || '').trim()) {
+      return res.status(400).json({ error: 'Please enter a reason for the revision.' });
+    }
     const table = getTable(tt);
     const isAdmin = req.session.role === 'admin';
     const isPC = req.session.role === 'pc';
