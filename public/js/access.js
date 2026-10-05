@@ -104,6 +104,13 @@ const PERM_TREE = [
   ], adminActions: [
     { key: 'admin_clients', label: 'Delete clients' },
   ]},
+  // enforced: routes/enquiries.js asks userCanSee('enquiry') to list,
+  // edit_enquiry to add, admin_enquiry to delete.
+  { page: 'enquiry',      label: 'Enquiry Capture', icon: '📝', enforced: true, actions: [
+    { key: 'edit_enquiry', label: 'Add & edit' },
+  ], adminActions: [
+    { key: 'admin_enquiry', label: 'Delete' },
+  ]},
   // readOnly — every /api/compliance route is a GET. There is nothing on this
   // page to edit, so the dropdown offers No Access / View only. enforced:true
   // because the reads do ask userCanSee('compliance') now; the Editor level it

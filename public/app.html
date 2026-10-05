@@ -192,6 +192,11 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
           <span class="nav-label-text">Client Master</span>
         </div>
+        <!-- Hidden until canSee('enquiry') passes (core.js NAV_MAP): admins, or an Access Control grant. -->
+        <div class="nav-item" id="nav-enquiry" style="display:none" onclick="navigate('enquiry',this)">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+          <span class="nav-label-text">Enquiry Capture</span>
+        </div>
         <div class="nav-item" id="nav-dms" style="display:none" onclick="navigate('dms',this)">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
           <span class="nav-label-text">DMS</span>
@@ -2483,6 +2488,41 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
   </div>
 
 <!-- ════════════════════════════════════
+     ENQUIRY CAPTURE — sales enquiries, the same fields as the Google Form
+     Logic: /js/enquiry.js   API: backend/routes/enquiries.js
+═════════════════════════════════════ -->
+<div id="page-enquiry" class="page">
+  <div class="cm-card">
+    <div class="cm-header">
+      <div class="cm-header-text">
+        <div class="cm-sub">Sales enquiries, with the same fields as the Enquiry Capture Google Form.</div>
+      </div>
+      <div class="cm-stats">
+        <div class="cm-stat">
+          <div class="cm-stat-val" id="ecStatTotal">—</div>
+          <div class="cm-stat-label">All Enquiries</div>
+        </div>
+        <div class="cm-stat">
+          <div class="cm-stat-val" id="ecStatMonth">—</div>
+          <div class="cm-stat-label">This Month</div>
+        </div>
+        <div class="cm-stat">
+          <div class="cm-stat-val" id="ecStatConverted" style="color:#16a34a">—</div>
+          <div class="cm-stat-label">Converted</div>
+        </div>
+      </div>
+    </div>
+    <div class="cm-toolbar">
+      <input class="cm-search" type="text" id="ecSearch" placeholder="🔍 Search client, business, mobile or platform..." oninput="ecRender()"/>
+      <div class="cm-add-row">
+        <button class="cm-btn-primary" id="ecAddBtn" style="display:none" onclick="ecOpenForm()">+ New Enquiry</button>
+      </div>
+    </div>
+    <div id="ecListWrap" class="dr-table-wrap" style="max-height:none"><div class="empty">Loading enquiries…</div></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
      LEADS ENQUIRY  (ported from the standalone sales dashboard)
      Four Google Sheet sources behind one source picker. No database.
      Logic: /js/leads.js   API: backend/routes/leads.js
@@ -3963,6 +4003,80 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 </div>
 
 <!-- ══════════════════════════════════════
+     ENQUIRY CAPTURE - NEW ENQUIRY (enquiry.js ecOpenForm)
+══════════════════════════════════════ -->
+<div class="modal-overlay" id="ecModal">
+  <div class="modal" style="width:680px;max-width:96vw;max-height:90vh;overflow-y:auto">
+    <h3 id="ecModalTitle">📝 New Enquiry</h3>
+    <div class="alert error" id="ecErr"></div>
+    <div class="form-group">
+      <label>Client Name <span style="color:#dc2626">*</span></label>
+      <input type="text" id="ecClientName" maxlength="255"/>
+    </div>
+    <div class="form-group">
+      <label>Business Name <span style="color:#dc2626">*</span></label>
+      <textarea id="ecBusinessName" maxlength="500" style="min-height:56px"></textarea>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 16px">
+      <div class="form-group">
+        <label>Mobile Number</label>
+        <input type="tel" id="ecMobile" maxlength="30"/>
+      </div>
+      <div class="form-group">
+        <label>Lead Handle By</label>
+        <select id="ecLeadHandleBy"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Project Type</label>
+      <div id="ecProjectTypes"></div>
+    </div>
+    <div class="form-group">
+      <label>Platform</label>
+      <div id="ecPlatforms"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 16px">
+      <div class="form-group">
+        <label>Meeting Scheduled Date</label>
+        <input type="date" id="ecMeetingScheduled"/>
+      </div>
+      <div class="form-group">
+        <label>Meeting Done Date</label>
+        <input type="date" id="ecMeetingDone"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Meeting URL</label>
+      <input type="url" id="ecMeetingUrl" placeholder="https://"/>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 16px">
+      <div class="form-group">
+        <label>Proposal Date</label>
+        <input type="date" id="ecProposalDate"/>
+      </div>
+      <div class="form-group">
+        <label>Proposal URL</label>
+        <input type="url" id="ecProposalUrl" placeholder="https://"/>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 16px">
+      <div class="form-group">
+        <label>Conversion Date</label>
+        <input type="date" id="ecConversionDate"/>
+      </div>
+      <div class="form-group">
+        <label>Order Value</label>
+        <input type="text" id="ecOrderValue" maxlength="100"/>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between">
+      <button class="btn btn-outline" onclick="closeModal('ecModal')">Cancel</button>
+      <button class="btn btn-primary" id="ecSaveBtn" onclick="ecSave()">💾 Save Enquiry</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
      CLIENT MASTER - TRANSFER CLIENTS TO ANOTHER CRM (clients.js cmOpenCrmTransfer)
 ══════════════════════════════════════ -->
 <div class="modal-overlay" id="cmCrmModal">
@@ -4030,6 +4144,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/meetings.js"></script>
 <script src="/js/dms.js"></script>
 <script src="/js/leads.js"></script>
+<script src="/js/enquiry.js"></script>
 <script src="/js/voice-delegate.js"></script>
 <script src="/js/chatbot.js"></script>
 

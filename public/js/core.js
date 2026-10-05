@@ -347,6 +347,8 @@ async function init() {
       // except admin (whose perms resolve to 'all') until Access Control grants
       // it. That is the intended default, not an oversight.
       'nav-leads':        'leads',
+      // Enquiry Capture: same as Leads, in no role's defaults.
+      'nav-enquiry':      'enquiry',
     };
     for (const [navId, page] of Object.entries(NAV_MAP)) {
       const el = document.getElementById(navId);
@@ -578,5 +580,5 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Scheduler','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⚠️ Client Escalations',paymentreq:'💳 Payment Request',creditcards:'💳 Credit Card Statement',logs:'🗑 Logs',leads:'📇 Leads Enquiry'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Scheduler','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⚠️ Client Escalations',paymentreq:'💳 Payment Request',creditcards:'💳 Credit Card Statement',logs:'🗑 Logs',leads:'📇 Leads Enquiry',enquiry:'📝 Enquiry Capture'};
 
