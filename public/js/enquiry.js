@@ -5,6 +5,7 @@
 // View lists, edit_enquiry adds, admin_enquiry deletes.
 let EC_ALL = [];
 let EC_OPTS = null;
+let EC_EDIT_ID = null;   // the enquiry open in the form, or null for a new one
 
 const ecDate = d => {
   if (!d) return '';
@@ -50,17 +51,25 @@ function ecRender() {
     return;
   }
   const canDelete = canDo('admin_enquiry');
+  const canEdit = canDo('edit_enquiry');
   const linkTo = (url, label) => url
     ? ` <a href="${dtEscape(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent);font-weight:600">${label} ↗</a>` : '';
   const stage = (date, extra) => date || extra
     ? `<div style="white-space:nowrap">${date ? dtEscape(ecDate(date)) : '<span style="color:#94a3b8">No date</span>'}${extra || ''}</div>`
     : '<span style="color:#cbd5e1">—</span>';
+  // Actions come first: the table is wider than most screens, and a button
+  // at the far right end needs a sideways scroll to reach.
   wrap.innerHTML = `<table class="dr-table"><thead><tr>
-      <th>Added</th><th>Client</th><th>Mobile</th><th>Lead Handle By</th><th>Platform</th>
-      <th>Meeting</th><th>Proposal</th><th>Conversion</th><th>Order Value</th>${canDelete ? '<th></th>' : ''}
+      ${canEdit || canDelete ? '<th></th>' : ''}<th>Added</th><th>Client</th><th>Mobile</th><th>Lead Handle By</th><th>Platform</th>
+      <th>Meeting</th><th>Proposal</th><th>Conversion</th><th>Order Value</th>
     </tr></thead><tbody>${list.map(e => `<tr>
+      ${canEdit || canDelete ? `<td style="white-space:nowrap">
+        ${canEdit ? `<button class="cm-btn-ghost" style="padding:5px 12px;font-size:12px" onclick="ecOpenForm(${e.id})">✏️ Edit</button>` : ''}
+        ${canDelete ? `<button class="cm-client-del" style="margin-left:6px" onclick="ecDelete(${e.id})">Delete</button>` : ''}
+      </td>` : ''}
       <td style="white-space:nowrap"><div>${dtEscape(ecDate(e.created_at))}</div>
-        <div style="font-size:11px;color:#94a3b8">${dtEscape(e.created_by_name || (e.source === 'sheet' ? 'Google Form' : ''))}</div></td>
+        <div style="font-size:11px;color:#94a3b8">${dtEscape(e.created_by_name || (e.source === 'sheet' ? 'Google Form' : ''))}</div>
+        ${e.updated_at ? `<div style="font-size:11px;color:#94a3b8" title="Last edited ${dtEscape(e.updated_at)}">Edited by ${dtEscape(e.updated_by_name || '—')}</div>` : ''}</td>
       <td style="min-width:180px"><b>${dtEscape(e.client_name)}</b>
         <div style="font-size:12px;color:#64748b">${dtEscape(e.business_name)}</div>
         ${ecList(e.project_types).map(p => `<span class="pill-dept" style="margin:3px 4px 0 0">${dtEscape(p)}</span>`).join('')}</td>
@@ -75,7 +84,6 @@ function ecRender() {
       <td>${stage(e.proposal_date, linkTo(e.proposal_url, 'Proposal'))}</td>
       <td>${e.conversion_date ? `<span style="color:#15803d;font-weight:700;white-space:nowrap">${dtEscape(ecDate(e.conversion_date))}</span>` : '<span style="color:#cbd5e1">—</span>'}</td>
       <td style="white-space:nowrap">${dtEscape(e.order_value || '—')}</td>
-      ${canDelete ? `<td><button class="cm-client-del" onclick="ecDelete(${e.id})">Delete</button></td>` : ''}
     </tr>`).join('')}</tbody></table>`;
 }
 
@@ -89,19 +97,31 @@ function ecChecks(id, options, picked) {
 }
 const ecPicked = id => [...document.querySelectorAll(`#${id} input:checked`)].map(cb => cb.value);
 
-async function ecOpenForm() {
+// New enquiry, or (with an id) the same form filled in for editing.
+const EC_FIELDS = {
+  ecClientName: 'client_name', ecBusinessName: 'business_name', ecMobile: 'mobile', ecOrderValue: 'order_value',
+  ecMeetingUrl: 'meeting_url', ecProposalUrl: 'proposal_url', ecMeetingScheduled: 'meeting_scheduled_date',
+  ecMeetingDone: 'meeting_done_date', ecProposalDate: 'proposal_date', ecConversionDate: 'conversion_date',
+};
+async function ecOpenForm(id) {
   if (!canDo('edit_enquiry')) return;
   if (!EC_OPTS) {
     const o = await api('/api/enquiries/options');
     if (!o || o.error) { showToast((o && o.error) || 'Could not load the form', 'error'); return; }
     EC_OPTS = o;
   }
-  ['ecClientName', 'ecBusinessName', 'ecMobile', 'ecOrderValue', 'ecMeetingUrl', 'ecProposalUrl',
-   'ecMeetingScheduled', 'ecMeetingDone', 'ecProposalDate', 'ecConversionDate'].forEach(id => { document.getElementById(id).value = ''; });
+  const cur = id ? EC_ALL.find(e => e.id === id) : null;
+  if (id && !cur) return;
+  EC_EDIT_ID = cur ? cur.id : null;
+  document.getElementById('ecModalTitle').textContent = cur ? '✏️ Edit Enquiry' : '📝 New Enquiry';
+  document.getElementById('ecSaveBtn').textContent = cur ? '💾 Save Changes' : '💾 Save Enquiry';
+  for (const [elId, key] of Object.entries(EC_FIELDS)) document.getElementById(elId).value = (cur && cur[key]) || '';
+  const lead = (cur && cur.lead_handle_by) || '';
+  // Options carry `selected`, so the searchable select picks the value up.
   document.getElementById('ecLeadHandleBy').innerHTML = '<option value="">Choose…</option>' +
-    EC_OPTS.leadHandlers.map(n => `<option value="${dtEscape(n)}">${dtEscape(n)}</option>`).join('');
-  ecChecks('ecProjectTypes', EC_OPTS.projectTypes, []);
-  ecChecks('ecPlatforms', EC_OPTS.platforms, []);
+    EC_OPTS.leadHandlers.map(n => `<option value="${dtEscape(n)}" ${n === lead ? 'selected' : ''}>${dtEscape(n)}</option>`).join('');
+  ecChecks('ecProjectTypes', EC_OPTS.projectTypes, cur ? ecList(cur.project_types) : []);
+  ecChecks('ecPlatforms', EC_OPTS.platforms, cur ? ecList(cur.platforms) : []);
   document.getElementById('ecErr').style.display = 'none';
   document.getElementById('ecModal').classList.add('open');
   setTimeout(() => document.getElementById('ecClientName').focus(), 50);
@@ -123,11 +143,14 @@ async function ecSave() {
   if (!body.business_name) return fail('Please enter the business name');
   const btn = document.getElementById('ecSaveBtn');
   btn.disabled = true;
-  const r = await api('/api/enquiries', 'POST', body);
+  const editing = EC_EDIT_ID;
+  const r = editing
+    ? await api('/api/enquiries/' + editing, 'PUT', body)
+    : await api('/api/enquiries', 'POST', body);
   btn.disabled = false;
   if (!r || r.error) return fail((r && r.error) || 'Could not save the enquiry');
   closeModal('ecModal');
-  showToast('Enquiry saved');
+  showToast(editing ? 'Enquiry updated' : 'Enquiry saved');
   ecLoad();
 }
 

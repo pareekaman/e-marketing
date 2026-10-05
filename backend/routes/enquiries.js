@@ -84,8 +84,8 @@ module.exports = function registerEnquiryRoutes(app, deps) {
       DATE_FORMAT(e.proposal_date, '%Y-%m-%d') AS proposal_date, e.proposal_url,
       DATE_FORMAT(e.conversion_date, '%Y-%m-%d') AS conversion_date, e.order_value,
       e.status, e.client_id, e.source, DATE_FORMAT(e.created_at, '%Y-%m-%d %H:%i') AS created_at,
-      u.name AS created_by_name
-    FROM enquiries e LEFT JOIN users u ON u.id = e.created_by`;
+      u.name AS created_by_name, DATE_FORMAT(e.updated_at, '%Y-%m-%d %H:%i') AS updated_at, u2.name AS updated_by_name
+    FROM enquiries e LEFT JOIN users u ON u.id = e.created_by LEFT JOIN users u2 ON u2.id = e.updated_by`;
 
   app.get('/api/enquiries/options', requireAuth, (req, res) => {
     res.json({ leadHandlers: LEAD_HANDLERS, projectTypes: PROJECT_TYPES, platforms: PLATFORMS });
@@ -111,6 +111,23 @@ module.exports = function registerEnquiryRoutes(app, deps) {
         `INSERT INTO enquiries (${cols.join(', ')}, created_by) VALUES (${cols.map(() => '?').join(', ')}, ?)`,
         [...cols.map(k => e[k]), req.session.userId]);
       res.json({ success: true, id: r.insertId });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // Edit: the form sends every field, so the row is replaced as a whole. This
+  // is how the later stages (meeting done, proposal, conversion) get filled in.
+  app.put('/api/enquiries/:id', requireAuth, async (req, res) => {
+    try {
+      if (!(await userCanDo(req.session, 'edit_enquiry'))) return res.status(403).json({ error: 'You do not have edit access to Enquiry Capture' });
+      const { e, error } = readBody(req.body || {});
+      if (error) return res.status(400).json({ error });
+      await ensureTable();
+      const cols = Object.keys(e);
+      const [r] = await db.query(
+        `UPDATE enquiries SET ${cols.map(k => `${k}=?`).join(', ')}, updated_by=?, updated_at=NOW() WHERE id=?`,
+        [...cols.map(k => e[k]), req.session.userId, req.params.id]);
+      if (!r.affectedRows) return res.status(404).json({ error: 'Enquiry not found' });
+      res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
