@@ -403,7 +403,12 @@ function cmExportExcel() {
   showToast(`⬇ Exported ${list.length} client${list.length === 1 ? '' : 's'}`);
 }
 
+// Set by Enquiry Capture right after it opens this form for a converted
+// enquiry, so the new client gets tied to that enquiry. Any other opening
+// of the form clears it.
+let CM_ADD_FROM_ENQUIRY = null;
 function cmOpenAddModal() {
+  CM_ADD_FROM_ENQUIRY = null;
   document.getElementById('cmAddErr').style.display = 'none';
   document.getElementById('cmFormName').value = '';
   document.getElementById('cmFormBrandName').value = '';
@@ -1448,7 +1453,10 @@ async function cmAdd(){
     if (r.warning) showToast(r.warning);
     else showToast(login_email ? '✅ Client added with login' : '✅ Client added');
     closeModal('clientAddModal');
-    loadClients();
+    const fromEnquiry = CM_ADD_FROM_ENQUIRY;
+    CM_ADD_FROM_ENQUIRY = null;
+    if (fromEnquiry && typeof ecClientAdded === 'function') ecClientAdded(fromEnquiry, r.client_id);
+    else loadClients();
   } catch(e) {
     err.textContent = 'Failed to add';
     err.style.display = 'block';

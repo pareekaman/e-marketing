@@ -2,7 +2,8 @@
 // ENQUIRY CAPTURE — sales enquiries, the same fields as the Google Form
 // ══════════════════════════════════════════════════════
 // API: backend/routes/enquiries.js. Access Control page 'enquiry':
-// View lists, edit_enquiry adds, admin_enquiry deletes.
+// View lists, edit_enquiry adds, admin_enquiry deletes. The status, and adding
+// a converted enquiry to Client Master, are for edit_enquiry and the CRMs.
 let EC_ALL = [];
 let EC_OPTS = null;
 let EC_EDIT_ID = null;   // the enquiry open in the form, or null for a new one
@@ -13,6 +14,17 @@ const ecDate = d => {
   return isNaN(x) ? String(d) : x.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 const ecList = v => String(v || '').split('||').filter(Boolean);
+const ecCanSetStatus = () => canDo('edit_enquiry') || canDo('crm_clients');
+// Form platforms whose department is spelled differently (lower case both
+// sides). Landing Page, Whatsapp Marketing, GMB Ads, Sales Consutation, Book
+// Writing and Lead Nuturing Funnel have no department of their own.
+const EC_PLATFORM_DEPT = {
+  'linkedin management': 'linkedin',
+  'sm management': 'social media',
+  'website designing & development': 'website design & development',
+  'youtube ads': 'youtube',
+};
+const EC_STATUS_COLORS = { Open: ['#475569', '#f1f5f9'], Win: ['#1d4ed8', '#dbeafe'], Lost: ['#b91c1c', '#fee2e2'], Conversion: ['#15803d', '#dcfce7'] };
 
 async function ecLoad() {
   const wrap = document.getElementById('ecListWrap');
@@ -37,7 +49,7 @@ async function ecLoad() {
 function ecFiltered() {
   const q = (document.getElementById('ecSearch')?.value || '').toLowerCase().trim();
   if (!q) return EC_ALL;
-  return EC_ALL.filter(e => [e.client_name, e.business_name, e.mobile, e.lead_handle_by, e.platforms, e.project_types]
+  return EC_ALL.filter(e => [e.client_name, e.business_name, e.mobile, e.lead_handle_by, e.platforms, e.project_types, e.status]
     .join(' ').toLowerCase().includes(q));
 }
 
@@ -54,6 +66,26 @@ function ecRender() {
   }
   const canDelete = canDo('admin_enquiry');
   const canEdit = canDo('edit_enquiry');
+  const canStatus = ecCanSetStatus();
+  const canAddClient = canStatus && canDo('edit_clients');
+  const statuses = (EC_OPTS && EC_OPTS.statuses) || Object.keys(EC_STATUS_COLORS);
+  const statusCell = e => {
+    const st = e.status || 'Open';
+    const [fg, bg] = EC_STATUS_COLORS[st] || EC_STATUS_COLORS.Open;
+    const look = `color:${fg};background:${bg};border:1px solid ${fg}33;border-radius:999px;font-size:12px;font-weight:700`;
+    // A plain select: the searchable widget is too heavy for four choices.
+    const pick = canStatus
+      ? `<select data-no-search onchange="ecSetStatus(${e.id}, this)" style="${look};padding:4px 8px;cursor:pointer;outline:none">
+          ${statuses.map(s => `<option value="${dtEscape(s)}" ${s === st ? 'selected' : ''} style="color:#0f172a;background:#fff">${dtEscape(s)}</option>`).join('')}</select>`
+      : `<span style="${look};padding:3px 10px;display:inline-block">${dtEscape(st)}</span>`;
+    const client = e.client_id
+      ? '<div style="font-size:11px;color:#15803d;font-weight:600;margin-top:6px">✓ In Client Master</div>'
+      : st !== 'Conversion' ? ''
+      : canAddClient
+        ? `<button class="cm-btn-ghost" style="display:block;margin-top:6px;padding:4px 10px;font-size:12px" onclick="ecAddToClientMaster(${e.id})">➕ Add in Client Master</button>`
+        : '<div style="font-size:11px;color:#94a3b8;margin-top:6px">Not in Client Master yet</div>';
+    return `<td style="white-space:nowrap">${pick}${client}</td>`;
+  };
   const linkTo = (url, label) => url
     ? ` <a href="${dtEscape(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent);font-weight:600">${label} ↗</a>` : '';
   const stage = (date, extra) => date || extra
@@ -62,13 +94,14 @@ function ecRender() {
   // Actions come first: the table is wider than most screens, and a button
   // at the far right end needs a sideways scroll to reach.
   wrap.innerHTML = `<table class="dr-table"><thead><tr>
-      ${canEdit || canDelete ? '<th></th>' : ''}<th>Added</th><th>Client</th><th>Mobile</th><th>Lead Handle By</th><th>Platform</th>
+      ${canEdit || canDelete ? '<th></th>' : ''}<th>Status</th><th>Added</th><th>Client</th><th>Mobile</th><th>Lead Handle By</th><th>Platform</th>
       <th>Meeting</th><th>Proposal</th><th>Conversion</th><th>Order Value</th>
     </tr></thead><tbody>${list.map(e => `<tr>
       ${canEdit || canDelete ? `<td style="white-space:nowrap">
         ${canEdit ? `<button class="cm-btn-ghost" style="padding:5px 12px;font-size:12px" onclick="ecOpenForm(${e.id})">✏️ Edit</button>` : ''}
         ${canDelete ? `<button class="cm-client-del" style="margin-left:6px" onclick="ecDelete(${e.id})">Delete</button>` : ''}
       </td>` : ''}
+      ${statusCell(e)}
       <td style="white-space:nowrap"><div>${dtEscape(ecDate(e.created_at))}</div>
         <div style="font-size:11px;color:#94a3b8">${dtEscape(e.created_by_name || (e.source === 'sheet' ? 'Google Form' : ''))}</div>
         ${e.updated_at ? `<div style="font-size:11px;color:#94a3b8" title="Last edited ${dtEscape(e.updated_at)}">Edited by ${dtEscape(e.updated_by_name || '—')}</div>` : ''}</td>
@@ -171,8 +204,81 @@ async function ecImport() {
   const r = await api('/api/enquiries/import-sheet', 'POST', {});
   btn.disabled = false;
   if (!r || r.error) { showToast((r && r.error) || 'Import failed', 'error'); return; }
-  showToast(`Imported ${r.imported} enquir${r.imported === 1 ? 'y' : 'ies'} · ${r.skipped} already in the app`);
+  showToast(`Imported ${r.imported} enquir${r.imported === 1 ? 'y' : 'ies'} · ${r.skipped} already in the app`
+    + (r.linked ? ` · ${r.linked} matched to Client Master` : ''));
   ecLoad();
+}
+
+// ── Status and Client Master ────────────────────────────
+async function ecSetStatus(id, sel) {
+  const e = EC_ALL.find(x => x.id === id);
+  if (!e) return;
+  const prev = e.status || 'Open', status = sel.value;
+  if (status === prev) return;
+  const hadDate = !!e.conversion_date;
+  sel.disabled = true;
+  const r = await api(`/api/enquiries/${id}/status`, 'PUT', { status });
+  sel.disabled = false;
+  if (!r || r.error) { sel.value = prev; showToast((r && r.error) || 'Could not change the status', 'error'); return; }
+  Object.assign(e, r.enquiry);
+  ecRender();
+  if (r.warning) showToast(r.warning, 'error');
+  else if (status === 'Conversion' && !hadDate && e.conversion_date) showToast(`Marked as Conversion · Conversion Date set to ${ecDate(e.conversion_date)}`);
+  else showToast(`Status set to ${status}`);
+}
+
+// Opens Add Client filled in from the enquiry. The CRM fills in the rest
+// (kickstart date, handlers, billing name, login) and saves; cmAdd() then
+// calls ecClientAdded() to tie the new client to this enquiry.
+async function ecAddToClientMaster(id) {
+  const e = EC_ALL.find(x => x.id === id);
+  if (!e || e.client_id) return;
+  const m = await api(`/api/enquiries/${id}/client-match`);
+  if (!m || m.error) { showToast((m && m.error) || 'Could not check Client Master', 'error'); return; }
+  if (m.match) {
+    const c = m.match;
+    const pickd = await _showAppPrompt({
+      title: 'Already in Client Master?',
+      message: `Client Master already has "${c.name}"${c.brand_name && c.brand_name !== c.name ? ` (brand ${c.brand_name})` : ''}. Link this enquiry to that client instead of adding it again?`,
+      buttons: [
+        { label: 'Cancel', className: 'btn btn-outline', value: null },
+        { label: 'Add as new client', className: 'btn btn-outline', value: 'new' },
+        { label: 'Link to it', className: 'btn btn-primary', value: 'link' },
+      ],
+    });
+    if (!pickd) return;
+    if (pickd === 'link') {
+      const r = await api(`/api/enquiries/${id}/client`, 'PUT', { client_id: c.id });
+      if (!r || r.error) { showToast((r && r.error) || 'Could not link the enquiry', 'error'); return; }
+      showToast(`Linked to ${r.client_name} in Client Master`);
+      ecLoad();
+      return;
+    }
+  }
+  // The form's department and handler lists come from CM_USERS, which only
+  // the Client Master page loads.
+  if (!CM_USERS.length) {
+    const users = await api('/api/users');
+    CM_USERS = Array.isArray(users) ? users : [];
+  }
+  cmOpenAddModal();
+  CM_ADD_FROM_ENQUIRY = id;
+  document.getElementById('cmFormName').value = e.client_name || '';
+  document.getElementById('cmFormBrandName').value = e.business_name || '';
+  document.getElementById('cmFormMobile').value = e.mobile || '';
+  // Each platform ticks its department: the same name (Google Ads, SEO, …) or
+  // the department EC_PLATFORM_DEPT names. Platforms without one tick nothing.
+  const wanted = new Set(ecList(e.platforms).map(p => p.toLowerCase().trim()).flatMap(p => [p, EC_PLATFORM_DEPT[p]]).filter(Boolean));
+  document.querySelectorAll('.cmAddDeptCb').forEach(cb => { if (wanted.has(cb.value.toLowerCase().trim())) cb.checked = true; });
+  cmAddFilterHandlers();
+}
+
+async function ecClientAdded(enquiryId, clientId) {
+  if (clientId) {
+    const r = await api(`/api/enquiries/${enquiryId}/client`, 'PUT', { client_id: clientId });
+    if (!r || r.error) showToast('Client added, but the enquiry could not be linked to it: ' + ((r && r.error) || 'unknown error'), 'error');
+  }
+  if (document.getElementById('page-enquiry')?.classList.contains('active')) ecLoad();
 }
 
 async function ecDelete(id) {

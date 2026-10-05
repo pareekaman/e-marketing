@@ -5,7 +5,9 @@
 // the enquiries table. Access Control row "Enquiry Capture" (page 'enquiry'):
 // View lists them, Editor (edit_enquiry) adds and edits, Admin (admin_enquiry)
 // also deletes. It is in no role's defaults, so admins see it and everyone
-// else only once granted.
+// else only once granted. The status (Open / Win / Lost / Conversion) can be
+// set by its Editors and by the CRMs (Client Master's crm_clients), who then
+// add a converted enquiry to Client Master.
 module.exports = function registerEnquiryRoutes(app, deps) {
   const { db, requireAuth, userCanSee, userCanDo, archiveDeleted, getSheetsClient } = deps;
 
@@ -17,6 +19,10 @@ module.exports = function registerEnquiryRoutes(app, deps) {
     'Website Designing & Development', 'Whatsapp Marketing', 'Youtube Ads', 'GMB Ads', 'Sales Consutation',
     'Business Automation', 'AI', 'Book Writing', 'Lead Nuturing Funnel'];
   const DATE_FIELDS = ['meeting_scheduled_date', 'meeting_done_date', 'proposal_date', 'conversion_date'];
+  // Win: the client has agreed but the work starts later. Conversion: the
+  // work is about to start, and the enquiry can go into Client Master. The app
+  // keeps the status; the sheet has no column for it.
+  const STATUSES = ['Open', 'Win', 'Lost', 'Conversion'];
 
   let _table = null;
   function ensureTable() {
@@ -218,8 +224,40 @@ module.exports = function registerEnquiryRoutes(app, deps) {
     FROM enquiries e LEFT JOIN users u ON u.id = e.created_by LEFT JOIN users u2 ON u2.id = e.updated_by`;
 
   app.get('/api/enquiries/options', requireAuth, (req, res) => {
-    res.json({ leadHandlers: LEAD_HANDLERS, projectTypes: PROJECT_TYPES, platforms: PLATFORMS });
+    res.json({ leadHandlers: LEAD_HANDLERS, projectTypes: PROJECT_TYPES, platforms: PLATFORMS, statuses: STATUSES });
   });
+
+  // Status and the Client Master link: Enquiry Capture's Editors, and the CRMs
+  // who can see the page.
+  async function canSetStatus(session) {
+    if (!(await userCanSee(session, 'enquiry'))) return false;
+    return (await userCanDo(session, 'edit_enquiry')) || (await userCanDo(session, 'crm_clients'));
+  }
+  const todayIst = () => new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+
+  // Clients whose name, or brand name, is the enquiry's client or business
+  // name (case and spacing ignored). This is how an enquiry that is already a
+  // client is spotted before anyone adds it to Client Master a second time.
+  const norm = v => String(v == null ? '' : v).toLowerCase().replace(/\s+/g, ' ').trim();
+  function clientMatches(enq, clients) {
+    const keys = new Set([norm(enq.client_name), norm(enq.business_name)].filter(Boolean));
+    return clients.filter(c => keys.has(norm(c.name)) || (norm(c.brand_name) && keys.has(norm(c.brand_name))));
+  }
+  // Links every converted enquiry that has no client yet to the one client it
+  // matches. An enquiry matching two clients is left for a person to decide.
+  async function linkConverted() {
+    const [open] = await db.query("SELECT id, client_name, business_name FROM enquiries WHERE status='Conversion' AND client_id IS NULL");
+    if (!open.length) return 0;
+    const [clients] = await db.query('SELECT id, name, brand_name FROM clients');
+    let linked = 0;
+    for (const q of open) {
+      const m = clientMatches(q, clients);
+      if (m.length !== 1) continue;
+      const [r] = await db.query('UPDATE enquiries SET client_id=? WHERE id=? AND client_id IS NULL', [m[0].id, q.id]);
+      linked += r.affectedRows;
+    }
+    return linked;
+  }
 
   app.get('/api/enquiries', requireAuth, async (req, res) => {
     try {
@@ -316,7 +354,63 @@ module.exports = function registerEnquiryRoutes(app, deps) {
           throw err;
         }
       }
-      res.json({ success: true, imported, skipped, empty, total: rows.length });
+      // Converted responses from before the app are mostly clients already.
+      const linked = await linkConverted();
+      res.json({ success: true, imported, skipped, empty, linked, total: rows.length });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // Sets the status. Choosing Conversion fills an empty Conversion Date with
+  // today, and that date goes to the sheet like any other edit.
+  app.put('/api/enquiries/:id/status', requireAuth, async (req, res) => {
+    try {
+      if (!(await canSetStatus(req.session))) return res.status(403).json({ error: 'Only Enquiry Capture editors and CRMs can change the status' });
+      const status = STATUSES.find(s => s === (req.body || {}).status);
+      if (!status) return res.status(400).json({ error: 'Pick a status from the list' });
+      await ensureTable();
+      const id = Number(req.params.id);
+      const [[cur]] = await db.query('SELECT status, conversion_date FROM enquiries WHERE id=?', [id]);
+      if (!cur) return res.status(404).json({ error: 'Enquiry not found' });
+      const fillDate = status === 'Conversion' && !cur.conversion_date;
+      if (cur.status !== status) {
+        await db.query(`UPDATE enquiries SET status=?, ${fillDate ? 'conversion_date=?, ' : ''}updated_by=?, updated_at=NOW() WHERE id=?`,
+          [status, ...(fillDate ? [todayIst()] : []), req.session.userId, id]);
+      }
+      const [[row]] = await db.query(`${LIST_SQL} WHERE e.id=?`, [id]);
+      const warning = fillDate && cur.status !== status ? await syncToSheet(id, row, false) : null;
+      res.json({ success: true, enquiry: row, ...(warning ? { warning } : {}) });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // The client this enquiry looks like, if Client Master already has one.
+  app.get('/api/enquiries/:id/client-match', requireAuth, async (req, res) => {
+    try {
+      if (!(await canSetStatus(req.session))) return res.status(403).json({ error: 'You cannot add enquiries to Client Master' });
+      await ensureTable();
+      const [[q]] = await db.query('SELECT client_name, business_name FROM enquiries WHERE id=?', [req.params.id]);
+      if (!q) return res.status(404).json({ error: 'Enquiry not found' });
+      const [clients] = await db.query('SELECT id, name, brand_name FROM clients');
+      const m = clientMatches(q, clients);
+      res.json({ match: m[0] || null });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // Ties the enquiry to its client in Client Master: the one just added from
+  // it, or one that was already there.
+  app.put('/api/enquiries/:id/client', requireAuth, async (req, res) => {
+    try {
+      if (!(await canSetStatus(req.session)) || !(await userCanDo(req.session, 'edit_clients'))) {
+        return res.status(403).json({ error: 'You cannot add enquiries to Client Master' });
+      }
+      await ensureTable();
+      const clientId = Number((req.body || {}).client_id);
+      const [[c]] = await db.query('SELECT id, name FROM clients WHERE id=?', [clientId || 0]);
+      if (!c) return res.status(400).json({ error: 'Client not found' });
+      const [[q]] = await db.query('SELECT client_id FROM enquiries WHERE id=?', [req.params.id]);
+      if (!q) return res.status(404).json({ error: 'Enquiry not found' });
+      if (q.client_id && q.client_id !== c.id) return res.status(409).json({ error: 'This enquiry is already linked to another client' });
+      await db.query('UPDATE enquiries SET client_id=?, updated_by=?, updated_at=NOW() WHERE id=?', [c.id, req.session.userId, req.params.id]);
+      res.json({ success: true, client_id: c.id, client_name: c.name });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
