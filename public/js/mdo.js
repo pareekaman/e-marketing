@@ -263,7 +263,9 @@ let _ccCal     = { show:false, leftYear:new Date().getFullYear(), leftMonth:new 
 // by hand; it now arrives on ME, so there is one list and it cannot drift.
 // server.js is still what enforces it — every ccCanEdit() check is UI-level.
 function ccCanView() { return !!ME && (ME.role === 'admin' || ME.canViewCreditCards === true); }
-function ccCanEdit() { return !!ME && ME.role === 'admin'; }
+// Editor and Admin also come from the Credit Card row in Access Control.
+function ccCanEdit() { return !!ME && (ME.role === 'admin' || ME.canEditCreditCards === true); }
+function ccCanAdmin() { return !!ME && (ME.role === 'admin' || ME.canAdminCreditCards === true); }
 
 function ccSave() {
   try {
@@ -621,7 +623,7 @@ function ccDeptBuildPanel() {
   const topRow = bulk
     ? ccDeptOptRow('__CLEAR__', '🗑 Clear Dept', sel.includes('__CLEAR__'), false)
     : `<div onclick="ccDeptClear()" style="padding:7px 14px;font-size:12px;color:#94a3b8;cursor:pointer;border-bottom:1px solid #f1f5f9;font-style:italic" onmouseover="this.style.background='#fef2f2';this.style.color='#ef4444'" onmouseout="this.style.background='';this.style.color='#94a3b8'">✕ &nbsp;Clear selection</div>`;
-  items.innerHTML = topRow + _ccDepts.map(opt => ccDeptOptRow(opt, opt, sel.includes(opt), true)).join('');
+  items.innerHTML = topRow + _ccDepts.map(opt => ccDeptOptRow(opt, opt, sel.includes(opt), ccCanAdmin())).join('');
   document.getElementById('ccDeptOtherBtn').style.display = '';
   document.getElementById('ccDeptOtherInputRow').style.display = 'none';
   const txt = document.getElementById('ccDeptPanelTxt'); if (txt) txt.value = '';
@@ -669,7 +671,7 @@ function ccDeptCommit() {
 }
 
 async function ccDeptDeleteOption(val) {
-  if (!ccCanEdit()) return;
+  if (!ccCanAdmin()) return;
   try {
     await fetch(`/api/credit-cards/departments/${encodeURIComponent(val)}`, { method:'DELETE' });
     _ccDepts = _ccDepts.filter(d => d !== val);
@@ -1177,7 +1179,7 @@ function ccSearchTxns(si) {
 }
 
 async function ccDeleteStatement(bank, cardNum, stmtIdx) {
-  if (!ccCanEdit()) return;
+  if (!ccCanAdmin()) return;
   if (!_ccData[bank]?.[cardNum]) return;
   const stmt = _ccData[bank][cardNum][stmtIdx];
   const label = stmt?.statement_date ? `Statement: ${stmt.statement_date}` : 'this statement';
@@ -1202,7 +1204,7 @@ async function ccDeleteStatement(bank, cardNum, stmtIdx) {
 }
 
 async function ccDeleteTransaction(bank, cardNum, stmtIdx, txIdx) {
-  if (!ccCanEdit()) return;
+  if (!ccCanAdmin()) return;
   const t = _ccData[bank]?.[cardNum]?.[stmtIdx]?.transactions[txIdx];
   if (t?.id) {
     await fetch(`/api/credit-cards/transaction/${t.id}`, { method:'DELETE' });
@@ -1816,11 +1818,11 @@ function ccRenderStatements() {
               <path d="M73.4 27L60.7 4.5c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25 60 54h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#fff"/>
             </svg>
           </button>
-          <button onclick="ccDeleteStatement(${safeBank},${safeCard},${si})"
+          ${ccCanAdmin() ? `<button onclick="ccDeleteStatement(${safeBank},${safeCard},${si})"
             title="Delete this statement"
             style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);color:#fff;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap"
             onmouseover="this.style.background='rgba(220,38,38,.6)'"
-            onmouseout="this.style.background='rgba(255,255,255,.15)'">🗑 Delete</button>
+            onmouseout="this.style.background='rgba(255,255,255,.15)'">🗑 Delete</button>` : ''}
         </div>` : ''}
       </div>
       <!-- Stats grid -->

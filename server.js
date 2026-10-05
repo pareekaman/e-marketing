@@ -1978,11 +1978,14 @@ app.get('/api/me', requireAuth, async (req, res) => {
       // too, and not something to fix by widening access on a guess.
       rows[0].canReviewMdoTasks  = (await readIdSetting('mdo_reviewer_ids')).includes(Number(req.session.userId));
       rows[0].canViewCreditCards = await canViewCreditCards(req.session);
+      rows[0].canEditCreditCards = await canEditCreditCards(req.session);
+      rows[0].canAdminCreditCards = await canAdminCreditCards(req.session);
       rows[0].canViewBillingName = await canViewBillingName(req.session);
       rows[0].canManageInvoices  = await canManageInvoices(req.session);
     } catch (e) {
       rows[0].canApprovePayments = false;
       rows[0].canReviewMdoTasks  = false; rows[0].canViewCreditCards = false;
+      rows[0].canEditCreditCards = false; rows[0].canAdminCreditCards = false;
       // Fail closed — an error here must hide the field, never reveal it.
       rows[0].canViewBillingName = false;
       rows[0].canManageInvoices  = false;
@@ -3530,7 +3533,7 @@ const VALID_UP_PAGES   = new Set(['dashboard','alltasks','approvals','mis','race
 // features that have no individually gated buttons. They are stored now so the
 // choice survives; a page starts honouring it as soon as its controls are
 // wired to canDo('edit_<page>'). Keep this in sync with PERM_TREE in app.html.
-const VALID_UP_ACTIONS = new Set(['billing_name','crm_clients','edit_task','delete_task','create_task','create_checklist','approve_revision','bulk_approve','transfer_task','reopen_task','delete_leave','set_plan','hrm_schedule','hrm_update_status',
+const VALID_UP_ACTIONS = new Set(['billing_name','crm_clients','cc_view','cc_edit','cc_admin','edit_task','delete_task','create_task','create_checklist','approve_revision','bulk_approve','transfer_task','reopen_task','delete_leave','set_plan','hrm_schedule','hrm_update_status',
   'edit_dashboard','edit_mis','edit_race','edit_fms','edit_fms_tasks','edit_clients','edit_compliance','edit_dailyreports','edit_meetings','edit_inventory','edit_dms','edit_paymentreq','edit_feedback','edit_users','edit_creditcards','edit_logs',
   // Unlike most edit_<page> keys this one is genuinely enforced: every write
   // route in routes/leads.js checks it, so View really is read-only there.
@@ -4964,6 +4967,34 @@ const _migrationMarkerPromise = (async () => {
       ON DUPLICATE KEY UPDATE value=VALUES(value)`, [`patched ${patched} of ${rows.length} rows`]);
     console.log(`  ✅ Task buttons for everyone — ${patched} saved permission rows updated`);
   } catch (e) { console.log('  ⚠️ Task buttons backfill skipped —', e.code || e.message); }
+})();
+
+// One-time: whoever is on cc_viewer_ids keeps Credit Card access through that
+// list, but Access Control now reads the cc_view key, so their row would show
+// No Access. Adds cc_view to their saved rows (only where the page is still
+// there, so a revoke made in the panel stays). Rows with nothing saved are
+// left alone. Marker-guarded, outside the migration blocks.
+(async () => {
+  try {
+    await _startupMigrationsPromise; await _clientsTableMigrationsPromise;
+    const [[done]] = await db.query(`SELECT value FROM app_settings WHERE key_name='perm_cc_grant_v1'`);
+    if (done) return;
+    const ids = await readIdSetting('cc_viewer_ids');
+    if (!ids.length) return;   // list not seeded yet on this instance; try again next cold start
+    let patched = 0;
+    for (const id of ids) {
+      const [[r]] = await db.query(`SELECT id, role, user_permissions FROM users WHERE id=?`, [id]);
+      if (!r || r.role === 'admin' || !r.user_permissions) continue;
+      let up; try { up = JSON.parse(r.user_permissions); } catch { continue; }
+      if (!up || !Array.isArray(up.pages) || !up.pages.includes('creditcards')) continue;
+      const actions = Array.isArray(up.actions) ? up.actions : [];
+      if (actions.includes('cc_view')) continue;
+      await db.query('UPDATE users SET user_permissions=? WHERE id=?', [JSON.stringify({ pages: up.pages, actions: [...actions, 'cc_view'] }), r.id]);
+      patched++;
+    }
+    await db.query(`INSERT INTO app_settings (key_name, value) VALUES ('perm_cc_grant_v1', ?)
+      ON DUPLICATE KEY UPDATE value=VALUES(value)`, [`patched ${patched} of ${ids.length}`]);
+  } catch (e) { console.log('  ⚠️ Credit Card grant backfill skipped —', e.code || e.message); }
 })();
 
 // ── WhatsApp helper (Waumfy API) ──────────────────────
@@ -7732,12 +7763,36 @@ const dmsUpload   = multer({ storage: multer.memoryStorage(), limits: { fileSize
 // cc_viewer_ids are read-only: they can open the page and see the existing
 // data, but cannot upload, edit, or delete anything. Ids, not names — a rename
 // used to move this access silently. Async now, since it reads app_settings.
+//
+// Anyone else gets it from Access Control (Credit Card row, 2026-10-05):
+// View = cc_view, Editor = cc_edit (upload, edit, bills, Drive, add a
+// department), Admin = cc_admin (also delete statements, transactions and
+// departments). These are their own keys because the creditcards page is in
+// every role's defaults, so the page alone would hand it to everyone. Read off
+// the saved row like the Billing Name grant.
+async function ccGrantLevel(session) {
+  try {
+    const [[row]] = await db.query('SELECT user_permissions FROM users WHERE id=?', [session.userId]);
+    const up = row && row.user_permissions ? JSON.parse(row.user_permissions) : null;
+    if (!up || !Array.isArray(up.pages) || !up.pages.includes('creditcards') || !Array.isArray(up.actions)) return null;
+    if (up.actions.includes('cc_admin')) return 'admin';
+    if (up.actions.includes('cc_edit')) return 'edit';
+    if (up.actions.includes('cc_view')) return 'view';
+    return null;
+  } catch { return null; }
+}
 async function canViewCreditCards(session) {
   if (session.role === 'admin') return true;
-  return (await readIdSetting('cc_viewer_ids')).includes(Number(session.userId));
+  if ((await readIdSetting('cc_viewer_ids')).includes(Number(session.userId))) return true;
+  return !!(await ccGrantLevel(session));
 }
-function canEditCreditCards(session) {
-  return session.role === 'admin';
+async function canEditCreditCards(session) {
+  if (session.role === 'admin') return true;
+  return ['edit', 'admin'].includes(await ccGrantLevel(session));
+}
+async function canAdminCreditCards(session) {
+  if (session.role === 'admin') return true;
+  return (await ccGrantLevel(session)) === 'admin';
 }
 
 // Billing Name access — read AND write, for the people in billing_name_viewer_ids
@@ -7776,6 +7831,7 @@ require('./backend/routes/credit-cards')(app, {
   archiveDeleted,
   canViewCreditCards,
   canEditCreditCards,
+  canAdminCreditCards,
   ccUpload,
   ccPdfUpload,
   XLSX,

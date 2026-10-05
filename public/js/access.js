@@ -172,13 +172,16 @@ const PERM_TREE = [
   { page: 'users',        label: 'Users',          icon: '👤', enforced: false, actions: [
     { key: 'edit_users', label: 'Edit' },
   ]},
-  // The last two are `grantable:false` — their real gate lives outside this
-  // panel, so the dropdown can only take access AWAY, never hand it out. They
-  // are listed anyway so the feature list matches the sidebar; leaving them
-  // out just makes the panel look broken.
-  { page: 'creditcards',  label: 'Credit Card Statement', icon: '💳', enforced: false, grantable: false,
-    note: 'Granted by admin role + the CC_VIEWERS list in code — this can only revoke',
-    actions: [{ key: 'edit_creditcards', label: 'Edit' }] },
+  // Credit Card Statement grants for real (2026-10-05). The page is in every
+  // role's defaults, so the level is read from its own keys instead: grantKey
+  // cc_view for View, cc_edit for Editor, cc_admin for Admin (ccGrantLevel in
+  // server.js). Without cc_view the row reads No Access whatever the page says.
+  { page: 'creditcards',  label: 'Credit Card Statement', icon: '💳', enforced: true, grantKey: 'cc_view',
+    actions: [{ key: 'cc_edit', label: 'Upload & edit' }],
+    adminActions: [{ key: 'cc_admin', label: 'Delete' }] },
+  // `grantable:false`: its real gate lives outside this panel, so the dropdown
+  // can only take access AWAY, never hand it out. Listed anyway so the feature
+  // list matches the sidebar; leaving it out just makes the panel look broken.
   { page: 'logs',         label: 'Logs',           icon: '🗒️', enforced: false, grantable: false, locked: true,
     note: 'Admin only by design (exposes every deleted row app-wide) — not grantable here',
     actions: [{ key: 'edit_logs', label: 'Edit' }] },
@@ -199,6 +202,8 @@ const ACC_LEVELS = [
 // Current level of one feature for one permission set.
 function accLevelOf(perms, pg) {
   if (!perms.pages.includes(pg.page)) return 'none';
+  // A row with a grantKey (Credit Cards) is granted only by that key.
+  if (pg.grantKey && !perms.actions.includes(pg.grantKey)) return 'none';
   // A read-only page has no Editor option in the dropdown, so returning 'edit'
   // here left nothing marked selected and the browser fell back to the first
   // option — the panel showed "No Access" for somebody who actually has the
@@ -215,11 +220,12 @@ function accLevelOf(perms, pg) {
 // set (e.g. edit_task but not delete_task, possible from the old checkbox UI)
 // reads back as "Editor" and is levelled up to the full set on the next save.
 function accSetLevel(perms, pg, level) {
-  const own = [...pg.actions, ...(pg.adminActions || [])].map(a => a.key);
+  const own = [...pg.actions, ...(pg.adminActions || [])].map(a => a.key).concat(pg.grantKey ? [pg.grantKey] : []);
   perms.pages   = perms.pages.filter(p => p !== pg.page);
   perms.actions = perms.actions.filter(k => !own.includes(k));
   if (level === 'none') return perms;
   perms.pages.push(pg.page);
+  if (pg.grantKey) perms.actions.push(pg.grantKey);
   // Admin is Editor plus the admin-only keys — never the admin keys alone, or
   // someone could delete equipment they are not allowed to edit.
   if (level === 'edit' || level === 'admin') perms.actions.push(...pg.actions.map(a => a.key));

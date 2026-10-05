@@ -14,6 +14,7 @@ module.exports = function registerCreditCardRoutes(app, deps) {
     archiveDeleted,
     canViewCreditCards,
     canEditCreditCards,
+    canAdminCreditCards,
     ccUpload,
     ccPdfUpload,
     XLSX,
@@ -49,7 +50,7 @@ function parseExcelDate(val) {
 
 app.post('/api/credit-cards/upload-excel', requireAuth, ccUpload.single('file'), async (req, res) => {
   try {
-    if (!canEditCreditCards(req.session)) return res.status(403).json({ error: 'Access denied' });
+    if (!(await canEditCreditCards(req.session))) return res.status(403).json({ error: 'Access denied' });
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: false });
@@ -746,7 +747,7 @@ async function saveCCToDb(parsed, req) {
 // POST /api/credit-cards/upload-pdf
 app.post('/api/credit-cards/upload-pdf', requireAuth, ccPdfUpload.single('pdf'), async (req, res) => {
   try {
-    if (!canEditCreditCards(req.session)) return res.status(403).json({ error:'Access denied' });
+    if (!(await canEditCreditCards(req.session))) return res.status(403).json({ error:'Access denied' });
     if (!req.file) return res.status(400).json({ error:'No file uploaded' });
     if (!CC_OPENAI_KEY) return res.status(500).json({ error:'OPENAI_API_KEY not set in .env' });
 
@@ -872,7 +873,7 @@ app.get('/api/credit-cards/statement-pdf/:stmtId', requireAuth, async (req, res)
 // POST /api/credit-cards/transaction/:id/bill — save Drive fileId (upload done client-side)
 app.post('/api/credit-cards/transaction/:id/bill', requireAuth, async (req, res) => {
   try {
-    if (!canEditCreditCards(req.session)) return res.status(403).json({ error:'Access denied' });
+    if (!(await canEditCreditCards(req.session))) return res.status(403).json({ error:'Access denied' });
     const { fileId } = req.body;
     if (!fileId) return res.status(400).json({ error:'No fileId provided' });
     await db.query('UPDATE cc_transactions SET bill_drive_id=? WHERE id=?', [fileId, req.params.id]);
@@ -883,7 +884,7 @@ app.post('/api/credit-cards/transaction/:id/bill', requireAuth, async (req, res)
 // PATCH /api/credit-cards/statement/:id  (update statement fields like period/due date)
 app.patch('/api/credit-cards/statement/:id', requireAuth, async (req, res) => {
   try {
-    if (!canEditCreditCards(req.session)) return res.status(403).json({ error:'Access denied' });
+    if (!(await canEditCreditCards(req.session))) return res.status(403).json({ error:'Access denied' });
     const { statement_period, payment_due_date } = req.body;
     await db.query('UPDATE cc_statements SET statement_period=?, payment_due_date=? WHERE id=?',
       [statement_period||null, payment_due_date||null, req.params.id]);
@@ -894,7 +895,7 @@ app.patch('/api/credit-cards/statement/:id', requireAuth, async (req, res) => {
 // DELETE /api/credit-cards/statement/:id
 app.delete('/api/credit-cards/statement/:id', requireAuth, async (req, res) => {
   try {
-    if (!canEditCreditCards(req.session)) return res.status(403).json({ error:'Access denied' });
+    if (!(await canAdminCreditCards(req.session))) return res.status(403).json({ error:'Access denied' });
     // get card_id before deleting
     const [[stmt]] = await db.query('SELECT card_id FROM cc_statements WHERE id=?', [req.params.id]);
     // Archive the statement and everything the FK cascade will take with it.
@@ -933,7 +934,7 @@ app.delete('/api/credit-cards/statement/:id', requireAuth, async (req, res) => {
 // DELETE /api/credit-cards/transaction/:id
 app.delete('/api/credit-cards/transaction/:id', requireAuth, async (req, res) => {
   try {
-    if (!canEditCreditCards(req.session)) return res.status(403).json({ error:'Access denied' });
+    if (!(await canAdminCreditCards(req.session))) return res.status(403).json({ error:'Access denied' });
     const [doomed] = await db.query('SELECT * FROM cc_transactions WHERE id=?', [req.params.id]);
     await archiveDeleted('cc_transactions', doomed, req, {
       summary: r => `CC txn: ${r.description || ''} ${r.amount ?? ''}`,
@@ -946,7 +947,7 @@ app.delete('/api/credit-cards/transaction/:id', requireAuth, async (req, res) =>
 // PATCH /api/credit-cards/transaction/:id  (update expenses / department)
 app.patch('/api/credit-cards/transaction/:id', requireAuth, async (req, res) => {
   try {
-    if (!canEditCreditCards(req.session)) return res.status(403).json({ error:'Access denied' });
+    if (!(await canEditCreditCards(req.session))) return res.status(403).json({ error:'Access denied' });
     const { expenses, department } = req.body;
     await db.query('UPDATE cc_transactions SET expenses=?,department=? WHERE id=?', [expenses??null, department??null, req.params.id]);
     res.json({ success:true });
@@ -964,7 +965,7 @@ app.get('/api/credit-cards/departments', requireAuth, async (req, res) => {
 // POST /api/credit-cards/departments — add a new CC department
 app.post('/api/credit-cards/departments', requireAuth, async (req, res) => {
   try {
-    if (!canEditCreditCards(req.session)) return res.status(403).json({ error:'Access denied' });
+    if (!(await canEditCreditCards(req.session))) return res.status(403).json({ error:'Access denied' });
     const name = (req.body.name||'').trim();
     if (!name) return res.status(400).json({ error:'Name required' });
     const [[{maxOrd}]] = await db.query('SELECT COALESCE(MAX(sort_order),0) AS maxOrd FROM cc_departments');
@@ -979,7 +980,7 @@ app.post('/api/credit-cards/departments', requireAuth, async (req, res) => {
 // DELETE /api/credit-cards/departments/:name — remove a CC department
 app.delete('/api/credit-cards/departments/:name', requireAuth, async (req, res) => {
   try {
-    if (!canEditCreditCards(req.session)) return res.status(403).json({ error:'Access denied' });
+    if (!(await canAdminCreditCards(req.session))) return res.status(403).json({ error:'Access denied' });
     const [doomed] = await db.query('SELECT * FROM cc_departments WHERE name=?', [req.params.name]);
     await archiveDeleted('cc_departments', doomed, req, { summary: r => `CC department: ${r.name || ''}` });
     await db.query('DELETE FROM cc_departments WHERE name=?', [req.params.name]);
@@ -991,7 +992,7 @@ app.delete('/api/credit-cards/departments/:name', requireAuth, async (req, res) 
 const CC_DRIVE_SCRIPT = 'https://script.google.com/macros/s/AKfycbxh0cevqSgujIctWiQ17Py5n0OvxPp7Ji6JnI151FdIi-Uyv2rM-a4XUk5D7J3iqgE3/exec';
 app.post('/api/credit-cards/drive-upload', requireAuth, async (req, res) => {
   try {
-    if (!canEditCreditCards(req.session)) return res.status(403).json({ error:'Access denied' });
+    if (!(await canEditCreditCards(req.session))) return res.status(403).json({ error:'Access denied' });
     const { pdf, filename, ...rowData } = req.body;
     // 1. Append row to Sheet via GET
     const params = new URLSearchParams({
