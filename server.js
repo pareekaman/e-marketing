@@ -10133,6 +10133,7 @@ require('./backend/routes/enquiries')(app, {
   userCanSee,
   userCanDo,
   archiveDeleted,
+  getSheetsClient,
 });
 
 require('./backend/routes/leads')(app, {

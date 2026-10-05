@@ -150,7 +150,9 @@ async function ecSave() {
   btn.disabled = false;
   if (!r || r.error) return fail((r && r.error) || 'Could not save the enquiry');
   closeModal('ecModal');
-  showToast(editing ? 'Enquiry updated' : 'Enquiry saved');
+  // Saved either way; a sheet problem comes back as a warning to show.
+  if (r.warning) showToast(r.warning, 'error');
+  else showToast(editing ? 'Enquiry updated' : 'Enquiry saved');
   ecLoad();
 }
 
