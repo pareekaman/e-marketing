@@ -2516,6 +2516,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <input class="cm-search" type="text" id="ecSearch" placeholder="🔍 Search client, business, mobile or platform..." oninput="ecRender()"/>
       <div class="cm-add-row">
         <button class="cm-btn-primary" id="ecAddBtn" style="display:none" onclick="ecOpenForm()">+ New Enquiry</button>
+        <button class="cm-btn-ghost" id="ecImportBtn" style="display:none" onclick="ecImport()" title="Bring in the Google Form's responses; ones already here are skipped">⬇ Import from sheet</button>
       </div>
     </div>
     <div id="ecListWrap" class="dr-table-wrap" style="max-height:none"><div class="empty">Loading enquiries…</div></div>

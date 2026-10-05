@@ -19,6 +19,8 @@ async function ecLoad() {
   wrap.innerHTML = '<div class="empty">Loading enquiries…</div>';
   const addBtn = document.getElementById('ecAddBtn');
   if (addBtn) addBtn.style.display = canDo('edit_enquiry') ? '' : 'none';
+  const importBtn = document.getElementById('ecImportBtn');
+  if (importBtn) importBtn.style.display = canDo('admin_enquiry') ? '' : 'none';
   const [rows, opts] = await Promise.all([
     api('/api/enquiries'),
     EC_OPTS ? Promise.resolve(EC_OPTS) : api('/api/enquiries/options'),
@@ -117,11 +119,16 @@ async function ecOpenForm(id) {
   document.getElementById('ecSaveBtn').textContent = cur ? '💾 Save Changes' : '💾 Save Enquiry';
   for (const [elId, key] of Object.entries(EC_FIELDS)) document.getElementById(elId).value = (cur && cur[key]) || '';
   const lead = (cur && cur.lead_handle_by) || '';
+  // An imported response can carry a value the form no longer offers (e.g.
+  // "2 Landing pages"); it is listed too, ticked, so saving keeps it.
+  const withCurrent = (opts, picked) => [...opts, ...picked.filter(p => !opts.includes(p))];
+  const types = cur ? ecList(cur.project_types) : [], plats = cur ? ecList(cur.platforms) : [];
   // Options carry `selected`, so the searchable select picks the value up.
   document.getElementById('ecLeadHandleBy').innerHTML = '<option value="">Choose…</option>' +
-    EC_OPTS.leadHandlers.map(n => `<option value="${dtEscape(n)}" ${n === lead ? 'selected' : ''}>${dtEscape(n)}</option>`).join('');
-  ecChecks('ecProjectTypes', EC_OPTS.projectTypes, cur ? ecList(cur.project_types) : []);
-  ecChecks('ecPlatforms', EC_OPTS.platforms, cur ? ecList(cur.platforms) : []);
+    withCurrent(EC_OPTS.leadHandlers, lead ? [lead] : [])
+      .map(n => `<option value="${dtEscape(n)}" ${n === lead ? 'selected' : ''}>${dtEscape(n)}</option>`).join('');
+  ecChecks('ecProjectTypes', withCurrent(EC_OPTS.projectTypes, types), types);
+  ecChecks('ecPlatforms', withCurrent(EC_OPTS.platforms, plats), plats);
   document.getElementById('ecErr').style.display = 'none';
   document.getElementById('ecModal').classList.add('open');
   setTimeout(() => document.getElementById('ecClientName').focus(), 50);
@@ -153,6 +160,18 @@ async function ecSave() {
   // Saved either way; a sheet problem comes back as a warning to show.
   if (r.warning) showToast(r.warning, 'error');
   else showToast(editing ? 'Enquiry updated' : 'Enquiry saved');
+  ecLoad();
+}
+
+async function ecImport() {
+  if (!canDo('admin_enquiry')) return;
+  if (!await appConfirm('Bring in every response from the Enquiry Capture Google Form sheet? Responses already in the app are skipped, so this is safe to run again.', 'Import from sheet?')) return;
+  const btn = document.getElementById('ecImportBtn');
+  btn.disabled = true;
+  const r = await api('/api/enquiries/import-sheet', 'POST', {});
+  btn.disabled = false;
+  if (!r || r.error) { showToast((r && r.error) || 'Import failed', 'error'); return; }
+  showToast(`Imported ${r.imported} enquir${r.imported === 1 ? 'y' : 'ies'} · ${r.skipped} already in the app`);
   ecLoad();
 }
 

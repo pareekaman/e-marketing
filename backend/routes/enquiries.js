@@ -43,7 +43,8 @@ module.exports = function registerEnquiryRoutes(app, deps) {
         created_by INT DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_by INT DEFAULT NULL,
-        updated_at TIMESTAMP NULL DEFAULT NULL
+        updated_at TIMESTAMP NULL DEFAULT NULL,
+        UNIQUE KEY uq_enquiry_sheet_stamp (sheet_stamp)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(e => { _table = null; throw e; });
     return _table;
   }
@@ -53,15 +54,20 @@ module.exports = function registerEnquiryRoutes(app, deps) {
   // Blank stays blank; anything else must be a web link (it is rendered as one).
   const link = v => { const s = clean(v, 1000); return !s || /^https?:\/\/\S+$/i.test(s) ? s : null; };
 
-  // Validated row from a request body, or { error }.
-  function readBody(b) {
+  // Validated row from a request body, or { error }. `keep` is the stored row
+  // on an edit: a value an imported response already carries (an option the
+  // form has since dropped, like "2 Landing pages") stays allowed on that
+  // enquiry, so editing it never quietly drops it.
+  function readBody(b, keep = {}) {
+    const plus = (list, extra) => [...list, ...String(extra || '').split('||').filter(Boolean)];
+    const leads = keep.lead_handle_by ? [...LEAD_HANDLERS, keep.lead_handle_by] : LEAD_HANDLERS;
     const e = {
       client_name: clean(b.client_name, 255),
       business_name: clean(b.business_name, 500),
       mobile: clean(b.mobile, 30).replace(/[^\d+\s-]/g, ''),
-      lead_handle_by: LEAD_HANDLERS.includes(b.lead_handle_by) ? b.lead_handle_by : '',
-      project_types: pick(PROJECT_TYPES, b.project_types).join('||'),
-      platforms: pick(PLATFORMS, b.platforms).join('||'),
+      lead_handle_by: leads.includes(b.lead_handle_by) ? b.lead_handle_by : '',
+      project_types: pick(plus(PROJECT_TYPES, keep.project_types), b.project_types).join('||'),
+      platforms: pick(plus(PLATFORMS, keep.platforms), b.platforms).join('||'),
       meeting_url: link(b.meeting_url),
       proposal_url: link(b.proposal_url),
       order_value: clean(b.order_value, 100),
@@ -244,9 +250,11 @@ module.exports = function registerEnquiryRoutes(app, deps) {
   app.put('/api/enquiries/:id', requireAuth, async (req, res) => {
     try {
       if (!(await userCanDo(req.session, 'edit_enquiry'))) return res.status(403).json({ error: 'You do not have edit access to Enquiry Capture' });
-      const { e, error } = readBody(req.body || {});
-      if (error) return res.status(400).json({ error });
       await ensureTable();
+      const [[cur]] = await db.query('SELECT lead_handle_by, project_types, platforms FROM enquiries WHERE id=?', [req.params.id]);
+      if (!cur) return res.status(404).json({ error: 'Enquiry not found' });
+      const { e, error } = readBody(req.body || {}, cur);
+      if (error) return res.status(400).json({ error });
       const cols = Object.keys(e);
       const [r] = await db.query(
         `UPDATE enquiries SET ${cols.map(k => `${k}=?`).join(', ')}, updated_by=?, updated_at=NOW() WHERE id=?`,
@@ -254,6 +262,61 @@ module.exports = function registerEnquiryRoutes(app, deps) {
       if (!r.affectedRows) return res.status(404).json({ error: 'Enquiry not found' });
       const warning = await syncToSheet(Number(req.params.id), e, false);
       res.json({ success: true, ...(warning ? { warning } : {}) });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // Brings the Google Form's responses into the app. Safe to run again: a
+  // response whose timestamp is already some enquiry's sheet_stamp (an earlier
+  // import, or a row the app wrote itself) is skipped, and the unique key on
+  // sheet_stamp stops a double import racing in. Dates come over as dates,
+  // "Added by" is matched from the response's email, and a response with a
+  // Conversion Date arrives as status Conversion.
+  const sheetDate = v => {
+    if (typeof v === 'number' && v > 0) return new Date(Math.round((Math.floor(v) - 25569) * 86400000)).toISOString().slice(0, 10);
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(v == null ? '' : v).trim());
+    return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null;
+  };
+  // A Sheets serial is the IST wall clock; this is the same wall clock as SQL text.
+  const stampToSql = v => new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 19).replace('T', ' ');
+  app.post('/api/enquiries/import-sheet', requireAuth, async (req, res) => {
+    try {
+      if (!(await userCanDo(req.session, 'admin_enquiry'))) return res.status(403).json({ error: 'Only the Admin level can import enquiries' });
+      await ensureTable();
+      const sheets = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
+      const got = await sheets.spreadsheets.values.get({ spreadsheetId: ENQUIRY_SHEET_ID, range: `${sheetTab()}!A2:O`, valueRenderOption: 'UNFORMATTED_VALUE' });
+      const rows = got.data.values || [];
+      const [have] = await db.query('SELECT sheet_stamp FROM enquiries WHERE sheet_stamp IS NOT NULL');
+      const stamps = have.map(r => Number(r.sheet_stamp));
+      const [people] = await db.query(`SELECT id, LOWER(TRIM(email)) AS e, LOWER(TRIM(COALESCE(notification_email, ''))) AS n FROM users WHERE role <> 'client'`);
+      const byEmail = new Map();
+      for (const p of people) { if (p.n) byEmail.set(p.n, p.id); if (p.e) byEmail.set(p.e, p.id); }
+      const s = v => String(v == null ? '' : v).trim();
+      const list = v => s(v).split(',').map(x => x.trim()).filter(Boolean).join('||');
+      const web = v => /^https?:\/\/\S+$/i.test(s(v)) ? s(v).slice(0, 1000) : null;
+      let imported = 0, skipped = 0, empty = 0;
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const stamp = r[0];
+        const client = s(r[1]).slice(0, 255), brand = s(r[14]).slice(0, 500);
+        if (typeof stamp !== 'number' || (!client && !brand)) { empty++; continue; }
+        if (stamps.some(x => sameStamp(stamp, x))) { skipped++; continue; }
+        const conv = sheetDate(r[8]);
+        try {
+          await db.query(`INSERT INTO enquiries (client_name, business_name, mobile, lead_handle_by, project_types, platforms,
+              meeting_scheduled_date, meeting_done_date, meeting_url, proposal_date, proposal_url, conversion_date, order_value,
+              status, source, sheet_row, sheet_stamp, created_by, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'sheet',?,?,?,?)`,
+            [client || brand, brand, s(r[2]).slice(0, 30) || null, s(r[12]).slice(0, 100) || null, list(r[13]) || null, list(r[10]) || null,
+             sheetDate(r[3]), sheetDate(r[4]), web(r[5]), sheetDate(r[6]), web(r[7]), conv, s(r[9]).slice(0, 100) || null,
+             conv ? 'Conversion' : 'Open', i + 2, stamp, byEmail.get(s(r[11]).toLowerCase()) || null, stampToSql(stamp)]);
+          stamps.push(stamp);
+          imported++;
+        } catch (err) {
+          if (err.code === 'ER_DUP_ENTRY') { skipped++; continue; }
+          throw err;
+        }
+      }
+      res.json({ success: true, imported, skipped, empty, total: rows.length });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
