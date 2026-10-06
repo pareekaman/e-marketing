@@ -5,7 +5,7 @@
 // the enquiries table. Access Control row "Enquiry Capture" (page 'enquiry'):
 // View lists them, Editor (edit_enquiry) adds and edits, Admin (admin_enquiry)
 // also deletes. It is in no role's defaults, so admins see it and everyone
-// else only once granted. The status (Open / Win / Lost / Conversion) can be
+// else only once granted. The status (Open / Lost / Converted) can be
 // set by its Editors and by the CRMs (Client Master's crm_clients), who then
 // add a converted enquiry to Client Master.
 module.exports = function registerEnquiryRoutes(app, deps) {
@@ -21,10 +21,11 @@ module.exports = function registerEnquiryRoutes(app, deps) {
     'Website Designing & Development', 'Whatsapp Marketing', 'Youtube Ads', 'GMB Ads', 'Sales Consutation',
     'Business Automation', 'AI', 'Book Writing', 'Lead Nuturing Funnel'];
   const DATE_FIELDS = ['meeting_scheduled_date', 'meeting_done_date', 'proposal_date', 'conversion_date'];
-  // Win: the client has agreed but the work starts later. Conversion: the
-  // work is about to start, and the enquiry can go into Client Master. The app
-  // keeps the status; the sheet has no column for it.
-  const STATUSES = ['Open', 'Win', 'Lost', 'Conversion'];
+  // Converted: the work is about to start, and the enquiry can go into Client
+  // Master. The app keeps the status; the sheet has no column for it. (Until
+  // 2026-10-06 there was also "Win", and "Converted" was called "Conversion";
+  // createTable() moves old values over.)
+  const STATUSES = ['Open', 'Lost', 'Converted'];
 
   let _table = null;
   function ensureTable() {
@@ -67,6 +68,11 @@ module.exports = function registerEnquiryRoutes(app, deps) {
       // Enquiries saved before these columns whose row never got there.
       await db.query("UPDATE enquiries SET sheet_pending=1 WHERE source='app' AND sheet_stamp IS NULL");
     } catch (e) { if (e.code !== 'ER_DUP_FIELDNAME') throw e; }
+    // The statuses as they were renamed on 2026-10-06: "Conversion" is now
+    // "Converted", and "Win" is gone (agreed but not started = still Open).
+    // Cheap once nothing matches, and run once per server instance.
+    await db.query("UPDATE enquiries SET status='Converted' WHERE status='Conversion'");
+    await db.query("UPDATE enquiries SET status='Open' WHERE status='Win'");
   }
 
   const clean = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
@@ -335,7 +341,7 @@ module.exports = function registerEnquiryRoutes(app, deps) {
   // Links every converted enquiry that has no client yet to the one client it
   // matches. An enquiry matching two clients is left for a person to decide.
   async function linkConverted() {
-    const [open] = await db.query("SELECT id, client_name, business_name FROM enquiries WHERE status='Conversion' AND client_id IS NULL");
+    const [open] = await db.query("SELECT id, client_name, business_name FROM enquiries WHERE status='Converted' AND client_id IS NULL");
     if (!open.length) return 0;
     const [clients] = await db.query('SELECT id, name, brand_name FROM clients');
     let linked = 0;
@@ -422,7 +428,7 @@ module.exports = function registerEnquiryRoutes(app, deps) {
   // import, or a row the app wrote itself) is skipped, and the unique key on
   // sheet_stamp stops a double import racing in. Dates come over as dates,
   // "Added by" is matched from the response's email, and a response with a
-  // Conversion Date arrives as status Conversion.
+  // Conversion Date arrives as status Converted.
   const sheetDate = v => {
     if (typeof v === 'number' && v > 0) return new Date(Math.round((Math.floor(v) - 25569) * 86400000)).toISOString().slice(0, 10);
     const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(v == null ? '' : v).trim());
@@ -460,7 +466,7 @@ module.exports = function registerEnquiryRoutes(app, deps) {
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'sheet',?,?,?,?)`,
             [client || brand, brand, s(r[2]).slice(0, 30) || null, s(r[12]).slice(0, 100) || null, list(r[13]) || null, list(r[10]) || null,
              sheetDate(r[3]), sheetDate(r[4]), web(r[5]), sheetDate(r[6]), web(r[7]), conv, s(r[9]).slice(0, 100) || null,
-             conv ? 'Conversion' : 'Open', i + 2, stamp, byEmail.get(s(r[11]).toLowerCase()) || null, stampToSql(stamp)]);
+             conv ? 'Converted' : 'Open', i + 2, stamp, byEmail.get(s(r[11]).toLowerCase()) || null, stampToSql(stamp)]);
           stamps.push(stamp);
           imported++;
         } catch (err) {
@@ -474,7 +480,7 @@ module.exports = function registerEnquiryRoutes(app, deps) {
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
-  // Sets the status. Choosing Conversion fills an empty Conversion Date with
+  // Sets the status. Choosing Converted fills an empty Conversion Date with
   // today, and that date goes to the sheet like any other edit.
   app.put('/api/enquiries/:id/status', requireAuth, async (req, res) => {
     try {
@@ -485,7 +491,7 @@ module.exports = function registerEnquiryRoutes(app, deps) {
       const id = Number(req.params.id);
       const [[cur]] = await db.query('SELECT status, conversion_date FROM enquiries WHERE id=?', [id]);
       if (!cur) return res.status(404).json({ error: 'Enquiry not found' });
-      const fillDate = status === 'Conversion' && !cur.conversion_date;
+      const fillDate = status === 'Converted' && !cur.conversion_date;
       if (cur.status !== status) {
         await db.query(`UPDATE enquiries SET status=?, ${fillDate ? 'conversion_date=?, ' : ''}updated_by=?, updated_at=NOW() WHERE id=?`,
           [status, ...(fillDate ? [todayIst()] : []), req.session.userId, id]);

@@ -24,7 +24,7 @@ const EC_PLATFORM_DEPT = {
   'website designing & development': 'website design & development',
   'youtube ads': 'youtube',
 };
-const EC_STATUS_COLORS = { Open: ['#475569', '#f1f5f9'], Win: ['#1d4ed8', '#dbeafe'], Lost: ['#b91c1c', '#fee2e2'], Conversion: ['#15803d', '#dcfce7'] };
+const EC_STATUS_COLORS = { Open: ['#475569', '#f1f5f9'], Lost: ['#b91c1c', '#fee2e2'], Converted: ['#15803d', '#dcfce7'] };
 
 async function ecLoad() {
   const wrap = document.getElementById('ecListWrap');
@@ -109,7 +109,7 @@ function ecRender() {
     const client = e.client_id
       ? '<div style="font-size:11px;color:#15803d;font-weight:600;margin-top:6px">✓ In Client Master</div>'
         + (e.client_crm_name ? `<div style="font-size:11px;color:#64748b;margin-top:1px">CRM: <b style="color:#334155">${dtEscape(e.client_crm_name)}</b></div>` : '')
-      : st !== 'Conversion' ? ''
+      : st !== 'Converted' ? ''
       : canAddClient
         ? `<button class="cm-btn-ghost" style="display:block;margin-top:6px;padding:4px 10px;font-size:12px" onclick="ecAddToClientMaster(${e.id})">➕ Add in Client Master</button>`
         : '<div style="font-size:11px;color:#94a3b8;margin-top:6px">Not in Client Master yet</div>';
@@ -256,7 +256,7 @@ async function ecSetStatus(id, sel) {
   // Not in the sheet yet: start the page's retry (it waits out the minute).
   if (Number(e.sheet_pending)) ecRetrySheet();
   if (r.warning) showToast(r.warning, r.queued ? 'success' : 'error');
-  else if (status === 'Conversion' && !hadDate && e.conversion_date) showToast(`Marked as Conversion · Conversion Date set to ${ecDate(e.conversion_date)}`);
+  else if (status === 'Converted' && !hadDate && e.conversion_date) showToast(`Marked as Converted · Conversion Date set to ${ecDate(e.conversion_date)}`);
   else showToast(`Status set to ${status}`);
 }
 
