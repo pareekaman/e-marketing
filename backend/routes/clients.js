@@ -46,16 +46,41 @@ module.exports = function registerClientRoutes(app, deps) {
 // CLIENT_FMS_SHEET_ID to move it to the original. Rows 7+ hold clients; the
 // first one whose B is empty is the next free row (its formulas are already
 // in F onward). Failure never blocks adding the client — it comes back as a
-// warning instead.
+// warning instead, and the client is marked fms_pending so the row is written
+// later by /api/clients/fms-retry (the Sheets read quota is shared with the
+// rest of the app and runs out).
 const CLIENT_FMS_SHEET_ID = process.env.CLIENT_FMS_SHEET_ID || '1TrDtCbK_v_GulwF2fRVh6fKZ_fW5k_p0AnyofztbC-Y';
 const CLIENT_FMS_TAB = process.env.CLIENT_FMS_TAB || 'Pre-Order FMS';
 const CLIENT_FMS_FIRST_ROW = 7;
-async function addClientToOnboardingFms({ brand, departments, mobile, crmName }) {
+// The tab's numeric id, for the date format below: asked of Google once and
+// kept in app_settings, so it costs no read after that.
+const CLIENT_FMS_TAB_KEY = `client_fms_tab:${CLIENT_FMS_SHEET_ID}:${CLIENT_FMS_TAB}`.slice(0, 100);
+let _fmsTabId = null;
+async function fmsTabId(sheets) {
+  if (_fmsTabId !== null) return _fmsTabId;
+  const [[saved]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [CLIENT_FMS_TAB_KEY]);
+  if (saved && /^\d+$/.test(saved.value)) return (_fmsTabId = Number(saved.value));
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: CLIENT_FMS_SHEET_ID, fields: 'sheets.properties(sheetId,title)' });
+  const sh = (meta.data.sheets || []).find(s => s.properties.title === CLIENT_FMS_TAB);
+  if (!sh) throw new Error(`no "${CLIENT_FMS_TAB}" tab in the Onboarding FMS sheet`);
+  _fmsTabId = sh.properties.sheetId;
+  await db.query('INSERT INTO app_settings (key_name, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+    [CLIENT_FMS_TAB_KEY, String(_fmsTabId)]).catch(() => {});
+  return _fmsTabId;
+}
+// `retry`: an earlier attempt may have written the row and lost the reply, so
+// a row with the same brand, mobile and CRM counts as already written.
+async function addClientToOnboardingFms({ brand, departments, mobile, crmName }, { retry = false } = {}) {
   if (!CLIENT_FMS_SHEET_ID) return;
   const sheets = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
   const tab = `'${CLIENT_FMS_TAB.replace(/'/g, "''")}'`;
-  const col = await sheets.spreadsheets.values.get({ spreadsheetId: CLIENT_FMS_SHEET_ID, range: `${tab}!B${CLIENT_FMS_FIRST_ROW}:B` });
+  const col = await sheets.spreadsheets.values.get({ spreadsheetId: CLIENT_FMS_SHEET_ID, range: `${tab}!B${CLIENT_FMS_FIRST_ROW}:E` });
   const vals = col.data.values || [];
+  if (retry) {
+    const same = (a, b) => String(a == null ? '' : a).trim().toLowerCase() === String(b == null ? '' : b).trim().toLowerCase();
+    const there = vals.findIndex(r => r && same(r[0], brand) && same(r[2], mobile) && same(r[3], crmName));
+    if (there >= 0) return CLIENT_FMS_FIRST_ROW + there;
+  }
   let free = vals.findIndex(r => !String((r && r[0]) || '').trim());
   if (free < 0) free = vals.length;
   const row = CLIENT_FMS_FIRST_ROW + free;
@@ -68,17 +93,31 @@ async function addClientToOnboardingFms({ brand, departments, mobile, crmName })
   });
   // Column A is formatted as a bare date; this cell shows the time as well.
   try {
-    const meta = await sheets.spreadsheets.get({ spreadsheetId: CLIENT_FMS_SHEET_ID, fields: 'sheets.properties' });
-    const sh = (meta.data.sheets || []).find(s => s.properties.title === CLIENT_FMS_TAB);
-    if (sh) await sheets.spreadsheets.batchUpdate({ spreadsheetId: CLIENT_FMS_SHEET_ID, requestBody: { requests: [{
+    const sheetId = await fmsTabId(sheets);
+    await sheets.spreadsheets.batchUpdate({ spreadsheetId: CLIENT_FMS_SHEET_ID, requestBody: { requests: [{
       repeatCell: {
-        range: { sheetId: sh.properties.sheetId, startRowIndex: row - 1, endRowIndex: row, startColumnIndex: 0, endColumnIndex: 1 },
+        range: { sheetId, startRowIndex: row - 1, endRowIndex: row, startColumnIndex: 0, endColumnIndex: 1 },
         cell: { userEnteredFormat: { numberFormat: { type: 'DATE_TIME', pattern: 'dd/mm/yyyy hh:mm:ss' } } },
         fields: 'userEnteredFormat.numberFormat',
       } }] } });
-  } catch (e) { /* the value is right either way; only its display is affected */ }
+  } catch (e) {
+    // the value is right either way; only its display is affected
+    if (/no grid with id/i.test(e.message)) { _fmsTabId = null; db.query('DELETE FROM app_settings WHERE key_name=?', [CLIENT_FMS_TAB_KEY]).catch(() => {}); }
+  }
   return row;
 }
+// fms_pending: the client's Onboarding FMS row is still to be written.
+// fms_try_at: when the last attempt started, so a failed one waits out the
+// per-minute quota and two retries never write the same client at once.
+let _fmsPendingCols = null;
+function ensureFmsPendingColumns() {
+  if (!_fmsPendingCols) _fmsPendingCols = db.query('ALTER TABLE clients ADD COLUMN fms_pending TINYINT NOT NULL DEFAULT 0, ADD COLUMN fms_try_at DATETIME NULL DEFAULT NULL')
+    .catch(e => { if (e.code !== 'ER_DUP_FIELDNAME') { _fmsPendingCols = null; throw e; } });
+  return _fmsPendingCols;
+}
+const fmsWarningFor = e => /quota exceeded/i.test(e.message)
+  ? 'Client added. Google Sheets is busy right now, so its Onboarding FMS row will be added automatically in a minute or two.'
+  : 'Client added, but its Onboarding FMS row could not be added yet; it will be tried again automatically: ' + e.message;
 let _mobileCol = null;
 function ensureMobileColumn() {
   if (!_mobileCol) _mobileCol = db.query('ALTER TABLE clients ADD COLUMN mobile_no VARCHAR(20) DEFAULT NULL')
@@ -365,15 +404,24 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
     const newClientId = r.insertId;
     await ensureMobileColumn().then(() => db.query('UPDATE clients SET mobile_no=? WHERE id=?', [mobile, newClientId])).catch(() => {});
     // Onboarding FMS row. Awaited so the result can be reported, but never fatal.
-    let fmsWarning = null;
+    // The client is marked pending first, so a failure (or a request that dies
+    // half way) leaves it for /api/clients/fms-retry; the mark's time keeps
+    // that retry off it for a minute.
+    let fmsWarning = null, fmsQueued = false;
+    const canRetry = await ensureFmsPendingColumns()
+      .then(() => db.query('UPDATE clients SET fms_pending=1, fms_try_at=NOW() WHERE id=?', [newClientId]))
+      .then(() => true, e => { console.error('Onboarding FMS pending mark failed:', e.message); return false; });
     try {
       const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
       await addClientToOnboardingFms({ brand: brandName, departments: departments.split('||').join(', '), mobile, crmName: (me && me.name) || '' });
+      if (canRetry) await db.query('UPDATE clients SET fms_pending=0, fms_try_at=NULL WHERE id=?', [newClientId]);
     } catch (e) {
       console.error('Onboarding FMS row failed:', e.message);
-      fmsWarning = 'Client added, but it could not be added to the Onboarding FMS sheet: ' + e.message;
+      fmsQueued = canRetry;
+      fmsWarning = canRetry ? fmsWarningFor(e) : 'Client added, but it could not be added to the Onboarding FMS sheet: ' + e.message;
     }
     if (fmsWarning) res.locals.fmsWarning = fmsWarning;
+    const fmsNote = fmsQueued ? { fms_queued: true } : {};
     // The full handler list, in client_handlers — the primary handler_id column
     // above is only ever the first of these, kept for the routes/rows that
     // still read it directly. Same pattern PUT /api/clients/:id/handlers uses.
@@ -391,7 +439,7 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
         // Client row was created — surface auth provisioning error separately so
         // admin knows the client exists but login was not set up.
         return res.status(201).json({
-          success: true, client_id: newClientId,
+          success: true, client_id: newClientId, ...fmsNote,
           warning: (e.code === 'ER_DUP_ENTRY' ? 'Client added but login email already in use' : 'Client added but login provisioning failed: ' + e.message) + (res.locals.fmsWarning ? ' ' + res.locals.fmsWarning : '')
         });
       }
@@ -403,11 +451,42 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
         .then(folder => db.query('UPDATE clients SET drive_folder_id=? WHERE id=?', [folder.id, newClientId]))
         .catch(e => console.error('DMS auto-folder creation failed for client', newClientId, e.message));
     }
-    res.json({ success: true, client_id: newClientId, ...(res.locals.fmsWarning ? { warning: res.locals.fmsWarning } : {}) });
+    res.json({ success: true, client_id: newClientId, ...fmsNote, ...(res.locals.fmsWarning ? { warning: res.locals.fmsWarning } : {}) });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Client already exists' });
     res.status(500).json({ error: err.message });
   }
+});
+
+// Writes the Onboarding FMS rows that could not be written when their clients
+// were added. Client Master and Enquiry Capture call it when they open. A few
+// per call, each claimed through fms_try_at first so two calls never write the
+// same client, and the first failure ends the round: the quota is per minute.
+app.post('/api/clients/fms-retry', requireAuth, async (req, res) => {
+  try {
+    await ensureFmsPendingColumns();
+    const due = 'fms_pending=1 AND (fms_try_at IS NULL OR fms_try_at < NOW() - INTERVAL 1 MINUTE)';
+    const [ids] = await db.query(`SELECT id FROM clients WHERE ${due} ORDER BY id LIMIT 5`);
+    let sent = 0, failed = 0;
+    for (const { id } of ids) {
+      const [claim] = await db.query(`UPDATE clients SET fms_try_at=NOW() WHERE id=? AND ${due}`, [id]);
+      if (!claim.affectedRows) continue;
+      const [[c]] = await db.query(
+        'SELECT c.brand_name, c.departments, c.mobile_no, u.name AS crm FROM clients c LEFT JOIN users u ON u.id = c.added_by WHERE c.id=?', [id]);
+      try {
+        await addClientToOnboardingFms({ brand: c.brand_name || '', departments: String(c.departments || '').split('||').filter(Boolean).join(', '),
+          mobile: c.mobile_no || '', crmName: c.crm || '' }, { retry: true });
+      } catch (e) {
+        console.error('Onboarding FMS retry failed for client', id, e.message);
+        failed++;
+        break;
+      }
+      await db.query('UPDATE clients SET fms_pending=0, fms_try_at=NULL WHERE id=?', [id]);
+      sent++;
+    }
+    const [[{ left }]] = await db.query('SELECT COUNT(*) AS `left` FROM clients WHERE fms_pending=1');
+    res.json({ success: true, sent, failed, left: Number(left) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // No role middleware on purpose: the body below decides. requireAdminOrHod here
@@ -1110,5 +1189,4 @@ app.delete('/api/clients/:id/dms/folders/:folderId/files/:fileId', requireAuth, 
     await _dmsLogActivity(fileId, 'deleted', name, req, id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
-});
-};
+});};

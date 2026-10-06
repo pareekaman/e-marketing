@@ -45,6 +45,8 @@ async function ecLoad() {
   if (opts && !opts.error) EC_OPTS = opts;
   ecRender();
   if (EC_ALL.some(e => Number(e.sheet_pending))) ecRetrySheet();
+  // Clients added from here whose Onboarding FMS row is still to be written.
+  if (typeof cmRetryFms === 'function') cmRetryFms();
 }
 
 // Enquiries whose latest save did not reach the Google sheet (its read quota

@@ -70,9 +70,32 @@ async function loadClients(){
     cmApplyRoleControls();
     cmPopulateDeptFilter();
     cmRenderList();
+    cmRetryFms();
   } catch(e) {
     wrap.innerHTML = '<div class="empty">Failed to load clients</div>';
     ['cmStatTotal', 'cmStatActive', 'cmStatInactive', 'cmStatVisible'].forEach(id => document.getElementById(id).textContent = '0');
+  }
+}
+
+// Clients whose Onboarding FMS row could not be written when they were added
+// (the Sheets read quota is shared and runs out) get it written from here;
+// the server paces it. Runs when Client Master or Enquiry Capture opens,
+// after an add that came back queued, and every 70 seconds while one of
+// them stays open and rows are still waiting.
+let CM_FMS_RETRYING = false, CM_FMS_TIMER = null;
+const cmFmsPageOpen = () => ['page-clients', 'page-enquiry'].some(id => document.getElementById(id)?.classList.contains('active'));
+async function cmRetryFms() {
+  clearTimeout(CM_FMS_TIMER);
+  CM_FMS_TIMER = null;
+  if (CM_FMS_RETRYING || !cmFmsPageOpen()) return;
+  CM_FMS_RETRYING = true;
+  let left = 0;
+  try {
+    const r = await api('/api/clients/fms-retry', 'POST', {});
+    if (r && !r.error) left = r.left;
+  } catch (e) { /* tried again next time */ } finally {
+    CM_FMS_RETRYING = false;
+    if (left && cmFmsPageOpen()) CM_FMS_TIMER = setTimeout(cmRetryFms, 70000);
   }
 }
 
@@ -1456,6 +1479,7 @@ async function cmAdd(){
     if (r.warning) showToast(r.warning);
     else showToast(login_email ? '✅ Client added with login' : '✅ Client added');
     closeModal('clientAddModal');
+    if (r.fms_queued) cmRetryFms();
     const fromEnquiry = CM_ADD_FROM_ENQUIRY;
     CM_ADD_FROM_ENQUIRY = null;
     if (fromEnquiry && typeof ecClientAdded === 'function') ecClientAdded(fromEnquiry, r.client_id);
