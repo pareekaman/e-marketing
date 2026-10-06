@@ -40,8 +40,10 @@ function cmCanSeeBilling(){ return !!ME && ME.canViewBillingName === true; }
 function cmApplyRoleControls(){
   // New clients come in from Enquiry Capture (Add in Client Master on a
   // converted enquiry), so the CRM who converted it is the one on the client
-  // and in the Onboarding FMS. Adding directly, one or in bulk, is for admins.
-  const show = ME.role === 'admin' ? '' : 'none';
+  // and in the Onboarding FMS. Adding directly, one or in bulk, is for admins,
+  // and for anyone given the "Add Client & Bulk Upload" tick in Access Control
+  // (add_clients) along with Client Master at the Editor level.
+  const show = ME.role === 'admin' || (cmCanEdit() && canDo('add_clients')) ? '' : 'none';
   const addBtn = document.getElementById('cmAddBtn');
   if (addBtn) addBtn.style.display = show;
   const bulkBtn = document.getElementById('cmBulkBtn');

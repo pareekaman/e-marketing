@@ -451,7 +451,7 @@ function loadUserPerms(userId) {
               ${pg.readOnly ? `<span class="acc-ro" title="This page has no editable data — there is nothing for Editor to grant.">read-only</span>` : ''}
             </div>
             ${pg.note ? `<div style="font-size:11px;color:#64748b;margin-top:2px">🔒 ${esc(pg.note)}</div>` : ''}
-            ${pg.page === 'clients' && !dim ? accClientsFirstHtml(u) + accBillingHtml(u.id, perms) + accCrmHtml(u.id, perms) : ''}
+            ${pg.page === 'clients' && !dim ? accClientsFirstHtml(u) + accBillingHtml(u.id, perms) + accCrmHtml(u.id, perms) + accAddClientsHtml(u.id, perms) : ''}
           </div>
         </div>
         <select onchange="onAccLevelChange(${userId},'${pg.page}',this.value)" ${pg.locked?'disabled':''}
@@ -507,6 +507,24 @@ function accSetCrm(userId, on) {
   const p = _accPerms[userId] || { pages: [], actions: [] };
   p.actions = p.actions.filter(k => k !== 'crm_clients');
   if (on) p.actions.push('crm_clients');
+  _accPerms[userId] = p;
+  accSyncDirty(userId);
+}
+
+// Add Client & Bulk Upload in Client Master, which are otherwise for admins
+// only (everyone else adds clients from Enquiry Capture). Works together
+// with Client Master at the Editor level, which adding a client needs.
+function accAddClientsHtml(userId, perms) {
+  const on = (perms.actions || []).includes('add_clients');
+  return `<label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#64748b;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:500">
+    <input type="checkbox" ${on ? 'checked' : ''} onchange="accSetAddClients(${userId},this.checked)" style="width:13px;height:13px;margin:0;accent-color:#4f46e5"/>
+    Add Client &amp; Bulk Upload (with Editor)
+  </label>`;
+}
+function accSetAddClients(userId, on) {
+  const p = _accPerms[userId] || { pages: [], actions: [] };
+  p.actions = p.actions.filter(k => k !== 'add_clients');
+  if (on) p.actions.push('add_clients');
   _accPerms[userId] = p;
   accSyncDirty(userId);
 }
