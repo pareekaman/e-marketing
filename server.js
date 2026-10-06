@@ -2460,6 +2460,23 @@ app.get('/api/mis', requireAuth, requireMisViewer, async (req, res) => {
 // Both take an id list and return a Map, and both short-circuit on an empty
 // list: `IN ()` is a MySQL syntax error, not an empty result set.
 
+// ── FMS rows on hold ──
+// An FMS sheet can carry a column headed "Hold" (FMS Admin → Check Columns
+// finds it and saves it as fms_sheets.hold_col). A row whose Hold cell says
+// Pause (or Paused / Hold / On hold) is not pending anywhere: the dashboard,
+// FMS Tasks, MIS, the pending summary and the reminders all leave its open
+// steps out. A step it had already done still counts as done.
+let _fmsHoldColumn = null;
+function ensureFmsHoldColumn() {
+  if (!_fmsHoldColumn) _fmsHoldColumn = db.query("ALTER TABLE fms_sheets ADD COLUMN hold_col VARCHAR(10) DEFAULT ''")
+    .catch(e => { if (e.code !== 'ER_DUP_FIELDNAME') { _fmsHoldColumn = null; throw e; } });
+  return _fmsHoldColumn;
+}
+function fmsHoldIdx(sheet) { return sheet && sheet.hold_col ? colToIdx(sheet.hold_col) : -1; }
+function fmsRowOnHold(row, holdIdx) {
+  return holdIdx >= 0 && /^(pause|paused|hold|on hold)$/i.test(String((row || [])[holdIdx] || '').trim());
+}
+
 // fms_id -> steps[]. ORDER BY mirrors the per-sheet query's `step_order ASC`
 // exactly; ties stay as arbitrary as they already were.
 async function fmsStepsBySheet(sheetIds) {
@@ -2669,7 +2686,7 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
           catch { return []; }
         });
         const allCols = filteredSteps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col), s.doer_name_col ? colToIdx(s.doer_name_col) : -1])
-          .concat(showColsByStep.flat())
+          .concat(showColsByStep.flat(), [fmsHoldIdx(sheet)])
           .filter(x => x >= 0);
         if (!allCols.length) continue;
         const maxCol = Math.max(...allCols);
@@ -2680,6 +2697,7 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
         const sheetData = response.data.values || [];
         const headers = sheetData[headerRowIdx] || [];
         const dataRows = sheetData.slice(headerRowIdx + 1);
+        const holdIdx = fmsHoldIdx(sheet);
 
         for (let si = 0; si < steps.length; si++) {
           const step = steps[si];
@@ -2702,6 +2720,7 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
             if (!blankClean(planVal) || blankClean(actualVal)) return; // skip if no plan or already done
             const rowDoer = doerIdx >= 0 ? (row[doerIdx] || '').toString().trim() : '';
             if (ownNames && !ownNames.has(rowDoer.toLowerCase())) return; // someone else's row
+            if (fmsRowOnHold(row, holdIdx)) return; // on hold
 
             // Parse plan date — try to extract date from value
             // planVal might be a date string like "2026-04-07" or "07/04/2026" or just text,
@@ -2885,7 +2904,7 @@ async function computeMisAll(start, end, dept, { images = true } = {}) {
             const steps = stepsBySheet.get(sheet.id) || [];
             if (!steps.length) return null;
             for (const step of steps) step.doerIds = doerIdsByStep.get(step.id) || [];
-            const allCols = steps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)]).filter(x => x >= 0);
+            const allCols = steps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)]).concat([fmsHoldIdx(sheet)]).filter(x => x >= 0);
             if (!allCols.length) return null;
             return {
               sheet, steps,
@@ -2900,6 +2919,7 @@ async function computeMisAll(start, end, dept, { images = true } = {}) {
             const plan = plans[si];
             if (!plan || !fetched[si]) continue;   // no steps, no columns, or the fetch failed
             const { steps, headerRowIdx } = plan;
+            const holdIdx = fmsHoldIdx(plan.sheet);
             try {
               const dataRows = fetched[si].slice(headerRowIdx + 1);
               for (const step of steps) {
@@ -2916,7 +2936,7 @@ async function computeMisAll(start, end, dept, { images = true } = {}) {
                   // Mirrors what /api/mis/fms-detail returns so counts and detail stay in sync.
                   const planDate = parseFmsPlanDate(planVal);
                   if (!planDate || planDate < start || planDate > end) return;
-                  if (!actualVal) stepPending++;
+                  if (!actualVal) { if (!fmsRowOnHold(row, holdIdx)) stepPending++; }
                   else stepDone++;
                 });
                 // Distribute counts to each doer (each doer gets the full count attributed — shared work)
@@ -3198,7 +3218,7 @@ app.get('/api/mis/fms', requireAuth, requireMisViewer, async (req, res) => {
         const tabName = sheet.sheet_name || 'Sheet1';
         const headerRowIdx = (sheet.header_row || 1) - 1;
 
-        const allCols = filteredSteps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)]).filter(x => x >= 0);
+        const allCols = filteredSteps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)]).concat([fmsHoldIdx(sheet)]).filter(x => x >= 0);
         if (!allCols.length) continue;
         const maxCol = Math.max(...allCols);
         const lastCol = idxToCol(maxCol);
@@ -3207,6 +3227,7 @@ app.get('/api/mis/fms', requireAuth, requireMisViewer, async (req, res) => {
         const response = await sheetsApi.spreadsheets.values.get({ spreadsheetId, range });
         const allRowsData = response.data.values || [];
         const dataRows = allRowsData.slice(headerRowIdx + 1);
+        const holdIdx = fmsHoldIdx(sheet);
 
         // Per-FMS aggregate stats
         let fmsPending = 0, fmsDone = 0, fmsTotal = 0;
@@ -3221,7 +3242,7 @@ app.get('/api/mis/fms', requireAuth, requireMisViewer, async (req, res) => {
           dataRows.forEach(row => {
             const planVal = (row[planIdx]||'').trim();
             const actualVal = (row[actualIdx]||'').trim();
-            if (planVal && !actualVal) stepPending++;
+            if (planVal && !actualVal && !fmsRowOnHold(row, holdIdx)) stepPending++;
             if (planVal && actualVal) stepDone++;
           });
 
@@ -3800,6 +3821,9 @@ require('./backend/routes/fms')(app, {
   idxToCol,
   extractSpreadsheetId,
   getSheetsClient,
+  ensureFmsHoldColumn,
+  fmsHoldIdx,
+  fmsRowOnHold,
 });
 
 // ══════════════════════════════════════════════════════
@@ -4479,9 +4503,10 @@ function parseFmsPlanDate(val) {
 // [start, end] — used by the Monday check-in last-week view.
 async function fmsTasksForUserInRange(uid, start, end, opts = {}) {
   const applyDateFilter = opts.applyDateFilter === true;
+  await ensureFmsHoldColumn().catch(() => {});
   const [doerSteps] = await db.query(
     `SELECT fs.id AS step_id, fs.step_name, fs.fms_id, fs.plan_col, fs.actual_col,
-            fsh.fms_name, fsh.sheet_name, fsh.sheet_id, fsh.header_row
+            fsh.fms_name, fsh.sheet_name, fsh.sheet_id, fsh.header_row, fsh.hold_col
        FROM fms_step_doers fsd
        JOIN fms_steps  fs  ON fs.id = fsd.step_id
        JOIN fms_sheets fsh ON fsh.id = fs.fms_id
@@ -4506,13 +4531,14 @@ async function fmsTasksForUserInRange(uid, start, end, opts = {}) {
       const spreadsheetId = extractSpreadsheetId(sheet.sheet_id);
       const tabName = sheet.sheet_name || 'Sheet1';
       const headerRowIdx = (sheet.header_row || 1) - 1;
-      const allCols = steps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)]).filter(x => x >= 0);
+      const allCols = steps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)]).concat([fmsHoldIdx(sheet)]).filter(x => x >= 0);
       if (!allCols.length) continue;
       const lastCol = idxToCol(Math.max(...allCols));
       const response = await sheetsApi.spreadsheets.values.get({
         spreadsheetId, range: `${tabName}!A:${lastCol}`
       });
       const rows = (response.data.values || []).slice(headerRowIdx + 1);
+      const holdIdx = fmsHoldIdx(sheet);
 
       for (const step of steps) {
         const planIdx = colToIdx(step.plan_col);
@@ -4524,6 +4550,7 @@ async function fmsTasksForUserInRange(uid, start, end, opts = {}) {
           const planDate = parseFmsPlanDate(planVal);
           if (applyDateFilter && (!planDate || planDate < start || planDate > end)) return;
           const actualVal = actualIdx >= 0 ? (row[actualIdx] || '').toString().trim() : '';
+          if (!actualVal && fmsRowOnHold(row, holdIdx)) return; // on hold
           tasks.push({
             fmsName: sheet.fms_name || sheet.sheet_name,
             stepName: step.step_name,
@@ -5548,7 +5575,7 @@ async function buildPendingSummaryMessages() {
               catch { return []; }
             });
             const allCols = steps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)])
-              .concat(showColsByStep.flat()).filter(x => x >= 0);
+              .concat(showColsByStep.flat(), [fmsHoldIdx(sheet)]).filter(x => x >= 0);
             if (!allCols.length) continue;
             const maxCol = Math.max(...allCols);
             const range = `${tabName}!A:${idxToCol(maxCol)}`;
@@ -5556,6 +5583,7 @@ async function buildPendingSummaryMessages() {
             const data = resp.data.values || [];
             const headers = data[headerRowIdx] || [];
             const dataRows = data.slice(headerRowIdx + 1);
+            const holdIdx = fmsHoldIdx(sheet);
             const blankClean = v => (v || '').toString().replace(/[\s ​‌‍﻿]+/g, '');
             for (let si = 0; si < steps.length; si++) {
               const step = steps[si];
@@ -5567,6 +5595,7 @@ async function buildPendingSummaryMessages() {
                 const planVal = (row[planIdx] || '').toString().trim();
                 const actualVal = (row[actualIdx] || '').toString().trim();
                 if (!blankClean(planVal) || blankClean(actualVal)) return;
+                if (fmsRowOnHold(row, holdIdx)) return; // on hold
                 // Pick the "Client Name" header among configured show_cols (case-insensitive).
                 let clientName = '';
                 for (const ci of showCols) {
@@ -5908,13 +5937,14 @@ async function buildFmsPendingByUser(today) {
           catch { return []; }
         });
         const allCols = steps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)])
-          .concat(showColsByStep.flat()).filter(x => x >= 0);
+          .concat(showColsByStep.flat(), [fmsHoldIdx(sheet)]).filter(x => x >= 0);
         if (!allCols.length) continue;
         const maxCol = Math.max(...allCols);
         const resp = await sheetsApi.spreadsheets.values.get({ spreadsheetId, range: `${tabName}!A:${idxToCol(maxCol)}` });
         const data = resp.data.values || [];
         const headers = data[headerRowIdx] || [];
         const dataRows = data.slice(headerRowIdx + 1);
+        const holdIdx = fmsHoldIdx(sheet);
         const blankClean = v => (v || '').toString().replace(/[\s ​‌‍﻿]+/g, '');
         for (let si = 0; si < steps.length; si++) {
           const step = steps[si];
@@ -5927,6 +5957,7 @@ async function buildFmsPendingByUser(today) {
             const planVal = (row[planIdx] || '').toString().trim();
             const actualVal = (row[actualIdx] || '').toString().trim();
             if (!blankClean(planVal) || blankClean(actualVal)) return;
+            if (fmsRowOnHold(row, holdIdx)) return; // on hold
             const planDate = parseFmsPlanDate(planVal);
             if (planDate && planDate > today) return; // future-dated → not due yet
             let clientName = '';

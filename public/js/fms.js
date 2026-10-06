@@ -299,7 +299,8 @@ async function loadFMSDetail(id) {
 
   // Sheet info bar
   document.getElementById('fmsSheetInfoText').innerHTML =
-    `<strong>${esc(sheet.sheet_name)}</strong> &nbsp;·&nbsp; Sheet ID: <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;font-size:12px">${esc(sheet.sheet_id)}</code> &nbsp;·&nbsp; Header Row: ${sheet.header_row}`;
+    `<strong>${esc(sheet.sheet_name)}</strong> &nbsp;·&nbsp; Sheet ID: <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;font-size:12px">${esc(sheet.sheet_id)}</code> &nbsp;·&nbsp; Header Row: ${sheet.header_row}`
+    + (sheet.hold_col ? ` &nbsp;·&nbsp; ⏸ Hold column: ${esc(sheet.hold_col)}` : '');
 
   // Step tabs
   const stepTabsEl = document.getElementById('fmsStepTabs');
@@ -402,6 +403,10 @@ async function fmsOpenColumnCheck() {
       + (sg ? `<div style="margin-top:6px">It looks like <b>${sg.count} column${sg.count > 1 ? 's were' : ' was'} ${sg.kind === 'insert' ? 'inserted' : 'deleted'} at ${esc(sg.at)}</b>. Check the preview, correct it if that is wrong, then Apply.</div>`
             : '<div style="margin-top:6px">Describe the change below and check the preview.</div>');
   }
+  // Rows can be paused through a column headed "Hold"; Check Columns finds it.
+  stateEl.innerHTML += r.holdCol
+    ? `<div style="margin-top:8px;color:#334155">⏸ Hold column: <b>${esc(r.holdCol)}</b>. Rows marked Pause there are not pending anywhere.</div>`
+    : '<div style="margin-top:8px;color:#64748b">No Hold column. To pause rows, add a column headed "Hold" to the sheet (Active / Pause) and open Check Columns again.</div>';
   const sg = r.suggestion || { kind: 'insert', at: '', count: 1 };
   document.getElementById('fmsColKind').value = sg.kind;
   document.getElementById('fmsColAt').value = sg.at;
@@ -433,7 +438,7 @@ async function fmsColPreviewNow() {
   const r = await api(`/api/fms/${FMS_COL.id}/shift-columns`, 'POST', { ...inp, dryRun: true });
   if (!r || r.error) { err.textContent = (r && r.error) || 'Could not work out the change'; err.style.display = 'block'; box.innerHTML = ''; return; }
   const header = c => (c && FMS_COL.headers.get(c)) || '';
-  const expect = { plan: ['planned', 'plan'], actual: ['actual'] };
+  const expect = { plan: ['planned', 'plan'], actual: ['actual'], hold: ['hold'] };
   const rows = r.changes.map(c => {
     const moved = c.to !== c.from, gone = c.to === null;
     const now = gone ? '' : header(c.to);

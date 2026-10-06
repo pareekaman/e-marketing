@@ -18,6 +18,9 @@ module.exports = function registerFmsRoutes(app, deps) {
     idxToCol,
     extractSpreadsheetId,
     getSheetsClient,
+    ensureFmsHoldColumn,
+    fmsHoldIdx,
+    fmsRowOnHold,
   } = deps;
 
 // ══════════════════════════════════════════════════════
@@ -273,6 +276,12 @@ function fmsMoveIdx(i, plan) {
 async function fmsColumnChanges(fmsId, plan) {
   const [steps] = await db.query('SELECT * FROM fms_steps WHERE fms_id=? ORDER BY step_order ASC', [fmsId]);
   const changes = [];
+  const [[sheet]] = await db.query('SELECT * FROM fms_sheets WHERE id=?', [fmsId]);
+  const holdIdx = fmsHoldIdx(sheet);
+  if (holdIdx >= 0) {
+    const to = fmsMoveIdx(holdIdx, plan);
+    changes.push({ stepOrder: 0, stepName: 'Whole FMS', field: 'hold', label: 'Hold column', from: idxToCol(holdIdx), to: to === null ? null : idxToCol(to) });
+  }
   for (const s of steps) {
     const add = (field, label, fromIdx) => {
       if (!(fromIdx >= 0)) return;
@@ -304,6 +313,12 @@ app.get('/api/fms/:id/columns', requireAuth, requireAdmin, async (req, res) => {
     const got = await sheetsApi.spreadsheets.values.get({ spreadsheetId: extractSpreadsheetId(sheet.sheet_id),
       range: `${tab}!${hRow}:${hRow}`, valueRenderOption: 'UNFORMATTED_VALUE' });
     const headers = ((got.data.values || [])[0] || []).map(h => String(h == null ? '' : h).trim());
+    // A column headed "Hold" pauses rows (fmsRowOnHold in server.js). Saved
+    // here, so adding one to the sheet takes effect once Check Columns runs.
+    const holdAt = headers.findIndex(h => /^hold$/i.test(h));
+    const holdCol = holdAt >= 0 ? idxToCol(holdAt) : '';
+    await ensureFmsHoldColumn();
+    if ((sheet.hold_col || '') !== holdCol) await db.query('UPDATE fms_sheets SET hold_col=? WHERE id=?', [holdCol, sheet.id]);
     const [steps] = await db.query('SELECT step_order, step_name, plan_col, actual_col FROM fms_steps WHERE fms_id=? ORDER BY step_order ASC', [req.params.id]);
     // How far each step's Planned / Actual pair has moved from where it was saved.
     const found = steps.filter(s => colToIdx(s.plan_col) >= 0).map(s => {
@@ -326,7 +341,7 @@ app.get('/api/fms/:id/columns', requireAuth, requireAdmin, async (req, res) => {
       }
     }
     res.json({ headers: headers.map((name, i) => ({ col: idxToCol(i), name })), headerRow: hRow,
-      steps: found.map(({ p, ...f }) => f), state, suggestion });
+      steps: found.map(({ p, ...f }) => f), state, suggestion, holdCol });
   } catch (err) {
     if (err.code === 403) return res.status(400).json({ error: 'Access denied. Share sheet with service account.' });
     if (err.code === 404) return res.status(400).json({ error: 'Sheet not found. Check Sheet ID.' });
@@ -367,6 +382,8 @@ app.post('/api/fms/:id/shift-columns', requireAuth, requireAdmin, async (req, re
         const [extra] = await conn.query('SELECT id, col_letter FROM fms_extra_rows WHERE step_id=?', [s.id]);
         for (const r of extra) await conn.query('UPDATE fms_extra_rows SET col_letter=? WHERE id=?', [mv(r.col_letter), r.id]);
       }
+      const [[sh]] = await conn.query('SELECT * FROM fms_sheets WHERE id=?', [req.params.id]);
+      if (sh && sh.hold_col) await conn.query('UPDATE fms_sheets SET hold_col=? WHERE id=?', [mv(sh.hold_col), req.params.id]);
       await conn.commit();
     } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
     res.json({ success: true, changes, moving });
@@ -509,7 +526,7 @@ app.get('/api/fms-tasks/:fmsId/steps/:stepId/rows', requireAuth, async (req, res
     const tabName = sheet.sheet_name || 'Sheet1';
 
     // Optimized: fetch only up to the furthest needed column (include doerNameIdx if set)
-    const maxIdx = Math.max(planIdx, actualIdx, doerNameIdx, ...(showCols.length ? showCols : [0]));
+    const maxIdx = Math.max(planIdx, actualIdx, doerNameIdx, fmsHoldIdx(sheet), ...(showCols.length ? showCols : [0]));
     const lastCol = maxIdx >= 0 ? idxToCol(maxIdx) : 'Z';
     const range = `${tabName}!A:${lastCol}`;
 
@@ -518,6 +535,7 @@ app.get('/api/fms-tasks/:fmsId/steps/:stepId/rows', requireAuth, async (req, res
     const headerRowIdx = (sheet.header_row || 1) - 1;
     const headers = allRows[headerRowIdx] || [];
     const dataRows = allRows.slice(headerRowIdx + 1);
+    const holdIdx = fmsHoldIdx(sheet);
 
     // Doer filtering: non-admins see only their rows; admins see all
     const applyDoerFilter = !isAdmin && doerNameIdx >= 0 && myName;
@@ -530,6 +548,7 @@ app.get('/api/fms-tasks/:fmsId/steps/:stepId/rows', requireAuth, async (req, res
       const planVal = planIdx >= 0 ? (row[planIdx]||'').trim() : '';
       const actualVal = actualIdx >= 0 ? (row[actualIdx]||'').trim() : '';
       if (!blankClean(planVal) || blankClean(actualVal)) return; // skip non-pending rows
+      if (fmsRowOnHold(row, holdIdx)) return; // on hold: not pending
       totalPending++;
 
       // Check doer name match (case-insensitive exact)
