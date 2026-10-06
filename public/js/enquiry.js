@@ -76,7 +76,7 @@ async function ecRetrySheet() {
 function ecFiltered() {
   const q = (document.getElementById('ecSearch')?.value || '').toLowerCase().trim();
   if (!q) return EC_ALL;
-  return EC_ALL.filter(e => [e.client_name, e.business_name, e.mobile, e.lead_handle_by, e.platforms, e.project_types, e.status]
+  return EC_ALL.filter(e => [e.client_name, e.business_name, e.mobile, e.lead_handle_by, e.platforms, e.project_types, e.status, e.client_crm_name]
     .join(' ').toLowerCase().includes(q));
 }
 
@@ -105,8 +105,10 @@ function ecRender() {
       ? `<select data-no-search onchange="ecSetStatus(${e.id}, this)" style="${look};padding:4px 8px;cursor:pointer;outline:none">
           ${statuses.map(s => `<option value="${dtEscape(s)}" ${s === st ? 'selected' : ''} style="color:#0f172a;background:#fff">${dtEscape(s)}</option>`).join('')}</select>`
       : `<span style="${look};padding:3px 10px;display:inline-block">${dtEscape(st)}</span>`;
+    // With the CRM who added it there, so it is clear who took the client on.
     const client = e.client_id
       ? '<div style="font-size:11px;color:#15803d;font-weight:600;margin-top:6px">✓ In Client Master</div>'
+        + (e.client_crm_name ? `<div style="font-size:11px;color:#64748b;margin-top:1px">CRM: <b style="color:#334155">${dtEscape(e.client_crm_name)}</b></div>` : '')
       : st !== 'Conversion' ? ''
       : canAddClient
         ? `<button class="cm-btn-ghost" style="display:block;margin-top:6px;padding:4px 10px;font-size:12px" onclick="ecAddToClientMaster(${e.id})">➕ Add in Client Master</button>`

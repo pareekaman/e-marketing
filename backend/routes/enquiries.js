@@ -304,8 +304,13 @@ module.exports = function registerEnquiryRoutes(app, deps) {
       DATE_FORMAT(e.proposal_date, '%Y-%m-%d') AS proposal_date, e.proposal_url,
       DATE_FORMAT(e.conversion_date, '%Y-%m-%d') AS conversion_date, e.order_value,
       e.status, e.client_id, e.source, e.sheet_pending, DATE_FORMAT(e.created_at, '%Y-%m-%d %H:%i') AS created_at,
-      u.name AS created_by_name, DATE_FORMAT(e.updated_at, '%Y-%m-%d %H:%i') AS updated_at, u2.name AS updated_by_name
-    FROM enquiries e LEFT JOIN users u ON u.id = e.created_by LEFT JOIN users u2 ON u2.id = e.updated_by`;
+      u.name AS created_by_name, DATE_FORMAT(e.updated_at, '%Y-%m-%d %H:%i') AS updated_at, u2.name AS updated_by_name,
+      u3.name AS client_crm_name
+    FROM enquiries e LEFT JOIN users u ON u.id = e.created_by LEFT JOIN users u2 ON u2.id = e.updated_by
+      LEFT JOIN clients c ON c.id = e.client_id LEFT JOIN users u3 ON u3.id = c.added_by`;
+  // client_crm_name: the CRM on the linked client, i.e. whoever added it to
+  // Client Master (the CRM who pressed Add in Client Master on this enquiry,
+  // or for one linked to an existing client, that client's CRM).
 
   app.get('/api/enquiries/options', requireAuth, (req, res) => {
     res.json({ leadHandlers: LEAD_HANDLERS, projectTypes: PROJECT_TYPES, platforms: PLATFORMS, statuses: STATUSES });
