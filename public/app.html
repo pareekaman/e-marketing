@@ -685,6 +685,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         <div style="display:flex;gap:8px">
           <button class="btn btn-outline btn-sm" onclick="openEditFMS()" style="color:var(--accent)">✏️ Edit FMS</button>
           <button class="btn btn-outline btn-sm" onclick="syncFMSData()" style="color:#10b981">🔄 Sync Data</button>
+          <button class="btn btn-outline btn-sm" onclick="fmsOpenColumnCheck()" style="color:#7c3aed">🔍 Check Columns</button>
           <button class="btn btn-outline btn-sm" onclick="deleteFMSSheet(fmsActiveId)" style="color:#dc2626;border-color:#fecaca">🗑 Delete</button>
         </div>
       </div>
@@ -3283,6 +3284,31 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <!-- ══════════════════════════════════════
      FMS - SHARE NOTICE (7 sec)
 ══════════════════════════════════════ -->
+<!-- FMS Admin → Check Columns: after columns are inserted into or deleted
+     from the sheet, shows what the saved columns would move to; saves on Apply. -->
+<div class="modal-overlay" id="fmsColModal">
+  <div class="modal" style="max-width:860px;width:95vw">
+    <button class="modal-close" onclick="closeModal('fmsColModal')">×</button>
+    <h3 style="margin-bottom:8px">🔍 Check Columns</h3>
+    <div id="fmsColState" style="font-size:13px;line-height:1.55;margin-bottom:14px"></div>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;color:#334155;margin-bottom:12px">
+      <select id="fmsColKind" data-no-search onchange="fmsColPreview()" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px">
+        <option value="insert">Inserted</option>
+        <option value="delete">Deleted</option>
+      </select>
+      <input id="fmsColCount" type="number" min="1" max="26" value="1" oninput="fmsColPreview()" style="width:64px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px">
+      <span>column(s) at</span>
+      <input id="fmsColAt" type="text" maxlength="3" placeholder="E" oninput="fmsColPreview()" style="width:64px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;text-transform:uppercase">
+    </div>
+    <div id="fmsColPreview" style="max-height:52vh;overflow:auto"></div>
+    <div id="fmsColErr" style="display:none;color:#dc2626;font-size:13px;margin-top:10px"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+      <button class="btn btn-outline" onclick="closeModal('fmsColModal')">Cancel</button>
+      <button class="btn btn-primary" id="fmsColApplyBtn" onclick="fmsColApply()" disabled>Apply changes</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="fmsShareModal">
   <div class="modal" style="max-width:440px;text-align:center">
     <div style="font-size:36px;margin-bottom:16px">📊</div>

@@ -249,6 +249,130 @@ app.get('/api/fms/:id/sync', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// ── Check Columns: after columns were inserted into or deleted from a sheet ──
+// Every step keeps its columns as letters (shown columns as 0-based indexes,
+// extra-input fields in fms_extra_rows), so a column inserted before them
+// leaves them all one column off. GET reads the header row once and guesses
+// the change from where "Planned" / "Actual" now sit; POST works out what
+// moves where (dryRun only shows it) and, when asked, saves it all at once.
+const FMS_PLAN_HEADERS = ['planned', 'plan'];
+const fmsHeaderAt = (headers, i) => String(headers[i] == null ? '' : headers[i]).trim().toLowerCase();
+function fmsStepFits(headers, planIdx, actualIdx, k) {
+  return FMS_PLAN_HEADERS.includes(fmsHeaderAt(headers, planIdx + k))
+    && (actualIdx < 0 || fmsHeaderAt(headers, actualIdx + k) === 'actual');
+}
+// A column's index after the change, or null when its column was deleted.
+function fmsMoveIdx(i, plan) {
+  if (i < 0) return i;
+  if (plan.kind === 'insert') return i >= plan.at ? i + plan.count : i;
+  if (i < plan.at) return i;
+  if (i < plan.at + plan.count) return null;
+  return i - plan.count;
+}
+// Every configured column of every step of the FMS, and where it would go.
+async function fmsColumnChanges(fmsId, plan) {
+  const [steps] = await db.query('SELECT * FROM fms_steps WHERE fms_id=? ORDER BY step_order ASC', [fmsId]);
+  const changes = [];
+  for (const s of steps) {
+    const add = (field, label, fromIdx) => {
+      if (!(fromIdx >= 0)) return;
+      const to = fmsMoveIdx(fromIdx, plan);
+      changes.push({ stepOrder: s.step_order, stepName: s.step_name, field, label,
+        from: idxToCol(fromIdx), to: to === null ? null : idxToCol(to) });
+    };
+    add('plan', 'Planned', colToIdx(s.plan_col));
+    add('actual', 'Actual', colToIdx(s.actual_col));
+    add('extra', 'Extra input column', colToIdx(s.extra_col));
+    add('delay', 'Delay reason column', colToIdx(s.delay_reason_col));
+    add('doer', 'Doer name column', colToIdx(s.doer_name_col));
+    let show = [];
+    try { show = JSON.parse(s.show_cols || '[]'); } catch (e) {}
+    for (const c of show) add('show', 'Shown column', Number(c));
+    const [extra] = await db.query('SELECT row_label, col_letter FROM fms_extra_rows WHERE step_id=? ORDER BY id ASC', [s.id]);
+    for (const r of extra) add('extraRow', `Extra input: ${r.row_label || r.col_letter}`, colToIdx(r.col_letter));
+  }
+  return changes;
+}
+
+app.get('/api/fms/:id/columns', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [[sheet]] = await db.query('SELECT * FROM fms_sheets WHERE id=?', [req.params.id]);
+    if (!sheet) return res.status(404).json({ error: 'FMS not found' });
+    const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
+    const hRow = parseInt(sheet.header_row, 10) || 1;
+    const tab = `'${String(sheet.sheet_name || 'Sheet1').replace(/'/g, "''")}'`;
+    const got = await sheetsApi.spreadsheets.values.get({ spreadsheetId: extractSpreadsheetId(sheet.sheet_id),
+      range: `${tab}!${hRow}:${hRow}`, valueRenderOption: 'UNFORMATTED_VALUE' });
+    const headers = ((got.data.values || [])[0] || []).map(h => String(h == null ? '' : h).trim());
+    const [steps] = await db.query('SELECT step_order, step_name, plan_col, actual_col FROM fms_steps WHERE fms_id=? ORDER BY step_order ASC', [req.params.id]);
+    // How far each step's Planned / Actual pair has moved from where it was saved.
+    const found = steps.filter(s => colToIdx(s.plan_col) >= 0).map(s => {
+      const p = colToIdx(s.plan_col), a = colToIdx(s.actual_col);
+      let shift = null;
+      for (const d of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5]) if (fmsStepFits(headers, p, a, d)) { shift = d; break; }
+      return { step: s.step_order, name: s.step_name, plan: idxToCol(p), headerNow: headers[p] || '', shift, p };
+    }).sort((x, y) => x.p - y.p);
+    // One insert or delete moves every step from some point on by the same
+    // amount; anything else is left for the admin to describe.
+    const first = found.findIndex(f => f.shift !== 0);
+    let suggestion = null, state = 'match';
+    if (first >= 0) {
+      const k = found[first].shift;
+      if (k === null || found.slice(first).some(f => f.shift !== k)) state = 'unclear';
+      else {
+        state = 'shifted';
+        suggestion = k > 0 ? { kind: 'insert', at: idxToCol(found[first].p), count: k }
+                           : { kind: 'delete', at: idxToCol(found[first].p + k), count: -k };
+      }
+    }
+    res.json({ headers: headers.map((name, i) => ({ col: idxToCol(i), name })), headerRow: hRow,
+      steps: found.map(({ p, ...f }) => f), state, suggestion });
+  } catch (err) {
+    if (err.code === 403) return res.status(400).json({ error: 'Access denied. Share sheet with service account.' });
+    if (err.code === 404) return res.status(400).json({ error: 'Sheet not found. Check Sheet ID.' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/fms/:id/shift-columns', requireAuth, requireAdmin, async (req, res) => {
+  const b = req.body || {};
+  const kind = b.kind === 'insert' || b.kind === 'delete' ? b.kind : null;
+  const atText = String(b.at || '').trim().toUpperCase();
+  const count = parseInt(b.count, 10);
+  if (!kind || !/^[A-Z]{1,3}$/.test(atText) || !(count >= 1 && count <= 26)) {
+    return res.status(400).json({ error: 'Say whether columns were inserted or deleted, at which column, and how many (1-26)' });
+  }
+  const plan = { kind, at: colToIdx(atText), count };
+  try {
+    const [[sheet]] = await db.query('SELECT id FROM fms_sheets WHERE id=?', [req.params.id]);
+    if (!sheet) return res.status(404).json({ error: 'FMS not found' });
+    const changes = await fmsColumnChanges(req.params.id, plan);
+    // A step cannot lose its Planned / Actual column or an extra-input field
+    // this way: that needs Edit FMS. Shown, delay and doer columns just go.
+    const blocked = changes.some(c => c.to === null && ['plan', 'actual', 'extra', 'extraRow'].includes(c.field))
+      ? 'A Planned, Actual or extra-input column would be deleted. Change those in Edit FMS instead.' : null;
+    const moving = changes.filter(c => c.to !== c.from).length;
+    if (b.dryRun || blocked || !moving) return res.json({ success: true, dryRun: true, changes, moving, blocked });
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+      const mv = letter => { const i = colToIdx(letter); if (i < 0) return letter || ''; const t = fmsMoveIdx(i, plan); return t === null ? '' : idxToCol(t); };
+      const [steps] = await conn.query('SELECT * FROM fms_steps WHERE fms_id=?', [req.params.id]);
+      for (const s of steps) {
+        let show = [];
+        try { show = JSON.parse(s.show_cols || '[]'); } catch (e) {}
+        const newShow = show.map(c => fmsMoveIdx(Number(c), plan)).filter(c => c !== null);
+        await conn.query('UPDATE fms_steps SET plan_col=?, actual_col=?, extra_col=?, delay_reason_col=?, doer_name_col=?, show_cols=? WHERE id=?',
+          [mv(s.plan_col), mv(s.actual_col), mv(s.extra_col), mv(s.delay_reason_col), mv(s.doer_name_col), JSON.stringify(newShow), s.id]);
+        const [extra] = await conn.query('SELECT id, col_letter FROM fms_extra_rows WHERE step_id=?', [s.id]);
+        for (const r of extra) await conn.query('UPDATE fms_extra_rows SET col_letter=? WHERE id=?', [mv(r.col_letter), r.id]);
+      }
+      await conn.commit();
+    } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+    res.json({ success: true, changes, moving });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ══════════════════════════════════════════════════════
 // FMS TASKS APIs (all users)
 // ══════════════════════════════════════════════════════

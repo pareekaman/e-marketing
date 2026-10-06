@@ -369,6 +369,108 @@ async function deleteFMSSheet(id) {
   loadFMSAdmin();
 }
 
+// ── Check Columns ──
+// After columns are inserted into or deleted from an FMS sheet, every saved
+// column letter after that point is off by as many columns. The server
+// guesses the change from the header row; the admin sees exactly what would
+// move (with the header each column would then point at), can correct the
+// guess, and nothing is saved until Apply.
+let FMS_COL = null;        // { id, headers: Map column letter -> header, headerRow }
+let FMS_COL_TIMER = null;
+async function fmsOpenColumnCheck() {
+  const id = fmsActiveId;
+  if (!id) return;
+  FMS_COL = null;
+  const stateEl = document.getElementById('fmsColState');
+  document.getElementById('fmsColPreview').innerHTML = '';
+  document.getElementById('fmsColErr').style.display = 'none';
+  document.getElementById('fmsColApplyBtn').disabled = true;
+  stateEl.innerHTML = '<span style="color:#64748b">Reading the sheet\'s header row…</span>';
+  document.getElementById('fmsColModal').classList.add('open');
+  const r = await api(`/api/fms/${id}/columns`);
+  if (!r || r.error) { stateEl.innerHTML = `<span style="color:#dc2626">${esc((r && r.error) || 'Could not read the sheet')}</span>`; return; }
+  FMS_COL = { id, headers: new Map((r.headers || []).map(h => [h.col, h.name])), headerRow: r.headerRow };
+  const off = (r.steps || []).filter(s => s.shift !== 0).slice(0, 3)
+    .map(s => `${esc(s.name)}: Planned is saved as <b>${esc(s.plan)}</b>, but ${esc(s.plan)} now says "${esc(s.headerNow || 'nothing')}"`);
+  if (r.state === 'match') {
+    stateEl.innerHTML = '<span style="color:#15803d;font-weight:600">✓ Every step\'s Planned and Actual columns match the sheet.</span>'
+      + '<div style="color:#64748b;margin-top:4px">If columns were inserted or deleted somewhere else, describe the change below to see what would move.</div>';
+  } else {
+    const sg = r.suggestion;
+    stateEl.innerHTML = `<div style="color:#b45309;font-weight:600">Columns look shifted${sg ? '' : ', but not by one simple insert or delete'}.</div>`
+      + `<div style="color:#475569;margin-top:4px">${off.join('<br>')}</div>`
+      + (sg ? `<div style="margin-top:6px">It looks like <b>${sg.count} column${sg.count > 1 ? 's were' : ' was'} ${sg.kind === 'insert' ? 'inserted' : 'deleted'} at ${esc(sg.at)}</b>. Check the preview, correct it if that is wrong, then Apply.</div>`
+            : '<div style="margin-top:6px">Describe the change below and check the preview.</div>');
+  }
+  const sg = r.suggestion || { kind: 'insert', at: '', count: 1 };
+  document.getElementById('fmsColKind').value = sg.kind;
+  document.getElementById('fmsColAt').value = sg.at;
+  document.getElementById('fmsColCount').value = sg.count;
+  if (sg.at) fmsColPreviewNow();
+}
+
+function fmsColInput() {
+  return {
+    kind: document.getElementById('fmsColKind').value,
+    at: document.getElementById('fmsColAt').value.trim().toUpperCase(),
+    count: parseInt(document.getElementById('fmsColCount').value, 10),
+  };
+}
+
+function fmsColPreview() {
+  clearTimeout(FMS_COL_TIMER);
+  FMS_COL_TIMER = setTimeout(fmsColPreviewNow, 300);
+}
+// Asks the server what would move (dryRun), so the preview is exactly what
+// Apply would save.
+async function fmsColPreviewNow() {
+  if (!FMS_COL) return;
+  const box = document.getElementById('fmsColPreview'), err = document.getElementById('fmsColErr'), btn = document.getElementById('fmsColApplyBtn');
+  err.style.display = 'none';
+  btn.disabled = true;
+  const inp = fmsColInput();
+  if (!/^[A-Z]{1,3}$/.test(inp.at) || !(inp.count >= 1)) { box.innerHTML = ''; return; }
+  const r = await api(`/api/fms/${FMS_COL.id}/shift-columns`, 'POST', { ...inp, dryRun: true });
+  if (!r || r.error) { err.textContent = (r && r.error) || 'Could not work out the change'; err.style.display = 'block'; box.innerHTML = ''; return; }
+  const header = c => (c && FMS_COL.headers.get(c)) || '';
+  const expect = { plan: ['planned', 'plan'], actual: ['actual'] };
+  const rows = r.changes.map(c => {
+    const moved = c.to !== c.from, gone = c.to === null;
+    const now = gone ? '' : header(c.to);
+    let check = '';
+    if (!gone && expect[c.field]) check = expect[c.field].includes(now.trim().toLowerCase()) ? '✓' : '⚠';
+    else if (!gone && c.field === 'extraRow') check = now.trim().toLowerCase() === c.label.replace(/^Extra input: /, '').trim().toLowerCase() ? '✓' : '';
+    return `<tr style="${moved ? '' : 'color:#94a3b8'}">
+      <td>${esc(c.stepName)}</td><td>${esc(c.label)}</td>
+      <td style="text-align:center">${esc(c.from)}</td>
+      <td style="text-align:center;font-weight:${moved ? 700 : 400};color:${gone ? '#dc2626' : moved ? '#4f46e5' : 'inherit'}">${gone ? 'deleted' : esc(c.to)}</td>
+      <td>${esc(now || (gone ? '' : '(empty)'))}</td>
+      <td style="text-align:center;font-weight:700;color:${check === '✓' ? '#15803d' : '#b45309'}">${check}</td></tr>`;
+  }).join('');
+  box.innerHTML = r.changes.length
+    ? `<table class="dr-table" style="width:100%"><thead><tr><th>Step</th><th>Column</th><th>Saved</th><th>New</th><th>Header there now (row ${FMS_COL.headerRow})</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+       <div style="font-size:12px;color:#64748b;margin-top:8px">${r.moving} of ${r.changes.length} saved columns would move. Grey rows stay as they are.</div>`
+    : '<div class="empty">This FMS has no saved columns.</div>';
+  if (r.blocked) { err.textContent = r.blocked; err.style.display = 'block'; }
+  btn.disabled = !!r.blocked || !r.moving;
+}
+
+async function fmsColApply() {
+  if (!FMS_COL) return;
+  const btn = document.getElementById('fmsColApplyBtn'), err = document.getElementById('fmsColErr');
+  btn.disabled = true;
+  const r = await api(`/api/fms/${FMS_COL.id}/shift-columns`, 'POST', fmsColInput());
+  if (!r || r.error || r.blocked || r.dryRun) {
+    err.textContent = (r && (r.error || r.blocked)) || 'Nothing was changed';
+    err.style.display = 'block';
+    btn.disabled = false;
+    return;
+  }
+  closeModal('fmsColModal');
+  showToast(`Columns updated: ${r.moving} saved column${r.moving === 1 ? '' : 's'} moved`);
+  loadFMSDetail(FMS_COL.id);
+}
+
 // ── Edit FMS ──
 async function openEditFMS() {
   if (!fmsActiveId) return;
