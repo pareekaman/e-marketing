@@ -147,15 +147,29 @@ module.exports = function registerEnquiryRoutes(app, deps) {
   // in the same couple of seconds be taken for each other's rows.
   const sameStamp = (a, b) => typeof a === 'number' && Math.abs(a - b) <= 1 / 86400000;
 
+  // Reads count against a per-minute quota this service account shares with
+  // the rest of the app, so a new enquiry costs no read at all and an edit one.
+  //
+  // The tab's numeric id (appendCells needs it) is asked of Google once and
+  // kept in app_settings, so a cold serverless start does not spend a read on
+  // it. A "No grid with id" error (the tab was recreated) forgets it again.
+  const TAB_ID_KEY = `enquiry_sheet_tab:${ENQUIRY_SHEET_ID}:${ENQUIRY_SHEET_TAB}`.slice(0, 100);
   let _tabSheetId = null;
   async function tabSheetId(sheets) {
-    if (_tabSheetId === null) {
-      const meta = await sheets.spreadsheets.get({ spreadsheetId: ENQUIRY_SHEET_ID, fields: 'sheets.properties(sheetId,title)' });
-      const t = (meta.data.sheets || []).find(s => s.properties.title === ENQUIRY_SHEET_TAB);
-      if (!t) throw new Error(`no "${ENQUIRY_SHEET_TAB}" tab in the Enquiry Capture sheet`);
-      _tabSheetId = t.properties.sheetId;
-    }
+    if (_tabSheetId !== null) return _tabSheetId;
+    const [[saved]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [TAB_ID_KEY]);
+    if (saved && /^\d+$/.test(saved.value)) return (_tabSheetId = Number(saved.value));
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: ENQUIRY_SHEET_ID, fields: 'sheets.properties(sheetId,title)' });
+    const t = (meta.data.sheets || []).find(s => s.properties.title === ENQUIRY_SHEET_TAB);
+    if (!t) throw new Error(`no "${ENQUIRY_SHEET_TAB}" tab in the Enquiry Capture sheet`);
+    _tabSheetId = t.properties.sheetId;
+    await db.query('INSERT INTO app_settings (key_name, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+      [TAB_ID_KEY, String(_tabSheetId)]).catch(err => console.error('Enquiry sheet tab id not saved:', err.message));
     return _tabSheetId;
+  }
+  function forgetTabSheetId() {
+    _tabSheetId = null;
+    db.query('DELETE FROM app_settings WHERE key_name=?', [TAB_ID_KEY]).catch(() => {});
   }
   // The row whose A holds this timestamp: the saved row number first, then a
   // search from the bottom. null when it is not there.
@@ -170,14 +184,31 @@ module.exports = function registerEnquiryRoutes(app, deps) {
     return null;
   }
 
-  // Appends the enquiry as a new row whose A is `stamp`.
+  // Appends the enquiry as a new row whose A is `stamp`. Returns the row it
+  // landed on, read from the write's own reply (column A comes back with it),
+  // or null when that reply does not show it.
   async function sheetAppend(e, email, stamp) {
     const sheets = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
     const sheetId = await tabSheetId(sheets);
-    await sheets.spreadsheets.batchUpdate({ spreadsheetId: ENQUIRY_SHEET_ID, requestBody: { requests: [{ appendCells: {
-      sheetId, fields: CELL_FIELDS,
-      rows: [{ values: [cell(stamp, STAMP_FMT), ...cellsBtoK(e), cell(email), ...cellsMtoO(e)] }],
-    } }] } });
+    const res = await sheets.spreadsheets.batchUpdate({ spreadsheetId: ENQUIRY_SHEET_ID, requestBody: {
+      requests: [{ appendCells: {
+        sheetId, fields: CELL_FIELDS,
+        rows: [{ values: [cell(stamp, STAMP_FMT), ...cellsBtoK(e), cell(email), ...cellsMtoO(e)] }],
+      } }],
+      includeSpreadsheetInResponse: true,
+      responseRanges: [`${sheetTab()}!A:A`],
+      responseIncludeGridData: true,
+    } });
+    const grid = (((res.data.updatedSpreadsheet || {}).sheets || []).find(s => s.properties && s.properties.sheetId === sheetId) || {}).data || [];
+    for (const g of grid) {
+      const rows = g.rowData || [];
+      for (let i = rows.length - 1; i >= 0; i--) {
+        const c = (rows[i].values || [])[0] || {};
+        const v = (c.effectiveValue || c.userEnteredValue || {}).numberValue;
+        if (sameStamp(v, stamp)) return (g.startRow || 0) + i + 1;
+      }
+    }
+    return null;
   }
   // Rewrites B-K and M-O of the enquiry's row. Returns the row, or null when
   // the row is gone.
@@ -219,15 +250,13 @@ module.exports = function registerEnquiryRoutes(app, deps) {
       }
       const stamp = row.sheet_stamp || serialNow();
       if (!row.sheet_stamp) await db.query('UPDATE enquiries SET sheet_stamp=? WHERE id=?', [stamp, id]);
-      await sheetAppend(e, row.email, stamp);
-      // The row number only spares the next edit a search of column A, so a
-      // failed lookup here does not make the save a failure.
-      try {
-        const at = await findRow(await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']), null, stamp);
-        if (at) await db.query('UPDATE enquiries SET sheet_row=? WHERE id=?', [at, id]);
-      } catch (err) { console.error('Enquiry sheet row lookup failed:', err.message); }
+      // No row number back means the row is not confirmed yet; the next save
+      // then looks for it by its stamp, as above.
+      const at = await sheetAppend(e, row.email, stamp);
+      if (at) await db.query('UPDATE enquiries SET sheet_row=? WHERE id=?', [at, id]);
       return null;
     } catch (err) {
+      if (/no grid with id/i.test(err.message)) forgetTabSheetId();
       console.error('Enquiry sheet sync failed:', err.message);
       return `Saved, but the Enquiry Capture sheet could not be ${isNew ? 'given the new row' : 'updated'}: ${err.message}`;
     }
