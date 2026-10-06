@@ -142,7 +142,10 @@ module.exports = function registerEnquiryRoutes(app, deps) {
     cell(serialDate(e.conversion_date), DATE_FMT), cell(asNumber(e.order_value)), cell(joinList(e.platforms))];
   const cellsMtoO = e => [cell(e.lead_handle_by), cell(joinList(e.project_types)), cell(e.business_name)];
   const CELL_FIELDS = 'userEnteredValue,userEnteredFormat.numberFormat';
-  const sameStamp = (a, b) => typeof a === 'number' && Math.abs(a - b) <= 2 / 86400;
+  // The serial goes in and comes back as the same double, so this is equality
+  // give or take a millisecond. A wider window would let two enquiries added
+  // in the same couple of seconds be taken for each other's rows.
+  const sameStamp = (a, b) => typeof a === 'number' && Math.abs(a - b) <= 1 / 86400000;
 
   let _tabSheetId = null;
   async function tabSheetId(sheets) {
@@ -167,7 +170,7 @@ module.exports = function registerEnquiryRoutes(app, deps) {
     return null;
   }
 
-  // Appends the enquiry; returns the sheet row it landed on.
+  // Appends the enquiry as a new row whose A is `stamp`.
   async function sheetAppend(e, email, stamp) {
     const sheets = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
     const sheetId = await tabSheetId(sheets);
@@ -175,7 +178,6 @@ module.exports = function registerEnquiryRoutes(app, deps) {
       sheetId, fields: CELL_FIELDS,
       rows: [{ values: [cell(stamp, STAMP_FMT), ...cellsBtoK(e), cell(email), ...cellsMtoO(e)] }],
     } }] } });
-    return findRow(sheets, null, stamp);
   }
   // Rewrites B-K and M-O of the enquiry's row. Returns the row, or null when
   // the row is gone.
@@ -193,6 +195,14 @@ module.exports = function registerEnquiryRoutes(app, deps) {
   }
   // Puts one saved enquiry into the sheet: updates its row, or appends it when
   // it never got there. Returns a warning string, or null when all went well.
+  //
+  // It must never add an enquiry twice. The stamp is saved BEFORE the append,
+  // and sheet_row only once the row has been seen in the sheet, so a stamp
+  // with no sheet_row means "an append was tried and may have landed" (a
+  // failed attempt, a lost reply, or a lookup after it that hit the Sheets
+  // read quota). Such an enquiry is looked for by its stamp first and only
+  // appended when the search comes back empty; a failed search throws, which
+  // ends this attempt without writing anything.
   async function syncToSheet(id, e, isNew) {
     try {
       const [[row]] = await db.query(
@@ -200,13 +210,22 @@ module.exports = function registerEnquiryRoutes(app, deps) {
       if (!row) return null;
       if (row.sheet_stamp) {
         const at = await sheetUpdate(row.sheet_row, row.sheet_stamp, e);
-        if (!at) return 'Saved, but its row was not found in the Enquiry Capture sheet';
-        if (at !== row.sheet_row) await db.query('UPDATE enquiries SET sheet_row=? WHERE id=?', [at, id]);
-        return null;
+        if (at) {
+          if (at !== row.sheet_row) await db.query('UPDATE enquiries SET sheet_row=? WHERE id=?', [at, id]);
+          return null;
+        }
+        // Seen in the sheet before and gone now: someone removed it there.
+        if (row.sheet_row) return 'Saved, but its row was not found in the Enquiry Capture sheet';
       }
-      const stamp = serialNow();
-      const at = await sheetAppend(e, row.email, stamp);
-      await db.query('UPDATE enquiries SET sheet_row=?, sheet_stamp=? WHERE id=?', [at, stamp, id]);
+      const stamp = row.sheet_stamp || serialNow();
+      if (!row.sheet_stamp) await db.query('UPDATE enquiries SET sheet_stamp=? WHERE id=?', [stamp, id]);
+      await sheetAppend(e, row.email, stamp);
+      // The row number only spares the next edit a search of column A, so a
+      // failed lookup here does not make the save a failure.
+      try {
+        const at = await findRow(await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']), null, stamp);
+        if (at) await db.query('UPDATE enquiries SET sheet_row=? WHERE id=?', [at, id]);
+      } catch (err) { console.error('Enquiry sheet row lookup failed:', err.message); }
       return null;
     } catch (err) {
       console.error('Enquiry sheet sync failed:', err.message);
