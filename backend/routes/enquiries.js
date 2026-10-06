@@ -13,7 +13,9 @@ module.exports = function registerEnquiryRoutes(app, deps) {
 
   // The Google Form's own choices, spelled exactly as the form has them so the
   // values written to its responses sheet match the ones the form writes.
-  const LEAD_HANDLERS = ['Abhishek Jain', 'Simran Gurnani', 'Chetna Agrawal'];
+  // Yashi Jain was added in the app (2026-10-06, the user's request); the form
+  // offers her only once someone adds her there too.
+  const LEAD_HANDLERS = ['Abhishek Jain', 'Simran Gurnani', 'Chetna Agrawal', 'Yashi Jain'];
   const PROJECT_TYPES = ['Lead Generation', 'E-commerce'];
   const PLATFORMS = ['Google Ads', 'Landing Page', 'Linkedin Management', 'Meta Ads', 'SEO', 'SM Management',
     'Website Designing & Development', 'Whatsapp Marketing', 'Youtube Ads', 'GMB Ads', 'Sales Consutation',
