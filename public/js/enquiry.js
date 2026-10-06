@@ -24,7 +24,7 @@ const EC_PLATFORM_DEPT = {
   'website designing & development': 'website design & development',
   'youtube ads': 'youtube',
 };
-const EC_STATUS_COLORS = { Open: ['#475569', '#f1f5f9'], Lost: ['#b91c1c', '#fee2e2'], Converted: ['#15803d', '#dcfce7'] };
+const EC_STATUS_COLORS = { Open: ['#475569', '#f1f5f9'], Lost: ['#b91c1c', '#fee2e2'], Converted: ['#15803d', '#dcfce7'], Paused: ['#b45309', '#fef3c7'] };
 
 async function ecLoad() {
   const wrap = document.getElementById('ecListWrap');
@@ -103,12 +103,14 @@ function ecRender() {
     // A plain select: the searchable widget is too heavy for four choices.
     const pick = canStatus
       ? `<select data-no-search onchange="ecSetStatus(${e.id}, this)" style="${look};padding:4px 8px;cursor:pointer;outline:none">
-          ${statuses.map(s => `<option value="${dtEscape(s)}" ${s === st ? 'selected' : ''} style="color:#0f172a;background:#fff">${dtEscape(s)}</option>`).join('')}</select>`
+          ${statuses.filter(s => s !== 'Paused' || e.client_id || st === 'Paused')   // Paused is for clients in Client Master
+            .map(s => `<option value="${dtEscape(s)}" ${s === st ? 'selected' : ''} style="color:#0f172a;background:#fff">${dtEscape(s)}</option>`).join('')}</select>`
       : `<span style="${look};padding:3px 10px;display:inline-block">${dtEscape(st)}</span>`;
     // With the CRM who added it there, so it is clear who took the client on.
     const client = e.client_id
       ? '<div style="font-size:11px;color:#15803d;font-weight:600;margin-top:6px">✓ In Client Master</div>'
         + (e.client_crm_name ? `<div style="font-size:11px;color:#64748b;margin-top:1px">CRM: <b style="color:#334155">${dtEscape(e.client_crm_name)}</b></div>` : '')
+        + (st === 'Paused' ? '<div style="font-size:11px;color:#b45309;font-weight:600;margin-top:1px">⏸ Onboarding FMS on hold</div>' : '')
       : st !== 'Converted' ? ''
       : canAddClient
         ? `<button class="cm-btn-ghost" style="display:block;margin-top:6px;padding:4px 10px;font-size:12px" onclick="ecAddToClientMaster(${e.id})">➕ Add in Client Master</button>`
@@ -255,6 +257,19 @@ async function ecSetStatus(id, sel) {
   ecRender();
   // Not in the sheet yet: start the page's retry (it waits out the minute).
   if (Number(e.sheet_pending)) ecRetrySheet();
+  // Into or out of Paused: write Pause / Active into the client's Onboarding
+  // FMS row now; if the sheet is busy, the Client Master retry finishes it.
+  if (r.fmsHold) {
+    const word = r.fmsHold === 'Pause' ? 'Paused' : 'Resumed';
+    const f = await api('/api/clients/fms-retry', 'POST', {});
+    const err = f && (f.errors || []).find(x => x.clientId === e.client_id);
+    if (err) showToast(`Status saved, but the Onboarding FMS was not changed: ${err.error}`, 'error');
+    else if (!f || f.error || f.failed) {
+      showToast(`${word}. Google Sheets is busy, so the Onboarding FMS will be updated automatically in a minute or two.`);
+      if (typeof cmRetryFms === 'function') cmRetryFms();
+    } else showToast(r.fmsHold === 'Pause' ? `${word} · its Onboarding FMS steps are on hold` : `${word} · its Onboarding FMS steps are back`);
+    return;
+  }
   if (r.warning) showToast(r.warning, r.queued ? 'success' : 'error');
   else if (status === 'Converted' && !hadDate && e.conversion_date) showToast(`Marked as Converted · Conversion Date set to ${ecDate(e.conversion_date)}`);
   else showToast(`Status set to ${status}`);

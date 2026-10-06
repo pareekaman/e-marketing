@@ -5,7 +5,7 @@
 // the enquiries table. Access Control row "Enquiry Capture" (page 'enquiry'):
 // View lists them, Editor (edit_enquiry) adds and edits, Admin (admin_enquiry)
 // also deletes. It is in no role's defaults, so admins see it and everyone
-// else only once granted. The status (Open / Lost / Converted) can be
+// else only once granted. The status (Open / Lost / Converted / Paused) can be
 // set by its Editors and by the CRMs (Client Master's crm_clients), who then
 // add a converted enquiry to Client Master.
 module.exports = function registerEnquiryRoutes(app, deps) {
@@ -25,7 +25,9 @@ module.exports = function registerEnquiryRoutes(app, deps) {
   // Master. The app keeps the status; the sheet has no column for it. (Until
   // 2026-10-06 there was also "Win", and "Converted" was called "Conversion";
   // createTable() moves old values over.)
-  const STATUSES = ['Open', 'Lost', 'Converted'];
+  // Paused: a client in Client Master whose Onboarding FMS row is put on hold
+  // (its Hold column says Pause, so its steps are not pending anywhere).
+  const STATUSES = ['Open', 'Lost', 'Converted', 'Paused'];
 
   let _table = null;
   function ensureTable() {
@@ -347,6 +349,16 @@ module.exports = function registerEnquiryRoutes(app, deps) {
     return (await userCanDo(session, 'edit_enquiry')) || (await userCanDo(session, 'crm_clients'));
   }
   const todayIst = () => new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+  // The clients columns the Paused status writes (clients.js adds the same
+  // ones; whichever runs first wins, the other finds them there).
+  let _clientHoldCols = null;
+  function ensureClientHoldColumns() {
+    const add = sql => db.query(sql).catch(e => { if (e.code !== 'ER_DUP_FIELDNAME') throw e; });
+    if (!_clientHoldCols) _clientHoldCols = add('ALTER TABLE clients ADD COLUMN fms_pending TINYINT NOT NULL DEFAULT 0, ADD COLUMN fms_try_at DATETIME NULL DEFAULT NULL')
+      .then(() => add('ALTER TABLE clients ADD COLUMN fms_stamp DOUBLE NULL DEFAULT NULL, ADD COLUMN fms_hold VARCHAR(10) NULL DEFAULT NULL, ADD COLUMN fms_hold_pending TINYINT NOT NULL DEFAULT 0'))
+      .catch(e => { _clientHoldCols = null; throw e; });
+    return _clientHoldCols;
+  }
 
   // Clients whose name, or brand name, is the enquiry's client or business
   // name (case and spacing ignored). This is how an enquiry that is already a
@@ -507,17 +519,27 @@ module.exports = function registerEnquiryRoutes(app, deps) {
       if (!status) return res.status(400).json({ error: 'Pick a status from the list' });
       await ensureTable();
       const id = Number(req.params.id);
-      const [[cur]] = await db.query('SELECT status, conversion_date FROM enquiries WHERE id=?', [id]);
+      const [[cur]] = await db.query('SELECT status, conversion_date, client_id FROM enquiries WHERE id=?', [id]);
       if (!cur) return res.status(404).json({ error: 'Enquiry not found' });
+      if (status === 'Paused' && !cur.client_id) return res.status(400).json({ error: 'Only an enquiry that is in Client Master can be paused' });
       const fillDate = status === 'Converted' && !cur.conversion_date;
       if (cur.status !== status) {
         await db.query(`UPDATE enquiries SET status=?, ${fillDate ? 'conversion_date=?, ' : ''}updated_by=?, updated_at=NOW() WHERE id=?`,
           [status, ...(fillDate ? [todayIst()] : []), req.session.userId, id]);
       }
+      // Into or out of Paused: the client's Onboarding FMS row gets Pause /
+      // Active in its Hold column. Written by /api/clients/fms-retry, which the
+      // page calls straight after this (and retries while the quota is out).
+      let fmsHold = null;
+      if (cur.client_id && cur.status !== status && (status === 'Paused' || cur.status === 'Paused')) {
+        fmsHold = status === 'Paused' ? 'Pause' : 'Active';
+        await ensureClientHoldColumns();
+        await db.query('UPDATE clients SET fms_hold=?, fms_hold_pending=1, fms_try_at=NULL WHERE id=?', [fmsHold, cur.client_id]);
+      }
       const [[row]] = await db.query(`${LIST_SQL} WHERE e.id=?`, [id]);
       const sync = fillDate && cur.status !== status ? await syncToSheet(id, row, false) : null;
       if (sync) row.sheet_pending = (await db.query('SELECT sheet_pending FROM enquiries WHERE id=?', [id]))[0][0].sheet_pending;
-      res.json({ success: true, enquiry: row, ...sheetNote(sync) });
+      res.json({ success: true, enquiry: row, ...sheetNote(sync), ...(fmsHold ? { fmsHold } : {}) });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 

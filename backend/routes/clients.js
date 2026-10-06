@@ -71,18 +71,19 @@ async function fmsTabId(sheets) {
 }
 // `retry`: an earlier attempt may have written the row and lost the reply, so
 // a row with the same brand, mobile and CRM counts as already written.
+// Returns { row, stamp }: stamp is the serial in A, which finds the row again
+// (writeClientFmsHold) however the sheet is sorted later.
 async function addClientToOnboardingFms({ brand, departments, mobile, crmName }, { retry = false } = {}) {
-  if (!CLIENT_FMS_SHEET_ID) return;
+  if (!CLIENT_FMS_SHEET_ID) return {};
   const sheets = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
   const tab = `'${CLIENT_FMS_TAB.replace(/'/g, "''")}'`;
-  const col = await sheets.spreadsheets.values.get({ spreadsheetId: CLIENT_FMS_SHEET_ID, range: `${tab}!B${CLIENT_FMS_FIRST_ROW}:E` });
+  const col = await sheets.spreadsheets.values.get({ spreadsheetId: CLIENT_FMS_SHEET_ID, range: `${tab}!A${CLIENT_FMS_FIRST_ROW}:E`, valueRenderOption: 'UNFORMATTED_VALUE' });
   const vals = col.data.values || [];
   if (retry) {
-    const same = (a, b) => String(a == null ? '' : a).trim().toLowerCase() === String(b == null ? '' : b).trim().toLowerCase();
-    const there = vals.findIndex(r => r && same(r[0], brand) && same(r[2], mobile) && same(r[3], crmName));
-    if (there >= 0) return CLIENT_FMS_FIRST_ROW + there;
+    const there = vals.findIndex(r => r && fmsSame(r[1], brand) && fmsSame(r[3], mobile) && fmsSame(r[4], crmName));
+    if (there >= 0) return { row: CLIENT_FMS_FIRST_ROW + there, stamp: typeof vals[there][0] === 'number' ? vals[there][0] : null };
   }
-  let free = vals.findIndex(r => !String((r && r[0]) || '').trim());
+  let free = vals.findIndex(r => !String((r && r[1]) || '').trim());
   if (free < 0) free = vals.length;
   const row = CLIENT_FMS_FIRST_ROW + free;
   // The date as a Sheets serial number in IST, so the column's own date
@@ -105,15 +106,70 @@ async function addClientToOnboardingFms({ brand, departments, mobile, crmName },
     // the value is right either way; only its display is affected
     if (/no grid with id/i.test(e.message)) { _fmsTabId = null; db.query('DELETE FROM app_settings WHERE key_name=?', [CLIENT_FMS_TAB_KEY]).catch(() => {}); }
   }
-  return row;
+  return { row, stamp: serial };
+}
+const fmsSame = (a, b) => String(a == null ? '' : a).trim().toLowerCase() === String(b == null ? '' : b).trim().toLowerCase();
+
+// ── Pausing a client's Onboarding FMS row ──
+// The tab has a column headed "Hold" (Active / Pause); a row on Pause is not
+// pending anywhere in the app (fmsRowOnHold in server.js). Enquiry Capture's
+// Paused status sets clients.fms_hold and fms_hold_pending, and the fms-retry
+// loop writes it here. The column is found by its header once and kept in
+// app_settings.
+const CLIENT_FMS_HOLD_KEY = `client_fms_hold:${CLIENT_FMS_SHEET_ID}:${CLIENT_FMS_TAB}`.slice(0, 100);
+let _fmsHoldColLetter = null;
+const letterOf = i => { let t = '', n = i + 1; while (n > 0) { const m = (n - 1) % 26; t = String.fromCharCode(65 + m) + t; n = Math.floor((n - 1) / 26); } return t; };
+async function fmsHoldColumnLetter(sheets) {
+  if (_fmsHoldColLetter) return _fmsHoldColLetter;
+  const [[saved]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [CLIENT_FMS_HOLD_KEY]);
+  if (saved && /^[A-Z]{1,3}$/.test(saved.value)) return (_fmsHoldColLetter = saved.value);
+  const tab = `'${CLIENT_FMS_TAB.replace(/'/g, "''")}'`;
+  const hr = CLIENT_FMS_FIRST_ROW - 1;
+  const got = await sheets.spreadsheets.values.get({ spreadsheetId: CLIENT_FMS_SHEET_ID, range: `${tab}!${hr}:${hr}` });
+  const i = ((got.data.values || [])[0] || []).findIndex(h => /^hold$/i.test(String(h || '').trim()));
+  if (i < 0) throw Object.assign(new Error('The Onboarding FMS has no column headed "Hold"'), { permanent: true });
+  _fmsHoldColLetter = letterOf(i);
+  await db.query('INSERT INTO app_settings (key_name, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+    [CLIENT_FMS_HOLD_KEY, _fmsHoldColLetter]).catch(() => {});
+  return _fmsHoldColLetter;
+}
+// Writes the client's fms_hold (Pause / Active) into its row: the row the app
+// wrote for it (its stamp in A), else the one row with its brand and mobile
+// (clients from before the app wrote the FMS). An error marked permanent
+// (no Hold column, no or several matching rows) will not go away by trying
+// again; anything else (the read quota) is retried.
+async function writeClientFmsHold(clientId) {
+  const [[c]] = await db.query(
+    'SELECT c.name, c.brand_name, c.mobile_no, c.fms_stamp, c.fms_hold FROM clients c WHERE c.id=?', [clientId]);
+  if (!c || !c.fms_hold) return;
+  const sheets = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+  const holdCol = await fmsHoldColumnLetter(sheets);
+  const tab = `'${CLIENT_FMS_TAB.replace(/'/g, "''")}'`;
+  const vals = (await sheets.spreadsheets.values.get({ spreadsheetId: CLIENT_FMS_SHEET_ID, range: `${tab}!A${CLIENT_FMS_FIRST_ROW}:E`, valueRenderOption: 'UNFORMATTED_VALUE' })).data.values || [];
+  const brand = c.brand_name || c.name || '';
+  let at = c.fms_stamp ? vals.findIndex(r => typeof (r || [])[0] === 'number' && Math.abs(r[0] - Number(c.fms_stamp)) < 1 / 86400000) : -1;
+  if (at < 0) {
+    const digits = v => String(v == null ? '' : v).replace(/\D/g, '');
+    const hits = vals.map((r, i) => ({ r: r || [], i })).filter(x => fmsSame(x.r[1], brand) && (!c.mobile_no || digits(x.r[3]) === digits(c.mobile_no)));
+    if (hits.length > 1) throw Object.assign(new Error(`${brand} is in the Onboarding FMS more than once; set its Hold there by hand`), { permanent: true });
+    if (!hits.length) throw Object.assign(new Error(`${brand} was not found in the Onboarding FMS; set its Hold there by hand`), { permanent: true });
+    at = hits[0].i;
+    if (typeof hits[0].r[0] === 'number') await db.query('UPDATE clients SET fms_stamp=? WHERE id=?', [hits[0].r[0], clientId]);
+  }
+  await sheets.spreadsheets.values.update({ spreadsheetId: CLIENT_FMS_SHEET_ID, range: `${tab}!${holdCol}${CLIENT_FMS_FIRST_ROW + at}`,
+    valueInputOption: 'RAW', requestBody: { values: [[c.fms_hold]] } });
 }
 // fms_pending: the client's Onboarding FMS row is still to be written.
 // fms_try_at: when the last attempt started, so a failed one waits out the
 // per-minute quota and two retries never write the same client at once.
 let _fmsPendingCols = null;
+// fms_stamp: the serial in A of the client's row. fms_hold: Pause / Active to
+// write into its Hold column; fms_hold_pending: not written yet.
 function ensureFmsPendingColumns() {
-  if (!_fmsPendingCols) _fmsPendingCols = db.query('ALTER TABLE clients ADD COLUMN fms_pending TINYINT NOT NULL DEFAULT 0, ADD COLUMN fms_try_at DATETIME NULL DEFAULT NULL')
-    .catch(e => { if (e.code !== 'ER_DUP_FIELDNAME') { _fmsPendingCols = null; throw e; } });
+  const add = sql => db.query(sql).catch(e => { if (e.code !== 'ER_DUP_FIELDNAME') throw e; });
+  if (!_fmsPendingCols) _fmsPendingCols = add('ALTER TABLE clients ADD COLUMN fms_pending TINYINT NOT NULL DEFAULT 0, ADD COLUMN fms_try_at DATETIME NULL DEFAULT NULL')
+    .then(() => add('ALTER TABLE clients ADD COLUMN fms_stamp DOUBLE NULL DEFAULT NULL, ADD COLUMN fms_hold VARCHAR(10) NULL DEFAULT NULL, ADD COLUMN fms_hold_pending TINYINT NOT NULL DEFAULT 0'))
+    .catch(e => { _fmsPendingCols = null; throw e; });
   return _fmsPendingCols;
 }
 const fmsWarningFor = e => /quota exceeded/i.test(e.message)
@@ -414,8 +470,8 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
       .then(() => true, e => { console.error('Onboarding FMS pending mark failed:', e.message); return false; });
     try {
       const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-      await addClientToOnboardingFms({ brand: brandName, departments: departments.split('||').join(', '), mobile, crmName: (me && me.name) || '' });
-      if (canRetry) await db.query('UPDATE clients SET fms_pending=0, fms_try_at=NULL WHERE id=?', [newClientId]);
+      const fmsRow = await addClientToOnboardingFms({ brand: brandName, departments: departments.split('||').join(', '), mobile, crmName: (me && me.name) || '' });
+      if (canRetry) await db.query('UPDATE clients SET fms_pending=0, fms_try_at=NULL, fms_stamp=? WHERE id=?', [(fmsRow && fmsRow.stamp) || null, newClientId]);
     } catch (e) {
       console.error('Onboarding FMS row failed:', e.message);
       fmsQueued = canRetry;
@@ -474,19 +530,40 @@ app.post('/api/clients/fms-retry', requireAuth, async (req, res) => {
       if (!claim.affectedRows) continue;
       const [[c]] = await db.query(
         'SELECT c.brand_name, c.departments, c.mobile_no, u.name AS crm FROM clients c LEFT JOIN users u ON u.id = c.added_by WHERE c.id=?', [id]);
+      let fmsRow;
       try {
-        await addClientToOnboardingFms({ brand: c.brand_name || '', departments: String(c.departments || '').split('||').filter(Boolean).join(', '),
+        fmsRow = await addClientToOnboardingFms({ brand: c.brand_name || '', departments: String(c.departments || '').split('||').filter(Boolean).join(', '),
           mobile: c.mobile_no || '', crmName: c.crm || '' }, { retry: true });
       } catch (e) {
         console.error('Onboarding FMS retry failed for client', id, e.message);
         failed++;
         break;
       }
-      await db.query('UPDATE clients SET fms_pending=0, fms_try_at=NULL WHERE id=?', [id]);
+      await db.query('UPDATE clients SET fms_pending=0, fms_try_at=NULL, fms_stamp=COALESCE(?, fms_stamp) WHERE id=?', [(fmsRow && fmsRow.stamp) || null, id]);
       sent++;
     }
-    const [[{ left }]] = await db.query('SELECT COUNT(*) AS `left` FROM clients WHERE fms_pending=1');
-    res.json({ success: true, sent, failed, left: Number(left) });
+    // Pause / Active for clients whose row exists. An error that trying again
+    // will not fix is given back once (errors) and the client is let go.
+    const errors = [];
+    const dueHold = 'fms_hold_pending=1 AND fms_pending=0 AND (fms_try_at IS NULL OR fms_try_at < NOW() - INTERVAL 1 MINUTE)';
+    if (!failed) {
+      const [holdIds] = await db.query(`SELECT id FROM clients WHERE ${dueHold} ORDER BY id LIMIT 5`);
+      for (const { id } of holdIds) {
+        const [claim] = await db.query(`UPDATE clients SET fms_try_at=NOW() WHERE id=? AND ${dueHold}`, [id]);
+        if (!claim.affectedRows) continue;
+        try {
+          await writeClientFmsHold(id);
+        } catch (e) {
+          console.error('Onboarding FMS hold failed for client', id, e.message);
+          if (!e.permanent) { failed++; break; }
+          errors.push({ clientId: id, error: e.message });
+        }
+        await db.query('UPDATE clients SET fms_hold_pending=0, fms_try_at=NULL WHERE id=?', [id]);
+        sent++;
+      }
+    }
+    const [[{ left }]] = await db.query('SELECT COUNT(*) AS `left` FROM clients WHERE fms_pending=1 OR fms_hold_pending=1');
+    res.json({ success: true, sent, failed, left: Number(left), errors });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
