@@ -2633,6 +2633,16 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
       : await fmsStepsBySheetForUsers(fmsList.map(s => s.id), targetUserIds);
     const doersByStep = await fmsDoersByStep(
       [...stepsBySheet.values()].flat().map(s => s.id), 'u.id, u.name');
+    // The people this list is for, by name: when a step has a doer column (a
+    // CRM column, say), their list keeps only the rows carrying their name, the
+    // same case-insensitive match the FMS Tasks page makes. null = everyone,
+    // as for an admin looking at all employees.
+    let targetNames = null;
+    const everyone = isAdmin && (!filterEmployee || filterEmployee === 'all');
+    if (targetUserIds && !everyone) {
+      const [nm] = await db.query(`SELECT id, name FROM users WHERE id IN (${targetUserIds.map(() => '?').join(',')})`, targetUserIds);
+      targetNames = new Map(nm.map(u => [Number(u.id), String(u.name || '').trim().toLowerCase()]));
+    }
 
     for (const sheet of fmsList) {
       const fmsName = sheet.fms_name || sheet.sheet_name;
@@ -2658,7 +2668,7 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
           try { return JSON.parse(s.show_cols || '[]').filter(n => Number.isInteger(n) && n >= 0); }
           catch { return []; }
         });
-        const allCols = filteredSteps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col)])
+        const allCols = filteredSteps.flatMap(s => [colToIdx(s.plan_col), colToIdx(s.actual_col), s.doer_name_col ? colToIdx(s.doer_name_col) : -1])
           .concat(showColsByStep.flat())
           .filter(x => x >= 0);
         if (!allCols.length) continue;
@@ -2677,6 +2687,11 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
           const planIdx = colToIdx(step.plan_col);
           const actualIdx = colToIdx(step.actual_col);
           if (planIdx < 0 || actualIdx < 0) continue;
+          const doerIdx = step.doer_name_col ? colToIdx(step.doer_name_col) : -1;
+          // Names of this step's doers among the people the list is for.
+          const ownNames = targetNames && doerIdx >= 0
+            ? new Set(step.doerIds.map(Number).filter(id => targetNames.has(id)).map(id => targetNames.get(id)))
+            : null;
 
           // Strip every flavour of whitespace (regular, NBSP, zero-width, BOM) so cells
           // that only contain invisible chars don't slip past as "non-blank".
@@ -2685,6 +2700,8 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
             const planVal = (row[planIdx] || '').trim();
             const actualVal = (row[actualIdx] || '').trim();
             if (!blankClean(planVal) || blankClean(actualVal)) return; // skip if no plan or already done
+            const rowDoer = doerIdx >= 0 ? (row[doerIdx] || '').toString().trim() : '';
+            if (ownNames && !ownNames.has(rowDoer.toLowerCase())) return; // someone else's row
 
             // Parse plan date — try to extract date from value
             // planVal might be a date string like "2026-04-07" or "07/04/2026" or just text,
@@ -2729,7 +2746,7 @@ app.get('/api/fms-dashboard', requireAuth, async (req, res) => {
               fmsId: sheet.id,
               stepName: step.step_name,
               stepId: step.id,
-              doer: step.doerNames || '—',
+              doer: rowDoer || step.doerNames || '—',
               planValue: planVal,
               planDate: planDate || '',
               planTime: planTime || '',
