@@ -26,7 +26,11 @@ module.exports = function registerEnquiryRoutes(app, deps) {
 
   let _table = null;
   function ensureTable() {
-    if (!_table) _table = db.query(`CREATE TABLE IF NOT EXISTS enquiries (
+    if (!_table) _table = createTable().catch(e => { _table = null; throw e; });
+    return _table;
+  }
+  async function createTable() {
+    await db.query(`CREATE TABLE IF NOT EXISTS enquiries (
         id INT AUTO_INCREMENT PRIMARY KEY,
         client_name VARCHAR(255) NOT NULL,
         business_name VARCHAR(500) NOT NULL,
@@ -51,8 +55,16 @@ module.exports = function registerEnquiryRoutes(app, deps) {
         updated_by INT DEFAULT NULL,
         updated_at TIMESTAMP NULL DEFAULT NULL,
         UNIQUE KEY uq_enquiry_sheet_stamp (sheet_stamp)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(e => { _table = null; throw e; });
-    return _table;
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+    // sheet_pending: the latest save has not reached the sheet yet, so the
+    // next retry sends it (see /api/enquiries/sheet-retry). sheet_try_at: when
+    // the last attempt started, so a failed one waits out the per-minute quota
+    // and two retries never work on the same enquiry at once.
+    try {
+      await db.query('ALTER TABLE enquiries ADD COLUMN sheet_pending TINYINT NOT NULL DEFAULT 0, ADD COLUMN sheet_try_at DATETIME NULL DEFAULT NULL');
+      // Enquiries saved before these columns whose row never got there.
+      await db.query("UPDATE enquiries SET sheet_pending=1 WHERE source='app' AND sheet_stamp IS NULL");
+    } catch (e) { if (e.code !== 'ER_DUP_FIELDNAME') throw e; }
   }
 
   const clean = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
@@ -234,32 +246,54 @@ module.exports = function registerEnquiryRoutes(app, deps) {
   // read quota). Such an enquiry is looked for by its stamp first and only
   // appended when the search comes back empty; a failed search throws, which
   // ends this attempt without writing anything.
+  //
+  // A failure leaves sheet_pending set, and the enquiry is sent again by the
+  // next retry, a minute or more later. Returns { warning, queued }: queued
+  // when it is waiting for that retry, so the page need not show an error.
   async function syncToSheet(id, e, isNew) {
     try {
-      const [[row]] = await db.query(
-        'SELECT q.sheet_row, q.sheet_stamp, u.email FROM enquiries q LEFT JOIN users u ON u.id = q.created_by WHERE q.id=?', [id]);
-      if (!row) return null;
-      if (row.sheet_stamp) {
-        const at = await sheetUpdate(row.sheet_row, row.sheet_stamp, e);
-        if (at) {
-          if (at !== row.sheet_row) await db.query('UPDATE enquiries SET sheet_row=? WHERE id=?', [at, id]);
-          return null;
-        }
-        // Seen in the sheet before and gone now: someone removed it there.
-        if (row.sheet_row) return 'Saved, but its row was not found in the Enquiry Capture sheet';
-      }
-      const stamp = row.sheet_stamp || serialNow();
-      if (!row.sheet_stamp) await db.query('UPDATE enquiries SET sheet_stamp=? WHERE id=?', [stamp, id]);
-      // No row number back means the row is not confirmed yet; the next save
-      // then looks for it by its stamp, as above.
-      const at = await sheetAppend(e, row.email, stamp);
-      if (at) await db.query('UPDATE enquiries SET sheet_row=? WHERE id=?', [at, id]);
-      return null;
+      const done = await pushToSheet(id, e);
+      await db.query('UPDATE enquiries SET sheet_pending=?, sheet_try_at=NULL WHERE id=?', [done.pending ? 1 : 0, id]);
+      return { warning: done.warning || null, queued: !!done.pending };
     } catch (err) {
       if (/no grid with id/i.test(err.message)) forgetTabSheetId();
       console.error('Enquiry sheet sync failed:', err.message);
-      return `Saved, but the Enquiry Capture sheet could not be ${isNew ? 'given the new row' : 'updated'}: ${err.message}`;
+      await db.query('UPDATE enquiries SET sheet_pending=1, sheet_try_at=NOW() WHERE id=?', [id])
+        .catch(e2 => console.error('Enquiry sheet_pending not saved:', e2.message));
+      return { queued: true, warning: /quota exceeded/i.test(err.message)
+        ? 'Saved. Google Sheets is busy right now, so the Enquiry Capture sheet will get it automatically in a minute or two.'
+        : `Saved, but the Enquiry Capture sheet could not be ${isNew ? 'given the new row' : 'updated'} yet; it will be tried again automatically: ${err.message}` };
     }
+  }
+  const sheetNote = s => s && s.warning ? { warning: s.warning, ...(s.queued ? { queued: true } : {}) } : {};
+  // One attempt. Returns { pending, warning }; throws when the sheet fails.
+  async function pushToSheet(id, e) {
+    const [[row]] = await db.query(
+      'SELECT q.sheet_row, q.sheet_stamp, u.email FROM enquiries q LEFT JOIN users u ON u.id = q.created_by WHERE q.id=?', [id]);
+    if (!row) return {};
+    if (row.sheet_stamp) {
+      const at = await sheetUpdate(row.sheet_row, row.sheet_stamp, e);
+      if (at) {
+        if (at !== row.sheet_row) await db.query('UPDATE enquiries SET sheet_row=? WHERE id=?', [at, id]);
+        return {};
+      }
+      // Seen in the sheet before and gone now: someone removed it there, and
+      // sending it again would not bring it back.
+      if (row.sheet_row) return { warning: 'Saved, but its row was not found in the Enquiry Capture sheet' };
+    }
+    let stamp = row.sheet_stamp;
+    if (!stamp) {
+      // Claimed only while still empty: when two saves of a new enquiry run
+      // at once, one appends and the other leaves it pending for the retry.
+      stamp = serialNow();
+      const [claim] = await db.query('UPDATE enquiries SET sheet_stamp=? WHERE id=? AND sheet_stamp IS NULL', [stamp, id]);
+      if (!claim.affectedRows) return { pending: true };
+    }
+    // No row number back means the row is not confirmed yet; the next save
+    // then looks for it by its stamp, as above.
+    const at = await sheetAppend(e, row.email, stamp);
+    if (at) await db.query('UPDATE enquiries SET sheet_row=? WHERE id=?', [at, id]);
+    return {};
   }
 
   const LIST_SQL = `SELECT e.id, e.client_name, e.business_name, e.mobile, e.lead_handle_by, e.project_types, e.platforms,
@@ -267,7 +301,7 @@ module.exports = function registerEnquiryRoutes(app, deps) {
       DATE_FORMAT(e.meeting_done_date, '%Y-%m-%d') AS meeting_done_date, e.meeting_url,
       DATE_FORMAT(e.proposal_date, '%Y-%m-%d') AS proposal_date, e.proposal_url,
       DATE_FORMAT(e.conversion_date, '%Y-%m-%d') AS conversion_date, e.order_value,
-      e.status, e.client_id, e.source, DATE_FORMAT(e.created_at, '%Y-%m-%d %H:%i') AS created_at,
+      e.status, e.client_id, e.source, e.sheet_pending, DATE_FORMAT(e.created_at, '%Y-%m-%d %H:%i') AS created_at,
       u.name AS created_by_name, DATE_FORMAT(e.updated_at, '%Y-%m-%d %H:%i') AS updated_at, u2.name AS updated_by_name
     FROM enquiries e LEFT JOIN users u ON u.id = e.created_by LEFT JOIN users u2 ON u2.id = e.updated_by`;
 
@@ -326,8 +360,8 @@ module.exports = function registerEnquiryRoutes(app, deps) {
       const [r] = await db.query(
         `INSERT INTO enquiries (${cols.join(', ')}, created_by) VALUES (${cols.map(() => '?').join(', ')}, ?)`,
         [...cols.map(k => e[k]), req.session.userId]);
-      const warning = await syncToSheet(r.insertId, e, true);
-      res.json({ success: true, id: r.insertId, ...(warning ? { warning } : {}) });
+      const sync = await syncToSheet(r.insertId, e, true);
+      res.json({ success: true, id: r.insertId, ...sheetNote(sync) });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
@@ -346,8 +380,33 @@ module.exports = function registerEnquiryRoutes(app, deps) {
         `UPDATE enquiries SET ${cols.map(k => `${k}=?`).join(', ')}, updated_by=?, updated_at=NOW() WHERE id=?`,
         [...cols.map(k => e[k]), req.session.userId, req.params.id]);
       if (!r.affectedRows) return res.status(404).json({ error: 'Enquiry not found' });
-      const warning = await syncToSheet(Number(req.params.id), e, false);
-      res.json({ success: true, ...(warning ? { warning } : {}) });
+      const sync = await syncToSheet(Number(req.params.id), e, false);
+      res.json({ success: true, ...sheetNote(sync) });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // Sends the enquiries whose latest save did not reach the sheet. The page
+  // calls it after loading the list. A few per call, each claimed through
+  // sheet_try_at first so two calls never send the same one, and the first
+  // failure ends the round: the quota is per minute, the rest would fail too.
+  app.post('/api/enquiries/sheet-retry', requireAuth, async (req, res) => {
+    try {
+      if (!(await userCanSee(req.session, 'enquiry'))) return res.status(403).json({ error: 'You do not have access to Enquiry Capture' });
+      await ensureTable();
+      const due = 'sheet_pending=1 AND (sheet_try_at IS NULL OR sheet_try_at < NOW() - INTERVAL 1 MINUTE)';
+      const [ids] = await db.query(`SELECT id FROM enquiries WHERE ${due} ORDER BY id LIMIT 5`);
+      let sent = 0, failed = 0;
+      for (const { id } of ids) {
+        const [claim] = await db.query(`UPDATE enquiries SET sheet_try_at=NOW() WHERE id=? AND ${due}`, [id]);
+        if (!claim.affectedRows) continue;
+        const [[e]] = await db.query(`${LIST_SQL} WHERE e.id=?`, [id]);
+        await syncToSheet(id, e, false);
+        const [[after]] = await db.query('SELECT sheet_pending FROM enquiries WHERE id=?', [id]);
+        if (after.sheet_pending) { failed++; break; }
+        sent++;
+      }
+      const [[{ left }]] = await db.query('SELECT COUNT(*) AS `left` FROM enquiries WHERE sheet_pending=1');
+      res.json({ success: true, sent, failed, left: Number(left) });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
@@ -425,8 +484,9 @@ module.exports = function registerEnquiryRoutes(app, deps) {
           [status, ...(fillDate ? [todayIst()] : []), req.session.userId, id]);
       }
       const [[row]] = await db.query(`${LIST_SQL} WHERE e.id=?`, [id]);
-      const warning = fillDate && cur.status !== status ? await syncToSheet(id, row, false) : null;
-      res.json({ success: true, enquiry: row, ...(warning ? { warning } : {}) });
+      const sync = fillDate && cur.status !== status ? await syncToSheet(id, row, false) : null;
+      if (sync) row.sheet_pending = (await db.query('SELECT sheet_pending FROM enquiries WHERE id=?', [id]))[0][0].sheet_pending;
+      res.json({ success: true, enquiry: row, ...sheetNote(sync) });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 

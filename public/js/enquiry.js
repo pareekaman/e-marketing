@@ -44,6 +44,31 @@ async function ecLoad() {
   EC_ALL = rows;
   if (opts && !opts.error) EC_OPTS = opts;
   ecRender();
+  if (EC_ALL.some(e => Number(e.sheet_pending))) ecRetrySheet();
+}
+
+// Enquiries whose latest save did not reach the Google sheet (its read quota
+// is shared and runs out) are sent again from here; the server paces it.
+let EC_RETRYING = false, EC_RETRY_TIMER = null;
+const ecPageOpen = () => !!document.getElementById('page-enquiry')?.classList.contains('active');
+async function ecRetrySheet() {
+  clearTimeout(EC_RETRY_TIMER);
+  EC_RETRY_TIMER = null;
+  if (EC_RETRYING || !ecPageOpen()) return;
+  EC_RETRYING = true;
+  let left = 0;
+  try {
+    const r = await api('/api/enquiries/sheet-retry', 'POST', {});
+    if (!r || r.error) return;
+    left = r.left;
+    if (!r.sent) return;
+    const rows = await api('/api/enquiries');
+    if (Array.isArray(rows) && ecPageOpen()) { EC_ALL = rows; ecRender(); }
+  } finally {
+    EC_RETRYING = false;
+    // While the page stays open, try again once the per-minute quota has turned over.
+    if (left && ecPageOpen()) EC_RETRY_TIMER = setTimeout(ecRetrySheet, 70000);
+  }
 }
 
 function ecFiltered() {
@@ -104,7 +129,8 @@ function ecRender() {
       ${statusCell(e)}
       <td style="white-space:nowrap"><div>${dtEscape(ecDate(e.created_at))}</div>
         <div style="font-size:11px;color:#94a3b8">${dtEscape(e.created_by_name || (e.source === 'sheet' ? 'Google Form' : ''))}</div>
-        ${e.updated_at ? `<div style="font-size:11px;color:#94a3b8" title="Last edited ${dtEscape(e.updated_at)}">Edited by ${dtEscape(e.updated_by_name || '—')}</div>` : ''}</td>
+        ${e.updated_at ? `<div style="font-size:11px;color:#94a3b8" title="Last edited ${dtEscape(e.updated_at)}">Edited by ${dtEscape(e.updated_by_name || '—')}</div>` : ''}
+        ${Number(e.sheet_pending) ? '<div style="font-size:11px;color:#b45309;font-weight:600;margin-top:2px" title="Its latest save has not reached the Enquiry Capture sheet yet. It is sent again automatically.">⏳ Not in sheet yet</div>' : ''}</td>
       <td style="min-width:180px"><b>${dtEscape(e.client_name)}</b>
         <div style="font-size:12px;color:#64748b">${dtEscape(e.business_name)}</div>
         ${ecList(e.project_types).map(p => `<span class="pill-dept" style="margin:3px 4px 0 0">${dtEscape(p)}</span>`).join('')}</td>
@@ -190,8 +216,9 @@ async function ecSave() {
   btn.disabled = false;
   if (!r || r.error) return fail((r && r.error) || 'Could not save the enquiry');
   closeModal('ecModal');
-  // Saved either way; a sheet problem comes back as a warning to show.
-  if (r.warning) showToast(r.warning, 'error');
+  // Saved either way; a sheet problem comes back as a warning to show, and
+  // one the app retries by itself (queued) is not shown as an error.
+  if (r.warning) showToast(r.warning, r.queued ? 'success' : 'error');
   else showToast(editing ? 'Enquiry updated' : 'Enquiry saved');
   ecLoad();
 }
@@ -222,7 +249,9 @@ async function ecSetStatus(id, sel) {
   if (!r || r.error) { sel.value = prev; showToast((r && r.error) || 'Could not change the status', 'error'); return; }
   Object.assign(e, r.enquiry);
   ecRender();
-  if (r.warning) showToast(r.warning, 'error');
+  // Not in the sheet yet: start the page's retry (it waits out the minute).
+  if (Number(e.sheet_pending)) ecRetrySheet();
+  if (r.warning) showToast(r.warning, r.queued ? 'success' : 'error');
   else if (status === 'Conversion' && !hadDate && e.conversion_date) showToast(`Marked as Conversion · Conversion Date set to ${ecDate(e.conversion_date)}`);
   else showToast(`Status set to ${status}`);
 }
