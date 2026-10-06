@@ -73,6 +73,23 @@ module.exports = function registerEnquiryRoutes(app, deps) {
     // Cheap once nothing matches, and run once per server instance.
     await db.query("UPDATE enquiries SET status='Converted' WHERE status='Conversion'");
     await db.query("UPDATE enquiries SET status='Open' WHERE status='Win'");
+    // When ENQUIRY_SHEET_ID names a different sheet than last time (the test
+    // copy -> the real sheet, 2026-10-06), the rows the app wrote are not in
+    // the new one, so the app's own enquiries are marked to be sent there by
+    // the retry. Imported responses keep their stamps: the copy was a copy of
+    // the real sheet, so the same timestamps are there. The marker is claimed
+    // first (only while it still holds the old value, or does not exist), so
+    // only one server instance does this, and none does it twice.
+    const MARK = 'enquiry_sheet_in_use';
+    const [[inUse]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [MARK]);
+    if (!inUse || inUse.value !== ENQUIRY_SHEET_ID) {
+      const [won] = inUse
+        ? await db.query('UPDATE app_settings SET value=? WHERE key_name=? AND value=?', [ENQUIRY_SHEET_ID, MARK, inUse.value])
+        : await db.query('INSERT IGNORE INTO app_settings (key_name, value) VALUES (?, ?)', [MARK, ENQUIRY_SHEET_ID]);
+      if (won.affectedRows) {
+        await db.query("UPDATE enquiries SET sheet_stamp=NULL, sheet_row=NULL, sheet_pending=1, sheet_try_at=NULL WHERE source='app'");
+      }
+    }
   }
 
   const clean = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
@@ -127,11 +144,12 @@ module.exports = function registerEnquiryRoutes(app, deps) {
   // (numberValue / stringValue), so text starting with "=" is never a formula.
   //
   // A row is found again by its timestamp in A: the form can insert response
-  // rows above it, and people sort the sheet. Points at the user's TEST COPY
-  // until ENQUIRY_SHEET_ID names the real sheet
-  // (1mg9lXGz__n6DH4jVoc7M4l4t3imK7nkh0Vm7jq3aSiE). A failure never blocks the
-  // save; it comes back as a warning.
-  const ENQUIRY_SHEET_ID = process.env.ENQUIRY_SHEET_ID || '1rGj2WaqnsQIVU6CeV2KdlWARX_HsyiYQV4h_HM0Bx1Y';
+  // rows above it, and people sort the sheet. Points at the real sheet since
+  // 2026-10-06; until then it was the user's test copy
+  // (1rGj2WaqnsQIVU6CeV2KdlWARX_HsyiYQV4h_HM0Bx1Y), which localhost keeps
+  // using through ENQUIRY_SHEET_ID. A failure never blocks the save; it comes
+  // back as a warning.
+  const ENQUIRY_SHEET_ID = process.env.ENQUIRY_SHEET_ID || '1mg9lXGz__n6DH4jVoc7M4l4t3imK7nkh0Vm7jq3aSiE';
   const ENQUIRY_SHEET_TAB = process.env.ENQUIRY_SHEET_TAB || 'Form responses 1';
   const sheetTab = () => `'${ENQUIRY_SHEET_TAB.replace(/'/g, "''")}'`;
   const serialNow = () => (Date.now() + 5.5 * 3600 * 1000) / 86400000 + 25569;   // IST, as the form stamps it

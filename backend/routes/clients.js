@@ -42,14 +42,15 @@ module.exports = function registerClientRoutes(app, deps) {
 // A new client becomes the next row of the Onboarding FMS's "Pre-Order FMS" tab:
 // A conversion date+time, B brand name, C departments, D mobile, E the person
 // who added it (the CRM). The FMS then filters each CRM's steps on column E.
-// Points at the user's COPY of the sheet while it is being tried out; set
-// CLIENT_FMS_SHEET_ID to move it to the original. Rows 7+ hold clients; the
+// Points at the original Onboarding FMS since 2026-10-06, when its Pre-Order
+// FMS was given the CRM column like the copy (1TrDtCbK_v_GulwF2fRVh6fKZ_fW5k_p0AnyofztbC-Y,
+// which localhost keeps using through CLIENT_FMS_SHEET_ID). Rows 7+ hold clients; the
 // first one whose B is empty is the next free row (its formulas are already
 // in F onward). Failure never blocks adding the client — it comes back as a
 // warning instead, and the client is marked fms_pending so the row is written
 // later by /api/clients/fms-retry (the Sheets read quota is shared with the
 // rest of the app and runs out).
-const CLIENT_FMS_SHEET_ID = process.env.CLIENT_FMS_SHEET_ID || '1TrDtCbK_v_GulwF2fRVh6fKZ_fW5k_p0AnyofztbC-Y';
+const CLIENT_FMS_SHEET_ID = process.env.CLIENT_FMS_SHEET_ID || '1Lz8AddiAoB4brOXghYPvH1SEAyPnEdaBSLF8XikL6Ow';
 const CLIENT_FMS_TAB = process.env.CLIENT_FMS_TAB || 'Pre-Order FMS';
 const CLIENT_FMS_FIRST_ROW = 7;
 // The tab's numeric id, for the date format below: asked of Google once and
