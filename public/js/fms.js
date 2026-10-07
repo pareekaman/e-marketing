@@ -1646,7 +1646,7 @@ async function loadFMSTaskRows() {
   const tableRows = r.rows.map((row, ri) => `
     <tr ${row.isMine === false && r.isAdmin ? 'style="opacity:.85"' : ''}>
       <td>
-        <button class="fms-done-btn" onclick="openFMSDoneModal(${ri})">✅ Done</button>
+        <button class="fms-done-btn" onclick="openFMSDoneByRow(${Number(row.sheetRowNumber)})">✅ Done</button>
       </td>
       ${colKeys.map(k => `<td>${esc(row.data[k] || '—')}</td>`).join('')}
       <td>
@@ -1671,6 +1671,13 @@ async function loadFMSTaskRows() {
   window._fmsCurrentRows = r.rows;
 }
 
+// The Done buttons name their sheet row, not their place in the list: the list
+// reloads after every save, and by then a place can belong to another row.
+function openFMSDoneByRow(sheetRowNumber) {
+  const idx = (window._fmsCurrentRows || []).findIndex(r => Number(r.sheetRowNumber) === Number(sheetRowNumber));
+  if (idx < 0) { showToast('That row was just updated. The list is refreshing.', 'error'); if (typeof loadFMSTaskRows === 'function') loadFMSTaskRows(); return; }
+  openFMSDoneModal(idx);
+}
 function openFMSDoneModal(rowIdx) {
   const row = window._fmsCurrentRows[rowIdx];
   if (!row) return;

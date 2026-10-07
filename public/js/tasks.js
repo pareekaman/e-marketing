@@ -256,6 +256,9 @@ async function openFmsTaskFromRow(ref) {
 // Mark Done directly from the All Tasks → FMS row — opens the existing FMS Done
 // modal in place (no navigation away from All Tasks).
 async function openFmsDoneFromRow(ref) {
+  // Reading the step's rows from the sheet takes a moment; one at a time.
+  const btn = _doneButtonFromEvent();
+  if (!_doneStart(btn)) return;
   try {
     if (!ref || !ref.fmsId || !ref.stepId || !ref.rowNumber) {
       showToast('Missing FMS row reference', 'error');
@@ -296,6 +299,7 @@ async function openFmsDoneFromRow(ref) {
 
     openFMSDoneModal(idx);
   } catch(e) { console.error(e); showToast('Could not open Done modal: ' + e.message, 'error'); }
+  finally { _doneEnd(btn); }
 }
 
 function _buildTaskRowHtml(t, ctx) {
@@ -810,7 +814,44 @@ function toggleBlock(header) { header.nextElementSibling.classList.toggle('open'
 // ══════════════════════════════════════════════════════
 // TASK ACTIONS
 // ══════════════════════════════════════════════════════
+// ── Done clicks ──
+// Marking a task done waits for the server and then reloads the list, which
+// can take a few seconds. Until both are over, the clicked button shows it is
+// working and any other Done click is turned away with a message. Without
+// this, a second click, made because the first seemed to do nothing, could
+// land on the next task, which had moved up into the same spot when the list
+// reloaded, and complete that one too.
+let _taskDoneBusy = false;
+function _doneButtonFromEvent() {
+  const t = window.event && window.event.target;
+  return (t && t.closest && t.closest('button.action-btn')) || null;
+}
+function _doneStart(btn) {
+  if (_taskDoneBusy) { showToast('Please wait, the last Done is still being saved.'); return false; }
+  _taskDoneBusy = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.doneLabel = btn.innerHTML;
+    btn.innerHTML = '⏳ Saving…';
+    const tr = btn.closest('tr');
+    if (tr) tr.style.opacity = '.55';
+  }
+  return true;
+}
+function _doneEnd(btn) {
+  _taskDoneBusy = false;
+  if (btn && btn.isConnected) {
+    btn.disabled = false;
+    if (btn.dataset.doneLabel) btn.innerHTML = btn.dataset.doneLabel;
+    const tr = btn.closest('tr');
+    if (tr) tr.style.opacity = '';
+  }
+}
+
 async function updateStatus(id, status, from, type) {
+  const btn = _doneButtonFromEvent();
+  if (!_doneStart(btn)) return;
+  try {
   const r = await api(`/api/tasks/${id}/status`,'PUT',{status, type: type || dashType});
   // "Set a due date first" is the one refusal the user can answer immediately.
   // Only the Dashboard carried a Set-due-date button, so from All Tasks this
@@ -824,9 +865,13 @@ async function updateStatus(id, status, from, type) {
   if (r.error) { appAlert(r.error, 'Not allowed'); return; }
   if (r.needsApproval) {
     showToast('✅ Approval request sent to the assigner!');
+  } else if (status === 'completed') {
+    showToast('✅ Task marked done');
   }
-  if (from==='dashboard') loadDashboard(true); else loadAllTasks();
+  // The list is reloaded before the next Done click is let through.
+  if (from==='dashboard') await loadDashboard(true); else await loadAllTasks();
   loadApprovalBadge();
+  } finally { _doneEnd(btn); }
 }
 
 // Reopen a completed task → back to pending (in case it was marked done by mistake).
