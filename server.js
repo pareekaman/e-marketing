@@ -3453,6 +3453,10 @@ app.put('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
     else await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=?,extra_access=?,birthday=?,joining_date=? WHERE id=?',
       [name,email,notification_email||'',appRole,userRole,phone||null,department||'',week_off||'',extra_off||'',exclVal,accessJson,birthday||null,joining_date||null,req.params.id]);
     invalidateRoleCache(req.params.id);
+    // Pending leave requests follow a department or role change to the new
+    // approver. Awaited so it is done before the function is frozen; a failure
+    // here must not undo the save.
+    await rerouteLeaveRequests(Number(req.params.id)).catch(e => console.error('leave reroute err:', e.message));
     // Update Google Sheet row matching this user's name
     const SHEET_ID = '1k8GTp731LMNE6E1_FwNO8yvGJu7ogo-4PX6c7JP4emM';
     const fmtDate = d => { if (!d) return ''; const [y,m,dd] = d.split('-'); return `${dd}/${m}/${y}`; };
@@ -9026,6 +9030,37 @@ async function resolveLeaveApprover(userId) {
   const [adm] = await db.query(
     `SELECT id FROM users WHERE COALESCE(user_role, role)='admin' ORDER BY id ASC LIMIT 1`);
   return adm[0]?.id || null;
+}
+
+// A request's approver is fixed when it is filed. If the requester's department
+// (or org role) is changed while it is still pending, it stayed with the old
+// department's HOD, who no longer manages them, and the new HOD never saw it.
+// Called after a user is saved: their pending requests, and pending requests
+// waiting on them as the approver, go to whoever resolveLeaveApprover picks now.
+// A request already with an HOD of the right department stays where it is
+// (every HOD of that department sees it and may decide it), and a sole-approver
+// request (Naman's Extra Working to Simran) keeps its approver.
+async function rerouteLeaveRequests(userId) {
+  const sole = await ensureSoleApproverColumn();
+  const [rows] = await db.query(
+    `SELECT id, user_id, approver_id FROM leave_requests
+      WHERE status='pending' AND (user_id=? OR approver_id=?)${sole ? ' AND sole_approver=0' : ''}`,
+    [userId, userId]);
+  const approverFor = new Map(); // requester -> the approver they would get today
+  let moved = 0;
+  for (const r of rows) {
+    if (!approverFor.has(r.user_id)) approverFor.set(r.user_id, await resolveLeaveApprover(r.user_id));
+    const ap = approverFor.get(r.user_id);
+    if (!ap || Number(ap) === Number(r.approver_id) || Number(ap) === Number(r.user_id)) continue;
+    const [[cur]] = await db.query(
+      `SELECT COALESCE(c.user_role, c.role) AS cur_role, c.department AS cur_dept,
+              COALESCE(n.user_role, n.role) AS ap_role, n.department AS ap_dept
+         FROM users n LEFT JOIN users c ON c.id=? WHERE n.id=?`, [r.approver_id, ap]);
+    if (cur && cur.cur_role === 'hod' && cur.ap_role === 'hod' && cur.cur_dept && cur.cur_dept === cur.ap_dept) continue;
+    await db.query(`UPDATE leave_requests SET approver_id=? WHERE id=? AND status='pending'`, [ap, r.id]);
+    moved++;
+  }
+  return moved;
 }
 
 // Simran Gurnani — oversees leave approvals org-wide, so she sees every
