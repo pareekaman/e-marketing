@@ -486,13 +486,16 @@ async function dtCheckLockAndRender(){
   dtRecalcTotal();
 }
 
+// The value is the client's id, so the entry is saved against the client
+// picked and still finds it after a rename. `selected` is an id (a duplicated row).
 function dtClientOptions(selected){
   let html = '<option value="">--select--</option>';
+  const want = selected == null ? '' : String(selected);
   // Active clients only, but a row that already names an inactive one keeps it.
   for (const c of sortClientsForPicker(DT_CLIENTS)) {
-    if (!isActiveClient(c) && selected !== c.name) continue;
-    const sel = (selected === c.name) ? 'selected' : '';
-    html += `<option value="${dtEscape(c.name)}" ${sel}>${dtEscape(clientLabel(c))}</option>`;
+    const isSel = want !== '' && String(c.id) === want;
+    if (!isActiveClient(c) && !isSel) continue;
+    html += `<option value="${dtEscape(c.id)}" ${isSel ? 'selected' : ''}>${dtEscape(clientLabel(c))}</option>`;
   }
   return html;
 }
@@ -573,7 +576,9 @@ function dtRecalcTotal(){
 function dtReadRows(){
   const out = [];
   for (const tr of document.querySelectorAll('#dtRowsBody tr')) {
-    const client = tr.querySelector('.dt-client').value.trim();
+    const clientId = tr.querySelector('.dt-client').value.trim();
+    const picked = DT_CLIENTS.find(c => String(c.id) === clientId);
+    const client = picked ? String(picked.name || '').trim() : '';
     const dept = tr.querySelector('.dt-dept').value.trim();
     const desc = tr.querySelector('.dt-desc').value.trim();
     const time = parseInt(tr.querySelector('.dt-time').value) || 0;
@@ -581,7 +586,7 @@ function dtReadRows(){
       showToast('Each row needs Client, Department, Description and Time (>0)','error');
       return null;
     }
-    out.push({ client, dept, desc, time });
+    out.push({ client, clientId: Number(clientId), dept, desc, time });
   }
   if (!out.length) { showToast('Add at least 1 row','error'); return null; }
   return out;
@@ -594,7 +599,7 @@ async function dtSubmit(){
   const read = dtReadRows();
   if (!read) return;
   const rows = read.map(r => ({
-    client_name: r.client, department: r.dept, description: r.desc, duration_min: r.time
+    client_name: r.client, client_id: r.clientId, department: r.dept, description: r.desc, duration_min: r.time
   }));
 
   const btn = document.querySelector('.dt-btn-submit');
@@ -651,7 +656,7 @@ async function dtSubmitExtra(){
   const read = dtReadRows();
   if (!read) return;
   const entries = read.map(r => ({
-    client: r.client, department: r.dept, description: r.desc, minutes: r.time
+    client: r.client, client_id: r.clientId, department: r.dept, description: r.desc, minutes: r.time
   }));
 
   const btn = document.querySelector('.dt-btn-submit');

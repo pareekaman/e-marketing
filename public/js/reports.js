@@ -451,8 +451,14 @@ async function loadDailyReports(){
     // Client name -> ids of its handlers, so a chosen doer's own clients can be
     // listed first in the client filter. Loaded alongside the report.
     const [report, clientRows] = await Promise.all([api('/api/daily-tasks/report' + qs), api('/api/clients').catch(() => [])]);
-    DR_CLIENT_HANDLERS = new Map((Array.isArray(clientRows) ? clientRows : []).map(c => [c.name,
-      new Set([c.handler_id, ...String(c.handler_ids || '').split(',')].filter(Boolean).map(String))]));
+    // Entries name a client by its brand (an old entry whose name two clients
+    // share keeps the name), so both point at the same handlers.
+    DR_CLIENT_HANDLERS = new Map();
+    for (const c of (Array.isArray(clientRows) ? clientRows : [])) {
+      const handlers = new Set([c.handler_id, ...String(c.handler_ids || '').split(',')].filter(Boolean).map(String));
+      DR_CLIENT_HANDLERS.set(c.name, handlers);
+      DR_CLIENT_HANDLERS.set(clientLabel(c), handlers);
+    }
     DR_DATA = report;
     if (DR_DATA.error) throw new Error(DR_DATA.error);
     renderDRStats();

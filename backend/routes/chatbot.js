@@ -46,6 +46,8 @@ module.exports = function registerChatbotRoutes(app, deps) {
     loadHolidaysSet,
     canViewComplianceEmployee,
     isPaymentApprover,
+    ensureDailyClientIdColumn,
+    labelDailyClients,
   } = deps;
 
   const MAX_MESSAGE = 300;
@@ -733,11 +735,13 @@ module.exports = function registerChatbotRoutes(app, deps) {
   // app shows other people's daily tasks only on Daily Reports, whose routes
   // are requireAdmin, so this answers for an admin only.
   async function dailyFor(userId, start, end) {
+    const hasClientId = await ensureDailyClientIdColumn();
     const [rows] = await db.query(
-      `SELECT DATE_FORMAT(entry_date,'%Y-%m-%d') AS d, client_name, department, description, duration_min
+      `SELECT DATE_FORMAT(entry_date,'%Y-%m-%d') AS d, client_name, ${hasClientId ? 'client_id,' : ''} department, description, duration_min
          FROM daily_tasks WHERE user_id = ? AND entry_date BETWEEN ? AND ?
         ORDER BY entry_date ASC, id ASC`, [userId, start, end]);
-    return rows;
+    // Clients by brand, as everywhere else in the app.
+    return labelDailyClients(rows);
   }
 
   function dailyReply(name, period, rows) {

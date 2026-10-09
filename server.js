@@ -8373,13 +8373,15 @@ app.get('/api/daily-tasks/status', requireAuth, async (req, res) => {
 // Get current user's own past entries (read-only)
 app.get('/api/daily-tasks/mine', requireAuth, async (req, res) => {
   try {
+    const hasClientId = await ensureDailyClientIdColumn();
     const [rows] = await db.query(
       `SELECT id, DATE_FORMAT(entry_date,'%Y-%m-%d') AS entry_date,
-              client_name, department, description, duration_min, created_at
+              client_name, ${hasClientId ? 'client_id,' : ''} department, description, duration_min, created_at
        FROM daily_tasks WHERE user_id=?
        ORDER BY entry_date DESC, id DESC LIMIT 200`,
       [req.session.userId]
     );
+    await labelDailyClients(rows);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -8408,17 +8410,32 @@ app.post('/api/daily-tasks', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Only today or yesterday entries are allowed' });
     }
 
+    // A row picked from the client list names its client by id; the name is
+    // then taken from Client Master, so it always matches the client picked.
+    // A row with only a name (a page opened before this change) is kept as sent.
+    const hasClientId = await ensureDailyClientIdColumn();
+    const ids = [...new Set(rows.map(r => parseInt(r && r.client_id, 10)).filter(n => n > 0))];
+    const clientById = new Map();
+    if (ids.length) {
+      const [cl] = await db.query('SELECT id, name FROM clients WHERE id IN (?)', [ids]);
+      for (const c of cl) clientById.set(Number(c.id), c);
+    }
+
     // Validate each row
     const cleanRows = [];
     for (const r of rows) {
-      const client = (r.client_name || '').trim();
+      const clientId = parseInt(r.client_id, 10) || null;
+      if (clientId && !clientById.has(clientId)) {
+        return res.status(400).json({ error: 'A selected client no longer exists. Please pick the client again.' });
+      }
+      const client = clientId ? String(clientById.get(clientId).name || '').trim() : (r.client_name || '').trim();
       const dept = (r.department || '').trim();
       const desc = (r.description || '').trim();
       const dur = parseInt(r.duration_min) || 0;
       if (!client || !dept || !desc || dur <= 0) {
         return res.status(400).json({ error: 'Each row needs client, department, description, and duration > 0' });
       }
-      cleanRows.push([req.session.userId, entry_date, client, dept, desc, dur]);
+      cleanRows.push([req.session.userId, entry_date, client, dept, desc, dur, clientId]);
     }
 
     // Lock check — already submitted for this date?
@@ -8432,8 +8449,10 @@ app.post('/api/daily-tasks', requireAuth, async (req, res) => {
 
     // Bulk insert
     await db.query(
-      `INSERT INTO daily_tasks (user_id, entry_date, client_name, department, description, duration_min) VALUES ?`,
-      [cleanRows]
+      hasClientId
+        ? `INSERT INTO daily_tasks (user_id, entry_date, client_name, department, description, duration_min, client_id) VALUES ?`
+        : `INSERT INTO daily_tasks (user_id, entry_date, client_name, department, description, duration_min) VALUES ?`,
+      [hasClientId ? cleanRows : cleanRows.map(r => r.slice(0, 6))]
     );
 
     // Confirmation now goes by EMAIL only — the WhatsApp DM has been retired.
@@ -8441,8 +8460,10 @@ app.post('/api/daily-tasks', requireAuth, async (req, res) => {
     const target = await getNotifyTarget(req.session.userId);
     if (target) {
       const esc = s => String(s||'').replace(/[&<>]/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[ch]));
-      const rowsHtml = cleanRows.map(r =>
-        `<tr><td style="padding:5px 9px;border:1px solid #e2e8f0">${esc(r[2])}</td><td style="padding:5px 9px;border:1px solid #e2e8f0">${esc(r[4])}</td><td style="padding:5px 9px;border:1px solid #e2e8f0;text-align:right;white-space:nowrap">${r[5]} min</td></tr>`
+      // The email names each client by its brand, like the page.
+      const shown = await labelDailyClients(cleanRows.map(r => ({ client_name: r[2], client_id: r[6] }))).catch(() => null);
+      const rowsHtml = cleanRows.map((r, i) =>
+        `<tr><td style="padding:5px 9px;border:1px solid #e2e8f0">${esc(shown ? shown[i].client_name : r[2])}</td><td style="padding:5px 9px;border:1px solid #e2e8f0">${esc(r[4])}</td><td style="padding:5px 9px;border:1px solid #e2e8f0;text-align:right;white-space:nowrap">${r[5]} min</td></tr>`
       ).join('');
       const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;line-height:1.6">
         <p>✨ Hello ${esc(target.name || '')},<br>
@@ -8682,7 +8703,7 @@ app.get('/api/compliance/employee/:id', requireAuth, requireComplianceViewer, as
     };
     const [recentEntries] = await db.query(
       `SELECT id, DATE_FORMAT(entry_date,'%Y-%m-%d') AS entry_date,
-              client_name, COALESCE(department,'') AS department, description, duration_min
+              client_name, ${await ensureDailyClientIdColumn() ? 'client_id,' : ''} COALESCE(department,'') AS department, description, duration_min
        FROM daily_tasks WHERE user_id=? AND entry_date BETWEEN ? AND ?
        -- No LIMIT. It used to be 20, which quietly cut a five-week range down
        -- to about eight days with nothing on screen saying so — the range
@@ -8690,6 +8711,7 @@ app.get('/api/compliance/employee/:id', requireAuth, requireComplianceViewer, as
        -- what bounds this query, the same as every other one on this page, and
        -- the UI now groups by day so the length is manageable.
        ORDER BY entry_date DESC, id DESC`, [id, from, to]);
+    await labelDailyClients(recentEntries);
 
     // ── Clients handled by this employee (handler) + activity in window ──
     const [clientRows] = await db.query(
@@ -8864,9 +8886,10 @@ app.get('/api/daily-tasks/all', requireAuth, requireAdmin, async (req, res) => {
     if (to)   { where += ' AND dt.entry_date <= ?'; params.push(to); }
     if (userId) { where += ' AND dt.user_id = ?'; params.push(userId); }
 
+    const hasClientId = await ensureDailyClientIdColumn();
     const [rows] = await db.query(
       `SELECT dt.id, DATE_FORMAT(dt.entry_date,'%Y-%m-%d') AS entry_date,
-              dt.client_name, dt.department, dt.description, dt.duration_min,
+              dt.client_name, ${hasClientId ? 'dt.client_id,' : ''} dt.department, dt.description, dt.duration_min,
               u.name AS doer_name, u.email AS doer_email
        FROM daily_tasks dt
        JOIN users u ON dt.user_id = u.id
@@ -8875,9 +8898,64 @@ app.get('/api/daily-tasks/all', requireAuth, requireAdmin, async (req, res) => {
        LIMIT 1000`,
       params
     );
+    await labelDailyClients(rows);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ── Daily Task clients are shown by their brand ──
+// daily_tasks.client_name keeps the client's own name, as it always has, and
+// daily_tasks.client_id (from 2026-10-09) says which client it was, so an entry
+// still finds its client after the client is renamed in Client Master.
+// Extra Working entries in leave_requests.dates_json carry the same pair as
+// `client` / `client_id`. Wherever an entry is shown it is named by the
+// client's brand, as in the pickers; Client Master is the one place that shows
+// the client's own name. Added on first use, like sole_approver, so the next
+// deploy does not replay every startup migration.
+let _dailyClientIdCol = null;
+function ensureDailyClientIdColumn() {
+  if (!_dailyClientIdCol) _dailyClientIdCol = (async () => {
+    try {
+      const [cols] = await db.query(`SHOW COLUMNS FROM daily_tasks LIKE 'client_id'`);
+      if (!cols.length) await db.query('ALTER TABLE daily_tasks ADD COLUMN client_id INT NULL');
+      return true;
+    } catch (e) {
+      if (e.code === 'ER_DUP_FIELDNAME') return true;
+      console.error('daily_tasks.client_id:', e.message);
+      _dailyClientIdCol = null; // try again on the next request
+      return false;
+    }
+  })();
+  return _dailyClientIdCol;
+}
+
+// Renames rows in place: row[nameKey] becomes the brand of the client in
+// row[idKey], or, for rows saved before the id was, of the client with that
+// name (clients.name is unique). A client with no brand, or a name no client
+// has any more, is left as it is. One query for the client list, whatever the
+// number of rows.
+async function labelDailyClients(rows, nameKey = 'client_name', idKey = 'client_id') {
+  if (!Array.isArray(rows) || !rows.length) return rows;
+  // Showing the brand is a nicety: if the client list cannot be read, the rows
+  // go out with the saved names rather than failing the whole page.
+  let cl;
+  try { [cl] = await db.query('SELECT id, name, brand_name FROM clients'); }
+  catch (e) { console.error('labelDailyClients:', e.message); return rows; }
+  const byId = new Map(), byName = new Map();
+  for (const c of cl) {
+    byId.set(Number(c.id), c);
+    const k = String(c.name || '').trim().toLowerCase();
+    byName.set(k, byName.has(k) ? null : c);
+  }
+  for (const r of rows) {
+    if (!r) continue;
+    const id = Number(r[idKey]) || 0;
+    const c = id ? byId.get(id) : byName.get(String(r[nameKey] || '').trim().toLowerCase());
+    const brand = c && String(c.brand_name || '').trim();
+    if (brand) r[nameKey] = brand;
+  }
+  return rows;
+}
 
 // Approved Extra Working as rows shaped like daily_tasks entries. It is stored
 // in leave_requests.dates_json, one item per day: either client-wise `entries`
@@ -8903,13 +8981,14 @@ async function approvedExtraWorkingRows(from, to, { userId, client } = {}) {
         const min = Number.isFinite(Number(e.minutes)) && Number(e.minutes) > 0
           ? Math.round(Number(e.minutes)) : Math.round((Number(e.hours) || 0) * 60);
         const row = { entry_date: d.date, user_id: r.user_id, doer_name: r.doer_name, doer_email: r.doer_email,
-          client_name: e.client || '', department: e.department || '', description: e.description || '',
+          client_name: e.client || '', client_id: e.client_id || null, department: e.department || '', description: e.description || '',
           duration_min: min, request_id: r.id, extra_working: true };
         if (client && row.client_name !== client) continue;
         out.push(row);
       }
     }
   }
+  await labelDailyClients(out);
   return out.sort((a, b) => a.entry_date.localeCompare(b.entry_date) || a.doer_name.localeCompare(b.doer_name));
 }
 
@@ -8939,9 +9018,10 @@ app.get('/api/daily-tasks/report', requireAuth, requireAdmin, async (req, res) =
     if (req.query.user_id) { filterParts.push('dt.user_id = ?'); params.push(req.query.user_id); }
     if (req.query.client)  { filterParts.push('dt.client_name = ?'); params.push(req.query.client); }
 
+    const hasClientId = await ensureDailyClientIdColumn();
     const [rows] = await db.query(
       `SELECT dt.id, DATE_FORMAT(dt.entry_date,'%Y-%m-%d') AS entry_date,
-              dt.client_name, dt.department, dt.description, dt.duration_min,
+              dt.client_name, ${hasClientId ? 'dt.client_id,' : ''} dt.department, dt.description, dt.duration_min,
               dt.user_id, u.name AS doer_name, u.email AS doer_email,
               COALESCE(u.department, '') AS doer_department
        FROM daily_tasks dt
@@ -8950,6 +9030,9 @@ app.get('/api/daily-tasks/report', requireAuth, requireAdmin, async (req, res) =
        ORDER BY dt.entry_date ASC, u.name ASC, dt.id ASC`,
       params
     );
+
+    // The client filter above matched the saved name; what is shown is the brand.
+    await labelDailyClients(rows);
 
     // Per-user totals
     const userTotals = {};
@@ -9222,6 +9305,10 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
       }
       delete r.dates_json;
     }
+    // Extra Working rows name their clients by brand, as everywhere else.
+    const ewEntries = rows.flatMap(r => (Array.isArray(r.dates) ? r.dates : [])
+      .flatMap(d => (d && Array.isArray(d.entries)) ? d.entries : []));
+    if (ewEntries.length) await labelDailyClients(ewEntries, 'client').catch(() => {});
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -9349,6 +9436,9 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
             if (!hasMin && (!h || h <= 0 || h > 24))
               return res.status(400).json({ error: `Hours required (1-24) for ${client} on ${date}` });
             const entry = { client, description, hours: h };
+            // Which client it was, when picked from the list; shown by its brand.
+            const clientId = parseInt(e && e.client_id, 10);
+            if (clientId > 0) entry.client_id = clientId;
             if (department) entry.department = department;
             if (hasMin) { entry.minutes = min; anyMin = true; }
             entries.push(entry);
@@ -9453,13 +9543,20 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
           work_from_home: 'New Work From Home Request',
           half_day: 'New Half Day Leave Request'
         })[leave_type] || 'New Leave Request';
+        // Clients named by their brand in the email, as on the page.
+        const entryLabel = new Map();
+        if (hasEntries) {
+          const flat = cleanDates.flatMap(d => d.entries || []);
+          const shown = await labelDailyClients(flat.map(e => ({ client: e.client, client_id: e.client_id })), 'client').catch(() => null);
+          if (shown) flat.forEach((e, i) => entryLabel.set(e, shown[i].client));
+        }
         // Client-wise breakdown replaces the Dates/Reason lines for extra_working
         const waDetail = hasEntries
           ? `*Total:* ${totalHours}h\n\n` +
             cleanDates.map(d => {
               const dd = d.date.split('-').reverse().join('-');
               const lines = (d.entries || []).map(e =>
-                `  • ${e.client}${e.department ? ` [${e.department}]` : ''} — ${e.description} (${fmtDur(e)})`).join('\n');
+                `  • ${entryLabel.get(e) || e.client}${e.department ? ` [${e.department}]` : ''} — ${e.description} (${fmtDur(e)})`).join('\n');
               return `*${dd} (${fmtDur(d)}):*${lines ? '\n' + lines : ''}`;
             }).join('\n')
           : `*Dates:* ${datesPretty}\n` +
@@ -10245,6 +10342,8 @@ require('./backend/routes/chatbot')(app, {
   loadHolidaysSet,
   canViewComplianceEmployee,
   isPaymentApprover,
+  ensureDailyClientIdColumn,
+  labelDailyClients,
 });
 
 // ══════════════════════════════════════════════════════
