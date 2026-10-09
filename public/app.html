@@ -683,6 +683,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
           <div id="fmsSheetInfoText" style="font-size:13px;color:#374151;margin-top:2px"></div>
         </div>
         <div style="display:flex;gap:8px">
+          <!-- href is filled in by fmsSetOpenSheetLink() when an FMS is opened -->
+          <a id="fmsOpenSheetBtn" class="btn btn-outline btn-sm" href="#" target="_blank" rel="noopener" style="color:#0f9d58;text-decoration:none">📄 Open Sheet</a>
           <button class="btn btn-outline btn-sm" onclick="openEditFMS()" style="color:var(--accent)">✏️ Edit FMS</button>
           <button class="btn btn-outline btn-sm" onclick="syncFMSData()" style="color:#10b981">🔄 Sync Data</button>
           <button class="btn btn-outline btn-sm" onclick="fmsOpenColumnCheck()" style="color:#7c3aed">🔍 Check Columns</button>

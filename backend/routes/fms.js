@@ -303,6 +303,41 @@ async function fmsColumnChanges(fmsId, plan) {
   return changes;
 }
 
+// FMS Admin -> Open Sheet. A spreadsheet link opens on whichever tab was used
+// last, so the link carries the FMS tab's own id (#gid=). That id is read from
+// Google once and kept in app_settings under the FMS (with the spreadsheet and
+// tab it belongs to, so changing either looks it up again). If the lookup
+// fails (quota, no access, tab renamed), the plain spreadsheet link is sent.
+app.get('/api/fms/:id/sheet-link', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [[sheet]] = await db.query('SELECT id, sheet_id, sheet_name FROM fms_sheets WHERE id=?', [req.params.id]);
+    if (!sheet) return res.status(404).json({ error: 'FMS not found' });
+    const ss = extractSpreadsheetId(sheet.sheet_id);
+    const tab = String(sheet.sheet_name || '').trim();
+    const base = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(ss)}/edit`;
+    const key = `fms_tab_gid:${sheet.id}`;
+    let gid = null;
+    try {
+      const [[hit]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [key]);
+      const saved = hit ? JSON.parse(hit.value || '{}') : {};
+      if (saved.ss === ss && saved.tab === tab && saved.gid != null) gid = saved.gid;
+    } catch (e) {}
+    if (gid == null && ss && tab) {
+      try {
+        const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
+        const meta = await sheetsApi.spreadsheets.get({ spreadsheetId: ss, fields: 'sheets.properties(sheetId,title)' });
+        const found = (meta.data.sheets || []).find(s => s.properties && s.properties.title === tab);
+        if (found) {
+          gid = found.properties.sheetId;
+          await db.query('INSERT INTO app_settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+            [key, JSON.stringify({ ss, tab, gid })]).catch(() => {});
+        }
+      } catch (e) { console.error('fms sheet-link:', e.message); }
+    }
+    res.json({ url: gid != null ? `${base}#gid=${gid}` : base });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/fms/:id/columns', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [[sheet]] = await db.query('SELECT * FROM fms_sheets WHERE id=?', [req.params.id]);
