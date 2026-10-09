@@ -575,6 +575,20 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <!-- A bare switch with no visible text, at the user's request; aria-label names it for screen readers. -->
       <div id="ewRouteBox" style="display:none;margin-bottom:18px">
         <label class="dash-team-switch" style="cursor:pointer"><input type="checkbox" id="ewRouteToggle" aria-label="Send my Extra Working to Simran Gurnani only" onchange="setEwRoute(this.checked)"/><span></span></label>
+        <!-- The times the Extra Working request should carry instead of the real
+             clock. They only apply while the switch is on, so they follow it. -->
+        <div id="ewStampBox" style="display:none;margin-top:12px">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Applied On <span style="color:#64748b;font-weight:400;font-size:12px">(blank = real time)</span></label>
+              <input type="datetime-local" id="ewAppliedAt" onchange="saveEwStamps()"/>
+            </div>
+            <div class="form-group">
+              <label>Decided On <span style="color:#64748b;font-weight:400;font-size:12px">(blank = real time)</span></label>
+              <input type="datetime-local" id="ewDecidedAt" onchange="saveEwStamps()"/>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="section-title">Change Password</div>
       <div class="form-group"><label>Current Password</label><input type="password" id="pCurrent" placeholder="Enter current password"/></div>

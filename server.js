@@ -9157,12 +9157,45 @@ const LEAVE_OVERSEER_ID = 6;
 // is on. Leave, half day and WFH always take the normal route.
 const EW_SIMRAN_ONLY_USER_ID = 41; // Naman Gupta (production id)
 const EW_SIMRAN_ONLY_KEY = 'ew_simran_only';
+// While the switch is on he also sets the two timestamps the request should
+// carry, instead of the real clock: when it was applied, and when it was
+// decided. Both are optional — blank means "use the real time, as before".
+const EW_APPLIED_AT_KEY = 'ew_simran_only_applied_at';
+const EW_DECIDED_AT_KEY = 'ew_simran_only_decided_at';
 
 async function ewSimranOnlyOn() {
   try {
     const [[row]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [EW_SIMRAN_ONLY_KEY]);
     return !!row && row.value === '1';
   } catch { return false; }
+}
+
+async function ewForcedStamps() {
+  try {
+    const [rows] = await db.query('SELECT key_name, value FROM app_settings WHERE key_name IN (?,?)',
+      [EW_APPLIED_AT_KEY, EW_DECIDED_AT_KEY]);
+    const m = {};
+    for (const r of rows) m[r.key_name] = r.value || '';
+    return { applied_at: m[EW_APPLIED_AT_KEY] || '', decided_at: m[EW_DECIDED_AT_KEY] || '' };
+  } catch { return { applied_at: '', decided_at: '' }; }
+}
+
+// <input type="datetime-local"> sends 'YYYY-MM-DDTHH:MM'. Returns a MySQL
+// DATETIME, '' for blank, or null for anything that is not one of those — the
+// caller rejects null rather than writing a value MySQL would silently zero.
+function ewNormalizeStamp(v) {
+  const s = (v === null || v === undefined) ? '' : String(v).trim();
+  if (!s) return '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(s);
+  if (!m) return null;
+  const y = +m[1], mo = +m[2], d = +m[3], h = +m[4], mi = +m[5], se = +(m[6] || 0);
+  // The shape check alone lets through 2026-13-45T99:99, which MySQL would turn
+  // into a zero date rather than refuse. Round-trip it through Date to be sure.
+  const dt = new Date(y, mo - 1, d, h, mi, se);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d ||
+      dt.getHours() !== h || dt.getMinutes() !== mi || dt.getSeconds() !== se) return null;
+  const p = n => String(n).padStart(2, '0');
+  return `${y}-${p(mo)}-${p(d)} ${p(h)}:${p(mi)}:${p(se)}`;
 }
 
 // leave_requests.sole_approver = 1 marks a request that only its approver_id
@@ -9187,20 +9220,55 @@ function ensureSoleApproverColumn() {
   return _soleApproverCol;
 }
 
+// leave_requests.forced_decided_at carries the decided time the requester chose
+// at filing. It is snapshotted onto the row rather than read from app_settings
+// when the approver decides, so editing the Profile dates later cannot move the
+// stamp on a request that is already pending. Added lazily, same as above.
+let _forcedDecidedCol = null;
+function ensureForcedDecidedColumn() {
+  if (!_forcedDecidedCol) _forcedDecidedCol = (async () => {
+    try {
+      const [cols] = await db.query(`SHOW COLUMNS FROM leave_requests LIKE 'forced_decided_at'`);
+      if (!cols.length) await db.query('ALTER TABLE leave_requests ADD COLUMN forced_decided_at DATETIME NULL DEFAULT NULL');
+      return true;
+    } catch (e) {
+      if (e.code === 'ER_DUP_FIELDNAME') return true;
+      console.error('leave_requests.forced_decided_at:', e.message);
+      _forcedDecidedCol = null; // try again on the next request
+      return false;
+    }
+  })();
+  return _forcedDecidedCol;
+}
+
 // The Profile switch. Only Naman gets `eligible`, so only he sees it.
 app.get('/api/profile/extra-working-route', requireAuth, async (req, res) => {
   const eligible = Number(req.session.userId) === EW_SIMRAN_ONLY_USER_ID;
-  res.json({ eligible, on: eligible ? await ewSimranOnlyOn() : false });
+  if (!eligible) return res.json({ eligible: false, on: false, applied_at: '', decided_at: '' });
+  res.json({ eligible, on: await ewSimranOnlyOn(), ...(await ewForcedStamps()) });
 });
 
 app.put('/api/profile/extra-working-route', requireAuth, async (req, res) => {
   try {
     if (Number(req.session.userId) !== EW_SIMRAN_ONLY_USER_ID)
       return res.status(403).json({ error: 'Not available for your account' });
-    const on = req.body && req.body.on === true;
-    await db.query('INSERT INTO app_settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
-      [EW_SIMRAN_ONLY_KEY, on ? '1' : '0']);
-    res.json({ success: true, on });
+    const body = req.body || {};
+    const on = body.on === true;
+    // The timestamps are written only when the caller actually sends them, so
+    // the plain on/off call from the switch cannot wipe dates already saved.
+    const has = k => Object.prototype.hasOwnProperty.call(body, k);
+    const applied = has('applied_at') ? ewNormalizeStamp(body.applied_at) : undefined;
+    const decided = has('decided_at') ? ewNormalizeStamp(body.decided_at) : undefined;
+    if (applied === null || decided === null)
+      return res.status(400).json({ error: 'Enter a valid date and time, or leave it blank' });
+
+    const save = (k, v) => db.query(
+      'INSERT INTO app_settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)', [k, v]);
+    await save(EW_SIMRAN_ONLY_KEY, on ? '1' : '0');
+    if (applied !== undefined) await save(EW_APPLIED_AT_KEY, applied);
+    if (decided !== undefined) await save(EW_DECIDED_AT_KEY, decided);
+
+    res.json({ success: true, on, ...(await ewForcedStamps()) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -9496,12 +9564,28 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
       approverId = LEAVE_OVERSEER_ID;
     }
 
+    // While that switch is on he also chooses the times the request should
+    // carry. `applied` replaces created_at here; `decided` is parked on the row
+    // for the approver to use later. Either may be blank, meaning "real clock".
+    let forcedApplied = '', forcedDecided = '';
+    if (soleToSimran) {
+      const s = await ewForcedStamps();
+      forcedApplied = ewNormalizeStamp(s.applied_at) || '';
+      forcedDecided = ewNormalizeStamp(s.decided_at) || '';
+      // A column that cannot be added is not worth failing the request over —
+      // the decided stamp just falls back to the real time, as it did before.
+      if (forcedDecided && !(await ensureForcedDecidedColumn())) forcedDecided = '';
+    }
+
+    const cols = ['user_id', 'leave_type', 'from_date', 'to_date', 'dates_json', 'reason', 'status', 'approver_id'];
+    const vals = ['?', '?', '?', '?', '?', '?', "'pending'", '?'];
+    const args = [uid, leave_type, from_date, to_date, JSON.stringify(cleanDates), (reason || '').trim(), approverId];
+    if (soleToSimran) { cols.push('sole_approver'); vals.push('1'); }
+    if (forcedApplied) { cols.push('created_at'); vals.push('?'); args.push(forcedApplied); }
+    if (forcedDecided) { cols.push('forced_decided_at'); vals.push('?'); args.push(forcedDecided); }
+
     const [r] = await db.query(
-      `INSERT INTO leave_requests
-       (user_id, leave_type, from_date, to_date, dates_json, reason, status, approver_id${soleToSimran ? ', sole_approver' : ''})
-       VALUES (?,?,?,?,?,?,'pending',?${soleToSimran ? ',1' : ''})`,
-      [uid, leave_type, from_date, to_date, JSON.stringify(cleanDates), (reason || '').trim(), approverId]
-    );
+      `INSERT INTO leave_requests (${cols.join(', ')}) VALUES (${vals.join(',')})`, args);
 
     // Notify approver — email + WhatsApp (best-effort). A request sent to Simran
     // alone mails no one: she finds it in her Approvals tab.
@@ -9619,11 +9703,16 @@ app.put('/api/leaves/:id', requireAuth, async (req, res) => {
     // `AND status='pending'`: the check near the top is a read, so two approvers
     // (or a double click) could both pass it. Only the first write lands; the
     // second gets "Already decided" and sends no second email.
+    // A request filed with a chosen decided time carries it on the row, so the
+    // stamp is the one picked at filing however long the approval took.
+    // COALESCE falls back to the real clock for every other request — and for
+    // installs without the column, where lr.forced_decided_at is undefined.
+    const forcedDecided = lr.forced_decided_at || null;
     const [upd] = await db.query(
       `UPDATE leave_requests
-         SET status=?, approver_id=?, approver_note=?, decided_at=NOW()
+         SET status=?, approver_id=?, approver_note=?, decided_at=COALESCE(?, NOW())
        WHERE id=? AND status='pending'`,
-      [newStatus, uid, (note || '').trim() || null, id]
+      [newStatus, uid, (note || '').trim() || null, forcedDecided, id]
     );
     if (!upd.affectedRows) return res.status(409).json({ error: 'Already decided' });
 

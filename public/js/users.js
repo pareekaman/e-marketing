@@ -569,19 +569,55 @@ async function loadEwRoute() {
   const r = await api('/api/profile/extra-working-route');
   if (!r || r.error || !r.eligible) { box.style.display = 'none'; return; }
   document.getElementById('ewRouteToggle').checked = !!r.on;
+  document.getElementById('ewAppliedAt').value = ewStampToInput(r.applied_at);
+  document.getElementById('ewDecidedAt').value = ewStampToInput(r.decided_at);
+  ewShowStamps(!!r.on);
   box.style.display = '';
+}
+
+// The server stores a MySQL DATETIME ('2026-09-01 10:15:00'); the input wants
+// '2026-09-01T10:15'. Anything else becomes blank rather than a bad value.
+function ewStampToInput(v) {
+  const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec((v === null || v === undefined ? '' : String(v)).trim());
+  return m ? `${m[1]}T${m[2]}` : '';
+}
+
+function ewShowStamps(on) {
+  const b = document.getElementById('ewStampBox');
+  if (b) b.style.display = on ? '' : 'none';
 }
 
 async function setEwRoute(on) {
   const sw = document.getElementById('ewRouteToggle');
   sw.disabled = true;
+  // Sends `on` alone on purpose: the route writes a timestamp only when its
+  // property is present, so flipping the switch never clears saved dates.
   const r = await api('/api/profile/extra-working-route', 'PUT', { on });
   sw.disabled = false;
   if (!r || r.error) {
     sw.checked = !on;
     showToast((r && r.error) || 'Could not save. Please try again.', 'error');
+    return;
   }
+  ewShowStamps(on);
   // Saved silently — the user asked for no message on success.
+}
+
+async function saveEwStamps() {
+  const a = document.getElementById('ewAppliedAt');
+  const d = document.getElementById('ewDecidedAt');
+  const on = document.getElementById('ewRouteToggle').checked;
+  a.disabled = d.disabled = true;
+  const r = await api('/api/profile/extra-working-route', 'PUT',
+    { on, applied_at: a.value, decided_at: d.value });
+  a.disabled = d.disabled = false;
+  if (!r || r.error) {
+    showToast((r && r.error) || 'Could not save. Please try again.', 'error');
+    return;
+  }
+  // Echo back what was stored, so a rejected or reformatted value is visible.
+  a.value = ewStampToInput(r.applied_at);
+  d.value = ewStampToInput(r.decided_at);
 }
 
 // ══════════════════════════════════════════════════════
