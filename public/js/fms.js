@@ -285,19 +285,11 @@ async function loadFMSAdmin() {
   else if (fmsActiveId) loadFMSDetail(fmsActiveId);
 }
 
-// Open Sheet works at once with the plain spreadsheet link; the link that opens
-// the FMS's own tab replaces it when the server sends it (the FMS still open).
-function fmsSetOpenSheetLink(id, sheetId) {
+// Open Sheet goes through the server, which redirects to the sheet on the
+// FMS's own tab. Nothing is fetched when an FMS is opened, only on a click.
+function fmsSetOpenSheetLink(id) {
   const a = document.getElementById('fmsOpenSheetBtn');
-  if (!a) return;
-  const raw = String(sheetId || '').trim();
-  const m = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-  const ss = m ? m[1] : raw;
-  a.href = ss ? `https://docs.google.com/spreadsheets/d/${encodeURIComponent(ss)}/edit` : '#';
-  if (!ss) return;
-  api(`/api/fms/${id}/sheet-link`).then(r => {
-    if (r && r.url && fmsActiveId === id) a.href = r.url;
-  }).catch(() => {});
+  if (a) a.href = `/api/fms/${encodeURIComponent(id)}/open-sheet`;
 }
 
 async function loadFMSDetail(id) {
@@ -316,7 +308,7 @@ async function loadFMSDetail(id) {
   document.getElementById('fmsSheetInfoText').innerHTML =
     `<strong>${esc(sheet.sheet_name)}</strong> &nbsp;·&nbsp; Sheet ID: <code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;font-size:12px">${esc(sheet.sheet_id)}</code> &nbsp;·&nbsp; Header Row: ${sheet.header_row}`
     + (sheet.hold_col ? ` &nbsp;·&nbsp; ⏸ Hold column: ${esc(sheet.hold_col)}` : '');
-  fmsSetOpenSheetLink(id, sheet.sheet_id);
+  fmsSetOpenSheetLink(id);
 
   // Step tabs
   const stepTabsEl = document.getElementById('fmsStepTabs');

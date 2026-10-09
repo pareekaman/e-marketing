@@ -108,11 +108,26 @@ app.get('/api/fms/:id', requireAuth, requireAdmin, async (req, res) => {
     const [sheets] = await db.query('SELECT * FROM fms_sheets WHERE id=?', [req.params.id]);
     if (!sheets[0]) return res.status(404).json({ error: 'FMS not found' });
     const [steps] = await db.query('SELECT * FROM fms_steps WHERE fms_id=? ORDER BY step_order ASC', [req.params.id]);
+    // Doers and extra rows for every step in one query each. Asking step by
+    // step cost two round trips per step, one after another on the single DB
+    // connection, which is what made opening an FMS slow.
+    const ids = steps.map(s => s.id);
+    const doersBy = new Map(), extraBy = new Map();
+    if (ids.length) {
+      const [doers] = await db.query(`SELECT fsd.step_id, fsd.user_id, u.name FROM fms_step_doers fsd JOIN users u ON fsd.user_id=u.id WHERE fsd.step_id IN (?)`, [ids]);
+      for (const d of doers) {
+        if (!doersBy.has(d.step_id)) doersBy.set(d.step_id, []);
+        doersBy.get(d.step_id).push({ user_id: d.user_id, name: d.name });
+      }
+      const [extraRows] = await db.query('SELECT * FROM fms_extra_rows WHERE step_id IN (?) ORDER BY id ASC', [ids]);
+      for (const r of extraRows) {
+        if (!extraBy.has(r.step_id)) extraBy.set(r.step_id, []);
+        extraBy.get(r.step_id).push(r);
+      }
+    }
     for (const step of steps) {
-      const [doers] = await db.query(`SELECT fsd.user_id,u.name FROM fms_step_doers fsd JOIN users u ON fsd.user_id=u.id WHERE fsd.step_id=?`, [step.id]);
-      step.doers = doers;
-      const [extraRows] = await db.query('SELECT * FROM fms_extra_rows WHERE step_id=? ORDER BY id ASC', [step.id]);
-      step.extraRows = extraRows;
+      step.doers = doersBy.get(step.id) || [];
+      step.extraRows = extraBy.get(step.id) || [];
       try { step.show_cols_parsed = JSON.parse(step.show_cols || '[]'); } catch(e) { step.show_cols_parsed = []; }
     }
     res.json({ sheet: sheets[0], steps });
@@ -303,12 +318,14 @@ async function fmsColumnChanges(fmsId, plan) {
   return changes;
 }
 
-// FMS Admin -> Open Sheet. A spreadsheet link opens on whichever tab was used
-// last, so the link carries the FMS tab's own id (#gid=). That id is read from
-// Google once and kept in app_settings under the FMS (with the spreadsheet and
-// tab it belongs to, so changing either looks it up again). If the lookup
-// fails (quota, no access, tab renamed), the plain spreadsheet link is sent.
-app.get('/api/fms/:id/sheet-link', requireAuth, requireAdmin, async (req, res) => {
+// FMS Admin -> Open Sheet. The button links here and this redirects to the
+// sheet, so nothing is asked of the server until it is clicked. A spreadsheet
+// link opens on whichever tab was used last, so the link carries the FMS
+// tab's own id (#gid=). That id is read from Google once and kept in
+// app_settings under the FMS (with the spreadsheet and tab it belongs to, so
+// changing either looks it up again). If the lookup fails (quota, no access,
+// tab renamed), it goes to the plain spreadsheet link.
+app.get('/api/fms/:id/open-sheet', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [[sheet]] = await db.query('SELECT id, sheet_id, sheet_name FROM fms_sheets WHERE id=?', [req.params.id]);
     if (!sheet) return res.status(404).json({ error: 'FMS not found' });
@@ -334,7 +351,7 @@ app.get('/api/fms/:id/sheet-link', requireAuth, requireAdmin, async (req, res) =
         }
       } catch (e) { console.error('fms sheet-link:', e.message); }
     }
-    res.json({ url: gid != null ? `${base}#gid=${gid}` : base });
+    res.redirect(gid != null ? `${base}#gid=${gid}` : base);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
