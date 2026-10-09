@@ -788,6 +788,15 @@ function cmBackToList() {
   document.getElementById('cmListView').style.display = 'block';
 }
 
+// The detail page title: the brand people know, like the list rows (client
+// name when there is none), with the client name on the line below.
+function cmDetailTitleHtml(client) {
+  const title = clientLabel(client) || 'C';
+  return `<div style="font-size:22px;font-weight:700;color:#0f172a">${dtEscape(title)}</div>` +
+    (client.name && title !== client.name
+      ? `<div style="margin-top:4px;font-size:13px;color:#475569;font-weight:600">🏢 ${dtEscape(client.name)}</div>` : '');
+}
+
 function cmRenderDetailHtml(s, id, currentHandlers) {
   const client = s.client || {};
   // WhatsApp group, System Links and Documents are operational data a handler of
@@ -851,7 +860,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
   </div>`;
 
   // Logo block — actual image if uploaded, else gradient initials avatar.
-  const initials = dtEscape(cmInitials(client.name || 'C'));
+  const initials = dtEscape(cmInitials(clientLabel(client) || 'C'));
   const avatarStyle = cmAvatarStyle(client.name || 'C');
   const logoBlock = client.logo_url
     ? `<img src="${dtEscape(client.logo_url)}" alt="${dtEscape(client.name)}" style="width:60px;height:60px;border-radius:12px;object-fit:cover;border:1px solid #e2e8f0;flex-shrink:0"/>`
@@ -868,7 +877,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
           ${logoBlock}
           <div>
-            <div style="font-size:22px;font-weight:700;color:#0f172a">${dtEscape(client.name)}</div>
+            <div id="cmDetTitle_${client.id}">${cmDetailTitleHtml(client)}</div>
             <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
               ${handlerLine}
               <span style="font-size:11px;color:#94a3b8">Client #${client.id}</span>
@@ -1217,6 +1226,8 @@ async function cmSaveBrandName(id){
   // Keep the cached list row in step so going back shows the new name without a reload.
   const client = CM_ALL.find(c => String(c.id) === String(id));
   if (client) client.brand_name = value;
+  const titleEl = document.getElementById('cmDetTitle_' + id);
+  if (titleEl && client) titleEl.innerHTML = cmDetailTitleHtml(client);
   showToast('✅ Brand name saved');
 }
 
