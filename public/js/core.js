@@ -485,7 +485,12 @@ async function init() {
           && (!wanted || canSee(lastPage) || lastPage === 'profile')
           && document.getElementById('page-' + lastPage)) {
         navigate(lastPage);
-        restored = true;
+        // navigate() turns some pages away by role (Daily Reports, Credit
+        // Cards, ...) and leaves the dashboard on screen. That happened when
+        // someone signed in on a browser where an admin had left one of those
+        // pages open: the dashboard stayed up but never loaded. Only a page
+        // that actually opened counts as restored.
+        restored = !!document.getElementById('page-' + lastPage)?.classList.contains('active');
       }
     } catch {}
     if (!restored) loadDashboard();
