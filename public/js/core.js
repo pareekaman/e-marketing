@@ -154,6 +154,28 @@ function renderManpurTasksBtn() {
        onclick="window.open('${MANPUR_TASKS_URL}','_blank','noopener')">⛽ Manpur Tasks</button>`);
 }
 
+// Business Automation Credentials — a Google Apps Script page for one person
+// (Akhilesh Vyas). Unlike Manpur Tasks the link is not in this file: /api/me
+// sends it as ME.baCredentialsUrl only to the people in
+// ba_credentials_viewer_ids, and everyone else gets no button. Same repaint
+// rule as the Manpur button, since loadDashboard() rewrites #dashBtns.
+function renderBaCredentialsBtn() {
+  const wrap = document.getElementById('dashBtns');
+  const url = ME && ME.baCredentialsUrl;
+  if (!wrap || !url || !/^https:\/\//.test(url)) return;
+  if (document.getElementById('baCredentialsBtn')) return;
+  const a = document.createElement('a');
+  a.id = 'baCredentialsBtn';
+  a.className = 'btn';
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.title = 'Opens the Business Automation credentials page in a new tab';
+  a.style.cssText = 'background:#0f766e;color:#fff;text-decoration:none';
+  a.textContent = '🔐 Business Automation Credentials';
+  wrap.insertAdjacentElement('afterbegin', a);
+}
+
 let dashType = 'all';
 let tasksType = 'delegation';
 let dashChartInst = null;
@@ -399,6 +421,7 @@ async function init() {
     // Manpur Tasks button — painted here so it is on screen before the
     // dashboard stats finish loading, and still there if that call fails.
     renderManpurTasksBtn();
+    renderBaCredentialsBtn();
 
     // Action buttons driven by canDo()
     if (canDo('delete_task')) {

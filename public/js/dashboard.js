@@ -140,6 +140,7 @@ async function loadDashboard(light = false) {
   // Outside the role gate above: the one person it is shown to is matched by
   // name, not by role, and the innerHTML assignment just wiped the button.
   renderManpurTasksBtn();
+  renderBaCredentialsBtn();
 
   // Combine both types for the unified pending table
   const allTodayPending = [...(dDel.todayPending||[]), ...(dChl.todayPending||[])];
