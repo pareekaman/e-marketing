@@ -734,7 +734,7 @@ async function loadLeaveApprovals(){
     wrap.innerHTML = `
       <table>
         <thead><tr>
-          <th>Employee</th><th>Type</th><th>Dates</th><th>Reason</th><th>Applied</th><th>Action</th>
+          <th>Employee</th><th>Type</th><th>Applied For</th><th>Applied On</th><th>Reason</th><th>Action</th>
         </tr></thead>
         <tbody>
           ${rows.map(r => {
@@ -748,8 +748,8 @@ async function loadLeaveApprovals(){
               <td><b>${dtEscape(r.user_name)}</b>${r.user_department ? `<br><span style="color:#94a3b8;font-size:11px">${dtEscape(r.user_department)}</span>` : ''}</td>
               <td><span class="lv-type-pill lv-type-${r.leave_type}">${LEAVE_TYPE_ICON[r.leave_type]||''} ${LEAVE_TYPE_LABEL[r.leave_type]||r.leave_type}</span></td>
               <td style="font-size:12px;line-height:1.5">${datesHtml}<br><span style="color:#94a3b8;font-size:11px">${dates.length} day${dates.length===1?'':'s'}</span></td>
+              <td style="color:#64748b;font-size:12px;line-height:1.5;white-space:nowrap">${r.created_at ? `${fmtDate(r.created_at.slice(0,10))}<br><span style="color:#94a3b8;font-size:11px">${dtEscape(r.created_at.slice(11,16))}</span>` : '—'}</td>
               <td style="font-size:12px;max-width:280px">${lvExtraBreakdownHtml(r) || dtEscape(r.reason)}</td>
-              <td style="color:#64748b;font-size:11px">${dtEscape((r.created_at||'').slice(0,16))}</td>
               <td style="white-space:nowrap">
                 <button class="action-btn done" onclick="openLeaveDecision(${r.id},'approve')">Approve</button>
                 <button class="action-btn delete" style="margin-left:6px" onclick="openLeaveDecision(${r.id},'reject')">Reject</button>
