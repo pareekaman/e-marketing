@@ -847,6 +847,14 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         </div>
       </div>
 
+      <!-- Extra Working only: proof files, required (leaves.js ewAttach*, shown by dtCheckLockAndRender) -->
+      <div id="dtAttachGroup" style="display:none;margin:14px 0 4px;padding:14px 16px;border:1px dashed #cbd5e1;border-radius:12px;background:#fff">
+        <div style="font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Attachments <span style="color:#dc2626">*</span>
+          <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#94a3b8">JPG, PNG or PDF · 1 to 5 files · proof of the work</span></div>
+        <input type="file" id="dtAttachInput" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" multiple onchange="ewAttachPick('dt', this)">
+        <div id="dtAttachList"></div>
+      </div>
+
       <div class="dt-actions" id="dtActions">
         <button class="dt-btn dt-btn-add" onclick="dtAddRow()">+ Add Row</button>
         <button class="dt-btn dt-btn-submit" onclick="dtSubmit()">Submit All →</button>
@@ -4014,6 +4022,13 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
     <div class="form-group" id="lvReasonGroup">
       <label>Reason <span class="lv-req">*</span></label>
       <textarea id="lvReason" placeholder="Reason for leave (sick, personal work, urgent matter…)"></textarea>
+    </div>
+
+    <!-- Extra Working only: proof files, required (leaves.js ewAttach*) -->
+    <div class="form-group" id="lvAttachGroup" style="display:none">
+      <label>Attachments <span class="lv-req">*</span> <span class="lv-cal-hint">JPG, PNG or PDF · 1 to 5 files · proof of the work</span></label>
+      <input type="file" id="lvAttachInput" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" multiple onchange="ewAttachPick('lv', this)">
+      <div id="lvAttachList"></div>
     </div>
 
     <div class="lv-approver-hint" id="lvApproverHint" style="display:none">

@@ -168,6 +168,82 @@ function lvToggleDesc(id, btn){
   btn.textContent = open ? 'Read more' : 'Show less';
 }
 
+// ── Extra Working attachments ──
+// 1 to 5 files (JPG, PNG or PDF) go with every Extra Working request, from the
+// Leave Tracker form ('lv') and the Daily Task page's Extra Working tab ('dt').
+// Picked files wait here until Submit, which uploads them to the Extra Working
+// Drive folder in chunks (each under Vercel's request cap) and then sends their
+// ids with the request. A file already uploaded keeps its id, so a request the
+// server turns away can be sent again without uploading it twice.
+const EW_ATTACH_MAX = 5;
+const EW_ATTACH_TYPES = { 'image/jpeg': ['jpg', 'jpeg'], 'image/png': ['png'], 'application/pdf': ['pdf'] };
+const EW_ATTACH = { lv: [], dt: [] };   // per form: [{ file, id }]
+
+function ewAttachReset(form){ EW_ATTACH[form] = []; ewAttachRender(form); }
+function ewAttachPick(form, input){
+  const list = EW_ATTACH[form];
+  const skipped = [];
+  for (const f of [...(input.files || [])]) {
+    const ext = (f.name.split('.').pop() || '').toLowerCase();
+    if (!(EW_ATTACH_TYPES[f.type] || []).includes(ext)) { skipped.push(f.name); continue; }
+    if (list.length >= EW_ATTACH_MAX) { showToast(`At most ${EW_ATTACH_MAX} files can be attached.`, 'error'); break; }
+    list.push({ file: f, id: null });
+  }
+  if (skipped.length) showToast(`Only JPG, PNG or PDF files can be attached (${skipped.join(', ')}).`, 'error');
+  input.value = '';
+  ewAttachRender(form);
+}
+function ewAttachRemove(form, i){ EW_ATTACH[form].splice(i, 1); ewAttachRender(form); }
+function ewAttachSize(n){ return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+function ewAttachRender(form){
+  const box = document.getElementById(form + 'AttachList');
+  if (!box) return;
+  const list = EW_ATTACH[form];
+  box.innerHTML = list.map((a, i) =>
+    `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;margin:6px 6px 0 0;border:1px solid #e2e8f0;border-radius:999px;background:#f8fafc;font-size:12px">` +
+    `📎 ${dtEscape(a.file.name)} <span style="color:#94a3b8">${ewAttachSize(a.file.size)}</span>` +
+    `<button type="button" onclick="ewAttachRemove('${form}',${i})" title="Remove" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:13px;padding:0 2px">✕</button></span>`
+  ).join('') + `<div style="font-size:11px;color:#94a3b8;margin-top:6px">${list.length} of ${EW_ATTACH_MAX} files</div>`;
+}
+// Uploads the files not uploaded yet and returns every file's id.
+// onStep(fileNo, fileCount, percentOfThisFile) is for the button text.
+async function ewAttachUpload(form, onStep){
+  const list = EW_ATTACH[form];
+  const CHUNK = 4 * 1024 * 1024;   // a multiple of 256 KiB, as Drive's resumable upload requires
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i];
+    if (a.id) continue;
+    const f = a.file;
+    const s = await api('/api/extra-working/upload-session', 'POST', { name: f.name, mimeType: f.type, size: f.size });
+    if (s.error) throw new Error(`${f.name}: ${s.error}`);
+    const url = '/api/extra-working/upload-chunk?uploadUrl=' + encodeURIComponent(s.uploadUrl);
+    let offset = 0, done = null;
+    while (offset < f.size) {
+      const end = Math.min(offset + CHUNK, f.size);
+      const r = await fetch(url, { method: 'POST', credentials: 'include',
+        headers: { 'Content-Range': `bytes ${offset}-${end - 1}/${f.size}`, 'Content-Type': 'application/octet-stream' },
+        body: f.slice(offset, end) });
+      const data = await r.json().catch(() => ({}));
+      if (r.status !== 308 && !r.ok) throw new Error(`${f.name}: ${data.error || 'upload failed (HTTP ' + r.status + ')'}`);
+      if (r.status !== 308) done = data;
+      offset = end;
+      if (onStep) onStep(i + 1, list.length, Math.round(offset / f.size * 100));
+    }
+    if (!done || !done.id) throw new Error(`${f.name}: the upload did not finish`);
+    a.id = done.id;
+  }
+  return list.map(a => a.id);
+}
+// A request's proof files as links; they open in Google Drive for the eMarketing group.
+function ewAttachmentsHtml(r){
+  const list = (Array.isArray(r && r.attachments) ? r.attachments : [])
+    .filter(a => /^https:\/\/(drive|docs)\.google\.com\//.test(String(a.link || '')));
+  if (!list.length) return '';
+  return `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">` + list.map(a =>
+    `<a href="${dtEscape(a.link)}" target="_blank" rel="noopener" title="Open in Google Drive" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid #c7d2fe;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:600;text-decoration:none">📎 ${dtEscape(a.name || 'Attachment')}</a>`
+  ).join('') + `</div>`;
+}
+
 // Client-wise work breakdown for extra_working requests (empty for legacy rows without entries)
 function lvExtraBreakdownHtml(r){
   if (r.leave_type !== 'extra_working') return '';
@@ -184,7 +260,9 @@ function lvExtraBreakdownHtml(r){
       ).join('')
     );
   }
-  return parts.length ? `<div class="lv-extra-breakdown">${parts.join('')}</div>` : '';
+  // The proof files go under the breakdown, wherever it is shown.
+  const att = ewAttachmentsHtml(r);
+  return (parts.length || att) ? `<div class="lv-extra-breakdown">${parts.join('')}${att}</div>` : '';
 }
 
 function renderLeaves(){
@@ -341,6 +419,8 @@ function openLeaveForm(){
   LEAVE_SELECTED.clear();
   LEAVE_EXTRA_ROWS.clear();
   document.getElementById('lvReasonGroup').style.display = '';
+  document.getElementById('lvAttachGroup').style.display = 'none';
+  ewAttachReset('lv');
   lvLoadClients();
   LEAVE_CAL_VIEW = new Date();
   LEAVE_CAL_VIEW.setDate(1);
@@ -368,6 +448,8 @@ function lvPickType(type, el){
   if (el) el.classList.add('active');
   // Extra working uses per-row task descriptions instead of a single reason
   document.getElementById('lvReasonGroup').style.display = type === 'extra_working' ? 'none' : '';
+  // ...and carries proof files, required
+  document.getElementById('lvAttachGroup').style.display = type === 'extra_working' ? '' : 'none';
   // Show / hide selected list (hours input panel)
   lvRenderSelectedList();
 }
@@ -638,17 +720,31 @@ async function saveLeave(){
     dates.push(item);
   }
 
+  if (isExtra && !EW_ATTACH.lv.length) return showErr('Attach at least one file (a screenshot or PDF) as proof of the work.');
+
   // A second click while the first request is still in flight used to file
   // the same leave twice.
   if (_lvSaving) return;
   _lvSaving = true;
+  const saveBtn = document.querySelector('#leaveModal .lv-save-btn');
   let r;
   try {
+    let attachments;
+    if (isExtra) {
+      if (saveBtn) saveBtn.disabled = true;
+      try {
+        attachments = await ewAttachUpload('lv', (i, n, pct) => { if (saveBtn) saveBtn.textContent = `Uploading ${i}/${n} (${pct}%)…`; });
+      } catch (e) { return showErr('Upload failed: ' + e.message); }
+    }
     r = await api('/api/leaves', 'POST', {
-      leave_type: LEAVE_PICKED_TYPE, dates, reason
+      leave_type: LEAVE_PICKED_TYPE, dates, reason, ...(isExtra ? { attachments } : {})
     });
-  } finally { _lvSaving = false; }
+  } finally {
+    _lvSaving = false;
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+  }
   if (r.error) return showErr(r.error);
+  if (isExtra) ewAttachReset('lv');
   closeModal('leaveModal');
   showToast('✅ Leave request submitted for approval');
   loadLeaves();

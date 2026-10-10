@@ -1294,7 +1294,8 @@ async function getDriveClient() {
 // people actually want to upload here. A resumable-upload session lets the
 // BROWSER send the file bytes straight to Google — our server only ever
 // handles the small JSON init/complete calls, never the file itself.
-async function dmsInitiateResumableUpload(name, mimeType, size, parentId) {
+// `extra` adds Drive metadata to the new file (e.g. appProperties); DMS passes none.
+async function dmsInitiateResumableUpload(name, mimeType, size, parentId, extra = {}) {
   const { google } = require('googleapis');
   const auth = new google.auth.GoogleAuth({ credentials: _dmsCreds(), scopes: ['https://www.googleapis.com/auth/drive'] });
   const client = await auth.getClient();
@@ -1309,7 +1310,7 @@ async function dmsInitiateResumableUpload(name, mimeType, size, parentId) {
       'X-Upload-Content-Type': mimeType || 'application/octet-stream',
       'X-Upload-Content-Length': String(size),
     },
-    body: JSON.stringify({ name, parents: [parentId] }),
+    body: JSON.stringify({ ...extra, name, parents: [parentId] }),
   });
   if (!r.ok) throw new Error(`Drive resumable-init failed: ${r.status} ${await r.text()}`);
   const uploadUrl = r.headers.get('location');
@@ -9368,9 +9369,10 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
     if (req.query.from)    { where += ' AND lr.to_date >= ?'; params.push(req.query.from); }
     if (req.query.to)      { where += ' AND lr.from_date <= ?'; params.push(req.query.to); }
 
+    const hasAttachments = await ensureLeaveAttachmentsColumn();
     const [rows] = await db.query(`
       SELECT lr.id, lr.user_id, lr.leave_type, lr.status, lr.reason,
-        lr.approver_id, lr.approver_note, lr.dates_json,
+        lr.approver_id, lr.approver_note, lr.dates_json, ${hasAttachments ? 'lr.attachments_json,' : ''}
         DATE_FORMAT(lr.from_date,'%Y-%m-%d') AS from_date,
         DATE_FORMAT(lr.to_date,'%Y-%m-%d')   AS to_date,
         DATE_FORMAT(lr.created_at,'%Y-%m-%d %H:%i:%s') AS created_at,
@@ -9399,6 +9401,10 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
         r.dates = [{ date: r.from_date }];
       }
       delete r.dates_json;
+      // Extra Working proof files: [{id, name, mime, size, link}]
+      try { r.attachments = r.attachments_json ? JSON.parse(r.attachments_json) : []; }
+      catch { r.attachments = []; }
+      delete r.attachments_json;
     }
     // Extra Working rows name their clients by brand, as everywhere else.
     const ewEntries = rows.flatMap(r => (Array.isArray(r.dates) ? r.dates : [])
@@ -9468,6 +9474,121 @@ app.get('/api/leaves/pending-count', requireAuth, async (req, res) => {
 // the reason column is TEXT (65,535), and the point of the limit is to stop a
 // runaway paste, not to shape what someone writes about their own work.
 const EXTRA_WORK_DESC_MAX = 5000;
+
+// ── Extra Working attachments ──
+// Every Extra Working request carries 1 to 5 files (screenshots or PDFs) as
+// proof of the work. The browser uploads each one first, straight into the
+// "Extra Working Attachments" folder (Shared drive "E-marketing TM"; a
+// service account cannot own files in someone's My Drive), in chunks through
+// /api/extra-working/upload-chunk, so a file of any size gets past Vercel's
+// ~4.5MB request cap. POST /api/leaves then names the files by id; each is
+// checked to be in that folder and uploaded by the same person before it is
+// kept on the request (leave_requests.attachments_json). Who may open them is
+// the folder's own sharing in Drive (the eMarketing group, viewer).
+const EW_FOLDER_ID = process.env.EXTRA_WORKING_FOLDER_ID || '1QNAAKmw9d7Js3xbcz2-ufayQ08YfK5Vj';
+const EW_FILE_TYPES = { 'image/jpeg': ['jpg', 'jpeg'], 'image/png': ['png'], 'application/pdf': ['pdf'] };
+const EW_MIN_FILES = 1, EW_MAX_FILES = 5;
+
+// The file's type, if both its name and its declared type are allowed ones.
+function ewFileType(name, mimeType) {
+  const ext = String(name || '').split('.').pop().toLowerCase();
+  const mime = String(mimeType || '').toLowerCase();
+  return EW_FILE_TYPES[mime] && EW_FILE_TYPES[mime].includes(ext) ? mime : null;
+}
+// Drive keeps a key plus its value within 124 bytes of UTF-8.
+function ewCutBytes(s, max) {
+  const b = Buffer.from(String(s || ''), 'utf8');
+  return b.length <= max ? String(s || '') : b.slice(0, max).toString('utf8').replace(/�+$/, '');
+}
+
+// Added on first use, like sole_approver, so the next deploy does not replay
+// every startup migration.
+let _leaveAttachmentsCol = null;
+function ensureLeaveAttachmentsColumn() {
+  if (!_leaveAttachmentsCol) _leaveAttachmentsCol = (async () => {
+    try {
+      const [cols] = await db.query(`SHOW COLUMNS FROM leave_requests LIKE 'attachments_json'`);
+      if (!cols.length) await db.query('ALTER TABLE leave_requests ADD COLUMN attachments_json TEXT NULL');
+      return true;
+    } catch (e) {
+      if (e.code === 'ER_DUP_FIELDNAME') return true;
+      console.error('leave_requests.attachments_json:', e.message);
+      _leaveAttachmentsCol = null; // try again on the next request
+      return false;
+    }
+  })();
+  return _leaveAttachmentsCol;
+}
+
+// Step 1 for each file: a Drive resumable-upload session in the folder. The
+// Drive name says when and by whom; appProperties remember the uploader (the
+// check in POST /api/leaves) and the name as picked (what the app shows).
+app.post('/api/extra-working/upload-session', requireAuth, async (req, res) => {
+  try {
+    const { name, mimeType, size } = req.body || {};
+    const type = ewFileType(name, mimeType);
+    if (!type) return res.status(400).json({ error: 'Only JPG, PNG or PDF files can be attached.' });
+    const bytes = Number(size);
+    if (!(bytes > 0)) return res.status(400).json({ error: 'This file is empty.' });
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
+    const picked = String(name).replace(/[\\/]/g, '_').trim().slice(0, 150);
+    const today = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+    const uploadUrl = await dmsInitiateResumableUpload(`${today} - ${me ? me.name : 'User'} - ${picked}`, type, bytes, EW_FOLDER_ID, {
+      appProperties: { ewUploadedBy: String(req.session.userId), ewName: ewCutBytes(picked, 100) },
+    });
+    res.json({ success: true, uploadUrl });
+  } catch (err) { res.status(500).json({ error: 'Could not start the upload: ' + err.message }); }
+});
+
+// Step 2: one chunk of the file, passed on to the session from step 1 (same
+// as the DMS upload). 308 while Drive expects more, the file's details at the end.
+app.post('/api/extra-working/upload-chunk', requireAuth, express.raw({ type: () => true, limit: '6mb' }), async (req, res) => {
+  try {
+    const uploadUrl = String(req.query.uploadUrl || '');
+    const contentRange = req.headers['content-range'];
+    if (!uploadUrl || !contentRange) return res.status(400).json({ error: 'uploadUrl and Content-Range required' });
+    // Fetched by the server with the response passed back, so only a Drive
+    // resumable-upload URL is accepted, never an arbitrary host.
+    let ok = false;
+    try { const u = new URL(uploadUrl); ok = u.protocol === 'https:' && u.hostname === 'www.googleapis.com' && u.pathname.startsWith('/upload/drive/'); } catch (e) {}
+    if (!ok) return res.status(400).json({ error: 'Invalid upload session URL' });
+    const chunk = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
+    const driveRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Range': contentRange, 'Content-Length': String(chunk.length) },
+      body: chunk,
+      redirect: 'manual',
+    });
+    if (driveRes.status === 308) return res.status(308).json({ incomplete: true, range: driveRes.headers.get('range') || null });
+    const text = await driveRes.text();
+    if (!driveRes.ok) return res.status(driveRes.status).json({ error: text || `Upload failed (${driveRes.status})` });
+    let file; try { file = JSON.parse(text); } catch (e) { file = {}; }
+    res.json({ success: true, id: file.id, name: file.name });
+  } catch (err) { res.status(500).json({ error: 'Upload failed: ' + err.message }); }
+});
+
+// The files named on a new request, checked in Drive: in the Extra Working
+// folder, not trashed, an allowed type, and uploaded by this same person.
+// Returns what the request keeps; throws with a message for the user.
+async function ewCheckAttachments(ids, userId) {
+  const drive = await getDriveClient();
+  const out = [];
+  for (const id of ids) {
+    let f;
+    try {
+      f = (await drive.files.get({ fileId: id, fields: 'id,name,mimeType,size,parents,trashed,webViewLink,appProperties', supportsAllDrives: true })).data;
+    } catch (e) {
+      if (e.code === 404) throw new Error('An attached file could not be found. Please attach it again.');
+      throw new Error('Could not check the attached files right now. Please try again.');
+    }
+    const props = f.appProperties || {};
+    if (f.trashed || !(f.parents || []).includes(EW_FOLDER_ID) || props.ewUploadedBy !== String(userId) || !EW_FILE_TYPES[f.mimeType]) {
+      throw new Error('An attached file is not one you uploaded for this request. Please attach it again.');
+    }
+    out.push({ id: f.id, name: props.ewName || f.name, mime: f.mimeType, size: Number(f.size) || 0, link: f.webViewLink });
+  }
+  return out;
+}
 
 app.post('/api/leaves', requireAuth, async (req, res) => {
   try {
@@ -9580,6 +9701,19 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
       });
     }
 
+    // Extra Working needs 1 to 5 files as proof, already uploaded to the Extra
+    // Working folder (see ewCheckAttachments).
+    let attachments = null;
+    if (leave_type === 'extra_working') {
+      const ids = [...new Set((Array.isArray(req.body.attachments) ? req.body.attachments : [])
+        .map(a => String((a && a.id) || a || '').trim()).filter(Boolean))];
+      if (ids.length < EW_MIN_FILES) return res.status(400).json({ error: 'Attach at least one file (a screenshot or PDF) as proof of the work.' });
+      if (ids.length > EW_MAX_FILES) return res.status(400).json({ error: `Attach at most ${EW_MAX_FILES} files.` });
+      if (!(await ensureLeaveAttachmentsColumn())) return res.status(500).json({ error: 'Could not save the attachments. Please try again.' });
+      try { attachments = await ewCheckAttachments(ids, uid); }
+      catch (e) { return res.status(400).json({ error: e.message }); }
+    }
+
     let approverId = await resolveLeaveApprover(uid);
 
     // Naman's Extra Working goes to Simran alone while his Profile switch is on.
@@ -9610,6 +9744,7 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
     if (soleToSimran) { cols.push('sole_approver'); vals.push('1'); }
     if (forcedApplied) { cols.push('created_at'); vals.push('?'); args.push(forcedApplied); }
     if (forcedDecided) { cols.push('forced_decided_at'); vals.push('?'); args.push(forcedDecided); }
+    if (attachments) { cols.push('attachments_json'); vals.push('?'); args.push(JSON.stringify(attachments)); }
 
     const [r] = await db.query(
       `INSERT INTO leave_requests (${cols.join(', ')}) VALUES (${vals.join(',')})`, args);
@@ -9672,6 +9807,10 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
             }).join('\n')
           : `*Dates:* ${datesPretty}\n` +
             `*Reason:* ${reason}`;
+        // The proof files, as links the approver can open (Drive, eMarketing group).
+        const attachLines = (attachments || []).length
+          ? `\n\n*Attachments (${attachments.length}):*\n` + attachments.map(a => `  • ${a.name}: ${a.link}`).join('\n')
+          : '';
         for (const hod of recipients) {
           const hodEmail = hod.notification_email || hod.email;
           if (!hodEmail) continue;
@@ -9679,7 +9818,7 @@ app.post('/api/leaves', requireAuth, async (req, res) => {
             `*Employee:* ${me?.name || ''}\n` +
             `*Type:* ${typeLabel}\n` +
             `*Duration:* ${daysWord}\n` +
-            waDetail + `\n\n` +
+            waDetail + attachLines + `\n\n` +
             `Please approve / reject from the Approvals tab.\n\n— E-Marketing Task Manager`;
           sendMail(hodEmail, `${waHeading} — ${me?.name || ''}`, waTextToEmailHtml(msg)).catch(e => console.error('leave req email err:', e.message));
         }

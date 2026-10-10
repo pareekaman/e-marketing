@@ -482,7 +482,11 @@ async function dtCheckLockAndRender(){
     // Reset rows to a single empty row
     document.getElementById('dtRowsBody').innerHTML = '';
     dtAddRow();
+    ewAttachReset('dt');
   }
+  // Proof files: Extra Working only, while the date is still open.
+  const attach = document.getElementById('dtAttachGroup');
+  if (attach) attach.style.display = (DT_MODE === 'extra' && !DT_LOCKED) ? '' : 'none';
   dtRecalcTotal();
 }
 
@@ -658,16 +662,24 @@ async function dtSubmitExtra(){
   const entries = read.map(r => ({
     client: r.client, client_id: r.clientId, department: r.dept, description: r.desc, minutes: r.time
   }));
+  if (!EW_ATTACH.dt.length) { showToast('Attach at least one file (a screenshot or PDF) as proof of the work.', 'error'); return; }
 
   const btn = document.querySelector('.dt-btn-submit');
   btn.disabled = true; btn.textContent = 'Submitting...';
   try {
+    let attachments;
+    try {
+      attachments = await ewAttachUpload('dt', (i, n, pct) => { btn.textContent = `Uploading ${i}/${n} (${pct}%)…`; });
+    } catch (e) { showToast('Upload failed: ' + e.message, 'error'); return; }
+    btn.textContent = 'Submitting...';
     const r = await api('/api/leaves', 'POST', {
       leave_type: 'extra_working',
-      dates: [{ date, entries }]
+      dates: [{ date, entries }],
+      attachments
     });
     if (r.error) { showToast(r.error, 'error'); }
     else {
+      ewAttachReset('dt');
       showToast(`⚡ Extra Working sent for approval (${entries.length} row${entries.length>1?'s':''}).`);
       DT_LOCKED = true;
       await dtCheckLockAndRender();
@@ -696,6 +708,7 @@ function dtRenderExtraHistory(){
   days.sort((a,b) => b.date.localeCompare(a.date));
 
   let html = '';
+  const filesShown = new Set();   // a request's files go on its first card only
   for (const { req, date, day } of days) {
     const rows = Array.isArray(day.entries) ? day.entries : [];
     const totalMin = day.minutes || rows.reduce((a,e) => a + dtEntryMinutes(e), 0) || dtEntryMinutes(day);
@@ -721,6 +734,11 @@ function dtRenderExtraHistory(){
         <span style="flex:1;min-width:160px;color:#64748b">No client breakdown recorded</span>
         <span class="dt-history-time">${totalMin} min</span>
       </div>`;
+    }
+    if (!filesShown.has(req.id)) {
+      filesShown.add(req.id);
+      const files = ewAttachmentsHtml(req);
+      if (files) html += `<div class="dt-history-row">${files}</div>`;
     }
     if (req.approver_note) {
       html += `<div class="dt-history-row" style="background:#fffbeb;border-color:#fde68a">
