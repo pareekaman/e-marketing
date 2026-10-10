@@ -919,11 +919,18 @@ async function reminderPreview(){
 
     let html = `<h4>👁 Preview — ${r.date}</h4>`;
     html += `<div><b>WhatsApp Group:</b> <code>${dtEscape(r.group_id)}</code></div>`;
+    // Sunday, last Saturday or a holiday: the evening message is not sent.
+    if (r.off_day) html += `<div style="margin-top:8px;color:#b45309;font-weight:600">📅 ${dtEscape(r.off_day)}. The evening message will not go out today.</div>`;
     html += `<div style="margin-top:10px"><b>❌ Will be reminded (${r.missing_count}):</b></div>`;
     if (r.missing_count) {
       html += '<ul>' + r.missing.map(u => `<li>${dtEscape(u.name)} <span style="color:#94a3b8">(${dtEscape(u.department||'no dept')})</span></li>`).join('') + '</ul>';
     } else {
       html += '<div style="color:#10b981;margin-left:8px">🎉 Everyone has filled today!</div>';
+    }
+    // Full-day / half-day leave filed for today: left out of the message.
+    if (r.on_leave_count) {
+      html += `<div style="margin-top:10px"><b>🌴 On leave today (${r.on_leave_count}):</b> <span style="color:#94a3b8">not named in the message</span></div>`;
+      html += '<ul>' + r.on_leave.map(u => `<li>${dtEscape(u.name)} <span style="color:#94a3b8">(${dtEscape(u.department||'no dept')})</span></li>`).join('') + '</ul>';
     }
     html += `<div style="margin-top:10px"><b>✅ Already filled (${r.filled_count}):</b> ${r.filled.map(u=>dtEscape(u.name)).join(', ') || '<i>none</i>'}</div>`;
     html += `<div style="margin-top:10px"><b>🚫 Excluded (${r.excluded_count}):</b></div>`;

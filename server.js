@@ -5864,8 +5864,11 @@ app.get('/api/cron/pending-summary', async (req, res) => {
 // ── Preview (admin) — see who would get reminded without actually sending ──
 app.get('/api/daily-reminder/preview', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const istNow = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
-    const today = istNow.toISOString().split('T')[0];
+    // The preview follows buildAndSendReminder's rules, so it lists exactly
+    // who the message will name: it used to skip the leave check and showed
+    // people on leave as "will be reminded" although the message left them out.
+    const off = await getTodayOffIST();
+    const today = off.today;
 
     // Client logins (role='client') are external accounts — they never fill
     // daily team reports and shouldn't show up in this preview.
@@ -5876,11 +5879,15 @@ app.get('/api/daily-reminder/preview', requireAuth, requireAdmin, async (req, re
     );
     const isCxo = u => EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase());
     const eligible = users.filter(u => !isCxo(u) && !u.exclude_from_reminder);
+    // Full-day / half-day leave filed for today (pending or approved): the
+    // message does not name them, so neither does "will be reminded".
+    const onLeave = await usersOnLeaveSet(today);
     const [filled] = await db.query(
       `SELECT DISTINCT user_id FROM daily_tasks WHERE entry_date = ?`, [today]
     );
     const filledSet = new Set(filled.map(r => r.user_id));
-    const missing = eligible.filter(u => !filledSet.has(u.id));
+    const missing = eligible.filter(u => !filledSet.has(u.id) && !onLeave.has(u.id));
+    const onLeaveList = eligible.filter(u => !filledSet.has(u.id) && onLeave.has(u.id));
     const filledList = eligible.filter(u => filledSet.has(u.id));
     // Excluded list — combine CXO + flagged users (deduplicated by id)
     const excludedList = users.filter(u => isCxo(u) || u.exclude_from_reminder)
@@ -5894,8 +5901,12 @@ app.get('/api/daily-reminder/preview', requireAuth, requireAdmin, async (req, re
     res.json({
       date: today,
       group_id: REMINDER_GROUP_ID,
+      // Sunday, last Saturday or a holiday: the evening message is not sent.
+      off_day: off.off ? off.reason : null,
       missing_count: missing.length,
       missing,
+      on_leave_count: onLeaveList.length,
+      on_leave: onLeaveList,
       filled_count: filledList.length,
       filled: filledList,
       excluded_count: excludedList.length,
@@ -9843,12 +9854,25 @@ async function getTodayOffIST() {
 async function usersOnLeaveSet(today) {
   try {
     const [rows] = await db.query(
-      `SELECT DISTINCT user_id FROM leave_requests
+      `SELECT user_id, dates_json FROM leave_requests
         WHERE status <> 'rejected'
           AND leave_type IN ('full_day','half_day')
           AND from_date <= ? AND to_date >= ?`,
       [today, today]);
-    return new Set(rows.map(r => r.user_id));
+    // A request can list scattered days (dates_json); from/to then only bound
+    // them, and the days in between are working days. Without this, leave on
+    // the 5th and the 12th kept someone out of the reminders all week.
+    // Requests without a list (older ones) cover their whole range.
+    const out = new Set();
+    for (const r of rows) {
+      let days = null;
+      try {
+        const list = JSON.parse(r.dates_json || 'null');
+        if (Array.isArray(list) && list.length) days = list.map(d => String((d && d.date) || d || '').slice(0, 10));
+      } catch (e) {}
+      if (!days || days.includes(today)) out.add(r.user_id);
+    }
+    return out;
   } catch (e) {
     console.error('usersOnLeaveSet error:', e.message);
     return new Set();
