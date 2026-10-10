@@ -156,8 +156,8 @@ function renderManpurTasksBtn() {
 
 // Business Automation Credentials — a Google Apps Script page for one person
 // (Akhilesh Vyas). Unlike Manpur Tasks the link is not in this file: /api/me
-// sends it as ME.baCredentialsUrl only to the people in
-// ba_credentials_viewer_ids, and everyone else gets no button. Same repaint
+// sends it as ME.baCredentialsUrl only to the user ids in
+// BA_CREDENTIALS_VIEWER_IDS (server.js), and everyone else gets no button. Same repaint
 // rule as the Manpur button, since loadDashboard() rewrites #dashBtns.
 function renderBaCredentialsBtn() {
   const wrap = document.getElementById('dashBtns');

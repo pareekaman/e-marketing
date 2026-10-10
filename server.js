@@ -1984,7 +1984,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
       rows[0].canManageInvoices  = await canManageInvoices(req.session);
       // The Dashboard's Business Automation Credentials button: the link itself,
       // for the people on the list only; everyone else gets null and no button.
-      rows[0].baCredentialsUrl = (await baCredentialsViewerIds()).includes(Number(req.session.userId))
+      rows[0].baCredentialsUrl = BA_CREDENTIALS_VIEWER_IDS.includes(Number(req.session.userId))
         ? BA_CREDENTIALS_URL : null;
     } catch (e) {
       rows[0].canApprovePayments = false;
@@ -7934,31 +7934,18 @@ const PEOPLE_SETTINGS = {
   // Feedback page. Was matched by name at every request, so anyone later
   // renamed to (or hired as) one of these names inherited the access.
   feedback_fixed_ids:   ['Abhishek Jain', 'Simran Gurnani'],
-  // Who sees the Business Automation Credentials button on the Dashboard.
-  ba_credentials_viewer_ids: ['Akhilesh Vyas'],
 };
-// The page that button opens (a Google Apps Script web app). Sent by /api/me
-// only to ba_credentials_viewer_ids, so the link is not in the page code that
-// everyone else loads.
-const BA_CREDENTIALS_URL = 'https://script.google.com/a/e-marketing.io/macros/s/AKfycbzCQHuCb9WpmAdlKiOvtbswZWDY26I525PQA_Mcy4YcGejVFCqD2VE-4S07sBPBbLmWnw/exec';
 
-// The ids behind ba_credentials_viewer_ids, written on first use from the
-// name above if the row is not there yet. seedPaymentRoleIds() cannot be relied
-// on for a new key: it runs inside the startup migrations, and those are
-// skipped whenever the migration blocks are unchanged (see _DEPLOY_ID), so a
-// key added only to PEOPLE_SETTINGS would never reach production.
-async function baCredentialsViewerIds() {
-  const key = 'ba_credentials_viewer_ids';
-  const [[row]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [key]);
-  if (!row) {
-    const [rows] = await db.query('SELECT id FROM users WHERE name IN (?)', [PEOPLE_SETTINGS[key]]);
-    const ids = rows.map(r => r.id);
-    await db.query('INSERT IGNORE INTO app_settings (key_name, value) VALUES (?,?)', [key, JSON.stringify(ids)]);
-    if (!ids.length) console.log(`  ⚠️ ${key}: NO USER MATCHED ${PEOPLE_SETTINGS[key].join(', ')}`);
-    return ids;
-  }
-  return readIdSetting(key);
-}
+// Who sees the Business Automation Credentials button on the Dashboard, by
+// PRODUCTION user id, never by name: someone who joins later with the same
+// name must not get it. Kept here in code rather than in app_settings, so
+// there is no seeding to depend on (the startup seed is skipped on deploys
+// that leave the migration blocks unchanged, see _DEPLOY_ID).
+//   5  Akhilesh Vyas
+const BA_CREDENTIALS_VIEWER_IDS = [5];
+// The page that button opens (a Google Apps Script web app). Sent by /api/me
+// only to those ids, so the link is not in the page code everyone else loads.
+const BA_CREDENTIALS_URL = 'https://script.google.com/a/e-marketing.io/macros/s/AKfycbzCQHuCb9WpmAdlKiOvtbswZWDY26I525PQA_Mcy4YcGejVFCqD2VE-4S07sBPBbLmWnw/exec';
 const PR_APPROVER_KEY = 'payment_approver_ids';
 
 // Same idea as PEOPLE_SETTINGS — a fixed set of people stored in app_settings —
