@@ -1996,10 +1996,11 @@ app.get('/api/me', requireAuth, async (req, res) => {
       rows[0].canAdminCreditCards = await canAdminCreditCards(req.session);
       rows[0].canViewBillingName = await canViewBillingName(req.session);
       rows[0].canManageInvoices  = await canManageInvoices(req.session);
-      // The Dashboard's Business Automation Credentials button: the link itself,
-      // for the people on the list only; everyone else gets null and no button.
-      rows[0].baCredentialsUrl = BA_CREDENTIALS_VIEWER_IDS.includes(Number(req.session.userId))
-        ? BA_CREDENTIALS_URL : null;
+      // The Dashboard's Business Automation Credentials button, which opens the
+      // EMK Credentials page: for the people on the list only, and not while an
+      // admin is viewing the app as one of them.
+      rows[0].canSeeEmkCredentials = BA_CREDENTIALS_VIEWER_IDS.includes(Number(req.session.userId))
+        && !req.session.impersonatedBy;
     } catch (e) {
       rows[0].canApprovePayments = false;
       rows[0].canReviewMdoTasks  = false; rows[0].canViewCreditCards = false;
@@ -2007,7 +2008,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
       // Fail closed — an error here must hide the field, never reveal it.
       rows[0].canViewBillingName = false;
       rows[0].canManageInvoices  = false;
-      rows[0].baCredentialsUrl   = null;
+      rows[0].canSeeEmkCredentials = false;
     }
     try {
       const [[pd]] = await db.query('SELECT cm_priority_dept FROM users WHERE id=?', [req.session.userId]);
@@ -7961,16 +7962,14 @@ const PEOPLE_SETTINGS = {
   feedback_fixed_ids:   ['Abhishek Jain', 'Simran Gurnani'],
 };
 
-// Who sees the Business Automation Credentials button on the Dashboard, by
+// Who sees the Business Automation Credentials button on the Dashboard and
+// the EMK Credentials page it opens (backend/routes/emk-credentials.js), by
 // PRODUCTION user id, never by name: someone who joins later with the same
 // name must not get it. Kept here in code rather than in app_settings, so
 // there is no seeding to depend on (the startup seed is skipped on deploys
 // that leave the migration blocks unchanged, see _DEPLOY_ID).
 //   5  Akhilesh Vyas
 const BA_CREDENTIALS_VIEWER_IDS = [5];
-// The page that button opens (a Google Apps Script web app). Sent by /api/me
-// only to those ids, so the link is not in the page code everyone else loads.
-const BA_CREDENTIALS_URL = 'https://script.google.com/a/e-marketing.io/macros/s/AKfycbzCQHuCb9WpmAdlKiOvtbswZWDY26I525PQA_Mcy4YcGejVFCqD2VE-4S07sBPBbLmWnw/exec';
 const PR_APPROVER_KEY = 'payment_approver_ids';
 
 // Same idea as PEOPLE_SETTINGS — a fixed set of people stored in app_settings —
@@ -10639,6 +10638,13 @@ require('./backend/routes/hrm')(app, {
 // standalone sales dashboard. Sits here rather than higher up because it needs
 // userCanSee/userCanDo, which are defined further down than the Sheets helpers.
 // Enquiry Capture — the sales enquiry form inside the app (routes/enquiries.js).
+// EMK Credentials — the client credentials sheet, for BA_CREDENTIALS_VIEWER_IDS only.
+require('./backend/routes/emk-credentials')(app, {
+  requireAuth,
+  getSheetsClient,
+  viewerIds: BA_CREDENTIALS_VIEWER_IDS,
+});
+
 // Compose Email — admins send email from the app, every send logged (routes/compose-mail.js).
 require('./backend/routes/compose-mail')(app, {
   db,

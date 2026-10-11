@@ -154,26 +154,24 @@ function renderManpurTasksBtn() {
        onclick="window.open('${MANPUR_TASKS_URL}','_blank','noopener')">⛽ Manpur Tasks</button>`);
 }
 
-// Business Automation Credentials — a Google Apps Script page for one person
-// (Akhilesh Vyas). Unlike Manpur Tasks the link is not in this file: /api/me
-// sends it as ME.baCredentialsUrl only to the user ids in
-// BA_CREDENTIALS_VIEWER_IDS (server.js), and everyone else gets no button. Same repaint
-// rule as the Manpur button, since loadDashboard() rewrites #dashBtns.
+// Business Automation Credentials — opens the EMK Credentials page in the
+// same window (emk-creds.js). /api/me sets ME.canSeeEmkCredentials only for
+// the user ids in BA_CREDENTIALS_VIEWER_IDS (server.js); everyone else gets
+// no button. Same repaint rule as the Manpur button, since loadDashboard()
+// rewrites #dashBtns.
 function renderBaCredentialsBtn() {
   const wrap = document.getElementById('dashBtns');
-  const url = ME && ME.baCredentialsUrl;
-  if (!wrap || !url || !/^https:\/\//.test(url)) return;
+  if (!wrap || !(ME && ME.canSeeEmkCredentials)) return;
   if (document.getElementById('baCredentialsBtn')) return;
-  const a = document.createElement('a');
-  a.id = 'baCredentialsBtn';
-  a.className = 'btn';
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener';
-  a.title = 'Opens the Business Automation credentials page in a new tab';
-  a.style.cssText = 'background:#0f766e;color:#fff;text-decoration:none';
-  a.textContent = '🔐 Business Automation Credentials';
-  wrap.insertAdjacentElement('afterbegin', a);
+  const b = document.createElement('button');
+  b.id = 'baCredentialsBtn';
+  b.type = 'button';
+  b.className = 'btn';
+  b.title = 'Client credentials, from the EMK Client Credentials sheet';
+  b.style.cssText = 'background:#0f766e;color:#fff';
+  b.textContent = '🔐 Business Automation Credentials';
+  b.onclick = () => navigate('emkcreds');
+  wrap.insertAdjacentElement('afterbegin', b);
 }
 
 let dashType = 'all';
@@ -611,5 +609,5 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Scheduler','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⚠️ Client Escalations',paymentreq:'💳 Payment Request',creditcards:'💳 Credit Card Statement',logs:'🗑 Logs',composemail:'✉️ Compose Email',leads:'📇 Leads Enquiry',enquiry:'📝 Enquiry Capture'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Scheduler','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⚠️ Client Escalations',paymentreq:'💳 Payment Request',creditcards:'💳 Credit Card Statement',logs:'🗑 Logs',composemail:'✉️ Compose Email',emkcreds:'🔐 EMK Credentials',leads:'📇 Leads Enquiry',enquiry:'📝 Enquiry Capture'};
 

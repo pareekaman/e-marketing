@@ -1657,6 +1657,45 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
   </div>
 
   <!-- ══════════════════════════════════════
+       EMK CREDENTIALS — opened from the Dashboard's Business Automation
+       Credentials button, only for the ids the server allows (emk-creds.js)
+  ══════════════════════════════════════ -->
+  <div id="page-emkcreds" class="page">
+    <style>
+      .ek-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+      .ek-bar input,.ek-bar select{padding:10px 12px;font-size:14px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fff;color:#0f172a}
+      .ek-bar input{flex:1;min-width:220px}
+      .ek-count{font-size:13px;color:#64748b;margin:0 0 10px}
+      .ek-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+      .ek-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px}
+      .ek-card h2{margin:0 0 2px;font-size:17px;color:#0f172a}
+      .ek-meta{font-size:12px;color:#64748b;margin-bottom:10px;display:flex;justify-content:space-between;gap:8px}
+      .ek-ok{color:#16a34a;font-weight:600}
+      .ek-bad{color:#dc2626;font-weight:600}
+      .ek-sec{border-top:1px solid #f1f5f9;padding-top:8px;margin-top:8px}
+      .ek-sec h3{margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#1f4e78}
+      .ek-row{display:flex;align-items:center;gap:6px;font-size:14px;padding:3px 0}
+      .ek-row .k{width:80px;color:#64748b;flex-shrink:0}
+      .ek-row .v{flex:1;word-break:break-all;color:#0f172a}
+      .ek-row .v.na{color:#94a3b8}
+      .ek-row a{color:#2563eb}
+      .ek-ic{border:1px solid #e2e8f0;background:#fff;border-radius:6px;cursor:pointer;padding:2px 7px;font-size:13px}
+      .ek-ic:hover{background:#eef2ff}
+      .ek-notes{font-size:13px;color:#334155;margin-top:8px;white-space:pre-wrap}
+    </style>
+    <div class="ek-bar">
+      <input id="ekQ" type="search" placeholder="Search by client, employee, link or user ID…" oninput="ekRender()" autocomplete="off">
+      <select id="ekEmp" onchange="ekRender()"><option value="">All employees</option></select>
+      <select id="ekStatus" onchange="ekRender()">
+        <option value="">All statuses</option><option value="Complete">✅ Complete</option><option value="Incomplete">⚠ Incomplete</option>
+      </select>
+      <button class="btn btn-outline" onclick="loadEmkCreds()">↻ Refresh</button>
+    </div>
+    <div class="ek-count" id="ekCount"></div>
+    <div class="ek-grid" id="ekGrid"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════
        COMPOSE EMAIL — admin only (public/js/compose-mail.js)
   ══════════════════════════════════════ -->
   <div id="page-composemail" class="page">
@@ -4316,6 +4355,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/reports.js"></script>
 <script src="/js/leaves.js"></script>
 <script src="/js/compose-mail.js"></script>
+<script src="/js/emk-creds.js"></script>
 <script src="/js/portal.js"></script>
 <script src="/js/payments.js"></script>
 <script src="/js/mdo.js"></script>
