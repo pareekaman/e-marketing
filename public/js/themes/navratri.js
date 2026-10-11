@@ -897,7 +897,7 @@ ThemeDecor.register('navratri', function (d) {
   // ratio before it loads) and the width she is shown at, chosen so each Mata stands about 300px
   // tall — a standing Mata is narrower than a seated one. The browser takes the 400px file up to 2x
   // pixel density and the 800px one when zoomed in further.
-  var NV_PHOTOS = { 1: [400, 598, 200], 2: [400, 984, 135] };
+  var NV_PHOTOS = { 1: [400, 598, 200], 2: [400, 984, 135], 3: [400, 620, 200] };
   var dayN = +document.documentElement.getAttribute('data-nv-day');
   var DAY = NV_DAYS[dayN] || null;
   function mataPhoto(day) {
