@@ -583,10 +583,36 @@ ThemeDecor.register('dussehra', function (d) {
       '<path d="M130 17 L103 4 L110 17 L103 30 Z" fill="#FFFBEB" stroke="#D97706" stroke-width="1.2"/><path d="M125 17 L108 9.5 L112 17 L108 24.5 Z" fill="#FDE68A"/>' +
       '<path d="M12 17 l10 -9 h7 l-9 9 z M12 17 l10 9 h7 l-9 -9 z" fill="#DC2626"/><path d="M24 17 l8 -7 h6 l-7 7 z M24 17 l8 7 h6 l-7 -7 z" fill="#F59E0B"/></svg>' }
   ];
-  var RAISE = 58; // degrees: how high Ram raises the bow to invoke an astra
+  var RAISE = 0; // degrees: how high Ram raises the bow to invoke an astra — the painted Ram holds it level, so the astra gathers straight beyond the arrow's tip
 
-  var ramEl = d.svg(ram, 'td-ram td-drag');
-  var ravEl = d.svg(ravan, 'td-ravan td-drag');
+  // Shri Ram is a painting the user made (public/img/themes/dussehra-ram-{aim,cheer}-{400,800}.webp,
+  // transparent, srcset so the 400 file serves up to 2x and the 800 one when zoomed): one image
+  // aiming, one rejoicing, and setPose() shows one or the other. The drawn `ram` svg above is no
+  // longer used. The points the story needs on him — the arrow's tip and tail (nock) and the bow
+  // hand the chakra flies back to — are fractions of the aiming painting's box (RAM_PTS).
+  var RAM_PTS = { tip: [0.975, 0.25], tail: [0.35, 0.27], hand: [0.86, 0.29] };
+  function ramImg(pose, w, h, shown) {
+    var base = '/img/themes/dussehra-ram-' + pose;
+    return '<img class="rm-pose rm-' + pose + '" src="' + base + '-400.webp" srcset="' + base + '-400.webp 400w, ' + base + '-800.webp 800w" sizes="156px"' +
+           ' width="' + w + '" height="' + h + '" alt="" draggable="false" style="display:' + (shown ? 'block' : 'none') + ';width:100%;height:auto">';
+  }
+  var ramEl = d.svg(ramImg('aim', 400, 589, true) + ramImg('cheer', 400, 589, false), 'td-ram td-drag');
+  // should the rejoicing painting be missing, he rejoices with the aiming one
+  ramEl.querySelector('.rm-cheer').addEventListener('error', function () { this.srcset = ''; this.src = '/img/themes/dussehra-ram-aim-400.webp'; });
+  // The rest of the cast are paintings too (public/img/themes/dussehra-<who>-<w>.webp, two sizes
+  // each, srcset): Ravan, Vibhishan, Hanuman (arms up / hands folded), two vanars, and the Pushpak
+  // Viman with the middle throne empty (viman-2) or Ram on it (viman-3). The drawn `ravan`,
+  // VIBHISHAN, HANUMAN, vanar() and PUSHPAK svgs above are no longer used. A painting's parts do
+  // not move, so what the drawings did with parts is done to the whole figure (CSS) or by swapping
+  // one painting for another (setPose-style, see board()).
+  var CAST = { ravan: [400, 589, 800], vibhishan: [300, 448, 600], 'hanuman-up': [300, 460, 600], 'hanuman-fold': [300, 478, 600],
+               'vanar-1': [160, 268, 320], 'vanar-2': [160, 272, 320], 'viman-2': [480, 319, 960], 'viman-3': [480, 322, 960] };
+  function castImg(who, px, cls) {
+    var c = CAST[who], base = '/img/themes/dussehra-' + who;
+    return '<img' + (cls ? ' class="' + cls + '"' : '') + ' src="' + base + '-' + c[0] + '.webp" srcset="' + base + '-' + c[0] + '.webp ' + c[0] + 'w, ' + base + '-' + c[2] + '.webp ' + c[2] + 'w" sizes="' + px + 'px"' +
+           ' width="' + c[0] + '" height="' + c[1] + '" alt="" draggable="false" style="width:100%;height:auto">'; // display comes from the CSS (Hanuman's two poses are shown by class)
+  }
+  var ravEl = d.svg(castImg('ravan', 138), 'td-ravan td-drag');
   // Flashes, sparks and fire belong in front of the figures (the hit lands on Ravan's body).
   d.canvas.style.zIndex = '1';
 
@@ -621,12 +647,14 @@ ThemeDecor.register('dussehra', function (d) {
   // 'cheer' (bow raised high, beaming). display, not visibility, so no part of a hidden pose can
   // show through (setBow sets visibility on the aiming parts).
   function setPose(p) {
-    function show(sel, on) { [].forEach.call(ramEl.querySelectorAll(sel), function (g) { g.style.display = on ? '' : 'none'; }); }
-    show('.td-aim', p !== 'cheer'); show('.td-cheer', p === 'cheer');
-    show('.td-fcalm', p === 'aim'); show('.td-fchant', p === 'chant');
+    ramEl.querySelector('.rm-aim').style.display = p === 'cheer' ? 'none' : 'block';
+    ramEl.querySelector('.rm-cheer').style.display = p === 'cheer' ? 'block' : 'none';
+    ramEl.classList.toggle('td-chanting', p === 'chant'); // a painting cannot close its eyes: a pulse of light on him instead (CSS)
   }
   function setBow(el, drawn) {
-    el.querySelector('.td-nock').style.visibility = drawn ? '' : 'hidden';
+    var nock = el.querySelector('.td-nock');
+    if (!nock) return; // the painted Ram has no string to draw or ease; Ravan's drawing still has
+    nock.style.visibility = drawn ? '' : 'hidden';
     el.querySelector('.td-sd').style.visibility = drawn ? '' : 'hidden';
     el.querySelector('.td-sr').style.visibility = drawn ? 'hidden' : 'visible';
   }
@@ -645,6 +673,9 @@ ThemeDecor.register('dussehra', function (d) {
   }
   function setAng(deg) {
     ang = deg;
+    // the painted Ram does not turn his bow; `ang` still gives a shot its first heading and the
+    // invocation its line of light
+    if (!narm) return;
     var r = deg * Math.PI / 180, c = Math.cos(r), s = Math.sin(r), tr = 'rotate(' + f1(-deg) + ' 92 96)';
     [].forEach.call(rots, function (g) { g.setAttribute('transform', tr); });
     var hx = 92 + 8 * c - 7 * s, hy = 96 - 8 * s - 7 * c, fl = 44 - 0.07 * deg;
@@ -671,12 +702,16 @@ ThemeDecor.register('dussehra', function (d) {
     return { x: r.left + fx * r.width, y: r.top + fy * r.height };
   }
   function centerOf(el) { return pointIn(el, 0.5, 0.5); }
-  // Where shots land: Ravan's navel, or his heads for the chakra.
-  function navel() { return pointIn(ravEl, 0.5, 142 / 250); }
-  function crowns() { return pointIn(ravEl, 0.5, 64 / 250); }
+  // On Ram: the arrow's tip, its tail (nock) and the bow hand, from RAM_PTS.
+  function ramTip() { return pointIn(ramEl, RAM_PTS.tip[0], RAM_PTS.tip[1]); }
+  function ramTail() { return pointIn(ramEl, RAM_PTS.tail[0], RAM_PTS.tail[1]); }
+  function ramHand() { return pointIn(ramEl, RAM_PTS.hand[0], RAM_PTS.hand[1]); }
+  // Where shots land: Ravan's navel, or his heads for the chakra (fractions of the painting's box).
+  function navel() { return pointIn(ravEl, 0.46, 0.5); }
+  function crowns() { return pointIn(ravEl, 0.48, 0.2); }
   // The angle (degrees, upwards positive) that points Ram's arrow at the astra's mark.
   function aimAngle(a) {
-    var n = centerOf(ramEl.querySelector('.td-tail')), t = (a.aim || navel)();
+    var n = ramTail(), t = (a.aim || navel)();
     return Math.max(-35, Math.min(70, Math.atan2(n.y - t.y, t.x - n.x) * 180 / Math.PI));
   }
 
@@ -685,7 +720,7 @@ ThemeDecor.register('dussehra', function (d) {
   // it cannot circle him for ever. The chakra then flies back to Ram's bow hand. Shots move on
   // their own frames: the canvas runs at ~30fps, too few for a figure crossing the screen.
   function launch(a) {
-    var el = d.svg(a.svg, 'td-astra'), from = centerOf(ramEl.querySelector('.td-tip'));
+    var el = d.svg(a.svg, 'td-astra'), from = ramTip();
     el.style.width = a.w + 'px'; el.style.left = '0px'; el.style.top = '0px';
     el.style.transformOrigin = a.tip.x + 'px ' + a.tip.y + 'px';
     var s = { a: a, el: el, x: from.x, y: from.y, th: -ang * Math.PI / 180, age: 0, spin: 0, back: false };
@@ -701,7 +736,7 @@ ThemeDecor.register('dussehra', function (d) {
     var dt = Math.min(0.05, Math.max(0, (now - shotLast) / 1000));
     shotLast = now;
     for (var i = shots.length - 1; i >= 0; i--) {
-      var s = shots[i], a = s.a, g = s.back ? pointIn(ramEl, 0.76, 0.36) : (a.aim || navel)();
+      var s = shots[i], a = s.a, g = s.back ? ramHand() : (a.aim || navel)();
       s.age += dt; s.spin += 16 * dt;
       var dx = g.x - s.x, dy = g.y - s.y, dd = Math.sqrt(dx * dx + dy * dy), v = a.speed * (1 + 0.2 * s.age);
       if (dd <= Math.max(a.hitR, v * dt) || s.age > 12) {
@@ -870,7 +905,7 @@ ThemeDecor.register('dussehra', function (d) {
     var k = 0.8, s = document.createElement('div');
     s.className = 'td-lodged';
     s.innerHTML = a.svg;
-    s.style.cssText = 'position:absolute;left:50%;top:' + (142 / 2.5) + '%;width:' + (a.w * k) + 'px;transform-origin:0 0;clip-path:inset(0 18px 0 0);' +
+    s.style.cssText = 'position:absolute;left:46%;top:50%;width:' + (a.w * k) + 'px;transform-origin:0 0;clip-path:inset(0 18px 0 0);' + // at his navel (see navel())
       'transform:rotate(' + th.toFixed(3) + 'rad) translate(' + f1(14 - a.tip.x * k) + 'px,0)' +
       (Math.cos(th) < 0 ? ' scaleY(-1)' : '') + ' translate(0,' + f1(-a.tip.y * k) + 'px)';
     ravEl.appendChild(s);
@@ -907,7 +942,7 @@ ThemeDecor.register('dussehra', function (d) {
     em.style.setProperty('--bx', f1(-Math.cos(r) * off) + 'px'); em.style.setProperty('--by', f1(Math.sin(r) * off) + 'px');
     d.layer.appendChild(em);
     emblem = { el: em, off: off };
-    placeEmblem(centerOf(ramEl.querySelector('.td-tip')));
+    placeEmblem(ramTip());
     return em;
   }
   function placeEmblem(tp) {
@@ -990,8 +1025,8 @@ ThemeDecor.register('dussehra', function (d) {
     '<path d="M10 0 H20 Q13 10 1 17 Q8 9 10 0 Z" fill="#FEF3C7"/>' +
     '<path d="M20 0 Q13 10 1 17 Q8 9 10 0" fill="none" stroke="#2563EB" stroke-width="1.5" stroke-linejoin="round"/></svg>';
   async function advise() {
-    var r = ramEl.getBoundingClientRect(), W = d.layer.clientWidth, w = 100, h = w * 170 / 160, left = r.right + 4;
-    vibEl = d.svg(VIBHISHAN, 'td-vibhishan');
+    var r = ramEl.getBoundingClientRect(), W = d.layer.clientWidth, w = 96, h = w * CAST.vibhishan[1] / CAST.vibhishan[0], left = r.right + 4;
+    vibEl = d.svg(castImg('vibhishan', w), 'td-vibhishan');
     vibEl.style.width = w + 'px';
     if (left + w > W - 8) left = Math.max(0, r.left - w - 4);
     vibEl.style.left = Math.round(left) + 'px';
@@ -1006,12 +1041,19 @@ ThemeDecor.register('dussehra', function (d) {
   }
 
   // Hanuman with the vanar sena around him, springing up along the foot of the page, cheering.
-  var SENA = [{ dx: 0, w: 100, hanuman: true }, { dx: -196, w: 46, fur: '#8D5524', cloth: '#DC2626' }, { dx: -118, w: 52, fur: '#A0652D', cloth: '#F59E0B' },
-              { dx: 118, w: 52, fur: '#7C4A1E', cloth: '#16A34A' }, { dx: 196, w: 46, fur: '#9A5B2A', cloth: '#7C3AED' }];
+  // Hanuman carries both paintings (.am-up cheering, .am-fold hands folded; the CSS shows one by
+  // am-cheer); the vanars, with only a cheering painting, are mirrored on one side so the two
+  // paintings make four different monkeys.
+  var SENA = [{ dx: 0, w: 100, hanuman: true }, { dx: -196, w: 52, who: 'vanar-1', flip: true }, { dx: -118, w: 58, who: 'vanar-2' },
+              { dx: 118, w: 58, who: 'vanar-1' }, { dx: 196, w: 52, who: 'vanar-2', flip: true }];
   function vanarSena() {
     var cx = d.layer.clientWidth / 2;
     return SENA.map(function (v, i) {
-      var el = d.svg(v.hanuman ? HANUMAN : vanar(v.fur, v.cloth), 'td-army am-cheer ' + (v.hanuman ? 'td-hanuman' : 'td-vanar'));
+      // Hanuman's two poses sit in a span: addSvg() styles the first child inline (display:block),
+      // which on a bare img would override the CSS that shows one pose at a time
+      var el = d.svg(v.hanuman ? '<span>' + castImg('hanuman-up', v.w, 'am-up') + castImg('hanuman-fold', v.w, 'am-fold') + '</span>' : castImg(v.who, v.w),
+                     'td-army am-cheer ' + (v.hanuman ? 'td-hanuman' : 'td-vanar'));
+      if (v.flip) el.firstChild.style.scale = '-1 1';
       el.style.width = v.w + 'px';
       el.style.left = Math.round(cx + v.dx - v.w / 2) + 'px';
       el.style.bottom = '0px';
@@ -1024,8 +1066,10 @@ ThemeDecor.register('dussehra', function (d) {
   // and Lakshman aboard; he rises into his seat; then it flies off over the top-right of the page.
   function pushpak() {
     var r = ramEl.getBoundingClientRect(), W = d.layer.clientWidth;
-    var w = 230, h = w * 200 / 260;
-    vimEl = d.svg(PUSHPAK, 'td-vimana');
+    var w = 250, h = w * CAST['viman-2'][1] / CAST['viman-2'][0];
+    // both paintings stacked; the empty-throne one shows until Ram boards (board() swaps them)
+    vimEl = d.svg(castImg('viman-2', w, 'pv-empty') + castImg('viman-3', w, 'pv-ram'), 'td-vimana');
+    vimEl.querySelector('.pv-ram').style.cssText += ';position:absolute;left:0;top:0;opacity:0';
     vimEl.style.width = w + 'px'; vimEl.style.left = '0px'; vimEl.style.top = '0px';
     var pv = { el: vimEl, w: w, h: h, x: Math.max(64, Math.min(W - w - 8, r.left + r.width * 0.425 - w / 2)), y: Math.max(28, r.top - h - 6) };
     vimEl.animate([
@@ -1038,7 +1082,7 @@ ThemeDecor.register('dussehra', function (d) {
   function board(pv) {
     boardAnim = ramEl.animate([{ transform: 'translateY(0)', opacity: 1 }, { transform: 'translateY(-70px)', opacity: 0 }],
                               { duration: 600, easing: 'ease-in', fill: 'forwards' });
-    timers.push(setTimeout(function () { // he appears in his seat (hidden until now by its opacity="0")
+    timers.push(setTimeout(function () { // he appears in his seat: the painting with him on the throne fades in over the empty one
       pv.el.querySelector('.pv-ram').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 500, easing: 'ease-out', fill: 'forwards' });
       spray(pv.x + pv.w * 0.5, pv.y + pv.h * 0.42, 40, ['#FFD54F', '#FFFFFF', '#FDE68A', '#93C5FD'], [40, 160], 60);
     }, 350));
@@ -1065,12 +1109,17 @@ ThemeDecor.register('dussehra', function (d) {
   var DEVTAS = [['#A5D4F7', '#FBBF24', '#F5C518'], ['#F6CFA8', '#DC2626', '#F5C518'], ['#93C5FD', '#F97316', '#FDE68A'],
                 ['#F9D9BE', '#DB2777', '#F5C518'], ['#F6CFA8', '#16A34A', '#F5C518']];
   var devEls = [];
+  // The devtas are one painting (public/img/themes/dussehra-devta-{200,400}.webp, a devta leaning out
+  // of a cloud tipping a basket of flowers), shown five times along the top, every other one
+  // mirrored so the row does not read as copies; the drawn devta() above is no longer used.
+  CAST.devta = [200, 300, 400];
   function devtas() {
     var W = d.layer.clientWidth, n = DEVTAS.length;
     devEls = DEVTAS.map(function (c, i) {
-      var el = d.svg(devta(c[0], c[1], c[2]), 'td-devta');
-      el.style.width = '78px';
-      el.style.left = Math.round(W * (i + 0.5) / n - 39) + 'px';
+      var el = d.svg(castImg('devta', 88), 'td-devta');
+      if (i % 2) el.firstChild.style.scale = '-1 1';
+      el.style.width = '88px';
+      el.style.left = Math.round(W * (i + 0.5) / n - 44) + 'px';
       el.style.top = (i % 2 ? 14 : 2) + 'px';
       el.style.animationDelay = (0.12 * i) + 's';
       return el;
@@ -1237,6 +1286,7 @@ ThemeDecor.register('dussehra', function (d) {
     ramReturns();
     setPose('aim'); setAng(0);
     [].forEach.call(ravEl.querySelectorAll('.td-lodged, .td-coil'), function (x) { x.remove(); });
+    ravEl.classList.remove('td-sever'); // the heads cut by the chakra are back for the next round
     ravEl.style.display = '';
     ravState('td-rise');
     await wait(900); if (dead) return;
@@ -1259,7 +1309,7 @@ ThemeDecor.register('dussehra', function (d) {
     // while an astra is invoked: light pouring down the line of the raised arrow onto its tip, a
     // glow on the tip, and sparks drawn in to it from all round
     if (invoking) {
-      var tp = centerOf(ramEl.querySelector('.td-tip')), rr = ang * Math.PI / 180, ux = Math.cos(rr), uy = -Math.sin(rr);
+      var tp = ramTip(), rr = ang * Math.PI / 180, ux = Math.cos(rr), uy = -Math.sin(rr);
       if (emblem) placeEmblem(tp);
       var big = !!invoking.big, rgb = invoking.rgb, pulse = 0.8 + 0.2 * Math.sin(now / 110), orb = (big ? 36 : 22) * pulse;
       var len = Math.min(1400, (tp.y + 60) / Math.max(0.25, -uy)), ex = tp.x + ux * len, ey = tp.y + uy * len;

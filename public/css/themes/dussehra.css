@@ -20,6 +20,11 @@
 .td-ram.td-win { animation:td-win .55s ease-out 2; }
 @keyframes td-win { 0%,100% { transform:translateY(0); } 40% { transform:translateY(-10px); } }
 .td-ram.td-joy, .td-ram.td-win { filter:drop-shadow(0 0 12px rgba(255,200,40,.9)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+/* Ram is a painting (dussehra.js ramImg: one img aiming, one rejoicing); while he chants an astra's
+   mantra a pulse of light on him stands in for the drawn closed eyes and moving lips */
+.td-ram img { display:block; width:100%; height:auto; }
+.td-ram.td-chanting img { animation:td-chant-glow .6s ease-in-out infinite alternate; }
+@keyframes td-chant-glow { from { filter:brightness(1); } to { filter:brightness(1.2) saturate(1.15); } }
 
 .td-ravan { right:104px; bottom:0; width:138px; transform-origin:50% 100%; will-change:transform;
   filter:drop-shadow(0 0 14px rgba(220,38,38,.85)) drop-shadow(0 4px 6px rgba(0,0,0,.35)); animation:td-menace 3.2s ease-in-out infinite; }
@@ -81,17 +86,19 @@
 @keyframes td-chant { from { transform:scaleY(.3); } to { transform:scaleY(1.15); } }
 /* the mantra, in a bubble beside his head pointing back at his mouth (--m: the astra's colour).
    Devanagari needs a system font, Inter has none. */
-.td-mantra { position:absolute; left:95%; bottom:74%; z-index:3; pointer-events:none; white-space:nowrap; text-align:center;
+/* over the painted Ram's head (he is 156px wide; the bubble is centred on him), not out to his side
+   where it would sit on the page's cards */
+.td-mantra { position:absolute; left:50%; bottom:calc(100% + 8px); translate:-50% 0; z-index:3; pointer-events:none; white-space:nowrap; text-align:center;
   padding:6px 12px 5px; border-radius:14px; background:linear-gradient(180deg,#FFFBEB,#FEF3C7);
   box-shadow:0 0 0 1.5px var(--m), 0 0 16px -2px var(--m), 0 8px 18px -8px rgba(0,0,0,.4);
-  transform-origin:0 100%; animation:td-m-in .45s cubic-bezier(.34,1.56,.64,1) both; }
+  transform-origin:50% 100%; animation:td-m-in .45s cubic-bezier(.34,1.56,.64,1) both; }
 .td-mantra b { display:block; font:700 14px/1.35 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif; color:#9A3412;
   animation:td-m-glow .9s ease-in-out infinite alternate; }
 .td-mantra span { display:block; font:700 9.5px/1.2 'Inter',sans-serif; letter-spacing:.6px; text-transform:uppercase; color:#7C2D12; opacity:.75; }
-.td-mantra::after { content:''; position:absolute; left:-6px; bottom:9px; width:11px; height:11px; background:#FEF3C7;
-  transform:rotate(45deg); box-shadow:-1.5px 1.5px 0 0 var(--m); }
-.td-mantra.td-mantra-left { left:auto; right:95%; transform-origin:100% 100%; }
-.td-mantra.td-mantra-left::after { left:auto; right:-6px; box-shadow:1.5px -1.5px 0 0 var(--m); }
+/* the tail, pointing down at his head */
+.td-mantra::after { content:''; position:absolute; left:calc(50% - 5.5px); bottom:-6px; width:11px; height:11px; background:#FEF3C7;
+  transform:rotate(45deg); box-shadow:1.5px 1.5px 0 0 var(--m); }
+.td-mantra.td-mantra-left { left:50%; } /* no longer needed (the bubble is centred on him), kept for the JS that adds it */
 .td-mantra.td-mantra-out { animation:td-m-out .35s ease-in forwards; }
 @keyframes td-m-in { from { opacity:0; transform:scale(.4); } to { opacity:1; transform:scale(1); } }
 @keyframes td-m-out { to { opacity:0; transform:translateY(-8px) scale(.9); } }
@@ -122,17 +129,23 @@
 .td-ravan.td-shock { animation:td-strain .07s linear 12 alternate;
   filter:brightness(1.3) drop-shadow(0 0 16px rgba(96,165,250,.95)) drop-shadow(0 4px 6px rgba(0,0,0,.35)); }
 @keyframes td-strain { from { transform:translateX(-2px) rotate(-1.6deg); } to { transform:translateX(2px) rotate(-.4deg); } }
-/* the Sudarshan Chakra cuts through his heads, and they grow back */
-.td-heads { transform-box:fill-box; transform-origin:50% 100%; }
-.td-ravan.td-sever .td-heads { animation:td-regrow 1.1s ease-in-out; }
+/* the Sudarshan Chakra cuts through his heads, and they grow back. Ravan is a painting (dussehra.js
+   castImg), whose heads cannot come off on their own, so the whole figure is cut: a gold flash and a
+   hard jolt, then he blurs and dims as the heads regrow, and squares up again. */
+.td-ravan.td-sever img { animation:td-regrow 1.1s ease-in-out; }
 @keyframes td-regrow {
-  0%   { transform:none; opacity:1; }
-  14%  { transform:translate(10px,-18px) rotate(14deg); opacity:.9; }
-  34%  { transform:translate(16px,-10px) rotate(30deg) scale(.4); opacity:0; }
-  60%  { transform:scale(.15); opacity:0; }
-  86%  { transform:scale(1.08); opacity:1; }
-  100% { transform:none; opacity:1; }
+  0%   { filter:none; transform:none; }
+  14%  { filter:brightness(2.2) saturate(.3) drop-shadow(0 0 18px #FFD54F); transform:translate(8px,-6px) rotate(5deg); }
+  34%  { filter:brightness(.5) blur(3px); transform:translate(4px,0) rotate(2deg) scale(1,.94); }
+  60%  { filter:brightness(.8) blur(1px); transform:scale(1,.97); }
+  86%  { filter:brightness(1.3) drop-shadow(0 0 10px #FFD54F); transform:scale(1.02); }
+  100% { filter:none; transform:none; }
 }
+/* the paintings: Ravan's, and the empty-throne / Ram-aboard pair stacked in the Pushpak Viman
+   (the JS fades the second in when he boards); the viman and devtas bob by their img */
+.td-ravan img, .td-vibhishan img, .td-army img { width:100%; height:auto; } /* display is set per pose below */
+.td-ravan img, .td-vibhishan img { display:block; }
+.td-vimana img { display:block; width:100%; height:auto; animation:td-pv-bob 1.4s ease-in-out infinite alternate; }
 /* the Nagastra's serpents winding up him from the feet (each coil's delay is set inline), the head rearing last */
 .td-coil { position:absolute; left:0; top:0; width:100%; pointer-events:none; transform-origin:50% 60%; }
 .td-cb { stroke-dasharray:1; stroke-dashoffset:1; animation:td-wrap .35s ease-out forwards; }
@@ -209,6 +222,20 @@
 .td-army.am-cheer .am-up { display:inline; }
 .td-army.am-cheer .am-fold { display:none; }
 .td-army.am-cheer svg { animation:td-hop-joy .4s cubic-bezier(.3,.7,.4,1) infinite alternate; }
+/* Hanuman is two paintings (am-up cheering, am-fold hands folded; img, so the rules above apply by
+   class) and the vanars one each; a cheering painting hops whole, and when the viman goes they all
+   lean back a little to watch it, having no head to turn */
+.td-army img { display:block; }           /* a vanar's one painting, and Hanuman's folded-hands one */
+.td-army img.am-up { display:none; }      /* Hanuman's cheering one, only while am-cheer */
+.td-army.am-cheer img.am-up { display:block; }
+.td-army.am-cheer img.am-fold { display:none; }
+.td-army.am-cheer img { animation:td-hop-joy .4s cubic-bezier(.3,.7,.4,1) infinite alternate; }
+.td-army.am-look img { transform-origin:50% 100%; animation:td-watch 4.3s ease-in-out forwards; }
+.td-vibhishan.am-look img { transform-origin:50% 100%; animation:td-watch 4.3s ease-in-out forwards; }
+@keyframes td-watch { from { transform:rotate(-3deg); } to { transform:rotate(4deg); } }
+.td-vibhishan.vb-joy img { animation:td-hop-joy .4s cubic-bezier(.3,.7,.4,1) 6 alternate; }
+.td-vibhishan.vb-talking img { animation:td-urge .5s ease-in-out infinite alternate; }
+@keyframes td-urge { from { transform:translateX(0); } to { transform:translateX(5px); } }
 .td-army.am-look .am-head { animation:td-follow 4.3s ease-in-out forwards; }
 .td-army.am-look .am-pupil { animation:td-follow-eye 4.3s ease-in-out forwards; }
 @keyframes td-follow { from { transform:rotate(-9deg); } to { transform:rotate(9deg); } }
@@ -219,12 +246,14 @@
 .td-devta { z-index:2; animation:td-devta-in .8s cubic-bezier(.34,1.56,.64,1) both;
   filter:drop-shadow(0 0 10px rgba(255,214,102,.8)) drop-shadow(0 4px 6px rgba(0,0,0,.15)); }
 .td-devta svg { animation:td-pv-bob 1.6s ease-in-out infinite alternate; }
+.td-devta img { display:block; width:100%; height:auto; animation:td-pv-bob 1.6s ease-in-out infinite alternate; } /* the painting (every other one mirrored inline, which the bob's transform leaves alone) */
 @keyframes td-devta-in { from { opacity:0; transform:translateY(-110%); } to { opacity:1; transform:none; } }
 .td-devta.td-gone { animation:td-devta-out .7s ease-in forwards; }
 @keyframes td-devta-out { to { opacity:0; transform:translateY(-110%); } }
 /* the Pushpak Viman, bobbing on its clouds (sized, flown, and Ram's seat filled by the JS) */
 .td-vimana { z-index:2; filter:drop-shadow(0 0 14px rgba(255,214,102,.75)) drop-shadow(0 6px 10px rgba(0,0,0,.22)); }
 .td-vimana svg { animation:td-pv-bob 1.4s ease-in-out infinite alternate; }
+.td-vimana { position:relative; } /* the two viman paintings stack (the Ram-aboard one absolute over the empty one) */
 @keyframes td-pv-bob { from { transform:translateY(-3px); } to { transform:translateY(3px); } }
 
 /* Dussehra skin: the evening of Vijayadashami across the whole UI. Only under data-theme="dussehra". */
