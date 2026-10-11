@@ -1,7 +1,8 @@
 // Compose Email (admin only). An admin writes an email in the app — To and CC
 // from the users list or any typed address, formatted text, attachments up to
-// 4 MB in total — and it goes out from the app's mailbox under the admin's
-// name, with the admin's own address as Reply-To so answers reach them.
+// 4 MB in total — and it goes out from the app's mailbox under the same name
+// as the app's other emails (mailFromName, "E-Marketing HR" in production),
+// with the admin's own address as Reply-To so answers reach them.
 //
 // Every send is written to mail_log: who sent it, to whom, CC, subject, how
 // many files, when, and whether it went. All admins see that list; the body is
@@ -14,7 +15,7 @@ const MAX_RECIPIENTS = 100;                // To + CC (room for "All users" plus
 const EMAIL_RE = /^[^\s@<>,;"']+@[^\s@<>,;"']+\.[^\s@<>,;"']+$/;
 
 module.exports = function registerComposeMailRoutes(app, deps) {
-  const { db, requireAuth, requireAdmin, sendMail } = deps;
+  const { db, requireAuth, requireAdmin, sendMail, mailFromName } = deps;
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_TOTAL_BYTES, files: MAX_FILES } });
 
   let _logTable = null;
@@ -94,7 +95,6 @@ module.exports = function registerComposeMailRoutes(app, deps) {
         `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;line-height:1.6">${html}</div>`, {
           cc: cc.length ? cc.join(', ') : undefined,
           replyTo: replyTo || undefined,
-          fromName: `${name} (E-Marketing)`,
           attachments: files.map(f => ({ filename: f.originalname, content: f.buffer, contentType: f.mimetype })),
         });
 
@@ -106,6 +106,11 @@ module.exports = function registerComposeMailRoutes(app, deps) {
       if (!ok) return res.status(502).json({ error: 'The email could not be sent. Please try again.' });
       res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // The name the mail goes out under, for the line under the editor.
+  app.get('/api/compose-mail/sender', requireAuth, requireAdmin, (req, res) => {
+    res.json({ name: mailFromName });
   });
 
   // Newest first, for every admin: who sent what (subject only) to whom, when.

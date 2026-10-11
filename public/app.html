@@ -1797,7 +1797,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <div class="ce-files" id="ceFiles"></div>
 
       <div class="ce-actions">
-        <div style="font-size:12px;color:#64748b">Sent from the app's mailbox as <b id="ceFromName"></b>; replies come to your own email.</div>
+        <div style="font-size:12px;color:#64748b">Sent from the app's mailbox<span id="ceFromAs" hidden> as <b id="ceFromName"></b></span>; replies come to your own email.</div>
         <div style="display:flex;gap:10px">
           <button class="btn btn-outline" onclick="ceClear()">Clear</button>
           <button class="btn btn-primary" id="ceSendBtn" onclick="ceSend()">Send</button>

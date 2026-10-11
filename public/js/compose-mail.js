@@ -20,10 +20,17 @@ const CE_EXPANDED = { to: false, cc: false };
 let CE_RANGE = null;                  // the editor's last selection; toolbar inputs take the focus away
 let _ceSending = false;
 let _ceStarted = false;
+let CE_FROM_NAME = '';                // the app's usual sender name, from the server
 
 async function loadComposeMail(){
-  const from = document.getElementById('ceFromName');
-  if (from) from.textContent = `${ME.name} (E-Marketing)`;
+  // The name the mail goes out under, the same as the app's other emails
+  // (SMTP_FROM_NAME on the server); the line under the editor shows it.
+  if (!CE_FROM_NAME) api('/api/compose-mail/sender').then(r => {
+    if (!r || !r.name) return;
+    CE_FROM_NAME = r.name;
+    document.getElementById('ceFromName').textContent = r.name;
+    document.getElementById('ceFromAs').hidden = false;
+  });
   // Defaults once per page load; coming back to the tab keeps what was there.
   if (!_ceStarted) { _ceStarted = true; CE.cc = [...CE_DEFAULT_CC]; }
   if (!CE_USERS.length) {

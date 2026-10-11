@@ -925,19 +925,21 @@ const mailTransporter = nodemailer.createTransport(process.env.SMTP_TEST_HOST
   }
 })();
 
+// The display name on every email the app sends ("E-Marketing HR" in
+// production); Compose Email shows it under its editor.
+const MAIL_FROM_NAME = process.env.SMTP_FROM_NAME || 'E-Marketing Task Manager';
+
 // Reusable email sender — never throws (failures are logged only)
 // opts.attachments (optional) is passed straight to nodemailer, e.g.
 // [{ filename: 'x.pdf', content: <Buffer>, contentType: 'application/pdf' }].
 // Returns true on success so callers that care (e.g. the offer-email endpoint)
 // can report/throw; existing fire-and-forget callers can ignore it.
-// opts.fromName replaces the sender's display name (the address is always the
-// app's mailbox) and opts.replyTo sends replies elsewhere; Compose Email uses both.
+// opts.replyTo sends replies elsewhere (Compose Email: to the admin who wrote it).
 async function sendMail(to, subject, html, opts = {}) {
   if (!to || !process.env.SMTP_USER) return false;
-  const fromName = String(opts.fromName || process.env.SMTP_FROM_NAME || 'E-Marketing Task Manager').replace(/["\r\n]/g, '');
   try {
     await mailTransporter.sendMail({
-      from: `"${fromName}" <${process.env.SMTP_USER}>`,
+      from: `"${MAIL_FROM_NAME}" <${process.env.SMTP_USER}>`,
       to, subject, html,
       ...(opts.cc ? { cc: opts.cc } : {}),
       ...(opts.replyTo ? { replyTo: opts.replyTo } : {}),
@@ -10651,6 +10653,7 @@ require('./backend/routes/compose-mail')(app, {
   requireAuth,
   requireAdmin,
   sendMail,
+  mailFromName: MAIL_FROM_NAME,
 });
 
 require('./backend/routes/enquiries')(app, {
