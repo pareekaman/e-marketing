@@ -165,6 +165,31 @@
   function start() { if (!st.raf && st.inst && st.inst.frame && !document.hidden) { st.last = performance.now(); st.raf = requestAnimationFrame(loop); } }
   function pause() { if (st.raf) { cancelAnimationFrame(st.raf); st.raf = 0; } }
 
+  // Browser zoom raises devicePixelRatio, but Chrome keeps the srcset candidate an image is already
+  // showing rather than fetching the larger one, so a painting went blurry when zoomed in. When the
+  // pixel density changes, every painting in the layer is asked to pick again (re-setting srcset
+  // re-runs the selection), which fetches the larger file where one is listed.
+  var seenDpr = window.devicePixelRatio;
+  function repickOnZoom() {
+    if (window.devicePixelRatio === seenDpr) return;
+    seenDpr = window.devicePixelRatio;
+    if (st.layer) [].forEach.call(st.layer.querySelectorAll('img[srcset]'), function (img) { var s = img.srcset; img.srcset = ''; img.srcset = s; });
+  }
+  // a (resolution) media query flips when the density changes; zoom also resizes the viewport, so
+  // resize is watched too, for a browser that does not fire the media query
+  function watchZoom() {
+    if (!window.matchMedia) return;
+    var mq = window.matchMedia('(resolution: ' + window.devicePixelRatio + 'dppx)');
+    var onChange = function () {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange); else mq.removeListener(onChange);
+      repickOnZoom();
+      watchZoom();
+    };
+    if (mq.addEventListener) mq.addEventListener('change', onChange); else mq.addListener(onChange);
+  }
+  watchZoom();
+  window.addEventListener('resize', repickOnZoom);
+
   function addSvg(html, className) {
     var d = document.createElement('div');
     d.className = 'td-item ' + (className || '');
