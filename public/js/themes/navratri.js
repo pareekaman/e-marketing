@@ -893,15 +893,19 @@ ThemeDecor.register('navratri', function (d) {
     9: { name: 'माँ सिद्धिदात्री', build: siddhidatri, petals: ['#A855F7', '#7E22CE', '#F5B70A', '#FDE68A', '#F472B6'] }
   };
   // Days with a painted Mata (public/img/themes/navratri-<day>-{400,800}.webp) show the painting in
-  // place of the drawing; the rest are drawn. The figure is 200px wide (.td-durga), so the browser
-  // takes the 400px file up to 2x pixel density and the 800px one when zoomed in further.
-  var NV_PHOTOS = { 1: '/img/themes/navratri-1' };
+  // place of the drawing; the rest are drawn. Per day: the 400 file's width and height (the aspect
+  // ratio before it loads) and the width she is shown at, chosen so each Mata stands about 300px
+  // tall — a standing Mata is narrower than a seated one. The browser takes the 400px file up to 2x
+  // pixel density and the 800px one when zoomed in further.
+  var NV_PHOTOS = { 1: [400, 598, 200], 2: [400, 984, 135] };
   var dayN = +document.documentElement.getAttribute('data-nv-day');
   var DAY = NV_DAYS[dayN] || null;
-  function mataPhoto(base) {
-    return '<img src="' + base + '-400.webp" srcset="' + base + '-400.webp 400w, ' + base + '-800.webp 800w" sizes="200px" width="400" height="598" alt="" draggable="false">';
+  function mataPhoto(day) {
+    var p = NV_PHOTOS[day], base = '/img/themes/navratri-' + day;
+    return '<img src="' + base + '-400.webp" srcset="' + base + '-400.webp 400w, ' + base + '-800.webp 800w" sizes="' + p[2] + 'px" width="' + p[0] + '" height="' + p[1] + '" alt="" draggable="false">';
   }
-  var durgaEl = d.svg(DAY && NV_PHOTOS[dayN] ? mataPhoto(NV_PHOTOS[dayN]) : (DAY ? DAY.build() : durga()), 'td-durga td-drag');
+  var durgaEl = d.svg(DAY && NV_PHOTOS[dayN] ? mataPhoto(dayN) : (DAY ? DAY.build() : durga()), 'td-durga td-drag');
+  if (DAY && NV_PHOTOS[dayN]) durgaEl.style.width = NV_PHOTOS[dayN][2] + 'px';
   // Aarti thali: a brass plate with a lit diya, circling in front of her.
   d.svg('<svg viewBox="0 0 50 34" xmlns="http://www.w3.org/2000/svg">' +
     '<ellipse cx="25" cy="14" rx="11" ry="9" fill="#FFB300" fill-opacity=".35"/>' +

@@ -56,7 +56,8 @@
 @keyframes nv-tail { from { transform:rotate(-10deg); } to { transform:rotate(10deg); } }
 .nv-lion-head { transform-box:view-box; transform-origin:79px 190px; animation:nv-nod 3.4s ease-in-out infinite; }
 @keyframes nv-nod { 0%,100% { transform:rotate(0); } 30% { transform:rotate(-5deg); } 60% { transform:rotate(3deg); } }
-.td-aarti { right:70px; bottom:30px; width:60px; animation:nv-aarti 3.2s linear infinite; filter:drop-shadow(0 0 8px rgba(255,170,0,.8)); }
+/* centred under her (left:50% less half its width), so it is in front of a Mata of any width */
+.td-aarti { left:50%; margin-left:-30px; bottom:30px; width:60px; animation:nv-aarti 3.2s linear infinite; filter:drop-shadow(0 0 8px rgba(255,170,0,.8)); }
 /* a clockwise circle in front of her, the way an aarti is done: from the bottom round by the left,
    the top and the right (CSS rotate() turns clockwise); the closing rotate(-a) keeps the thali upright */
 @keyframes nv-aarti { from { transform:translateY(-40px) rotate(0deg) translateY(40px) rotate(0deg); } to { transform:translateY(-40px) rotate(360deg) translateY(40px) rotate(-360deg); } }
