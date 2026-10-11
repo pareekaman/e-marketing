@@ -596,7 +596,7 @@ ThemeDecor.register('dussehra', function (d) {
     return '<img class="rm-pose rm-' + pose + '" src="' + base + '-400.webp" srcset="' + base + '-400.webp 400w, ' + base + '-800.webp 800w" sizes="156px"' +
            ' width="' + w + '" height="' + h + '" alt="" draggable="false" style="display:' + (shown ? 'block' : 'none') + ';width:100%;height:auto">';
   }
-  var ramEl = d.svg(ramImg('aim', 400, 589, true) + ramImg('cheer', 400, 589, false), 'td-ram td-drag');
+  var ramEl = d.svg(ramImg('aim', 400, 589, true) + ramImg('cheer', 400, 598, false), 'td-ram td-drag');
   // should the rejoicing painting be missing, he rejoices with the aiming one
   ramEl.querySelector('.rm-cheer').addEventListener('error', function () { this.srcset = ''; this.src = '/img/themes/dussehra-ram-aim-400.webp'; });
   // The rest of the cast are paintings too (public/img/themes/dussehra-<who>-<w>.webp, two sizes
