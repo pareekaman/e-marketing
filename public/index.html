@@ -515,10 +515,12 @@
   :root[data-theme] .td-lite{ display:none; }
   /* the festival's greeting: over the mascots, large, and in place of "Welcome back" */
   .fest-hello{ display:none; }
+  /* The gradient paints only inside the box, and Devanagari matras (ि above, ु below) reach past a
+     tight line box, so the line is tall and padded or they come out cut off. */
   :root[data-theme] .fest-hello{ display:block; position:absolute; left:50%; top:16%; transform:translateX(-50%); text-align:center; white-space:nowrap;
-    font:800 44px/1.15 'Nirmala UI','Mangal','Noto Sans Devanagari','Inter',sans-serif; color:transparent; -webkit-background-clip:text; background-clip:text;
+    font:800 44px/1.6 'Nirmala UI','Mangal','Noto Sans Devanagari','Inter',sans-serif; padding:.12em .2em .08em; color:transparent; -webkit-background-clip:text; background-clip:text;
     background-image:linear-gradient(90deg,var(--accent-dark),var(--brand-2) 50%,var(--accent)); animation:festIn .9s cubic-bezier(.34,1.56,.64,1) both; }
-  :root[data-theme] .fest-hello small{ display:block; margin-top:8px; font:600 16px/1.3 'Inter',sans-serif; color:#64748b; -webkit-text-fill-color:#64748b; }
+  :root[data-theme] .fest-hello small{ display:block; margin-top:0; font:600 16px/1.3 'Inter',sans-serif; color:#64748b; -webkit-text-fill-color:#64748b; }
   @keyframes festIn{ from{ opacity:0; transform:translateX(-50%) translateY(14px) scale(.85); } to{ opacity:1; transform:translateX(-50%) none; } }
   .art-panel{ position:relative; }
   @media (max-width:900px){ :root[data-theme] .fest-hello{ display:none; } }
