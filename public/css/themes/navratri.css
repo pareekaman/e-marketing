@@ -33,7 +33,9 @@
 @keyframes nv-flame { from { transform:scale(1,.9) skewX(-3deg); } to { transform:scale(1.06,1.1) skewX(3deg); } }
 
 /* "शुभ नवरात्रि" above the dancers; Devanagari needs a system font, Inter has none */
-.nv-greet { position:absolute; left:110px; bottom:206px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
+/* z-index above the garba ring (its dancers go up to ~200, the garbo is 158), so the badge stays in
+   view wherever it is dragged */
+.nv-greet { position:absolute; left:110px; bottom:206px; z-index:500; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
   color:#fff; padding:7px 14px; border-radius:999px; background:linear-gradient(135deg,#F97316,#BE185D 60%,#7E22CE);
   box-shadow:0 0 0 2px rgba(255,255,255,.75), 0 0 18px rgba(219,39,119,.6); transition:translate .3s var(--ease);
   animation:nv-greet 2.4s ease-in-out infinite alternate; }
@@ -54,9 +56,10 @@
 @keyframes nv-tail { from { transform:rotate(-10deg); } to { transform:rotate(10deg); } }
 .nv-lion-head { transform-box:view-box; transform-origin:79px 190px; animation:nv-nod 3.4s ease-in-out infinite; }
 @keyframes nv-nod { 0%,100% { transform:rotate(0); } 30% { transform:rotate(-5deg); } 60% { transform:rotate(3deg); } }
-.td-aarti { right:77px; bottom:30px; width:46px; animation:nv-aarti 3.2s linear infinite; filter:drop-shadow(0 0 8px rgba(255,170,0,.8)); }
-/* a circle in front of her: 0 → right → up → left → down */
-@keyframes nv-aarti { 0% { transform:translate(0,0); } 25% { transform:translate(36px,-36px); } 50% { transform:translate(0,-72px); } 75% { transform:translate(-36px,-36px); } 100% { transform:translate(0,0); } }
+.td-aarti { right:70px; bottom:30px; width:60px; animation:nv-aarti 3.2s linear infinite; filter:drop-shadow(0 0 8px rgba(255,170,0,.8)); }
+/* a clockwise circle in front of her, the way an aarti is done: from the bottom round by the left,
+   the top and the right (CSS rotate() turns clockwise); the closing rotate(-a) keeps the thali upright */
+@keyframes nv-aarti { from { transform:translateY(-40px) rotate(0deg) translateY(40px) rotate(0deg); } to { transform:translateY(-40px) rotate(360deg) translateY(40px) rotate(-360deg); } }
 @media (prefers-reduced-motion: reduce) { .nv-halo, .nv-tail, .nv-lion-head, .td-aarti { animation:none; } }
 
 /* Navratri skin: bandhani and mirror work across the whole UI. Only under data-theme="navratri". */
@@ -415,12 +418,18 @@
    circle; each dancer is placed by transform, the garbo sits at the centre at depth 158). */
 .td-garba-circle { left:64px; bottom:0; width:440px; height:200px; transition:translate .3s var(--ease); }
 .sidebar:hover ~ #themeDecor .td-garba-circle { translate:172px 0; }
-.nv-garbo { position:absolute; left:194px; top:96px; width:52px; height:65px; z-index:158; overflow:visible;
-  filter:drop-shadow(0 0 8px rgba(253,224,71,.7)); }
+.nv-garbo { position:absolute; left:190px; top:78px; width:60px; height:auto; z-index:158; overflow:visible;
+  filter:drop-shadow(0 0 8px rgba(253,224,71,.7)); animation:nv-garbo-glow 1.6s ease-in-out infinite alternate; }
+@keyframes nv-garbo-glow { from { filter:drop-shadow(0 0 6px rgba(253,224,71,.6)); } to { filter:drop-shadow(0 0 16px rgba(253,224,71,.95)); } }
 .nv-ring-dancer { position:absolute; left:0; top:0; width:78px; transform-origin:50% 100%; will-change:transform;
   filter:drop-shadow(0 3px 3px rgba(0,0,0,.22)); }
 .nv-ring-dancer svg { display:block; width:100%; height:auto; overflow:visible; }
-@media (prefers-reduced-motion: reduce) { .td-garba-circle { transition:none; } }
+/* The painted dancers (an img in place of the drawn svg, navratri.js dancerImg): the whole figure
+   steps and sways on the same beat, since a painting has no parts to move. The mirrored ones carry
+   scale:-1 1 inline, which the animation's transform leaves alone. */
+.td-dancer img, .nv-ring-dancer img { display:block; width:100%; height:auto; transform-origin:50% 100%; animation:nv-step 2.4s ease-in-out infinite; }
+.td-dancer-2 img { animation-delay:-1.2s; }
+@media (prefers-reduced-motion: reduce) { .td-garba-circle { transition:none; } .nv-garbo, .td-dancer img, .nv-ring-dancer img { animation:none; } }
 
 /* Navratri Day 8 — Maa Mahagauri: pearl white and soft pink in moonlight, strings of pearls along the
    cards, jasmine over the page, a moonlit sidebar. Only with data-nv-day="8". */

@@ -120,20 +120,30 @@ ThemeDecor.register('navratri', function (d) {
       arm(-1, o.kurta, o.trim) + arm(1, o.kurta, o.trim) + head(false) + '</g></svg>';
   }
   // On a dandiya day a pair dances; on a garba day eight dancers, girls and boys by turns, circle a
-  // garbo (the pierced clay pot with a lamp inside), as garba is danced. The dance goes on the inner
-  // svg, not the dancer: the dancer's classes key where a viewer has dragged it, and that spot
-  // should not change from day to day.
+  // garbo (the pierced clay pot with a lamp inside), as garba is danced. The dancers and the garbo
+  // are paintings the user made (public/img/themes/navratri-{girl,boy}-{1,2}-{240,480}.webp and
+  // navratri-garbo-{120,240}.webp, transparent); girl() and boy() above draw the earlier figures and
+  // are no longer called. The dance class goes on the inner img, not the dancer: the dancer's classes
+  // key where a viewer has dragged it, and that spot should not change from day to day.
+  var DANCERS = { 'girl-1': [240, 357], 'boy-1': [240, 365], 'girl-2': [240, 360], 'boy-2': [240, 368] }; // the 240 file's size, for the aspect ratio before it loads
+  // who: a DANCERS key; px: the CSS width it is shown at, so the browser takes the 240 file up to 2x
+  // pixel density and the 480 one beyond; flip mirrors it (scale, which the step animation's
+  // transform leaves alone), so a circle of eight is not four pairs of twins. Sized inline as well
+  // as in the CSS, for a tab still on an older stylesheet.
+  function dancerImg(who, px, flip) {
+    var base = '/img/themes/navratri-' + who, wh = DANCERS[who];
+    return '<img src="' + base + '-240.webp" srcset="' + base + '-240.webp 240w, ' + base + '-480.webp 480w" sizes="' + px + 'px"' +
+           ' width="' + wh[0] + '" height="' + wh[1] + '" alt="" draggable="false" style="display:block;width:100%;height:auto' + (flip ? ';scale:-1 1' : '') + '">';
+  }
   var ring = null; // { el, items: [{ el }], a } on garba days: draw() turns the circle
   if (!GARBA) {
-    [d.svg(girl(DANCE.g), 'td-dancer td-dancer-1 td-drag'), d.svg(boy(DANCE.b), 'td-dancer td-dancer-2 td-drag')].forEach(function (el) {
+    // the pair faces each other; the red-and-white couple one dandiya day, the green-and-blue the next
+    var pair = (+document.documentElement.getAttribute('data-nv-day') || 0) % 4 === 0 ? ['girl-1', 'boy-1'] : ['girl-2', 'boy-2'];
+    [d.svg(dancerImg(pair[0], 120), 'td-dancer td-dancer-1 td-drag'), d.svg(dancerImg(pair[1], 120, true), 'td-dancer td-dancer-2 td-drag')].forEach(function (el) {
       el.firstChild.setAttribute('class', 'nv-' + DANCE.dance + ' nv-st-' + DANCE.step);
     });
   } else {
-    var g = DANCE.g, b = DANCE.b;
-    // two looks for each, the day's colours swapped about, so the circle is not all one outfit
-    var looks = [girl(g), boy(b),
-      girl({ skirt: g.border, border: g.skirt, choli: g.drape, drape: g.choli, motif: g.motif, mc: g.mc }),
-      boy({ kurta: b.vest, vest: b.kurta, trim: b.trim, dhoti: b.dhoti })];
+    var looks = ['girl-1', 'boy-1', 'girl-2', 'boy-2']; // round the circle twice, the second time mirrored
     var re = document.createElement('div');
     // td-garba-circle, not the first name td-garba-ring: a spot saved while the circle was misplaced
     // (it once landed over the theme picker) is keyed by the old name and so left behind.
@@ -141,22 +151,16 @@ ThemeDecor.register('navratri', function (d) {
     // Placed and sized here, not only in the CSS: a tab that loaded an older stylesheet would
     // otherwise drop the circle wherever it fell (it once landed over the theme picker).
     re.style.cssText = 'position:absolute;left:64px;bottom:0;width:440px;height:200px';
-    re.innerHTML = '<svg class="nv-garbo" viewBox="0 0 40 50" xmlns="http://www.w3.org/2000/svg" style="position:absolute;left:194px;top:96px;width:52px;height:65px;z-index:158;overflow:visible">' +
-      '<ellipse cx="20" cy="47" rx="16" ry="3" fill="#000" fill-opacity=".15"/>' +
-      '<path d="M6 30 Q4 16 20 14 Q36 16 34 30 Q34 46 20 47 Q6 46 6 30 Z" fill="#C2410C" stroke="#7C2D12" stroke-width="1"/>' +
-      '<path d="M12 14 H28 L26 8 H14 Z" fill="#9A3412" stroke="#7C2D12" stroke-width=".8"/>' +
-      '<g fill="#FDE047">' + [[12, 24], [20, 22], [28, 24], [10, 32], [17, 31], [24, 31], [31, 32], [14, 39], [21, 40], [27, 39]].map(function (q) { return '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="1.5"/>'; }).join('') + '</g>' +
-      '<path d="M8 28 Q20 34 32 28" fill="none" stroke="#FDE68A" stroke-width="1" stroke-dasharray="2 2"/>' +
-      '<path class="nv-flame" d="M20 -2 C24 3 24 7 20 9 C16 7 16 3 20 -2 Z" fill="#F97316"/><circle cx="20" cy="5" r="7" fill="#FDE047" fill-opacity=".3"/></svg>';
+    re.innerHTML = '<img class="nv-garbo" src="/img/themes/navratri-garbo-120.webp" srcset="/img/themes/navratri-garbo-120.webp 120w, /img/themes/navratri-garbo-240.webp 240w" sizes="60px"' +
+      ' width="120" height="184" alt="" draggable="false" style="position:absolute;left:190px;top:78px;width:60px;height:auto;z-index:158">';
     d.layer.appendChild(re);
     ring = { el: re, items: [], a: 0 };
     for (var gi = 0; gi < 8; gi++) {
       var it = document.createElement('div');
       it.className = 'nv-ring-dancer';
       it.style.cssText = 'position:absolute;left:0;top:0;width:78px;transform-origin:50% 100%';
-      it.innerHTML = looks[gi % 4];
+      it.innerHTML = dancerImg(looks[gi % 4], 78, gi >= 4);
       it.firstChild.setAttribute('class', 'nv-garba nv-st-' + DANCE.step);
-      it.firstChild.style.cssText = 'display:block;width:100%;height:auto;overflow:visible';
       it.firstChild.style.animationDelay = (-0.3 * gi) + 's';
       re.appendChild(it);
       ring.items.push(it);
@@ -164,11 +168,12 @@ ThemeDecor.register('navratri', function (d) {
     placeRing();
   }
   // The circle as seen from the front and a little above: an ellipse round the garbo, the dancers
-  // at the front larger and in front of those behind.
+  // at the front larger and in front of those behind. Each dancer's own height places its feet on
+  // the ellipse (the paintings are not all the same shape).
   function placeRing() {
-    var cx = 220, cy = 158, rx = 172, ry = 40, w = 78, h = w * 1.6;
+    var cx = 220, cy = 158, rx = 172, ry = 40, w = 78;
     ring.items.forEach(function (it, i) {
-      var a = ring.a + i * Math.PI / 4, x = cx + Math.cos(a) * rx, y = cy + Math.sin(a) * ry, k = 0.72 + 0.28 * (Math.sin(a) + 1) / 2;
+      var a = ring.a + i * Math.PI / 4, x = cx + Math.cos(a) * rx, y = cy + Math.sin(a) * ry, k = 0.72 + 0.28 * (Math.sin(a) + 1) / 2, h = it.offsetHeight || w * 1.5;
       it.style.transform = 'translate(' + (x - w / 2).toFixed(1) + 'px,' + (y - h).toFixed(1) + 'px) scale(' + k.toFixed(3) + ')';
       it.style.zIndex = Math.round(y);
     });
@@ -887,8 +892,16 @@ ThemeDecor.register('navratri', function (d) {
     8: { name: 'माँ महागौरी', build: mahagauri, petals: ['#FFFFFF', '#FCE7F3', '#F9A8D4', '#F472B6', '#FDE68A'] },
     9: { name: 'माँ सिद्धिदात्री', build: siddhidatri, petals: ['#A855F7', '#7E22CE', '#F5B70A', '#FDE68A', '#F472B6'] }
   };
-  var DAY = NV_DAYS[+document.documentElement.getAttribute('data-nv-day')] || null;
-  var durgaEl = d.svg(DAY ? DAY.build() : durga(), 'td-durga td-drag');
+  // Days with a painted Mata (public/img/themes/navratri-<day>-{400,800}.webp) show the painting in
+  // place of the drawing; the rest are drawn. The figure is 200px wide (.td-durga), so the browser
+  // takes the 400px file up to 2x pixel density and the 800px one when zoomed in further.
+  var NV_PHOTOS = { 1: '/img/themes/navratri-1' };
+  var dayN = +document.documentElement.getAttribute('data-nv-day');
+  var DAY = NV_DAYS[dayN] || null;
+  function mataPhoto(base) {
+    return '<img src="' + base + '-400.webp" srcset="' + base + '-400.webp 400w, ' + base + '-800.webp 800w" sizes="200px" width="400" height="598" alt="" draggable="false">';
+  }
+  var durgaEl = d.svg(DAY && NV_PHOTOS[dayN] ? mataPhoto(NV_PHOTOS[dayN]) : (DAY ? DAY.build() : durga()), 'td-durga td-drag');
   // Aarti thali: a brass plate with a lit diya, circling in front of her.
   d.svg('<svg viewBox="0 0 50 34" xmlns="http://www.w3.org/2000/svg">' +
     '<ellipse cx="25" cy="14" rx="11" ry="9" fill="#FFB300" fill-opacity=".35"/>' +
@@ -900,7 +913,7 @@ ThemeDecor.register('navratri', function (d) {
 
   // Greeting, in Hindi as with Diwali's.
   var greet = document.createElement('div');
-  greet.className = 'td-item nv-greet'; // not draggable: a label, and moved by mistake it hides under the dancers
+  greet.className = 'td-item nv-greet td-drag'; // draggable like the figures; it sits above them (z-index) so it never hides behind the garba ring
   greet.textContent = '🪔 शुभ नवरात्रि' + (DAY ? ' · ' + DAY.name : '');
   d.layer.appendChild(greet);
 
