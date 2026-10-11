@@ -317,8 +317,26 @@ function tpArtChristmas() {
        '<circle class="tw" style="animation-delay:-.8s" cx="33" cy="84" r="1.8" fill="#3B82F6"/><circle class="tw" style="animation-delay:-.2s" cx="52" cy="88" r="1.8" fill="#F472B6"/>';
   return tpSvg(s);
 }
+// Auto: a calendar page ringed by the festivals it brings round in turn.
+function tpArtAuto() {
+  let s = '<defs><linearGradient id="tpAuBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#EEF2FF"/><stop offset="1" stop-color="#FCE7F3"/></linearGradient></defs>' +
+    '<rect width="220" height="110" fill="url(#tpAuBg)"/>' +
+    '<rect x="84" y="22" width="52" height="60" rx="6" fill="#fff" stroke="#C7D2FE" stroke-width="1.2"/>' +
+    '<path d="M84 28 Q84 22 90 22 H130 Q136 22 136 28 V36 H84 Z" fill="#4F46E5"/>' +
+    '<rect x="95" y="17" width="3" height="10" rx="1.5" fill="#312E81"/><rect x="122" y="17" width="3" height="10" rx="1.5" fill="#312E81"/>';
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++)
+    s += '<rect x="' + (89 + c * 9) + '" y="' + (42 + r * 9) + '" width="6" height="6" rx="1.2" fill="' + (r === 2 && c === 2 ? '#F97316' : '#E0E7FF') + '"/>';
+  [['🪔', 30, 34], ['🎨', 186, 34], ['💃', 34, 84], ['🎄', 184, 84], ['🪁', 58, 58], ['🐘', 160, 58]].forEach(function (e, i) {
+    s += '<text class="tw" x="' + e[1] + '" y="' + e[2] + '" font-size="17" text-anchor="middle"' + tpDelay(i, .2) + '>' + e[0] + '</text>';
+  });
+  return tpSvg(s);
+}
 let _themeCurrent = null;
 let _themeSaving = false;
+let _themeAuto = false;  // the festival calendar picks the theme (server: active_theme 'auto')
+let _themeNext = null;   // { theme, from } — the next festival on the calendar
+function tpFestName(key) { const c = THEME_CHOICES.find(t => t.key === key); return c ? c.icon + ' ' + c.name : key; }
+function tpShortDate(ymd) { return new Date(ymd + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); }
 
 function showThemeTab() {
   const tab = document.getElementById('usersSubTab-theme');
@@ -330,9 +348,16 @@ function paintThemePicker() {
   if (!box) return;
   box.innerHTML =
     '<div class="tp-head"><div class="tp-title">Festival Theme</div>' +
-    '<div class="tp-sub">Pick a theme and it applies to every user. They see it on their next page load, or when they come back to the app after a few minutes.</div></div>' +
-    '<div class="tp-grid">' + THEME_CHOICES.map(t => {
-      const active = t.key === _themeCurrent;
+    '<div class="tp-sub">Pick Auto and the theme changes by itself with each festival, or pick one theme to keep it until you change it. It applies to every user, on their next page load or when they come back to the app after a few minutes.</div></div>' +
+    '<div class="tp-grid">' +
+    '<button type="button" class="tp-card' + (_themeAuto ? ' tp-active' : '') + '" style="--tp-acc:#4F46E5" aria-pressed="' + _themeAuto + '" onclick="setAppTheme(\'auto\')">' +
+      '<div class="tp-prev tp-scene">' + tpArtAuto() + '</div>' +
+      '<div class="tp-name">📅 Auto' + (_themeAuto ? '<span class="tp-badge">✓ Active</span>' : '') + '</div>' +
+      '<div class="tp-note">' + (_themeAuto ? 'Today: ' + tpFestName(_themeCurrent) : 'Follows the festival calendar') +
+        (_themeNext ? ' · Next: ' + tpFestName(_themeNext.theme) + ' from ' + tpShortDate(_themeNext.from) : '') + '</div>' +
+    '</button>' +
+    THEME_CHOICES.map(t => {
+      const active = !_themeAuto && t.key === _themeCurrent;
       const preview = t.art
         ? '<div class="tp-prev tp-scene">' + t.art() + '</div>'
         : '<div class="tp-prev" style="background:' + t.c.page + '">' +
@@ -346,7 +371,7 @@ function paintThemePicker() {
         '<div class="tp-note">' + t.note + '</div>' +
         (active || t.key === 'normal' ? '' : '<span class="tp-try" role="button" tabindex="0" onclick="event.stopPropagation(); previewTheme(\'' + t.key + '\')">👁 Preview</span>') +
         '</button>';
-    }).join('') + '</div>' + (_themeCurrent === 'navratri' ? nvDayRow() : '') +
+    }).join('') + '</div>' + (_themeCurrent === 'navratri' && !_themeAuto ? nvDayRow() : '') +
     '<div class="tp-head" style="margin-top:22px"><div class="tp-title">Company message</div>' +
     '<div class="tp-sub">Shown under each person\'s festival greeting when they open the app. Leave it empty for none.</div></div>' +
     '<div class="tp-msg"><textarea id="tpMessage" maxlength="160" rows="2" placeholder="e.g. Warm wishes to you and your family from the E-Marketing family"></textarea>' +
@@ -400,6 +425,8 @@ async function renderThemePicker() {
   const r = await api('/api/theme');
   if (r.error) { box.innerHTML = '<div class="empty">Could not load the current theme.</div>'; return; }
   _themeCurrent = r.theme;
+  _themeAuto = !!r.auto;
+  _themeNext = r.next || null;
   _nvDayCurrent = r.navratriDay || 0;
   _festMessage = r.message || '';
   paintThemePicker();
@@ -445,19 +472,23 @@ async function saveFestMessage() {
 
 async function setAppTheme(key) {
   if (_previewing) endPreview(false);
-  if (_themeSaving || key === _themeCurrent) return;
+  if (_themeSaving || (key === 'auto' ? _themeAuto : !_themeAuto && key === _themeCurrent)) return;
   const choice = THEME_CHOICES.find(t => t.key === key);
-  if (!choice) return;
+  if (!choice && key !== 'auto') return;
   _themeSaving = true;
   const r = await api('/api/theme', 'PUT', { theme: key });
   _themeSaving = false;
   if (r.error) { showToast(r.error, 'error'); return; }
   _themeCurrent = r.theme;
+  _themeAuto = !!r.auto;
+  _themeNext = r.next || null;
+  _nvDayCurrent = _nvDay = r.navratriDay || 0;
   // the owner wants to see what they just picked, even if they had switched it off for themselves
   _companyTheme = r.theme;
   if (_themeOff && r.theme !== 'normal') setMyThemeOff(false);
   else applyAppTheme(r.theme);
   syncThemeToggle();
   paintThemePicker();
-  showToast(choice.name + ' theme applied for everyone');
+  showToast(key === 'auto' ? 'Auto on: the festival calendar picks the theme (today: ' + tpFestName(r.theme) + ')'
+                           : choice.name + ' theme applied for everyone');
 }

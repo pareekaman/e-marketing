@@ -10108,17 +10108,57 @@ function nextWorkingDay(user, fromDateStr, holidaysSet) {
 const APP_THEMES = ['normal', 'navratri', 'dussehra', 'holi', 'diwali', 'christmas', 'janmashtami', 'shivratri', 'ganesh', 'ramnavami', 'rakhi', 'mahavir', 'sankranti', 'chhath'];
 const APP_THEME_KEY = 'active_theme';
 
+// Auto: with active_theme 'auto' (also what an unset value means) the theme follows this calendar,
+// each festival from the first to the last day listed (dates in IST), Normal in between. Lunar
+// festivals move every year, so each year is listed (Drik Panchang, New Delhi); add the next year's
+// dates before it begins. Navratri's day 1-9 is counted from its first day. Christmas is fixed.
+const FESTIVAL_CALENDAR = [
+  ['sankranti', '2026-01-13', '2026-01-15'], ['shivratri', '2026-02-14', '2026-02-15'],
+  ['holi', '2026-03-02', '2026-03-04'], ['ramnavami', '2026-03-25', '2026-03-26'],
+  ['mahavir', '2026-03-30', '2026-03-31'], ['rakhi', '2026-08-27', '2026-08-28'],
+  ['janmashtami', '2026-09-03', '2026-09-04'], ['ganesh', '2026-09-14', '2026-09-25'],
+  ['navratri', '2026-10-11', '2026-10-19'], ['dussehra', '2026-10-20', '2026-10-20'],
+  ['diwali', '2026-11-06', '2026-11-11'], ['chhath', '2026-11-13', '2026-11-16'],
+  ['sankranti', '2027-01-14', '2027-01-16'], ['shivratri', '2027-03-05', '2027-03-06'],
+  ['holi', '2027-03-20', '2027-03-22'], ['ramnavami', '2027-04-14', '2027-04-15'],
+  ['mahavir', '2027-04-18', '2027-04-19'], ['rakhi', '2027-08-16', '2027-08-17'],
+  ['janmashtami', '2027-08-24', '2027-08-25'], ['ganesh', '2027-09-04', '2027-09-14'],
+  ['navratri', '2027-09-30', '2027-10-08'], ['dussehra', '2027-10-09', '2027-10-09'],
+  ['diwali', '2027-10-27', '2027-10-31'], ['chhath', '2027-11-02', '2027-11-05']
+];
+function festivalDates(year) {
+  return FESTIVAL_CALENDAR.filter(f => f[1].startsWith(String(year)))
+    .concat([['christmas', year + '-12-24', year + '-12-26']]);
+}
+function istToday() { return new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10); }
+// The festival running on a day, and the next one to begin after it: [theme, from, to] or null.
+function festivalOn(day) {
+  return festivalDates(+day.slice(0, 4)).find(f => day >= f[1] && day <= f[2]) || null;
+}
+function nextFestival(day) {
+  const y = +day.slice(0, 4);
+  return festivalDates(y).concat(festivalDates(y + 1)).filter(f => f[1] > day).sort((a, b) => (a[1] < b[1] ? -1 : 1))[0] || null;
+}
+// What everyone sees today: the owner's own choice, or under Auto the calendar's.
+async function readCompanyTheme() {
+  const [[row]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [APP_THEME_KEY]);
+  const [[nv]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [NAVRATRI_DAY_KEY]);
+  const auto = !row || !APP_THEMES.includes(row.value);
+  const today = istToday(), fest = festivalOn(today), next = nextFestival(today);
+  let navratriDay = nv ? Math.min(9, Math.max(0, parseInt(nv.value, 10) || 0)) : 0;
+  if (auto && fest && fest[0] === 'navratri') navratriDay = Math.min(9, Math.round((Date.parse(today) - Date.parse(fest[1])) / 86400000) + 1);
+  return { theme: auto ? (fest ? fest[0] : 'normal') : row.value, auto, navratriDay,
+           next: next ? { theme: next[0], from: next[1] } : null };
+}
+
 app.get('/api/theme', requireAuth, async (req, res) => {
   try {
-    const [[row]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [APP_THEME_KEY]);
-    const theme = row && APP_THEMES.includes(row.value) ? row.value : 'normal';
+    const { theme, auto, navratriDay, next } = await readCompanyTheme();
     const canChange = (await readIdSetting('theme_admin_ids')).includes(Number(req.session.userId));
     const [[mine]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [themeOffKey(req)]);
-    const [[nv]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [NAVRATRI_DAY_KEY]);
-    const navratriDay = nv ? Math.min(9, Math.max(0, parseInt(nv.value, 10) || 0)) : 0;
     const mode = mine && mine.value === 'lite' ? 'lite' : mine && mine.value === '1' ? 'off' : 'full';
     const [[msg]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [FESTIVAL_MESSAGE_KEY]);
-    res.json({ theme, themes: APP_THEMES, canChange, off: mode === 'off', mode, navratriDay, message: msg ? msg.value : '' });
+    res.json({ theme, auto, next, themes: APP_THEMES, canChange, off: mode === 'off', mode, navratriDay, message: msg ? msg.value : '' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -10169,24 +10209,24 @@ app.put('/api/theme/mine', requireAuth, async (req, res) => {
 // and the Navratri day, nothing about any user.
 app.get('/api/theme/public', async (req, res) => {
   try {
-    const [[row]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [APP_THEME_KEY]);
-    const [[nv]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [NAVRATRI_DAY_KEY]);
-    res.json({ theme: row && APP_THEMES.includes(row.value) ? row.value : 'normal',
-               navratriDay: nv ? Math.min(9, Math.max(0, parseInt(nv.value, 10) || 0)) : 0 });
+    const { theme, navratriDay } = await readCompanyTheme();
+    res.json({ theme, navratriDay });
   } catch (err) { res.json({ theme: 'normal', navratriDay: 0 }); }
 });
 
+// { theme: '<festival>' } fixes the theme until the owner picks again; { theme: 'auto' } hands it to
+// the festival calendar. Answers with what everyone now sees.
 app.put('/api/theme', requireAuth, async (req, res) => {
   try {
     if (!(await readIdSetting('theme_admin_ids')).includes(Number(req.session.userId)))
       return res.status(403).json({ error: 'Only the theme owner can change the theme' });
     const theme = req.body && req.body.theme;
-    if (!APP_THEMES.includes(theme)) return res.status(400).json({ error: 'Unknown theme' });
+    if (theme !== 'auto' && !APP_THEMES.includes(theme)) return res.status(400).json({ error: 'Unknown theme' });
     await db.query(
       'INSERT INTO app_settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
       [APP_THEME_KEY, theme]
     );
-    res.json({ success: true, theme });
+    res.json({ success: true, ...(await readCompanyTheme()) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
