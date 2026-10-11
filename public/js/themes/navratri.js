@@ -892,20 +892,22 @@ ThemeDecor.register('navratri', function (d) {
     8: { name: 'माँ महागौरी', build: mahagauri, petals: ['#FFFFFF', '#FCE7F3', '#F9A8D4', '#F472B6', '#FDE68A'] },
     9: { name: 'माँ सिद्धिदात्री', build: siddhidatri, petals: ['#A855F7', '#7E22CE', '#F5B70A', '#FDE68A', '#F472B6'] }
   };
-  // Days with a painted Mata (public/img/themes/navratri-<day>-{400,800}.webp) show the painting in
-  // place of the drawing; the rest are drawn. Per day: the 400 file's width and height (the aspect
+  // Every look has a painted Mata (public/img/themes/navratri-<day>-{400,800}.webp): 0 is the general
+  // Maa Durga on her tiger, 1-9 the nine forms; a day missing here would fall back to the drawing
+  // (durga() / NV_DAYS build). Per day: the 400 file's width and height (the aspect
   // ratio before it loads) and the width she is shown at, chosen so each Mata stands about 300px
   // tall — a standing Mata is narrower than a seated one. The browser takes the 400px file up to 2x
   // pixel density and the 800px one when zoomed in further.
-  var NV_PHOTOS = { 1: [400, 598, 200], 2: [400, 984, 135], 3: [400, 620, 200], 4: [400, 586, 200], 5: [400, 599, 200], 6: [400, 597, 200], 7: [400, 647, 190], 8: [400, 596, 200], 9: [400, 600, 200] };
+  var NV_PHOTOS = { 0: [400, 599, 200], 1: [400, 598, 200], 2: [400, 984, 135], 3: [400, 620, 200], 4: [400, 586, 200], 5: [400, 599, 200], 6: [400, 597, 200], 7: [400, 647, 190], 8: [400, 596, 200], 9: [400, 600, 200] };
   var dayN = +document.documentElement.getAttribute('data-nv-day');
   var DAY = NV_DAYS[dayN] || null;
   function mataPhoto(day) {
     var p = NV_PHOTOS[day], base = '/img/themes/navratri-' + day;
     return '<img src="' + base + '-400.webp" srcset="' + base + '-400.webp 400w, ' + base + '-800.webp 800w" sizes="' + p[2] + 'px" width="' + p[0] + '" height="' + p[1] + '" alt="" draggable="false">';
   }
-  var durgaEl = d.svg(DAY && NV_PHOTOS[dayN] ? mataPhoto(dayN) : (DAY ? DAY.build() : durga()), 'td-durga td-drag');
-  if (DAY && NV_PHOTOS[dayN]) durgaEl.style.width = NV_PHOTOS[dayN][2] + 'px';
+  // day 0 (no data-nv-day: the general look, DAY null) has its painting under NV_PHOTOS[0]
+  var durgaEl = d.svg(NV_PHOTOS[dayN] ? mataPhoto(dayN) : (DAY ? DAY.build() : durga()), 'td-durga td-drag');
+  if (NV_PHOTOS[dayN]) durgaEl.style.width = NV_PHOTOS[dayN][2] + 'px';
   // Aarti thali: a brass plate with a lit diya, circling in front of her.
   d.svg('<svg viewBox="0 0 50 34" xmlns="http://www.w3.org/2000/svg">' +
     '<ellipse cx="25" cy="14" rx="11" ry="9" fill="#FFB300" fill-opacity=".35"/>' +
