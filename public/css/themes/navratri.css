@@ -16,7 +16,7 @@
 /* two dandiya dancers, bottom-left; they step, bob and strike sticks on a 2.4s beat */
 .td-dancer { bottom:0; width:120px; filter:drop-shadow(0 4px 5px rgba(0,0,0,.25)); transition:translate .3s var(--ease); }
 .td-dancer-1 { left:72px; }
-.td-dancer-2 { left:180px; }
+.td-dancer-2 { left:200px; } /* far enough apart that the painted pair, leaning in to strike, only cross skirts */
 .nv-body, .nv-arm, .nv-skirt { transform-box:view-box; animation:2.4s ease-in-out infinite; }
 .nv-body { transform-origin:50px 152px; animation-name:nv-step; }
 .td-dancer-2 .nv-body { animation-delay:-1.2s; }
@@ -425,11 +425,41 @@
 .nv-ring-dancer { position:absolute; left:0; top:0; width:78px; transform-origin:50% 100%; will-change:transform;
   filter:drop-shadow(0 3px 3px rgba(0,0,0,.22)); }
 .nv-ring-dancer svg { display:block; width:100%; height:auto; overflow:visible; }
-/* The painted dancers (an img in place of the drawn svg, navratri.js dancerImg): the whole figure
-   steps and sways on the same beat, since a painting has no parts to move. The mirrored ones carry
-   scale:-1 1 inline, which the animation's transform leaves alone. */
-.td-dancer img, .nv-ring-dancer img { display:block; width:100%; height:auto; transform-origin:50% 100%; animation:nv-step 2.4s ease-in-out infinite; }
-.td-dancer-2 img { animation-delay:-1.2s; }
+/* The painted dancers (an img in place of the drawn svg, navratri.js dancerImg). A painting has no
+   arms or skirt to move, so the whole figure dances about its feet (transform-origin at the bottom),
+   big enough to read at 78px: the day's step class sits on the img itself — a: sways, leaning and
+   bending into each step with a little landing squash; b: hops, crouching and landing; c: spins
+   right round (the figure narrows edge-on and shows its mirror image, as the drawn spin did). The
+   mirrored dancers carry scale:-1 1 inline, which the animation's transform leaves alone; a mirrored
+   lean therefore goes the other way, so the facing dandiya pair, kept in step with no delay, lean
+   out together and then in together as if striking sticks. Round the garba ring the delays set in
+   navratri.js stagger the step into a wave. */
+.td-dancer img, .nv-ring-dancer img { display:block; width:100%; height:auto; transform-origin:50% 100%; animation:nv-img-sway 2.4s ease-in-out infinite; }
+img.nv-st-b { animation-name:nv-img-hop; animation-duration:1.6s; }
+img.nv-st-c { animation-name:nv-img-turn; animation-duration:3.2s; animation-timing-function:linear; }
+@keyframes nv-img-sway {
+  0%,100% { transform:translate(0,0) rotate(0) skewX(0) scale(1,1); }
+  25%     { transform:translate(-4px,-9px) rotate(-8deg) skewX(5deg) scale(1,1); }
+  50%     { transform:translate(0,0) rotate(0) skewX(0) scale(1.04,.96); }
+  75%     { transform:translate(4px,-9px) rotate(8deg) skewX(-5deg) scale(1,1); }
+}
+@keyframes nv-img-hop {
+  0%,100% { transform:translateY(0) rotate(0) scale(1,1); }
+  10%     { transform:translateY(0) rotate(0) scale(1.06,.93); }
+  30%     { transform:translateY(-14px) rotate(-5deg) scale(.97,1.04); }
+  50%     { transform:translateY(0) rotate(0) scale(1.06,.93); }
+  60%     { transform:translateY(0) rotate(0) scale(1,1); }
+  80%     { transform:translateY(-14px) rotate(5deg) scale(.97,1.04); }
+}
+/* a real turn about the vertical axis (its back is its mirror image), linear so the edge-on moment
+   is only a flash rather than a pause as a thin streak */
+@keyframes nv-img-turn {
+  0%   { transform:perspective(500px) rotateY(0deg) translateY(0); }
+  25%  { transform:perspective(500px) rotateY(90deg) translateY(-7px); }
+  50%  { transform:perspective(500px) rotateY(180deg) translateY(0); }
+  75%  { transform:perspective(500px) rotateY(270deg) translateY(-7px); }
+  100% { transform:perspective(500px) rotateY(360deg) translateY(0); }
+}
 @media (prefers-reduced-motion: reduce) { .td-garba-circle { transition:none; } .nv-garbo, .td-dancer img, .nv-ring-dancer img { animation:none; } }
 
 /* Navratri Day 8 — Maa Mahagauri: pearl white and soft pink in moonlight, strings of pearls along the
