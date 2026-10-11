@@ -1999,10 +1999,9 @@ app.get('/api/me', requireAuth, async (req, res) => {
       rows[0].canViewBillingName = await canViewBillingName(req.session);
       rows[0].canManageInvoices  = await canManageInvoices(req.session);
       // The Dashboard's Business Automation Credentials button, which opens the
-      // EMK Credentials page: for the people on the list only, and not while an
-      // admin is viewing the app as one of them.
-      rows[0].canSeeEmkCredentials = BA_CREDENTIALS_VIEWER_IDS.includes(Number(req.session.userId))
-        && !req.session.impersonatedBy;
+      // EMK Credentials page: for the people on the list, also when an admin
+      // opens one of their dashboards with the Dashboard switcher (view as).
+      rows[0].canSeeEmkCredentials = BA_CREDENTIALS_VIEWER_IDS.includes(Number(req.session.userId));
     } catch (e) {
       rows[0].canApprovePayments = false;
       rows[0].canReviewMdoTasks  = false; rows[0].canViewCreditCards = false;
@@ -7969,7 +7968,9 @@ const PEOPLE_SETTINGS = {
 // PRODUCTION user id, never by name: someone who joins later with the same
 // name must not get it. Kept here in code rather than in app_settings, so
 // there is no seeding to depend on (the startup seed is skipped on deploys
-// that leave the migration blocks unchanged, see _DEPLOY_ID).
+// that leave the migration blocks unchanged, see _DEPLOY_ID). An admin who
+// opens one of these dashboards with the Dashboard switcher (view as) gets
+// them too; the user asked for that on 2026-10-11.
 //   5  Akhilesh Vyas
 const BA_CREDENTIALS_VIEWER_IDS = [5];
 const PR_APPROVER_KEY = 'payment_approver_ids';

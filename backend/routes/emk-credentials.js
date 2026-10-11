@@ -5,7 +5,8 @@
 // sheet shows on the next open; nothing is stored here.
 //
 // Only the user ids in viewerIds (BA_CREDENTIALS_VIEWER_IDS in server.js) get
-// it, and not while an admin is viewing the app as one of them.
+// it, also when an admin opens one of their dashboards with the Dashboard
+// switcher (view as); only admins can do that.
 const SHEET_ID = process.env.EMK_CREDENTIALS_SHEET_ID || '1rUHRNCNC0B5I98EXNtn6vVKOTp-m40S6TPy4pN2aIIU';
 const TAB = 'Credentials';
 
@@ -13,7 +14,7 @@ module.exports = function registerEmkCredentialsRoutes(app, deps) {
   const { requireAuth, getSheetsClient, viewerIds } = deps;
 
   app.get('/api/emk-credentials', requireAuth, async (req, res) => {
-    if (!viewerIds.includes(Number(req.session.userId)) || req.session.impersonatedBy) {
+    if (!viewerIds.includes(Number(req.session.userId))) {
       return res.status(403).json({ error: 'Not available for your account' });
     }
     try {
