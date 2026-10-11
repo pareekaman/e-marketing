@@ -638,7 +638,11 @@ async function loadDashCompleted(seq = newDashSeq()) {
   try {
     const [dDel, dChl] = await Promise.all([api(baseUrl + 'delegation'), api(baseUrl + 'checklist')]);
     if (seq !== _dashSeq) return;
-    window._lastDashCompleted = [...(dDel.tasks || []), ...(dChl.tasks || [])];
+    // Both lists come newest first; merged, they are put back in that order
+    // (delegation by when it was done, checklist by its due date).
+    const doneOn = t => t.completed_on || t.due_date || '';
+    window._lastDashCompleted = [...(dDel.tasks || []), ...(dChl.tasks || [])]
+      .sort((x, y) => doneOn(y).localeCompare(doneOn(x)));
   } catch (e) {
     // Guarded like the success path: a stale call that fails must not
     // blank a cache a newer call has already filled.
