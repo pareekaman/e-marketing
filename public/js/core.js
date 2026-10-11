@@ -390,6 +390,9 @@ async function init() {
     // wrong one. Every endpoint behind this page is requireAdmin anyway.
     const drNav = document.getElementById('nav-dailyreports');
     if (drNav) drNav.style.display = (ME.role === 'admin' && canSee('dailyreports')) ? 'flex' : 'none';
+    // Compose Email nav — admin only, not grantable (routes are requireAdmin).
+    const ceNav = document.getElementById('nav-composemail');
+    if (ceNav) ceNav.style.display = ME.role === 'admin' ? 'flex' : 'none';
     // Payment Request nav — every role has it in its server-side default, but
     // it is revocable per user from Access Control.
     const prNav = document.getElementById('nav-paymentreq');
@@ -608,5 +611,5 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Scheduler','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⚠️ Client Escalations',paymentreq:'💳 Payment Request',creditcards:'💳 Credit Card Statement',logs:'🗑 Logs',leads:'📇 Leads Enquiry',enquiry:'📝 Enquiry Capture'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',users:'Users',profile:'Profile',mis:'MIS Report',race:'🏁 Race Tracker',fms:'FMS Admin','fms-tasks':'FMS Tasks',daily:'Daily Task Form',clients:'Client Master',compliance:'Compliance Tracker',dailyreports:'Daily Reports',leaves:'Leave Tracker',meetings:'📅 Scheduler','client-portal':'🏢 My Portal',inventory:'📦 Inventory',hrm:'👥 HR Portal',dms:'📁 DMS',feedback:'⚠️ Client Escalations',paymentreq:'💳 Payment Request',creditcards:'💳 Credit Card Statement',logs:'🗑 Logs',composemail:'✉️ Compose Email',leads:'📇 Leads Enquiry',enquiry:'📝 Enquiry Capture'};
 

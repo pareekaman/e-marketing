@@ -1074,6 +1074,8 @@ function navigate(page, el) {
   if (page === 'race' && ME.role !== 'admin') return;
   // Logs (deleted-records archive) — admin only
   if (page === 'logs' && ME.role !== 'admin') return;
+  // Compose Email — admin only; both routes behind it are requireAdmin
+  if (page === 'composemail' && ME.role !== 'admin') return;
   // Daily Reports — admin only; every endpoint behind it is requireAdmin
   if (page === 'dailyreports' && ME.role !== 'admin') return;
   // Credit Cards — server-side viewer list decides, Access Control can revoke
@@ -1106,6 +1108,7 @@ function navigate(page, el) {
     creditcards: loadCreditCards,
     paymentreq: initPaymentReqPage,
     logs: loadLogs,
+    composemail: loadComposeMail,
     // Loads the website source only; the other three sheets are fetched lazily
     // by switchEnqSource() the first time their tab is picked, so opening the
     // page does not pull four spreadsheets it may not need.

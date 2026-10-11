@@ -895,13 +895,22 @@ const _startupMigrationsPromise = (async () => {
 // ══════════════════════════════════════════════════════
 // EMAIL CONFIGURATION (Gmail SMTP via Nodemailer)
 // ══════════════════════════════════════════════════════
-const mailTransporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
-  }
-});
+// SMTP_TEST_HOST is for local testing only: mail goes to a sink on that host
+// (port SMTP_TEST_PORT, no TLS) instead of Gmail, so what is sent can be
+// read back. Never set in production, where it is always Gmail.
+const mailTransporter = nodemailer.createTransport(process.env.SMTP_TEST_HOST
+  ? {
+      host: process.env.SMTP_TEST_HOST, port: Number(process.env.SMTP_TEST_PORT) || 2525,
+      secure: false, ignoreTLS: true,
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+    }
+  : {
+      service: 'gmail',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    });
 
 (async () => {
   try {
@@ -921,13 +930,17 @@ const mailTransporter = nodemailer.createTransport({
 // [{ filename: 'x.pdf', content: <Buffer>, contentType: 'application/pdf' }].
 // Returns true on success so callers that care (e.g. the offer-email endpoint)
 // can report/throw; existing fire-and-forget callers can ignore it.
+// opts.fromName replaces the sender's display name (the address is always the
+// app's mailbox) and opts.replyTo sends replies elsewhere; Compose Email uses both.
 async function sendMail(to, subject, html, opts = {}) {
   if (!to || !process.env.SMTP_USER) return false;
+  const fromName = String(opts.fromName || process.env.SMTP_FROM_NAME || 'E-Marketing Task Manager').replace(/["\r\n]/g, '');
   try {
     await mailTransporter.sendMail({
-      from: `"${process.env.SMTP_FROM_NAME || 'E-Marketing Task Manager'}" <${process.env.SMTP_USER}>`,
+      from: `"${fromName}" <${process.env.SMTP_USER}>`,
       to, subject, html,
       ...(opts.cc ? { cc: opts.cc } : {}),
+      ...(opts.replyTo ? { replyTo: opts.replyTo } : {}),
       ...(opts.attachments ? { attachments: opts.attachments } : {})
     });
     console.log(`  📧 Email sent to ${to} — ${subject}`);
@@ -10626,6 +10639,14 @@ require('./backend/routes/hrm')(app, {
 // standalone sales dashboard. Sits here rather than higher up because it needs
 // userCanSee/userCanDo, which are defined further down than the Sheets helpers.
 // Enquiry Capture — the sales enquiry form inside the app (routes/enquiries.js).
+// Compose Email — admins send email from the app, every send logged (routes/compose-mail.js).
+require('./backend/routes/compose-mail')(app, {
+  db,
+  requireAuth,
+  requireAdmin,
+  sendMail,
+});
+
 require('./backend/routes/enquiries')(app, {
   db,
   requireAuth,

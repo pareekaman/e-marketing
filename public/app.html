@@ -223,6 +223,11 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10a2 2 0 002 2h12a2 2 0 002-2V7M4 7l1.5-3h13L20 7M4 7h16M10 11h4"/></svg>
           <span class="nav-label-text">Logs</span>
         </div>
+        <!-- Admin only; core.js shows it (compose-mail.js) -->
+        <div class="nav-item" id="nav-composemail" style="display:none" onclick="navigate('composemail',this)">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          <span class="nav-label-text">Compose Email</span>
+        </div>
         <!-- Hidden by default like the other gated tabs; core.js NAV_MAP shows
              it when canSee('leads') passes, i.e. admin or an Access Control grant. -->
         <div class="nav-item" id="nav-leads" style="display:none" onclick="navigate('leads',this)">
@@ -1649,6 +1654,125 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
     </div>
 
     <div id="invContent"><div class="empty">Loading…</div></div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       COMPOSE EMAIL — admin only (public/js/compose-mail.js)
+  ══════════════════════════════════════ -->
+  <div id="page-composemail" class="page">
+    <style>
+      .ce-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 20px;margin-bottom:16px}
+      .ce-row{display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9}
+      .ce-row > label{width:70px;flex-shrink:0;font-size:12px;font-weight:700;color:#64748b;padding-top:10px;text-transform:uppercase;letter-spacing:.4px}
+      .ce-field{position:relative;flex:1;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:38px}
+      .ce-field input{flex:1;min-width:180px;border:none;outline:none;font-size:14px;padding:8px 4px;background:transparent;color:#0f172a}
+      .ce-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:999px;background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;font-size:12px;font-weight:600;max-width:100%}
+      .ce-chip.ce-file{background:#f8fafc;border-color:#e2e8f0;color:#334155}
+      .ce-chip-mail{font-weight:400;color:#6366f1}
+      .ce-chip.ce-file .ce-chip-mail{color:#94a3b8}
+      .ce-chip button{border:none;background:none;color:#6366f1;cursor:pointer;font-size:12px;padding:0 2px}
+      .ce-chip.ce-more{cursor:pointer;background:#fff;border-style:dashed;padding:4px 10px}
+      .ce-row-actions{display:flex;gap:6px;flex-shrink:0;padding-top:6px;flex-wrap:wrap;justify-content:flex-end}
+      .ce-link-btn{border:1px solid #c7d2fe;background:#fff;border-radius:999px;font-size:12px;padding:4px 10px;cursor:pointer;color:#4f46e5;font-weight:600;white-space:nowrap}
+      .ce-link-btn:hover{background:#eef2ff}
+      .ce-link-btn.ce-link-danger{border-color:#fecaca;color:#dc2626}
+      .ce-link-btn.ce-link-danger:hover{background:#fef2f2}
+      .ce-sug-list{display:none;position:absolute;left:0;top:100%;z-index:50;min-width:320px;max-width:100%;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 10px 25px rgba(15,23,42,.12);margin-top:4px;overflow:hidden}
+      .ce-sug{padding:8px 12px;font-size:13px;cursor:pointer;color:#0f172a}
+      .ce-sug span{color:#64748b;margin-left:8px;font-size:12px}
+      .ce-sug.active,.ce-sug:hover{background:#eef2ff}
+      .ce-toolbar{display:flex;flex-wrap:wrap;gap:2px;align-items:center;padding:6px 8px;border:1px solid #e2e8f0;border-bottom:none;border-radius:10px 10px 0 0;background:#f8fafc;margin-top:14px}
+      .ce-toolbar button,.ce-toolbar select,.ce-tb-color{height:32px;min-width:32px;border:1px solid transparent;border-radius:6px;background:transparent;cursor:pointer;font-size:14px;color:#334155;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:0 7px}
+      .ce-toolbar button:hover,.ce-tb-color:hover{background:#e2e8f0}
+      .ce-toolbar select{border-color:#e2e8f0;background:#fff;font-size:13px}
+      .ce-tb-color input{width:22px;height:22px;border:none;padding:0;background:none;cursor:pointer}
+      .ce-tb-sep{width:1px;height:22px;background:#e2e8f0;margin:0 4px}
+      #ceEditor{min-height:280px;max-height:60vh;overflow-y:auto;border:1px solid #e2e8f0;border-radius:0 0 10px 10px;padding:14px 16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#111;background:#fff;outline:none}
+      #ceEditor:empty:before{content:attr(data-placeholder);color:#94a3b8}
+      #ceEditor a{color:#2563eb;text-decoration:underline}
+      .ce-files{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+      .ce-actions{display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:14px;flex-wrap:wrap}
+      #ceLogWrap table{width:100%}
+    </style>
+    <div class="ce-card">
+      <div class="ce-row"><label>To</label>
+        <div class="ce-field">
+          <span id="ceChips_to" style="display:contents"></span>
+          <input id="ceInput_to" autocomplete="off" placeholder="Type a name or any email address…" oninput="ceSuggest('to')" onkeydown="ceKey('to',event)" onblur="ceBlur('to')" onpaste="cePaste('to',event)">
+          <div class="ce-sug-list" id="ceSug_to"></div>
+        </div>
+        <div class="ce-row-actions">
+          <button type="button" class="ce-link-btn" onclick="ceAddAll('to')">+ All users</button>
+          <button type="button" class="ce-link-btn ce-link-danger" id="ceClearAll_to" style="display:none" onclick="ceRemoveAll('to')">Remove all</button>
+        </div>
+      </div>
+      <div class="ce-row"><label>CC</label>
+        <div class="ce-field">
+          <span id="ceChips_cc" style="display:contents"></span>
+          <input id="ceInput_cc" autocomplete="off" placeholder="Type a name or any email address…" oninput="ceSuggest('cc')" onkeydown="ceKey('cc',event)" onblur="ceBlur('cc')" onpaste="cePaste('cc',event)">
+          <div class="ce-sug-list" id="ceSug_cc"></div>
+        </div>
+        <div class="ce-row-actions">
+          <button type="button" class="ce-link-btn" onclick="ceAddAll('cc')">+ All users</button>
+          <button type="button" class="ce-link-btn ce-link-danger" id="ceClearAll_cc" style="display:none" onclick="ceRemoveAll('cc')">Remove all</button>
+        </div>
+      </div>
+      <div class="ce-row"><label>Subject</label>
+        <div class="ce-field"><input id="ceSubject" maxlength="300" placeholder="Subject" autocomplete="off"></div>
+      </div>
+
+      <!-- Toolbar buttons keep the editor's selection (mousedown is cancelled) -->
+      <div class="ce-toolbar">
+        <button type="button" title="Bold (Ctrl+B)" onmousedown="event.preventDefault()" onclick="ceCmd('bold')"><b>B</b></button>
+        <button type="button" title="Italic (Ctrl+I)" onmousedown="event.preventDefault()" onclick="ceCmd('italic')"><i style="font-family:Georgia,serif">I</i></button>
+        <button type="button" title="Underline (Ctrl+U)" onmousedown="event.preventDefault()" onclick="ceCmd('underline')"><u>U</u></button>
+        <button type="button" title="Strikethrough" onmousedown="event.preventDefault()" onclick="ceCmd('strikeThrough')"><s>S</s></button>
+        <span class="ce-tb-sep"></span>
+        <select title="Text size" onchange="if(this.value)ceCmd('fontSize', this.value); this.selectedIndex=0">
+          <option value="">Size</option><option value="2">Small</option><option value="3">Normal</option><option value="5">Large</option><option value="6">Huge</option>
+        </select>
+        <label class="ce-tb-color" title="Text colour"><b style="color:#dc2626">A</b><input type="color" value="#dc2626" onchange="ceCmd('foreColor', this.value)"></label>
+        <label class="ce-tb-color" title="Highlight colour"><span style="background:#fde047;padding:0 4px;border-radius:3px">ab</span><input type="color" value="#fde047" onchange="ceCmd('hiliteColor', this.value)"></label>
+        <span class="ce-tb-sep"></span>
+        <button type="button" title="Bulleted list" onmousedown="event.preventDefault()" onclick="ceCmd('insertUnorderedList')">• List</button>
+        <button type="button" title="Numbered list" onmousedown="event.preventDefault()" onclick="ceCmd('insertOrderedList')">1. List</button>
+        <span class="ce-tb-sep"></span>
+        <button type="button" title="Align left" onmousedown="event.preventDefault()" onclick="ceCmd('justifyLeft')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 10h10M4 14h16M4 18h10"/></svg></button>
+        <button type="button" title="Center" onmousedown="event.preventDefault()" onclick="ceCmd('justifyCenter')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 10h10M4 14h16M7 18h10"/></svg></button>
+        <button type="button" title="Align right" onmousedown="event.preventDefault()" onclick="ceCmd('justifyRight')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M10 10h10M4 14h16M10 18h10"/></svg></button>
+        <span class="ce-tb-sep"></span>
+        <button type="button" title="Insert link" onmousedown="event.preventDefault()" onclick="ceLink()">🔗 Link</button>
+        <button type="button" title="Clear formatting (the selected text, or the whole message when nothing is selected)" onmousedown="event.preventDefault()" onclick="ceClearFormat()">Clear format</button>
+        <span class="ce-tb-sep"></span>
+        <button type="button" title="Undo (Ctrl+Z)" onmousedown="event.preventDefault()" onclick="ceCmd('undo')">↶</button>
+        <button type="button" title="Redo (Ctrl+Y)" onmousedown="event.preventDefault()" onclick="ceCmd('redo')">↷</button>
+      </div>
+      <div id="ceEditor" contenteditable="true" data-placeholder="Write your email…"></div>
+
+      <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="btn btn-outline btn-sm" style="cursor:pointer">📎 Attach files
+          <input type="file" multiple style="display:none" onchange="cePickFiles(this)">
+        </label>
+        <span id="ceFilesInfo" style="font-size:12px;color:#94a3b8">Up to 4 MB in total</span>
+      </div>
+      <div class="ce-files" id="ceFiles"></div>
+
+      <div class="ce-actions">
+        <div style="font-size:12px;color:#64748b">Sent from the app's mailbox as <b id="ceFromName"></b>; replies come to your own email.</div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-outline" onclick="ceClear()">Clear</button>
+          <button class="btn btn-primary" id="ceSendBtn" onclick="ceSend()">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ce-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        <div style="font-weight:700;font-size:15px;color:#0f172a">📜 Sent Emails</div>
+        <div style="font-size:12px;color:#94a3b8">Every admin sees this list. It cannot be deleted.</div>
+      </div>
+      <div id="ceLogWrap" style="overflow-x:auto"><div class="empty">Loading…</div></div>
+    </div>
   </div>
 
   <!-- ══════════════════════════════════════
@@ -4191,6 +4315,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/clients.js"></script>
 <script src="/js/reports.js"></script>
 <script src="/js/leaves.js"></script>
+<script src="/js/compose-mail.js"></script>
 <script src="/js/portal.js"></script>
 <script src="/js/payments.js"></script>
 <script src="/js/mdo.js"></script>
