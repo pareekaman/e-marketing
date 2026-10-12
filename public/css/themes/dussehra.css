@@ -24,6 +24,28 @@
    mantra a pulse of light on him stands in for the drawn closed eyes and moving lips */
 .td-ram img { display:block; width:100%; height:auto; }
 .td-ram.td-chanting img { animation:td-chant-glow .6s ease-in-out infinite alternate; }
+/* Ravan's arrow breaking on Ram's radiance: a golden glow on him, nothing more */
+.td-ram.td-guard { filter:drop-shadow(0 0 18px rgba(255,213,79,.95)) drop-shadow(0 4px 6px rgba(0,0,0,.25)); }
+/* The armies at war between Ram and Ravan (dussehra.js warStart): each fighter lunges at the enemy
+   on its own beat and springs back; the duel pair is moved by the JS instead */
+.td-war { z-index:0; }
+.td-fighter { position:absolute; bottom:0; transform-origin:50% 100%; filter:drop-shadow(0 4px 5px rgba(0,0,0,.3)); }
+.td-fighter img { display:block; width:100%; height:auto; }
+.td-lunge-r { animation:td-lunge-r 1.6s ease-in-out infinite; }
+.td-lunge-l { animation:td-lunge-l 1.6s ease-in-out infinite; }
+@keyframes td-lunge-r { 0%,100% { transform:none; } 35% { transform:translateX(-6px) rotate(-3deg); } 60% { transform:translateX(16px) translateY(-6px) rotate(5deg); } }
+@keyframes td-lunge-l { 0%,100% { transform:none; } 35% { transform:translateX(6px) rotate(3deg); } 60% { transform:translateX(-16px) translateY(-6px) rotate(-5deg); } }
+.td-duel { z-index:20; filter:drop-shadow(0 0 8px rgba(249,115,22,.5)) drop-shadow(0 4px 6px rgba(0,0,0,.3)); }
+.td-duel-c { filter:drop-shadow(0 0 8px rgba(220,38,38,.5)) drop-shadow(0 4px 6px rgba(0,0,0,.3)); }
+@media (prefers-reduced-motion: reduce) { .td-lunge-r, .td-lunge-l { animation:none; } }
+/* Hanuman calling his gada: a golden glow pulsing on him while he chants; the gada itself */
+.td-duel.td-summon img { animation:td-chant-glow .5s ease-in-out infinite alternate; }
+.td-duel.td-summon { filter:drop-shadow(0 0 18px rgba(255,213,79,.95)) drop-shadow(0 4px 6px rgba(0,0,0,.3)); }
+.td-gada { filter:drop-shadow(0 0 10px rgba(255,213,79,.95)) drop-shadow(0 0 22px rgba(249,115,22,.7)); }
+.td-gada svg { display:block; width:100%; height:auto; overflow:visible; }
+/* Ravan loosing an arrow: a kick back from the bow */
+.td-ravan.td-loose { animation:td-loose .45s ease-out; }
+@keyframes td-loose { 0% { transform:rotate(-1.6deg); } 25% { transform:translateX(8px) rotate(1.5deg); } 100% { transform:rotate(-1.6deg); } }
 @keyframes td-chant-glow { from { filter:brightness(1); } to { filter:brightness(1.2) saturate(1.15); } }
 
 .td-ravan { right:104px; bottom:0; width:138px; transform-origin:50% 100%; will-change:transform;

@@ -613,6 +613,8 @@ ThemeDecor.register('dussehra', function (d) {
            ' width="' + c[0] + '" height="' + c[1] + '" alt="" draggable="false" style="width:100%;height:auto">'; // display comes from the CSS (Hanuman's two poses are shown by class)
   }
   var ravEl = d.svg(castImg('ravan', 138), 'td-ravan td-drag');
+  // the painting has him aiming to the viewer's right; Ram stands to his left, so he is mirrored to face him
+  ravEl.firstChild.style.scale = '-1 1';
   // Flashes, sparks and fire belong in front of the figures (the hit lands on Ravan's body).
   d.canvas.style.zIndex = '1';
 
@@ -706,9 +708,10 @@ ThemeDecor.register('dussehra', function (d) {
   function ramTip() { return pointIn(ramEl, RAM_PTS.tip[0], RAM_PTS.tip[1]); }
   function ramTail() { return pointIn(ramEl, RAM_PTS.tail[0], RAM_PTS.tail[1]); }
   function ramHand() { return pointIn(ramEl, RAM_PTS.hand[0], RAM_PTS.hand[1]); }
-  // Where shots land: Ravan's navel, or his heads for the chakra (fractions of the painting's box).
-  function navel() { return pointIn(ravEl, 0.46, 0.5); }
-  function crowns() { return pointIn(ravEl, 0.48, 0.2); }
+  // Where shots land: Ravan's navel, or his heads for the chakra (fractions of the painting's box,
+  // measured on the mirrored figure: the painting's 0.46 becomes 0.54).
+  function navel() { return pointIn(ravEl, 0.54, 0.5); }
+  function crowns() { return pointIn(ravEl, 0.52, 0.2); }
   // The angle (degrees, upwards positive) that points Ram's arrow at the astra's mark.
   function aimAngle(a) {
     var n = ramTail(), t = (a.aim || navel)();
@@ -719,11 +722,13 @@ ThemeDecor.register('dussehra', function (d) {
   // flies, it turns after him. It turns harder the nearer it gets and the longer it has flown, so
   // it cannot circle him for ever. The chakra then flies back to Ram's bow hand. Shots move on
   // their own frames: the canvas runs at ~30fps, too few for a figure crossing the screen.
-  function launch(a) {
-    var el = d.svg(a.svg, 'td-astra'), from = ramTip();
+  // from/th: where the shot starts and its first heading (Ravan's arrows); Ram's start at his arrow's tip
+  function launch(a, from, th) {
+    var el = d.svg(a.svg, 'td-astra');
+    from = from || ramTip();
     el.style.width = a.w + 'px'; el.style.left = '0px'; el.style.top = '0px';
     el.style.transformOrigin = a.tip.x + 'px ' + a.tip.y + 'px';
-    var s = { a: a, el: el, x: from.x, y: from.y, th: -ang * Math.PI / 180, age: 0, spin: 0, back: false };
+    var s = { a: a, el: el, x: from.x, y: from.y, th: th == null ? -ang * Math.PI / 180 : th, age: 0, spin: 0, back: false };
     var out = { hit: new Promise(function (res) { s.onHit = res; }), home: null };
     if (a.returns) out.home = new Promise(function (res) { s.onHome = res; });
     shots.push(s); place(s);
@@ -820,6 +825,29 @@ ThemeDecor.register('dussehra', function (d) {
     timers.push(setTimeout(function () { ravEl.classList.remove(cls); }, ms));
   }
 
+  // Ravan shoots back: after each of Ram's first three weapons he looses a red-hot arrow from his bow
+  // (the mirrored painting holds it at his left, 0.05 / 0.27 of his box) at Ram's chest; it breaks on
+  // Ram's divine radiance in a burst of gold, and Ram is untouched.
+  var RAV_ARROW = { key: 'ravarrow', w: 74, tip: { x: 74, y: 7 }, speed: 620, turn: 3.2, loft: 0, hitR: 26, rate: 90,
+    trail: ['#7F1D1D', '#DC2626', '#F97316', '#450A0A'], aim: function () { return pointIn(ramEl, 0.42, 0.4); },
+    svg: svgOpen('0 0 74 14') +
+      '<path d="M4 7 H62" stroke="#1F1F1F" stroke-width="2.6" stroke-linecap="round"/>' +
+      '<polygon points="74,7 60,1 63,7 60,13" fill="#DC2626" stroke="#450A0A" stroke-width=".8"/>' +
+      '<path d="M2 7 l7 -5 h5 l-6 5 z M2 7 l7 5 h5 l-6 -5 z" fill="#7C3AED"/></svg>' };
+  async function ravanShoots() {
+    react('td-loose', 450);
+    await wait(220); if (dead) return;
+    var shot = launch(RAV_ARROW, pointIn(ravEl, 0.05, 0.27), Math.PI);
+    if (ThemeDecor.sound) ThemeDecor.sound('whoosh', 0.3);
+    var p = await shot.hit; if (dead) return;
+    flash(p.x, p.y, 55); ring(p.x, p.y, '#FFD54F');
+    spray(p.x, p.y, 36, ['#FFD54F', '#FFF59D', '#FFFFFF', '#F59E0B'], [50, 200], 200);
+    snap(p.x, p.y, 1, '#3F1D0D');
+    ramEl.classList.add('td-guard');
+    timers.push(setTimeout(function () { ramEl.classList.remove('td-guard'); }, 700));
+    if (ThemeDecor.sound) ThemeDecor.sound('pop', 0.3);
+  }
+
   // What each weapon does when it lands. Only the Brahmastra finishes him (see round()).
   function impact(a, p) {
     if (a.key === 'arrow') {          // it breaks on his armour
@@ -905,7 +933,7 @@ ThemeDecor.register('dussehra', function (d) {
     var k = 0.8, s = document.createElement('div');
     s.className = 'td-lodged';
     s.innerHTML = a.svg;
-    s.style.cssText = 'position:absolute;left:46%;top:50%;width:' + (a.w * k) + 'px;transform-origin:0 0;clip-path:inset(0 18px 0 0);' + // at his navel (see navel())
+    s.style.cssText = 'position:absolute;left:54%;top:50%;width:' + (a.w * k) + 'px;transform-origin:0 0;clip-path:inset(0 18px 0 0);' + // at his navel (see navel())
       'transform:rotate(' + th.toFixed(3) + 'rad) translate(' + f1(14 - a.tip.x * k) + 'px,0)' +
       (Math.cos(th) < 0 ? ' scaleY(-1)' : '') + ' translate(0,' + f1(-a.tip.y * k) + 'px)';
     ravEl.appendChild(s);
@@ -1194,8 +1222,283 @@ ThemeDecor.register('dussehra', function (d) {
   // Where the label goes: over the upper part of where Ravan stands.
   function labelSpot() { return pointIn(ravEl, 0.5, 0.3); }
 
+  // The armies at war along the foot of the page, between Ram and Ravan, while the astras fly: the
+  // vanar sena on Ram's side charging right, Ravan's rakshasas on his side charging left, each
+  // fighter lunging on its own beat (CSS td-lunge-r / td-lunge-l, delays set here). In the middle
+  // Hanuman and a rakshasa champion fight with gadas (duelStep): they take turns to strike, the
+  // gadas clash in a burst of sparks, the one struck is driven back. When Ravan falls the rakshasas
+  // flee, the champion goes down, and the vanars give way to the celebrating sena (vanarSena()).
+  // Paintings: dussehra-{vanar-fight-1..5, rakshas-1..5, rakshas-gada-1,2}-{200,400}.webp; [file,
+  // its 200-file height, mirrored?] — two of the rakshasas were painted facing right.
+  // vanar-fight-1 is Hanuman himself, crowned and roaring, a rock raised: he fights the duel, not in the line
+  var WAR_VANARS = [['vanar-fight-4', 292], ['vanar-fight-2', 295], ['vanar-fight-5', 300], ['vanar-fight-3', 233]];
+  CAST['vanar-fight-1'] = [200, 300, 400];
+  var WAR_RAKSHAS = [['rakshas-2', 253], ['rakshas-4', 295], ['rakshas-1', 300, true], ['rakshas-3', 300], ['rakshas-5', 299, true]];
+  WAR_VANARS.concat(WAR_RAKSHAS, [['rakshas-gada-1', 294], ['rakshas-gada-2', 270]]).forEach(function (f) { CAST[f[0]] = [200, f[1], 400]; });
+  var war = null; // { el, vanars, rakshas, hanu, champ, on } while the armies fight
+  var missiles = []; // rocks and arrows in flight across the battle (drawn in draw())
+  // Who throws what, by painting: the bear-vanar and Hanuman hurl rocks, the vanar with the branch
+  // and the archer-rakshasa... the archer shoots arrows; the rest close in and strike hand to hand.
+  var THROWS = { 'vanar-fight-5': 'rock', 'vanar-fight-1': 'rock', 'rakshas-3': 'arrow' };
+  // a missile from one fighter to the chest of a fighter on the other side
+  function hurl(from, to, kind) {
+    if (!war || !war.on || missiles.length > 8) return;
+    var a = from.getBoundingClientRect(), b = to.getBoundingClientRect(), dir = b.left > a.left ? 1 : -1;
+    from.animate([{ transform: 'none' }, { transform: 'translateX(' + (-dir * 8) + 'px) rotate(' + (-dir * 6) + 'deg)', offset: 0.4 },
+                  { transform: 'translateX(' + (dir * 10) + 'px) rotate(' + (dir * 8) + 'deg)', offset: 0.7 }, { transform: 'none' }], { duration: 520, easing: 'ease-out' });
+    timers.push(setTimeout(function () {
+      if (!war || !war.on) return;
+      a = from.getBoundingClientRect(); b = to.getBoundingClientRect();
+      var rock = kind === 'rock', x0 = a.left + a.width * (rock ? 0.45 : (dir > 0 ? 0.85 : 0.15)), y0 = a.top + a.height * (rock ? 0.12 : 0.3);
+      var x1 = b.left + b.width * 0.5, y1 = b.top + b.height * 0.4, dist = Math.abs(x1 - x0);
+      missiles.push({ kind: kind, to: to, dir: dir, x0: x0, y0: y0, x1: x1, y1: y1, t: 0, r: rock ? 15 : 0,
+                      dur: rock ? 0.5 + dist / 900 : 0.25 + dist / 1400, arc: rock ? 30 + dist * 0.18 : 8 });
+      if (ThemeDecor.sound) ThemeDecor.sound('whoosh', 0.15);
+    }, 280));
+  }
+  // what a missile does to the one it hits: a burst of dust (rock) or sparks (arrow), and a jolt
+  // backwards — or, now and then, it knocks him down and he gets back up
+  function missileHit(m, x, y) {
+    var t = m.to, dir = m.dir;
+    if (m.kind === 'rock') { spray(x, y, 22, ['#A8A29E', '#78716C', '#D6B98A', '#FDE68A'], [40, 180], 320); flash(x, y, 26); snapRock(x, y, dir); }
+    else { spray(x, y, 14, ['#FFD54F', '#FFFFFF', '#F59E0B'], [40, 150], 240); snap(x, y, dir, '#1F1F1F'); }
+    if (ThemeDecor.sound) ThemeDecor.sound(m.kind === 'rock' ? 'bang' : 'pop', 0.12);
+    if (!t.isConnected) return;
+    if (Math.random() < 0.35) { // knocked down, back up
+      t.animate([{ transform: 'none' }, { transform: 'translateX(' + (dir * 18) + 'px) rotate(' + (dir * 75) + 'deg) translateY(10px)', offset: 0.25 },
+                 { transform: 'translateX(' + (dir * 18) + 'px) rotate(' + (dir * 80) + 'deg) translateY(10px)', offset: 0.7 }, { transform: 'none' }], { duration: 1500, easing: 'ease-in-out' });
+    } else {
+      t.animate([{ transform: 'none', filter: 'brightness(1)' }, { transform: 'translateX(' + (dir * 16) + 'px) rotate(' + (dir * 9) + 'deg)', filter: 'brightness(1.6)', offset: 0.3 },
+                 { transform: 'none', filter: 'brightness(1)' }], { duration: 560, easing: 'ease-out' });
+    }
+  }
+  // rock fragments flying off on impact
+  function snapRock(x, y, dir) {
+    for (var k = 0; k < 4; k++) debris.push({ x: x, y: y, vx: dir * d.rand(40, 140), vy: -d.rand(80, 220), a: d.rand(0, 3), va: d.rand(-8, 8), len: d.rand(5, 9), c: '#78716C', life: 1 });
+  }
+  // every ~0.8 s someone throws or closes in: a thrower hurls at a random enemy, or the two front
+  // fighters charge each other and trade a blow where they meet
+  function battleStep() {
+    if (dead || !war || !war.on) return;
+    var r = Math.random(), V = war.vanars, R = war.rakshas;
+    var throwers = V.concat(R).filter(function (e) { return THROWS[e.dataset.who]; }); // Hanuman throws only in his feat (hanumanFeat)
+    if (r < 0.6 && throwers.length) {
+      var th = throwers[Math.floor(Math.random() * throwers.length)], foes = V.indexOf(th) >= 0 || th === war.hanu ? R.concat([war.champ]) : V.concat([war.hanu]);
+      hurl(th, foes[Math.floor(Math.random() * foes.length)], THROWS[th.dataset.who]);
+    } else {
+      // the front pair charges in and one of them lands a blow
+      var v = V[V.length - 1], k = R[R.length - 1], vb = v.getBoundingClientRect(), kb = k.getBoundingClientRect(), gap = Math.max(0, kb.left - vb.right) / 2 + 10;
+      v.animate([{ transform: 'none' }, { transform: 'translateX(' + gap + 'px) rotate(6deg)', offset: 0.45 }, { transform: 'none' }], { duration: 700, easing: 'ease-in-out' });
+      k.animate([{ transform: 'none' }, { transform: 'translateX(' + (-gap) + 'px) rotate(-6deg)', offset: 0.45 }, { transform: 'none' }], { duration: 700, easing: 'ease-in-out' });
+      timers.push(setTimeout(function () {
+        if (!war || !war.on) return;
+        var x = (vb.right + kb.left) / 2, y = vb.top + vb.height * 0.4;
+        flash(x, y, 22); spray(x, y, 16, ['#FFD54F', '#FFFFFF', '#D6B98A'], [40, 160], 220);
+        if (ThemeDecor.sound) ThemeDecor.sound('pop', 0.1);
+      }, 315));
+    }
+    timers.push(setTimeout(battleStep, 650 + Math.random() * 500));
+  }
+  function fighter(who, w, cls, flip) {
+    var el = document.createElement('div');
+    el.className = 'td-fighter ' + cls;
+    el.style.width = w + 'px';
+    el.innerHTML = castImg(who, w);
+    el.dataset.who = who;
+    if (flip) el.firstChild.style.scale = '-1 1';
+    return el;
+  }
+  function warStart() {
+    if (war) return;
+    var lb = d.layer.getBoundingClientRect(), rb = ramEl.getBoundingClientRect(), vb = ravEl.getBoundingClientRect();
+    var left = rb.right - lb.left + 104, right = vb.left - lb.left - 6, span = right - left;
+    if (span < 420) return; // no room between them (a narrow window, or the figures dragged together)
+    var el = document.createElement('div');
+    el.className = 'td-item td-war';
+    el.style.cssText = 'position:absolute;bottom:0;left:' + Math.round(left) + 'px;width:' + Math.round(span) + 'px;height:180px;pointer-events:none';
+    d.layer.insertBefore(el, d.layer.firstChild); // behind the other figures
+    var mid = span / 2, half = mid - 95, w = { vanars: [], rakshas: [] };
+    function line(list, side, cls, out) {
+      list.forEach(function (f, i) {
+        var fw = Math.round(66 + (i % 2) * 8), x = side < 0 ? (half - fw) * i / (list.length - 1) : mid + 95 + (half - fw) * (list.length - 1 - i) / (list.length - 1);
+        var e = fighter(f[0], fw, cls, f[2]);
+        e.style.left = Math.round(x) + 'px';
+        e.style.zIndex = 10 - Math.abs(i - 2);
+        e.style.animationDuration = (1.3 + (i * 0.37) % 0.8).toFixed(2) + 's';
+        e.style.animationDelay = (-0.29 * i).toFixed(2) + 's';
+        el.appendChild(e); out.push(e);
+      });
+    }
+    line(WAR_VANARS, -1, 'td-lunge-r', w.vanars);
+    line(WAR_RAKSHAS, 1, 'td-lunge-l', w.rakshas);
+    // the gada duel in the middle: Hanuman (his raised-gada painting) and the champion, whose two
+    // paintings (overhead swing / level thrust) swap as he attacks and defends
+    // Hanuman: three paintings, one shown at a time (setHanu) so his hands hold what they should —
+    // the rock until he throws it, hands folded while he chants and while his gada is in flight,
+    // the gada once it has come to him (and for the rest of the duel)
+    w.hanu = fighter('vanar-fight-1', 104, 'td-duel td-duel-h');
+    w.hanu.firstChild.classList.add('hn-rock');
+    w.hanu.insertAdjacentHTML('beforeend', castImg('hanuman-fold', 104, 'hn-fold') + castImg('hanuman-gada', 104, 'hn-gada'));
+    w.hanuPose = 'rock'; setHanu(w, 'rock');
+    w.hanu.style.left = Math.round(mid - 104) + 'px';
+    w.champ = fighter('rakshas-gada-2', 104, 'td-duel td-duel-c');
+    w.champ.insertAdjacentHTML('beforeend', castImg('rakshas-gada-1', 104));
+    w.champ.lastChild.style.display = 'none';
+    w.champ.style.left = Math.round(mid + 4) + 'px';
+    el.appendChild(w.hanu); el.appendChild(w.champ);
+    w.el = el; w.on = true; w.turn = 0;
+    war = w;
+    timers.push(setTimeout(duelStep, 900));
+    timers.push(setTimeout(battleStep, 1300));
+    timers.push(setTimeout(hanumanFeat, 3500));
+  }
+  // Hanuman's feat, once in a while during the duel: he hurls his rock at the champion; then, hands
+  // raised, chants and his golden gada comes down to him out of a shaft of light; he throws it, it
+  // spins across, smashes the champion down, and wheels back into his hands.
+  var GADA = svgOpen('0 0 40 100') +
+    '<defs><radialGradient id="tdGadaH" cx=".35" cy=".35" r=".7"><stop offset="0" stop-color="#FFF7C2"/><stop offset=".45" stop-color="#F5C518"/><stop offset="1" stop-color="#A16207"/></radialGradient></defs>' +
+    '<rect x="17" y="34" width="6" height="58" rx="3" fill="#B45309"/><rect x="15" y="84" width="10" height="12" rx="3" fill="#F5C518" stroke="#92400E" stroke-width="1"/>' +
+    '<path d="M16 50 h8 M16 62 h8 M16 74 h8" stroke="#F5C518" stroke-width="2.4"/>' +
+    // like the gada in his painting: a tall, ribbed golden head set with rubies, a pointed cap
+    '<ellipse cx="20" cy="18" rx="16" ry="21" fill="url(#tdGadaH)" stroke="#92400E" stroke-width="1.2"/>' +
+    '<path d="M5 10 Q20 15 35 10 M4 19 Q20 25 36 19 M5 28 Q20 33 35 28" stroke="#B45309" stroke-width="1.4" fill="none"/>' +
+    '<circle cx="20" cy="18" r="3.2" fill="#DC2626"/><circle cx="10" cy="15" r="2.2" fill="#DC2626"/><circle cx="30" cy="15" r="2.2" fill="#DC2626"/><circle cx="20" cy="30" r="2" fill="#DC2626"/>' +
+    '<path d="M14 -2 Q20 -10 26 -2 Z" fill="#F5C518" stroke="#92400E" stroke-width=".8"/><path d="M20 -3 L20 -12" stroke="#F5C518" stroke-width="2.2" stroke-linecap="round"/>' +
+    '<path d="M15 36 h10 l-2 5 h-6 z" fill="#F5C518" stroke="#92400E" stroke-width=".8"/></svg>';
+  CAST['hanuman-gada'] = [200, 291, 400];
+  function setHanu(w, pose) {
+    w.hanuPose = pose;
+    ['rock', 'fold', 'gada'].forEach(function (p) { var i = w.hanu.querySelector('.hn-' + p); if (i) i.style.display = p === pose ? 'block' : 'none'; });
+  }
+  // the gada itself is a painting of his own gada (dussehra-gada-{100,200}.webp, lying diagonally);
+  // the drawn GADA above is no longer used
+  var GADA_IMG = '<img src="/img/themes/dussehra-gada-100.webp" srcset="/img/themes/dussehra-gada-100.webp 100w, /img/themes/dussehra-gada-200.webp 200w" sizes="66px"' +
+                 ' width="100" height="97" alt="" draggable="false" style="display:block;width:100%;height:auto">';
+  async function hanumanFeat() {
+    var w = war; if (!w || !w.on) return;
+    w.special = true;
+    var H = w.hanu, C = w.champ, hadRock = w.hanuPose === 'rock';
+    function box(el) { return el.getBoundingClientRect(); }
+    function knockDown(el, dir, ms) {
+      el.animate([{ transform: 'none' }, { transform: 'translateX(' + (dir * 26) + 'px) rotate(' + (dir * 78) + 'deg) translateY(12px)', offset: 0.25 },
+                  { transform: 'translateX(' + (dir * 26) + 'px) rotate(' + (dir * 82) + 'deg) translateY(12px)', offset: 0.75 }, { transform: 'none' }], { duration: ms, easing: 'ease-in-out' });
+    }
+    if (!hadRock) return gadaThrow(w);
+    // 1. the rock: once it leaves his hands, he is empty-handed (the folded-hands painting)
+    hurl(H, C, 'rock');
+    timers.push(setTimeout(function () { if (w.on) setHanu(w, 'fold'); }, 300));
+    await wait(1700); if (dead || !w.on) { w.special = false; return; }
+    // 2. the mantra, and the gada coming down to him in a shaft of light
+    var bub = document.createElement('div');
+    bub.className = 'td-mantra'; bub.style.setProperty('--m', '#F97316');
+    bub.innerHTML = '<b></b><span>Hanuman</span>'; bub.firstChild.textContent = 'जय श्री राम! आओ गदा!';
+    H.appendChild(bub);
+    H.classList.add('td-summon');
+    var hb = box(H), lb = d.layer.getBoundingClientRect(), hx = hb.left + hb.width * 0.5 - lb.left, hy = hb.top - lb.top;
+    var g = document.createElement('div');
+    g.className = 'td-item td-gada';
+    g.innerHTML = GADA_IMG;
+    g.style.cssText = 'position:absolute;width:66px;left:' + Math.round(hx - 33) + 'px;top:' + Math.round(hy - 60) + 'px;z-index:25;pointer-events:none';
+    d.layer.appendChild(g);
+    g.animate([{ transform: 'translateY(-260px) scale(.4)', opacity: 0 }, { transform: 'translateY(-60px) scale(.9)', opacity: 1, offset: 0.6 }, { transform: 'none', opacity: 1 }],
+              { duration: 1600, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' });
+    for (var k = 0; k < 6; k++) timers.push(setTimeout(function () {
+      if (!g.isConnected) return; var r = g.getBoundingClientRect();
+      spray(r.left + r.width / 2, r.top + r.height / 3, 14, ['#FFF7C2', '#FFD54F', '#FFFFFF'], [20, 90], -40);
+    }, k * 260));
+    if (ThemeDecor.sound) ThemeDecor.sound('chime', 0.4);
+    await wait(1900); if (dead || !w.on) { g.remove(); bub.remove(); w.special = false; return; }
+    hush(bub);
+    H.classList.remove('td-summon');
+    // it reaches his hands: a flash, and he is holding it (the gada painting)
+    var gr = g.getBoundingClientRect(); flash(gr.left + gr.width / 2, gr.top + gr.height / 3, 40);
+    g.remove(); setHanu(w, 'gada');
+    await wait(900); if (dead || !w.on) { w.special = false; return; }
+    return gadaThrow(w);
+  }
+  // 3. the throw: the gada leaves his hands (folded-hands painting), spins across to the champion,
+  // smashes him down and wheels back, and he is holding it again
+  async function gadaThrow(w) {
+    var H = w.hanu, C = w.champ;
+    w.special = true;
+    function knockDown(el, dir, ms) {
+      el.animate([{ transform: 'none' }, { transform: 'translateX(' + (dir * 26) + 'px) rotate(' + (dir * 78) + 'deg) translateY(12px)', offset: 0.25 },
+                  { transform: 'translateX(' + (dir * 26) + 'px) rotate(' + (dir * 82) + 'deg) translateY(12px)', offset: 0.75 }, { transform: 'none' }], { duration: ms, easing: 'ease-in-out' });
+    }
+    var hb = H.getBoundingClientRect(), lb = d.layer.getBoundingClientRect(), hx = hb.left + hb.width * 0.5 - lb.left, hy = hb.top - lb.top;
+    H.animate([{ transform: 'none' }, { transform: 'translateX(-8px) rotate(-6deg)', offset: 0.3 }, { transform: 'translateX(12px) rotate(8deg)', offset: 0.6 }, { transform: 'none' }], { duration: 520 });
+    await wait(280); if (dead || !w.on) { w.special = false; return; }
+    var g = document.createElement('div');
+    g.className = 'td-item td-gada';
+    g.innerHTML = GADA_IMG;
+    g.style.cssText = 'position:absolute;width:66px;left:' + Math.round(hx - 33) + 'px;top:' + Math.round(hy - 20) + 'px;z-index:25;pointer-events:none';
+    d.layer.appendChild(g);
+    setHanu(w, 'fold');
+    var cb = C.getBoundingClientRect(), dx = cb.left + cb.width * 0.45 - (hx + lb.left), dy = cb.top + cb.height * 0.35 - (hy - 10 + lb.top);
+    if (ThemeDecor.sound) ThemeDecor.sound('whoosh', 0.3);
+    g.animate([{ transform: 'none' }, { transform: 'translate(' + dx + 'px,' + (dy - 40) + 'px) rotate(540deg)', offset: 0.45 },
+               { transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(720deg)', offset: 0.5 },
+               { transform: 'translate(' + (dx / 2) + 'px,' + (dy / 2 - 70) + 'px) rotate(1080deg)', offset: 0.78 }, { transform: 'none' }],
+              { duration: 2000, easing: 'ease-in-out', fill: 'forwards' });
+    timers.push(setTimeout(function () {
+      if (!w.on) return;
+      var r = g.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 3;
+      flash(x, y, 70); ring(x, y, '#FFD54F', 220);
+      spray(x, y, 60, ['#FFFFFF', '#FFD54F', '#F59E0B', '#FB923C'], [80, 300], 260);
+      if (ThemeDecor.sound) ThemeDecor.sound('bang', 0.3);
+      knockDown(C, 1, 1800);
+    }, 1000));
+    await wait(2100); if (dead || !w.on) { g.remove(); w.special = false; return; }
+    // back in his hands: a flash, and he holds it again
+    var br = g.getBoundingClientRect(); flash(br.left + br.width / 2, br.top + br.height / 3, 34);
+    g.remove(); setHanu(w, 'gada');
+    await wait(500);
+    w.special = false;
+    timers.push(setTimeout(function () { if (war === w && w.on) hanumanFeat(); }, 9000 + Math.random() * 3000));
+  }
+
+  // One exchange of the gada duel, every 1.5 s, the two taking turns to strike.
+  function duelStep() {
+    if (dead || !war || !war.on) return;
+    if (war.special) { timers.push(setTimeout(duelStep, 600)); return; } // Hanuman's feat is under way
+    var hanuStrikes = war.turn++ % 2 === 0, att = hanuStrikes ? war.hanu : war.champ, def = hanuStrikes ? war.champ : war.hanu, dir = hanuStrikes ? 1 : -1;
+    war.champ.firstChild.style.display = hanuStrikes ? 'block' : 'none';  // level guard while defending
+    war.champ.lastChild.style.display = hanuStrikes ? 'none' : 'block';   // overhead swing while attacking
+    att.animate([{ transform: 'none' }, { transform: 'translateX(' + (-dir * 10) + 'px) rotate(' + (-dir * 4) + 'deg)', offset: 0.3 },
+                 { transform: 'translateX(' + (dir * 22) + 'px) rotate(' + (dir * 7) + 'deg)', offset: 0.55 }, { transform: 'none' }], { duration: 700, easing: 'ease-in-out' });
+    timers.push(setTimeout(function () {
+      if (dead || !war || !war.on) return;
+      var a = war.hanu.getBoundingClientRect(), b = war.champ.getBoundingClientRect(), x = (a.right + b.left) / 2, y = a.top + a.height * 0.32;
+      flash(x, y, 34); spray(x, y, 28, ['#FFD54F', '#FFFFFF', '#F59E0B', '#FB923C'], [60, 220], 260);
+      if (ThemeDecor.sound) ThemeDecor.sound('bang', 0.12);
+      def.animate([{ transform: 'none' }, { transform: 'translateX(' + (dir * 14) + 'px) rotate(' + (dir * 5) + 'deg)', offset: 0.35 }, { transform: 'none' }], { duration: 520, easing: 'ease-out' });
+      // the front lines clash too: dust where the nearest vanar and rakshasa meet
+      var v = war.vanars[war.vanars.length - 1].getBoundingClientRect(), r = war.rakshas[war.rakshas.length - 1].getBoundingClientRect();
+      if (Math.random() < 0.6) spray((v.right + r.left) / 2 - 120 * Math.random(), v.bottom - 30, 10, ['#D6B98A', '#A8A29E', '#FDE68A'], [20, 90], 120);
+    }, 385));
+    timers.push(setTimeout(duelStep, 1500));
+  }
+  // Ravan has fallen: the rakshasas flee to the right, the champion is knocked down, the vanars
+  // give way to the celebrating sena; the strip is gone a moment later.
+  function warEnd() {
+    if (!war) return;
+    var w = war; war = null; w.on = false;
+    missiles = [];
+    w.rakshas.forEach(function (e, i) {
+      e.classList.remove('td-lunge-l');
+      e.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateX(' + (180 + i * 30) + 'px)', opacity: 0 }], { duration: 900 + i * 80, easing: 'ease-in', fill: 'forwards' });
+    });
+    w.champ.animate([{ transform: 'none', opacity: 1 }, { transform: 'translate(30px,40px) rotate(70deg)', opacity: 0 }], { duration: 900, easing: 'ease-in', fill: 'forwards' });
+    w.hanu.animate([{ transform: 'none' }, { transform: 'translateY(-14px)', offset: 0.5 }, { transform: 'none' }], { duration: 500, iterations: 2 });
+    timers.push(setTimeout(function () {
+      w.el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500, fill: 'forwards' });
+      timers.push(setTimeout(function () { w.el.remove(); }, 520));
+    }, 1300));
+  }
+
   async function round(first) {
     await whenClear(first ? 2000 : 600); if (dead) return;
+    warStart();
 
     // 1-5. The five weapons, one after another. Each waits for a clear page first, so a pop-up
     //      that opens mid-story holds the next shot until it is closed.
@@ -1219,6 +1522,7 @@ ThemeDecor.register('dussehra', function (d) {
       if (i === ASTRAS.length - 1) break;
       if (shot.home) { await shot.home; if (dead) return; }
       await wait(1100); if (dead) return;
+      if (i < 3) { await ravanShoots(); if (dead) return; await wait(500); if (dead) return; } // he shoots back
       setBow(ramEl, true); // the next arrow on the string
       await wait(450); if (dead) return;
     }
@@ -1240,6 +1544,7 @@ ThemeDecor.register('dussehra', function (d) {
     setPose('cheer'); ramEl.classList.add('td-joy'); // Ram raises his bow and beams as Ravan burns
     await wait(1300); if (dead) return;
     ravState('td-fall');
+    warEnd();
     blast(spot.x, spot.y - 90);
     await wait(260); if (dead) return;
     blast(spot.x - 70, spot.y - 60);
@@ -1447,6 +1752,27 @@ ThemeDecor.register('dussehra', function (d) {
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.2832); ctx.fill();
     }
     ctx.lineCap = 'round';
+    // the battle's missiles: rocks tumbling on an arc, arrows flying flat; on reaching the target's
+    // chest they hit (missileHit)
+    for (i = missiles.length - 1; i >= 0; i--) {
+      p = missiles[i];
+      p.t += dt;
+      var mk = Math.min(1, p.t / p.dur), mx = p.x0 + (p.x1 - p.x0) * mk, my = p.y0 + (p.y1 - p.y0) * mk - p.arc * 4 * mk * (1 - mk);
+      if (mk >= 1) { missiles.splice(i, 1); missileHit(p, mx, my); continue; }
+      ctx.globalAlpha = 1;
+      if (p.kind === 'rock') {
+        ctx.save(); ctx.translate(mx, my); ctx.rotate(p.t * 7 * p.dir);
+        ctx.fillStyle = '#78716C'; ctx.strokeStyle = '#44403C'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(-p.r, -p.r * .3); ctx.lineTo(-p.r * .4, -p.r); ctx.lineTo(p.r * .6, -p.r * .8); ctx.lineTo(p.r, p.r * .1); ctx.lineTo(p.r * .4, p.r); ctx.lineTo(-p.r * .7, p.r * .7); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#A8A29E'; ctx.beginPath(); ctx.arc(-p.r * .3, -p.r * .35, p.r * .3, 0, 6.2832); ctx.fill();
+        ctx.restore();
+      } else {
+        var ax = p.x1 - p.x0, ay = (p.y1 - p.y0) - p.arc * 4 * (1 - 2 * mk), al = Math.sqrt(ax * ax + ay * ay) || 1; ax /= al; ay /= al;
+        ctx.strokeStyle = '#1F1F1F'; ctx.lineWidth = 2.2;
+        ctx.beginPath(); ctx.moveTo(mx - ax * 26, my - ay * 26); ctx.lineTo(mx, my); ctx.stroke();
+        ctx.fillStyle = '#B91C1C'; ctx.beginPath(); ctx.moveTo(mx + ax * 7, my + ay * 7); ctx.lineTo(mx - ay * 4, my + ax * 4); ctx.lineTo(mx + ay * 4, my - ax * 4); ctx.fill();
+      }
+    }
     for (i = debris.length - 1; i >= 0; i--) {
       p = debris[i];
       p.vy += 700 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.a += p.va * dt; p.life -= 0.7 * dt;
