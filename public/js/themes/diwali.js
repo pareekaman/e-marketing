@@ -93,6 +93,33 @@ ThemeDecor.register('diwali', function (d) {
     el.style.cssText += ';right:auto;left:' + (k[0] * 100) + '%;width:' + k[1] + 'px;animation-duration:' + k[5] + 's';
   });
 
+  // The paintings the user made (public/img/themes/diwali-<name>-<w>.webp, two sizes each, srcset):
+  // the rangoli, diyas and kandils above keep their elements, classes and animations but show the
+  // painting in place of the drawing; the children, crackers, Lakshmi-Ganesh ji, the thali and the
+  // family below are paintings throughout. ART: [small width, its height, large width].
+  var ART = { 'girl-1-run': [140, 197, 280], 'girl-1-throw': [140, 195, 280], 'boy-1-run': [140, 220, 280], 'boy-1-throw': [140, 208, 280],
+              'girl-2-run': [140, 200, 280], 'girl-2-throw': [140, 208, 280], 'boy-2-run': [140, 218, 280], 'boy-2-throw': [140, 210, 280],
+              'sooty-boy': [140, 316, 280], 'sooty-girl': [140, 234, 280], diya: [120, 107, 240], kandil: [140, 236, 280], rangoli: [300, 292, 600],
+              bomb: [60, 76, 120], rocket: [80, 84, 160], anar: [60, 90, 120], phuljhadi: [80, 81, 160], chakri: [80, 69, 160],
+              family: [400, 335, 800], 'lakshmi-ganesh': [400, 259, 800], thali: [120, 109, 240] };
+  function art(name, px, cls) {
+    var a = ART[name], base = '/img/themes/diwali-' + name;
+    return '<img' + (cls ? ' class="' + cls + '"' : '') + ' src="' + base + '-' + a[0] + '.webp" srcset="' + base + '-' + a[0] + '.webp ' + a[0] + 'w, ' + base + '-' + a[2] + '.webp ' + a[2] + 'w"' +
+           ' sizes="' + px + 'px" width="' + a[0] + '" height="' + a[1] + '" alt="" draggable="false" style="width:100%;height:auto">';
+  }
+  d.layer.querySelector('.td-rangoli').innerHTML = art('rangoli', 150);
+  [].forEach.call(d.layer.querySelectorAll('.td-diya'), function (el) { el.innerHTML = art('diya', 46); });
+  [].forEach.call(d.layer.querySelectorAll('.td-lantern'), function (el) { el.innerHTML = art('kandil', 40); });
+  // Lakshmi ji and Ganesh ji at the right, an aarti thali circling before them; the family lighting
+  // diyas beside the rangoli
+  var puja = d.svg(art('lakshmi-ganesh', 230), 'dw-puja td-drag');
+  var thali = d.svg(art('thali', 54), 'dw-thali');
+  puja.appendChild(thali);
+  d.svg(art('family', 170), 'dw-family td-drag');
+  // the crackers' paintings, drawn on the canvas as they fly
+  var CRACKER_IMG = {};
+  ['bomb', 'rocket', 'anar', 'phuljhadi', 'chakri'].forEach(function (k) { var im = new Image(); im.src = '/img/themes/diwali-' + k + '-' + ART[k][2] + '.webp'; CRACKER_IMG[k] = im; });
+
   // Six children running about along the foot of the page (between the diyas and the chatbot), now
   // and then one stops and lobs a cartoon bomb at another; it homes in on where that child has run,
   // bursts with a puff of smoke, and the child is left soot-black with hair on end — and both laugh,
@@ -182,14 +209,22 @@ ThemeDecor.register('diwali', function (d) {
   }
   var strip = document.createElement('div');
   strip.className = 'td-item dk-strip';
-  strip.style.cssText = 'position:absolute;left:340px;right:110px;bottom:0;height:130px;pointer-events:none';
+  strip.style.cssText = 'position:absolute;left:510px;right:350px;bottom:0;height:130px;pointer-events:none';
   d.layer.appendChild(strip);
+  var KW = 62, KH = KW * 215 / 140; // a painted child's width, and about its height
+  var KID_LOOKS = ['girl-1', 'boy-2', 'girl-2', 'boy-1', 'girl-1', 'boy-2'];
+  var SOOTY = { 'boy-2': 'sooty-boy', 'girl-2': 'sooty-girl' };
   var LOOKS = [[true, '#DB2777', '#FACC15'], [false, '#2563EB', '#F97316'], [true, '#16A34A', '#F472B6'], [false, '#DC2626', '#1E3A8A'], [true, '#7C3AED', '#FDE047'], [false, '#F59E0B', '#15803D']];
   var KIDS = LOOKS.map(function (l, i) {
     var el = document.createElement('div');
     el.className = 'dk-kid dk-running';
-    el.style.cssText = 'position:absolute;left:0;bottom:0;width:46px';
-    el.innerHTML = kid(l[0], l[1], l[2]);
+    el.style.cssText = 'position:absolute;left:0;bottom:0;width:' + KW + 'px';
+    // the painted child: running, tossing, and sooty (the two who have a sooty painting; the others
+    // are darkened by the CSS); the span is what turns to face the way they run
+    var who = KID_LOOKS[i % KID_LOOKS.length];
+    el.innerHTML = '<span class="dk-fig">' + art(who + '-run', KW, 'dk-run') + art(who + '-throw', KW, 'dk-toss') +
+                   (SOOTY[who] ? art(SOOTY[who], KW, 'dk-black') : '') + '</span>';
+    if (!SOOTY[who]) el.classList.add('dk-nosoot');
     var say = document.createElement('div');
     say.className = 'dk-laugh';
     say.textContent = 'हा हा हा!';
@@ -199,7 +234,7 @@ ThemeDecor.register('diwali', function (d) {
   });
   var kidTimers = [], bombs = [], smoke = [], kparts = [], fountains = [], throwIn = 1.2;
   function stripBox() { var r = strip.getBoundingClientRect(), b = d.layer.getBoundingClientRect(); return { x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height }; }
-  function head(k, s) { return { x: s.x + k.x * (s.w - 46) + 23, y: s.y + s.h - 70 * 46 / 60 }; }
+  function head(k, s) { return { x: s.x + k.x * (s.w - KW) + KW / 2, y: s.y + s.h - KH * 0.62 }; }
   function sparks(x, y, n, spd, cols, life) {
     for (var i = 0; i < n && kparts.length < 700; i++) {
       var an = d.rand(0, Math.PI * 2), v = d.rand(spd * 0.3, spd);
@@ -219,19 +254,31 @@ ThemeDecor.register('diwali', function (d) {
     kidTimers.push(setTimeout(function () { k.el.classList.remove(cls); }, ms));
   }
   // Four crackers, each thrown its own way and each with its own reaction (see hit()).
-  var KINDS = { bomb: { dur: 0.9, arc: 70 }, rocket: { dur: 0.45, arc: 10 }, anar: { dur: 0.8, arc: 50 }, phuljhadi: { dur: 0.8, arc: 40 } };
+  var KINDS = { bomb: { dur: 0.9, arc: 70 }, rocket: { dur: 0.45, arc: 10 }, anar: { dur: 0.8, arc: 50 }, phuljhadi: { dur: 0.8, arc: 40 }, chakri: { dur: 0.8, arc: 45 } };
   function lob() {
     var a = Math.floor(Math.random() * KIDS.length), b = (a + 1 + Math.floor(Math.random() * (KIDS.length - 1))) % KIDS.length;
     var th = KIDS[a], tg = KIDS[b], s = stripBox(), from = head(th, s);
     th.hold = 0.6; th.dir = tg.x > th.x ? 1 : -1;
     th.el.classList.add('dk-throwing');
     kidTimers.push(setTimeout(function () { th.el.classList.remove('dk-throwing'); }, 450));
-    var kind = d.pick(['bomb', 'rocket', 'anar', 'phuljhadi']);
+    var kind = d.pick(['bomb', 'rocket', 'anar', 'phuljhadi', 'chakri']);
     bombs.push({ kind: kind, x: from.x, y: from.y - 10, x0: from.x, y0: from.y - 10, t: 0, dur: KINDS[kind].dur, by: th, at: tg });
   }
+  // the cracker's painting, turned the way it flies (the rocket nose first, the chakri spinning, the
+  // phuljhadi turning end over end), with its own sparks; the drawn versions below if it has not loaded
+  var CR_SIZE = { bomb: 18, rocket: 30, anar: 18, phuljhadi: 30, chakri: 24 };
   function drawCracker(ctx, q, ang) {
-    var x = q.x, y = q.y;
+    var x = q.x, y = q.y, im = CRACKER_IMG[q.kind];
     ctx.globalAlpha = 1;
+    if (im && im.complete && im.naturalWidth) {
+      var w = CR_SIZE[q.kind], h = w * im.naturalHeight / im.naturalWidth;
+      var rot = q.kind === 'rocket' ? ang + Math.PI / 4 : q.kind === 'chakri' ? q.t * 14 : q.kind === 'phuljhadi' ? q.t * 10 : q.kind === 'bomb' ? q.t * 4 : 0;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.drawImage(im, -w / 2, -h / 2, w, h); ctx.restore();
+      if (q.kind === 'bomb') sparks(x + 4, y - h / 2, 2, 40, ['#FDE047', '#F97316', '#FFFFFF'], 0.25);
+      else if (q.kind === 'rocket') for (var r = 0; r < 4; r++) kparts.push({ x: x - Math.cos(ang) * 14, y: y - Math.sin(ang) * 14, vx: -Math.cos(ang) * d.rand(40, 90) + d.rand(-20, 20), vy: -Math.sin(ang) * d.rand(40, 90) + d.rand(-20, 20), life: .35, c: d.pick(['#F97316', '#FDE047', '#DC2626']) });
+      else if (q.kind === 'phuljhadi' || q.kind === 'chakri') sparks(x, y, 3, 70, ['#FFFFFF', '#FEF3C7', '#FDE047'], 0.3);
+      return;
+    }
     if (q.kind === 'bomb') {
       ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.arc(x, y, 5.5, 0, 6.2832); ctx.fill();
       ctx.fillStyle = '#6B7280'; ctx.beginPath(); ctx.arc(x - 1.8, y - 1.8, 1.6, 0, 6.2832); ctx.fill();
@@ -266,6 +313,10 @@ ThemeDecor.register('diwali', function (d) {
       sparks(at.x, at.y, 55, 180, ['#FDE047', '#F97316', '#DC2626', '#FFFFFF']);
       tg.hold = 0.9; react(tg, 'dk-spin', 900);
       laugh(tg, 1600, 'ऊईईई!');
+    } else if (q.kind === 'chakri') { // spinning at their feet in a ring of sparks: they hop about
+      for (var c = 0; c < 4; c++) fountains.push({ x: at.x + d.rand(-6, 6), y: s.y + s.h - 2, life: 0.4 + c * 0.3, chakri: true });
+      tg.hold = 1.4; react(tg, 'dk-dance', 1400);
+      laugh(tg, 1500, 'अरे!');
     } else if (q.kind === 'anar') {   // a fountain at their feet: they hop about
       fountains.push({ x: at.x, y: s.y + s.h - 2, life: 1.6 });
       tg.hold = 1.6; react(tg, 'dk-dance', 1600);
@@ -295,7 +346,7 @@ ThemeDecor.register('diwali', function (d) {
       }
       k.el.classList.toggle('dk-running', !still && k.hold <= 0);
       if (k.sooty > 0 && (k.sooty -= dt) <= 0) k.el.classList.remove('dk-sooty');
-      k.el.style.transform = 'translateX(' + (k.x * (s.w - 46)).toFixed(1) + 'px)';
+      k.el.style.transform = 'translateX(' + (k.x * (s.w - KW)).toFixed(1) + 'px)';
       k.el.firstChild.style.transform = 'scaleX(' + k.dir + ')';
     }
     if (!still && (throwIn -= dt) <= 0) { lob(); throwIn = d.rand(1.3, 2.2); }
@@ -312,9 +363,17 @@ ThemeDecor.register('diwali', function (d) {
     for (i = fountains.length - 1; i >= 0; i--) {
       var fo = fountains[i]; fo.life -= dt;
       if (fo.life <= 0) { fountains.splice(i, 1); continue; }
-      ctx.fillStyle = '#B45309'; ctx.globalAlpha = 1;
-      ctx.beginPath(); ctx.moveTo(fo.x - 5, fo.y); ctx.lineTo(fo.x - 2, fo.y - 9); ctx.lineTo(fo.x + 2, fo.y - 9); ctx.lineTo(fo.x + 5, fo.y); ctx.fill();
-      for (var n = 0; n < 9 && kparts.length < 700; n++) kparts.push({ x: fo.x, y: fo.y - 9, vx: d.rand(-50, 50), vy: d.rand(-200, -120), life: d.rand(.5, .9), c: d.pick(['#FDE047', '#FFFFFF', '#FB923C']) });
+      ctx.globalAlpha = 1;
+      if (fo.chakri) { // a chakri spinning on the ground, sparks flung out all round
+        var ci = CRACKER_IMG.chakri, cw = 26;
+        if (ci.complete && ci.naturalWidth) { ctx.save(); ctx.translate(fo.x, fo.y - 6); ctx.rotate(performance.now() / 60); ctx.drawImage(ci, -cw / 2, -cw * .43, cw, cw * .86); ctx.restore(); }
+        for (var cn = 0; cn < 6 && kparts.length < 700; cn++) { var ca = d.rand(0, 6.2832); kparts.push({ x: fo.x, y: fo.y - 6, vx: Math.cos(ca) * 120, vy: Math.sin(ca) * 40 - 30, life: d.rand(.3, .5), c: d.pick(['#FDE047', '#FFFFFF', '#FB923C']) }); }
+        continue;
+      }
+      var ai = CRACKER_IMG.anar;
+      if (ai.complete && ai.naturalWidth) ctx.drawImage(ai, fo.x - 8, fo.y - 24, 16, 24);
+      else { ctx.fillStyle = '#B45309'; ctx.beginPath(); ctx.moveTo(fo.x - 5, fo.y); ctx.lineTo(fo.x - 2, fo.y - 9); ctx.lineTo(fo.x + 2, fo.y - 9); ctx.lineTo(fo.x + 5, fo.y); ctx.fill(); }
+      for (var n = 0; n < 9 && kparts.length < 700; n++) kparts.push({ x: fo.x, y: fo.y - 22, vx: d.rand(-50, 50), vy: d.rand(-200, -120), life: d.rand(.5, .9), c: d.pick(['#FDE047', '#FFFFFF', '#FB923C']) });
     }
     for (i = smoke.length - 1; i >= 0; i--) {
       p = smoke[i]; p.life -= dt * 0.8; p.r += 18 * dt; p.y += p.vy * dt;
