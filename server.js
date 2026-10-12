@@ -10648,6 +10648,9 @@ require('./backend/routes/emk-credentials')(app, {
   viewerIds: BA_CREDENTIALS_VIEWER_IDS,
 });
 
+// Leave & WFH Policy — everyone signs it once (routes/leave-policy.js).
+require('./backend/routes/leave-policy')(app, { db, requireAuth, requireAdmin });
+
 // Compose Email — admins send email from the app, every send logged (routes/compose-mail.js).
 require('./backend/routes/compose-mail')(app, {
   db,

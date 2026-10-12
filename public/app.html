@@ -1274,6 +1274,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
           <span style="font-size:18px;line-height:1">＋</span> Apply for Leave
         </button>
       </div>
+      <div id="lpNotice"></div>
+      <div id="lpReport"></div>
 
       <div class="lv-tabs">
         <div class="lv-tab active" data-tab="mine" onclick="lvSwitchTab('mine',this)">
@@ -4116,6 +4118,50 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <!-- ══════════════════════════════════════════════════════
      LEAVE TRACKER — APPLY FORM
 ══════════════════════════════════════════════════════ -->
+<!-- Leave & WFH Policy: read, tick, upload a signature (leave-policy.js) -->
+<div class="modal-overlay" id="lpPolicyModal">
+  <div class="modal lv-modal">
+    <div class="lv-modal-head">
+      <h3 class="lv-modal-title">📜 Leave &amp; Work From Home (WFH) Policy</h3>
+    </div>
+    <p style="font-size:13px;color:#64748b;margin:0 0 6px">Please read and sign this policy once.</p>
+    <div id="lpSignText"></div>
+    <h4 style="margin:14px 0 8px;font-size:15px">Employee Acknowledgement</h4>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:14px;cursor:pointer">
+      <input type="checkbox" id="lpAgree" style="margin-top:3px"> I have read, understood, and agree to comply with the above Leave &amp; WFH Policy.
+    </label>
+    <div class="form-group" style="margin-top:12px"><label>Employee Name</label><input type="text" id="lpName" disabled/></div>
+    <div class="form-group"><label>Digital Signature <span class="lv-req">*</span> <span style="font-weight:400;color:#64748b">(JPG or PNG image, up to 2.5 MB)</span></label>
+      <input type="file" id="lpFile" accept="image/png,image/jpeg" onchange="lpPickFile(this)"/>
+      <div class="lp-preview" id="lpPreview"><span>No image chosen</span></div>
+    </div>
+    <div class="form-group"><label>Date</label><input type="text" id="lpDate" disabled/></div>
+    <div class="alert error" id="lpErr"></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px">
+      <button class="btn btn-outline" onclick="closeModal('lpPolicyModal')">Later</button>
+      <button class="btn btn-primary" id="lpSubmitBtn" onclick="lpSubmit()">I Agree &amp; Sign</button>
+    </div>
+  </div>
+</div>
+<style>
+  .lp-list{margin:6px 0 0 20px;padding:0;font-size:14px;line-height:1.6;color:#1e293b}
+  .lp-list li{margin-bottom:6px}
+  .lp-notice{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;margin:0 0 12px}
+  .lp-notice summary{cursor:pointer;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-weight:700;color:#92400e;font-size:14px}
+  .lp-ok{color:#15803d;font-weight:600;font-size:13px}
+  .lp-bad{color:#b91c1c;font-weight:600;font-size:13px}
+  .lp-count{color:#475569;font-weight:600;font-size:13px}
+  .lp-signed{margin-top:8px;font-size:13px;color:#475569;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .lp-signed img,.lp-table img{max-height:110px;max-width:260px;object-fit:contain;background:#fff;border:1px solid #e2e8f0;border-radius:6px;cursor:zoom-in}
+  .lp-dl{margin-left:auto;font-size:12px;padding:4px 10px}
+  .lp-preview{margin-top:8px;min-height:60px;border:1px dashed #cbd5e1;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:13px;background:#fff}
+  .lp-preview img{max-height:90px;max-width:100%}  .lp-table-wrap{overflow-x:auto;margin-top:10px}
+  .lp-table{width:100%;border-collapse:collapse;font-size:13px;background:#fff}
+  .lp-table th,.lp-table td{padding:8px 10px;border-bottom:1px solid #f1f5f9;text-align:left;vertical-align:middle}
+  .lp-table th{color:#64748b;font-size:12px;text-transform:uppercase}
+  #lpErr{display:none}
+</style>
+
 <div class="modal-overlay" id="leaveModal">
   <div class="modal lv-modal">
     <div class="lv-modal-head">
@@ -4354,6 +4400,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/clients.js"></script>
 <script src="/js/reports.js"></script>
 <script src="/js/leaves.js"></script>
+<script src="/js/leave-policy.js"></script>
 <script src="/js/compose-mail.js"></script>
 <script src="/js/emk-creds.js"></script>
 <script src="/js/portal.js"></script>

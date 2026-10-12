@@ -41,6 +41,7 @@ async function lvLoadClients(){
 async function loadLeaves(){
   const wrap = document.getElementById('lvListWrap');
   wrap.innerHTML = '<div class="empty">Loading…</div>';
+  lpLoad();   // the Leave & WFH Policy notice, and the sign popup until signed
   try {
     const qs = `?scope=${LEAVE_TAB}${LEAVE_STATUS ? '&status='+LEAVE_STATUS : ''}`;
     const [data, approverRes] = await Promise.all([
