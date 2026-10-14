@@ -34,7 +34,7 @@ async function openBulkDeleteModal() {
       // Populate user dropdown
       document.getElementById('bdYearUser').innerHTML =
         '<option value="">-- Select Employee --</option>' +
-        eligible.filter(u => u.role !== 'admin').map(u=>`<option value="${u.id}" data-email="${esc(u.email)}">${esc(u.name)}</option>`).join('');
+        eligible.filter(u => u.role !== 'client').map(u=>`<option value="${u.id}" data-email="${esc(u.email)}">${esc(u.name)}</option>`).join('');
       document.getElementById('bdYearUserEmail').style.display = 'none';
     } else {
       document.getElementById('bdYearSection').style.display = 'none';
