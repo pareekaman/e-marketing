@@ -22,6 +22,10 @@
       "schedule": "0 14 * * *"
     },
     {
+      "path": "/api/cron/ba-daily-reminder",
+      "schedule": "0 13 * * *"
+    },
+    {
       "path": "/api/cron/pending-reminder",
       "schedule": "30 6 * * *"
     },

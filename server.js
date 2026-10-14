@@ -5456,11 +5456,18 @@ const REMINDER_GROUP_ID = process.env.REMINDER_GROUP_ID || '919602694444-1618492
 // Pending Task Summary (delegation / checklist / FMS) goes to this personal WhatsApp NUMBER, not the group.
 const PENDING_SUMMARY_PHONE = process.env.PENDING_SUMMARY_PHONE || '9301878061';
 const EXCLUDED_DEPARTMENTS = ['CXO']; // case-insensitive match
+// The same "report not filled" message, only for one department, goes to that
+// department's own group at 6:30 PM IST (cron /api/cron/ba-daily-reminder).
+// The 7:30 PM message to the management group still lists everyone, this
+// department included.
+const DEPT_REMINDER_DEPARTMENT = process.env.DEPT_REMINDER_DEPARTMENT || 'Business Automation';
+const DEPT_REMINDER_GROUP_ID = process.env.DEPT_REMINDER_GROUP_ID || '120363429914318374@g.us';
 
 // Reminder destination can be either a WhatsApp group ID (xxx@g.us) or a phone
 // number (with/without + and 91). Routes to the right sender automatically.
-async function sendToReminderDestination(text) {
-  const dest = String(REMINDER_GROUP_ID || '').trim();
+// `destination` defaults to the management group; the department reminder passes its own.
+async function sendToReminderDestination(text, destination = REMINDER_GROUP_ID) {
+  const dest = String(destination || '').trim();
   if (!dest) return { ok: false, reason: 'no destination configured' };
   if (dest.includes('@g.us')) return sendWhatsAppRaw(dest, text);
   return sendWhatsApp(dest, text);
@@ -5470,7 +5477,9 @@ async function sendToReminderDestination(text) {
 //          the cron never passes it).
 // dryRun — build the exact message and return it without sending, so the page
 //          can show what would go out before the admin decides.
-async function buildAndSendReminder({ force = false, dryRun = false } = {}) {
+// department — only that department's people are listed (case-insensitive);
+// destination — where it goes (default: the management group).
+async function buildAndSendReminder({ force = false, dryRun = false, department = null, destination = REMINDER_GROUP_ID } = {}) {
   // Sunday + holidays: don't send anything at all (not even a "holiday" group message).
   const off = await getTodayOffIST();
   if (off.off && !force && !dryRun) return { ok: true, skipped: true, date: off.today, reason: off.reason };
@@ -5496,6 +5505,7 @@ async function buildAndSendReminder({ force = false, dryRun = false } = {}) {
   // Filter out CXO + manually-excluded users + users whose today is week-off/holiday + on-leave
   const eligible = users.filter(u =>
     !EXCLUDED_DEPARTMENTS.some(d => (u.department || '').toLowerCase() === d.toLowerCase()) &&
+    (!department || (u.department || '').trim().toLowerCase() === department.trim().toLowerCase()) &&
     !u.exclude_from_reminder &&
     (skipDayOff || !isUserOffOn(u, today, holidaysSet)) &&
     !onLeave.has(u.id)
@@ -5521,7 +5531,7 @@ async function buildAndSendReminder({ force = false, dryRun = false } = {}) {
     // Everyone (eligible) has filled — send a "all done" or skip
     const allDoneMsg = `Hello,\n\nGreat news! ✅ Everyone has filled today's Daily Task report.\n\nThanks team!`;
     if (dryRun) return { ok: true, dryRun: true, allDone: true, missingCount: 0, message: allDoneMsg, date: today, offReason: off.off ? off.reason : null };
-    const sendRes = await sendToReminderDestination(allDoneMsg);
+    const sendRes = await sendToReminderDestination(allDoneMsg, destination);
     return { ok: true, allDone: true, missingCount: 0, send: sendRes, date: today };
   }
 
@@ -5532,7 +5542,7 @@ async function buildAndSendReminder({ force = false, dryRun = false } = {}) {
   message += "\n\nPlease update today's report.";
 
   if (dryRun) return { ok: true, dryRun: true, date: today, missingCount: missingNames.length, missingNames, message, offReason: off.off ? off.reason : null };
-  const sendRes = await sendToReminderDestination(message);
+  const sendRes = await sendToReminderDestination(message, destination);
   return {
     ok: sendRes.ok,
     date: today,
@@ -5546,7 +5556,10 @@ async function buildAndSendReminder({ force = false, dryRun = false } = {}) {
 // ── Manual trigger (admin button) ────────────────────────
 app.post('/api/daily-reminder/send', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const result = await buildAndSendReminder({ force: req.body?.force === true, dryRun: req.body?.dryRun === true });
+    // group: 'department' sends/previews the department's own reminder instead.
+    const dept = req.body?.group === 'department'
+      ? { department: DEPT_REMINDER_DEPARTMENT, destination: DEPT_REMINDER_GROUP_ID } : {};
+    const result = await buildAndSendReminder({ force: req.body?.force === true, dryRun: req.body?.dryRun === true, ...dept });
     res.json(result);
   } catch (err) {
     console.error('Manual reminder error:', err);
@@ -6176,6 +6189,23 @@ app.get('/api/cron/daily-reminder', async (req, res) => {
     console.log('  ⏰ Cron triggered: daily-reminder');
     const result = await buildAndSendReminder();
     res.json(result);
+  } catch (err) {
+    console.error('Cron error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 6:30 PM IST: the same reminder for one department, to its own group. Says
+// "everyone has filled" when they all have, as the 7:30 PM message does.
+app.get('/api/cron/ba-daily-reminder', async (req, res) => {
+  const authHeader = req.headers['authorization'] || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || 'change_me_to_random_secret'}`;
+  if (!process.env.CRON_SECRET || authHeader !== expected) {
+    return res.status(401).json({ error: 'Unauthorized cron request' });
+  }
+  try {
+    console.log('  ⏰ Cron triggered: ba-daily-reminder');
+    res.json(await buildAndSendReminder({ department: DEPT_REMINDER_DEPARTMENT, destination: DEPT_REMINDER_GROUP_ID }));
   } catch (err) {
     console.error('Cron error:', err);
     res.status(500).json({ error: err.message });
