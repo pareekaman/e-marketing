@@ -20,7 +20,7 @@ async function initPaymentReqPage() {
   const formWrap = document.getElementById('prFormWrap');
   if (formWrap) formWrap.style.display = '';
   const listTitle = document.getElementById('prMyListTitle');
-  if (listTitle) listTitle.textContent = ME.role === 'admin' ? 'All Requests' : 'My Requests';
+  if (listTitle) listTitle.textContent = (ME.role === 'admin' || canDo('admin_paymentreq')) ? 'All Requests' : 'My Requests';
   loadMyPaymentRequests();
   // Card management panel — admins, and Payment Request at the "Admin" level.
   if (canDo('admin_paymentreq')) {
@@ -231,7 +231,12 @@ async function loadMyPaymentRequests() {
     // Admin sees everyone's requests (so the row needs an Employee column to tell them
     // apart); a regular user only ever gets their own rows back, where a name column
     // would just repeat their own name on every line.
-    const isAdminView = ME.role === 'admin';
+    // Payment Request at the "Admin" level in Access Control also sees everyone's
+    // requests (read-only: see canMark below).
+    const isAdminView = ME.role === 'admin' || canDo('admin_paymentreq');
+    // Paid / Cancel / Upload Bill on a request: its owner, an admin or a payment
+    // approver, the same rule the server applies to those markers.
+    const canMark = r => ME.role === 'admin' || ME.canApprovePayments || Number(r.submitted_by) === Number(ME.id);
     const endpoint = isAdminView ? '/api/payment-requests' : '/api/payment-requests/my';
     const all = await api(endpoint);
     if (!Array.isArray(all)) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No requests</div>'; return; }
@@ -274,7 +279,7 @@ async function loadMyPaymentRequests() {
           ? `<span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap"><a href="https://drive.google.com/file/d/${esc(encodeURIComponent(billFileId))}/view" target="_blank" style="display:inline-flex;align-items:center;gap:4px;background:#fff;color:#16a34a;border:1.5px solid #16a34a;border-radius:7px;padding:4px 11px;font-size:12px;font-weight:600;text-decoration:none;cursor:pointer">👁 View</a><button onclick="prOpenBillModal(${r.id}, true)" title="Change Bill" style="display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #cbd5e1;border-radius:7px;cursor:pointer;color:#64748b;font-size:13px;padding:4px 7px;line-height:1">🔄</button></span>`
           : (_prBillUploading.has(r.id)
             ? `<span style="color:#64748b;font-size:12px;font-weight:600">Processing…</span>`
-            : (isDone && r.status === 'approved'
+            : (isDone && r.status === 'approved' && canMark(r)
               ? `<button onclick="prOpenBillModal(${r.id}, true)" style="background:none;border:none;color:#f59e0b;font-size:12px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline">Upload Bill</button>`
               : `<span style="color:#94a3b8;font-size:12px">—</span>`));
         let payStatusCell = '';
@@ -285,6 +290,7 @@ async function loadMyPaymentRequests() {
           // (with a reason) is the requester's own record-keeping step, since they are
           // the one who actually made the payment and holds the bill. Scoping is
           // implicit — a regular user's list only ever contains their own requests.
+          else if (!canMark(r)) payStatusCell = '<span style="color:#94a3b8;font-size:12px">Not marked yet</span>';
           else payStatusCell = `<span style="display:inline-flex;gap:10px;align-items:center">
             <button onclick="prOpenBillModal(${r.id})" title="Mark as Paid" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;padding:2px">✅</button>
             <button onclick="prOpenCancelModal(${r.id})" title="Cancel Payment" style="background:none;border:none;font-size:22px;cursor:pointer;line-height:1;padding:2px">❌</button>

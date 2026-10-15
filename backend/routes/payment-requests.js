@@ -216,10 +216,14 @@ function parsePrRow(row) {
   return row;
 }
 
-// GET /api/payment-requests — all requests (admin + payment approvers)
+// GET /api/payment-requests — all requests (admin + payment approvers, and
+// Payment Request at the "Admin" level in Access Control, who may read them all;
+// deciding and marking them stay with approvers).
 app.get('/api/payment-requests', requireAuth, async (req, res) => {
   try {
-    if (!(await isPaymentApprover(req.session))) return res.status(403).json({ error:'Access denied' });
+    if (!(await isPaymentApprover(req.session)) && !(await userCanDo(req.session, 'admin_paymentreq'))) {
+      return res.status(403).json({ error:'Access denied' });
+    }
     const [rows] = await db.query(
       'SELECT * FROM payment_requests ORDER BY created_at DESC'
     );
