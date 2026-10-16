@@ -163,6 +163,14 @@
   86%  { filter:brightness(1.3) drop-shadow(0 0 10px #FFD54F); transform:scale(1.02); }
   100% { filter:none; transform:none; }
 }
+/* the chakra's cut (dussehra.js sever()): two clipped copies of his painting over the hidden one,
+   and a glowing line along the cut that fades as the halves rejoin */
+.td-halves { position:absolute; inset:0; pointer-events:none; }
+.td-halves img { position:absolute; left:0; top:0; width:100%; height:auto; transform-origin:50% 47%; }
+.td-cutline { position:absolute; left:-6%; right:-6%; height:3px; margin-top:-1px; border-radius:2px;
+  background:linear-gradient(90deg,transparent,#FFF59D 15%,#FFFFFF 50%,#FFF59D 85%,transparent);
+  box-shadow:0 0 10px #FFD54F, 0 0 20px #F97316; animation:td-cut 1.8s ease-in-out forwards; }
+@keyframes td-cut { 0% { opacity:0; transform:scaleX(.2); } 10% { opacity:1; transform:scaleX(1); } 75% { opacity:.8; } 100% { opacity:0; } }
 /* the paintings: Ravan's, and the empty-throne / Ram-aboard pair stacked in the Pushpak Viman
    (the JS fades the second in when he boards); the viman and devtas bob by their img */
 .td-ravan img, .td-vibhishan img, .td-army img { width:100%; height:auto; } /* display is set per pose below */

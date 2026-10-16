@@ -571,7 +571,7 @@ ThemeDecor.register('dussehra', function (d) {
       '<path d="M72 18 L86 14 L100 18 L86 22 Z" fill="#F1F5F9" stroke="#475569" stroke-width=".8"/></svg>' },
     // Vishnu's discus, spinning; it flies back to Ram once it has struck
     { key: 'chakra', name: "Vishnu's Sudarshan Chakra", mantra: 'ॐ नमो भगवते वासुदेवाय', color: '#F97316', rgb: '255,193,7', chant: 2100,
-      w: 48, tip: { x: 24, y: 24 }, spin: true, returns: true, aim: crowns, speed: 560, turn: 4, loft: 0, hitR: 22, rate: 150,
+      w: 48, tip: { x: 24, y: 24 }, spin: true, returns: true, aim: waist, speed: 560, turn: 4, loft: 0, hitR: 22, rate: 150,
       trail: ['#FFD54F', '#FFB300', '#FF7043', '#FFFFFF'], svg: CHAKRA },
     // a great white-hot arrow wreathed in flame
     { key: 'brahma', name: 'Brahmastra', mantra: 'ॐ ब्रह्मास्त्राय नमः', color: '#FBBF24', rgb: '255,244,214', chant: 2700,
@@ -712,6 +712,7 @@ ThemeDecor.register('dussehra', function (d) {
   // measured on the mirrored figure: the painting's 0.46 becomes 0.54).
   function navel() { return pointIn(ravEl, 0.54, 0.5); }
   function crowns() { return pointIn(ravEl, 0.52, 0.2); }
+  function waist() { return pointIn(ravEl, 0.52, CUT_AT); } // where the chakra cuts him in two
   // The angle (degrees, upwards positive) that points Ram's arrow at the astra's mark.
   function aimAngle(a) {
     var n = ramTail(), t = (a.aim || navel)();
@@ -733,6 +734,7 @@ ThemeDecor.register('dussehra', function (d) {
     if (a.returns) out.home = new Promise(function (res) { s.onHome = res; });
     shots.push(s); place(s);
     if (!shotRaf) { shotLast = performance.now(); shotRaf = requestAnimationFrame(stepShots); }
+    out.s = s;
     return out;
   }
   function stepShots(now) {
@@ -825,27 +827,94 @@ ThemeDecor.register('dussehra', function (d) {
     timers.push(setTimeout(function () { ravEl.classList.remove(cls); }, ms));
   }
 
-  // Ravan shoots back: after each of Ram's first three weapons he looses a red-hot arrow from his bow
-  // (the mirrored painting holds it at his left, 0.05 / 0.27 of his box) at Ram's chest; it breaks on
-  // Ram's divine radiance in a burst of gold, and Ram is untouched.
-  var RAV_ARROW = { key: 'ravarrow', w: 74, tip: { x: 74, y: 7 }, speed: 620, turn: 3.2, loft: 0, hitR: 26, rate: 90,
-    trail: ['#7F1D1D', '#DC2626', '#F97316', '#450A0A'], aim: function () { return pointIn(ramEl, 0.42, 0.4); },
-    svg: svgOpen('0 0 74 14') +
-      '<path d="M4 7 H62" stroke="#1F1F1F" stroke-width="2.6" stroke-linecap="round"/>' +
-      '<polygon points="74,7 60,1 63,7 60,13" fill="#DC2626" stroke="#450A0A" stroke-width=".8"/>' +
-      '<path d="M2 7 l7 -5 h5 l-6 5 z M2 7 l7 5 h5 l-6 -5 z" fill="#7C3AED"/></svg>' };
-  async function ravanShoots() {
+  // Ravan shoots at the same moment as Ram, for each of Ram's first three weapons, an astra of his own
+  // from his bow (the mirrored painting holds it at his left, 0.05 / 0.27 of his box): a fire arrow
+  // (Agneyastra, flames streaming off it), a lightning arrow (blue-white, forks of lightning on it),
+  // and a serpent arrow (a hooded snake bursting from its head). It flies at Ram's shot; where they
+  // meet, Ram's shot cuts straight through it — Ravan's arrow shatters in its own colours and Ram's
+  // flies on to strike Ravan. Should it somehow get past, it breaks on Ram's radiance.
+  function ravBase(head, shaft) {
+    return '<path d="M4 9 H70" stroke="' + shaft + '" stroke-width="2.8" stroke-linecap="round"/>' +
+           '<path d="M2 9 l8 -6 h6 l-7 6 z M2 9 l8 6 h6 l-7 -6 z" fill="#7C3AED"/>' + head;
+  }
+  var RAV_ARROWS = [
+    { key: 'ravfire', name: 'fire', w: 92, tip: { x: 92, y: 9 }, speed: 560, turn: 3.4, loft: 0, hitR: 30, rate: 160, flame: true,
+      trail: ['#FF3D00', '#FF9100', '#FFEA00', '#B91C1C'], burst: ['#FF3D00', '#FF9100', '#FFEA00', '#FFFFFF'], ring: '#F97316',
+      svg: svgOpen('0 0 92 18') + '<ellipse cx="72" cy="9" rx="22" ry="9" fill="#FF6D00" fill-opacity=".35"/>' +
+        ravBase('<path d="M92 9 L74 2 L78 9 L74 16 Z" fill="#FDE047" stroke="#B45309" stroke-width=".8"/>' +
+          '<path d="M74 9 C66 0 58 4 54 0 C60 6 52 7 46 4 C52 10 56 12 46 15 C58 14 64 16 74 9 Z" fill="#FF9100"/>' +
+          '<path d="M74 9 C68 4 62 7 58 5 C62 9 60 10 56 12 C64 12 68 12 74 9 Z" fill="#FFEA00"/>', '#3F1D0D') + '</svg>' },
+    { key: 'ravbolt', name: 'lightning', w: 92, tip: { x: 92, y: 9 }, speed: 700, turn: 3.6, loft: 0, hitR: 30, rate: 150,
+      trail: ['#93C5FD', '#FFFFFF', '#60A5FA', '#C4B5FD'], burst: ['#FFFFFF', '#BFDBFE', '#60A5FA', '#A78BFA'], ring: '#60A5FA',
+      svg: svgOpen('0 0 92 18') + '<ellipse cx="60" cy="9" rx="34" ry="9" fill="#60A5FA" fill-opacity=".3"/>' +
+        ravBase('<path d="M92 9 L74 2 L78 9 L74 16 Z" fill="#E0F2FE" stroke="#1D4ED8" stroke-width=".8"/>' +
+          '<path d="M70 9 L62 1 L58 8 L50 0 L46 8 L36 2" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"><animate attributeName="opacity" values="1;.2;1" dur=".18s" repeatCount="indefinite"/></path>' +
+          '<path d="M70 9 L62 17 L56 10 L48 18 L42 11 L32 16" fill="none" stroke="#93C5FD" stroke-width="1.6" stroke-linejoin="round"><animate attributeName="opacity" values=".3;1;.3" dur=".22s" repeatCount="indefinite"/></path>', '#1E3A8A') + '</svg>' },
+    { key: 'ravnaga', name: 'serpent', w: 104, tip: { x: 104, y: 14 }, speed: 520, turn: 3.2, loft: 0, hitR: 30, rate: 110,
+      trail: ['#22C55E', '#15803D', '#86EFAC', '#A3E635'], burst: ['#22C55E', '#86EFAC', '#A3E635', '#FFFFFF'], ring: '#22C55E',
+      svg: svgOpen('0 0 104 28') + '<g transform="translate(0 5)">' + ravBase('', '#3F1D0D') + '</g>' +
+        '<path d="' + NAGA_A + '" transform="translate(20 0)" fill="none" stroke="#14532D" stroke-width="6" stroke-linecap="round">' + SLITHER + '</path>' +
+        '<path d="' + NAGA_A + '" transform="translate(20 0)" fill="none" stroke="#4ADE80" stroke-width="2.4" stroke-dasharray="2.5 3">' + SLITHER + '</path>' +
+        '<path d="M98 6 Q108 9 108 14 Q108 19 98 22 Q101 14 98 6 Z" fill="#166534" stroke="#052E16" stroke-width=".7"/>' +
+        '<path d="M100 10 Q106 12 104 14 Q106 16 100 18 Z" fill="#15803D"/><circle cx="103" cy="12.5" r="1.3" fill="#FDE047"/>' +
+        '<path d="M106 14 H110 M110 14 l2 -1.4 M110 14 l2 1.4" stroke="#DC2626" stroke-width="1" stroke-linecap="round"/></svg>' }
+  ];
+  function ravanShoots(i, ramShot) {
+    var a = Object.create(RAV_ARROWS[i]);
+    // it flies at Ram's shot (they meet in mid-air); once that has gone, at Ram himself
+    a.aim = function () { return ramShot && shots.indexOf(ramShot) >= 0 ? { x: ramShot.x, y: ramShot.y } : pointIn(ramEl, 0.42, 0.4); };
     react('td-loose', 450);
-    await wait(220); if (dead) return;
-    var shot = launch(RAV_ARROW, pointIn(ravEl, 0.05, 0.27), Math.PI);
-    if (ThemeDecor.sound) ThemeDecor.sound('whoosh', 0.3);
-    var p = await shot.hit; if (dead) return;
-    flash(p.x, p.y, 55); ring(p.x, p.y, '#FFD54F');
-    spray(p.x, p.y, 36, ['#FFD54F', '#FFF59D', '#FFFFFF', '#F59E0B'], [50, 200], 200);
-    snap(p.x, p.y, 1, '#3F1D0D');
-    ramEl.classList.add('td-guard');
-    timers.push(setTimeout(function () { ramEl.classList.remove('td-guard'); }, 700));
-    if (ThemeDecor.sound) ThemeDecor.sound('pop', 0.3);
+    var shot = launch(a, pointIn(ravEl, 0.05, 0.27), Math.PI);
+    if (ThemeDecor.sound) ThemeDecor.sound(i === 1 ? 'bang' : 'whoosh', 0.3);
+    shot.hit.then(function (p) {
+      if (dead) return;
+      var cut = ramShot && shots.indexOf(ramShot) >= 0; // Ram's shot cut through it
+      flash(p.x, p.y, cut ? 70 : 55); ring(p.x, p.y, cut ? a.ring : '#FFD54F', 260);
+      spray(p.x, p.y, 60, a.burst, [60, 280], 220);
+      snap(p.x, p.y, 1, a.key === 'ravnaga' ? '#15803D' : '#3F1D0D'); snap(p.x, p.y, -1, '#3F1D0D');
+      if (a.key === 'ravfire') for (var k = 0; k < 18 && fire.length < 260; k++)
+        fire.push({ x: p.x + d.rand(-12, 12), y: p.y + d.rand(-10, 10), vx: d.rand(-80, 80), vy: d.rand(-90, -10), r: d.rand(6, 11), life: 1, decay: d.rand(1.6, 2.6), s: FLAME[Math.floor(Math.random() * FLAME.length)] });
+      if (!cut) { ramEl.classList.add('td-guard'); timers.push(setTimeout(function () { ramEl.classList.remove('td-guard'); }, 700)); }
+      if (ThemeDecor.sound) ThemeDecor.sound('bang', 0.28);
+    });
+  }
+
+  // The Sudarshan Chakra cuts Ravan in two at the waist (CUT_AT of his height): his painting is
+  // split into an upper and a lower half (two clipped copies), the upper half slides off and tilts
+  // away along a glowing cut while the lower one sags; then the halves draw back together, the cut
+  // seals in a flash, and he laughs at Ram — he cannot be killed that way.
+  var CUT_AT = 0.47;
+  function sever(p) {
+    var img = ravEl.querySelector('img'); if (!img) return;
+    var halves = document.createElement('div');
+    halves.className = 'td-halves';
+    var top = img.cloneNode(true), bot = img.cloneNode(true);
+    top.style.clipPath = 'inset(0 0 ' + ((1 - CUT_AT) * 100).toFixed(1) + '% 0)';
+    bot.style.clipPath = 'inset(' + (CUT_AT * 100).toFixed(1) + '% 0 0 0)';
+    halves.appendChild(bot); halves.appendChild(top);
+    ravEl.appendChild(halves);
+    img.style.visibility = 'hidden';
+    var line = document.createElement('div');
+    line.className = 'td-cutline'; line.style.top = (CUT_AT * 100).toFixed(1) + '%';
+    halves.appendChild(line);
+    // apart, held, and back together (the top half, which carries his heads and bow, does the moving)
+    top.animate([{ transform: 'none' }, { transform: 'translate(26px,-34px) rotate(-14deg)', offset: 0.25 },
+                 { transform: 'translate(30px,-38px) rotate(-16deg)', offset: 0.6 }, { transform: 'none' }],
+                { duration: 1800, easing: 'ease-in-out', fill: 'forwards' });
+    bot.animate([{ transform: 'none' }, { transform: 'translate(-4px,6px) rotate(3deg)', offset: 0.25 },
+                 { transform: 'translate(-4px,6px) rotate(3deg)', offset: 0.6 }, { transform: 'none' }],
+                { duration: 1800, easing: 'ease-in-out', fill: 'forwards' });
+    if (ThemeDecor.sound) ThemeDecor.sound('bang', 0.3);
+    timers.push(setTimeout(function () { // the cut seals
+      var r = ravEl.getBoundingClientRect(), y = r.top + r.height * CUT_AT;
+      flash(r.left + r.width / 2, y, 50);
+      for (var k = 0; k < 6; k++) spray(r.left + r.width * (0.15 + k * 0.14), y, 8, ['#FCA5A5', '#DC2626', '#FFFFFF'], [20, 90], 60);
+    }, 1750));
+    timers.push(setTimeout(function () {
+      halves.remove(); img.style.visibility = '';
+      react('td-laugh', 1800); // he laughs at Ram, whole again
+      if (ThemeDecor.sound) ThemeDecor.sound('giggle', 0.35);
+    }, 1850));
   }
 
   // What each weapon does when it lands. Only the Brahmastra finishes him (see round()).
@@ -865,10 +934,10 @@ ThemeDecor.register('dussehra', function (d) {
       spray(p.x, p.y, 50, a.trail, [80, 260], 220);
       bolts.push({ life: 1, decay: 1.2, next: 0, segs: [] });
       react('td-shock', 900);
-    } else if (a.key === 'chakra') {  // it cuts through his heads, and they grow back
+    } else if (a.key === 'chakra') {  // it cuts him in two at the waist; the halves join again, and he laughs
       flash(p.x, p.y, 60); ring(p.x, p.y, '#FFD54F');
       spray(p.x, p.y, 46, a.trail, [70, 240], 220);
-      react('td-sever', 1150); react('td-flinch', 520);
+      sever(p);
     } else {                          // the Brahmastra
       flash(p.x, p.y, 170); ring(p.x, p.y, '#FFFFFF', 300); ring(p.x, p.y, '#FFD54F');
       timers.push(setTimeout(function () { ring(p.x, p.y, '#F59E0B', 150); }, 180));
@@ -1516,13 +1585,13 @@ ThemeDecor.register('dussehra', function (d) {
       setBow(ramEl, false);
       ramEl.classList.remove('td-invoke', 'td-charge');
       shot = launch(a);
+      if (i < 3) ravanShoots(i, shot.s); // Ravan looses at the same moment; Ram's shot cuts through his
       turnTo(0, 650); // the bow comes back down as the shot flies
       p = await shot.hit; if (dead) return;
       impact(a, p);
       if (i === ASTRAS.length - 1) break;
       if (shot.home) { await shot.home; if (dead) return; }
       await wait(1100); if (dead) return;
-      if (i < 3) { await ravanShoots(); if (dead) return; await wait(500); if (dead) return; } // he shoots back
       setBow(ramEl, true); // the next arrow on the string
       await wait(450); if (dead) return;
     }
