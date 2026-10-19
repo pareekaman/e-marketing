@@ -217,7 +217,9 @@ async function renderMtgDay() {
         : '';
       const active = m.status !== 'cancelled' && m.status !== 'done';
       const linkBtn = m.meet_link && active
-        ? `<a href="${/^https?:\/\//i.test(m.meet_link) ? dtEscape(m.meet_link) : '#'}" target="_blank" rel="noopener" class="btn btn-primary" style="padding:4px 10px;font-size:11px">Join</a>` : '';
+        ? `<a href="${/^https?:\/\//i.test(m.meet_link) ? dtEscape(m.meet_link) : '#'}" target="_blank" rel="noopener" class="btn btn-primary" style="padding:4px 10px;font-size:11px">Join</a>`
+          + `<button type="button" class="btn btn-outline" style="padding:4px 10px;font-size:11px" title="${m.zoom_meeting_id ? 'Copy the Zoom invitation' : 'Copy the meeting link'}" onclick="mtgCopyLink(${m.id})">📋 ${m.zoom_meeting_id ? 'Copy invite' : 'Copy link'}</button>` : '';
+      _mtgCopyById[m.id] = m;
       const doneBtn = active
         ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px;color:#15803d;border-color:#86efac" onclick="markMeetingDone(${m.id})">✓ Done</button>` : '';
       return `<div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;${m.status==='cancelled'?'opacity:0.55':''}">
@@ -499,7 +501,9 @@ async function openMeetingModal(id, prefillStart) {
   filterAttDropdown();
 
   // Default values
-  document.getElementById('mtgTitle').value = '';
+  // A new meeting starts as "E-Marketing x " so only the other side's name is
+  // typed; editing a meeting overwrites this with its own title below.
+  document.getElementById('mtgTitle').value = 'E-Marketing x ';
   document.getElementById('mtgAgenda').value = '';
   document.getElementById('mtgLink').value = '';
   document.getElementById('mtgFormDate').value = (_mtgDayAnchor ? _mtgIso(_mtgDayAnchor) : _mtgTodayIso());
@@ -543,6 +547,11 @@ async function openMeetingModal(id, prefillStart) {
     }
   }
   document.getElementById('meetingModal').classList.add('open');
+  // New meeting: cursor after "E-Marketing x ", ready for the other side's name.
+  if (!id) setTimeout(() => {
+    const t = document.getElementById('mtgTitle');
+    t.focus(); t.setSelectionRange(t.value.length, t.value.length);
+  }, 50);
   updateAttSummary();
   mtgRefreshAvailNote();
   // Update availability note when attendees change (in addition to inline summary update)
@@ -754,6 +763,47 @@ async function mtgRefreshAvailNote() {
   } catch { noteEl.textContent = ''; }
 }
 
+// The meetings on screen, by id, for the Copy button.
+const _mtgCopyById = {};
+
+// A Zoom meeting copies the invitation the way Zoom words it; any other link is
+// copied on its own.
+function mtgInviteText(m) {
+  if (!m.zoom_meeting_id) return m.meet_link;
+  const id = String(m.zoom_meeting_id);
+  const idFmt = id.length === 11 ? `${id.slice(0, 3)} ${id.slice(3, 7)} ${id.slice(7)}`
+              : id.length === 10 ? `${id.slice(0, 3)} ${id.slice(3, 6)} ${id.slice(6)}` : id;
+  const [y, mo, d] = m.meeting_date.split('-').map(Number);
+  const [h, mi] = m.start_time.split(':').map(Number);
+  const month = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mo - 1];
+  const time = `${month} ${d}, ${y} ${String(h % 12 || 12).padStart(2, '0')}:${String(mi).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'} India`;
+  let host = 'zoom.us';
+  try { host = new URL(m.meet_link).host; } catch (e) {}
+  return `${m.organizer_name || 'E-Marketing'} is inviting you to a scheduled Zoom meeting.\n\n`
+    + `Topic: ${m.title}\nTime: ${time}\n\n`
+    + `Join Zoom Meeting\n${m.meet_link}\n\n`
+    + `Meeting chat link\nhttps://${host}/launch/jc/${id}\n\n`
+    + `Meeting ID: ${idFmt}\nPasscode: ${m.zoom_passcode || ''}`;
+}
+
+// Copies the invitation (Zoom) or the link, to paste into WhatsApp, email etc.
+function mtgCopyLink(id) {
+  const m = _mtgCopyById[id];
+  if (!m) return;
+  const link = mtgInviteText(m);
+  const done = () => showToast(m.zoom_meeting_id ? '✅ Zoom invitation copied' : '✅ Meeting link copied');
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = link; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    ok ? done() : showToast('Could not copy — open Edit and copy it from there', 'error');
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, fallback);
+  else fallback();
+}
+
 async function saveMeeting() {
   const id = document.getElementById('mtgEditId').value;
   const payload = {
@@ -766,6 +816,10 @@ async function saveMeeting() {
     meet_link: document.getElementById('mtgLink').value.trim() || null,
     attendee_ids: Array.from(document.querySelectorAll('#mtgAttendees [data-att]:checked')).map(c => parseInt(c.value, 10))
   };
+  if (/^E-Marketing x$/i.test(payload.title)) {
+    showToast('Add who the meeting is with after "E-Marketing x"');
+    return;
+  }
   if (!payload.title || !payload.meeting_date || !payload.start_time || !payload.end_time) {
     showToast('Title, date, start and end time required');
     return;

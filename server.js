@@ -10461,6 +10461,61 @@ async function buildMeetingSlots(dateStr, userIds = [], viewerId = null) {
 
 // Try to auto-create a Google Meet link via Calendar API + service-account DWD.
 // Returns null on any failure so the caller can fall back to a manual link.
+// ── Zoom: a real meeting for the Scheduler ─────────────────────────────
+// A Server-to-Server OAuth app on the company's Zoom account ("E-Marketing
+// ERP", scope meeting:write:meeting:admin). Meetings are created on the
+// account of the user who made that app ("me"). Set ZOOM_ACCOUNT_ID,
+// ZOOM_CLIENT_ID and ZOOM_CLIENT_SECRET; without them nothing calls Zoom.
+// ZOOM_OAUTH_URL / ZOOM_API_URL exist only so local tests can point at a mock.
+const ZOOM_OAUTH_URL = process.env.ZOOM_OAUTH_URL || 'https://zoom.us/oauth/token';
+const ZOOM_API_URL = process.env.ZOOM_API_URL || 'https://api.zoom.us/v2';
+let _zoomToken = null;   // { token, expiresAt } — a token lasts an hour, reused until near the end
+function zoomConfigured() {
+  return !!(process.env.ZOOM_ACCOUNT_ID && process.env.ZOOM_CLIENT_ID && process.env.ZOOM_CLIENT_SECRET);
+}
+async function zoomAccessToken() {
+  if (_zoomToken && Date.now() < _zoomToken.expiresAt) return _zoomToken.token;
+  const basic = Buffer.from(`${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`).toString('base64');
+  const r = await fetch(`${ZOOM_OAUTH_URL}?grant_type=account_credentials&account_id=${encodeURIComponent(process.env.ZOOM_ACCOUNT_ID)}`,
+    { method: 'POST', headers: { Authorization: `Basic ${basic}` }, signal: AbortSignal.timeout(15000) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.access_token) throw new Error(`token ${r.status}: ${j.reason || j.error || 'no token'}`);
+  _zoomToken = { token: j.access_token, expiresAt: Date.now() + Math.max(60, (j.expires_in || 3600) - 300) * 1000 };
+  return j.access_token;
+}
+// Returns { join_url, id, password } — the link carries the passcode, the id and
+// password are for the copied invitation — or null when Zoom is not set up or
+// the call fails; the meeting is still saved, only without a link.
+// recurring: one "no fixed time" Zoom meeting whose link works on every date.
+async function createZoomMeetingLink({ title, agenda, dateStr, startTime, endTime, recurring = false }) {
+  if (!zoomConfigured()) return null;
+  try {
+    const toMin = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); };
+    const duration = Math.max(15, toMin(endTime) - toMin(startTime)) || 30;
+    const body = {
+      topic: String(title || 'Meeting').slice(0, 200),
+      type: recurring ? 3 : 2,
+      ...(recurring ? {} : { start_time: `${dateStr}T${startTime}:00`, timezone: 'Asia/Kolkata', duration }),
+      agenda: String(agenda || '').slice(0, 2000),
+      settings: { join_before_host: true, waiting_room: false },
+    };
+    const send = async () => fetch(`${ZOOM_API_URL}/users/me/meetings`, {
+      method: 'POST', signal: AbortSignal.timeout(15000),
+      headers: { Authorization: `Bearer ${await zoomAccessToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    let r = await send();
+    if (r.status === 401) { _zoomToken = null; r = await send(); }   // token revoked early
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.join_url) throw new Error(`create ${r.status}: ${j.message || 'no join_url'}`);
+    console.log(`  🎥 Zoom meeting created (${j.id}) for "${body.topic}"`);
+    return { join_url: j.join_url, id: String(j.id || ''), password: String(j.password || '') };
+  } catch (err) {
+    console.error('  ⚠️ Zoom meeting create failed:', err.message);
+    return null;
+  }
+}
+
 async function createGoogleMeetLink({ title, dateStr, startTime, endTime, attendeeEmails = [] }) {
   if (!MEETING_GMEET_IMPERSONATE || !process.env.GOOGLE_CREDENTIALS) return null;
   try {
@@ -10585,6 +10640,7 @@ require('./backend/routes/meetings')(app, {
   userCanDo,
   buildMeetingSlots,
   createGoogleMeetLink,
+  createZoomMeetingLink,
   sendMeetingNotification,
   loadHolidaysSet,
   isLastSaturdayOfMonth,

@@ -18,16 +18,33 @@ module.exports = function registerMeetingRoutes(app, deps) {
     userCanDo,
     buildMeetingSlots,
     createGoogleMeetLink,
+    createZoomMeetingLink,
     sendMeetingNotification,
     loadHolidaysSet,
     isLastSaturdayOfMonth,
   } = deps;
+
+  // Zoom's meeting id and passcode, kept so "Copy link" can give the whole
+  // Zoom invitation. Added on first use, like the app's other late columns.
+  let _zoomCols = null;
+  function ensureZoomColumns() {
+    if (!_zoomCols) _zoomCols = (async () => {
+      const [have] = await db.query(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'meetings' AND COLUMN_NAME IN ('zoom_meeting_id','zoom_passcode')`);
+      const names = have.map(r => r.COLUMN_NAME);
+      if (!names.includes('zoom_meeting_id')) await db.query('ALTER TABLE meetings ADD COLUMN zoom_meeting_id VARCHAR(20) DEFAULT NULL');
+      if (!names.includes('zoom_passcode')) await db.query('ALTER TABLE meetings ADD COLUMN zoom_passcode VARCHAR(20) DEFAULT NULL');
+    })().catch(e => { _zoomCols = null; throw e; });
+    return _zoomCols;
+  }
 
 // List meetings (filter by date range / status / organizer).
 // Every user is scoped to meetings they organize or are invited to — nobody
 // sees someone else's private meetings here.
 app.get('/api/meetings', requireAuth, async (req, res) => {
   try {
+    await ensureZoomColumns();
     const uid = req.session.userId;
     const { from, to, status, organizer } = req.query;
     let where = `(m.organizer_id = ? OR EXISTS
@@ -42,7 +59,7 @@ app.get('/api/meetings', requireAuth, async (req, res) => {
               DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS meeting_date,
               TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
               TIME_FORMAT(m.end_time,'%H:%i')   AS end_time,
-              m.meet_link, m.status, m.created_at,
+              m.meet_link, m.status, m.created_at, m.zoom_meeting_id, m.zoom_passcode,
               c.name AS client_name, u.name AS organizer_name
        FROM meetings m
        LEFT JOIN clients c ON m.client_id = c.id
@@ -91,12 +108,13 @@ app.get('/api/meetings/slots', requireAuth, async (req, res) => {
 // Single meeting detail.
 app.get('/api/meetings/:id', requireAuth, async (req, res) => {
   try {
+    await ensureZoomColumns();
     const [[m]] = await db.query(
       `SELECT m.id, m.title, m.agenda, m.client_id, m.organizer_id,
               DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS meeting_date,
               TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
               TIME_FORMAT(m.end_time,'%H:%i')   AS end_time,
-              m.meet_link, m.status, m.recurrence_group_id,
+              m.meet_link, m.status, m.recurrence_group_id, m.zoom_meeting_id, m.zoom_passcode,
               c.name AS client_name, u.name AS organizer_name
        FROM meetings m
        LEFT JOIN clients c ON m.client_id = c.id
@@ -175,8 +193,18 @@ app.post('/api/meetings', requireAuth, async (req, res) => {
       if (!occurrenceDates.length) return res.status(400).json({ error: 'No occurrences fall in the selected range' });
     }
 
-    // Auto-create Google Meet link if env enabled and caller didn't paste one — reused across every occurrence.
+    // No link pasted: a real Zoom meeting when Zoom is set up, else a Google
+    // Meet link if that is. Either one is reused across every occurrence.
     let finalLink = meet_link || null;
+    let zoom = null;   // { join_url, id, password } — kept for the copied invitation
+    if (!finalLink) {
+      zoom = await createZoomMeetingLink({
+        title, agenda, dateStr: meeting_date, startTime: start_time, endTime: end_time,
+        recurring: occurrenceDates.length > 1,
+      });
+      if (zoom) finalLink = zoom.join_url;
+    }
+    await ensureZoomColumns();
     if (!finalLink) {
       const attEmails = [];
       const attIdArr = Array.isArray(attendee_ids) ? attendee_ids : [];
@@ -195,9 +223,10 @@ app.post('/api/meetings', requireAuth, async (req, res) => {
     const newIds = [];
     for (const d of occurrenceDates) {
       const [result] = await db.query(
-        `INSERT INTO meetings (title, agenda, client_id, organizer_id, meeting_date, start_time, end_time, meet_link, recurrence_group_id)
-         VALUES (?,?,?,?,?,?,?,?,?)`,
-        [title, agenda || null, client_id || null, organizerId, d, start_time, end_time, finalLink, recurrenceGroupId]);
+        `INSERT INTO meetings (title, agenda, client_id, organizer_id, meeting_date, start_time, end_time, meet_link, recurrence_group_id, zoom_meeting_id, zoom_passcode)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        [title, agenda || null, client_id || null, organizerId, d, start_time, end_time, finalLink, recurrenceGroupId,
+         zoom ? zoom.id : null, zoom ? zoom.password : null]);
       const newId = result.insertId;
       newIds.push(newId);
       if (Array.isArray(attendee_ids) && attendee_ids.length) {
@@ -307,5 +336,5 @@ app.delete('/api/meetings/:id', requireAuth, async (req, res) => {
     sendMeetingNotification(id, 'cancelled').catch(e => console.error('notify err:', e.message));
     res.json({ ok: true, cancelled });
   } catch (err) { res.status(500).json({ error: err.message }); }
-});
+});
 };
