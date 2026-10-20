@@ -14,6 +14,7 @@ const THEME_CHOICES = [
   { key: 'holi',      icon: '🎨', name: 'Holi',      note: 'Colour splashes and gulal',   c: { side: '#2E1065', page: '#FBF7FF', accent: '#C026D3', brand: '#F59E0B' }, art: tpArtHoli },
   { key: 'diwali',    icon: '🪔', name: 'Diwali',    note: 'Lights, rangoli and diyas',  c: { side: '#2D1240', page: '#FDF5E6', accent: '#C2410C', brand: '#F29900' }, art: tpArtDiwali },
   { key: 'christmas', icon: '🎄', name: 'Christmas', note: 'Santa, snowfall and lights',  c: { side: '#0F2E1C', page: '#F3F8F4', accent: '#C62828', brand: '#2E7D32' }, art: tpArtChristmas },
+  { key: 'newyear', icon: '🎉', name: 'New Year', note: 'Countdown, confetti and fireworks at midnight', c: { side: '#0B1437', page: '#F8F6EE', accent: '#1E3A8A', brand: '#D97706' }, art: tpArtNewYear },
   { key: 'janmashtami', icon: '🦚', name: 'Janmashtami', note: 'Krishna, his flute and the dahi handi', c: { side: '#0B1E4A', page: '#F4F8FF', accent: '#1D4ED8', brand: '#EAB308' }, art: tpArtJanmashtami },
   { key: 'shivratri', icon: '🔱', name: 'Maha Shivratri', note: 'Shiv ji in meditation, Kailash at night', c: { side: '#0F172A', page: '#F3F5FA', accent: '#3730A3', brand: '#6366F1' }, art: tpArtShivratri },
   { key: 'ganesh', icon: '🐘', name: 'Ganesh Chaturthi', note: 'Ganpati Bappa in his pandal, dhol and modaks', c: { side: '#7F1D1D', page: '#FFF8EE', accent: '#B91C1C', brand: '#F97316' }, art: tpArtGanesh },
@@ -296,6 +297,14 @@ function tpArtDiwali() {
 }
 
 // Christmas: Santa's sleigh and reindeer crossing the moon, snow, and a tree with a star.
+// New Year: a night sky, a golden 2027, confetti and two bursts of fireworks.
+function tpArtNewYear() {
+  let s = '<defs><linearGradient id="tpNyBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0B1437"/><stop offset="1" stop-color="#312E81"/></linearGradient></defs>' +
+    '<rect width="220" height="110" fill="url(#tpNyBg)"/>' + tpBurst(50, 34, 6, 22, 14, '#FACC15') + tpBurst(172, 30, 5, 18, 12, '#F472B6') +
+    '<text x="110" y="78" text-anchor="middle" font-family="Inter,sans-serif" font-weight="900" font-size="34" fill="#FACC15">2027</text>';
+  ['#FACC15', '#60A5FA', '#F472B6', '#FFFFFF', '#34D399', '#FACC15'].forEach(function (c, i) { s += '<rect class="tw" x="' + (20 + i * 34) + '" y="' + (88 + (i % 2) * 8) + '" width="6" height="3" fill="' + c + '" transform="rotate(' + (i * 30) + ' ' + (23 + i * 34) + ' 90)"' + tpDelay(i, .2) + '/>'; });
+  return tpSvg(s);
+}
 function tpArtChristmas() {
   let s = '<defs><linearGradient id="tpXmBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0F172A"/><stop offset="1" stop-color="#1E3A5F"/></linearGradient></defs>' +
     '<rect width="220" height="110" fill="url(#tpXmBg)"/>' +

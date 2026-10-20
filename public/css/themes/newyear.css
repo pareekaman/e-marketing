@@ -1,0 +1,73 @@
+/* New Year — midnight blue and gold, a starry sidebar, champagne-light cards. */
+:root[data-theme="newyear"] {
+  --brand-1:#FACC15; --brand-2:#D97706; --brand-2-rgb:217,119,6;
+  --accent:#1E3A8A; --accent-dark:#172554; --accent-light:#3B82F6;
+  --accent-rgb:30,58,138; --accent-light-rgb:59,130,246;
+  --page-bg:#F8F6EE; --sidebar-top:#0B1437; --sidebar-bottom:#1E1B4B;
+}
+:root[data-theme="newyear"] body {
+  background:
+    radial-gradient(700px circle at 0% 0%, rgba(250,204,21,.16), transparent 55%),
+    radial-gradient(700px circle at 100% 0%, rgba(59,130,246,.12), transparent 55%),
+    var(--page-bg);
+  background-attachment:fixed;
+}
+/* stars over the sidebar */
+:root[data-theme="newyear"] .sidebar {
+  background:
+    radial-gradient(1.2px 1.2px at 20% 12%, #fff, transparent), radial-gradient(1px 1px at 70% 22%, #FDE68A, transparent),
+    radial-gradient(1.4px 1.4px at 40% 40%, #fff, transparent), radial-gradient(1px 1px at 80% 58%, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 25% 72%, #FDE68A, transparent), radial-gradient(1px 1px at 60% 88%, #fff, transparent),
+    linear-gradient(180deg,var(--sidebar-top) 0%,var(--sidebar-bottom) 100%);
+}
+:root[data-theme="newyear"] .topbar-title {
+  background:linear-gradient(90deg,#1E3A8A,#B45309 45%,#F59E0B); -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+:root[data-theme="newyear"] .ov-card::before { background:linear-gradient(180deg,#FACC15,#F59E0B,#1E3A8A); }
+
+/* Decoration (js/themes/newyear.js) */
+/* gold tinsel swagged along the top, shimmering */
+.ny-tinsel { position:absolute; left:60px; right:0; top:0; height:24px; pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='24'%3E%3Cpath d='M0 3 Q45 22 90 3' fill='none' stroke='%23F59E0B' stroke-width='4' stroke-dasharray='2 2'/%3E%3Cpath d='M0 3 Q45 22 90 3' fill='none' stroke='%23FDE68A' stroke-width='1.5'/%3E%3Ccircle cx='45' cy='13' r='3' fill='%231E3A8A'/%3E%3C/svg%3E") repeat-x;
+  background-size:90px 24px; animation:ny-shimmer 1.6s ease-in-out infinite alternate; }
+@keyframes ny-shimmer { from { filter:brightness(1); } to { filter:brightness(1.35) drop-shadow(0 0 4px #FDE68A); } }
+
+.ny-friends { left:70px; bottom:0; width:230px; filter:drop-shadow(0 4px 6px rgba(0,0,0,.25)); transition:translate .3s var(--ease); }
+.ny-friends img { animation:ny-dance 1.2s ease-in-out infinite alternate; transform-origin:50% 100%; }
+@keyframes ny-dance { from { transform:translateY(0) rotate(-1deg); } to { transform:translateY(-4px) rotate(1deg); } }
+.ny-balloons { left:300px; bottom:40px; width:92px; transform-origin:50% 100%; animation:ny-sway 3s ease-in-out infinite alternate; filter:drop-shadow(0 6px 8px rgba(0,0,0,.2)); transition:translate .3s var(--ease); }
+@keyframes ny-sway { from { transform:rotate(-4deg) translateY(0); } to { transform:rotate(4deg) translateY(-8px); } }
+.ny-gift { right:120px; bottom:0; width:70px; filter:drop-shadow(0 4px 5px rgba(0,0,0,.25)); }
+/* stars hanging from the tinsel */
+.ny-star { top:14px; width:22px; transform-origin:50% 0; animation:ny-swing 2s ease-in-out infinite alternate; filter:drop-shadow(0 0 6px rgba(250,204,21,.8)); }
+@keyframes ny-swing { from { transform:rotate(-8deg); } to { transform:rotate(8deg); } }
+.ny-popper { right:200px; bottom:10px; width:64px; transform-origin:20% 80%; filter:drop-shadow(0 4px 5px rgba(0,0,0,.25)); }
+.ny-popper.ny-pop img { animation:ny-kick .35s ease-out; }
+@keyframes ny-kick { 0% { transform:none; } 30% { transform:rotate(-12deg) scale(1.08); } 100% { transform:none; } }
+
+/* the year: "202" and a last digit that flips 6 → 7 every few seconds */
+.ny-year { position:absolute; left:110px; bottom:200px; display:flex; font:900 30px/1 'Inter',sans-serif; letter-spacing:1px;
+  background:linear-gradient(180deg,#FDE68A,#F59E0B 55%,#B45309); -webkit-background-clip:text; background-clip:text; color:transparent;
+  filter:drop-shadow(0 2px 0 rgba(30,58,138,.5)); transition:translate .3s var(--ease); }
+.ny-flip { position:relative; display:inline-block; width:.62em; height:1em; perspective:200px; }
+.ny-flip { overflow:hidden; }
+.ny-flip b { position:absolute; inset:0; font:inherit; color:#F59E0B; -webkit-text-fill-color:#F59E0B; animation:ny-flip 4s ease-in-out infinite; }
+.ny-flip b + b { animation-name:ny-flip2; }
+@keyframes ny-flip  { 0%,42% { transform:translateY(0); opacity:1; } 50%,92% { transform:translateY(-60%); opacity:0; } 100% { transform:translateY(0); opacity:1; } }
+@keyframes ny-flip2 { 0%,42% { transform:translateY(60%); opacity:0; } 50%,92% { transform:translateY(0); opacity:1; } 100% { transform:translateY(60%); opacity:0; } }
+
+/* the greeting / countdown badge */
+.ny-greet { position:absolute; left:84px; bottom:246px; white-space:nowrap; font:700 15px/1 'Inter',sans-serif; color:#fff;
+  padding:8px 15px; border-radius:999px; background:linear-gradient(135deg,#1E3A8A,#4338CA 55%,#B45309);
+  box-shadow:0 0 0 2px rgba(250,204,21,.85), 0 0 18px rgba(250,204,21,.55); transition:translate .3s var(--ease);
+  animation:ny-greet 2.4s ease-in-out infinite alternate; }
+.ny-greet.ny-soon { animation:ny-beat .5s ease-in-out infinite alternate; background:linear-gradient(135deg,#B91C1C,#D97706); }
+@keyframes ny-greet { from { transform:translateY(0); } to { transform:translateY(-4px); } }
+@keyframes ny-beat { from { transform:scale(1); } to { transform:scale(1.08); } }
+
+.sidebar:hover ~ #themeDecor .ny-friends, .sidebar:hover ~ #themeDecor .ny-balloons,
+.sidebar:hover ~ #themeDecor .ny-year, .sidebar:hover ~ #themeDecor .ny-greet { translate:172px 0; }
+@media (prefers-reduced-motion: reduce) {
+  .ny-tinsel, .ny-friends img, .ny-balloons, .ny-star, .ny-popper img, .ny-flip b, .ny-greet { animation:none !important; }
+  .ny-flip b + b { opacity:0; }
+}

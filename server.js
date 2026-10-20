@@ -10150,7 +10150,7 @@ function nextWorkingDay(user, fromDateStr, holidaysSet) {
 
 // Festival theme — one company-wide value in app_settings. Only the people in theme_admin_ids
 // (PEOPLE_SETTINGS_BY_ID — Naman Gupta) may change it; being an admin is not enough.
-const APP_THEMES = ['normal', 'navratri', 'dussehra', 'holi', 'diwali', 'christmas', 'janmashtami', 'shivratri', 'ganesh', 'ramnavami', 'rakhi', 'mahavir', 'sankranti', 'chhath'];
+const APP_THEMES = ['normal', 'navratri', 'dussehra', 'holi', 'diwali', 'christmas', 'janmashtami', 'shivratri', 'ganesh', 'ramnavami', 'rakhi', 'mahavir', 'sankranti', 'chhath', 'newyear'];
 const APP_THEME_KEY = 'active_theme';
 
 // Auto: with active_theme 'auto' (also what an unset value means) the theme follows this calendar,
@@ -10173,7 +10173,7 @@ const FESTIVAL_CALENDAR = [
 ];
 function festivalDates(year) {
   return FESTIVAL_CALENDAR.filter(f => f[1].startsWith(String(year)))
-    .concat([['christmas', year + '-12-24', year + '-12-26']]);
+    .concat([['christmas', year + '-12-24', year + '-12-26'], ['newyear', year + '-12-31', year + '-12-31'], ['newyear', year + '-01-01', year + '-01-02']]);
 }
 function istToday() { return new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10); }
 // The festival running on a day, and the next one to begin after it: [theme, from, to] or null.

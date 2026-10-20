@@ -123,7 +123,7 @@
   var TAP_SOUND = { spark: 'pop', gulal: 'whoosh', snow: 'chime' };
   var THEME_SOUND = { janmashtami: 'flute', shivratri: 'bell', navratri: 'bell', ganesh: 'bell', ramnavami: 'bell', mahavir: 'bell', chhath: 'bell' };
   var taps = [];
-  var TAP_KIND = { diwali: 'spark', dussehra: 'spark', holi: 'gulal', christmas: 'snow', shivratri: 'snow' };
+  var TAP_KIND = { diwali: 'spark', dussehra: 'spark', holi: 'gulal', christmas: 'snow', shivratri: 'snow', newyear: 'spark' };
   document.addEventListener('pointerdown', function (e) {
     if (!st.mounted || !st.name || !LITE[st.name] || (reducedMq && reducedMq.matches)) return;
     if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
@@ -343,6 +343,7 @@
     holi:        { e: '🎨', t: 'Happy Holi',          c: ['#EC4899', '#8B5CF6'], p: ['#EC4899', '#22C55E', '#FACC15', '#3B82F6', '#A855F7'] },
     diwali:      { e: '🪔', t: 'शुभ दीपावली',         c: ['#F59E0B', '#C2410C'], p: ['#FDE68A', '#F59E0B', '#FB923C'] },
     christmas:   { e: '🎄', t: 'Merry Christmas',     c: ['#C62828', '#2E7D32'], p: ['#FFFFFF', '#E0F2FE', '#FFFFFF'] },
+    newyear:     { e: '🎉', t: 'Happy New Year',      c: ['#1E3A8A', '#D97706'], p: ['#FACC15', '#FFFFFF', '#60A5FA'] },
     janmashtami: { e: '🦚', t: 'शुभ जन्माष्टमी',       c: ['#1D4ED8', '#EAB308'], p: ['#16A34A', '#0EA5E9', '#FACC15'] },
     shivratri:   { e: '🔱', t: 'हर हर महादेव',        c: ['#1E1B4B', '#0EA5E9'], p: ['#E0E7FF', '#FFFFFF', '#A5B4FC'] },
     ganesh:      { e: '🌺', t: 'गणपति बाप्पा मोरया!', c: ['#B91C1C', '#EAB308'], p: ['#DC2626', '#F97316', '#FACC15'] },
