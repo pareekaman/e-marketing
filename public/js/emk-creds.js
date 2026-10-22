@@ -49,13 +49,26 @@ function ekGroups(){
   return [...by.values()].sort((a, b) => a.client.localeCompare(b.client));
 }
 
+// A row that only adds an email or Hostinger login to a client (no link, user
+// ID or system password). It shows as its own login section, not as a system.
+function ekExtraOnly(r){
+  return !ekHas(r.link) && !ekHas(r.userId) && !ekHas(r.password)
+    && (ekHas(r.loginEmail) || ekHas(r.emailPassword) || ekHas(r.hostingerId) || ekHas(r.hostingerPassword));
+}
+// The sheet marks such a row Incomplete for its missing system fields; here
+// it is complete when each login it has comes with its password.
+function ekRowBad(r){
+  if (!ekExtraOnly(r)) return r.status.includes('Incomplete');
+  return (ekHas(r.loginEmail) && !ekHas(r.emailPassword)) || (ekHas(r.hostingerId) && !ekHas(r.hostingerPassword));
+}
+
 function ekRender(){
   const q = document.getElementById('ekQ').value.trim().toLowerCase();
   const emp = document.getElementById('ekEmp').value;
   const st = document.getElementById('ekStatus').value;
   const all = ekGroups();
   const list = all.filter(g => {
-    const bad = g.rows.some(r => r.status.includes('Incomplete'));
+    const bad = g.rows.some(ekRowBad);
     if (emp && !g.rows.some(r => r.employee === emp)) return false;
     if (st === 'Incomplete' && !bad) return false;
     if (st === 'Complete' && bad) return false;
@@ -82,33 +95,57 @@ function ekPairs(rows, a, b){
 
 function ekCard(g){
   const rows = g.rows;
-  const bad = rows.some(r => r.status.includes('Incomplete'));
+  const sysRows = rows.filter(r => !ekExtraOnly(r));
+  const extraRows = rows.filter(ekExtraOnly);
+  const bad = rows.some(ekRowBad);
   const employees = [...new Set(rows.map(r => r.employee).filter(Boolean))].join(', ') || '-';
   const kick = rows.map(r => r.kickstart).find(ekHas);
-  const multi = rows.length > 1;
-  const systems = rows.map((r, i) =>
+  const multi = sysRows.length > 1;
+  const rowBtns = (r, what) => `<span><button type="button" class="ek-edit" onclick="ekOpenEdit(${Number(r.row)})" title="Edit this row in the sheet">✏️ Edit</button>`
+    + ` <button type="button" class="ek-edit ek-del" onclick="ekDeleteRows([${Number(r.row)}])" title="Delete only this ${what}">🗑</button></span>`;
+  // Logins added on their own rows, each with its own Edit and delete
+  const extras = extraRows.map(r =>
+    (ekHas(r.loginEmail) || ekHas(r.emailPassword) ? `<div class="ek-sec"><h3>Email Login${rowBtns(r, 'login')}</h3>${ekRow('Email', r.loginEmail)}${ekRow('Password', r.emailPassword, true)}</div>` : '')
+    + (ekHas(r.hostingerId) || ekHas(r.hostingerPassword) ? `<div class="ek-sec"><h3>Hostinger${ekHas(r.loginEmail) || ekHas(r.emailPassword) ? '' : rowBtns(r, 'login')}</h3>${ekRow('ID', r.hostingerId)}${ekRow('Password', r.hostingerPassword, true)}</div>` : '')).join('');
+  const systems = sysRows.map((r, i) =>
     `<div class="ek-sec"><h3>${multi ? `System ${i + 1}` : 'System'}<span>`
     + `<button type="button" class="ek-edit" onclick="ekOpenEdit(${Number(r.row)})" title="Edit this row in the sheet">✏️ Edit</button>`
     + (multi ? ` <button type="button" class="ek-edit ek-del" onclick="ekDeleteRows([${Number(r.row)}])" title="Delete only this system">🗑</button>` : '')
     + `</span></h3>${ekLinkRow(r.link)}${ekRow('User ID', r.userId)}${ekRow('Password', r.password, true)}</div>`).join('');
-  const emails = ekPairs(rows, 'loginEmail', 'emailPassword');
-  const hosts = ekPairs(rows, 'hostingerId', 'hostingerPassword');
+  const emails = ekPairs(sysRows, 'loginEmail', 'emailPassword');
+  const hosts = ekPairs(sysRows, 'hostingerId', 'hostingerPassword');
   const notes = [...new Set(rows.map(r => r.notes).filter(ekHas))];
   const updated = [...new Set(rows.map(r => r.updated).filter(Boolean))].join(' · ') || '-';
   return `<div class="ek-card">
-    <h2>${dtEscape(g.client)}${multi ? ` <span class="ek-n">${rows.length} systems</span>` : ''}</h2>
+    <h2>${dtEscape(g.client)}${multi ? ` <span class="ek-n">${sysRows.length} systems</span>` : ''}</h2>
     <div class="ek-meta"><span>👤 ${dtEscape(employees)}</span><span class="${bad ? 'ek-bad' : 'ek-ok'}">${bad ? '⚠ Incomplete' : '✅ Complete'}</span></div>
     ${kick ? `<div class="ek-meta">🚀 Kickstart: ${dtEscape(kick)}</div>` : ''}
     ${systems}
     ${emails.map(r => `<div class="ek-sec"><h3>Email Login</h3>${ekRow('Email', r.loginEmail)}${ekRow('Password', r.emailPassword, true)}</div>`).join('')}
     ${hosts.map(r => `<div class="ek-sec"><h3>Hostinger</h3>${ekRow('ID', r.hostingerId)}${ekRow('Password', r.hostingerPassword, true)}</div>`).join('')}
+    ${extras}
     ${notes.map(n => `<div class="ek-notes">📝 ${dtEscape(n)}</div>`).join('')}
-    <div class="ek-meta" style="margin:10px 0 0;align-items:center">Last updated: ${dtEscape(updated)}
-      <button type="button" class="ek-edit" data-client="${dtEscape(g.client)}" data-employee="${dtEscape(rows[0].employee || '')}"
-        onclick="ekAddSystem(this.dataset.client, this.dataset.employee)" title="Add another system for this client">＋ Add system</button></div>
-    <div style="text-align:right;margin-top:6px"><button type="button" class="ek-edit ek-del"
-      onclick="ekDeleteRows([${rows.map(r => Number(r.row)).join(',')}])" title="Delete this client and all its systems">🗑 Delete ${multi ? `client (${rows.length} systems)` : 'client'}</button></div>
+    <div class="ek-meta" style="margin:10px 0 0;align-items:center">Last updated: ${dtEscape(updated)}</div>
+    <div class="ek-actions" data-client="${dtEscape(g.client)}" data-employee="${dtEscape(rows[0].employee || '')}">
+      <button type="button" class="ek-edit" onclick="ekAddSystem(this.parentNode.dataset.client, this.parentNode.dataset.employee)" title="Add another system for this client">＋ Add system</button>
+      <button type="button" class="ek-edit" onclick="ekAddExtra(this.parentNode.dataset.client, this.parentNode.dataset.employee, 'mail')" title="Add only an email login">＋ Add email</button>
+      <button type="button" class="ek-edit" onclick="ekAddExtra(this.parentNode.dataset.client, this.parentNode.dataset.employee, 'host')" title="Add only a Hostinger login">＋ Add Hostinger</button>
+      <button type="button" class="ek-edit ek-del" onclick="ekDeleteRows([${rows.map(r => Number(r.row)).join(',')}])" title="Delete this client and everything under it">🗑 Delete client${rows.length > 1 ? ` (${rows.length} rows)` : ''}</button>
+    </div>
   </div>`;
+}
+
+// Add only a login to this client — kind 'mail' (email + password) or 'host'
+// (Hostinger ID + password). The other fields are hidden and the row shows as
+// its own login section in the card.
+function ekAddExtra(client, employee, kind){
+  ekAddSystem(client, employee);
+  const m = document.getElementById('ekAddModal');
+  m.classList.add('ek-extra', kind === 'host' ? 'ek-only-host' : 'ek-only-mail');
+  const label = kind === 'host' ? 'Hostinger login' : 'email login';
+  document.getElementById('ekAddTitle').textContent = `＋ Add ${label} to ${client}`;
+  document.getElementById('ekAddHint').textContent = `Saved as a new row in the sheet with only this ${label}; it shows inside the ${client} card.`;
+  setTimeout(() => document.querySelector(`#ekAddModal [data-f="${kind === 'host' ? 'hostingerId' : 'loginEmail'}"]`).focus(), 60);
 }
 
 // Deletes the given sheet rows (one system, or all of a client) after a
@@ -118,12 +155,14 @@ async function ekDeleteRows(rowNos){
   if (!recs.length) return;
   const client = recs[0].client;
   const what = recs.length > 1
-    ? `${client} and all its ${recs.length} systems`
-    : `this system of ${client}${recs[0].link ? ` (${recs[0].link})` : ''}`;
+    ? `${client} and everything under it (${recs.length} rows)`
+    : ekExtraOnly(recs[0])
+      ? `this login of ${client} (${recs[0].loginEmail || recs[0].hostingerId})`
+      : `this system of ${client}${recs[0].link ? ` (${recs[0].link})` : ''}`;
   if (!await appConfirm(`Delete ${what}? Its details are removed from the EMK Client Credentials sheet and cannot be brought back from here.`, 'Delete credentials?')) return;
   const r = await api('/api/emk-credentials', 'DELETE', { rows: recs.map(x => ({ row: x.row, client: x.client, link: x.link })) });
   if (!r || r.error) return showToast((r && r.error) || 'Could not delete. Please try again.', 'error');
-  showToast(recs.length > 1 ? `🗑 ${client} deleted (${r.deleted} systems)` : '🗑 System deleted');
+  showToast(recs.length > 1 ? `🗑 ${client} deleted (${r.deleted} rows)` : ekExtraOnly(recs[0]) ? '🗑 Login deleted' : '🗑 System deleted');
   loadEmkCreds();
 }
 
@@ -144,6 +183,10 @@ let EK_EDIT = null;                  // the record being edited, or null for Add
 
 function ekOpenAdd(rec){
   EK_EDIT = rec || null;
+  // A login-only row is edited with the same short form it was added with
+  const modal = document.getElementById('ekAddModal');
+  modal.classList.remove('ek-only-mail', 'ek-only-host');
+  modal.classList.toggle('ek-extra', !!(rec && ekExtraOnly(rec)));
   const emp = document.getElementById('ekAddEmployee');
   const names = [...EK_EMPLOYEES];
   // An employee no longer on the Employees tab still shows when editing their row
@@ -184,6 +227,10 @@ async function ekSaveAdd(){
   const show = m => { err.textContent = m; err.style.display = 'block'; };
   if (!body.client) return show('Enter the client name.');
   if (!body.employee) return show('Pick the employee.');
+  const mcls = document.getElementById('ekAddModal').classList;
+  if (mcls.contains('ek-only-mail') && !body.loginEmail) return show('Enter the email to add.');
+  if (mcls.contains('ek-only-host') && !body.hostingerId) return show('Enter the Hostinger ID to add.');
+  if (mcls.contains('ek-extra') && !body.loginEmail && !body.hostingerId) return show('Enter an email or a Hostinger ID.');
   const btn = document.getElementById('ekAddSave');
   btn.disabled = true; btn.textContent = 'Saving…';
   const r = EK_EDIT

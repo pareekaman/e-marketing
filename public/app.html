@@ -1689,6 +1689,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       .ek-edit{border:1px solid #e2e8f0;background:#fff;border-radius:6px;cursor:pointer;padding:1px 8px;font-size:11px;text-transform:none;letter-spacing:0;color:#334155;font-weight:600}
       .ek-edit:hover{background:#eef2ff}
       .ek-del{color:#b91c1c;border-color:#fecaca}
+      #ekAddModal.ek-extra .ek-sysf{display:none}
+      #ekAddModal.ek-only-mail .ek-hostf,#ekAddModal.ek-only-host .ek-mailf{display:none}
+      .ek-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:6px;margin-top:8px}
       .ek-del:hover{background:#fef2f2}
       .ek-n{font-size:11px;font-weight:600;color:#1e40af;background:#dbeafe;border-radius:10px;padding:2px 8px;vertical-align:middle}
       .ek-form{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
@@ -1717,14 +1720,14 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <div class="ek-form">
         <div class="form-group"><label>Client Name *</label><input data-f="client" list="ekClientList" autocomplete="off" placeholder="e.g. Atit"><datalist id="ekClientList"></datalist></div>
         <div class="form-group"><label>Employee *</label><select data-f="employee" id="ekAddEmployee"></select></div>
-        <div class="form-group ek-wide"><label>System / Website Link</label><input data-f="link" placeholder="https://…" autocomplete="off"></div>
-        <div class="form-group"><label>System User ID</label><input data-f="userId" autocomplete="off"></div>
-        <div class="form-group"><label>System Password</label><input data-f="password" autocomplete="new-password"></div>
-        <div class="form-group"><label>Login Email ID</label><input data-f="loginEmail" autocomplete="off"></div>
-        <div class="form-group"><label>Email Password</label><input data-f="emailPassword" autocomplete="new-password"></div>
-        <div class="form-group"><label>Hostinger ID</label><input data-f="hostingerId" autocomplete="off"></div>
-        <div class="form-group"><label>Hostinger Password</label><input data-f="hostingerPassword" autocomplete="new-password"></div>
-        <div class="form-group"><label>Kickstart Date</label><input data-f="kickstart" type="date"></div>
+        <div class="form-group ek-wide ek-sysf"><label>System / Website Link</label><input data-f="link" placeholder="https://…" autocomplete="off"></div>
+        <div class="form-group ek-sysf"><label>System User ID</label><input data-f="userId" autocomplete="off"></div>
+        <div class="form-group ek-sysf"><label>System Password</label><input data-f="password" autocomplete="new-password"></div>
+        <div class="form-group ek-mailf"><label>Login Email ID</label><input data-f="loginEmail" autocomplete="off"></div>
+        <div class="form-group ek-mailf"><label>Email Password</label><input data-f="emailPassword" autocomplete="new-password"></div>
+        <div class="form-group ek-hostf"><label>Hostinger ID</label><input data-f="hostingerId" autocomplete="off"></div>
+        <div class="form-group ek-hostf"><label>Hostinger Password</label><input data-f="hostingerPassword" autocomplete="new-password"></div>
+        <div class="form-group ek-sysf"><label>Kickstart Date</label><input data-f="kickstart" type="date"></div>
         <div class="form-group ek-wide"><label>Notes</label><textarea data-f="notes" rows="2"></textarea></div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:6px">
