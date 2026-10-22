@@ -1685,6 +1685,13 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       .ek-ic{border:1px solid #e2e8f0;background:#fff;border-radius:6px;cursor:pointer;padding:2px 7px;font-size:13px}
       .ek-ic:hover{background:#eef2ff}
       .ek-notes{font-size:13px;color:#334155;margin-top:8px;white-space:pre-wrap}
+      .ek-sec h3{display:flex;justify-content:space-between;align-items:center}
+      .ek-edit{border:1px solid #e2e8f0;background:#fff;border-radius:6px;cursor:pointer;padding:1px 8px;font-size:11px;text-transform:none;letter-spacing:0;color:#334155;font-weight:600}
+      .ek-edit:hover{background:#eef2ff}
+      .ek-n{font-size:11px;font-weight:600;color:#1e40af;background:#dbeafe;border-radius:10px;padding:2px 8px;vertical-align:middle}
+      .ek-form{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+      .ek-form .ek-wide{grid-column:1 / -1}
+      @media (max-width:600px){.ek-form{grid-template-columns:1fr}}
     </style>
     <div class="ek-bar">
       <input id="ekQ" type="search" placeholder="Search by client, employee, link or user ID…" oninput="ekRender()" autocomplete="off">
@@ -1693,9 +1700,36 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         <option value="">All statuses</option><option value="Complete">✅ Complete</option><option value="Incomplete">⚠ Incomplete</option>
       </select>
       <button class="btn btn-outline" onclick="loadEmkCreds()">↻ Refresh</button>
+      <button class="btn btn-primary" onclick="ekOpenAdd(null)">＋ Add New</button>
     </div>
     <div class="ek-count" id="ekCount"></div>
     <div class="ek-grid" id="ekGrid"></div>
+  </div>
+
+  <!-- EMK Credentials — Add New (a row in the sheet; emk-creds.js ekSaveAdd) -->
+  <div class="modal-overlay" id="ekAddModal">
+    <div class="modal" style="max-width:640px">
+      <h3 style="margin:0 0 4px" id="ekAddTitle">＋ Add Client Credentials</h3>
+      <p style="font-size:12px;color:#64748b;margin:0 0 12px" id="ekAddHint">Saved as a new row in the EMK Client Credentials sheet. Use an existing client's name to add another system to that client.</p>
+      <div class="alert error" id="ekAddErr" style="display:none"></div>
+      <div class="ek-form">
+        <div class="form-group"><label>Client Name *</label><input data-f="client" list="ekClientList" autocomplete="off" placeholder="e.g. Atit"><datalist id="ekClientList"></datalist></div>
+        <div class="form-group"><label>Employee *</label><select data-f="employee" id="ekAddEmployee"></select></div>
+        <div class="form-group ek-wide"><label>System / Website Link</label><input data-f="link" placeholder="https://…" autocomplete="off"></div>
+        <div class="form-group"><label>System User ID</label><input data-f="userId" autocomplete="off"></div>
+        <div class="form-group"><label>System Password</label><input data-f="password" autocomplete="new-password"></div>
+        <div class="form-group"><label>Login Email ID</label><input data-f="loginEmail" autocomplete="off"></div>
+        <div class="form-group"><label>Email Password</label><input data-f="emailPassword" autocomplete="new-password"></div>
+        <div class="form-group"><label>Hostinger ID</label><input data-f="hostingerId" autocomplete="off"></div>
+        <div class="form-group"><label>Hostinger Password</label><input data-f="hostingerPassword" autocomplete="new-password"></div>
+        <div class="form-group"><label>Kickstart Date</label><input data-f="kickstart" type="date"></div>
+        <div class="form-group ek-wide"><label>Notes</label><textarea data-f="notes" rows="2"></textarea></div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:6px">
+        <button class="btn btn-outline" onclick="closeModal('ekAddModal')">Cancel</button>
+        <button class="btn btn-primary" id="ekAddSave" onclick="ekSaveAdd()">Save</button>
+      </div>
+    </div>
   </div>
 
   <!-- ══════════════════════════════════════
