@@ -1,0 +1,25 @@
+name: CI
+
+# Basic checks on every push and pull request: JavaScript syntax, JSON config,
+# Vercel cron routes, and the scripts app.html loads (scripts/ci-check.js).
+# It reads the repository only: no server, no database, no secrets.
+on:
+  push:
+    branches: [main, TM_branch]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run checks
+        run: node scripts/ci-check.js
