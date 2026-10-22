@@ -133,4 +133,41 @@ module.exports = function registerEmkCredentialsRoutes(app, deps) {
       res.json({ success: true, row: rowNo });
     } catch (err) { sheetError(res, err); }
   });
+
+  // Delete one system, or a whole client (all its rows), in one request.
+  // Rows are EMPTIED, not removed: K2 holds the ARRAYFORMULA behind every
+  // row's Status, so removing row 2 would delete it, and removing any row
+  // shifts the rows below under pages that are still open. An emptied row
+  // has no client name, so the list leaves it out. Every row is checked
+  // against what the page showed before anything is cleared; one mismatch
+  // and nothing is.
+  app.delete('/api/emk-credentials', requireAuth, async (req, res) => {
+    if (!viewerIds.includes(Number(req.session.userId))) {
+      return res.status(403).json({ error: 'Not available for your account' });
+    }
+    const list = Array.isArray(req.body && req.body.rows) ? req.body.rows.slice(0, 50) : [];
+    const rows = list.map(r => ({ row: parseInt(r && r.row, 10), client: r && r.client, link: r && r.link }));
+    if (!rows.length || rows.some(r => !(r.row >= 2 && r.row <= 5000))) {
+      return res.status(400).json({ error: 'Nothing valid to delete.' });
+    }
+    try {
+      const sheets = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+      const got = await sheets.spreadsheets.values.batchGet({
+        spreadsheetId: SHEET_ID, ranges: rows.map(r => `'${TAB}'!B${r.row}:C${r.row}`),
+      });
+      const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+      const ranges = got.data.valueRanges || [];
+      for (let i = 0; i < rows.length; i++) {
+        const [client = '', link = ''] = ((ranges[i] && ranges[i].values) || [[]])[0] || [];
+        if (!same(client, rows[i].client) || !same(link, rows[i].link)) {
+          return res.status(409).json({ error: 'The sheet has changed since the page loaded. Refresh and try again.' });
+        }
+      }
+      await sheets.spreadsheets.values.batchClear({
+        spreadsheetId: SHEET_ID,
+        requestBody: { ranges: rows.flatMap(r => [`'${TAB}'!A${r.row}:J${r.row}`, `'${TAB}'!L${r.row}:M${r.row}`]) },
+      });
+      res.json({ success: true, deleted: rows.length });
+    } catch (err) { sheetError(res, err); }
+  });
 };

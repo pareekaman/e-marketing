@@ -87,7 +87,10 @@ function ekCard(g){
   const kick = rows.map(r => r.kickstart).find(ekHas);
   const multi = rows.length > 1;
   const systems = rows.map((r, i) =>
-    `<div class="ek-sec"><h3>${multi ? `System ${i + 1}` : 'System'}<button type="button" class="ek-edit" onclick="ekOpenEdit(${Number(r.row)})" title="Edit this row in the sheet">✏️ Edit</button></h3>${ekLinkRow(r.link)}${ekRow('User ID', r.userId)}${ekRow('Password', r.password, true)}</div>`).join('');
+    `<div class="ek-sec"><h3>${multi ? `System ${i + 1}` : 'System'}<span>`
+    + `<button type="button" class="ek-edit" onclick="ekOpenEdit(${Number(r.row)})" title="Edit this row in the sheet">✏️ Edit</button>`
+    + (multi ? ` <button type="button" class="ek-edit ek-del" onclick="ekDeleteRows([${Number(r.row)}])" title="Delete only this system">🗑</button>` : '')
+    + `</span></h3>${ekLinkRow(r.link)}${ekRow('User ID', r.userId)}${ekRow('Password', r.password, true)}</div>`).join('');
   const emails = ekPairs(rows, 'loginEmail', 'emailPassword');
   const hosts = ekPairs(rows, 'hostingerId', 'hostingerPassword');
   const notes = [...new Set(rows.map(r => r.notes).filter(ekHas))];
@@ -103,7 +106,25 @@ function ekCard(g){
     <div class="ek-meta" style="margin:10px 0 0;align-items:center">Last updated: ${dtEscape(updated)}
       <button type="button" class="ek-edit" data-client="${dtEscape(g.client)}" data-employee="${dtEscape(rows[0].employee || '')}"
         onclick="ekAddSystem(this.dataset.client, this.dataset.employee)" title="Add another system for this client">＋ Add system</button></div>
+    <div style="text-align:right;margin-top:6px"><button type="button" class="ek-edit ek-del"
+      onclick="ekDeleteRows([${rows.map(r => Number(r.row)).join(',')}])" title="Delete this client and all its systems">🗑 Delete ${multi ? `client (${rows.length} systems)` : 'client'}</button></div>
   </div>`;
+}
+
+// Deletes the given sheet rows (one system, or all of a client) after a
+// confirmation that names exactly what goes. The server empties the rows.
+async function ekDeleteRows(rowNos){
+  const recs = rowNos.map(n => EK_RECORDS.find(r => Number(r.row) === Number(n))).filter(Boolean);
+  if (!recs.length) return;
+  const client = recs[0].client;
+  const what = recs.length > 1
+    ? `${client} and all its ${recs.length} systems`
+    : `this system of ${client}${recs[0].link ? ` (${recs[0].link})` : ''}`;
+  if (!await appConfirm(`Delete ${what}? Its details are removed from the EMK Client Credentials sheet and cannot be brought back from here.`, 'Delete credentials?')) return;
+  const r = await api('/api/emk-credentials', 'DELETE', { rows: recs.map(x => ({ row: x.row, client: x.client, link: x.link })) });
+  if (!r || r.error) return showToast((r && r.error) || 'Could not delete. Please try again.', 'error');
+  showToast(recs.length > 1 ? `🗑 ${client} deleted (${r.deleted} systems)` : '🗑 System deleted');
+  loadEmkCreds();
 }
 
 // Add New with this client's name (and its employee) already filled, so the new
