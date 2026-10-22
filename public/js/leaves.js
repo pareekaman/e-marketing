@@ -150,11 +150,11 @@ function lvDescHtml(text){
     words++;
     if (words === LV_DESC_PREVIEW_WORDS) cutAt = m.index + m[0].length;
   }
-  if (words <= LV_DESC_PREVIEW_WORDS) return `<span class="lv-desc">${dtEscape(full)}</span>`;
+  if (words <= LV_DESC_PREVIEW_WORDS) return `<span class="lv-desc">${dtBold(dtEscape(full))}</span>`;
   const short = full.slice(0, cutAt);
   const id = 'lvd' + (++_lvDescSeq);
-  return `<span class="lv-desc" id="${id}-s">${dtEscape(short)}… </span>` +
-         `<span class="lv-desc" id="${id}-f" style="display:none">${dtEscape(full)} </span>` +
+  return `<span class="lv-desc" id="${id}-s">${dtBold(dtEscape(short))}… </span>` +
+         `<span class="lv-desc" id="${id}-f" style="display:none">${dtBold(dtEscape(full))} </span>` +
          `<button type="button" class="lv-desc-more" onclick="lvToggleDesc('${id}',this)">Read more</button>`;
 }
 

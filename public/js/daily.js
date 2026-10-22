@@ -525,6 +525,15 @@ function sortClientsForPicker(list){
     clientLabel(a).localeCompare(clientLabel(b), undefined, { sensitivity: 'base' }));
 }
 function dtEscape(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// WhatsApp-style *bold* in text that is ALREADY escaped, so <b> is the only
+// markup that can come out of it. An unclosed * is left as it is.
+function dtBold(html){ return String(html||'').replace(/\*(?=\S)([^*\n]*?\S)\*/g, '<b>$1</b>'); }
+// A task description as its writer laid it out: their line breaks kept
+// (pre-wrap; one-line pastes get theirs back via lvRecoverBreaks) and *bold* shown.
+function dtRichDesc(s){
+  const text = typeof lvRecoverBreaks === 'function' ? lvRecoverBreaks(s) : String(s||'');
+  return `<span style="white-space:pre-wrap">${dtBold(dtEscape(text))}</span>`;
+}
 
 function dtAddRow(prefill){
   const tbody = document.getElementById('dtRowsBody');
@@ -724,7 +733,7 @@ function dtRenderExtraHistory(){
         html += `<div class="dt-history-row">
           <span class="pill">${dtEscape(e.client)}</span>
           ${e.department ? `<span class="pill" style="background:#dbeafe;color:#1e40af;border-color:#bfdbfe">${dtEscape(e.department)}</span>` : ''}
-          <span style="flex:1;min-width:160px">${dtEscape(e.description)}</span>
+          <span style="flex:1;min-width:160px">${dtRichDesc(e.description)}</span>
           <span class="dt-history-time">${dtEntryMinutes(e)} min</span>
         </div>`;
       }
@@ -783,7 +792,7 @@ async function dtLoadHistory(){
         html += `<div class="dt-history-row">
           <span class="pill">${dtEscape(it.client_name)}</span>
           ${it.department ? `<span class="pill" style="background:#dbeafe;color:#1e40af;border-color:#bfdbfe">${dtEscape(it.department)}</span>` : ''}
-          <span style="flex:1;min-width:160px">${dtEscape(it.description)}</span>
+          <span style="flex:1;min-width:160px">${dtRichDesc(it.description)}</span>
           <span class="dt-history-time">${it.duration_min} min</span>
         </div>`;
       }

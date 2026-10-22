@@ -264,7 +264,7 @@ function renderEmp360(){
       const mins = list.reduce((s, e) => s + (Number(e.duration_min) || 0), 0);
       const rows = list.map(e => `<tr>
         <td>${dtEscape(e.client_name || '—')}</td>
-        <td>${dtEscape(e.description || '')}</td>
+        <td>${dtRichDesc(e.description || '')}</td>
         <td style="white-space:nowrap">${e.duration_min || 0}</td>
       </tr>`).join('');
       html += `<div class="e3-day" id="e3day${dayIdx}">
@@ -299,7 +299,7 @@ function renderEmp360(){
       const mins = list.reduce((s, e) => s + (Number(e.duration_min) || 0), 0);
       const rows = list.map(e => `<tr>
         <td>${dtEscape(e.client_name || '—')}</td>
-        <td>${dtEscape(e.description || '')}</td>
+        <td>${dtRichDesc(e.description || '')}</td>
         <td style="white-space:nowrap">${e.duration_min || 0}</td>
       </tr>`).join('');
       html += `<div class="e3-day" id="e3day${ewIdx}">
@@ -714,7 +714,7 @@ function renderDREntries(){
       const rows = day.entries.map(e => `<tr>
           <td style="width:1%;white-space:nowrap">${e.client_name ? `<span class="pill-tag">${dtEscape(e.client_name)}</span>` : '—'}${e.extra_working ? DR_EW_TAG : ''}</td>
           <td style="width:1%;white-space:nowrap">${e.department ? `<span class="pill-dept">${dtEscape(e.department)}</span>` : '—'}</td>
-          <td>${dtEscape(e.description)}</td>
+          <td>${dtRichDesc(e.description)}</td>
           <td style="width:1%;white-space:nowrap"><span class="pill-min">${e.duration_min} min</span></td>
         </tr>`).join('');
       html += `<tr data-key="${dtEscape(key)}" onclick="drToggleDay(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();drToggleDay(this)}"
@@ -844,7 +844,7 @@ function drExportPDF(){
           <thead><tr><th style="width:21%">Client</th><th style="width:17%">Department</th><th>Description</th><th class="num" style="width:8%">Min</th></tr></thead>
           <tbody>${day.entries.map(e => `
             <tr><td>${dtEscape(e.client_name || '—')}${e.extra_working ? ew : ''}</td><td>${dtEscape(e.department || '—')}</td>
-            <td>${dtEscape(e.description || '')}</td><td class="num">${e.duration_min}</td></tr>`).join('')}</tbody>
+            <td>${dtRichDesc(e.description || '')}</td><td class="num">${e.duration_min}</td></tr>`).join('')}</tbody>
         </table>
       </div>`).join('')}`).join('');
 
