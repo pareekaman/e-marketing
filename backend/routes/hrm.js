@@ -21,6 +21,7 @@ module.exports = function registerHrmRoutes(app, deps) {
     usersForSetting,
     getDriveClient,
     appRoot,
+    createZoomMeetingLink,
   } = deps;
 
 // ══════════════════════════════════════════════════════
@@ -790,6 +791,64 @@ function hrmParseDob(value) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// extra_json on hrm_joining_details: the Fresher / Experienced part of the form.
+let _hrmJoinExtraCol = null;
+function ensureJoiningExtraCol() {
+  if (!_hrmJoinExtraCol) {
+    _hrmJoinExtraCol = db.query('ALTER TABLE hrm_joining_details ADD COLUMN extra_json TEXT DEFAULT NULL')
+      .catch(() => {}); // duplicate column — already there
+  }
+  return _hrmJoinExtraCol;
+}
+
+// Reads and checks the Fresher / Experienced fields. Returns { json } (null for
+// the older form, which has no candidate_type) or { error }.
+function hrmJoiningExtra(body, pick) {
+  const type = pick('candidatetype', 'type', 'experiencetype').toLowerCase();
+  if (!type) return { json: null };
+  if (type !== 'fresher' && type !== 'experienced') return { error: 'Candidate type must be Fresher or Experienced' };
+  const url = v => /^https?:\/\//i.test(String(v || '').trim()) ? String(v).trim() : '';
+  const urls = v => (Array.isArray(v) ? v : String(v || '').split(/[\s,]+/)).map(url).filter(Boolean).slice(0, 3);
+  const bank = {
+    holder: pick('bankholder', 'accountholder', 'bankaccountholder').slice(0, 120),
+    account: pick('bankaccount', 'accountnumber', 'bankaccountno').replace(/\s/g, ''),
+    ifsc: pick('bankifsc', 'ifsc', 'ifsccode').toUpperCase().replace(/\s/g, ''),
+    name: pick('bankname').slice(0, 120),
+  };
+  const missing = [];
+  if (!bank.holder) missing.push('Account Holder Name');
+  if (!bank.account) missing.push('Bank Account Number');
+  if (!bank.ifsc) missing.push('IFSC Code');
+  if (!bank.name) missing.push('Bank Name');
+  if (missing.length) return { error: `Missing: ${missing.join(', ')}` };
+  if (!/^\d{9,18}$/.test(bank.account)) return { error: 'Bank account number must be 9 to 18 digits' };
+  if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bank.ifsc)) return { error: 'IFSC code format is invalid (e.g. HDFC0001234)' };
+  const out = { candidate_type: type, bank };
+  if (type === 'fresher') {
+    out.marksheet_url = url(body.marksheet_file_url);
+    out.degree_url = url(body.degree_file_url);
+    if (!out.marksheet_url && !out.degree_url) return { error: 'Upload the last semester marksheet or the degree' };
+  } else {
+    out.total_experience = pick('totalexperience', 'experienceyears').slice(0, 20);
+    out.last_company = pick('lastcompany', 'previouscompany').slice(0, 150);
+    out.designation = pick('designation', 'lastdesignation').slice(0, 120);
+    out.last_ctc = pick('lastctc', 'ctc').slice(0, 40);
+    out.experience_letter_url = url(body.experience_letter_url);
+    out.relieving_letter_url = url(body.relieving_letter_url);
+    out.salary_slip_urls = urls(body.salary_slip_urls);
+    const m2 = [];
+    if (!out.total_experience) m2.push('Total Experience');
+    if (!out.last_company) m2.push('Last Company');
+    if (!out.designation) m2.push('Designation');
+    if (!out.last_ctc) m2.push('Last CTC');
+    if (!out.experience_letter_url) m2.push('Experience Letter');
+    if (!out.relieving_letter_url) m2.push('Relieving Letter');
+    if (!out.salary_slip_urls.length) m2.push('Salary Slips');
+    if (m2.length) return { error: `Missing: ${m2.join(', ')}` };
+  }
+  return { json: JSON.stringify(out) };
+}
+
 // Public webhook — the Apps Script joining-details form posts here on submit.
 // No session: the shared secret authenticates the SCRIPT, the per-candidate
 // token (carried in the form link) identifies the CANDIDATE. Both required.
@@ -869,14 +928,29 @@ app.post('/api/hrm/joining-form', async (req, res) => {
     if (aadhaarNo && aadhaarNo.length !== 12) return res.status(400).json({ error: 'Aadhaar number must be 12 digits' });
     if (panNo && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(panNo)) return res.status(400).json({ error: 'PAN number format is invalid (e.g. ABCDE1234F)' });
 
+    // Fresher / Experienced form (2026-10-23): bank details for both, then the
+    // fresher's marksheet or degree, or the experienced candidate's last job
+    // and its letters and salary slips. Kept together in extra_json. A form
+    // posted without candidate_type is the older form and is accepted as before.
+    const extra = hrmJoiningExtra(body, pick);
+    if (extra.error) return res.status(400).json({ error: extra.error });
+    // HR sent a particular form (fresher / experienced); a submission of the
+    // other kind is refused rather than stored under the wrong heading.
+    const sentType = String(c.joining_form_type || '').toLowerCase();
+    const gotType = extra.json ? JSON.parse(extra.json).candidate_type : '';
+    if (sentType && gotType && sentType !== gotType) {
+      return res.status(400).json({ error: `This link is for the ${sentType} form. Please fill the ${sentType} details.` });
+    }
+    await ensureJoiningExtraCol();
+
     await db.query(
       `INSERT INTO hrm_joining_details
          (candidate_id,full_name,emp_mobile,email,
           guardian1_name,guardian1_relation,guardian1_mobile,
           guardian2_name,guardian2_relation,guardian2_mobile,dob,
           street,city,state,pincode,aadhaar_no,pan_no,resume_file_url,
-          aadhaar_file_url,aadhaar_file_url_2,pan_file_url,pan_file_url_2,raw_payload)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          aadhaar_file_url,aadhaar_file_url_2,pan_file_url,pan_file_url_2,raw_payload,extra_json)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE
          full_name=VALUES(full_name), emp_mobile=VALUES(emp_mobile), email=VALUES(email),
          guardian1_name=VALUES(guardian1_name), guardian1_relation=VALUES(guardian1_relation),
@@ -888,11 +962,11 @@ app.post('/api/hrm/joining-form', async (req, res) => {
          resume_file_url=VALUES(resume_file_url),
          aadhaar_file_url=VALUES(aadhaar_file_url), aadhaar_file_url_2=VALUES(aadhaar_file_url_2),
          pan_file_url=VALUES(pan_file_url), pan_file_url_2=VALUES(pan_file_url_2),
-         raw_payload=VALUES(raw_payload)`,
+         raw_payload=VALUES(raw_payload), extra_json=VALUES(extra_json)`,
       [c.id, fullName, empMobile, email, g1Name, g1Relation, g1Mobile, g2Name, g2Relation, g2Mobile, dob,
        street, city, state, pincode, aadhaarNo, panNo, resumeFile,
        aadhaarFile, aadhaarFile2, panFile, panFile2,
-       JSON.stringify(body).slice(0, 60000)]
+       JSON.stringify(body).slice(0, 60000), extra.json]
     );
 
     // WhatsApp notifications removed from the HR portal — neither the HR
@@ -967,11 +1041,44 @@ app.post('/api/hrm/candidates/:id/send-joining-form', requireAuth, async (req, r
 let _hrmIntvColReady = null;
 function ensureInterviewerEmailCol() {
   if (!_hrmIntvColReady) {
-    _hrmIntvColReady = db.query(`ALTER TABLE hrm_candidates ADD COLUMN interviewer_email VARCHAR(255) DEFAULT ''`)
-      .catch(() => {}); // duplicate column — already there
+    // Each ALTER fails harmlessly once its column exists (duplicate column).
+    _hrmIntvColReady = Promise.all([
+      db.query(`ALTER TABLE hrm_candidates ADD COLUMN interviewer_email VARCHAR(255) DEFAULT ''`).catch(() => {}),
+      db.query(`ALTER TABLE hrm_candidates ADD COLUMN interview_mode VARCHAR(10) DEFAULT 'online'`).catch(() => {}),
+      db.query(`ALTER TABLE hrm_candidates ADD COLUMN venue VARCHAR(500) DEFAULT ''`).catch(() => {}),
+      // Which joining form HR sent: 'fresher' or 'experienced' ('' = the candidate chooses)
+      db.query(`ALTER TABLE hrm_candidates ADD COLUMN joining_form_type VARCHAR(12) DEFAULT ''`).catch(() => {}),
+    ]);
   }
   return _hrmIntvColReady;
 }
+
+// Interview mode: 'online' (meeting link; a Zoom meeting is created when the
+// link is left blank) or 'offline' (at the office; the venue is sent instead).
+const HRM_OFFICE_ADDRESS = '8/10, Shaheed Amit Bhardwaj Marg, Sector 8, Malviya Nagar, Jaipur, Rajasthan 302017';
+async function hrmInterviewPlace(b) {
+  const mode = b.interview_mode === 'offline' ? 'offline' : 'online';
+  if (mode === 'offline') {
+    return { mode, link: '', venue: String(b.venue || '').trim().slice(0, 500) || HRM_OFFICE_ADDRESS };
+  }
+  let link = String(b.meeting_link || '').trim();
+  if (!link && createZoomMeetingLink && b.interview_date && /^\d{2}:\d{2}$/.test(String(b.interview_time || ''))) {
+    const [h, m] = b.interview_time.split(':').map(Number);
+    const end = h * 60 + m + 30;
+    const zoom = await createZoomMeetingLink({
+      title: `Interview: ${b.name}${b.profile_position ? ' (' + b.profile_position + ')' : ''}`,
+      agenda: `${HRM_COMPANY} interview`,
+      dateStr: String(b.interview_date).slice(0, 10), startTime: b.interview_time,
+      endTime: `${String(Math.floor(end / 60) % 24).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`,
+    });
+    if (zoom) link = zoom.join_url;
+  }
+  return { mode, link, venue: '' };
+}
+// One line for the interview emails: the link, or where to come.
+const hrmPlaceLine = p => p.mode === 'offline'
+  ? `*Mode:* In person (office)\n*Venue:* ${p.venue}\n`
+  : (p.link ? `*Meeting Link:* ${p.link}\n` : '');
 
 app.get('/api/hrm/hods', requireAuth, async (req, res) => {
   try {
@@ -999,10 +1106,11 @@ app.post('/api/hrm/candidates', requireAuth, async (req, res) => {
     if (email && !emailRe.test(email)) return res.status(400).json({ error: 'Invalid email address' });
     const intvEmail = String(interviewer_email || '').trim();
     if (intvEmail && !emailRe.test(intvEmail)) return res.status(400).json({ error: 'Invalid interviewer email' });
+    const place = await hrmInterviewPlace(req.body);
     const [r] = await db.query(
-      `INSERT INTO hrm_candidates (name,phone,email,profile_position,department,interview_date,interview_time,notes,meeting_link,interviewer_phone,interviewer_email,created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [name, phone, email||'', profile_position||'', department||'', interview_date||null, interview_time||'', notes||'', meeting_link||'', interviewer_phone||'', intvEmail, req.session.userId]);
+      `INSERT INTO hrm_candidates (name,phone,email,profile_position,department,interview_date,interview_time,notes,meeting_link,interviewer_phone,interviewer_email,created_by,interview_mode,venue)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [name, phone, email||'', profile_position||'', department||'', interview_date||null, interview_time||'', notes||'', place.link, interviewer_phone||'', intvEmail, req.session.userId, place.mode, place.venue]);
     const cid = r.insertId;
     // Notify the interviewer (the chosen department HOD) by email that an
     // interview has been scheduled. Best-effort — never fails the schedule.
@@ -1015,7 +1123,7 @@ app.post('/api/hrm/candidates', requireAuth, async (req, res) => {
         `*Date:* ${dateFmt}\n` +
         `*Time:* ${interview_time || '—'}\n` +
         `*Candidate Phone:* ${phone}\n` +
-        (meeting_link ? `*Meeting Link:* ${meeting_link}\n` : '') +
+        hrmPlaceLine(place) +
         (notes ? `\n*Notes:* ${notes}\n` : '') +
         `\n— E-Marketing HR Portal`;
       sendMail(intvEmail, `Interview Scheduled — ${name}${profile_position ? ' (' + profile_position + ')' : ''}`, waTextToEmailHtml(msg))
@@ -1029,12 +1137,12 @@ app.post('/api/hrm/candidates', requireAuth, async (req, res) => {
         (profile_position ? `*Position:* ${profile_position}\n` : '') +
         `*Date:* ${dateFmt2}\n` +
         `*Time:* ${interview_time || '—'}\n` +
-        (meeting_link ? `*Meeting Link:* ${meeting_link}\n` : '') +
+        hrmPlaceLine(place) +
         `\nPlease be available on time. All the best!\n\n— E-Marketing HR Team`;
       sendMail(email, `Interview Scheduled — ${HRM_COMPANY}`, waTextToEmailHtml(cmsg))
         .catch(e => console.error('candidate interview email err:', e.message));
     }
-    res.json({ ok: true, id: cid });
+    res.json({ ok: true, id: cid, meeting_link: place.link, interview_mode: place.mode });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1052,14 +1160,18 @@ app.put('/api/hrm/candidates/:id', requireAuth, async (req, res) => {
     if (email && !emailRe.test(email)) return res.status(400).json({ error: 'Invalid email address' });
     const intvEmail = String(interviewer_email || '').trim();
     if (intvEmail && !emailRe.test(intvEmail)) return res.status(400).json({ error: 'Invalid interviewer email' });
-    const [r] = await db.query(
+    const [[exists]] = await db.query('SELECT id FROM hrm_candidates WHERE id=?', [id]);
+    if (!exists) return res.status(404).json({ error: 'Candidate not found' });
+    // Switching to online with no link creates a Zoom meeting, as scheduling does.
+    const place = await hrmInterviewPlace(req.body);
+    await db.query(
       `UPDATE hrm_candidates SET name=?, phone=?, email=?, profile_position=?, department=?,
-              interview_date=?, interview_time=?, notes=?, meeting_link=?, interviewer_phone=?, interviewer_email=?
+              interview_date=?, interview_time=?, notes=?, meeting_link=?, interviewer_phone=?, interviewer_email=?,
+              interview_mode=?, venue=?
        WHERE id=?`,
       [name, phone, email||'', profile_position||'', department||'', interview_date||null, interview_time||'',
-       notes||'', meeting_link||'', interviewer_phone||'', intvEmail, id]);
-    if (!r.affectedRows) return res.status(404).json({ error: 'Candidate not found' });
-    res.json({ ok: true });
+       notes||'', place.link, interviewer_phone||'', intvEmail, place.mode, place.venue, id]);
+    res.json({ ok: true, meeting_link: place.link, interview_mode: place.mode });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1341,7 +1453,9 @@ app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) =>
       // Wording carried over from the WhatsApp templates ee10331 deleted, so a
       // candidate who was told once still recognises the message.
       const fmtDay = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
-      const meetLine = c.meeting_link
+      const meetLine = c.interview_mode === 'offline'
+        ? `<p><b>Mode:</b> In person, at our office<br><b>Venue:</b> ${esc(c.venue || HRM_OFFICE_ADDRESS)}</p>`
+        : c.meeting_link
         ? `<p>Meeting link: <a href="${esc(c.meeting_link)}" style="color:#1155cc">${esc(c.meeting_link)}</a></p>` : '';
 
       if (type === 'scheduled' || type === 'rescheduled') {
@@ -1401,13 +1515,28 @@ app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) =>
       }
     } else if (type === 'onboarding') {
       if (!HRM_JOINING_FORM_URL) return res.status(400).json({ error: 'Joining form URL is not configured (HRM_JOINING_FORM_URL)' });
+      // HR picks the form: fresher or experienced. It travels in the link (the
+      // form then shows only that part) and is kept on the candidate, so the
+      // submission must match it.
+      const formType = String(req.body.form_type || '').toLowerCase();
+      if (formType !== 'fresher' && formType !== 'experienced') {
+        return res.status(400).json({ error: 'Choose the form to send: Fresher or Experienced' });
+      }
+      await ensureInterviewerEmailCol();
       let token = c.joining_form_token;
       if (!token) {
         token = require('crypto').randomBytes(24).toString('hex');
         await db.query('UPDATE hrm_candidates SET joining_form_token=? WHERE id=?', [token, c.id]);
       }
+      await db.query('UPDATE hrm_candidates SET joining_form_type=? WHERE id=?', [formType, c.id]);
       const sep = HRM_JOINING_FORM_URL.includes('?') ? '&' : '?';
-      const formUrl = `${HRM_JOINING_FORM_URL}${sep}token=${token}`;
+      const formUrl = `${HRM_JOINING_FORM_URL}${sep}token=${token}&type=${formType}`;
+      const typeItems = formType === 'experienced'
+        ? `<li>Bank details — account holder, bank, account number &amp; IFSC</li>
+          <li>Total experience, last company, designation &amp; last CTC</li>
+          <li>Experience letter, relieving letter &amp; last 3 salary slips</li>`
+        : `<li>Bank details — account holder, bank, account number &amp; IFSC</li>
+          <li>Last semester marksheet or degree</li>`;
       subject = `Joining Details Form | ${HRM_COMPANY}`;
       action = 'Joining Details Form — Email';
       bodyInner = `<p>Hello ${esc(displayName)},</p>
@@ -1422,6 +1551,7 @@ app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) =>
           <li>Resume — PDF or Word</li>
           <li>Aadhaar card — one PDF, or front &amp; back photos</li>
           <li>PAN card (optional) — one PDF, or front &amp; back photos</li>
+          ${typeItems}
         </ul>
         <p>Your offer letter will be issued once we receive these details.</p>`;
     } else {

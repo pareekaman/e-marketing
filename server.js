@@ -10721,6 +10721,7 @@ require('./backend/routes/hrm')(app, {
   // deep. The offer-letter signature is read from <root>/public/signature.png,
   // so the root is passed in explicitly rather than guessed with '..'.
   appRoot: __dirname,
+  createZoomMeetingLink,
 });
 
 // Leads Enquiry — four Google Sheet sources, no database. Ported from the

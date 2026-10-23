@@ -102,7 +102,7 @@ function renderHrmRows(list) {
       <td class="hrm-date-cell">${esc(c.profile_position||'—')}</td>
       <td class="hrm-date-cell">${esc(c.department||'—')}</td>
       <td>
-        <div class="hrm-date-cell">${dateStr}${c.interview_time ? ' ' + esc(_mtgFmtTime12(c.interview_time)) : ''}</div>
+        <div class="hrm-date-cell">${dateStr}${c.interview_time ? ' ' + esc(_mtgFmtTime12(c.interview_time)) : ''}${c.interview_mode === 'offline' ? ' <span title="Offline, at the office" style="font-size:11px">🏢</span>' : (c.meeting_link ? ' <span title="Online" style="font-size:11px">🖥</span>' : '')}</div>
         ${reDateStr ? `<div class="hrm-redate">→ Rescheduled: ${reDateStr}${c.reschedule_time?' '+esc(_mtgFmtTime12(c.reschedule_time)):''}</div>` : ''}
       </td>
       <td><span class="hrm-badge ${badgeClass}">${HRM_STATUS_LABELS[c.status] || c.status}</span></td>
@@ -252,10 +252,26 @@ async function openHrmAddModal() {
   document.getElementById('hrmAddErr').style.display = 'none';
   document.getElementById('hrmAddTitle').textContent = '📅 Schedule Interview';
   document.getElementById('hrmAddSubmitBtn').textContent = '📅 Schedule Interview';
+  hrmSetMode('online', '');
   await loadHrmDepartmentOptions('hrmCDepartment', '');
   await _hrmLoadHods();
   hrmDeptChange();  // reset the interviewer dropdown to its empty state
   document.getElementById('hrmAddModal').classList.add('open');
+}
+
+// Interview mode: online shows the meeting link (blank = Zoom creates one),
+// offline shows the venue, filled with the office address.
+const HRM_OFFICE_ADDRESS = '8/10, Shaheed Amit Bhardwaj Marg, Sector 8, Malviya Nagar, Jaipur, Rajasthan 302017';
+function hrmSetMode(mode, venue) {
+  document.getElementById('hrmCMode').value = mode;
+  document.getElementById('hrmCVenue').value = venue || HRM_OFFICE_ADDRESS;
+  hrmModeChange();
+}
+function hrmModeChange() {
+  const offline = document.getElementById('hrmCMode').value === 'offline';
+  document.getElementById('hrmCLinkGroup').style.display = offline ? 'none' : '';
+  document.getElementById('hrmCVenueGroup').style.display = offline ? '' : 'none';
+  if (offline && !document.getElementById('hrmCVenue').value.trim()) document.getElementById('hrmCVenue').value = HRM_OFFICE_ADDRESS;
 }
 
 // Reuse the Schedule Interview modal to EDIT a candidate's details.
@@ -272,6 +288,7 @@ async function openHrmEditModal(id) {
   document.getElementById('hrmCEmail').value       = c.email || '';
   document.getElementById('hrmCLink').value        = c.meeting_link || '';
   document.getElementById('hrmCNotes').value       = c.notes || '';
+  hrmSetMode(c.interview_mode === 'offline' ? 'offline' : 'online', c.venue || '');
   document.getElementById('hrmCDate').value        = c.interview_date ? String(c.interview_date).slice(0,10) : '';
   hrmSetTime(c.interview_time || '');
   document.getElementById('hrmAddTitle').textContent = '✏️ Edit Candidate';
@@ -371,7 +388,9 @@ async function saveHrmCandidate() {
     department: document.getElementById('hrmCDepartment').value,
     interview_date: date, interview_time: time,
     notes: document.getElementById('hrmCNotes').value.trim(),
-    meeting_link: document.getElementById('hrmCLink').value.trim(),
+    interview_mode: document.getElementById('hrmCMode').value,
+    meeting_link: document.getElementById('hrmCMode').value === 'offline' ? '' : document.getElementById('hrmCLink').value.trim(),
+    venue: document.getElementById('hrmCMode').value === 'offline' ? document.getElementById('hrmCVenue').value.trim() : '',
     interviewer_phone: document.getElementById('hrmCInterviewer').value.trim(),
     interviewer_email: document.getElementById('hrmCInterviewerHod').value
   };
@@ -382,7 +401,10 @@ async function saveHrmCandidate() {
   const wasEdit = !!_hrmEditId;
   _hrmEditId = null;
   closeModal('hrmAddModal');
-  showToast(wasEdit ? 'Candidate updated.' : 'Interview scheduled.');
+  // Online with the link left blank: say whether Zoom made one
+  const zoomNote = payload.interview_mode === 'online' && !payload.meeting_link
+    ? (r.meeting_link ? ' Zoom link created.' : ' (No meeting link — Zoom could not create one.)') : '';
+  showToast((wasEdit ? 'Candidate updated.' : 'Interview scheduled.') + zoomNote);
   loadHRM();
 }
 
@@ -394,9 +416,11 @@ function openHrmDetailsModal(id) {
   const row = (label, val) => `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9">
       <span style="min-width:130px;color:#64748b;font-size:12px;font-weight:600">${label}</span>
       <span style="flex:1;word-break:break-word;font-size:13px;color:#0f172a">${val ? esc(String(val)) : '—'}</span></div>`;
-  const linkRow = c.meeting_link
-    ? `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9"><span style="min-width:130px;color:#64748b;font-size:12px;font-weight:600">Meeting Link</span><span style="flex:1;word-break:break-all;font-size:13px"><a href="${esc(c.meeting_link)}" target="_blank" style="color:#4f46e5">${esc(c.meeting_link)}</a></span></div>`
-    : row('Meeting Link', '');
+  const linkRow = c.interview_mode === 'offline'
+    ? row('Mode', 'Offline (at the office)') + row('Venue', c.venue)
+    : c.meeting_link
+    ? row('Mode', 'Online') + `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9"><span style="min-width:130px;color:#64748b;font-size:12px;font-weight:600">Meeting Link</span><span style="flex:1;word-break:break-all;font-size:13px"><a href="${esc(c.meeting_link)}" target="_blank" style="color:#4f46e5">${esc(c.meeting_link)}</a></span></div>`
+    : row('Mode', 'Online') + row('Meeting Link', '');
   document.getElementById('hrmDetailsBody').innerHTML =
     row('Name', c.name) + row('Phone', c.phone) + row('Position', c.profile_position) +
     row('Department', c.department) + row('Candidate Email', c.email) +
@@ -528,8 +552,41 @@ async function viewJoiningDetails(id) {
     ${row('Aadhaar Card', fileLinks(r.aadhaar_file_url, r.aadhaar_file_url_2))}
     ${r.pan_no ? row('PAN Number', esc(r.pan_no)) : ''}
     ${row('PAN Card', fileLinks(r.pan_file_url, r.pan_file_url_2))}
+    ${hrmJoiningExtraRows(r.extra_json, row, fileLinks)}
     ${at ? `<div style="font-size:11px;color:#94a3b8;margin-top:10px">Submitted ${at}</div>` : ''}`;
   document.getElementById('hrmJoiningDetailsModal').classList.add('open');
+}
+
+// The Fresher / Experienced part of the joining form (extra_json): candidate
+// type, bank details, then the fresher's marksheet/degree or the experienced
+// candidate's last job, letters and salary slips. Older submissions have none.
+function hrmJoiningExtraRows(json, row, fileLinks) {
+  let x = null;
+  try { x = json ? JSON.parse(json) : null; } catch (e) { x = null; }
+  if (!x || !x.candidate_type) return '';
+  const b = x.bank || {};
+  const one = u => fileLinks(u);
+  const many = list => {
+    const ok = (list || []).filter(u => /^https?:\/\//i.test(u || ''));
+    if (!ok.length) return '<span style="color:#94a3b8;font-size:12px">Not uploaded</span>';
+    return ok.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer" style="color:#4f46e5;font-size:12px;font-weight:600;text-decoration:none">Slip ${i + 1} ↗</a>`).join('&nbsp;&nbsp;');
+  };
+  const head = t => `<div style="font-size:11px;font-weight:700;color:#4f46e5;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 4px">${t}</div>`;
+  let html = row('Candidate Type', x.candidate_type === 'experienced' ? 'Experienced' : 'Fresher')
+    + head('Bank Details')
+    + row('Account Holder', esc(b.holder || '—')) + row('Account Number', esc(b.account || '—'))
+    + row('IFSC', esc(b.ifsc || '—')) + row('Bank Name', esc(b.name || '—'));
+  if (x.candidate_type === 'fresher') {
+    html += head('Education') + row('Last Semester Marksheet', one(x.marksheet_url)) + row('Degree', one(x.degree_url));
+  } else {
+    html += head('Experience')
+      + row('Total Experience', esc((x.total_experience || '—') + (/^\d+(\.\d+)?$/.test(x.total_experience || '') ? ' years' : '')))
+      + row('Last Company', esc(x.last_company || '—')) + row('Designation', esc(x.designation || '—'))
+      + row('Last CTC', esc(x.last_ctc || '—'))
+      + row('Experience Letter', one(x.experience_letter_url)) + row('Relieving Letter', one(x.relieving_letter_url))
+      + row('Salary Slips', many(x.salary_slip_urls));
+  }
+  return html;
 }
 
 function viewOfferLetter(id) {
@@ -599,10 +656,19 @@ function openEmailModal(id) {
     'Offer Letter Sent':  'offer',
   };
   document.getElementById('hrmEmailType').value = BY_STATUS[c.status] || 'onboarding';
+  // The form HR chose last time for this candidate, if any
+  document.getElementById('hrmEmailFormType').value = c.joining_form_type || '';
+  hrmEmailTypeChange();
   document.getElementById('hrmEmailTo').value = c.email || '';
   document.getElementById('hrmEmailCc').value = '';
   document.getElementById('hrmEmailErr').style.display = 'none';
   document.getElementById('hrmEmailModal').classList.add('open');
+}
+
+// The Onboarding Form needs HR to pick which form: Fresher or Experienced.
+function hrmEmailTypeChange() {
+  document.getElementById('hrmEmailFormTypeGroup').style.display =
+    document.getElementById('hrmEmailType').value === 'onboarding' ? '' : 'none';
 }
 
 // Set to { to, cc } while an offer form modal is being used to EMAIL the offer
@@ -635,9 +701,11 @@ async function submitEmailModal() {
 
   // Everything else — the onboarding link and the four status notifications —
   // carries no attachment and needs no form, so it sends straight from here.
+  const formType = document.getElementById('hrmEmailFormType').value;
+  if (type === 'onboarding' && !formType) { showErrIn('hrmEmailErr', 'Choose which form to send: Fresher or Experienced.'); return; }
   const btn = document.getElementById('hrmEmailSendBtn');
   btn.disabled = true; btn.textContent = 'Sending…';
-  const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/email-offer`, 'POST', { type, email, cc });
+  const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/email-offer`, 'POST', { type, email, cc, ...(type === 'onboarding' ? { form_type: formType } : {}) });
   btn.disabled = false; btn.textContent = '📧 Send Email';
   if (!r || r.error) { showErrIn('hrmEmailErr', (r && r.error) || 'Email failed'); return; }
   closeModal('hrmEmailModal');

@@ -2202,8 +2202,19 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         </div>
       </div>
       <div class="form-group">
-        <label>Meeting Link (Zoom / Meet)</label>
-        <input type="url" id="hrmCLink" placeholder="https://meet.google.com/…">
+        <label>Interview Mode</label>
+        <select id="hrmCMode" onchange="hrmModeChange()">
+          <option value="online">🖥 Online (video call)</option>
+          <option value="offline">🏢 Offline (at the office)</option>
+        </select>
+      </div>
+      <div class="form-group" id="hrmCLinkGroup">
+        <label>Meeting Link <span style="font-size:11px;color:#64748b;text-transform:none">(leave blank and a Zoom link is created)</span></label>
+        <input type="url" id="hrmCLink" placeholder="Leave blank for Zoom, or paste any link">
+      </div>
+      <div class="form-group" id="hrmCVenueGroup" style="display:none">
+        <label>Venue</label>
+        <textarea id="hrmCVenue" rows="2"></textarea>
       </div>
       <div class="form-group">
         <label>Notes</label>
@@ -2365,7 +2376,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <div id="hrmEmailWho" style="font-size:13px;color:#475569;margin:2px 0 12px"></div>
       <div class="form-group">
         <label>What to send *</label>
-        <select id="hrmEmailType">
+        <select id="hrmEmailType" onchange="hrmEmailTypeChange()">
           <optgroup label="Status update">
             <option value="scheduled">📅 Interview Scheduled</option>
             <option value="rescheduled">🔄 Interview Rescheduled</option>
@@ -2381,6 +2392,14 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         <div style="font-size:11px;color:#94a3b8;margin-top:5px">
           Sending an email does not change the candidate's status — use Update Status for that.
         </div>
+      </div>
+      <div class="form-group" id="hrmEmailFormTypeGroup" style="display:none">
+        <label>Which form *</label>
+        <select id="hrmEmailFormType">
+          <option value="">— Select —</option>
+          <option value="fresher">🎓 Fresher — bank details + marksheet or degree</option>
+          <option value="experienced">💼 Experienced — bank details + last job, letters, salary slips</option>
+        </select>
       </div>
       <div class="form-group">
         <label>To *</label>
