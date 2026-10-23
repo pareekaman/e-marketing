@@ -577,7 +577,8 @@ function hrmJoiningExtraRows(json, row, fileLinks) {
     + row('Account Holder', esc(b.holder || '—')) + row('Account Number', esc(b.account || '—'))
     + row('IFSC', esc(b.ifsc || '—')) + row('Bank Name', esc(b.name || '—'));
   if (x.candidate_type === 'fresher') {
-    html += head('Education') + row('Last Semester Marksheet', one(x.marksheet_url)) + row('Degree', one(x.degree_url));
+    html += head('Education') + row('Last Semester Marksheet', one(x.marksheet_url)) + row('Degree', one(x.degree_url))
+      + row('Internship Certificates', one(x.internship_url));
   } else {
     html += head('Experience')
       + row('Total Experience', esc((x.total_experience || '—') + (/^\d+(\.\d+)?$/.test(x.total_experience || '') ? ' years' : '')))

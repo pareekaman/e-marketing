@@ -827,6 +827,7 @@ function hrmJoiningExtra(body, pick) {
   if (type === 'fresher') {
     out.marksheet_url = url(body.marksheet_file_url);
     out.degree_url = url(body.degree_file_url);
+    out.internship_url = url(body.internship_file_url);   // optional: one PDF with every certificate
     if (!out.marksheet_url && !out.degree_url) return { error: 'Upload the last semester marksheet or the degree' };
   } else {
     out.total_experience = pick('totalexperience', 'experienceyears').slice(0, 20);
@@ -1536,7 +1537,8 @@ app.post('/api/hrm/candidates/:id/email-offer', requireAuth, async (req, res) =>
           <li>Total experience, last company, designation &amp; last CTC</li>
           <li>Experience letter, relieving letter &amp; last 3 salary slips</li>`
         : `<li>Bank details — account holder, bank, account number &amp; IFSC</li>
-          <li>Last semester marksheet or degree</li>`;
+          <li>Last semester marksheet or degree</li>
+          <li>Internship certificates, if any — all in one PDF (optional)</li>`;
       subject = `Joining Details Form | ${HRM_COMPANY}`;
       action = 'Joining Details Form — Email';
       bodyInner = `<p>Hello ${esc(displayName)},</p>
