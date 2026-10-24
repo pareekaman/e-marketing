@@ -9486,6 +9486,13 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
     const ewEntries = rows.flatMap(r => (Array.isArray(r.dates) ? r.dates : [])
       .flatMap(d => (d && Array.isArray(d.entries)) ? d.entries : []));
     if (ewEntries.length) await labelDailyClients(ewEntries, 'client').catch(() => {});
+    // Days the holder asked to have removed, still waiting for an approver.
+    if (rows.length && await ensureLeaveDayRemovalTable()) {
+      const [pend] = await db.query(
+        `SELECT leave_id, dates_json FROM leave_day_removals WHERE status='pending' AND leave_id IN (?)`, [rows.map(r => r.id)]);
+      const byLeave = new Map(pend.map(p => [p.leave_id, JSON.parse(p.dates_json || '[]')]));
+      for (const r of rows) r.pending_removal = byLeave.get(r.id) || null;
+    }
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -10011,6 +10018,176 @@ app.delete('/api/leaves/:id', requireAuth, async (req, res) => {
     });
     await db.query('DELETE FROM leave_requests WHERE id=?', [id]);
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Removing some days from a leave ─────────────────────────────────────────
+// A request covers several days; the holder may want one of them back. On a
+// pending request (or for an admin) the days go at once. On an approved one
+// it is a request of its own, decided by whoever may decide the leave itself,
+// and the days stay booked until then. No balance is stored anywhere — every
+// count reads dates_json — so dropping a day there gives it back everywhere.
+let _leaveDayRemovalTable = null;
+function ensureLeaveDayRemovalTable() {
+  if (!_leaveDayRemovalTable) _leaveDayRemovalTable = (async () => {
+    try {
+      await db.query(`CREATE TABLE IF NOT EXISTS leave_day_removals (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        leave_id INT NOT NULL,
+        user_id INT NOT NULL,
+        dates_json TEXT NOT NULL,
+        reason TEXT,
+        status ENUM('pending','approved','rejected') DEFAULT 'pending',
+        decided_by INT DEFAULT NULL,
+        decided_at TIMESTAMP NULL DEFAULT NULL,
+        decision_note TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_leave (leave_id),
+        INDEX idx_status (status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+      return true;
+    } catch (e) {
+      console.error('leave_day_removals:', e.message);
+      _leaveDayRemovalTable = null; // try again on the next request
+      return false;
+    }
+  })();
+  return _leaveDayRemovalTable;
+}
+
+// The request's days as dates_json items. A legacy row without dates_json
+// covers every day from from_date to to_date.
+function leaveDayItems(lr) {
+  if (lr.dates_json) {
+    try { const a = JSON.parse(lr.dates_json); if (Array.isArray(a)) return a; } catch {}
+  }
+  const out = [];
+  for (let d = _toDateStr(lr.from_date), end = _toDateStr(lr.to_date); d <= end; d = _addDays(d, 1)) out.push({ date: d });
+  return out;
+}
+
+// Same rule PUT /api/leaves/:id applies: the assigned approver, an admin
+// (admin_leaves), or a HOD in the approver's department — and a sole-approver
+// request only by its approver.
+async function canDecideLeave(session, lr) {
+  const uid = session.userId;
+  if (lr.sole_approver) return Number(lr.approver_id) === Number(uid);
+  if (Number(lr.approver_id) === Number(uid) || await userCanDo(session, 'admin_leaves')) return true;
+  const [[myInfo]] = await db.query('SELECT department, COALESCE(user_role, role) AS user_role FROM users WHERE id=?', [uid]);
+  const [[apInfo]] = await db.query('SELECT department FROM users WHERE id=?', [lr.approver_id]);
+  return !!(myInfo?.user_role === 'hod' && myInfo?.department && apInfo?.department === myInfo.department);
+}
+
+// Takes `dates` off the request. Removing every day deletes the request
+// (archived first, like any delete). Returns the number of days left.
+async function applyLeaveDayRemoval(lr, dates, req) {
+  const drop = new Set(dates.map(_toDateStr));
+  const left = leaveDayItems(lr).filter(d => !drop.has(_toDateStr(d.date)));
+  if (!left.length) {
+    await archiveDeleted('leave_requests', lr, req, {
+      summary: r => `Leave (${r.leave_type || ''}, ${r.status || ''}) for user ${r.user_id} — every day removed`,
+    });
+    await db.query('DELETE FROM leave_requests WHERE id=?', [lr.id]);
+    return 0;
+  }
+  const sorted = left.map(d => _toDateStr(d.date)).sort();
+  await db.query('UPDATE leave_requests SET dates_json=?, from_date=?, to_date=? WHERE id=?',
+    [JSON.stringify(left), sorted[0], sorted[sorted.length - 1], lr.id]);
+  return left.length;
+}
+
+app.post('/api/leaves/:id/remove-days', requireAuth, async (req, res) => {
+  try {
+    if (!(await ensureLeaveDayRemovalTable())) return res.status(500).json({ error: 'Could not prepare the removals table' });
+    const id = parseInt(req.params.id, 10);
+    const uid = req.session.userId;
+    const [[lr]] = await db.query('SELECT * FROM leave_requests WHERE id=?', [id]);
+    if (!lr) return res.status(404).json({ error: 'Not found' });
+    const isAdmin = await userCanDo(req.session, 'admin_leaves');
+    const isOwner = Number(lr.user_id) === Number(uid);
+    if (!isOwner && !isAdmin) return res.status(403).json({ error: 'You can only change your own requests' });
+    if (lr.status === 'rejected') return res.status(400).json({ error: 'This request was rejected — there are no days to remove' });
+    const have = new Set(leaveDayItems(lr).map(d => _toDateStr(d.date)));
+    const dates = [...new Set((Array.isArray(req.body.dates) ? req.body.dates : []).map(d => String(d).slice(0, 10)))];
+    if (!dates.length) return res.status(400).json({ error: 'Pick at least one day to remove' });
+    if (dates.some(d => !have.has(d))) return res.status(400).json({ error: 'That day is not part of this request' });
+    const reason = String(req.body.reason || '').trim();
+
+    if (lr.status === 'pending' || isAdmin) {
+      const left = await applyLeaveDayRemoval(lr, dates, req);
+      return res.json({ ok: true, applied: true, daysLeft: left });
+    }
+    // Approved, and the holder is not an admin: it needs an approver.
+    if (!reason) return res.status(400).json({ error: 'Please give a reason' });
+    const [[open]] = await db.query(`SELECT id FROM leave_day_removals WHERE leave_id=? AND status='pending'`, [id]);
+    if (open) return res.status(400).json({ error: 'A removal request is already waiting for approval on this leave' });
+    await db.query(`INSERT INTO leave_day_removals (leave_id, user_id, dates_json, reason) VALUES (?,?,?,?)`,
+      [id, uid, JSON.stringify(dates.sort()), reason]);
+    res.json({ ok: true, applied: false });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Pending removal requests this person may decide (Approvals → Leave Approvals).
+app.get('/api/leaves/day-removals', requireAuth, async (req, res) => {
+  try {
+    if (!(await ensureLeaveDayRemovalTable())) return res.json([]);
+    const [rows] = await db.query(`
+      SELECT r.id, r.leave_id, r.user_id, r.dates_json, r.reason,
+             DATE_FORMAT(r.created_at,'%Y-%m-%d %H:%i:%s') AS created_at,
+             lr.leave_type, lr.approver_id, lr.sole_approver, lr.dates_json AS leave_dates_json,
+             DATE_FORMAT(lr.from_date,'%Y-%m-%d') AS from_date, DATE_FORMAT(lr.to_date,'%Y-%m-%d') AS to_date,
+             u.name AS user_name, u.department AS user_department
+      FROM leave_day_removals r
+      JOIN leave_requests lr ON lr.id = r.leave_id
+      JOIN users u ON u.id = r.user_id
+      WHERE r.status='pending' AND r.user_id<>?
+      ORDER BY r.created_at DESC`, [req.session.userId]);
+    const out = [];
+    for (const r of rows) {
+      if (!(await canDecideLeave(req.session, r))) continue;
+      out.push({
+        id: r.id, leave_id: r.leave_id, user_name: r.user_name, user_department: r.user_department,
+        leave_type: r.leave_type, reason: r.reason, created_at: r.created_at,
+        remove: JSON.parse(r.dates_json || '[]'),
+        days: leaveDayItems({ dates_json: r.leave_dates_json, from_date: r.from_date, to_date: r.to_date }).map(d => _toDateStr(d.date)),
+      });
+    }
+    res.json(out);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/leaves/day-removals/:id', requireAuth, async (req, res) => {
+  try {
+    if (!(await ensureLeaveDayRemovalTable())) return res.status(500).json({ error: 'Could not prepare the removals table' });
+    const { action } = req.body;
+    if (!['approve', 'reject'].includes(action)) return res.status(400).json({ error: 'Invalid action' });
+    const [[r]] = await db.query('SELECT * FROM leave_day_removals WHERE id=?', [req.params.id]);
+    if (!r) return res.status(404).json({ error: 'Not found' });
+    if (r.status !== 'pending') return res.status(400).json({ error: 'Already decided' });
+    const [[lr]] = await db.query('SELECT * FROM leave_requests WHERE id=?', [r.leave_id]);
+    if (!lr) return res.status(404).json({ error: 'The leave no longer exists' });
+    if (Number(r.user_id) === Number(req.session.userId)) return res.status(403).json({ error: 'You cannot decide your own request' });
+    if (!(await canDecideLeave(req.session, lr))) return res.status(403).json({ error: 'Not authorized to act on this request' });
+    const note = String(req.body.note || '').trim() || null;
+    const newStatus = action === 'approve' ? 'approved' : 'rejected';
+    const [upd] = await db.query(
+      `UPDATE leave_day_removals SET status=?, decided_by=?, decided_at=NOW(), decision_note=? WHERE id=? AND status='pending'`,
+      [newStatus, req.session.userId, note, r.id]);
+    if (!upd.affectedRows) return res.status(409).json({ error: 'Already decided' });
+    const dates = JSON.parse(r.dates_json || '[]');
+    if (action === 'approve') await applyLeaveDayRemoval(lr, dates, req);
+
+    const target = await getNotifyTarget(r.user_id);
+    if (target) {
+      const [[apRow]] = await db.query('SELECT name FROM users WHERE id=? LIMIT 1', [req.session.userId]);
+      const msg = `Hello ${target.name || ''},\n\n${action === 'approve' ? '✅' : '❌'} *Day removal ${newStatus.toUpperCase()}*\n\n` +
+        `*Days:* ${dates.map(d => d.split('-').reverse().join('-')).join(', ')}\n` +
+        `*Decided by:* ${apRow?.name || 'Approver'}\n` +
+        (note ? `*Note:* ${note}\n` : '') +
+        `\n— E-Marketing Task Manager`;
+      sendMail(target.email, `Day removal ${newStatus}`, waTextToEmailHtml(msg)).catch(() => {});
+    }
+    res.json({ success: true, status: newStatus });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

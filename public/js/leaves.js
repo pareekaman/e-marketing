@@ -363,6 +363,13 @@ function lvItemHtml(r) {
   const countLabel = dates.length > 1
     ? `<span style="color:#94a3b8;font-weight:500"> · ${dates.length} day${dates.length===1?'':'s'}</span>` : '';
   const canDelete = (r.user_id === ME.id && r.status === 'pending') || canDo('admin_leaves');
+  // Taking some days off a request. Only worth offering when there is more
+  // than one day (a single day is just Delete), and not while a removal is
+  // already waiting for approval.
+  const canRemoveDays = dates.length > 1 && r.status !== 'rejected' && !r.pending_removal
+    && (r.user_id === ME.id || canDo('admin_leaves'));
+  const pendingRemoval = Array.isArray(r.pending_removal) && r.pending_removal.length
+    ? `<div style="font-size:11px;color:#d97706;font-weight:600;margin-top:4px">✂ Removal of ${r.pending_removal.map(fmtDate).join(', ')} awaiting approval</div>` : '';
   return `<div class="lv-item">
     <div class="lv-item-main">
       <div class="lv-item-row1">
@@ -381,7 +388,8 @@ function lvItemHtml(r) {
     </div>
     <div class="lv-item-actions">
       <div class="lv-item-date">${dateLine}${countLabel}</div>
-      ${canDelete ? `<div class="lv-item-btns"><button class="lv-btn-delete" onclick="deleteLeave(${r.id})">🗑 Delete</button></div>` : ''}
+      ${pendingRemoval}
+      ${(canDelete || canRemoveDays) ? `<div class="lv-item-btns">${canRemoveDays ? `<button class="lv-btn-delete" style="color:#b45309;border-color:#fcd34d" onclick="openLeaveRemoveDays(${r.id})">✂ Remove days</button>` : ''}${canDelete ? `<button class="lv-btn-delete" onclick="deleteLeave(${r.id})">🗑 Delete</button>` : ''}</div>` : ''}
     </div>
   </div>`;
 }
@@ -813,22 +821,101 @@ async function deleteLeave(id){
   loadApprovalBadge();
 }
 
+// ── Remove some days from a request ──────────────────
+// Pending request (or an admin): the days go at once. Approved: it becomes a
+// request the leave's approver decides on Approvals → Leave Approvals.
+let LV_REMOVE_ID = null;
+function openLeaveRemoveDays(id){
+  const lr = LEAVE_DATA.find(x => x.id === id);
+  if (!lr) return;
+  LV_REMOVE_ID = id;
+  const dates = Array.isArray(lr.dates) && lr.dates.length ? lr.dates : [{ date: lr.from_date }];
+  const direct = lr.status === 'pending' || canDo('admin_leaves');
+  document.getElementById('lvRemoveErr').style.display = 'none';
+  document.getElementById('lvRemoveReason').value = '';
+  document.getElementById('lvRemoveInfo').textContent =
+    `${LEAVE_TYPE_LABEL[lr.leave_type] || lr.leave_type} — tick the days to remove.`;
+  document.getElementById('lvRemoveDays').innerHTML = dates.map(d => `
+    <label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:500;color:#1e293b">
+      <input type="checkbox" value="${dtEscape(String(d.date).slice(0,10))}" style="width:auto"> ${fmtDate(d.date)}${lr.leave_type === 'extra_working' && d.hours ? ` <span class="lv-hours-pill">${d.hours}h</span>` : ''}
+    </label>`).join('');
+  document.getElementById('lvRemoveHint').textContent = direct
+    ? 'The days are removed straight away.'
+    : 'This leave is already approved, so your approver has to approve the removal. Until then the days stay booked.';
+  document.getElementById('lvRemoveReasonGroup').style.display = direct ? 'none' : 'block';
+  document.getElementById('lvRemoveSubmit').textContent = direct ? 'Remove' : 'Send for approval';
+  document.getElementById('leaveRemoveDaysModal').classList.add('open');
+}
+
+async function submitLeaveRemoveDays(){
+  const dates = [...document.querySelectorAll('#lvRemoveDays input:checked')].map(i => i.value);
+  const reason = document.getElementById('lvRemoveReason').value.trim();
+  const err = document.getElementById('lvRemoveErr');
+  const fail = m => { err.textContent = m; err.style.display = 'block'; };
+  if (!dates.length) return fail('Pick at least one day to remove');
+  const lr = LEAVE_DATA.find(x => x.id === LV_REMOVE_ID);
+  if (lr && dates.length === (lr.dates || []).length && !await appConfirm('This removes every day, which deletes the whole request. Continue?')) return;
+  const r = await api(`/api/leaves/${LV_REMOVE_ID}/remove-days`, 'POST', { dates, reason });
+  if (r.error) return fail(r.error);
+  closeModal('leaveRemoveDaysModal');
+  showToast(r.applied ? '✂ Days removed' : '📨 Sent for approval');
+  loadLeaves();
+}
+
+async function decideLeaveRemoval(id, action){
+  let note = '';
+  if (action === 'reject') {
+    note = prompt('Reason for rejecting (optional):');
+    if (note === null) return;
+  }
+  const r = await api('/api/leaves/day-removals/' + id, 'PUT', { action, note });
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast(action === 'approve' ? '✅ Days removed' : '❌ Removal rejected');
+  loadLeaveApprovals();
+  loadApprovalBadge();
+}
+
+function lvRemovalsHtml(list){
+  if (!list.length) return '';
+  return `<div style="padding:12px 14px 6px;font-weight:700;font-size:13px;color:#0f172a">✂ Day removal requests</div>
+    <table>
+      <thead><tr><th>Employee</th><th>Type</th><th>Days to remove</th><th>Requested On</th><th>Reason</th><th>Action</th></tr></thead>
+      <tbody>${list.map(x => `<tr>
+        <td><b>${dtEscape(x.user_name)}</b>${x.user_department ? `<br><span style="color:#94a3b8;font-size:11px">${dtEscape(x.user_department)}</span>` : ''}</td>
+        <td><span class="lv-type-pill lv-type-${x.leave_type}">${LEAVE_TYPE_ICON[x.leave_type]||''} ${LEAVE_TYPE_LABEL[x.leave_type]||x.leave_type}</span></td>
+        <td style="font-size:12px;line-height:1.5">${x.days.map(d => x.remove.includes(d) ? `<b style="color:#dc2626;text-decoration:line-through">${fmtDate(d)}</b>` : fmtDate(d)).join(' · ')}<br><span style="color:#94a3b8;font-size:11px">${x.remove.length} of ${x.days.length} day${x.days.length===1?'':'s'}</span></td>
+        <td style="color:#64748b;font-size:12px;white-space:nowrap">${x.created_at ? fmtDate(x.created_at.slice(0,10)) : '—'}</td>
+        <td style="font-size:12px;max-width:280px">${dtEscape(x.reason || '')}</td>
+        <td style="white-space:nowrap">
+          <button class="action-btn done" onclick="decideLeaveRemoval(${x.id},'approve')">Approve</button>
+          <button class="action-btn delete" style="margin-left:6px" onclick="decideLeaveRemoval(${x.id},'reject')">Reject</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+}
+
 async function loadLeaveApprovals(){
   const wrap = document.getElementById('leaveApprovalsContent');
   if (!wrap) return;
   try {
-    const list = await api('/api/leaves?scope=approvals&status=pending');
+    const [list, rem] = await Promise.all([
+      api('/api/leaves?scope=approvals&status=pending'),
+      api('/api/leaves/day-removals'),
+    ]);
     const rows = Array.isArray(list) ? list : [];
+    const removals = Array.isArray(rem) ? rem : [];
     lvRegisterPool(rows);
 
     // Update tab badge
-    setApprovalTabBadge('apprLeaveBadge', rows.length);
+    setApprovalTabBadge('apprLeaveBadge', rows.length + removals.length);
 
     if (!rows.length) {
-      wrap.innerHTML = `<div class="empty" style="padding:36px">✅ No pending leave approvals!</div>`;
+      wrap.innerHTML = removals.length
+        ? lvRemovalsHtml(removals)
+        : `<div class="empty" style="padding:36px">✅ No pending leave approvals!</div>`;
       return;
     }
-    wrap.innerHTML = `
+    wrap.innerHTML = lvRemovalsHtml(removals) + `
       <table>
         <thead><tr>
           <th>Employee</th><th>Type</th><th>Applied For</th><th>Applied On</th><th>Reason</th><th>Action</th>
