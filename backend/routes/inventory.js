@@ -38,6 +38,15 @@ const invReturnReason = r =>
 // back, not that it's finished.
 const INV_HOLDER_REASONS = new Set(['offboarding', 'damaged']);
 
+// The item's open issue, if any — pending (waiting for an admin) or approved
+// (faulty until marked repaired). At most one is open at a time.
+const INV_ISSUE_COLS = `iss.id AS issue_id, iss.status AS issue_status, DATE_FORMAT(iss.issue_date,'%Y-%m-%d') AS issue_date, iss.remark AS issue_remark`;
+const INV_ISSUE_JOIN = `LEFT JOIN inventory_issues iss ON iss.id = (
+  SELECT MAX(x.id) FROM inventory_issues x WHERE x.item_id = i.id AND x.status IN ('pending','approved'))`;
+// Approving a fault is the custodian's call: the admin role, or Admin on the
+// Inventory page from Access Control — the same people who can delete items.
+const invIssueApprover = async s => s.role === 'admin' || await userCanDo(s, 'admin_inventory');
+
 // Get all items. Anyone who may EDIT inventory sees the whole list; everyone
 // else sees only what is assigned to them.
 app.get('/api/inventory/items', requireAuth, async (req, res) => {
@@ -61,21 +70,23 @@ app.get('/api/inventory/items', requireAuth, async (req, res) => {
       [rows] = await db.query(`
         SELECT i.*, u.name AS assigned_to_name, u.id AS assigned_to_id,
                a.id AS assignment_id, a.assigned_at, a.handover_status, a.return_reason,
-               cu.name AS created_by_name
+               cu.name AS created_by_name, ${INV_ISSUE_COLS}
         FROM inventory_items i
         LEFT JOIN inventory_assignments a ON a.item_id = i.id AND a.handover_status IN ('active','pending_handover')
         LEFT JOIN users u ON u.id = a.user_id
         LEFT JOIN users cu ON cu.id = i.created_by
+        ${INV_ISSUE_JOIN}
         ORDER BY i.created_at DESC`);
     } else {
       [rows] = await db.query(`
         SELECT i.*, u.name AS assigned_to_name, u.id AS assigned_to_id,
                a.id AS assignment_id, a.assigned_at, a.handover_status, a.return_reason,
-               cu.name AS created_by_name
+               cu.name AS created_by_name, ${INV_ISSUE_COLS}
         FROM inventory_items i
         JOIN inventory_assignments a ON a.item_id = i.id AND a.user_id = ? AND a.handover_status IN ('active','pending_handover')
         JOIN users u ON u.id = a.user_id
         LEFT JOIN users cu ON cu.id = i.created_by
+        ${INV_ISSUE_JOIN}
         ORDER BY i.created_at DESC`, [req.session.userId]);
     }
     res.json(rows);
@@ -299,6 +310,79 @@ app.post('/api/inventory/return/:assignment_id', requireAuth, async (req, res) =
     if (!upd.affectedRows) return res.status(400).json({ error: 'This assignment was already returned' });
     await db.query(`UPDATE inventory_items SET status=? WHERE id=?`, [mapped.itemStatus, a.item_id]);
     res.json({ ok: true, itemStatus: mapped.itemStatus });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Equipment issues: the holder reports a fault, an admin approves it ──
+
+// Report a fault on equipment you hold. The date defaults to today and may
+// not be in the future.
+app.post('/api/inventory/issues', requireAuth, async (req, res) => {
+  try {
+    const { item_id } = req.body;
+    const remark = String(req.body.remark || '').trim();
+    const today = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
+    const issueDate = String(req.body.issue_date || today);
+    if (!item_id) return res.status(400).json({ error: 'item_id required' });
+    if (!remark) return res.status(400).json({ error: 'Please describe the problem' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(issueDate) || issueDate > today) return res.status(400).json({ error: 'Invalid date' });
+    const [[held]] = await db.query(
+      `SELECT id FROM inventory_assignments WHERE item_id=? AND user_id=? AND handover_status IN ('active','pending_handover')`,
+      [item_id, req.session.userId]);
+    if (!held) return res.status(403).json({ error: 'You can only report issues on equipment assigned to you' });
+    const [[open]] = await db.query(
+      `SELECT id FROM inventory_issues WHERE item_id=? AND status IN ('pending','approved')`, [item_id]);
+    if (open) return res.status(400).json({ error: 'An issue is already open on this item' });
+    await db.query(
+      `INSERT INTO inventory_issues (item_id, reported_by, issue_date, remark) VALUES (?,?,?,?)`,
+      [item_id, req.session.userId, issueDate, remark]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Issues for the Approvals page. ?status=pending (default) or all.
+app.get('/api/inventory/issues', requireAuth, async (req, res) => {
+  try {
+    if (!(await invIssueApprover(req.session))) return res.status(403).json({ error: 'Admin only' });
+    const pendingOnly = req.query.status !== 'all';
+    const [rows] = await db.query(`
+      SELECT iss.*, DATE_FORMAT(iss.issue_date,'%Y-%m-%d') AS issue_date, i.name AS item_name, i.type AS item_type, i.brand, i.model, i.serial_number,
+             ru.name AS reported_by_name, du.name AS decided_by_name
+      FROM inventory_issues iss
+      JOIN inventory_items i ON i.id = iss.item_id
+      LEFT JOIN users ru ON ru.id = iss.reported_by
+      LEFT JOIN users du ON du.id = iss.decided_by
+      ${pendingOnly ? "WHERE iss.status='pending'" : ''}
+      ORDER BY iss.created_at DESC`);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Approve or reject a reported issue. Only a pending one can be decided, and
+// only once.
+app.post('/api/inventory/issues/:id/decide', requireAuth, async (req, res) => {
+  try {
+    if (!(await invIssueApprover(req.session))) return res.status(403).json({ error: 'Admin only' });
+    const { decision } = req.body;
+    if (!['approved', 'rejected'].includes(decision)) return res.status(400).json({ error: 'Invalid decision' });
+    const [upd] = await db.query(
+      `UPDATE inventory_issues SET status=?, decided_by=?, decided_at=NOW(), decision_note=?
+        WHERE id=? AND status='pending'`,
+      [decision, req.session.userId, String(req.body.note || '').trim(), req.params.id]);
+    if (!upd.affectedRows) return res.status(400).json({ error: 'This issue was already decided' });
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// The approved fault has been fixed — the item counts as fine again.
+app.post('/api/inventory/issues/:id/resolve', requireAuth, async (req, res) => {
+  try {
+    if (!(await invIssueApprover(req.session))) return res.status(403).json({ error: 'Admin only' });
+    const [upd] = await db.query(
+      `UPDATE inventory_issues SET status='resolved', resolved_by=?, resolved_at=NOW() WHERE id=? AND status='approved'`,
+      [req.session.userId, req.params.id]);
+    if (!upd.affectedRows) return res.status(400).json({ error: 'Only an approved issue can be marked repaired' });
+    res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 };

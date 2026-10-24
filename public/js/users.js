@@ -354,6 +354,9 @@ function switchApprovalTab(tab, el) {
   if (payPanel) payPanel.style.display = tab==='payment' ? 'block' : 'none';
   const mdoPanel = document.getElementById('mdoApprovalsPanel');
   if (mdoPanel) mdoPanel.style.display = tab==='mdo' ? 'block' : 'none';
+  const invIssuePanel = document.getElementById('invIssueApprovalsPanel');
+  if (invIssuePanel) invIssuePanel.style.display = tab==='invissue' ? 'block' : 'none';
+  if (tab==='invissue') loadInvIssueApprovals();
   if (tab==='transfer') loadTransferApprovals();
   if (tab==='leave') loadLeaveApprovals();
   if (tab==='wa') loadWaDelegations();
@@ -380,6 +383,11 @@ async function loadApprovals() {
   // MDO Approvals tab — Purvi Saini only
   if (ME.canReviewMdoTasks) {
     document.getElementById('apprTabMdo').style.display = 'block';
+  }
+  // Equipment Issues tab — whoever can approve a reported fault
+  if (invIsIssueApprover()) {
+    document.getElementById('apprTabInvIssue').style.display = 'block';
+    loadInvIssueApprovals();
   }
   // Also pre-load leave approvals (so badge stays in sync)
   loadLeaveApprovals();

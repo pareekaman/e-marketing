@@ -690,6 +690,26 @@ const _startupMigrationsPromise = (async () => {
   await sa(`ALTER TABLE inventory_assignments
     ADD COLUMN return_reason ENUM('damaged','retired','offboarding') DEFAULT NULL AFTER handover_notes`);
 
+  // A fault the holder reports on their equipment. It only counts once an
+  // admin approves it on the Approvals page; 'resolved' is the admin marking
+  // the item repaired.
+  await sa(`CREATE TABLE IF NOT EXISTS inventory_issues (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    item_id INT NOT NULL,
+    reported_by INT NOT NULL,
+    issue_date DATE NOT NULL,
+    remark TEXT NOT NULL,
+    status ENUM('pending','approved','rejected','resolved') DEFAULT 'pending',
+    decided_by INT DEFAULT NULL,
+    decided_at TIMESTAMP NULL DEFAULT NULL,
+    decision_note TEXT,
+    resolved_by INT DEFAULT NULL,
+    resolved_at TIMESTAMP NULL DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_item (item_id),
+    INDEX idx_status (status)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+
   // ── Deleted-records archive ───────────────────────────
   // Every user-facing delete snapshots the row here before the hard DELETE,
   // so nothing ever leaves the database unrecoverably. Generic by design:

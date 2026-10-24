@@ -614,6 +614,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <div class="tab" id="apprTabWa" onclick="switchApprovalTab('wa',this)" style="display:none">📱 WhatsApp Tasks <span id="apprWaBadge" style="display:none;background:#25d366;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
       <div class="tab" id="apprTabPayment" onclick="switchApprovalTab('payment',this)" style="display:none">💳 Payment Approvals <span id="apprPaymentBadge" style="display:none;background:var(--accent);color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
       <div class="tab" id="apprTabMdo" onclick="switchApprovalTab('mdo',this)" style="display:none">🧾 MDO Approvals</div>
+      <div class="tab" id="apprTabInvIssue" onclick="switchApprovalTab('invissue',this)" style="display:none">📦 Equipment Issues <span id="apprInvIssueBadge" style="display:none;background:#ef4444;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px">0</span></div>
     </div>
 
     <!-- Task approvals panel -->
@@ -681,6 +682,13 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
     <div id="mdoApprovalsPanel" style="display:none">
       <div id="mdoTasksList" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
         <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Equipment issue approvals panel (admin / Inventory Admin only) -->
+    <div id="invIssueApprovalsPanel" style="display:none">
+      <div id="invIssueApprovalsContent" class="flat-tasks-table" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden">
+        <div class="empty">Loading…</div>
       </div>
     </div>
   </div>
@@ -2118,6 +2126,30 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal('invReturnModal')">Cancel</button>
         <button class="btn btn-primary" onclick="doReturn()">Confirm Return</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- INVENTORY: Report Issue Modal — the holder reports a fault; an admin
+       approves it from the Approvals page. -->
+  <div class="modal-overlay" id="invIssueModal">
+    <div class="modal" style="width:420px">
+      <button class="modal-close" onclick="closeModal('invIssueModal')">×</button>
+      <h3>Report Issue</h3>
+      <div class="alert error" id="invIssueErr" style="display:none"></div>
+      <p style="font-size:13px;color:#64748b;margin-bottom:14px" id="invIssueDesc"></p>
+      <div class="form-group">
+        <label>Date *</label>
+        <input type="date" id="invIssueDate">
+      </div>
+      <div class="form-group">
+        <label>What's the problem? *</label>
+        <textarea id="invIssueRemark" rows="3" placeholder="e.g. The screen stopped working today"></textarea>
+      </div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:8px">An admin will review this on the Approvals page.</div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('invIssueModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="doReportInvIssue()">Submit</button>
       </div>
     </div>
   </div>

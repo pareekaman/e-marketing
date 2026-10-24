@@ -158,6 +158,14 @@ function invCard(item, isAdmin) {
     // pending, the card shows the badge and no button.
     actions += `<button class="action-btn revise" onclick="requestInvReturn(${item.assignment_id},${jsArg(item.name)})">Return</button>`;
   }
+  // Anyone holding the item can report a fault, admins included, so this sits
+  // outside the branches above. One open issue per item at a time.
+  if (_invTab === 'mine' && item.assignment_id && !item.issue_id) {
+    actions += `<button class="action-btn delete" onclick="openInvIssueModal(${item.id},${jsArg(item.name)})">Report Issue</button>`;
+  }
+  if (_invTab === 'all' && item.issue_status === 'approved' && invIsIssueApprover()) {
+    actions += `<button class="action-btn done" onclick="resolveInvIssue(${item.issue_id})">Mark Repaired</button>`;
+  }
 
   return `<div onclick="openInvDetailModal(${item.id})" title="Click for full details"
       style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);cursor:pointer">
@@ -171,6 +179,7 @@ function invCard(item, isAdmin) {
       ${addedByLine}
       ${assignedBadge}
       ${item.handover_status==='pending_handover'?`<div style="font-size:11px;color:#ef4444;font-weight:600;margin-top:4px">⚠️ Handover Pending${item.return_reason?` · ${esc(INV_RETURN_REASON_LABELS[item.return_reason]||item.return_reason)}`:''}</div>`:''}
+      ${invIssueLine(item)}
       ${actions?`<div onclick="event.stopPropagation()" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${actions}</div>`:''}
     </div>
   </div>`;
@@ -208,9 +217,96 @@ function openInvDetailModal(id) {
     row('Notes', item.notes) +
     row('Return reason', INV_RETURN_REASON_LABELS[item.return_reason] || item.return_reason) +
     (item.handover_status === 'pending_handover'
-      ? `<div style="margin-top:10px;font-size:12px;color:#ef4444;font-weight:600">⚠️ Handover Pending</div>` : '');
+      ? `<div style="margin-top:10px;font-size:12px;color:#ef4444;font-weight:600">⚠️ Handover Pending</div>` : '') +
+    (item.issue_id
+      ? `<div style="margin-top:10px;font-size:12px;color:#334155">${invIssueLine(item)}<div style="margin-top:4px;white-space:pre-wrap">${esc(item.issue_remark||'')}</div></div>` : '');
 
   document.getElementById('invDetailModal').classList.add('open');
+}
+
+// ── Equipment issues ──────────────────────────────────
+// The holder reports a fault; it only counts once an admin approves it on the
+// Approvals page. Mirrors invIssueApprover in routes/inventory.js.
+let _invIssueItemId = null;
+const invIsIssueApprover = () => ME.role === 'admin' || canDo('admin_inventory');
+
+function invIssueLine(item) {
+  if (item.issue_status === 'pending') {
+    return `<div style="font-size:11px;color:#d97706;font-weight:600;margin-top:4px">🛠 Issue reported ${fmtDate(item.issue_date)} · awaiting approval</div>`;
+  }
+  if (item.issue_status === 'approved') {
+    return `<div style="font-size:11px;color:#ef4444;font-weight:600;margin-top:4px">❌ Faulty since ${fmtDate(item.issue_date)}</div>`;
+  }
+  return '';
+}
+
+function openInvIssueModal(itemId, itemName) {
+  _invIssueItemId = itemId;
+  document.getElementById('invIssueDesc').textContent = itemName;
+  const today = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
+  const d = document.getElementById('invIssueDate');
+  d.value = today;
+  d.max = today;
+  document.getElementById('invIssueRemark').value = '';
+  document.getElementById('invIssueErr').style.display = 'none';
+  document.getElementById('invIssueModal').classList.add('open');
+}
+
+async function doReportInvIssue() {
+  const issue_date = document.getElementById('invIssueDate').value;
+  const remark = document.getElementById('invIssueRemark').value.trim();
+  if (!issue_date) { showInvErr('invIssueErr', 'Please pick a date'); return; }
+  if (!remark) { showInvErr('invIssueErr', 'Please describe the problem'); return; }
+  const r = await api('/api/inventory/issues', 'POST', { item_id: _invIssueItemId, issue_date, remark });
+  if (r.error) { showInvErr('invIssueErr', r.error); return; }
+  closeModal('invIssueModal');
+  showToast('Issue reported — an admin will review it.');
+  loadInventory();
+}
+
+async function resolveInvIssue(issueId) {
+  if (!confirm('Mark this item as repaired?')) return;
+  const r = await api(`/api/inventory/issues/${issueId}/resolve`, 'POST', {});
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast('Marked as repaired.');
+  loadInventory();
+}
+
+// Approvals page → Equipment Issues tab.
+async function loadInvIssueApprovals() {
+  const el = document.getElementById('invIssueApprovalsContent');
+  const rows = await api('/api/inventory/issues');
+  const list = Array.isArray(rows) ? rows : [];
+  setApprovalTabBadge('apprInvIssueBadge', list.length);
+  if (!el) return;
+  if (!list.length) {
+    el.innerHTML = '<div class="empty">✅ No pending equipment issues!</div>';
+    return;
+  }
+  el.innerHTML = `<table>
+    <thead><tr><th>Reported By</th><th>Item</th><th>Issue Date</th><th>Remark</th><th>Approve / Reject</th></tr></thead>
+    <tbody>${list.map(x => `<tr>
+      <td style="font-weight:600">${esc(x.reported_by_name||'—')}</td>
+      <td><div style="font-weight:600">${invTypeEmoji(x.item_type)} ${esc(x.item_name||'')}</div><div style="font-size:11px;color:#64748b">${esc([x.brand, x.model].filter(Boolean).join(' · '))}${x.serial_number?' · SN:'+esc(x.serial_number):''}</div></td>
+      <td style="font-size:12px;color:#64748b">${fmtDate(x.issue_date)}</td>
+      <td style="max-width:320px;white-space:pre-wrap;word-break:break-word">${esc(x.remark||'')}</td>
+      <td>
+        <button class="action-btn done" onclick="decideInvIssue(${x.id},'approved')">Approve</button>
+        <button class="action-btn delete" style="margin-left:6px" onclick="decideInvIssue(${x.id},'rejected')">Reject</button>
+      </td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+async function decideInvIssue(id, decision) {
+  let note = '';
+  if (decision === 'rejected') {
+    note = prompt('Reason for rejecting (optional):');
+    if (note === null) return;
+  }
+  const r = await api(`/api/inventory/issues/${id}/decide`, 'POST', { decision, note });
+  if (r.error) { showToast(r.error, 'error'); return; }
+  showToast(decision === 'approved' ? 'Issue approved — item marked faulty.' : 'Issue rejected.');
+  loadInvIssueApprovals();
 }
 
 function invTypeEmoji(type) {
