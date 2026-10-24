@@ -865,8 +865,8 @@ async function submitLeaveRemoveDays(){
 async function decideLeaveRemoval(id, action){
   let note = '';
   if (action === 'reject') {
-    note = prompt('Reason for rejecting (optional):');
-    if (note === null) return;
+    note = await appPromptText('Reason for rejecting (optional):', { title: 'Reject Removal', okLabel: 'Reject', okClass: 'btn btn-danger' });
+    if (typeof note !== 'string') return;
   }
   const r = await api('/api/leaves/day-removals/' + id, 'PUT', { action, note });
   if (r.error) { showToast(r.error, 'error'); return; }

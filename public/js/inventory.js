@@ -265,7 +265,7 @@ async function doReportInvIssue() {
 }
 
 async function resolveInvIssue(issueId) {
-  if (!confirm('Mark this item as repaired?')) return;
+  if (!await appConfirm('Mark this item as repaired? It will count as working again.', 'Mark Repaired')) return;
   const r = await api(`/api/inventory/issues/${issueId}/resolve`, 'POST', {});
   if (r.error) { showToast(r.error, 'error'); return; }
   showToast('Marked as repaired.');
@@ -300,13 +300,14 @@ async function loadInvIssueApprovals() {
 async function decideInvIssue(id, decision) {
   let note = '';
   if (decision === 'rejected') {
-    note = prompt('Reason for rejecting (optional):');
-    if (note === null) return;
+    note = await appPromptText('Reason for rejecting (optional):', { title: 'Reject Issue', okLabel: 'Reject', okClass: 'btn btn-danger' });
+    if (typeof note !== 'string') return;
   }
   const r = await api(`/api/inventory/issues/${id}/decide`, 'POST', { decision, note });
   if (r.error) { showToast(r.error, 'error'); return; }
   showToast(decision === 'approved' ? 'Issue approved — item marked faulty.' : 'Issue rejected.');
   loadInvIssueApprovals();
+  loadApprovalBadge();
 }
 
 function invTypeEmoji(type) {

@@ -309,18 +309,22 @@ async function uploadUsersCSV() {
 
 // ══════════════════════════════════════════════════════
 async function loadApprovalBadge() {
-  const [d, lv, pr] = await Promise.all([
+  const [d, lv, pr, rem, iss] = await Promise.all([
     api('/api/approvals/count'),
     api('/api/leaves/pending-count'),
     // Was ME.name === 'Naman Gupta'. The endpoint is approver-gated anyway, so
     // a mismatch here only ever meant a wasted 403 or a badge that never showed.
-    ME.canApprovePayments ? api('/api/payment-requests?status=pending') : Promise.resolve([])
+    ME.canApprovePayments ? api('/api/payment-requests?status=pending') : Promise.resolve([]),
+    // Day-removal requests on approved leaves — they share the Leave tab.
+    api('/api/leaves/day-removals'),
+    invIsIssueApprover() ? api('/api/inventory/issues') : Promise.resolve([])
   ]);
   const taskCnt    = d.count  || 0;
-  const leaveCnt   = lv?.count || 0;
+  const leaveCnt   = (lv?.count || 0) + (Array.isArray(rem) ? rem.length : 0);
   const paymentCnt = Array.isArray(pr) ? pr.filter(r => r.bank_name !== '__system__' && r.status === 'pending').length : 0;
+  const issueCnt   = Array.isArray(iss) ? iss.length : 0;
   const waCnt      = 0;
-  const total = taskCnt + leaveCnt + paymentCnt;
+  const total = taskCnt + leaveCnt + paymentCnt + issueCnt;
   document.querySelectorAll('.nav-approval-badge').forEach(badge => {
     if (total > 0) {
       badge.textContent = total;
@@ -332,6 +336,7 @@ async function loadApprovalBadge() {
   // Approvals page tab badges
   setApprovalTabBadge('apprTaskBadge', taskCnt);
   setApprovalTabBadge('apprLeaveBadge', leaveCnt);
+  setApprovalTabBadge('apprInvIssueBadge', issueCnt);
   setApprovalTabBadge('apprWaBadge', waCnt);
   document.querySelectorAll('.nav-wa-badge').forEach(waDelegBadge => {
     if (waCnt > 0) { waDelegBadge.textContent = waCnt; waDelegBadge.style.display = 'flex'; }
