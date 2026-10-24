@@ -285,7 +285,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         const assignerName = aprRows[0]?.name || 'Admin';
         let clientName = '';
         if (enforcedClientId) {
-          const [[cli]] = await db.query('SELECT name FROM clients WHERE id=? LIMIT 1', [enforcedClientId]);
+          const [[cli]] = await db.query("SELECT COALESCE(NULLIF(TRIM(brand_name),''), name) AS name FROM clients WHERE id=? LIMIT 1", [enforcedClientId]);
           clientName = cli?.name || '';
         }
         if (target) {

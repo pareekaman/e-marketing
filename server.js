@@ -5600,7 +5600,7 @@ async function buildPendingSummaryMessages() {
   const [delRows] = await db.query(`
     SELECT t.id, t.description, t.priority,
            DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
-           u.name AS doer_name, c.name AS client_name
+           u.name AS doer_name, COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name
     FROM delegation_tasks t
     JOIN users u ON t.assigned_to=u.id
     LEFT JOIN clients c ON t.client_id=c.id
@@ -5611,7 +5611,7 @@ async function buildPendingSummaryMessages() {
   const [chlRows] = await db.query(`
     SELECT t.id, t.description, t.priority,
            DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
-           u.name AS doer_name, c.name AS client_name
+           u.name AS doer_name, COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name
     FROM checklist_tasks t
     JOIN users u ON t.assigned_to=u.id
     LEFT JOIN clients c ON t.client_id=c.id
@@ -6491,7 +6491,7 @@ async function remindHandlersOfMissingDueDates({ force = false } = {}) {
   const [rows] = await db.query(
     `SELECT t.id, t.description, t.assigned_to,
             TIMESTAMPDIFF(HOUR, t.created_at, NOW()) AS waiting_hrs,
-            c.name AS client_name,
+            COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name,
             d.name AS handler_name, d.phone AS handler_phone
        FROM delegation_tasks t
        JOIN users a ON t.assigned_by = a.id
@@ -6940,7 +6940,7 @@ async function buildDepartmentPendingDigest(dept) {
 
   const [rows] = await db.query(
     `SELECT t.id, t.description, t.due_date, t.awaiting_due_date, t.assigned_to,
-            c.name AS client_name
+            COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name
        FROM delegation_tasks t
        JOIN users u ON t.assigned_to = u.id
        LEFT JOIN clients c ON t.client_id = c.id
@@ -10798,7 +10798,7 @@ async function sendMeetingNotification(meetingId, action) {
               TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
               TIME_FORMAT(m.end_time,'%H:%i')   AS end_time,
               m.meet_link, m.status,
-              c.name AS client_name, u.name AS organizer_name
+              COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name, u.name AS organizer_name
        FROM meetings m
        LEFT JOIN clients c ON m.client_id = c.id
        LEFT JOIN users   u ON m.organizer_id = u.id
