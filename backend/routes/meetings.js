@@ -60,7 +60,7 @@ app.get('/api/meetings', requireAuth, async (req, res) => {
               TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
               TIME_FORMAT(m.end_time,'%H:%i')   AS end_time,
               m.meet_link, m.status, m.created_at, m.zoom_meeting_id, m.zoom_passcode,
-              c.name AS client_name, u.name AS organizer_name
+              COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name, u.name AS organizer_name
        FROM meetings m
        LEFT JOIN clients c ON m.client_id = c.id
        LEFT JOIN users   u ON m.organizer_id = u.id
@@ -115,7 +115,7 @@ app.get('/api/meetings/:id', requireAuth, async (req, res) => {
               TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
               TIME_FORMAT(m.end_time,'%H:%i')   AS end_time,
               m.meet_link, m.status, m.recurrence_group_id, m.zoom_meeting_id, m.zoom_passcode,
-              c.name AS client_name, u.name AS organizer_name
+              COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name, u.name AS organizer_name
        FROM meetings m
        LEFT JOIN clients c ON m.client_id = c.id
        LEFT JOIN users   u ON m.organizer_id = u.id

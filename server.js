@@ -4651,12 +4651,12 @@ app.get('/api/calendar/tasks', requireAuth, async (req, res) => {
 
     const [del] = await db.query(
       `SELECT t.id, t.description, t.status, COALESCE(t.priority,'low') AS priority,
-              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS date, c.name AS client_name
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS date, COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name
          FROM delegation_tasks t LEFT JOIN clients c ON t.client_id=c.id
         WHERE t.assigned_to=? AND t.due_date BETWEEN ? AND ?`, [uid, from, to]);
     const [chl] = await db.query(
       `SELECT t.id, t.description, t.status, COALESCE(t.priority,'low') AS priority,
-              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS date, c.name AS client_name
+              DATE_FORMAT(t.due_date,'%Y-%m-%d') AS date, COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name
          FROM checklist_tasks t LEFT JOIN clients c ON t.client_id=c.id
         WHERE t.assigned_to=? AND t.due_date BETWEEN ? AND ?`, [uid, from, to]);
 

@@ -902,7 +902,7 @@ module.exports = function registerChatbotRoutes(app, deps) {
         WHERE mt.user_id = ? AND m.organizer_id <> ? AND m.meeting_date BETWEEN ? AND ?`, [userId, userId, start, end]);
     const [list] = await db.query(
       `SELECT m.title, m.status, DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS d,
-              TIME_FORMAT(m.start_time,'%H:%i') AS t, c.name AS client_name,
+              TIME_FORMAT(m.start_time,'%H:%i') AS t, COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name,
               CASE WHEN m.organizer_id = ? THEN 'Organizer' ELSE 'Attendee' END AS role
          FROM meetings m LEFT JOIN clients c ON m.client_id = c.id
         WHERE (m.organizer_id = ? OR EXISTS (SELECT 1 FROM meeting_attendees mt WHERE mt.meeting_id = m.id AND mt.user_id = ?))
