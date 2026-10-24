@@ -306,6 +306,7 @@ app.get('/api/clients', requireAuth, async (req, res) => {
     const scope = req.query.scope === 'master' ? await clientMasterScope(req) : null;
     const [rows] = await db.query(
       `SELECT c.id, c.name, c.brand_name, c.billing_name, c.handler_id, c.logo_url, COALESCE(c.is_active,1) AS is_active,
+              DATE_FORMAT(c.created_at,'%Y-%m-%d') AS added_on,
               u.name AS handler_name,
               (SELECT GROUP_CONCAT(u2.name ORDER BY u2.name SEPARATOR '||')
                FROM client_handlers ch JOIN users u2 ON ch.user_id = u2.id

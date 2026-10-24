@@ -134,7 +134,7 @@ async function cvLoad(){
 function cvRender(){
   const wrap = document.getElementById('cvListWrap');
   const q = (document.getElementById('cvSearch')?.value || '').toLowerCase().trim();
-  const match = c => !q || [c.client_name, c.system_name, c.role_label, c.url, c.username, c.notes]
+  const match = c => !q || [c.client_name, c.client_own_name, c.system_name, c.role_label, c.url, c.username, c.notes]
     .some(v => String(v || '').toLowerCase().includes(q));
   const list = CV_DATA.filter(match);
   if (!list.length){
@@ -537,6 +537,9 @@ function cmFilteredClients(){
     filtered = filtered.filter(c => cmClientDepts(c).includes(dept));
   }
   if (CM_STATUS) filtered = filtered.filter(c => cmIsActive(c) === (CM_STATUS === 'active'));
+  // "Added" period: clients whose created date falls inside it.
+  const range = cmAddedRange();
+  if (range) filtered = filtered.filter(c => c.added_on && c.added_on >= range.from && c.added_on <= range.to);
   // A-Z by the title each row shows (brand, else client name). A department
   // set for this user in Access Control puts its clients (any handler in it)
   // at the top; everything else follows, nothing is hidden.
@@ -594,8 +597,8 @@ function cmRenderList(){
       : '';
     // Who added the client (the CRM); clients from before 2026-10-04 carry Nikita Khandelwal.
     const addedBit = c.added_by_name
-      ? ` · <span style="color:#64748b">Added by <b style="color:#475569">${dtEscape(c.added_by_name)}</b></span>`
-      : '';
+      ? ` · <span style="color:#64748b">Added by <b style="color:#475569">${dtEscape(c.added_by_name)}</b>${c.added_on ? ` on ${dtEscape(cmInvDate(c.added_on))}` : ''}</span>`
+      : (c.added_on ? ` · <span style="color:#64748b">Added on ${dtEscape(cmInvDate(c.added_on))}</span>` : '');
     // is_active is absent on older rows — COALESCE'd to 1 server-side, so treat undefined as active.
     const isOn = c.is_active === undefined || !!Number(c.is_active);
     html += `<div class="cm-client-row${isOn ? '' : ' cm-inactive'}" data-cm-id="${c.id}" onclick="cmShowDetail(${c.id})">
@@ -667,6 +670,29 @@ function cmOpenClientPortal(id){
 }
 
 function cmFilter(){ cmRenderList(); }
+
+// The "Added" filter's period as {from, to} (YYYY-MM-DD, both inclusive), or
+// null for all time. A custom range with only one end set is open on the other.
+function cmAddedRange(){
+  const pick = document.getElementById('cmAddedFilter')?.value || '';
+  const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const now = new Date();
+  if (pick === 'this_month') return { from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), to: ymd(now) };
+  if (pick === 'last_month') return { from: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), to: ymd(new Date(now.getFullYear(), now.getMonth(), 0)) };
+  if (pick === 'custom') {
+    const from = document.getElementById('cmAddedFrom')?.value || '';
+    const to = document.getElementById('cmAddedTo')?.value || '';
+    if (!from && !to) return null;
+    return { from: from || '0000-01-01', to: to || '9999-12-31' };
+  }
+  return null;
+}
+
+function cmAddedChange(){
+  const custom = document.getElementById('cmAddedFilter').value === 'custom';
+  document.getElementById('cmAddedDates').style.display = custom ? 'inline-flex' : 'none';
+  cmRenderList();
+}
 
 function cmToggleBulk(){
   const panel = document.getElementById('cmBulkPanel');

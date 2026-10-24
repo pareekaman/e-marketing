@@ -927,6 +927,18 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         <select id="cmDeptFilter" onchange="cmFilter()" style="padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff;cursor:pointer">
           <option value="">All Departments</option>
         </select>
+        <!-- When the client was added (clients.created_at); clients.js cmAddedRange -->
+        <select id="cmAddedFilter" onchange="cmAddedChange()" style="padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff;cursor:pointer">
+          <option value="">Added: All time</option>
+          <option value="this_month">Added: This month</option>
+          <option value="last_month">Added: Last month</option>
+          <option value="custom">Added: Pick dates…</option>
+        </select>
+        <span id="cmAddedDates" style="display:none;align-items:center;gap:6px;font-size:12px;color:#64748b">
+          <input type="date" id="cmAddedFrom" onchange="cmFilter()" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px">
+          to
+          <input type="date" id="cmAddedTo" onchange="cmFilter()" style="padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px">
+        </span>
         <div class="cm-add-row">
           <button class="cm-btn-primary" id="cmAddBtn" onclick="cmOpenAddModal()">+ Add Client</button>
           <button class="cm-btn-ghost" onclick="cmToggleBulk()" id="cmBulkBtn">📂 Bulk Upload</button>

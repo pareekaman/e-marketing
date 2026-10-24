@@ -7824,13 +7824,13 @@ app.get('/api/client-credentials', requireAuth, requireAdmin, async (req, res) =
     const where = clientId ? 'WHERE cc.client_id=?' : '';
     const params = clientId ? [clientId] : [];
     const [rows] = await db.query(
-      `SELECT cc.id, cc.client_id, c.name AS client_name, cc.system_name, cc.role_label,
+      `SELECT cc.id, cc.client_id, COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name, c.name AS client_own_name, cc.system_name, cc.role_label,
               cc.url, cc.username, cc.password, cc.notes, cc.created_by_name,
               DATE_FORMAT(cc.updated_at,'%Y-%m-%d %H:%i') AS updated_at
          FROM client_credentials cc
          LEFT JOIN clients c ON cc.client_id = c.id
          ${where}
-         ORDER BY c.name ASC, cc.system_name ASC, cc.role_label ASC, cc.id ASC`, params);
+         ORDER BY client_name ASC, cc.system_name ASC, cc.role_label ASC, cc.id ASC`, params);
     res.json(rows);
   } catch (err) { ccVaultErr(res, err, 'list'); }
 });
