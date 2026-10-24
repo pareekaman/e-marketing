@@ -8819,7 +8819,7 @@ app.get('/api/compliance/employee/:id', requireAuth, requireComplianceViewer, as
 
     // ── Clients handled by this employee (handler) + activity in window ──
     const [clientRows] = await db.query(
-      `SELECT id, name, COALESCE(is_active,1) AS is_active, logo_url
+      `SELECT id, name, brand_name, COALESCE(is_active,1) AS is_active, logo_url
        FROM clients WHERE handler_id=? ORDER BY COALESCE(is_active,1) DESC, name ASC`, [id]);
     if (clientRows.length) {
       const ids = clientRows.map(c => c.id);
@@ -8867,7 +8867,7 @@ app.get('/api/compliance/employee/:id', requireAuth, requireComplianceViewer, as
       `SELECT m.id, m.title, m.status,
               DATE_FORMAT(m.meeting_date,'%Y-%m-%d') AS meeting_date,
               TIME_FORMAT(m.start_time,'%H:%i') AS start_time,
-              c.name AS client_name,
+              COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name,
               CASE WHEN m.organizer_id=? THEN 'Organizer' ELSE 'Attendee' END AS my_role
        FROM meetings m LEFT JOIN clients c ON m.client_id=c.id
        WHERE (m.organizer_id=? OR EXISTS (SELECT 1 FROM meeting_attendees mt WHERE mt.meeting_id=m.id AND mt.user_id=?))
@@ -8960,7 +8960,7 @@ app.get('/api/compliance/employee/:id/week-tasks', requireAuth, requireComplianc
     if (!from || !to) return res.status(400).json({ error: 'from and to required' });
     const [delTasks] = await db.query(
       `SELECT dt.id, dt.description AS title, dt.status, DATE_FORMAT(dt.due_date,'%Y-%m-%d') AS due_date,
-              COALESCE(c.name,'—') AS client_name, 'delegation' AS task_type,
+              COALESCE(NULLIF(TRIM(c.brand_name),''), c.name, '—') AS client_name, 'delegation' AS task_type,
               COALESCE(u2.name,'—') AS assigned_by
        FROM delegation_tasks dt
        LEFT JOIN clients c ON c.id = dt.client_id
@@ -8969,7 +8969,7 @@ app.get('/api/compliance/employee/:id/week-tasks', requireAuth, requireComplianc
        ORDER BY dt.due_date, dt.id`, [id, from, to]);
     const [chlTasks] = await db.query(
       `SELECT ct.id, ct.description AS title, ct.status, DATE_FORMAT(ct.due_date,'%Y-%m-%d') AS due_date,
-              COALESCE(c.name,'—') AS client_name, 'checklist' AS task_type,
+              COALESCE(NULLIF(TRIM(c.brand_name),''), c.name, '—') AS client_name, 'checklist' AS task_type,
               COALESCE(u2.name,'—') AS assigned_by
        FROM checklist_tasks ct
        LEFT JOIN clients c ON c.id = ct.client_id

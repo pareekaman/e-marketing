@@ -228,7 +228,7 @@ function renderEmp360(){
     for (const c of cl.list) {
       const on = !!c.is_active;
       html += `<tr>
-        <td><b>${dtEscape(c.name)}</b></td>
+        <td><b>${dtEscape(clientLabel(c))}</b></td>
         <td><span class="e3-badge ${on?'e3-badge-on':'e3-badge-off'}">${on?'Active':'Inactive'}</span></td>
         <td>${c.tasks}</td>
         <td>${c.pending ? `<span class="e3-pend">${c.pending}</span>` : '0'}</td>
