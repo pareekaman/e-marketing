@@ -1,0 +1,428 @@
+/* ══════════════════════════════════════
+   DARK — the amber look's night version (navy glass, blue accent, neon data).
+   On when <html> has .amb-dark (amber-ui.js toggleAmberDark, remembered per
+   browser) and no festival theme is on. Loaded after amber.css; every rule is
+   scoped :root.amb-dark:not([data-theme]), which outranks amber.css's
+   :root:not([data-theme]), and repeats !important where amber.css used it.
+══════════════════════════════════════ */
+:root.amb-dark:not([data-theme]){
+  --accent:#4F7CFF; --accent-dark:#3B5BDB; --accent-light:#6E95FF;
+  --accent-rgb:79,124,255; --accent-light-rgb:110,149,255;
+  --brand-1:#6E95FF; --brand-2:#4F7CFF; --brand-2-rgb:79,124,255;
+  --page-bg:#070B1F; --ink:#E6EAF5; --ink-soft:#A9B4CF;
+  --amber-border:rgba(120,150,255,.18); --amber-soft:rgba(79,124,255,.12);
+  --shadow-xs:0 1px 2px rgba(0,0,0,.4);
+  --shadow-sm:0 6px 18px -8px rgba(0,0,0,.6);
+  --shadow-md:0 14px 34px -14px rgba(0,0,0,.7);
+  --dk-card:rgba(18,26,58,.62);
+  --dk-card-2:rgba(24,34,74,.7);
+  --dk-line:rgba(120,150,255,.16);
+  --dk-text:#E6EAF5;
+  --dk-sub:#97A3C2;
+  color-scheme:dark;
+}
+:root.amb-dark:not([data-theme]) ::selection{background:rgba(79,124,255,.35);color:#fff;}
+
+/* Night sky with blue and violet light. */
+:root.amb-dark:not([data-theme]) body{
+  color:var(--dk-text);
+  background:
+    radial-gradient(700px circle at 10% 0%, rgba(79,124,255,.28), transparent 60%),
+    radial-gradient(650px circle at 95% 10%, rgba(168,85,247,.22), transparent 60%),
+    radial-gradient(800px circle at 60% 110%, rgba(56,189,248,.14), transparent 60%),
+    #070B1F !important;
+  background-attachment:fixed !important;
+}
+
+/* ── Surfaces: every card the amber look made glass ────────────────────── */
+:root.amb-dark:not([data-theme]) :is(.ov-card,.task-table-card,.dash-perf-section,.chart-card,.tg-section,
+  .dt-card,.lv-card,.cm-card,.cp-card,.hrm-card,.hrm-stat-card,.dr-card,.profile-card,.users-grid,
+  .mis-table-wrap,.flat-tasks-table,.lv-user-group,.cm-list-wrap,.enq-kpi,.enq-header),
+:root.amb-dark:not([data-theme]) .dash-bottom > *:last-child,
+:root.amb-dark:not([data-theme]) #page-alltasks .page-header,
+:root.amb-dark:not([data-theme]) #page-approvals :is(.flat-tasks-table,#leaveApprovalsContent,#transferApprovalsContent,#invIssueApprovalsContent,#mdoTasksList),
+:root.amb-dark:not([data-theme]) .page [style*="background:#fff"][style*="border-radius:1"][style*="#e2e8f0"]:not(.modal *),
+:root.amb-dark:not([data-theme]) .page [style*="background: rgb(255, 255, 255)"][style*="border-radius: 1"][style*="rgb(226, 232, 240)"]:not(.modal *),
+:root.amb-dark:not([data-theme]) .page .empty[style*="background:#fff"],
+:root.amb-dark:not([data-theme]) #logsContent > table,
+:root.amb-dark:not([data-theme]) #logsContent > div:not(.empty){
+  background:var(--dk-card) !important;
+  border:1px solid var(--dk-line) !important;
+  box-shadow:0 16px 40px -18px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.05) !important;
+  color:var(--dk-text);
+}
+:root.amb-dark:not([data-theme]) :is(.dash-perf-card,.dt-table-wrap,.dr-table-wrap,.cp-grid-wrap,.cm-stat,.cm-detail-total,.dt-summary,.dt-topbar,.cm-bulk){
+  background:var(--dk-card-2) !important;border-color:var(--dk-line) !important;
+}
+:root.amb-dark:not([data-theme]) .card-head{background:rgba(255,255,255,.02) !important;border-bottom-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) :is(.card-head-title,.chart-card h3,.dash-perf-head h3,.dash-perf-card h4,.tg-name,
+  .dt-page-title,.lv-title,.cm-title,.cm-stat-val,.cm-client-name,.su-name,.logo-text,.topbar-title,.ov-card .number,.perf-name,.perf-val,.dash-leg b,.lv-user-head){
+  color:var(--dk-text) !important;
+}
+:root.amb-dark:not([data-theme]) :is(.amb-sub,.ov-card .label,.ov-vs,.dt-page-sub,.lv-sub,.cm-sub,.cm-stat-label,.su-role,.dash-leg,.nav-group-header,.dt-meta-field label,.form-group label){
+  color:var(--dk-sub) !important;
+}
+/* Inline dark text from JS-built markup. */
+:root.amb-dark:not([data-theme]) .page :is([style*="color:#0f172a"],[style*="color:#1e293b"],[style*="color:#334155"],[style*="color:#2B2118"]){color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) .page :is([style*="color:#475569"],[style*="color:#64748b"]){color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .page{color:var(--dk-text);}
+
+/* ── Sidebar and top bar ───────────────────────────────────────────────── */
+:root.amb-dark:not([data-theme]) .sidebar{
+  background:linear-gradient(180deg,rgba(12,18,44,.92),rgba(8,12,32,.94)) !important;
+  border-right:1px solid var(--dk-line) !important;box-shadow:6px 0 30px -12px rgba(0,0,0,.7) !important;
+}
+:root.amb-dark:not([data-theme]) :is(.sidebar-logo,.sidebar-user){border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .nav-item{color:#B4BEDA;}
+:root.amb-dark:not([data-theme]) .nav-item:hover{background:rgba(79,124,255,.12);color:#fff;}
+:root.amb-dark:not([data-theme]) .nav-item.active{background:linear-gradient(135deg,#5B8CFF,#4F7CFF 55%,#3B5BDB) !important;color:#fff;box-shadow:0 8px 22px -8px rgba(79,124,255,.8) !important;}
+:root.amb-dark:not([data-theme]) .sidebar-user:hover{background:rgba(79,124,255,.12);}
+:root.amb-dark:not([data-theme]) .sb-pin:hover,
+:root.amb-dark:not([data-theme]) .sb-pin[aria-pressed="true"]{background:rgba(79,124,255,.16);color:#8FB0FF;}
+:root.amb-dark:not([data-theme]) .topbar{background:rgba(9,14,36,.7) !important;border-bottom-color:var(--dk-line) !important;box-shadow:0 6px 24px -12px rgba(0,0,0,.7) !important;}
+:root.amb-dark:not([data-theme]) .topbar-title[data-sub]:not([data-sub=""])::after{color:var(--dk-sub);}
+:root.amb-dark:not([data-theme]) .nt-bell-btn{background:rgba(255,255,255,.06);border-color:var(--dk-line);}
+:root.amb-dark:not([data-theme]) .amb-search{background:rgba(255,255,255,.05);border-color:var(--dk-line);}
+:root.amb-dark:not([data-theme]) .amb-search input{color:var(--dk-text);}
+:root.amb-dark:not([data-theme]) .amb-search kbd{background:rgba(255,255,255,.08);border-color:var(--dk-line);color:var(--dk-sub);}
+:root.amb-dark:not([data-theme]) .amb-search-pop,
+:root.amb-dark:not([data-theme]) .amb-menu{background:rgba(14,20,48,.97);border-color:var(--dk-line);}
+:root.amb-dark:not([data-theme]) :is(.amb-hit-label,.amb-menu button){color:var(--dk-text);}
+:root.amb-dark:not([data-theme]) :is(.amb-hit.sel,.amb-hit:hover,.amb-menu button:hover){background:rgba(79,124,255,.16);}
+:root.amb-dark:not([data-theme]) .amb-hit-kind{color:#8FB0FF;}
+
+/* ── Controls ─────────────────────────────────────────────────────────── */
+:root.amb-dark:not([data-theme]) :is(input,select,textarea,.ss-input):not([type="checkbox"]):not([type="radio"]),
+:root.amb-dark:not([data-theme]) .page :is(select,input[type="text"],input[type="date"],input[type="search"]){
+  background:rgba(255,255,255,.05) !important;border-color:var(--dk-line) !important;color:var(--dk-text) !important;
+}
+:root.amb-dark:not([data-theme]) ::placeholder{color:#6F7B99;}
+:root.amb-dark:not([data-theme]) .tab-group,
+:root.amb-dark:not([data-theme]) :is(.lv-tabs,.dt-mode-switch,#page-approvals .appr-tabs){background:rgba(255,255,255,.05) !important;}
+:root.amb-dark:not([data-theme]) :is(.tab,.lv-tab,.dt-mode-btn){color:var(--dk-sub);}
+:root.amb-dark:not([data-theme]) :is(.tab.active,.lv-tab.active,.dt-mode-btn.active,.lv-pill.active){background:var(--accent) !important;color:#fff !important;box-shadow:0 6px 16px -6px rgba(79,124,255,.7) !important;}
+:root.amb-dark:not([data-theme]) :is(.btn-outline,.dash-btn-quiet,.cm-btn-ghost,.dt-btn-add,.lv-pill,.page .btn-outline){
+  background:rgba(255,255,255,.05) !important;border:1px solid var(--dk-line) !important;color:var(--dk-text) !important;
+}
+:root.amb-dark:not([data-theme]) :is(.btn-outline,.dash-btn-quiet,.cm-btn-ghost,.dt-btn-add):hover{background:rgba(79,124,255,.14) !important;}
+:root.amb-dark:not([data-theme]) :is(.btn-primary,.lv-add-btn,.cm-btn-primary){background:linear-gradient(135deg,#6E95FF,#4F7CFF 55%,#3B5BDB) !important;box-shadow:0 8px 20px -8px rgba(79,124,255,.8) !important;}
+
+/* ── Tables ───────────────────────────────────────────────────────────── */
+:root.amb-dark:not([data-theme]) .page table th,
+:root.amb-dark:not([data-theme]) #dashThead,
+:root.amb-dark:not([data-theme]) .users-grid th{background:rgba(255,255,255,.03) !important;color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .page table td{border-bottom-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .page tbody tr:hover td{background:rgba(79,124,255,.07) !important;}
+:root.amb-dark:not([data-theme]) .tg-section tbody td:first-child,
+:root.amb-dark:not([data-theme]) .tg-section thead th:first-child{background:#0E1533 !important;}
+:root.amb-dark:not([data-theme]) :is(.dt-table thead th,.cp-grid th){background:linear-gradient(135deg,#5B8CFF,#3B5BDB) !important;color:#fff !important;}
+:root.amb-dark:not([data-theme]) :is(.dt-table tbody td,.cp-grid td){background:transparent !important;}
+
+/* ── Dashboard pieces ─────────────────────────────────────────────────── */
+:root.amb-dark:not([data-theme]) .ov-card.total .ov-icon,
+:root.amb-dark:not([data-theme]) .amb-ico-amber{background:linear-gradient(145deg,#6E95FF,#3B5BDB) !important;}
+:root.amb-dark:not([data-theme]) .ov-card.pending .ov-icon{background:linear-gradient(145deg,#FBBF24,#D97706) !important;}
+:root.amb-dark:not([data-theme]) .ov-icon{box-shadow:0 10px 24px -10px currentColor, inset 0 1px 0 rgba(255,255,255,.25);}
+:root.amb-dark:not([data-theme]) #dTrendTotal path{stroke:#6E95FF;}
+:root.amb-dark:not([data-theme]) #dTrendTotal circle{fill:#6E95FF;}
+:root.amb-dark:not([data-theme]) #dTrendCompleted path{stroke:#22E58A;}
+:root.amb-dark:not([data-theme]) #dTrendCompleted circle{fill:#22E58A;}
+:root.amb-dark:not([data-theme]) #dTrendPending path{stroke:#FBBF24;}
+:root.amb-dark:not([data-theme]) #dTrendPending circle{fill:#FBBF24;}
+:root.amb-dark:not([data-theme]) .ov-spark{filter:drop-shadow(0 0 6px rgba(110,149,255,.55));}
+:root.amb-dark:not([data-theme]) .ov-chg.is-good{color:#22E58A;}
+:root.amb-dark:not([data-theme]) .ov-chg.is-bad{color:#FF6B81;}
+:root.amb-dark:not([data-theme]) #dPendingBreakdown{background:rgba(239,68,68,.18);color:#FF8A9A !important;}
+:root.amb-dark:not([data-theme]) #dashChart{filter:drop-shadow(0 0 18px rgba(34,229,138,.35));}
+:root.amb-dark:not([data-theme]) .dash-await{background:rgba(251,191,36,.12) !important;color:#FBBF24 !important;border-color:rgba(251,191,36,.45) !important;}
+:root.amb-dark:not([data-theme]) .dash-client{background:rgba(79,124,255,.15) !important;color:#9DB8FF !important;border-color:rgba(79,124,255,.35) !important;}
+:root.amb-dark:not([data-theme]) .task-table-card .dash-setdue{background:rgba(255,255,255,.05) !important;color:var(--dk-text) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .task-table-card .action-btn.done,
+:root.amb-dark:not([data-theme]) #page-approvals .action-btn.done{background:rgba(34,229,138,.1);color:#22E58A;border-color:rgba(34,229,138,.5);}
+:root.amb-dark:not([data-theme]) #page-approvals .action-btn.delete{background:rgba(255,107,129,.1);color:#FF6B81;border-color:rgba(255,107,129,.5);}
+:root.amb-dark:not([data-theme]) .dash-type-fms{background:linear-gradient(135deg,#6E95FF,#3B5BDB) !important;}
+:root.amb-dark:not([data-theme]) .dash-type-checklist{background:linear-gradient(135deg,#38BDF8,#2563EB) !important;}
+:root.amb-dark:not([data-theme]) .dash-type-delegation{background:linear-gradient(135deg,#22E58A,#16A34A) !important;}
+:root.amb-dark:not([data-theme]) .dash-kebab{color:var(--dk-sub);}
+:root.amb-dark:not([data-theme]) .dash-kebab:hover{background:rgba(79,124,255,.14);color:#fff;}
+:root.amb-dark:not([data-theme]) .dash-num{color:var(--dk-sub);}
+/* Performance lists: green top, red bottom, blue most active. */
+:root.amb-dark:not([data-theme]) .perf-bar{background:rgba(255,255,255,.07);}
+:root.amb-dark:not([data-theme]) #dashTopChartWrap .perf-bar > span{background:linear-gradient(90deg,#16A34A,#22E58A) !important;box-shadow:0 0 10px rgba(34,229,138,.5);}
+:root.amb-dark:not([data-theme]) #dashBottomChartWrap .perf-bar > span{background:linear-gradient(90deg,#E11D48,#FF6B81) !important;box-shadow:0 0 10px rgba(255,107,129,.45);}
+:root.amb-dark:not([data-theme]) #dashActiveChartWrap .perf-bar > span{background:linear-gradient(90deg,#2563EB,#38BDF8) !important;box-shadow:0 0 10px rgba(56,189,248,.45);}
+:root.amb-dark:not([data-theme]) .perf-rank{background:rgba(255,255,255,.08);color:var(--dk-text);}
+:root.amb-dark:not([data-theme]) #dashTopChartWrap .perf-rank{background:rgba(251,191,36,.18);color:#FBBF24;}
+:root.amb-dark:not([data-theme]) #dashBottomChartWrap .perf-rank{background:rgba(255,107,129,.18);color:#FF8A9A;}
+:root.amb-dark:not([data-theme]) #dashActiveChartWrap .perf-rank{background:rgba(56,189,248,.16);color:#7DD3FC;}
+:root.amb-dark:not([data-theme]) .perf-ava{box-shadow:0 0 0 2px #0E1533;}
+:root.amb-dark:not([data-theme]) .amb-h4-amber{background:rgba(251,191,36,.15);color:#FBBF24;}
+:root.amb-dark:not([data-theme]) .amb-h4-red{background:rgba(255,107,129,.15);color:#FF6B81;}
+
+/* ── All Tasks / Leave / other chips ──────────────────────────────────── */
+:root.amb-dark:not([data-theme]) .tg-head:hover,
+:root.amb-dark:not([data-theme]) .tg-section.open .tg-head{background:rgba(79,124,255,.08) !important;border-bottom-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .tg-ava{background:linear-gradient(135deg,#6E95FF,#3B5BDB);box-shadow:0 0 0 2px #0E1533;}
+:root.amb-dark:not([data-theme]) .tg-count-total{background:rgba(79,124,255,.16);color:#9DB8FF;}
+:root.amb-dark:not([data-theme]) .tg-count-pending{background:rgba(255,107,129,.15);color:#FF8A9A;}
+:root.amb-dark:not([data-theme]) .tg-count-done{background:rgba(34,229,138,.13);color:#22E58A;}
+:root.amb-dark:not([data-theme]) :is(.lv-user-head,.lv-month-head){background:rgba(79,124,255,.08) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .lv-item{border-color:var(--dk-line);}
+:root.amb-dark:not([data-theme]) .lv-item:hover,
+:root.amb-dark:not([data-theme]) .cm-client-row:hover{background:rgba(79,124,255,.07);}
+:root.amb-dark:not([data-theme]) .cm-client-row{border-color:var(--dk-line);}
+:root.amb-dark:not([data-theme]) :is(.dt-summary-val,.cm-detail-val,.lv-item-date){color:#8FB0FF !important;}
+
+/* ── Popups ───────────────────────────────────────────────────────────── */
+:root.amb-dark:not([data-theme]) .modal-overlay{background:rgba(2,4,14,.6) !important;}
+:root.amb-dark:not([data-theme]) .modal{background:linear-gradient(180deg,rgba(16,24,56,.98),rgba(10,16,40,.98)) !important;border-color:var(--dk-line) !important;color:var(--dk-text);}
+:root.amb-dark:not([data-theme]) .modal h3{color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) .modal-footer{border-top-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .modal-close:hover{background:rgba(79,124,255,.16) !important;color:#fff !important;}
+:root.amb-dark:not([data-theme]) :is(.vd-bar,.modal [data-task-row]){background:rgba(79,124,255,.08) !important;border-color:var(--dk-line) !important;}
+
+/* ── Phone ────────────────────────────────────────────────────────────── */
+@media (max-width:768px){
+  :root.amb-dark:not([data-theme]) .mobile-bottom-nav{background:rgba(9,14,36,.92) !important;border-top-color:var(--dk-line) !important;}
+  :root.amb-dark:not([data-theme]) .mobile-bottom-nav .nav-item{color:#8C98B8;}
+  :root.amb-dark:not([data-theme]) .mobile-bottom-nav .nav-item.active{background:linear-gradient(135deg,#6E95FF,#3B5BDB) !important;color:#fff;}
+  :root.amb-dark:not([data-theme]) #dashTbody tr{background:var(--dk-card-2) !important;border-color:var(--dk-line) !important;}
+  :root.amb-dark:not([data-theme]) #dashTbody td:last-child{border-top-color:var(--dk-line) !important;}
+}
+
+/* ── The Light / Dark switch (amber-ui.js) ────────────────────────────── */
+.amb-mode-btn{display:none;}
+:root:not([data-theme]) .amb-mode-btn{
+  display:grid;place-items:center;width:38px;height:38px;flex-shrink:0;border-radius:11px;cursor:pointer;
+  background:rgba(255,255,255,.75);border:1px solid #EAD7AE;color:#B45309;font-size:17px;line-height:1;
+}
+:root.amb-dark:not([data-theme]) .amb-mode-btn{background:rgba(255,255,255,.06);border-color:var(--dk-line);color:#FBBF24;}
+
+/* Fixes from the first look. */
+@media (max-width:768px){
+  :root.amb-dark:not([data-theme]) #dashTbody td:nth-child(3){color:var(--dk-text) !important;}
+  :root.amb-dark:not([data-theme]) #dashTbody td:nth-child(4){color:var(--dk-sub) !important;}
+}
+:root.amb-dark:not([data-theme]) #tasksContent > div:first-child{background:var(--dk-card) !important;border-color:var(--dk-line) !important;color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .page button:not(.btn-primary):not(.action-btn):not(.tab):not(.cm-btn-primary):not(.lv-add-btn):not(.nav-item)[style*="background:#fff"],
+:root.amb-dark:not([data-theme]) .page button:not(.btn-primary):not(.action-btn):not(.tab)[style*="background: rgb(255, 255, 255)"],
+:root.amb-dark:not([data-theme]) #tasksContent button,
+:root.amb-dark:not([data-theme]) .page .btn:not(.btn-primary):not(.btn-green):not(.btn-yellow):not(.btn-danger):not([style*="background:#"]){
+  background:rgba(255,255,255,.06) !important;border-color:var(--dk-line) !important;color:var(--dk-text) !important;
+}
+/* Leave policy notices and Client Master row chips. */
+:root.amb-dark:not([data-theme]) .lp-notice{background:rgba(251,191,36,.08) !important;border-color:rgba(251,191,36,.35) !important;}
+:root.amb-dark:not([data-theme]) .lp-notice summary{color:#FBBF24 !important;}
+:root.amb-dark:not([data-theme]) .lp-count{color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .cm-client-dash{background:rgba(251,191,36,.12) !important;color:#FBBF24 !important;border-color:rgba(251,191,36,.4) !important;}
+:root.amb-dark:not([data-theme]) .cm-client-del{background:rgba(255,107,129,.1) !important;color:#FF8A9A !important;border-color:rgba(255,107,129,.45) !important;}
+:root.amb-dark:not([data-theme]) .page [style*="background:#f1f5f9"]{background:rgba(255,255,255,.08) !important;color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .page [style*="background:#fef3c7"],
+:root.amb-dark:not([data-theme]) .page [style*="background:#fff7ed"],
+:root.amb-dark:not([data-theme]) .page [style*="background:#fffbeb"]{background:rgba(251,191,36,.12) !important;color:#FBBF24 !important;}
+:root.amb-dark:not([data-theme]) .page [style*="background:#eff6ff"],
+:root.amb-dark:not([data-theme]) .page [style*="background:#eef2ff"]{background:rgba(79,124,255,.15) !important;color:#9DB8FF !important;}
+:root.amb-dark:not([data-theme]) .page [style*="background:#f0fdf4"],
+:root.amb-dark:not([data-theme]) .page [style*="background:#dcfce7"],
+:root.amb-dark:not([data-theme]) .page [style*="background:#ecfdf5"]{background:rgba(34,229,138,.12) !important;color:#22E58A !important;}
+:root.amb-dark:not([data-theme]) .page [style*="background:#fef2f2"],
+:root.amb-dark:not([data-theme]) .page [style*="background:#fee2e2"]{background:rgba(255,107,129,.12) !important;color:#FF8A9A !important;}
+:root.amb-dark:not([data-theme]) .page [style*="background:#f8fafc"]{background:rgba(255,255,255,.04) !important;}
+/* Text that pages colour in their own CSS files (slate on white) — lift it. */
+:root.amb-dark:not([data-theme]) .page :is(td,h2,h3,h4,b,strong,.dt-time,.dt-welcome b,.hrm-cand-name){color:var(--dk-text);}
+:root.amb-dark:not([data-theme]) .page td{color:#C9D2EA;}
+:root.amb-dark:not([data-theme]) .page td :is(small,.muted){color:var(--dk-sub);}
+:root.amb-dark:not([data-theme]) .dt-time,
+:root.amb-dark:not([data-theme]) .dt-welcome b{color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) .page [class*="-title"]:not(.topbar-title){color:var(--dk-text);}
+:root.amb-dark:not([data-theme]) .page [class*="-sub"]{color:var(--dk-sub);}
+:root.amb-dark:not([data-theme]) .page :is([style*="color:#0f172a"],[style*="color: rgb(15, 23, 42)"],[style*="color:#1e293b"],[style*="color: rgb(30, 41, 59)"]){color:var(--dk-text) !important;}
+/* White mini buttons in tables (HR row icons, Update/Email). */
+:root.amb-dark:not([data-theme]) .page :is(.hrm-btn,.hrm-ico){background:rgba(255,255,255,.07) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .page .hrm-btn{color:#9DB8FF !important;}
+:root.amb-dark:not([data-theme]) .page .dt-btn-dup{background:rgba(34,229,138,.1);color:#22E58A;border-color:rgba(34,229,138,.4);}
+:root.amb-dark:not([data-theme]) .page .dt-btn-del{background:rgba(255,107,129,.1);color:#FF8A9A;border-color:rgba(255,107,129,.4);}
+:root.amb-dark:not([data-theme]) .hrm-candidate-name{color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) :is(.hrm-candidate-sub,.hrm-redate){color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .hrm-date-cell{color:#C9D2EA !important;}
+/* Scheduler calendar. */
+:root.amb-dark:not([data-theme]) .mtg-cal-daynames{background:rgba(255,255,255,.03) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .mtg-cal-daynames > div{color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .mtg-cal-month-grid{background:transparent;}
+:root.amb-dark:not([data-theme]) .mtg-cal-cell{background:transparent !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .mtg-cal-cell:hover{background:rgba(79,124,255,.07) !important;}
+:root.amb-dark:not([data-theme]) .mtg-cal-cell.is-off,
+:root.amb-dark:not([data-theme]) .mtg-cal-cell.is-other-month{background:rgba(255,255,255,.025) !important;}
+:root.amb-dark:not([data-theme]) .mtg-cal-cell.is-other-month .mtg-cal-daynum{color:#4B5675;}
+:root.amb-dark:not([data-theme]) .mtg-cal-daynum{color:var(--dk-text);}
+:root.amb-dark:not([data-theme]) .mtg-cal-mpill{background:rgba(79,124,255,.18);color:#9DB8FF;}
+:root.amb-dark:not([data-theme]) .mtg-day-tasks-head{background:rgba(255,255,255,.04) !important;color:var(--dk-sub) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) :is(.mtg-day-task,.mtg-day-hour,.mtg-day-hour-label){border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .mtg-day-hour-label{color:var(--dk-sub);}
+:root.amb-dark:not([data-theme]) .mtg-day-block{background:rgba(79,124,255,.18);color:var(--dk-text);}
+/* Pastel chips and small buttons (misc.css / dashboard.css): tinted on navy. */
+:root.amb-dark:not([data-theme]) :is(.action-btn.edit,.role-badge.admin,.priority-badge.medium,.hrm-badge.Scheduled){background:rgba(79,124,255,.16) !important;color:#9DB8FF !important;}
+:root.amb-dark:not([data-theme]) :is(.action-btn.done,.role-badge.user,.priority-badge.low,.status-badge.completed,.hrm-badge.Selected,.hrm-badge.offer-final){background:rgba(34,229,138,.12) !important;color:#22E58A !important;box-shadow:none !important;}
+:root.amb-dark:not([data-theme]) :is(.action-btn.delete,.priority-badge.urgent,.status-badge.pending,.hrm-badge.Rejected){background:rgba(255,107,129,.13) !important;color:#FF8A9A !important;box-shadow:none !important;}
+:root.amb-dark:not([data-theme]) :is(.action-btn.revise,.action-btn.reopen,.priority-badge.high,.status-badge.revised,.hrm-badge.Rescheduled){background:rgba(251,191,36,.13) !important;color:#FBBF24 !important;box-shadow:none !important;}
+:root.amb-dark:not([data-theme]) :is(.role-badge.pc,.role-badge.hod,.hrm-badge.offer){background:rgba(168,85,247,.16) !important;color:#C4B5FD !important;}
+/* Shared report tables (.dr-table: Enquiry, Daily Reports) paint white cells. */
+:root.amb-dark:not([data-theme]) .dr-table td{background:transparent !important;color:#C9D2EA !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .dr-table th{background:rgba(255,255,255,.04) !important;color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .dr-table td :is(b,strong,a){color:var(--dk-text);}
+/* Leads / Enquiry dashboard tokens (css/leads.css). */
+:root.amb-dark:not([data-theme]) #page-leads,
+:root.amb-dark:not([data-theme]) #enqDetailModal{
+  --foreground:#E6EAF5; --card:rgba(18,26,58,.62); --muted:rgba(255,255,255,.06);
+  --muted-foreground:#97A3C2; --border:rgba(120,150,255,.16); --chart-1:#4F7CFF;
+}
+:root.amb-dark:not([data-theme]) #page-leads thead,
+:root.amb-dark:not([data-theme]) #page-leads thead th{background:rgba(255,255,255,.04) !important;color:var(--dk-sub) !important;}
+/* features.css lights a hovered .dr-table row (#fffbeb); keep it dark. */
+:root.amb-dark:not([data-theme]) .dr-table tr:hover td,
+:root.amb-dark:not([data-theme]) .dr-table tbody tr:hover td{background:rgba(79,124,255,.09) !important;}
+/* dashboard.css paints the hovered <tr> itself (#f8fafc); cells are transparent
+   in dark, so that showed through and the row went blank. */
+:root.amb-dark:not([data-theme]) tbody tr:hover{background:rgba(79,124,255,.09) !important;}
+
+/* Compose Email. */
+:root.amb-dark:not([data-theme]) .ce-card{background:var(--dk-card) !important;border-color:var(--dk-line) !important;color:var(--dk-text);}
+:root.amb-dark:not([data-theme]) .ce-row{border-bottom-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .ce-row > label{color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .ce-field input{color:var(--dk-text) !important;background:transparent !important;border:0 !important;}
+:root.amb-dark:not([data-theme]) .ce-toolbar{background:rgba(255,255,255,.04) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .ce-toolbar :is(button,select,.ce-tb-color){color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) .ce-toolbar :is(button,.ce-tb-color):hover{background:rgba(79,124,255,.16) !important;}
+:root.amb-dark:not([data-theme]) .ce-tb-sep{background:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) #ceEditor{background:rgba(255,255,255,.03) !important;border-color:var(--dk-line) !important;color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) :is(.ce-chip,.ce-link-btn){background:rgba(79,124,255,.15) !important;border-color:rgba(79,124,255,.35) !important;color:#9DB8FF !important;}
+:root.amb-dark:not([data-theme]) .ce-chip :is(.ce-chip-mail,button){color:#9DB8FF !important;}
+:root.amb-dark:not([data-theme]) :is(.ce-sug-list){background:#0E1533 !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) :is(.ce-sug.active,.ce-sug:hover){background:rgba(79,124,255,.16) !important;}
+:root.amb-dark:not([data-theme]) .ce-card :is(h3,h4,b,strong,[style*="color:#0f172a"],[style*="color:#1e293b"]){color:var(--dk-text) !important;}
+
+/* ══ Audit fixes (scan-contrast, 2026-10-25) ══════════════════════════════ */
+/* Inline pastels in the rgb() form the browser writes once JS touched .style. */
+:root.amb-dark:not([data-theme]) .page :is([style*="background: rgb(255, 255, 255)"],[style*="background-color: rgb(255, 255, 255)"],[style*="background:#fff"]):not(button):not(.btn):not([class*="badge"]):not([class*="pill"]):not(img){background:var(--dk-card) !important;}
+:root.amb-dark:not([data-theme]) .page :is([style*="background: rgb(248, 250, 252)"],[style*="background: rgb(241, 245, 249)"],[style*="background: rgb(250, 251, 252)"]){background:rgba(255,255,255,.04) !important;}
+:root.amb-dark:not([data-theme]) .page :is([style*="background: rgb(254, 243, 199)"],[style*="background: rgb(255, 251, 235)"],[style*="background: rgb(255, 247, 237)"]){background:rgba(251,191,36,.12) !important;}
+:root.amb-dark:not([data-theme]) .page :is([style*="border: 1px solid rgb(226, 232, 240)"],[style*="border:1px solid #e2e8f0"]){border-color:var(--dk-line) !important;}
+/* Inline slate text colours. */
+:root.amb-dark:not([data-theme]) .page :is([style*="color:#374151"],[style*="color: rgb(55, 65, 81)"],[style*="color:#111827"],[style*="color:#0f172a"],[style*="color: rgb(15, 23, 42)"]){color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) .page :is([style*="color:#475569"],[style*="color: rgb(71, 85, 105)"],[style*="color:#64748b"],[style*="color: rgb(100, 116, 139)"],[style*="color:#94a3b8"]){color:var(--dk-sub) !important;}
+/* Users → Access Control. */
+:root.amb-dark:not([data-theme]) #accPermPanel{background:transparent !important;}
+:root.amb-dark:not([data-theme]) .acc-user-item{border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .acc-user-item:hover,:root.amb-dark:not([data-theme]) .acc-user-item.active{background:rgba(79,124,255,.1) !important;}
+:root.amb-dark:not([data-theme]) .acc-user-item-name{color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) :is(.acc-page-row){border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .acc-chip{border-color:var(--dk-line) !important;color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .acc-track{background:rgba(255,255,255,.14) !important;}
+:root.amb-dark:not([data-theme]) .acc-ro{background:rgba(56,189,248,.12) !important;color:#7DD3FC !important;border-color:rgba(56,189,248,.35) !important;}
+/* Leave: policy text, acknowledgement table, team filters. */
+:root.amb-dark:not([data-theme]) :is(.lp-list,.lp-list li){color:#D6DCEE !important;}
+:root.amb-dark:not([data-theme]) .lp-signed{color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .lp-ok{color:#22E58A !important;}
+:root.amb-dark:not([data-theme]) .lp-bad{color:#FF8A9A !important;}
+:root.amb-dark:not([data-theme]) .lp-table{background:transparent !important;}
+:root.amb-dark:not([data-theme]) .lp-table :is(th,td){border-color:var(--dk-line) !important;color:#C9D2EA !important;background:transparent !important;}
+:root.amb-dark:not([data-theme]) .lp-table th{color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .lp-table img{background:#fff;border-radius:6px;}
+:root.amb-dark:not([data-theme]) .lp-preview{border-color:var(--dk-line);color:var(--dk-sub);}
+:root.amb-dark:not([data-theme]) #lvApproverLine{color:#FBBF24 !important;}
+:root.amb-dark:not([data-theme]) #lvTeamFilters{background:rgba(255,255,255,.04) !important;border-color:var(--dk-line) !important;color:var(--dk-sub);}
+:root.amb-dark:not([data-theme]) #lvTeamFilters button{background:rgba(255,255,255,.06) !important;border-color:var(--dk-line) !important;color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) #lvFilterSummary,:root.amb-dark:not([data-theme]) .lv-user-head small{color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .lv-month-head{color:#8FB0FF !important;}
+/* Daily Reports toolbar and stats. */
+:root.amb-dark:not([data-theme]) .dr-toolbar{background:rgba(255,255,255,.04) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) :is(.dr-or,.dr-stat-label,.dr-stat-sub){color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .dr-stat-value{color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) .dr-stat{background:var(--dk-card-2) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .dt-btn-add{background:rgba(255,255,255,.06) !important;border-color:var(--dk-line) !important;color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) .dt-btn-submit{background:linear-gradient(135deg,#6E95FF,#3B5BDB) !important;color:#fff !important;}
+:root.amb-dark:not([data-theme]) .dr-table .pill-tag{background:rgba(251,146,60,.14) !important;color:#FDBA74 !important;}
+/* DMS banner, Client Master detail bar, Logs, Scheduler other-month days. */
+:root.amb-dark:not([data-theme]) #dmsAuthBanner{background:rgba(251,191,36,.1) !important;border-color:rgba(251,191,36,.45) !important;color:#FBBF24 !important;}
+:root.amb-dark:not([data-theme]) #dmsAuthBanner *{color:inherit;}
+:root.amb-dark:not([data-theme]) .cm-detail-bar span{color:var(--dk-sub);}
+:root.amb-dark:not([data-theme]) .mtg-cal-cell:is(.is-off,.is-other-month) .mtg-cal-daynum{color:#6B78A0 !important;}
+:root.amb-dark:not([data-theme]) #logsContent td div{color:#C9D2EA;}
+:root.amb-dark:not([data-theme]) .hrm-ico{background:rgba(255,255,255,.12) !important;}
+:root.amb-dark:not([data-theme]) .mtg-cal-cell.is-today .mtg-cal-daynum{color:#fff !important;}
+:root.amb-dark:not([data-theme]) .dr-toolbar :is(label,.dr-or){color:#AEB8D4 !important;}
+/* Inline dark brand text used on banners/labels. */
+:root.amb-dark:not([data-theme]) .page :is([style*="color:#1e40af"],[style*="color:#1d4ed8"],[style*="color:#3730a3"]){color:#9DB8FF !important;}
+:root.amb-dark:not([data-theme]) .page :is([style*="color:#92400e"],[style*="color:#854d0e"],[style*="color:#9a3412"],[style*="color:#c2410c"]){color:#FBBF24 !important;}
+:root.amb-dark:not([data-theme]) .page :is([style*="color:#166534"],[style*="color:#15803d"],[style*="color:#047857"],[style*="color:#065f46"]){color:#22E58A !important;}
+:root.amb-dark:not([data-theme]) .page :is([style*="color:#991b1b"],[style*="color:#b91c1c"],[style*="color:#9d174d"]){color:#FF8A9A !important;}
+:root.amb-dark:not([data-theme]) #logsContent td,:root.amb-dark:not([data-theme]) #logsContent td *{color:#C9D2EA;}
+:root.amb-dark:not([data-theme]) .dr-or{background:rgba(255,255,255,.08) !important;border-color:var(--dk-line) !important;color:#C9D2EA !important;}
+:root.amb-dark:not([data-theme]) #logsContent td [style*="color:#4f46e5"]{color:#9DB8FF !important;}
+/* Daily Reports: reminder panels (yellow gradient), Reset, result box. */
+:root.amb-dark:not([data-theme]) .dr-reminder-panel{background:rgba(251,191,36,.08) !important;border-color:rgba(251,191,36,.45) !important;}
+:root.amb-dark:not([data-theme]) .dr-reminder-title{color:#FBBF24 !important;}
+:root.amb-dark:not([data-theme]) .dr-reminder-sub{color:#C9D2EA !important;}
+:root.amb-dark:not([data-theme]) .dr-reminder-sub b{color:#FDE68A !important;}
+:root.amb-dark:not([data-theme]) .dr-reminder-actions .dt-btn-add{background:rgba(255,255,255,.06) !important;color:var(--dk-text) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .dr-mini-btn{background:rgba(255,255,255,.06) !important;border-color:var(--dk-line) !important;color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) .dr-reminder-result{background:var(--dk-card) !important;border-color:var(--dk-line) !important;color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) .dr-reminder-result.success{background:rgba(34,229,138,.1) !important;border-color:rgba(34,229,138,.5) !important;color:#22E58A !important;}
+
+/* ══ Popups get the same inline-colour treatment as pages ════════════════ */
+:root.amb-dark:not([data-theme]) .modal :is([style*="background:#fff"],[style*="background: rgb(255, 255, 255)"]):not(.btn):not(img):not([class*="badge"]){background:rgba(255,255,255,.05) !important;}
+:root.amb-dark:not([data-theme]) .modal :is([style*="background:#fff7ed"],[style*="background:#fffbeb"],[style*="background:#fef3c7"],[style*="background: rgb(255, 247, 237)"]){background:rgba(251,191,36,.08) !important;border-color:rgba(251,191,36,.45) !important;}
+:root.amb-dark:not([data-theme]) .modal :is([style*="background:#f8fafc"],[style*="background:#f1f5f9"],[style*="background: rgb(248, 250, 252)"]){background:rgba(255,255,255,.04) !important;}
+:root.amb-dark:not([data-theme]) .modal :is([style*="background:#eff6ff"],[style*="background:#eef2ff"]){background:rgba(79,124,255,.12) !important;}
+:root.amb-dark:not([data-theme]) .modal :is([style*="background:#f0fdf4"],[style*="background:#ecfdf5"]){background:rgba(34,229,138,.1) !important;}
+:root.amb-dark:not([data-theme]) .modal :is([style*="background:#fef2f2"]){background:rgba(255,107,129,.1) !important;}
+:root.amb-dark:not([data-theme]) .modal [style*="border"]:is([style*="#e2e8f0"],[style*="#f1f5f9"],[style*="rgb(226, 232, 240)"]){border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .modal :is([style*="color:#0f172a"],[style*="color:#1e293b"],[style*="color:#334155"],[style*="color:#374151"],[style*="color: rgb(30, 41, 59)"]){color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) .modal :is([style*="color:#475569"],[style*="color:#64748b"],[style*="color:#94a3b8"],[style*="color: rgb(100, 116, 139)"],[style*="color: rgb(148, 163, 184)"]){color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .modal :is([style*="color:#92400e"],[style*="color:#78350f"],[style*="color:#854d0e"],[style*="color:#9a3412"]){color:#FBBF24 !important;}
+:root.amb-dark:not([data-theme]) .modal :is([style*="color:#1e40af"],[style*="color:#1d4ed8"],[style*="color:#4f46e5"]){color:#9DB8FF !important;}
+:root.amb-dark:not([data-theme]) .modal :is([style*="color:#065f46"],[style*="color:#15803d"],[style*="color:#047857"]){color:#22E58A !important;}
+:root.amb-dark:not([data-theme]) .modal :is([style*="color:#991b1b"],[style*="color:#b91c1c"],[style*="color:#dc2626"]){color:#FF8A9A !important;}
+:root.amb-dark:not([data-theme]) .modal code{background:rgba(255,255,255,.08);color:#FDE68A;}
+:root.amb-dark:not([data-theme]) :is(.modal,.page) input[type="file"]{color:var(--dk-sub);}
+:root.amb-dark:not([data-theme]) .modal label:not(.form-group label){color:var(--dk-text);}
+/* Scheduler attendees dropdown (inline-styled). */
+:root.amb-dark:not([data-theme]) #mtgAttTrigger{background:rgba(255,255,255,.05) !important;border-color:var(--dk-line) !important;color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) #mtgAttDropdown{background:#0E1533 !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) #mtgAttDropdown *{color:var(--dk-text);}
+:root.amb-dark:not([data-theme]) #mtgAttDropdown :is(label,div):hover{background:rgba(79,124,255,.14) !important;}
+/* Access Control: hovered row / selected user. */
+:root.amb-dark:not([data-theme]) .acc-page-row:hover{background:rgba(79,124,255,.08) !important;}
+:root.amb-dark:not([data-theme]) .acc-user-item.active{background:rgba(79,124,255,.16) !important;}
+
+/* Compliance → Employee 360 (features.css .e3-*). */
+:root.amb-dark:not([data-theme]) .e3-card{background:var(--dk-card) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .e3-card-title{color:#8FB0FF !important;}
+:root.amb-dark:not([data-theme]) .e3-big{color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) .e3-row{border-color:var(--dk-line) !important;color:#C9D2EA !important;}
+:root.amb-dark:not([data-theme]) .e3-k{color:#C9D2EA !important;}
+:root.amb-dark:not([data-theme]) .e3-row > :last-child{color:var(--dk-text);}
+:root.amb-dark:not([data-theme]) :is(.e3-score-sum,.e3-score-final),
+:root.amb-dark:not([data-theme]) :is(.e3-score-sum,.e3-score-final) td{background:rgba(251,191,36,.08) !important;color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) :is(.e3-score-sum,.e3-score-final) td :is(b,strong,div:first-child){color:#FBBF24 !important;}
+:root.amb-dark:not([data-theme]) .e3-sc-na{background:rgba(255,255,255,.1) !important;color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .e3-sc-bad{background:rgba(255,107,129,.15) !important;color:#FF8A9A !important;}
+:root.amb-dark:not([data-theme]) .e3-sc-avg{background:rgba(251,191,36,.15) !important;color:#FBBF24 !important;}
+:root.amb-dark:not([data-theme]) .e3-sc-good,:root.amb-dark:not([data-theme]) .e3-sc-exc{background:rgba(34,229,138,.13) !important;color:#22E58A !important;}
+:root.amb-dark:not([data-theme]) .e3-day{background:var(--dk-card-2) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .e3-day-head{background:transparent !important;color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) :is(.e3-day-meta,.e3-day-date){color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .e3-table :is(th,td){border-color:var(--dk-line) !important;}
+/* The score box sits on the orange header: keep it a solid dark tile. */
+:root.amb-dark:not([data-theme]) .e3-finalbox{background:#0E1533 !important;border-color:rgba(255,255,255,.25) !important;}
+:root.amb-dark:not([data-theme]) .e3-finalbox.e3-sc-bad .e3-finalbox-num,:root.amb-dark:not([data-theme]) .e3-finalbox .e3-finalbox-num{opacity:1 !important;}
+:root.amb-dark:not([data-theme]) .e3-toggle{background:rgba(255,255,255,.08) !important;border-color:var(--dk-line) !important;color:var(--dk-text) !important;}
+/* Tables and summary boxes inside popups (MIS detail and the like). */
+:root.amb-dark:not([data-theme]) .modal table th{background:rgba(255,255,255,.04) !important;color:var(--dk-sub) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .modal table td{background:transparent !important;color:#C9D2EA !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) .modal tbody tr,:root.amb-dark:not([data-theme]) .modal tbody tr:nth-child(n){background:transparent !important;}
+:root.amb-dark:not([data-theme]) .modal tbody tr:hover,:root.amb-dark:not([data-theme]) .modal tbody tr:hover td{background:rgba(79,124,255,.09) !important;}
+:root.amb-dark:not([data-theme]) .modal td[style*="color:#dc2626"]{color:#FF8A9A !important;}
+:root.amb-dark:not([data-theme]) #misDetailScore{background:rgba(255,255,255,.04) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) #misDetailScore :is([style*="color:#64748b"]){color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) #misDetailScore span:first-child{color:#C9D2EA !important;}

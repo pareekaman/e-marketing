@@ -122,7 +122,9 @@ function appPromptText(message, { title = 'Please confirm', placeholder = '', ok
 (function setupModalUX() {
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     const modal = overlay.querySelector('.modal');
-    if (!modal || modal.querySelector('.modal-close')) return;
+    // A modal that draws its own close button (e.g. .lv-modal-close in the
+    // leave form) gets no second one.
+    if (!modal || modal.querySelector('.modal-close, [class*="modal-close"]')) return;
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'modal-close';

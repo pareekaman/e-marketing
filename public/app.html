@@ -31,7 +31,8 @@
 <link rel="stylesheet" href="/css/notify.css"/>
 <link rel="stylesheet" href="/css/chatbot.css"/>
 <link rel="stylesheet" href="/css/theme-picker.css"/>
-<link rel="stylesheet" href="/css/amber.css"/>
+<link rel="stylesheet" href="/css/amber.css?v=5"/>
+<link rel="stylesheet" href="/css/dark.css?v=12"/>
 <link rel="stylesheet" href="/css/themes/navratri.css"/>
 <link rel="stylesheet" href="/css/themes/dussehra.css"/>
 <link rel="stylesheet" href="/css/themes/holi.css"/>
@@ -50,6 +51,8 @@
 /* Apply the last-seen festival theme before first paint so there is no flash;
    core.js confirms it against /api/theme once the session is known. */
 try { var _t = localStorage.getItem('appTheme'); if (_t && /^[a-z]+$/.test(_t) && _t !== 'normal') document.documentElement.setAttribute('data-theme', _t); } catch (e) {}
+/* Dark look (amber-ui.js toggleAmberDark), this browser only. */
+try { if (localStorage.getItem('amberDark') === '1') document.documentElement.classList.add('amb-dark'); } catch (e) {}
 try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9]$/.test(_d)) document.documentElement.setAttribute('data-nv-day', _d); } catch (e) {}
 </script>
 </head>
@@ -4518,7 +4521,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/inventory.js"></script>
 <script src="/js/hrm.js"></script>
 <script src="/js/dashboard.js"></script>
-<script src="/js/amber-ui.js"></script>
+<script src="/js/amber-ui.js?v=2"></script>
 <script src="/js/tasks.js"></script>
 <script src="/js/users.js"></script>
 <script src="/js/helpers.js"></script>
@@ -4574,6 +4577,10 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
     sel.style.overflow = 'hidden'; sel.style.opacity = '0'; sel.style.pointerEvents = 'none';
     if (startHidden) wrap.style.display = 'none';
     const applyVis = () => { wrap.style.display = (sel.style.display === 'none') ? 'none' : ''; };
+    // The page can move under an open list (the sidebar opening or closing slides
+    // .main sideways), so it follows its input every frame while open.
+    let followId = 0;
+    function follow(){ cancelAnimationFrame(followId); const step = () => { if (!wrap.classList.contains('open')) return; position(); followId = requestAnimationFrame(step); }; followId = requestAnimationFrame(step); }
     function position(){
       const r = input.getBoundingClientRect();
       panel.style.left = r.left + 'px';
@@ -4598,8 +4605,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         ? filtered.map((x,fi)=>`<div class="ss-opt${x.i===sel.selectedIndex?' ss-sel':''}${fi===active?' ss-active':''}" data-i="${x.i}">${esc(x.o.textContent)}</div>`).join('')
         : '<div class="ss-empty">No match</div>';
     }
-    function open(){ if (wrap.classList.contains('open')) return; build(''); input.value=''; input.placeholder = curText() || placeholder(); wrap.classList.add('open'); panel.classList.add('ss-open'); position(); window.addEventListener('scroll', position, true); window.addEventListener('resize', position); scrollActive(); }
-    function close(){ if (!wrap.classList.contains('open')) { syncDisplay(); return; } wrap.classList.remove('open'); panel.classList.remove('ss-open'); window.removeEventListener('scroll', position, true); window.removeEventListener('resize', position); input.value = curText(); input.placeholder = placeholder(); }
+    function open(){ if (wrap.classList.contains('open')) return; build(''); input.value=''; input.placeholder = curText() || placeholder(); wrap.classList.add('open'); panel.classList.add('ss-open'); position(); follow(); window.addEventListener('scroll', position, true); window.addEventListener('resize', position); scrollActive(); }
+    function close(){ if (!wrap.classList.contains('open')) { syncDisplay(); return; } wrap.classList.remove('open'); panel.classList.remove('ss-open'); cancelAnimationFrame(followId); window.removeEventListener('scroll', position, true); window.removeEventListener('resize', position); input.value = curText(); input.placeholder = placeholder(); }
     function choose(i){ if (sel.selectedIndex !== i){ sel.selectedIndex = i; sel.dispatchEvent(new Event('change',{bubbles:true})); } close(); }
     function scrollActive(){ const el = panel.querySelector('.ss-active'); if (el) el.scrollIntoView({block:'nearest'}); }
     function setActive(d){

@@ -584,7 +584,10 @@ function updateDashStats(type) {
   const ring = dashAmberOn();
   // Each ring slice is a gradient (light at the top, deep at the bottom) so the
   // ring reads as rounded, like the design. Pairs are [light, deep].
-  const RING = { Completed: ['#FFC24D', '#F97316'], Pending: ['#FB7185', '#E11D48'],
+  // Dark look (css/dark.css): neon green / amber / red / violet, like its design.
+  const dark = document.documentElement.classList.contains('amb-dark');
+  const RING = dark ? { Completed: ['#4ADE80', '#16A34A'], Pending: ['#FCD34D', '#F59E0B'], Revised: ['#FB7185', '#E11D48'], Upcoming: ['#C4B5FD', '#7C3AED'] }
+           : { Completed: ['#FFC24D', '#F97316'], Pending: ['#FB7185', '#E11D48'],
                  Revised: ['#FDE68A', '#F59E0B'], Upcoming: ['#C4B5FD', '#7C3AED'] };
   const ringFill = c => {
     const { chartArea } = c.chart;
@@ -596,7 +599,7 @@ function updateDashStats(type) {
   };
   dashChartInst = new Chart(canvas.getContext('2d'), {
     type: ring ? 'doughnut' : 'pie',
-    data:{labels,datasets:[{data,backgroundColor:ring?ringFill:colors,borderWidth:ring?2:3,borderColor:'#fff',hoverOffset:6,borderRadius:ring?4:0}]},
+    data:{labels,datasets:[{data,backgroundColor:ring?ringFill:colors,borderWidth:ring?2:3,borderColor:dark?'#0E1533':'#fff',hoverOffset:6,borderRadius:ring?4:0}]},
     plugins: ring ? [dashRingCenter] : [],
     options:{responsive:true,maintainAspectRatio:false,cutout:ring?'58%':undefined,
       plugins:{legend:{display:false},dashRingCenter:{total},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}`}}}}
@@ -604,6 +607,9 @@ function updateDashStats(type) {
   // Amber look: all four in a 2x2 legend with count and share, zeros included,
   // so the layout never shifts.
   const legend = document.getElementById('dashLegend');
+  // Keep the page's original legend so a festival theme gets it back.
+  if (legend && legend.dataset.orig === undefined) legend.dataset.orig = legend.innerHTML;
+  if (legend && !ring) legend.innerHTML = legend.dataset.orig;
   if (legend && ring) {
     const all = { Completed: completed, Pending: pending, Revised: revised, Upcoming: upcomingCount };
     legend.innerHTML = Object.entries(all).map(([l, n]) => `<span class="dash-leg">
@@ -700,15 +706,16 @@ const dashRingCenter = {
     if (inner) {
       ctx.shadowColor = 'rgba(120,80,20,.22)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 4;
       ctx.beginPath(); ctx.arc(x, y, inner * 0.86, 0, Math.PI * 2);
-      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.fillStyle = document.documentElement.classList.contains('amb-dark') ? '#0E1533' : '#fff'; ctx.fill();
       ctx.shadowColor = 'transparent';
     }
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#2B2118';
+    const dk = document.documentElement.classList.contains('amb-dark');
+    ctx.fillStyle = dk ? '#F1F4FF' : '#2B2118';
     ctx.font = "800 32px Inter, sans-serif";
     ctx.textBaseline = 'alphabetic';
     ctx.fillText(String(opts.total ?? ''), x, y + 6);
-    ctx.fillStyle = '#7A6E62';
+    ctx.fillStyle = dk ? '#97A3C2' : '#7A6E62';
     ctx.font = "600 12px Inter, sans-serif";
     ctx.textBaseline = 'top';
     ctx.fillText('Total Tasks', x, y + 12);

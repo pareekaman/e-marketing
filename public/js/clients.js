@@ -812,6 +812,9 @@ async function cmSaveLogin() {
 function cmBackToList() {
   document.getElementById('cmDetailView').style.display = 'none';
   document.getElementById('cmListView').style.display = 'block';
+  // The detail page edits CM_ALL in place (handlers, brand, active), but the
+  // list HTML was drawn before that — redraw it so the edit shows on return.
+  cmRenderList();
 }
 
 // The detail page title: the brand people know, like the list rows (client

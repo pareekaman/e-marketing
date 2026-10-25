@@ -137,6 +137,22 @@ body{background:radial-gradient(520px circle at 12% 18%,rgba(255,170,60,.34),tra
 table th{color:#8A7B69;}
 tbody tr:hover td{background:#FFFAF0;}
 .cp-stats > *{background:rgba(255,255,255,.62) !important;border-color:rgba(255,255,255,.8) !important;border-radius:16px !important;box-shadow:0 10px 26px -14px rgba(160,90,20,.28) !important;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);}
+/* Sidebar: opening it on hover pushes the page instead of covering it; the pin
+   keeps it open (remembered in this browser). */
+.cp-main{transition:margin-left .3s var(--ease);}
+.cp-sidebar:hover ~ .cp-main{margin-left:212px;}
+.cp-pin{margin-left:auto;flex-shrink:0;width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:#B79E7A;cursor:pointer;opacity:0;transition:opacity .2s .1s,background .15s;}
+.cp-pin svg{width:16px;height:16px;transform:rotate(45deg);transition:transform .2s;}
+.cp-sidebar:hover .cp-pin{opacity:1;}
+.cp-pin:hover{background:#FFF0D2;color:#2B2118;}
+.cp-pin[aria-pressed="true"]{color:#EA8A00;background:#FFF0D2;}
+.cp-pin[aria-pressed="true"] svg{transform:none;}
+@media(min-width:761px){
+  .cp-pinned .cp-sidebar{width:212px;}
+  .cp-pinned .cp-main{margin-left:212px;}
+  .cp-pinned .cp-sidebar :is(.cp-brand-text,.cp-nav-label,.cp-logout-label,.cp-pin){opacity:1;}
+}
+@media(max-width:760px){ .cp-pin{display:none;} .cp-sidebar:hover ~ .cp-main{margin-left:62px;} }
 </style>
 </head>
 <body>
@@ -149,6 +165,7 @@ tbody tr:hover td{background:#FFFAF0;}
         <div class="cp-brand-title">Client Portal</div>
         <div class="cp-brand-sub" id="topbarSub">E-Marketing</div>
       </div>
+      <button type="button" class="cp-pin" id="cpPinBtn" onclick="cpTogglePin()" title="Keep the sidebar open" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg></button>
     </div>
     <nav class="cp-nav">
       <button class="cp-nav-item active" id="cpNavDashboard" onclick="cpNav('dashboard')"><span class="cp-nav-ico">🏠</span><span class="cp-nav-label">Dashboard</span></button>
@@ -158,6 +175,12 @@ tbody tr:hover td{background:#FFFAF0;}
     </nav>
     <button class="logout-btn cp-client-only" onclick="logout()"><span class="cp-nav-ico">↩</span><span class="cp-logout-label">Logout</span></button>
   </aside>
+  <script>
+// Sidebar pin: .cp-pinned on <html>, remembered in this browser.
+function cpApplyPin(on){document.documentElement.classList.toggle('cp-pinned',on);const b=document.getElementById('cpPinBtn');if(b){b.setAttribute('aria-pressed',on?'true':'false');b.title=on?'Unpin: open the sidebar on hover':'Keep the sidebar open';}}
+function cpTogglePin(){const on=!document.documentElement.classList.contains('cp-pinned');try{localStorage.setItem('cpSidebarPinned',on?'1':'0');}catch(e){}cpApplyPin(on);}
+(function(){let on=false;try{on=localStorage.getItem('cpSidebarPinned')==='1';}catch(e){}cpApplyPin(on);})();
+</script>
   <main class="cp-main">
     <div class="cp-preview-bar" id="cpPreviewBar" style="display:none">
       <span id="cpPreviewText">👁 Read-only preview</span>

@@ -193,3 +193,38 @@ function toggleSidebarPin() {
   try { on = localStorage.getItem('sidebarPinned') === '1'; } catch {}
   applySidebarPin(on);
 })();
+
+// ── Light / Dark ──────────────────────────────────────────────────────────
+// .amb-dark on <html> switches css/dark.css on (only while no festival theme
+// is on). Remembered in this browser; the inline script in app.html applies it
+// before first paint. The ring and the performance lists are drawn in JS, so
+// an open dashboard is redrawn.
+function amberIsDark() { return document.documentElement.classList.contains('amb-dark'); }
+function toggleAmberDark() {
+  const on = !amberIsDark();
+  document.documentElement.classList.toggle('amb-dark', on);
+  try { localStorage.setItem('amberDark', on ? '1' : '0'); } catch {}
+  amberSyncModeBtn();
+  const active = document.querySelector('.page.active');
+  if (active && active.id === 'page-dashboard' && typeof ME !== 'undefined' && ME) {
+    if (typeof dashTab === 'function') dashTab(dashType, document.querySelector('#dashTypeTabGroup .tab.active'));
+    if (typeof loadDashboardPerfCharts === 'function') loadDashboardPerfCharts();
+  }
+}
+function amberSyncModeBtn() {
+  const bar = document.querySelector('.topbar');
+  let b = document.getElementById('ambModeBtn');
+  if (!b && bar) {
+    b = document.createElement('button');
+    b.type = 'button'; b.id = 'ambModeBtn'; b.className = 'amb-mode-btn';
+    b.onclick = toggleAmberDark;
+    bar.insertBefore(b, document.getElementById('ntBellWrap'));
+  }
+  if (b) {
+    const dark = amberIsDark();
+    b.textContent = dark ? '☀' : '☾';
+    b.title = dark ? 'Switch to light' : 'Switch to dark';
+    b.setAttribute('aria-label', b.title);
+  }
+}
+amberSyncModeBtn();

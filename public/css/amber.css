@@ -697,3 +697,58 @@
   :root:not([data-theme]) #topbarActions .ss-input,
   :root:not([data-theme]) #topbarActions select{max-width:none !important;width:100%;}
 }
+
+/* ── Phone: the Overdue table becomes a list of cards ─────────────────────
+   Column order in each row: #, Type, Description, Doer, Date, Client,
+   [Priority], Action. No JS change — the same <tr>s are laid out as cards. */
+@media (max-width:768px){
+  :root:not([data-theme]) .task-table-card table{min-width:0 !important;}
+  :root:not([data-theme]) .task-table-card thead{display:none;}
+  :root:not([data-theme]) .task-table-card > div[style*="overflow"]{max-height:none !important;overflow:visible !important;}
+  :root:not([data-theme]) #dashTbody{display:block;padding:10px;}
+  :root:not([data-theme]) #dashTbody tr{
+    display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;
+    background:rgba(255,255,255,.8);border:1px solid #F3E2BC;border-radius:16px;
+    padding:12px 14px;margin-bottom:10px;box-shadow:0 6px 16px -10px rgba(160,90,20,.3);
+  }
+  :root:not([data-theme]) #dashTbody td{display:block;padding:0 !important;border:0 !important;background:none !important;max-width:none !important;}
+  :root:not([data-theme]) #dashTbody td.dash-num{display:none;}
+  /* Type pill and date share the top line. */
+  :root:not([data-theme]) #dashTbody td:nth-child(2){order:1;}
+  :root:not([data-theme]) #dashTbody td:nth-child(5){order:2;margin-left:auto;text-align:right;font-size:12px;}
+  /* Description: its own full line, bold. */
+  :root:not([data-theme]) #dashTbody td:nth-child(3){order:3;flex:1 1 100%;font-weight:600;color:#2B2118;font-size:14px;}
+  /* Doer and client: a small line. */
+  :root:not([data-theme]) #dashTbody td:nth-child(4){order:4;font-size:12px;color:#7A6E62;}
+  :root:not([data-theme]) #dashTbody td:nth-child(6){order:5;}
+  :root:not([data-theme]) #dashTbody td:nth-child(7):not(:last-child){order:6;}
+  /* Actions: full width at the bottom. */
+  :root:not([data-theme]) #dashTbody td:last-child{order:9;flex:1 1 100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+    border-top:1px dashed #F0DDB3 !important;padding-top:10px !important;margin-top:2px;white-space:normal;}
+  :root:not([data-theme]) #dashTbody td:last-child > span{display:inline-flex !important;flex-wrap:wrap;gap:6px;}
+  :root:not([data-theme]) #dashTbody td:last-child .dash-kebab{margin-left:auto;}
+  :root:not([data-theme]) #dashTbody td[colspan]{flex:1 1 100%;text-align:center;}
+}
+
+/* ══ COMPOSE EMAIL (its own <style> in app.html) ═════════════════════════ */
+:root:not([data-theme]) .ce-card{
+  background:rgba(255,255,255,.6) !important;border-color:rgba(255,255,255,.8) !important;border-radius:18px !important;
+  box-shadow:0 12px 32px -14px rgba(160,90,20,.26), inset 0 1px 0 rgba(255,255,255,.8);
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+}
+:root:not([data-theme]) .ce-row{border-bottom-color:#F6EBD5;}
+:root:not([data-theme]) .ce-toolbar{background:#FFF8EC;border-color:#F0DDB3;}
+:root:not([data-theme]) #ceEditor{border-color:#F0DDB3 !important;background:#fff;}
+:root:not([data-theme]) .ce-chip{background:#FFF1D6;border-color:#F3D9A4;color:#92400E;}
+:root:not([data-theme]) .ce-chip-mail,:root:not([data-theme]) .ce-chip button{color:#B45309;}
+:root:not([data-theme]) .ce-link-btn{border-color:#F3D9A4;color:#B45309;}
+:root:not([data-theme]) .ce-link-btn:hover{background:#FFF4DC;}
+
+/* ── Light audit (scan-contrast light): muted slate #94a3b8 text is too faint
+   on cream (2.5:1). Lift it to a warm grey that reads (~4:1). ── */
+:root:not([data-theme]):not(.amb-dark) .page .empty,
+:root:not([data-theme]):not(.amb-dark) .page :is([style*="color:#94a3b8"],[style*="color: rgb(148, 163, 184)"],[style*="color:#9ca3af"]),
+:root:not([data-theme]):not(.amb-dark) .acc-user-item span:not(.role-badge),
+:root:not([data-theme]):not(.amb-dark) :is(.lv-month-head span,.dr-or,#lvTeamFilters > span,#tasksUserDateFilters > span,.dms-client-row td,.cm-detail-stats div){color:#857563 !important;}
+:root:not([data-theme]):not(.amb-dark) .dr-stat-value{color:#B45309 !important;}
+:root:not([data-theme]):not(.amb-dark) .ov-chg.is-good{color:#15803D;}

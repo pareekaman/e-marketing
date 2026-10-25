@@ -201,6 +201,14 @@ function applyAppTheme(theme) {
   if (typeof amberPlaceHeader === 'function') {
     const active = document.querySelector('.page.active');
     amberPlaceHeader(active ? active.id.replace(/^page-/, '') : 'dashboard');
+    // The ring/pie, its legend and the performance lists are drawn for one look
+    // or the other; redraw them when the look changes under an open dashboard.
+    const wasAmber = window._amberDrawn;
+    window._amberDrawn = t === 'normal';
+    if (wasAmber !== undefined && wasAmber !== window._amberDrawn && active && active.id === 'page-dashboard' && ME) {
+      if (typeof dashTab === 'function') dashTab(dashType, document.querySelector('#dashTypeTabGroup .tab.active'));
+      if (typeof loadDashboardPerfCharts === 'function') loadDashboardPerfCharts();
+    }
   }
   // Navratri: which day's Mata (data-nv-day, 1-9) the theme shows; none for the general look.
   const root = document.documentElement, day = t === 'navratri' && _nvDay ? String(_nvDay) : null;
