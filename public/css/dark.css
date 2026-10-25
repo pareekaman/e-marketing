@@ -426,3 +426,7 @@
 :root.amb-dark:not([data-theme]) #misDetailScore{background:rgba(255,255,255,.04) !important;border-color:var(--dk-line) !important;}
 :root.amb-dark:not([data-theme]) #misDetailScore :is([style*="color:#64748b"]){color:var(--dk-sub) !important;}
 :root.amb-dark:not([data-theme]) #misDetailScore span:first-child{color:#C9D2EA !important;}
+/* Speed: no blur (see amber.css); slightly more solid panels instead. */
+:root.amb-dark:not([data-theme]){--dk-card:rgba(17,25,56,.86);}
+:root.amb-dark:not([data-theme]) .sidebar{background:linear-gradient(180deg,#0C122C,#080C20) !important;}
+:root.amb-dark:not([data-theme]) .topbar{background:rgba(9,14,36,.94) !important;}

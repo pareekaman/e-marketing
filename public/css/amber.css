@@ -752,3 +752,14 @@
 :root:not([data-theme]):not(.amb-dark) :is(.lv-month-head span,.dr-or,#lvTeamFilters > span,#tasksUserDateFilters > span,.dms-client-row td,.cm-detail-stats div){color:#857563 !important;}
 :root:not([data-theme]):not(.amb-dark) .dr-stat-value{color:#B45309 !important;}
 :root:not([data-theme]):not(.amb-dark) .ov-chg.is-good{color:#15803D;}
+
+/* ══ Speed (2026-10-25): backdrop blur on every card made long pages scroll
+   badly on ordinary laptops (Enquiry: 116ms frames at 4x CPU throttle).
+   Blur is off everywhere; cards get a little more opacity so the frosted
+   look holds, and the page background no longer repaints on each scroll. ══ */
+:root:not([data-theme]) *{-webkit-backdrop-filter:none !important;backdrop-filter:none !important;}
+:root:not([data-theme]) body{background-attachment:scroll !important;}
+:root:not([data-theme]):not(.amb-dark) :is(.ov-card,.task-table-card,.dash-perf-section,.chart-card,.tg-section,.dt-card,.lv-card,.cm-card,.cp-card,
+  .hrm-card,.hrm-stat-card,.dr-card,.profile-card,.users-grid,.mis-table-wrap,.flat-tasks-table,.ce-card,.dash-bottom > *:last-child){background:rgba(255,253,249,.82) !important;}
+:root:not([data-theme]):not(.amb-dark) .sidebar{background:rgba(255,250,240,.94) !important;}
+:root:not([data-theme]):not(.amb-dark) .topbar{background:rgba(255,248,236,.92) !important;}
