@@ -22,16 +22,29 @@ const LEAVE_SELECTED = new Map(); // dateStr -> hours (only meaningful for extra
 const LEAVE_EXTRA_ROWS = new Map();
 const LEAVE_INTERNAL_CLIENT = 'Internal / Office Work';
 let LEAVE_CLIENTS = [];
+// Stored name -> what the picker shows (the brand, like the Daily Task picker).
+// The stored value stays the client's own name, which the server keys on.
+const LEAVE_CLIENT_LABEL = new Map();
+const lvClientLabel = name => LEAVE_CLIENT_LABEL.get(name) || name;
+// A typed or shown value (brand or own name) back to the stored name.
+const lvClientCanonical = text => {
+  const t = String(text || '').trim().toLowerCase();
+  if (!t) return '';
+  if (t === LEAVE_INTERNAL_CLIENT.toLowerCase()) return LEAVE_INTERNAL_CLIENT;
+  return LEAVE_CLIENTS.find(n => n.toLowerCase() === t || lvClientLabel(n).toLowerCase() === t) || '';
+};
 
 async function lvLoadClients(){
   try {
     const list = await api('/api/clients');
-    LEAVE_CLIENTS = (Array.isArray(list) ? list : [])
-      .filter(c => c.is_active === undefined || !!Number(c.is_active))
-      // Your own clients first. The name stays the stored value here, so it
-      // is also what the Extra Working picker shows.
+    const active = (Array.isArray(list) ? list : [])
+      .filter(c => c.is_active === undefined || !!Number(c.is_active));
+    LEAVE_CLIENT_LABEL.clear();
+    active.forEach(c => LEAVE_CLIENT_LABEL.set(c.name, (typeof clientLabel === 'function' ? clientLabel(c) : '') || c.name));
+    // Your own clients first, then A-Z by the label shown.
+    LEAVE_CLIENTS = active
       .sort((a, b) => (Number(!!Number(b.is_my_client)) - Number(!!Number(a.is_my_client))) ||
-        (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
+        lvClientLabel(a.name).localeCompare(lvClientLabel(b.name), undefined, { sensitivity: 'base' }))
       .map(c => c.name);
   } catch { LEAVE_CLIENTS = []; }
   // If the user already picked Extra Working before clients arrived, refresh dropdowns
@@ -567,7 +580,7 @@ function lvRenderSelectedList(){
       </div>
       ${rows.map((row, i) => `
       <div class="lv-extra-row">
-        <input type="text" placeholder="Client…" value="${dtEscape(row.client || '')}"
+        <input type="text" placeholder="Client…" value="${dtEscape(lvClientLabel(row.client || ''))}"
           oninput="lvClientCombo('${k}',${i},this)" onfocus="lvClientCombo('${k}',${i},this)"
           onblur="lvClientComboHide(this)"/>
         <textarea class="lv-extra-desc" rows="2" placeholder="What did you do?"
@@ -619,15 +632,16 @@ function lvComboHideNow(){
 }
 
 function lvClientCombo(key, idx, input){
-  lvExtraSet(key, idx, 'client', input.value);
+  lvExtraSet(key, idx, 'client', lvClientCanonical(input.value) || input.value);
   LV_COMBO_INPUT = input;
   const listEl = lvComboEl();
   const q = input.value.trim().toLowerCase();
   const names = [LEAVE_INTERNAL_CLIENT, ...LEAVE_CLIENTS];
-  const matches = names.filter(n => !q || n.toLowerCase().includes(q)).slice(0, 50);
+  // Match the brand shown or the client's own name.
+  const matches = names.filter(n => !q || n.toLowerCase().includes(q) || lvClientLabel(n).toLowerCase().includes(q)).slice(0, 50);
   if (!matches.length) { listEl.style.display = 'none'; return; }
   listEl.innerHTML = matches.map(n =>
-    `<div class="lv-client-combo-item" onmousedown="lvClientComboPick('${key}',${idx},this)">${dtEscape(n)}</div>`).join('');
+    `<div class="lv-client-combo-item" data-name="${dtEscape(n)}" onmousedown="lvClientComboPick('${key}',${idx},this)">${dtEscape(lvClientLabel(n))}</div>`).join('');
   listEl.style.display = 'block';
   // Fixed-position under the input; flip above / pull left when the viewport runs out
   const r = input.getBoundingClientRect();
@@ -640,9 +654,9 @@ function lvClientCombo(key, idx, input){
 }
 
 function lvClientComboPick(key, idx, el){
-  const name = el.textContent;
+  const name = el.dataset.name || el.textContent;
   lvExtraSet(key, idx, 'client', name);
-  if (LV_COMBO_INPUT) LV_COMBO_INPUT.value = name;
+  if (LV_COMBO_INPUT) LV_COMBO_INPUT.value = lvClientLabel(name);
   lvComboHideNow();
 }
 
@@ -715,8 +729,7 @@ async function saveLeave(){
         // Normalize a typed name to the canonical list entry; reject unknown names
         // (skipped when the client list failed to load, so submission never dead-ends)
         if (LEAVE_CLIENTS.length) {
-          const all = [LEAVE_INTERNAL_CLIENT, ...LEAVE_CLIENTS];
-          const match = all.find(n => n.toLowerCase() === client.toLowerCase());
+          const match = lvClientCanonical(client);
           if (!match) return showErr(`"${client}" is not in the client list (${fmtDate(key)}) — pick from the suggestions`);
           client = match;
         }
