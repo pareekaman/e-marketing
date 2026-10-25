@@ -405,6 +405,7 @@ function renderTasksTable() {
       || t.status === taskStatusFilter;
     const matchSearch = !search ||
       (t.description||'').toLowerCase().includes(search) ||
+      (t.client_name||'').toLowerCase().includes(search) ||
       (t.assignedToName||'').toLowerCase().includes(search) ||
       (t.assignedByName||'').toLowerCase().includes(search) ||
       (t.due_date||'').includes(search) ||
@@ -416,7 +417,6 @@ function renderTasksTable() {
     const matchDateFrom = !dateFrom || (t.due_date && t.due_date >= dateFrom);
     const matchDateTo = !dateTo || (t.due_date && t.due_date <= dateTo);
     return matchStatus && matchSearch && matchUser && matchDateFrom && matchDateTo;
-      (t.client_name||'').toLowerCase().includes(search) ||
   });
 
   if (!tasks.length) {
@@ -483,6 +483,7 @@ function renderTasksTable() {
       return `<div class="tg-section ${isOpen ? 'open' : ''}" data-tg-key="${dtEscape(g.key)}">
         <button type="button" class="tg-head" onclick="toggleTaskGroup(this)" aria-expanded="${isOpen}">
           <span class="tg-caret">▶</span>
+          <span class="tg-ava">${dtEscape(String(g.name || '').split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase())}</span>
           <span class="tg-name">${dtEscape(g.name)}</span>
           <span class="tg-counts">
             <span class="tg-count tg-count-total">${g.tasks.length} total</span>
@@ -494,7 +495,6 @@ function renderTasksTable() {
         <div class="tg-body">
           <div class="flat-tasks-scroll">
             <table style="min-width:${showClientCol ? '820px' : '700px'};width:100%">
-          <span class="tg-ava">${dtEscape(String(g.name || '').split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase())}</span>
               ${tableHeadHtml}
               <tbody>${rows}</tbody>
             </table>
