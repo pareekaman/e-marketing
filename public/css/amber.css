@@ -763,3 +763,5 @@
   .hrm-card,.hrm-stat-card,.dr-card,.profile-card,.users-grid,.mis-table-wrap,.flat-tasks-table,.ce-card,.dash-bottom > *:last-child){background:rgba(255,253,249,.82) !important;}
 :root:not([data-theme]):not(.amb-dark) .sidebar{background:rgba(255,250,240,.94) !important;}
 :root:not([data-theme]):not(.amb-dark) .topbar{background:rgba(255,248,236,.92) !important;}
+/* Performance is a chart again (hover shows the value), so its box keeps a fixed height. */
+:root:not([data-theme]) .dash-perf-card .perf-chart-wrap{height:200px !important;min-height:0;}

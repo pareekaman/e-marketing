@@ -248,7 +248,7 @@ async function loadDashboardPerfCharts(){
   const top    = [...completables].sort((a, b) => (parseInt(b.completedAll)||0) - (parseInt(a.completedAll)||0)).slice(0, 5);
   const bottomPool = racers.filter(r => r.overallScore !== null && r.overallScore !== undefined);
   const bottom = [...bottomPool].sort((a, b) => a.overallScore - b.overallScore).slice(0, 5);
-  renderDashPerfChart('dashTopChart',    'top',    top.map(r => r.name),    top.map(r => parseInt(r.completedAll)||0), dashAmberOn() ? 'linear-gradient(90deg,#FCD34D,#F59E0B,#F97316)' : '#16a34a', 'Tasks completed', null, top.map(r => r.profileImage));
+  renderDashPerfChart('dashTopChart',    'top',    top.map(r => r.name),    top.map(r => parseInt(r.completedAll)||0), dashPerfColor('top'), 'Tasks completed', null, top.map(r => r.profileImage));
   // Bottom ranks on score while Top ranks on tasks completed, so across a big
   // team the two lists barely overlap. Across a small one they are the same
   // few people in a different order — in the two-person AI department the same
@@ -259,7 +259,7 @@ async function loadDashboardPerfCharts(){
     renderPerfNote('dashBottomChart', 'bottom',
       `Needs at least ${BOTTOM_RANK_MIN_PEOPLE} people to rank`);
   } else {
-    renderDashPerfChart('dashBottomChart', 'bottom', bottom.map(r => r.name), bottom.map(r => r.overallScore), dashAmberOn() ? 'linear-gradient(90deg,#FDA4AF,#F43F5E)' : '#dc2626', 'Score', null, bottom.map(r => r.profileImage));
+    renderDashPerfChart('dashBottomChart', 'bottom', bottom.map(r => r.name), bottom.map(r => r.overallScore), dashPerfColor('bottom'), 'Score', null, bottom.map(r => r.profileImage));
   }
 
   // Most Active — composite engagement: active tasks + tasks delegated to others + revises triggered + leaves submitted.
@@ -269,7 +269,7 @@ async function loadDashboardPerfCharts(){
     'dashActiveChart', 'active',
     active.map(r => r.name),
     active.map(r => r.activityScore || 0),
-    dashAmberOn() ? 'linear-gradient(90deg,#FCD34D,#F59E0B,#F97316)' : '#4f46e5',
+    dashPerfColor('active'),
     'Activity points',
     active.map(r => `Active tasks: ${r.active_tasks} · Delegated to others: ${r.delegated_to_others} · Revises: ${r.revises_triggered} · Leaves: ${r.leaves_submitted}`),
     active.map(r => r.profileImage)
@@ -323,7 +323,7 @@ const perfAvatarPlugin = {
         } else { drawInitials(); }
       } else { drawInitials(); }
       // Name (truncate to fit the gutter)
-      ctx.fillStyle = '#0f172a'; ctx.font = "600 11px Inter, sans-serif"; ctx.textAlign = 'left';
+      ctx.fillStyle = (typeof dashIsDark === 'function' && dashIsDark()) ? '#E6EAF5' : '#0f172a'; ctx.font = "600 11px Inter, sans-serif"; ctx.textAlign = 'left';
       let txt = name;
       if (ctx.measureText(txt).width > maxTextW) {
         while (txt.length > 1 && ctx.measureText(txt + '…').width > maxTextW) txt = txt.slice(0, -1);
@@ -365,26 +365,6 @@ function renderDashPerfChart(canvasId, key, labels, values, color, axisLabel, br
     if (dashPerfCharts[key]) { dashPerfCharts[key].destroy(); dashPerfCharts[key] = null; }
     return;
   }
-  // Amber look: a ranked list (rank, photo, name, bar, figure) instead of a
-  // chart, like the design the user picked. Festival themes keep the chart.
-  if (dashAmberOn()) {
-    if (dashPerfCharts[key]) { dashPerfCharts[key].destroy(); dashPerfCharts[key] = null; }
-    const max = Math.max(...values.map(v => Math.abs(Number(v) || 0)), 1);
-    wrap.innerHTML = `<div class="perf-list">${labels.map((name, i) => {
-      const v = Number(values[i]) || 0;
-      const img = images && images[i];
-      const initials = String(name || '').split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
-      const tip = breakdown && breakdown[i] ? ` title="${dtEscape(breakdown[i])}"` : '';
-      return `<div class="perf-row"${tip}>
-        <span class="perf-rank">${i + 1}</span>
-        ${img ? `<img class="perf-ava" src="${dtEscape(img)}" alt="">` : `<span class="perf-ava perf-ava-txt">${dtEscape(initials)}</span>`}
-        <span class="perf-name">${dtEscape(name)}</span>
-        <span class="perf-bar"><span style="width:${Math.max(4, Math.round(Math.abs(v) / max * 100))}%;background:${color}"></span></span>
-        <span class="perf-val">${Number.isInteger(v) ? v : v.toFixed(1)}</span>
-      </div>`;
-    }).join('')}</div>`;
-    return;
-  }
   if (!wrap.querySelector('canvas')) {
     wrap.innerHTML = `<canvas id="${canvasId}"></canvas>`;
   }
@@ -414,8 +394,8 @@ function renderDashPerfChart(canvasId, key, labels, values, color, axisLabel, br
         }
       },
       scales: {
-        x: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, color: '#64748b' } },
-        y: { grid: { display: false }, ticks: { display: !hasImages, font: { size: 11, weight: '600' }, color: '#0f172a' } }
+        x: { grid: { color: dashIsDark() ? 'rgba(120,150,255,.12)' : '#f1f5f9' }, ticks: { font: { size: 10 }, color: dashIsDark() ? '#97A3C2' : '#64748b' } },
+        y: { grid: { display: false }, ticks: { display: !hasImages, font: { size: 11, weight: '600' }, color: dashIsDark() ? '#E6EAF5' : '#0f172a' } }
       }
     }
   });
@@ -690,6 +670,14 @@ function dashRowMenu(ev, id, type) {
   setTimeout(() => document.addEventListener('click', () => pop.remove(), { once: true }), 0);
 }
 
+// Bar colours for the performance charts: the look decides (amber, dark,
+// or a festival theme's original green / red / indigo).
+function dashIsDark(){ return document.documentElement.classList.contains('amb-dark') && dashAmberOn(); }
+function dashPerfColor(kind){
+  if (!dashAmberOn()) return { top: '#16a34a', bottom: '#dc2626', active: '#4f46e5' }[kind];
+  if (dashIsDark()) return { top: '#22E58A', bottom: '#FF6B81', active: '#38BDF8' }[kind];
+  return { top: '#F59E0B', bottom: '#F43F5E', active: '#FB923C' }[kind];
+}
 // True while no festival theme is on — the amber look in css/amber.css.
 function dashAmberOn() { return !document.documentElement.hasAttribute('data-theme'); }
 
