@@ -2107,18 +2107,15 @@ app.post('/api/admin/stop-impersonate', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════
-app.get('/api/dashboard', requireAuth, async (req, res) => {
-  try {
+// Whose tasks the dashboard counts, as a SQL fragment on `t.assigned_to` plus
+// its params. Shared by /api/dashboard and /api/dashboard/trend so the cards and
+// their "vs last month" figures always count the same people.
+async function dashboardUserFilter(req) {
     const uid = req.session.userId;
     const role = req.session.role;
     const isAdmin = role === 'admin' || role === 'pc';
     const isHod = role === 'hod';
-    const isPC = role === 'pc';
     const filterEmployee = req.query.employee;
-    // PC date range filter — default to today if not provided
-    const dateFrom = req.query.dateFrom || '';
-    const dateTo   = req.query.dateTo   || '';
-
     let userFilter, params;
 
     if (isAdmin && filterEmployee && filterEmployee !== 'all') {
@@ -2153,6 +2150,74 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
     } else {
       userFilter = 'AND t.assigned_to = ?'; params = [uid];
     }
+    return { userFilter, params };
+}
+
+// Each KPI card's "vs last month" figure and its 14-day sparkline. This month
+// so far is compared with the same days of last month. Checklist rows have no
+// completed_at, so a checklist counts on its due date (as the dashboard does).
+//   total     — tasks given: delegation by created_at, checklist by due_date
+//   completed — delegation by completed_at, checklist by due_date when done
+//   pending   — of those given in the period, the ones still open now
+//   upcoming  — tasks scheduled (due) in the period
+app.get('/api/dashboard/trend', requireAuth, async (req, res) => {
+  try {
+    const { userFilter, params } = await dashboardUserFilter(req);
+    const ist = new Date(Date.now() + 330 * 60000);
+    const ymd = d => d.toISOString().slice(0, 10);
+    const today = ymd(ist);
+    const day = ist.getUTCDate();
+    const thisStart = ymd(new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), 1)));
+    const lastStart = ymd(new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth() - 1, 1)));
+    const lastMonthDays = new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), 0)).getUTCDate();
+    const lastEnd = ymd(new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth() - 1, Math.min(day, lastMonthDays))));
+    const sparkStart = ymd(new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), day - 13)));
+    const from = sparkStart < lastStart ? sparkStart : lastStart;
+
+    // One grouped query per metric and table: day -> count, from `from` to today.
+    const perDay = async (sql) => {
+      const [rows] = await db.query(sql, [from, today, ...params]);
+      const m = new Map();
+      for (const r of rows) m.set(r.d, (m.get(r.d) || 0) + Number(r.n || 0));
+      return m;
+    };
+    const q = (tbl, dateExpr, extra = '') =>
+      `SELECT DATE_FORMAT(${dateExpr},'%Y-%m-%d') AS d, COUNT(*) AS n FROM ${tbl} t
+        WHERE DATE(${dateExpr}) BETWEEN ? AND ? ${extra} ${userFilter} GROUP BY d`;
+    const merge = (...maps) => { const m = new Map(); for (const x of maps) for (const [k, v] of x) m.set(k, (m.get(k) || 0) + v); return m; };
+    const series = {
+      total: merge(await perDay(q('delegation_tasks', 't.created_at')), await perDay(q('checklist_tasks', 't.due_date'))),
+      completed: merge(await perDay(q('delegation_tasks', 't.completed_at', "AND t.status='completed'")),
+                       await perDay(q('checklist_tasks', 't.due_date', "AND t.status='completed'"))),
+      pending: merge(await perDay(q('delegation_tasks', 't.created_at', "AND t.status IN ('pending','revised')")),
+                     await perDay(q('checklist_tasks', 't.due_date', "AND t.status='pending'"))),
+      upcoming: merge(await perDay(q('delegation_tasks', 't.due_date')), await perDay(q('checklist_tasks', 't.due_date'))),
+    };
+    const sum = (m, a, b) => { let s = 0; for (const [k, v] of m) if (k >= a && k <= b) s += v; return s; };
+    const days = [];
+    for (let i = 13; i >= 0; i--) days.push(ymd(new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), day - i))));
+    const out = {};
+    for (const [key, m] of Object.entries(series)) {
+      const now = sum(m, thisStart, today), before = sum(m, lastStart, lastEnd);
+      out[key] = {
+        thisPeriod: now, lastPeriod: before,
+        // No figure when last month had nothing to compare with.
+        change: before ? Math.round((now - before) / before * 100) : null,
+        spark: days.map(d => m.get(d) || 0),
+      };
+    }
+    res.json(out);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/dashboard', requireAuth, async (req, res) => {
+  try {
+    const role = req.session.role;
+    const isPC = role === 'pc';
+    // PC date range filter — default to today if not provided
+    const dateFrom = req.query.dateFrom || '';
+    const dateTo   = req.query.dateTo   || '';
+    const { userFilter, params } = await dashboardUserFilter(req);
 
     // Stats + Table:
     //   Delegation: ALL dates (matches FMS — no date cap, show all pending)

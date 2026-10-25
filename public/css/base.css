@@ -290,3 +290,20 @@ tbody tr.row-in{animation:rowIn .3s var(--ease) backwards;}
 @media (prefers-reduced-motion: reduce){
   tbody tr.row-in{animation:none;}
 }
+
+/* ── Sidebar pin (amber-ui.js toggleSidebarPin) ── */
+.sidebar-logo{position:relative;}
+.sb-pin{margin-left:auto;flex-shrink:0;width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:8px;
+  background:transparent;color:#94a3b8;cursor:pointer;opacity:0;transition:opacity .2s .1s,background .15s,color .15s;}
+.sb-pin svg{width:16px;height:16px;transform:rotate(45deg);transition:transform .2s;}
+.sidebar:hover .sb-pin{opacity:1;}
+.sb-pin:hover{background:rgba(148,163,184,.18);color:#e2e8f0;}
+.sb-pin[aria-pressed="true"]{color:var(--brand-2);}
+.sb-pin[aria-pressed="true"] svg{transform:none;}
+@media (min-width:769px){
+  .sb-pinned .sidebar{width:232px;}
+  .sb-pinned .main{margin-left:232px;}
+  .sb-pinned .sidebar .nav-label-text,.sb-pinned .sidebar .nav-group-label-text,.sb-pinned .sidebar .nav-group-chevron,
+  .sb-pinned .sidebar .logo-text,.sb-pinned .sidebar .su-info,.sb-pinned .sidebar .logout-label,.sb-pinned .sb-pin{opacity:1;}
+}
+@media (max-width:768px){ .sb-pin{display:none;} }

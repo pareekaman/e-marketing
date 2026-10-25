@@ -31,6 +31,7 @@
 <link rel="stylesheet" href="/css/notify.css"/>
 <link rel="stylesheet" href="/css/chatbot.css"/>
 <link rel="stylesheet" href="/css/theme-picker.css"/>
+<link rel="stylesheet" href="/css/amber.css"/>
 <link rel="stylesheet" href="/css/themes/navratri.css"/>
 <link rel="stylesheet" href="/css/themes/dussehra.css"/>
 <link rel="stylesheet" href="/css/themes/holi.css"/>
@@ -72,7 +73,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       style="width:34px;height:34px;object-fit:cover;border-radius:6px;flex-shrink:0"
       onerror="this.style.display='none';document.getElementById('sidebarLogoFallback').style.display='grid'"/>
     <div id="sidebarLogoFallback" style="display:none;width:34px;height:34px;background:linear-gradient(135deg,var(--brand-1),var(--brand-2));border-radius:8px;place-items:center;color:#fff;font-weight:700;font-size:15px;font-style:italic;flex-shrink:0">e</div>
-    <div class="logo-text">E-Marketing</div>
+    <div class="logo-text">E-Marketing<small class="amb-sub">ERP</small></div>
+    <button type="button" class="sb-pin" id="sbPinBtn" onclick="toggleSidebarPin()" title="Keep the sidebar open" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg></button>
   </div>
   <nav class="nav">
     <div class="nav-item active" onclick="navigate('dashboard',this)">
@@ -352,15 +354,15 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <div class="dash-topbar-btns" id="dashBtns"></div>
     </div>
     <div class="overview-cards">
-      <div class="ov-card total"     onclick="goToAllTasksFromDash('all')"       title="Open All Tasks with these rows"><div class="label">Total</div><div class="number" id="dTotal">—</div></div>
-      <div class="ov-card completed" onclick="goToAllTasksFromDash('completed')" title="Open All Tasks → Completed"><div class="label">Completed</div><div class="number" id="dCompleted">—</div></div>
-      <div class="ov-card pending"   onclick="goToAllTasksFromDash('pending')"   title="Open All Tasks → Pending (includes Revised)"><div class="label">Pending</div><div class="number" id="dPending">—</div><div id="dPendingBreakdown" style="font-size:11px;color:#f59e0b;font-weight:600;margin-top:4px;display:none">—</div></div>
-      <div class="ov-card upcoming"  onclick="goToAllTasksFromDash('upcoming')"  title="Pending tasks with future due date"><div class="label">Upcoming</div><div class="number" id="dUpcoming">—</div><div style="font-size:11px;color:#7c3aed;font-weight:600;margin-top:4px"></div></div>
+      <div class="ov-card total"     onclick="goToAllTasksFromDash('all')"       title="Open All Tasks with these rows"><span class="ov-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span><div class="label">Total<span class="amb-only"> Tasks</span></div><div class="number" id="dTotal">—</div><div class="ov-trend" id="dTrendTotal"></div></div>
+      <div class="ov-card completed" onclick="goToAllTasksFromDash('completed')" title="Open All Tasks → Completed"><span class="ov-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16 10"/></svg></span><div class="label">Completed<span class="amb-only"> Tasks</span></div><div class="number" id="dCompleted">—</div><div class="ov-trend" id="dTrendCompleted"></div></div>
+      <div class="ov-card pending"   onclick="goToAllTasksFromDash('pending')"   title="Open All Tasks → Pending (includes Revised)"><span class="ov-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M5 3 2 6"/><path d="m22 6-3-3"/></svg></span><div class="label">Pending<span class="amb-only"> Tasks</span></div><div class="number" id="dPending">—</div><div class="ov-trend" id="dTrendPending"></div><div id="dPendingBreakdown" style="font-size:11px;color:#f59e0b;font-weight:600;margin-top:4px;display:none">—</div></div>
+      <div class="ov-card upcoming"  onclick="goToAllTasksFromDash('upcoming')"  title="Pending tasks with future due date"><span class="ov-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M8 2.5v4M16 2.5v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/></svg></span><div class="label">Upcoming<span class="amb-only"> Tasks</span></div><div class="number" id="dUpcoming">—</div><div class="ov-trend" id="dTrendUpcoming"></div><div style="font-size:11px;color:#7c3aed;font-weight:600;margin-top:4px"></div></div>
     </div>
     <div class="dash-bottom">
       <div class="task-table-card">
         <div class="card-head">
-          <div class="card-head-title">Overdue Pending Tasks</div>
+          <div class="card-head-title"><span class="amb-ico amb-ico-red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M5 3 2 6"/><path d="m22 6-3-3"/></svg></span><span>Overdue Pending Tasks<small class="amb-sub">Tasks pending with no due date or delayed.</small></span></div>
           <div class="tab-group" id="dashTypeTabGroup">
             <div class="tab active" id="dashTabAll"     onclick="dashTab('all',this)">All</div>
             <div class="tab"        id="dashTabDel"     onclick="dashTab('delegation',this)">Delegation</div>
@@ -373,6 +375,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
           <table style="min-width:600px">
             <thead id="dashThead" style="position:sticky;top:0;z-index:2;background:#f8fafc">
               <tr>
+                <th class="amb-cell">#</th>
                 <th style="white-space:nowrap">Type</th>
                 <th>Description</th>
                 <th id="dashDoerHead">Doer</th>
@@ -386,9 +389,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         </div>
       </div>
       <div class="chart-card">
-        <h3>Task Overview</h3>
+        <h3><span class="amb-ico amb-ico-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20V13"/><path d="M12 20V8"/><path d="M18 20V4"/></svg></span>Task Overview</h3>
         <div class="chart-wrap"><canvas id="dashChart"></canvas></div>
-        <div style="display:flex;gap:12px;justify-content:center;margin-top:10px;font-size:11px;color:#64748b">
+        <div id="dashLegend" style="display:flex;gap:12px;justify-content:center;margin-top:10px;font-size:11px;color:#64748b">
           <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#10b981;display:inline-block"></span>Completed</span>
           <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block"></span>Pending</span>
           <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:#f59e0b;display:inline-block"></span>Revised</span>
@@ -400,7 +403,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
     <!-- Performance & Activity — every employee; whole company, or a hod's own team -->
     <div id="dashPerfSection" class="dash-perf-section" style="display:none">
       <div class="dash-perf-head">
-        <h3>📈 Performance &amp; Activity <span id="dashPerfScopeLabel" style="font-size:12px;font-weight:600;color:#64748b"></span></h3>
+        <h3><span class="amb-ico amb-ico-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20V13"/><path d="M12 20V8"/><path d="M18 20V4"/></svg></span><span class="amb-hide">📈 </span><span>Performance &amp; Activity<small class="amb-sub">Top contributors, low performers and most active users.</small></span> <span id="dashPerfScopeLabel" style="font-size:12px;font-weight:600;color:#64748b"></span></h3>
         <div class="dash-perf-dates">
           <label id="dashPerfTeamWrap" style="display:none;align-items:center;gap:7px;cursor:pointer;margin-right:10px" title="Show only your department">
             <span class="dash-team-switch"><input type="checkbox" id="dashPerfTeam" onchange="dashPerfSetTeam(this.checked)"/><span></span></span>
@@ -418,15 +421,15 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
              by its canvas, the wrap would then be unfindable and the chart
              could never come back. -->
         <div class="dash-perf-card">
-          <h4>🥇 Top 5 Performers</h4>
+          <h4><span class="amb-hide">🥇 </span><span class="amb-only amb-h4-ico amb-h4-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg></span>Top 5 Performers</h4>
           <div class="perf-chart-wrap" id="dashTopChartWrap"><canvas id="dashTopChart"></canvas></div>
         </div>
         <div class="dash-perf-card">
-          <h4>🐢 Bottom 5 Performers</h4>
+          <h4><span class="amb-hide">🐢 </span><span class="amb-only amb-h4-ico amb-h4-red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v16M5 13l7 7 7-7"/></svg></span>Bottom 5 Performers</h4>
           <div class="perf-chart-wrap" id="dashBottomChartWrap"><canvas id="dashBottomChart"></canvas></div>
         </div>
         <div class="dash-perf-card">
-          <h4>🔥 Top 5 Most Active</h4>
+          <h4><span class="amb-hide">🔥 </span><span class="amb-only amb-h4-ico amb-h4-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg></span>Top 5 Most Active</h4>
           <div class="perf-chart-wrap" id="dashActiveChartWrap"><canvas id="dashActiveChart"></canvas></div>
         </div>
       </div>
@@ -4515,6 +4518,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/inventory.js"></script>
 <script src="/js/hrm.js"></script>
 <script src="/js/dashboard.js"></script>
+<script src="/js/amber-ui.js"></script>
 <script src="/js/tasks.js"></script>
 <script src="/js/users.js"></script>
 <script src="/js/helpers.js"></script>

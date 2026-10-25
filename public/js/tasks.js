@@ -416,6 +416,7 @@ function renderTasksTable() {
     const matchDateFrom = !dateFrom || (t.due_date && t.due_date >= dateFrom);
     const matchDateTo = !dateTo || (t.due_date && t.due_date <= dateTo);
     return matchStatus && matchSearch && matchUser && matchDateFrom && matchDateTo;
+      (t.client_name||'').toLowerCase().includes(search) ||
   });
 
   if (!tasks.length) {
@@ -493,6 +494,7 @@ function renderTasksTable() {
         <div class="tg-body">
           <div class="flat-tasks-scroll">
             <table style="min-width:${showClientCol ? '820px' : '700px'};width:100%">
+          <span class="tg-ava">${dtEscape(String(g.name || '').split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase())}</span>
               ${tableHeadHtml}
               <tbody>${rows}</tbody>
             </table>

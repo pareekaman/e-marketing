@@ -196,6 +196,12 @@ function applyAppTheme(theme) {
   if (t === 'normal') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', t);
   try { localStorage.setItem('appTheme', t); } catch (e) {}
+  // The amber look moves the dashboard buttons into the top bar; put them back
+  // (or move them) to match the theme just applied. amber-ui.js.
+  if (typeof amberPlaceHeader === 'function') {
+    const active = document.querySelector('.page.active');
+    amberPlaceHeader(active ? active.id.replace(/^page-/, '') : 'dashboard');
+  }
   // Navratri: which day's Mata (data-nv-day, 1-9) the theme shows; none for the general look.
   const root = document.documentElement, day = t === 'navratri' && _nvDay ? String(_nvDay) : null;
   const dayChanged = root.getAttribute('data-nv-day') !== day;

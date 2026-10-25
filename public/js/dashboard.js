@@ -101,6 +101,9 @@ async function loadDashboard(light = false) {
   const upElEarly = document.getElementById('dUpcoming');
   if (upElEarly && !_dashStatsHold) countUp(upElEarly, window._dashTotals.upcoming);
   updateDashStats(dashType);
+  // "vs last month" + sparkline under each card — amber look only, and never
+  // holds the rest of the dashboard up.
+  if (dashAmberOn()) loadDashTrend((isAdmin || isHod || isPC) ? `?employee=${encodeURIComponent(empVal)}` : '', seq);
 
   if (isAdmin || isHod || isPC) {
     // Only admin (and PC) may switch the dashboard to another employee's view.
@@ -130,10 +133,12 @@ async function loadDashboard(light = false) {
   // the same keys). Until now a plain user never saw them here.
   {
     const btns = [];
-    if (ME.role === 'admin') btns.push(`<button class="btn btn-yellow" onclick="openHoliday()">🗓 Holidays</button>`);
-    if (canDo('create_checklist')) btns.push(`<button class="btn btn-green" onclick="openChecklist()">+ Checklist</button>`);
+    // dash-btn-quiet: css/amber.css draws these as outline buttons, leaving
+    // Delegate the one filled button.
+    if (ME.role === 'admin') btns.push(`<button class="btn btn-yellow dash-btn-quiet" onclick="openHoliday()"><span class="amb-hide">🗓 </span><svg class="amb-only amb-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M8 2.5v4M16 2.5v4M3 10h18"/></svg>Holidays</button>`);
+    if (canDo('create_checklist')) btns.push(`<button class="btn btn-green dash-btn-quiet" onclick="openChecklist()">+ Checklist</button>`);
     if (canDo('create_task'))      btns.push(`<button class="btn btn-primary" onclick="openDelegate()">+ Delegate</button>`);
-    if (canDo('transfer_task'))    btns.push(`<button class="btn" style="background:#7c3aed;color:#fff" onclick="openNewTransferModal()">🔀 Transfer</button>`);
+    if (canDo('transfer_task'))    btns.push(`<button class="btn dash-btn-quiet" style="background:#7c3aed;color:#fff" onclick="openNewTransferModal()"><span class="amb-hide">🔀 </span><svg class="amb-only amb-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3 8l4 4"/><path d="M3 8h14"/><path d="m17 20 4-4-4-4"/><path d="M21 16H7"/></svg>Transfer</button>`);
     const db2 = document.getElementById('dashBtns');
     if (db2) db2.innerHTML = btns.join('');
   }
@@ -243,7 +248,7 @@ async function loadDashboardPerfCharts(){
   const top    = [...completables].sort((a, b) => (parseInt(b.completedAll)||0) - (parseInt(a.completedAll)||0)).slice(0, 5);
   const bottomPool = racers.filter(r => r.overallScore !== null && r.overallScore !== undefined);
   const bottom = [...bottomPool].sort((a, b) => a.overallScore - b.overallScore).slice(0, 5);
-  renderDashPerfChart('dashTopChart',    'top',    top.map(r => r.name),    top.map(r => parseInt(r.completedAll)||0), '#16a34a', 'Tasks completed', null, top.map(r => r.profileImage));
+  renderDashPerfChart('dashTopChart',    'top',    top.map(r => r.name),    top.map(r => parseInt(r.completedAll)||0), dashAmberOn() ? 'linear-gradient(90deg,#FCD34D,#F59E0B,#F97316)' : '#16a34a', 'Tasks completed', null, top.map(r => r.profileImage));
   // Bottom ranks on score while Top ranks on tasks completed, so across a big
   // team the two lists barely overlap. Across a small one they are the same
   // few people in a different order — in the two-person AI department the same
@@ -254,7 +259,7 @@ async function loadDashboardPerfCharts(){
     renderPerfNote('dashBottomChart', 'bottom',
       `Needs at least ${BOTTOM_RANK_MIN_PEOPLE} people to rank`);
   } else {
-    renderDashPerfChart('dashBottomChart', 'bottom', bottom.map(r => r.name), bottom.map(r => r.overallScore), '#dc2626', 'Score', null, bottom.map(r => r.profileImage));
+    renderDashPerfChart('dashBottomChart', 'bottom', bottom.map(r => r.name), bottom.map(r => r.overallScore), dashAmberOn() ? 'linear-gradient(90deg,#FDA4AF,#F43F5E)' : '#dc2626', 'Score', null, bottom.map(r => r.profileImage));
   }
 
   // Most Active — composite engagement: active tasks + tasks delegated to others + revises triggered + leaves submitted.
@@ -264,7 +269,7 @@ async function loadDashboardPerfCharts(){
     'dashActiveChart', 'active',
     active.map(r => r.name),
     active.map(r => r.activityScore || 0),
-    '#4f46e5',
+    dashAmberOn() ? 'linear-gradient(90deg,#FCD34D,#F59E0B,#F97316)' : '#4f46e5',
     'Activity points',
     active.map(r => `Active tasks: ${r.active_tasks} · Delegated to others: ${r.delegated_to_others} · Revises: ${r.revises_triggered} · Leaves: ${r.leaves_submitted}`),
     active.map(r => r.profileImage)
@@ -358,6 +363,26 @@ function renderDashPerfChart(canvasId, key, labels, values, color, axisLabel, br
   if (!labels.length) {
     wrap.innerHTML = '<div class="perf-empty">No data in this date range</div>';
     if (dashPerfCharts[key]) { dashPerfCharts[key].destroy(); dashPerfCharts[key] = null; }
+    return;
+  }
+  // Amber look: a ranked list (rank, photo, name, bar, figure) instead of a
+  // chart, like the design the user picked. Festival themes keep the chart.
+  if (dashAmberOn()) {
+    if (dashPerfCharts[key]) { dashPerfCharts[key].destroy(); dashPerfCharts[key] = null; }
+    const max = Math.max(...values.map(v => Math.abs(Number(v) || 0)), 1);
+    wrap.innerHTML = `<div class="perf-list">${labels.map((name, i) => {
+      const v = Number(values[i]) || 0;
+      const img = images && images[i];
+      const initials = String(name || '').split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
+      const tip = breakdown && breakdown[i] ? ` title="${dtEscape(breakdown[i])}"` : '';
+      return `<div class="perf-row"${tip}>
+        <span class="perf-rank">${i + 1}</span>
+        ${img ? `<img class="perf-ava" src="${dtEscape(img)}" alt="">` : `<span class="perf-ava perf-ava-txt">${dtEscape(initials)}</span>`}
+        <span class="perf-name">${dtEscape(name)}</span>
+        <span class="perf-bar"><span style="width:${Math.max(4, Math.round(Math.abs(v) / max * 100))}%;background:${color}"></span></span>
+        <span class="perf-val">${Number.isInteger(v) ? v : v.toFixed(1)}</span>
+      </div>`;
+    }).join('')}</div>`;
     return;
   }
   if (!wrap.querySelector('canvas')) {
@@ -546,19 +571,150 @@ function updateDashStats(type) {
     dashChartInst = null;
     return;
   }
-  const labels = ['Completed','Pending']; const data = [completed, pending]; const colors = ['#10b981','#ef4444'];
+  const amb = dashAmberOn();
+  const labels = ['Completed','Pending']; const data = [completed, pending]; const colors = amb ? ['#F59E0B','#EF4444'] : ['#10b981','#ef4444'];
   if (revised > 0 && (type === 'all' || type === 'delegation')) {
-    labels.push('Revised'); data.push(revised); colors.push('#f59e0b');
+    labels.push('Revised'); data.push(revised); colors.push(amb ? '#FB7185' : '#f59e0b');
   }
   if (upcomingCount > 0) {
     labels.push('Upcoming'); data.push(upcomingCount); colors.push('#8b5cf6');
   }
+  // The everyday (amber) look draws a ring with the total in the middle; a
+  // festival theme keeps the pie it was designed with.
+  const ring = dashAmberOn();
+  // Each ring slice is a gradient (light at the top, deep at the bottom) so the
+  // ring reads as rounded, like the design. Pairs are [light, deep].
+  const RING = { Completed: ['#FFC24D', '#F97316'], Pending: ['#FB7185', '#E11D48'],
+                 Revised: ['#FDE68A', '#F59E0B'], Upcoming: ['#C4B5FD', '#7C3AED'] };
+  const ringFill = c => {
+    const { chartArea } = c.chart;
+    const pair = RING[labels[c.dataIndex]] || [colors[c.dataIndex], colors[c.dataIndex]];
+    if (!chartArea) return pair[1];
+    const g = c.chart.ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+    g.addColorStop(0, pair[0]); g.addColorStop(1, pair[1]);
+    return g;
+  };
   dashChartInst = new Chart(canvas.getContext('2d'), {
-    type:'pie',
-    data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:3,borderColor:'#fff',hoverOffset:6}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}`}}}}
+    type: ring ? 'doughnut' : 'pie',
+    data:{labels,datasets:[{data,backgroundColor:ring?ringFill:colors,borderWidth:ring?2:3,borderColor:'#fff',hoverOffset:6,borderRadius:ring?4:0}]},
+    plugins: ring ? [dashRingCenter] : [],
+    options:{responsive:true,maintainAspectRatio:false,cutout:ring?'58%':undefined,
+      plugins:{legend:{display:false},dashRingCenter:{total},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}`}}}}
   });
+  // Amber look: all four in a 2x2 legend with count and share, zeros included,
+  // so the layout never shifts.
+  const legend = document.getElementById('dashLegend');
+  if (legend && ring) {
+    const all = { Completed: completed, Pending: pending, Revised: revised, Upcoming: upcomingCount };
+    legend.innerHTML = Object.entries(all).map(([l, n]) => `<span class="dash-leg">
+      <span class="dash-leg-dot" style="background:linear-gradient(135deg,${RING[l][0]},${RING[l][1]})"></span>
+      <span><b>${l}</b><br>${n} (${(n / total * 100).toFixed(1)}%)</span></span>`).join('');
+  }
 }
+
+// Fills the four .ov-trend slots from /api/dashboard/trend. For Pending a rise
+// is bad news, so its colours run the other way.
+const DASH_TREND_CARDS = [
+  ['total', 'dTrendTotal', '#F59E0B', false],
+  ['completed', 'dTrendCompleted', '#10B981', false],
+  ['pending', 'dTrendPending', '#EF4444', true],
+  ['upcoming', 'dTrendUpcoming', '#8B5CF6', false],
+];
+async function loadDashTrend(qs, seq) {
+  let t;
+  try { t = await api('/api/dashboard/trend' + qs); } catch { return; }
+  if (seq !== _dashSeq || !t || t.error) return;
+  for (const [key, id, color, riseIsBad] of DASH_TREND_CARDS) {
+    const el = document.getElementById(id);
+    const d = t[key];
+    if (!el || !d) continue;
+    const chg = d.change;
+    const good = chg === null || chg === 0 ? null : (chg > 0) !== riseIsBad;
+    const chgHtml = chg === null
+      ? `<span class="ov-chg">—</span>`
+      : `<span class="ov-chg ${good ? 'is-good' : 'is-bad'}">${chg > 0 ? '↑' : chg < 0 ? '↓' : ''} ${Math.abs(chg)}%</span>`;
+    el.innerHTML = `<span class="ov-chg-wrap">${chgHtml}<span class="ov-vs">vs last month</span></span>${dashSpark(d.spark, color)}`;
+    el.title = `This month so far: ${d.thisPeriod} · Same days last month: ${d.lastPeriod}`;
+  }
+}
+
+// A small smooth line for the last 14 days, scaled to its own peak.
+function dashSpark(values, color) {
+  const w = 110, h = 34, n = (values || []).length;
+  if (n < 2) return '';
+  const max = Math.max(...values, 1);
+  const pts = values.map((v, i) => [i * (w / (n - 1)), h - 3 - (v / max) * (h - 8)]);
+  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for (let i = 1; i < n; i++) {
+    const [x0, y0] = pts[i - 1], [x1, y1] = pts[i], cx = (x0 + x1) / 2;
+    d += ` C${cx.toFixed(1)},${y0.toFixed(1)} ${cx.toFixed(1)},${y1.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`;
+  }
+  const [lx, ly] = pts[n - 1];
+  return `<svg class="ov-spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="3.5" fill="${color}"/></svg>`;
+}
+
+// ⋮ on an Overdue row (amber look): the row's lesser actions in a small menu.
+function dashRowMenu(ev, id, type) {
+  ev.stopPropagation();
+  document.getElementById('dashRowMenuPop')?.remove();
+  const t = window._dashTaskMap?.[id];
+  const items = [];
+  if (t) items.push(['👁 View details', () => openTaskDetail(t)]);
+  if (type !== 'fms' && typeof openComments === 'function') items.push(['💬 Comments', () => openComments(id, type)]);
+  items.push(['📋 Open in All Tasks', () => {
+    navigate('alltasks', document.getElementById('nav-alltasks'));
+    const box = document.getElementById('taskSearch');
+    if (box && t) setTimeout(() => { box.value = t.description || ''; if (typeof filterTasks === 'function') filterTasks(); }, 600);
+  }]);
+  const pop = document.createElement('div');
+  pop.id = 'dashRowMenuPop';
+  pop.className = 'amb-menu';
+  items.forEach(([label, fn]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = label;
+    b.onclick = e => { e.stopPropagation(); pop.remove(); fn(); };
+    pop.appendChild(b);
+  });
+  document.body.appendChild(pop);
+  const r = ev.currentTarget.getBoundingClientRect();
+  pop.style.top = (r.bottom + 4) + 'px';
+  pop.style.left = Math.max(8, r.right - pop.offsetWidth) + 'px';
+  setTimeout(() => document.addEventListener('click', () => pop.remove(), { once: true }), 0);
+}
+
+// True while no festival theme is on — the amber look in css/amber.css.
+function dashAmberOn() { return !document.documentElement.hasAttribute('data-theme'); }
+
+// Writes the total in the hole of the Task Overview ring.
+const dashRingCenter = {
+  id: 'dashRingCenter',
+  afterDraw(chart, _args, opts) {
+    const { ctx, chartArea } = chart;
+    if (!chartArea) return;
+    const x = (chartArea.left + chartArea.right) / 2, y = (chartArea.top + chartArea.bottom) / 2;
+    ctx.save();
+    // A raised white disc in the hole, under the figure.
+    const inner = chart.getDatasetMeta(0)?.data?.[0]?.innerRadius;
+    if (inner) {
+      ctx.shadowColor = 'rgba(120,80,20,.22)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 4;
+      ctx.beginPath(); ctx.arc(x, y, inner * 0.86, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.shadowColor = 'transparent';
+    }
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#2B2118';
+    ctx.font = "800 32px Inter, sans-serif";
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(String(opts.total ?? ''), x, y + 6);
+    ctx.fillStyle = '#7A6E62';
+    ctx.font = "600 12px Inter, sans-serif";
+    ctx.textBaseline = 'top';
+    ctx.fillText('Total Tasks', x, y + 12);
+    ctx.restore();
+  }
+};
 
 function dashTab(type, el) {
   dashType = type;
@@ -778,6 +934,7 @@ function renderDashTable(tasks, type) {
 
   // Default unified layout (All / Delegation / Checklist) — restore original headers
   thead.innerHTML = `<tr>
+    <th class="amb-cell">#</th>
     <th style="white-space:nowrap">Type</th>
     <th style="max-width:240px">Description</th>
     <th id="dashDoerHead">${(isAdmin||isPC)?'Doer':'Assigned By'}</th>
@@ -832,7 +989,7 @@ function renderDashTable(tasks, type) {
   } else if (_dashDateSortState === 2) {
     allPending = [...allPending].sort((a,b) => (b.due_date||b.date||'').localeCompare(a.due_date||a.date||''));
   }
-  const colCount = showPriority ? 7 : 6;
+  const colCount = (showPriority ? 7 : 6) + 1; // +1: the # column (amber only)
   if (!allPending.length) {
     const emptyMsg = dashStatusFilter === 'completed' ? 'No completed tasks in this window'
                    : dashStatusFilter === 'all'       ? 'No tasks in this window'
@@ -841,11 +998,12 @@ function renderDashTable(tasks, type) {
     return;
   }
   const typeBadge = t => {
-    if (t.type === 'fms') return `<span style="font-size:10px;background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fed7aa">📊 FMS</span>`;
-    if (t.type === 'checklist') return `<span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0">✅ Checklist</span>`;
-    return `<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bfdbfe">📋 Delegation</span>`;
+    // dash-type-* lets css/amber.css restyle these as solid pills.
+    if (t.type === 'fms') return `<span class="dash-type dash-type-fms" style="font-size:10px;background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fed7aa"><span class="amb-hide">📊 </span>FMS</span>`;
+    if (t.type === 'checklist') return `<span class="dash-type dash-type-checklist" style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bbf7d0"><span class="amb-hide">✅ </span>Checklist</span>`;
+    return `<span class="dash-type dash-type-delegation" style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bfdbfe"><span class="amb-hide">📋 </span>Delegation</span>`;
   };
-  tbody.innerHTML = allPending.map(t => {
+  tbody.innerHTML = allPending.map((t, rowIdx) => {
     if (t.type === 'fms') {
       const lateBadge = t.isLate
         ? `<span style="font-size:10px;background:#fef2f2;color:#dc2626;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fecaca">⏰ Late</span>`
@@ -870,6 +1028,7 @@ function renderDashTable(tasks, type) {
       const actionCell = `<button class="action-btn done" onclick='openFmsDoneFromRow(${refArg})' title="Mark this FMS row done">✅ Done</button>
         <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 8px;margin-left:4px" onclick='openFmsTaskFromRow(${refArg})' title="Open in FMS Tasks page">Open</button>`;
       return `<tr>
+        <td class="amb-cell dash-num" style="vertical-align:top">${rowIdx + 1}</td>
         <td style="white-space:nowrap;vertical-align:top">${typeBadge(t)}</td>
         <td style="vertical-align:top;max-width:240px">${descCell}</td>
         <td style="vertical-align:top">${dtEscape(t.doer||t.assignedToName||'—')}</td>
@@ -881,7 +1040,7 @@ function renderDashTable(tasks, type) {
     }
     if (t.id) window._dashTaskMap[t.id] = t;
     const clientCell = t.client_name
-      ? `<td style="white-space:nowrap"><span style="font-size:11px;background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600">🏢 ${dtEscape(t.client_name)}</span></td>`
+      ? `<td style="white-space:nowrap"><span class="dash-client" style="font-size:11px;background:#fff7ed;color:#c2410c;padding:2px 7px;border-radius:6px;font-weight:600"><span class="amb-hide">🏢 </span>${dtEscape(t.client_name)}</span></td>`
       : `<td style="color:#94a3b8">—</td>`;
     const isDeleg = t.type === 'delegation';
     const isCompleted = t.status === 'completed';
@@ -917,7 +1076,7 @@ function renderDashTable(tasks, type) {
             // double quotes, and this onclick is itself delimited by double
             // quotes, so the raw form closed the attribute early and the button
             // silently did nothing. &quot; parses back to " inside the value.
-            ? `<button class="action-btn" style="background:#fef9c3;color:#854d0e;border:1px solid #fde68a" onclick="openSetDueDate(${t.id},${dtEscape(JSON.stringify(t.no_due_date_reason || ''))})">🗓 ${t.no_due_date_reason ? 'Set date' : 'Set due date'}</button>`
+            ? `<button class="action-btn dash-setdue" style="background:#fef9c3;color:#854d0e;border:1px solid #fde68a" onclick="openSetDueDate(${t.id},${dtEscape(JSON.stringify(t.no_due_date_reason || ''))})"><span class="amb-hide">🗓 </span>${t.no_due_date_reason ? 'Set date' : 'Set due date'}</button>`
             : `<span style="font-size:11px;color:#854d0e;font-weight:600">🗓 Awaiting doer's date</span>`}
           ${(!isPC || t.type==='checklist') ? `<button class="action-btn done" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>` : ''}
           </span>
@@ -930,11 +1089,12 @@ function renderDashTable(tasks, type) {
           ${(!isPC && t.type!=='checklist') ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${t.type}')">Revise</button>` : ''}
         `);
     return `<tr onclick="window._dashTaskMap[${t.id}]&&openTaskDetail(window._dashTaskMap[${t.id}])" style="cursor:pointer" title="Click to view details">
+      <td class="amb-cell dash-num">${rowIdx + 1}</td>
       <td style="white-space:nowrap">${typeBadge(t)}</td>
       <td style="max-width:240px;word-break:break-word">${esc(t.description||t.desc)}</td>
       <td>${esc((isAdmin||isPC)?t.assignedToName:t.assignedByName)}</td>
       <td>${awaitingDate
-            ? `<span style="font-size:10px;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fde68a;white-space:nowrap">🗓 Awaiting date</span>`
+            ? `<span class="dash-await" style="font-size:10px;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fde68a;white-space:nowrap"><span class="amb-hide">🗓 </span>Awaiting date</span>`
               // The doer's answer to "why not yet" belongs in the column that is
               // missing the date, not next to the buttons.
               + (t.no_due_date_reason
@@ -943,7 +1103,7 @@ function renderDashTable(tasks, type) {
             : fmtDate(t.due_date||t.date)}${delegatedLine}${completedLine}</td>
       ${clientCell}
       ${showPriority ? `<td>${isDeleg ? `<span class="priority-badge ${t.priority||'low'}">${t.priority||'low'}</span>` : '—'}</td>` : ''}
-      <td onclick="event.stopPropagation()">${actionCell}</td>
+      <td onclick="event.stopPropagation()">${actionCell}<button class="amb-only dash-kebab" title="More" onclick="dashRowMenu(event,${t.id},'${t.type}')">⋮</button></td>
     </tr>`;
   }).join('');
 }

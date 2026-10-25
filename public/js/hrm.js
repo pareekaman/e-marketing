@@ -1163,6 +1163,10 @@ function navigate(page, el) {
   if (moreTab) moreTab.classList.toggle('active', !document.querySelector('.mobile-bottom-nav .nav-item.active'));
   try { localStorage.setItem('lastPage', page); } catch {}
   document.getElementById('topbarTitle').textContent = pageTitles[page] || page;
+  // Greeting under the Dashboard title; css/amber.css shows it (amber look only).
+  document.getElementById('topbarTitle').dataset.sub =
+    page === 'dashboard' && ME && ME.name ? `Welcome back, ${String(ME.name).split(' ')[0]}!` : '';
+  if (typeof amberPlaceHeader === 'function') amberPlaceHeader(page);
   // Dashboard user-switcher lives on the dashboard header only.
   const ta = document.getElementById('topbarActions');
   if (ta) ta.style.display = (page === 'dashboard' && (ME.role === 'admin' || ME.impersonatedBy)) ? 'flex' : 'none';

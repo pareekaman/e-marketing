@@ -550,6 +550,16 @@
     margin-top:20px;
   }
   .footer-text strong { color:#F39C12; }
+
+  /* Amber look (matches the app's css/amber.css): a warm cream panel and
+     inputs instead of plain white and slate; a festival theme on <html> keeps
+     the original. */
+  :root:not([data-theme]) .form-panel{
+    background:radial-gradient(600px circle at 80% 10%, rgba(255,176,32,.16), transparent 60%),
+               radial-gradient(500px circle at 20% 100%, rgba(255,140,90,.10), transparent 60%), #FFFBF3;
+    box-shadow:-24px 0 70px -34px rgba(120,80,20,.3);
+  }
+  :root:not([data-theme]) input{background:#fff;border-color:#EAD7AE;}
 </style>
 </head>
 <body>
@@ -690,7 +700,7 @@
 
   <button class="btn-login" onclick="login()">Sign In →</button>
   <div style="text-align:center;margin-top:14px">
-    <a href="#" onclick="showReset();return false" style="color:#4f46e5;font-size:13px;font-weight:600;text-decoration:none">Forgot password?</a>
+    <a href="#" onclick="showReset();return false" style="color:#D97706;font-size:13px;font-weight:600;text-decoration:none">Forgot password?</a>
   </div>
   </div>
 
