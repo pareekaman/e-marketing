@@ -259,16 +259,30 @@ let fmsAllUsers = [];
 let fmsSheetHeaders = [];
 
 async function loadFMSAdmin() {
-  const usersRes = await api('/api/users');
-  fmsAllUsers = Array.isArray(usersRes) ? usersRes : [];
-  const sheets = await api('/api/fms');
-  fmsAllSheets = sheets;
-
   const tabsEl = document.getElementById('fmsListTabs');
   const emptyEl = document.getElementById('fmsEmpty');
   const detailEl = document.getElementById('fmsDetailView');
+  // Until the list arrives say so — the empty-state text used to show at once,
+  // which read as "every FMS is gone" on a slow load.
+  if (!fmsAllSheets.length) { emptyEl.style.display = 'block'; emptyEl.textContent = 'Loading FMS…'; }
+
+  const usersRes = await api('/api/users');
+  fmsAllUsers = Array.isArray(usersRes) ? usersRes : [];
+  const sheets = await api('/api/fms');
+
+  // An error (no admin access, a database hiccup) is not "no FMS".
+  if (!Array.isArray(sheets)) {
+    tabsEl.innerHTML = '';
+    detailEl.style.display = 'none';
+    emptyEl.style.display = 'block';
+    emptyEl.innerHTML = `⚠️ Couldn't load the FMS list${sheets && sheets.error ? ': ' + esc(sheets.error) : ''}.
+      <div style="margin-top:10px"><button class="btn btn-outline btn-sm" onclick="loadFMSAdmin()">Retry</button></div>`;
+    return;
+  }
+  fmsAllSheets = sheets;
 
   if (!sheets.length) {
+    emptyEl.textContent = 'No FMS created yet. Click "+ Add New FMS" to get started.';
     tabsEl.innerHTML = '';
     emptyEl.style.display = 'block';
     detailEl.style.display = 'none';
