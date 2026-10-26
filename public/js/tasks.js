@@ -1385,7 +1385,7 @@ async function saveDelegate() {
         btn.disabled = true;
         btn.textContent = tasks.length > 1 ? `Assigning ${i + 1}/${tasks.length}…` : 'Assigning…';
       }
-      const r = await api('/api/tasks','POST',{type:'delegation',desc:t.desc,assignedTo:doer,date:t.date,priority:t.priority,approval,approver,remarks,client_id,url,doerSetsDueDate:t.doerSetsDueDate});
+      const r = await api('/api/tasks','POST',{type:'delegation',desc:t.desc,assignedTo:doer,date:t.date,priority:t.priority,approval,approver,remarks,client_id,url,doerSetsDueDate:t.doerSetsDueDate,quietEmail:tasks.length>1});
       if (r.error) { failed = r.error; break; }
       t.res = r;
     }
@@ -1393,6 +1393,8 @@ async function saveDelegate() {
     if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
   }
   const done = tasks.filter(t => t.res);
+  // Several tasks in one go were created quietly: one summary email per doer.
+  if (tasks.length > 1) { const ids = done.map(t => t.res && t.res.id).filter(Boolean); if (ids.length) api('/api/tasks/notify-batch', 'POST', { ids }).catch(() => {}); }
   if (failed) {
     // Clear away the cards that did land. Pressing Assign again with them still
     // on screen would create those tasks a second time.
@@ -1785,7 +1787,7 @@ async function uploadCSV() {
   const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
   // A row that cannot be read is left out and reported, never saved half-right.
   const problems = [];
-  let count = 0, doneCount = 0;
+  let count = 0, doneCount = 0; const createdIds = [];
   for (let n = 1; n < rows.length; n++) {
     progress(n, rows.length - 1);
     const r = rows[n];
@@ -1814,10 +1816,11 @@ async function uploadCSV() {
       type: 'delegation', desc: description, assignedTo: doer.id,
       approverEmail: get(r, 'approver_email'), date, priority,
       approval: get(r, 'approval').toLowerCase() === 'yes' ? 'yes' : 'no',
-      remarks: get(r, 'remarks'), client_id
+      remarks: get(r, 'remarks'), client_id, quietEmail: true
     });
     if (res && res.error) { problems.push(`Row ${n + 1}: ${res.error}`); continue; }
     count++;
+    if (res && res.id && !res.duplicate) createdIds.push(res.id);
     if (markDone) {
       // A holiday/week-off skip creates nothing, so there is no row to close.
       if (!res || !res.id) { problems.push(`Row ${n + 1}: created but not marked done${res && res.skipped ? ' (date is a holiday or week-off, so no task was made)' : ''}`); continue; }
@@ -1826,6 +1829,8 @@ async function uploadCSV() {
       else doneCount++;
     }
   }
+  // One summary email per doer instead of one per row (open tasks only).
+  if (createdIds.length) api('/api/tasks/notify-batch', 'POST', { ids: createdIds }).catch(() => {});
   if (count) { closeModal('delegateModal'); loadDashboard(true); }
   if (problems.length) {
     appAlert(`${count} task${count === 1 ? '' : 's'} created${doneCount ? ` (${doneCount} marked done)` : ''}. ${problems.length} row${problems.length === 1 ? ' was' : 's were'} not:\n\n${problems.join('\n')}`, 'Bulk upload');

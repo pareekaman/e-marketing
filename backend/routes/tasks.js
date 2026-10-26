@@ -288,7 +288,10 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
           const [[cli]] = await db.query("SELECT COALESCE(NULLIF(TRIM(brand_name),''), name) AS name FROM clients WHERE id=? LIMIT 1", [enforcedClientId]);
           clientName = cli?.name || '';
         }
-        if (target) {
+        // A bulk create (CSV upload, several tasks in one Delegate form) passes
+        // quietEmail and sends one summary per doer afterwards through
+        // POST /api/tasks/notify-batch, instead of an email per task.
+        if (target && req.body.quietEmail !== true) {
           // Same wording as the old WhatsApp delegation message — no HTML card,
           // no "Open Task Manager" button — just the plain text as an email.
           const dueFmt = doerWillSet ? 'Please add the due date in the task' : effectiveDate;
@@ -302,7 +305,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
             (url ? `\n\n*URL:* ${url}` : '') +
             (remarks ? `\n\n*Remarks:* ${remarks}` : '') +
             `\n\n— E-Marketing Task Manager`;
-          await sendMail(target.email, `📋 New Task Assigned: ${(desc||'').slice(0,60)}`, waTextToEmailHtml(msg));
+          await sendMail(target.email, `📋 New Task Assigned: ${Array.from(desc||'').slice(0,60).join('')}`, waTextToEmailHtml(msg));
         }
         // Doer notification now goes by EMAIL only (sent just above via
         // getNotifyTarget) — the personal WhatsApp DM has been retired.
@@ -534,6 +537,44 @@ app.delete('/api/subtasks/:id', requireAuth, async (req, res) => {
 // form itself was offered to anyone with create_checklist, so everyone else got
 // "Admin only". Same permission as a single checklist task now, and the same
 // doer rule as POST /api/tasks: a pc's checklist is always their own.
+// One email per doer for a batch of delegations created with quietEmail
+// (bulk CSV upload, several tasks in one Delegate form). Only the caller's own
+// tasks from the last hour, and only those still open — rows the upload marked
+// done straight away are not news.
+app.post('/api/tasks/notify-batch', requireAuth, async (req, res) => {
+  try {
+    const ids = [...new Set((Array.isArray(req.body.ids) ? req.body.ids : []).map(n => parseInt(n, 10)).filter(n => n > 0))].slice(0, 500);
+    if (!ids.length) return res.json({ success: true, sent: 0 });
+    const [rows] = await db.query(
+      `SELECT t.id, t.description, t.assigned_to, t.priority, t.approval, t.awaiting_due_date,
+              DATE_FORMAT(t.due_date,'%d-%m-%Y') AS due,
+              COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name
+         FROM delegation_tasks t LEFT JOIN clients c ON c.id = t.client_id
+        WHERE t.id IN (?) AND t.assigned_by = ? AND t.status <> 'completed'
+          AND t.created_at >= NOW() - INTERVAL 1 HOUR
+        ORDER BY t.assigned_to, t.due_date, t.id`, [ids, req.session.userId]);
+    const byDoer = new Map();
+    for (const r of rows) { if (!byDoer.has(r.assigned_to)) byDoer.set(r.assigned_to, []); byDoer.get(r.assigned_to).push(r); }
+    const [[me]] = await db.query('SELECT name FROM users WHERE id=? LIMIT 1', [req.session.userId]);
+    let sent = 0;
+    for (const [doer, list] of byDoer) {
+      const target = await getNotifyTarget(doer);
+      if (!target) continue;
+      const lines = list.map((t, i) =>
+        `${i + 1}. ${t.description}\n` +
+        `   *Due:* ${t.awaiting_due_date ? 'Please add the due date in the task' : (t.due || '—')}` +
+        ` · *Priority:* ${(t.priority || 'low').toUpperCase()}` +
+        (t.client_name ? ` · *Client:* ${t.client_name}` : '') +
+        (t.approval === 'yes' ? ' · *Approval Required*' : '')).join('\n\n');
+      const msg = `Hello ${target.name || ''},\n\n📋 *${list.length} New Task${list.length === 1 ? '' : 's'} Delegated*\n\n` +
+        `*By:* ${me?.name || 'Admin'}\n\n${lines}\n\n— E-Marketing Task Manager`;
+      await sendMail(target.email, `📋 ${list.length} new task${list.length === 1 ? '' : 's'} assigned to you`, waTextToEmailHtml(msg)).catch(() => {});
+      sent++;
+    }
+    res.json({ success: true, sent, tasks: rows.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/tasks/bulk-checklist', requireAuth, async (req, res) => {
   try {
     if (!(await userCanDo(req.session, 'create_checklist'))) {
@@ -1166,5 +1207,5 @@ app.post('/api/tasks/checklist-year-delete', requireAuth, requireAdmin, async (r
     const [result] = await db.query(`DELETE FROM checklist_tasks WHERE assigned_to=?`, [userId]);
     res.json({ success: true, deleted: result.affectedRows });
   } catch (err) { res.status(500).json({ error: err.message }); }
-});
+});
 };
