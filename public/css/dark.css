@@ -439,3 +439,11 @@
 :root.amb-dark:not([data-theme]) :is(#mtgStartDropdown,#hrmCTimeDropdown) > div{color:var(--dk-text) !important;}
 /* Rows these lists highlight on hover with an inline light fill. */
 :root.amb-dark:not([data-theme]) :is(.modal,.page) :is([style*="background: rgb(241, 245, 249)"],[style*="background: rgb(248, 250, 252)"],[style*="background: rgb(239, 246, 255)"]){background:rgba(79,124,255,.16) !important;}
+/* Extra Working breakdown (Approvals → Leave, Leave Tracker): features.css
+   paints it slate, which vanished on navy. */
+:root.amb-dark:not([data-theme]) .lv-extra-breakdown{color:#C9D2EA !important;}
+:root.amb-dark:not([data-theme]) .lv-extra-bd-date,
+:root.amb-dark:not([data-theme]) .lv-extra-breakdown b{color:var(--dk-text) !important;}
+:root.amb-dark:not([data-theme]) .lv-extra-breakdown [style*="color:#64748b"]{color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) .lv-desc-more{color:#9DB8FF !important;}
+:root.amb-dark:not([data-theme]) .lv-extra-breakdown a[style*="#eef2ff"]{background:rgba(79,124,255,.15) !important;border-color:rgba(79,124,255,.4) !important;color:#9DB8FF !important;}
