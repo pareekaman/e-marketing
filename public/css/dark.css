@@ -430,3 +430,12 @@
 :root.amb-dark:not([data-theme]){--dk-card:rgba(17,25,56,.86);}
 :root.amb-dark:not([data-theme]) .sidebar{background:linear-gradient(180deg,#0C122C,#080C20) !important;}
 :root.amb-dark:not([data-theme]) .topbar{background:rgba(9,14,36,.94) !important;}
+/* Pop-up lists inside forms (time pickers, handler/attendee lists) must stay
+   solid: the generic modal rule above made their inline #fff see-through. */
+:root.amb-dark:not([data-theme]) :is(#mtgStartDropdown,#hrmCTimeDropdown,#cmAddHandlerDropdown,#mtgAttDropdown),
+:root.amb-dark:not([data-theme]) .modal [style*="position:absolute"][style*="background:#fff"]{
+  background:#0E1533 !important;border-color:var(--dk-line) !important;box-shadow:0 16px 40px -12px rgba(0,0,0,.8) !important;}
+:root.amb-dark:not([data-theme]) :is(#mtgStartDropdown,#hrmCTimeDropdown) [data-time-opt],
+:root.amb-dark:not([data-theme]) :is(#mtgStartDropdown,#hrmCTimeDropdown) > div{color:var(--dk-text) !important;}
+/* Rows these lists highlight on hover with an inline light fill. */
+:root.amb-dark:not([data-theme]) :is(.modal,.page) :is([style*="background: rgb(241, 245, 249)"],[style*="background: rgb(248, 250, 252)"],[style*="background: rgb(239, 246, 255)"]){background:rgba(79,124,255,.16) !important;}
