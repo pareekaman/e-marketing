@@ -1068,6 +1068,7 @@ app.get('/api/tasks/notifications', requireAuth, async (req, res) => {
          LEFT JOIN users a   ON t.assigned_by = a.id
          LEFT JOIN clients c ON t.client_id   = c.id
         WHERE t.assigned_to = ?
+          AND t.status <> 'completed'
           AND t.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
         ORDER BY t.created_at DESC
         LIMIT 50`,
