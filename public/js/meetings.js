@@ -471,6 +471,25 @@ async function _mtgEnsureUsers() {
   return _mtgUsersCache;
 }
 
+// A meeting whose date + start time is already past: no email goes out (the
+// server decides the same way), and a new one is unticked for a link unless
+// the user ticked it themselves.
+let _mtgLinkTouched = false;
+function mtgSyncPastState() {
+  const d = document.getElementById('mtgFormDate')?.value || '';
+  const t = document.getElementById('mtgStart')?.value || '';
+  const nowIst = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 16).replace('T', ' ');
+  const past = !!d && `${d} ${t || '00:00'}` < nowIst;
+  const note = document.getElementById('mtgPastNote');
+  if (note) note.style.display = past ? 'block' : 'none';
+  const cb = document.getElementById('mtgCreateLink');
+  if (cb && !_mtgEditing && !_mtgLinkTouched) cb.checked = !past;
+}
+document.addEventListener('change', e => {
+  if (e.target && e.target.id === 'mtgCreateLink') _mtgLinkTouched = true;
+  if (e.target && ['mtgFormDate', 'mtgStart', 'mtgStartPeriod'].includes(e.target.id)) mtgSyncPastState();
+});
+
 async function openMeetingModal(id, prefillStart) {
   _mtgEditing = id || null;
   _mtgSeriesRemaining = 0;
@@ -546,6 +565,11 @@ async function openMeetingModal(id, prefillStart) {
       _mtgSeriesRemaining = m.series_remaining || 0;
     }
   }
+  // "Create a meeting link": only for a new meeting; ticked unless the time has passed.
+  document.getElementById('mtgCreateLinkWrap').style.display = id ? 'none' : 'flex';
+  document.getElementById('mtgCreateLink').checked = true;
+  _mtgLinkTouched = false;
+  mtgSyncPastState();
   document.getElementById('meetingModal').classList.add('open');
   // New meeting: cursor after "E-Marketing x ", ready for the other side's name.
   if (!id) setTimeout(() => {
@@ -617,6 +641,7 @@ function mtgOnFrequencyChange() {
 }
 
 function mtgRecalcEnd() {
+  mtgSyncPastState();   // a start-time pick changes whether the meeting is in the past
   const start = document.getElementById('mtgStart').value;
   if (!start) { document.getElementById('mtgEnd').value = ''; return; }
   const dur = parseInt(document.getElementById('mtgDuration').value, 10) || 30;
@@ -814,6 +839,7 @@ async function saveMeeting() {
     start_time: document.getElementById('mtgStart').value,
     end_time: document.getElementById('mtgEnd').value,
     meet_link: document.getElementById('mtgLink').value.trim() || null,
+    create_link: document.getElementById('mtgCreateLink').checked,
     attendee_ids: Array.from(document.querySelectorAll('#mtgAttendees [data-att]:checked')).map(c => parseInt(c.value, 10))
   };
   if (/^E-Marketing x$/i.test(payload.title)) {

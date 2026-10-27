@@ -18,35 +18,35 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<link rel="stylesheet" href="/css/base.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/dashboard.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/modals.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/misc.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/forms.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/features.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/mobile.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/overlays.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/leads.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/voice.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/notify.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/chatbot.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/theme-picker.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/amber.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/dark.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/themes/navratri.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/themes/dussehra.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/themes/holi.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/themes/diwali.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/themes/christmas.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/themes/newyear.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/themes/janmashtami.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/themes/shivratri.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/themes/ganesh.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/themes/ramnavami.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/themes/rakhi.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/themes/mahavir.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/themes/sankranti.css?v=20261026c"/>
-<link rel="stylesheet" href="/css/themes/chhath.css?v=20261026c"/>
+<link rel="stylesheet" href="/css/base.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/dashboard.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/modals.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/misc.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/forms.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/features.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/mobile.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/overlays.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/leads.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/voice.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/notify.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/chatbot.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/theme-picker.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/amber.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/dark.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/themes/navratri.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/themes/dussehra.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/themes/holi.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/themes/diwali.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/themes/christmas.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/themes/newyear.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/themes/janmashtami.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/themes/shivratri.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/themes/ganesh.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/themes/ramnavami.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/themes/rakhi.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/themes/mahavir.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/themes/sankranti.css?v=20261027c"/>
+<link rel="stylesheet" href="/css/themes/chhath.css?v=20261027c"/>
 <script>
 /* Apply the last-seen festival theme before first paint so there is no flash;
    core.js confirms it against /api/theme once the session is known. */
@@ -360,7 +360,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <div class="ov-card total"     onclick="goToAllTasksFromDash('all')"       title="Open All Tasks with these rows"><span class="ov-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span><div class="label">Total<span class="amb-only"> Tasks</span></div><div class="number" id="dTotal">—</div><div class="ov-trend" id="dTrendTotal"></div></div>
       <div class="ov-card completed" onclick="goToAllTasksFromDash('completed')" title="Open All Tasks → Completed"><span class="ov-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16 10"/></svg></span><div class="label">Completed<span class="amb-only"> Tasks</span></div><div class="number" id="dCompleted">—</div><div class="ov-trend" id="dTrendCompleted"></div></div>
       <div class="ov-card pending"   onclick="goToAllTasksFromDash('pending')"   title="Open All Tasks → Pending (includes Revised)"><span class="ov-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M5 3 2 6"/><path d="m22 6-3-3"/></svg></span><div class="label">Pending<span class="amb-only"> Tasks</span></div><div class="number" id="dPending">—</div><div class="ov-trend" id="dTrendPending"></div><div id="dPendingBreakdown" style="font-size:11px;color:#f59e0b;font-weight:600;margin-top:4px;display:none">—</div></div>
-      <div class="ov-card upcoming"  onclick="goToAllTasksFromDash('upcoming')"  title="Pending tasks with future due date"><span class="ov-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M8 2.5v4M16 2.5v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/></svg></span><div class="label">Upcoming<span class="amb-only"> Tasks</span></div><div class="number" id="dUpcoming">—</div><div class="ov-trend" id="dTrendUpcoming"></div><div style="font-size:11px;color:#7c3aed;font-weight:600;margin-top:4px"></div></div>
+      <div class="ov-card upcoming"  onclick="goToAllTasksFromDash('upcoming')"  title="Pending tasks due later this month"><span class="ov-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M8 2.5v4M16 2.5v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/></svg></span><div class="label">Upcoming<span class="amb-only"> Tasks</span> · This Month</div><div class="number" id="dUpcoming">—</div><div class="ov-trend" id="dTrendUpcoming"></div><div style="font-size:11px;color:#7c3aed;font-weight:600;margin-top:4px"></div></div>
     </div>
     <div class="dash-bottom">
       <div class="task-table-card">
@@ -2703,6 +2703,11 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <div class="form-group">
         <label>Meeting link <span style="font-size:11px;color:#64748b">(leave blank and a Zoom link is created for you)</span></label>
         <input type="text" id="mtgLink" placeholder="Leave blank for Zoom, or paste any link"/>
+        <label id="mtgCreateLinkWrap" style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;font-weight:500;text-transform:none;letter-spacing:0;cursor:pointer">
+          <input type="checkbox" id="mtgCreateLink" checked style="width:16px;height:16px;margin:0;flex-shrink:0"/>
+          Create a meeting link
+        </label>
+        <div id="mtgPastNote" style="display:none;margin-top:6px;font-size:12px;color:#b45309">This time has already passed, so no email will be sent.</div>
       </div>
       <div class="modal-footer" style="justify-content:space-between">
         <div style="display:flex;gap:8px">
@@ -4514,39 +4519,39 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
   </div>
 </div>
 
-<script src="/js/themes/decor-core.js?v=20261026c"></script>
-<script src="/js/themes/picker.js?v=20261026c"></script>
-<script src="/js/core.js?v=20261026c"></script>
-<script src="/js/access.js?v=20261026c"></script>
-<script src="/js/inventory.js?v=20261026c"></script>
-<script src="/js/hrm.js?v=20261026c"></script>
-<script src="/js/dashboard.js?v=20261026c"></script>
-<script src="/js/amber-ui.js?v=20261026c"></script>
-<script src="/js/tasks.js?v=20261026c"></script>
-<script src="/js/users.js?v=20261026c"></script>
-<script src="/js/helpers.js?v=20261026c"></script>
-<script src="/js/fms.js?v=20261026c"></script>
-<script src="/js/daily.js?v=20261026c"></script>
-<script src="/js/clients.js?v=20261026c"></script>
-<script src="/js/reports.js?v=20261026c"></script>
-<script src="/js/leaves.js?v=20261026c"></script>
-<script src="/js/leave-policy.js?v=20261026c"></script>
-<script src="/js/compose-mail.js?v=20261026c"></script>
-<script src="/js/emk-creds.js?v=20261026c"></script>
-<script src="/js/portal.js?v=20261026c"></script>
-<script src="/js/payments.js?v=20261026c"></script>
-<script src="/js/mdo.js?v=20261026c"></script>
+<script src="/js/themes/decor-core.js?v=20261027c"></script>
+<script src="/js/themes/picker.js?v=20261027c"></script>
+<script src="/js/core.js?v=20261027c"></script>
+<script src="/js/access.js?v=20261027c"></script>
+<script src="/js/inventory.js?v=20261027c"></script>
+<script src="/js/hrm.js?v=20261027c"></script>
+<script src="/js/dashboard.js?v=20261027c"></script>
+<script src="/js/amber-ui.js?v=20261027c"></script>
+<script src="/js/tasks.js?v=20261027c"></script>
+<script src="/js/users.js?v=20261027c"></script>
+<script src="/js/helpers.js?v=20261027c"></script>
+<script src="/js/fms.js?v=20261027c"></script>
+<script src="/js/daily.js?v=20261027c"></script>
+<script src="/js/clients.js?v=20261027c"></script>
+<script src="/js/reports.js?v=20261027c"></script>
+<script src="/js/leaves.js?v=20261027c"></script>
+<script src="/js/leave-policy.js?v=20261027c"></script>
+<script src="/js/compose-mail.js?v=20261027c"></script>
+<script src="/js/emk-creds.js?v=20261027c"></script>
+<script src="/js/portal.js?v=20261027c"></script>
+<script src="/js/payments.js?v=20261027c"></script>
+<script src="/js/mdo.js?v=20261027c"></script>
 <!-- ⚠️ notify.js MUST load before meetings.js. meetings.js ends by calling
      init(), and init() calls ntMaybeOpen() — loading it later leaves that
      name undefined, and init()'s own catch turns the ReferenceError into a
      redirect back to the login page. -->
-<script src="/js/notify.js?v=20261026c"></script>
-<script src="/js/meetings.js?v=20261026c"></script>
-<script src="/js/dms.js?v=20261026c"></script>
-<script src="/js/leads.js?v=20261026c"></script>
-<script src="/js/enquiry.js?v=20261026c"></script>
-<script src="/js/voice-delegate.js?v=20261026c"></script>
-<script src="/js/chatbot.js?v=20261026c"></script>
+<script src="/js/notify.js?v=20261027c"></script>
+<script src="/js/meetings.js?v=20261027c"></script>
+<script src="/js/dms.js?v=20261027c"></script>
+<script src="/js/leads.js?v=20261027c"></script>
+<script src="/js/enquiry.js?v=20261027c"></script>
+<script src="/js/voice-delegate.js?v=20261027c"></script>
+<script src="/js/chatbot.js?v=20261027c"></script>
 
 <!-- ── Searchable select: turns every <select> into a type-to-filter dropdown.
      The native <select> stays the source of truth (existing code reads/sets .value

@@ -619,7 +619,7 @@
 :root:not([data-theme]) #logsContent td{border-bottom-color:#F6EBD5;}
 /* The profile photo circle matched the common glass rule (its style text has
    #e2e8f0 and a border-radius); keep its amber fill and white ring. */
-:root:not([data-theme]) #profileAvatar{
+:root:not([data-theme]) #profileAvatar:not([style*="url("]){
   background:linear-gradient(135deg,#FBBF24,#F59E0B 55%,#EA8A00) !important;
   border:3px solid #fff !important;border-radius:50% !important;
   box-shadow:0 8px 20px -8px rgba(234,138,0,.6) !important;-webkit-backdrop-filter:none;backdrop-filter:none;
@@ -765,3 +765,6 @@
 :root:not([data-theme]):not(.amb-dark) .topbar{background:rgba(255,248,236,.92) !important;}
 /* Performance is a chart again (hover shows the value), so its box keeps a fixed height. */
 :root:not([data-theme]) .dash-perf-card .perf-chart-wrap{height:200px !important;min-height:0;}
+
+/* With a photo set, keep the photo (background-image) and only add the ring. */
+:root:not([data-theme]) #profileAvatar[style*="url("]{border:3px solid #fff !important;border-radius:50% !important;box-shadow:0 8px 20px -8px rgba(234,138,0,.6) !important;}

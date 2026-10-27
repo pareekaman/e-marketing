@@ -173,6 +173,14 @@ function generateRecurrenceDates(startDateStr, frequency, untilStr, customDays) 
   return dates;
 }
 
+// True when the meeting's date + start time (IST) is already in the past.
+function meetingStarted(dateStr, startTime) {
+  const d = String(dateStr || '').slice(0, 10), t = String(startTime || '00:00').slice(0, 5);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const nowIst = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 16).replace('T', ' ');
+  return `${d} ${t}` < nowIst;
+}
+
 app.post('/api/meetings', requireAuth, async (req, res) => {
   try {
     const { title, agenda, client_id, meeting_date, start_time, end_time, meet_link, attendee_ids,
@@ -197,7 +205,11 @@ app.post('/api/meetings', requireAuth, async (req, res) => {
     // Meet link if that is. Either one is reused across every occurrence.
     let finalLink = meet_link || null;
     let zoom = null;   // { join_url, id, password } — kept for the copied invitation
-    if (!finalLink) {
+    // "Create a meeting link" unticked: no Zoom / Meet link is made.
+    const wantLink = req.body.create_link !== false;
+    // A meeting whose start has already passed is a record, not news: no email.
+    const started = meetingStarted(meeting_date, start_time);
+    if (!finalLink && wantLink) {
       zoom = await createZoomMeetingLink({
         title, agenda, dateStr: meeting_date, startTime: start_time, endTime: end_time,
         recurring: occurrenceDates.length > 1,
@@ -205,7 +217,7 @@ app.post('/api/meetings', requireAuth, async (req, res) => {
       if (zoom) finalLink = zoom.join_url;
     }
     await ensureZoomColumns();
-    if (!finalLink) {
+    if (!finalLink && wantLink) {
       const attEmails = [];
       const attIdArr = Array.isArray(attendee_ids) ? attendee_ids : [];
       if (attIdArr.length) {
@@ -240,8 +252,8 @@ app.post('/api/meetings', requireAuth, async (req, res) => {
     }
     // One WhatsApp ping for the series (not one per occurrence) — the existing
     // 10-min pre-meeting reminder cron still fires individually for each date.
-    sendMeetingNotification(newIds[0], 'created').catch(e => console.error('notify err:', e.message));
-    res.json({ ok: true, id: newIds[0], meet_link: finalLink, count: newIds.length });
+    if (!started) sendMeetingNotification(newIds[0], 'created').catch(e => console.error('notify err:', e.message));
+    res.json({ ok: true, id: newIds[0], meet_link: finalLink, count: newIds.length, notified: !started });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -285,8 +297,11 @@ app.put('/api/meetings/:id', requireAuth, async (req, res) => {
       }
     }
     // An edit that keeps the date and time is an update, not a new meeting.
-    sendMeetingNotification(id, rescheduled ? 'rescheduled' : 'updated').catch(e => console.error('notify err:', e.message));
-    res.json({ ok: true, rescheduled });
+    // Editing a meeting that has already started (or moving it into the past)
+    // tells nobody.
+    const started = meetingStarted(meeting_date || existing.meeting_date, start_time || existing.start_time);
+    if (!started) sendMeetingNotification(id, rescheduled ? 'rescheduled' : 'updated').catch(e => console.error('notify err:', e.message));
+    res.json({ ok: true, rescheduled, notified: !started });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

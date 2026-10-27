@@ -447,3 +447,10 @@
 :root.amb-dark:not([data-theme]) .lv-extra-breakdown [style*="color:#64748b"]{color:var(--dk-sub) !important;}
 :root.amb-dark:not([data-theme]) .lv-desc-more{color:#9DB8FF !important;}
 :root.amb-dark:not([data-theme]) .lv-extra-breakdown a[style*="#eef2ff"]{background:rgba(79,124,255,.15) !important;border-color:rgba(79,124,255,.4) !important;color:#9DB8FF !important;}
+/* Payment Approvals: amber.css styles its boxes by id, which outranks the
+   generic dark rules — restate them here. */
+:root.amb-dark:not([data-theme]) #paymentApprovalsPanel > div{background:var(--dk-card) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) #paymentApprovalsPanel :is(label,th){color:var(--dk-sub) !important;}
+:root.amb-dark:not([data-theme]) #paymentApprovalsPanel :is(td,tr){background:transparent !important;color:#C9D2EA;}
+:root.amb-dark:not([data-theme]) #paymentApprovalsPanel tr:hover td{background:rgba(79,124,255,.09) !important;}
+:root.amb-dark:not([data-theme]) #paymentApprovalsPanel :is(button,a)[style*="background:#f1f5f9"]{background:rgba(255,255,255,.06) !important;color:var(--dk-text) !important;}
