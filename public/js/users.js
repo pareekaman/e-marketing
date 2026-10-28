@@ -370,10 +370,9 @@ function switchApprovalTab(tab, el) {
 }
 
 async function loadApprovals() {
-  // Show Transfer tab for admin/HOD/PC
-  if (ME.role === 'admin' || ME.role === 'hod' || ME.role === 'pc' || canDo('admin_approvals')) {
-    document.getElementById('apprTabTransfer').style.display = 'block';
-  }
+  // Transfer tab for everyone: admin/HOD/PC see their scope, others the
+  // transfers coming to them.
+  document.getElementById('apprTabTransfer').style.display = 'block';
   // WhatsApp Tasks tab — disabled (feature postponed)
   // if (ME.role === 'admin' || ME.name === 'Naman Gupta') {
   //   document.getElementById('apprTabWa').style.display = 'block';

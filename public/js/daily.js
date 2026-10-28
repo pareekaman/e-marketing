@@ -302,7 +302,6 @@ async function submitTransferSelected() {
 }
 
 async function loadTransferBadge() {
-  if (ME.role !== 'admin' && ME.role !== 'hod') return;
   try {
     const d = await api('/api/transfers/count');
     document.querySelectorAll('.nav-transfer-badge').forEach(badge => {
@@ -342,9 +341,10 @@ async function handleTransfer(id, action) {
   // Same in-app pop-up as Task Approvals; Cancel or Esc rejects nothing.
   let note = '';
   if (action === 'rejected') {
-    note = await appPromptText('Reason for rejection (optional):',
+    note = await appPromptText('Reason for rejection (required):',
       { title: 'Reject transfer', placeholder: 'Reason for rejection...', okLabel: 'Reject', okClass: 'btn btn-danger' });
     if (typeof note !== 'string') return;
+    if (!note.trim()) { showToast('Please give a reason for rejecting', 'error'); return; }
   }
   const r = await api(`/api/transfers/${id}`,'PUT',{ action, note: note||'' });
   // The server can refuse (already decided, out of date, other department) —

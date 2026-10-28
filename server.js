@@ -4024,7 +4024,9 @@ app.get('/api/transfers/pending-tasks', requireAuth, async (req, res) => {
 // HOD's own-department limit, as it does everywhere else on this page.
 async function transferAccess(session) {
   const full = await userCanDo(session, 'admin_approvals');
-  return { allowed: full || ['admin', 'hod', 'pc'].includes(session.role), full };
+  // `own`: anyone else may still decide the transfers coming to them.
+  const allowed = full || ['admin', 'hod', 'pc'].includes(session.role);
+  return { allowed: true, full, own: !allowed };
 }
 
 app.get('/api/transfers', requireAuth, async (req, res) => {
@@ -4036,15 +4038,20 @@ app.get('/api/transfers', requireAuth, async (req, res) => {
     let deptFilter = '';
     let params = [];
 
-    if (role === 'hod' && !acc.full) {
+    if (acc.own) {
+      // Everyone else sees only the transfers coming to them.
+      deptFilter = 'AND tt.to_user=?';
+      params = [uid];
+    } else if (role === 'hod' && !acc.full) {
       const [me] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
       const dept = me[0]?.department || '';
-      // HOD sees transfers of users in their department
+      // HOD sees transfers of users in their department, and any coming to them
       const [deptUsers] = await db.query('SELECT id FROM users WHERE department=?', [dept]);
-      if (!deptUsers.length) return res.json([]);
       const ids = deptUsers.map(u=>u.id);
-      deptFilter = `AND (tt.from_user IN (${ids.map(()=>'?').join(',')}) OR tt.to_user IN (${ids.map(()=>'?').join(',')}))`;
-      params = [...ids, ...ids];
+      deptFilter = ids.length
+        ? `AND (tt.from_user IN (${ids.map(()=>'?').join(',')}) OR tt.to_user IN (${ids.map(()=>'?').join(',')}) OR tt.to_user=?)`
+        : 'AND tt.to_user=?';
+      params = [...ids, ...ids, uid];
     }
 
     const [rows] = await db.query(`
@@ -4077,6 +4084,9 @@ app.get('/api/transfers/count', requireAuth, async (req, res) => {
     if (acc.full) {
       const [r] = await db.query(`SELECT COUNT(*) AS c FROM task_transfers WHERE status='pending'`);
       count = r[0].c;
+    } else if (acc.own) {
+      const [r] = await db.query(`SELECT COUNT(*) AS c FROM task_transfers WHERE status='pending' AND to_user=?`, [uid]);
+      count = r[0].c;
     } else {
       const [me] = await db.query('SELECT department FROM users WHERE id=?', [uid]);
       const dept = me[0]?.department || '';
@@ -4105,9 +4115,18 @@ app.put('/api/transfers/:id', requireAuth, async (req, res) => {
     if (!['approved', 'rejected'].includes(action)) {
       return res.status(400).json({ error: 'action must be approved or rejected' });
     }
+    if (action === 'rejected' && !String(note || '').trim()) {
+      return res.status(400).json({ error: 'Please give a reason for rejecting' });
+    }
     const [rows] = await db.query('SELECT * FROM task_transfers WHERE id=?', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Transfer not found' });
     const tr = rows[0];
+
+    // The person receiving the task may decide it; other users may not.
+    const isReceiver = Number(tr.to_user) === Number(req.session.userId);
+    if (acc.own && !isReceiver) {
+      return res.status(403).json({ error: 'You can only act on transfers coming to you' });
+    }
 
     // An HOD may only act on transfers touching their own department. Creating
     // one already checks this and so does the pending count, but approving did
@@ -4119,7 +4138,7 @@ app.put('/api/transfers/:id', requireAuth, async (req, res) => {
     // Ordered before the pending check on purpose: an HOD with no business here
     // should be turned away without being told whether the transfer is still
     // open or how it was decided.
-    if (req.session.role === 'hod' && !acc.full) {
+    if (req.session.role === 'hod' && !acc.full && !isReceiver) {
       const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [req.session.userId]);
       const dept = me?.department || '';
       const [parties] = await db.query(
