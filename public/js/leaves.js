@@ -224,9 +224,12 @@ function ewAttachRender(form){
 async function ewAttachUpload(form, onStep){
   const list = EW_ATTACH[form];
   const CHUNK = 4 * 1024 * 1024;   // a multiple of 256 KiB, as Drive's resumable upload requires
-  for (let i = 0; i < list.length; i++) {
-    const a = list[i];
-    if (a.id) continue;
+  // Files go up side by side; one after another made each Drive round trip wait for the last.
+  const pending = list.filter(a => !a.id);
+  const sent = pending.map(() => 0), total = pending.reduce((n, a) => n + a.file.size, 0) || 1;
+  let finished = 0;
+  const step = () => { if (onStep) onStep(Math.min(finished + 1, pending.length), pending.length, Math.round(sent.reduce((x, y) => x + y, 0) / total * 100)); };
+  await Promise.all(pending.map(async (a, i) => {
     const f = a.file;
     const s = await api('/api/extra-working/upload-session', 'POST', { name: f.name, mimeType: f.type, size: f.size });
     if (s.error) throw new Error(`${f.name}: ${s.error}`);
@@ -241,11 +244,14 @@ async function ewAttachUpload(form, onStep){
       if (r.status !== 308 && !r.ok) throw new Error(`${f.name}: ${data.error || 'upload failed (HTTP ' + r.status + ')'}`);
       if (r.status !== 308) done = data;
       offset = end;
-      if (onStep) onStep(i + 1, list.length, Math.round(offset / f.size * 100));
+      sent[i] = offset;
+      step();
     }
     if (!done || !done.id) throw new Error(`${f.name}: the upload did not finish`);
     a.id = done.id;
-  }
+    finished++;
+    step();
+  }));
   return list.map(a => a.id);
 }
 // A request's proof files as links; they open in Google Drive for the eMarketing group.
@@ -392,7 +398,10 @@ function lvItemHtml(r) {
       ${(() => { const bd = lvExtraBreakdownHtml(r); return bd || `<div class="lv-item-reason">${dtEscape(r.reason)}</div>`; })()}
       <div class="lv-item-meta">
         <b>Applied:</b> ${dtEscape((r.created_at||'').slice(0,16))}
-        ${r.status === 'pending'
+        ${r.hod_approved_name ? ` · <b>Approved by HOD:</b> ${dtEscape(r.hod_approved_name)}` : ''}
+        ${r.status === 'pending' && r.leave_type === 'extra_working' && r.ew_needs_hod !== undefined && !Number(r.ew_needs_hod)
+          ? ` · <b>Approver:</b> Simran Gurnani`
+          : r.status === 'pending'
           ? (r.dept_hod_names ? ` · <b>Approver:</b> ${dtEscape(r.dept_hod_names)}` : (r.approver_name ? ` · <b>Approver:</b> ${dtEscape(r.approver_name)}` : ''))
           : (r.approver_name ? ` · <b>Decided by:</b> ${dtEscape(r.approver_name)}` : '')}
         ${r.decided_at ? ` · <b>Decided:</b> ${dtEscape(r.decided_at.slice(0,16))}` : ''}
@@ -451,17 +460,24 @@ function openLeaveForm(){
   document.getElementById('lvReason').value = '';
   // Approver hint — show actual HOD names from API
   const hintBox = document.getElementById('lvApproverHint');
-  const hintName = document.getElementById('lvApproverHintName');
   hintBox.style.display = 'block';
+  lvLoadApproverHint();
+  document.getElementById('leaveModal').classList.add('open');
+}
+
+// Extra Working has its own route (HOD, then Simran), so the hint follows the type.
+function lvLoadApproverHint(){
+  const hintName = document.getElementById('lvApproverHintName');
+  if (!hintName) return;
   hintName.textContent = '…';
-  api('/api/leaves/my-approvers').then(r => {
+  const q = LEAVE_PICKED_TYPE === 'extra_working' ? '?type=extra_working' : '';
+  api('/api/leaves/my-approvers' + q).then(r => {
     hintName.textContent = r?.names || 'HOD';
   }).catch(() => {
     if (ME.role === 'admin') hintName.textContent = 'Another Admin';
     else if (ME.role === 'hod' || ME.role === 'pc') hintName.textContent = 'Admin';
     else hintName.textContent = `HOD${ME.department ? ' — '+ME.department : ''}`;
   });
-  document.getElementById('leaveModal').classList.add('open');
 }
 
 function lvPickType(type, el){
@@ -474,6 +490,7 @@ function lvPickType(type, el){
   document.getElementById('lvAttachGroup').style.display = type === 'extra_working' ? '' : 'none';
   // Show / hide selected list (hours input panel)
   lvRenderSelectedList();
+  lvLoadApproverHint();
 }
 
 // ── Calendar render & navigation ──────────────────────
@@ -817,7 +834,7 @@ async function submitLeaveDecision(action){
     return;
   }
   closeModal('leaveDecisionModal');
-  showToast(action === 'approve' ? '✅ Leave approved' : '❌ Leave rejected');
+  showToast(r.stage === 'simran' ? '✅ Approved — sent to Simran Gurnani' : action === 'approve' ? '✅ Leave approved' : '❌ Leave rejected');
   LEAVE_DECIDE_ID = null;
   loadLeaveApprovals();
   loadApprovalBadge();
@@ -943,7 +960,7 @@ async function loadLeaveApprovals(){
             ).join(' · ');
             return `<tr>
               <td><b>${dtEscape(r.user_name)}</b>${r.user_department ? `<br><span style="color:#94a3b8;font-size:11px">${dtEscape(r.user_department)}</span>` : ''}</td>
-              <td><span class="lv-type-pill lv-type-${r.leave_type}">${LEAVE_TYPE_ICON[r.leave_type]||''} ${LEAVE_TYPE_LABEL[r.leave_type]||r.leave_type}</span></td>
+              <td><span class="lv-type-pill lv-type-${r.leave_type}">${LEAVE_TYPE_ICON[r.leave_type]||''} ${LEAVE_TYPE_LABEL[r.leave_type]||r.leave_type}</span>${r.hod_approved_name ? `<div style="margin-top:4px;font-size:11px;color:#15803d;font-weight:600">✅ Approved by HOD: ${dtEscape(r.hod_approved_name)}</div>` : ''}</td>
               <td style="font-size:12px;line-height:1.5">${datesHtml}<br><span style="color:#94a3b8;font-size:11px">${dates.length} day${dates.length===1?'':'s'}</span></td>
               <td style="color:#64748b;font-size:12px;line-height:1.5;white-space:nowrap">${r.created_at ? `${fmtDate(r.created_at.slice(0,10))}<br><span style="color:#94a3b8;font-size:11px">${dtEscape(r.created_at.slice(11,16))}</span>` : '—'}</td>
               <td style="font-size:12px;max-width:280px">${lvExtraBreakdownHtml(r) || dtEscape(r.reason)}</td>
