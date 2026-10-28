@@ -92,22 +92,50 @@ module.exports = function registerLeadsRoutes(app, deps) {
     return false;
   };
 
+  // Page reads share one short cache. Every Sheets call in the app counts
+  // against one per-minute read quota for the service account, so a few people
+  // on the Leads page plus the 3-minute auto-refresh could hit it and blank the
+  // page. A read inside SHEET_TTL reuses the last answer, readers arriving
+  // together share one call, and when Google answers "quota exceeded" the last
+  // good copy is served instead of an error. Writes re-read the sheet directly
+  // and then drop the cached copy, so an edit shows on the next load.
+  const SHEET_TTL = 60 * 1000;
+  const _sheetCache = new Map(); // key -> { at, values, pending }
+  const isQuota = err => /quota|rate limit|429/i.test(String(err && err.message)) || (err && err.code === 429);
+  async function readSheet(spreadsheetId, range) {
+    const key = spreadsheetId + '|' + range;
+    const hit = _sheetCache.get(key);
+    if (hit && hit.values && Date.now() - hit.at < SHEET_TTL) return { values: hit.values, at: hit.at };
+    if (hit && hit.pending) return hit.pending;
+    const pending = (async () => {
+      try {
+        const sheetsApi = await getSheetsClient(READ_SCOPE);
+        const resp = await sheetsApi.spreadsheets.values.get({ spreadsheetId, range });
+        const fresh = { at: Date.now(), values: resp.data.values || [] };
+        _sheetCache.set(key, fresh);
+        return { values: fresh.values, at: fresh.at };
+      } catch (err) {
+        if (hit && hit.values && isQuota(err)) { _sheetCache.set(key, { at: hit.at, values: hit.values }); return { values: hit.values, at: hit.at }; }
+        if (hit && hit.values) _sheetCache.set(key, { at: hit.at, values: hit.values }); else _sheetCache.delete(key);
+        throw err;
+      }
+    })();
+    _sheetCache.set(key, { ...(hit || {}), pending });
+    return pending;
+  }
+  const dropSheet = spreadsheetId => { for (const k of _sheetCache.keys()) if (k.startsWith(spreadsheetId + '|')) _sheetCache.delete(k); };
+
   // ── Website enquiries ───────────────────────────────
   app.get('/api/enquiries', requireAuth, async (req, res) => {
     if (!(await canSee(req, res))) return;
     try {
-      const sheetsApi = await getSheetsClient(READ_SCOPE);
-      const resp = await sheetsApi.spreadsheets.values.get({
-        spreadsheetId: extractSpreadsheetId(ENQUIRIES_SHEET_ID),
-        range: ENQUIRIES_TAB,
-      });
-      const values = resp.data.values || [];
+      const { values, at } = await readSheet(extractSpreadsheetId(ENQUIRIES_SHEET_ID), ENQUIRIES_TAB);
       if (!values.length) return res.json(emptyPayload());
 
       const headers = values[0].map(h => (h || '').trim());
       const keys = headers.map(toKey);
       const rows = tabulate(values, headers, keys);
-      res.json({ headers, keys, rows, count: rows.length, updatedAt: new Date().toISOString() });
+      res.json({ headers, keys, rows, count: rows.length, updatedAt: new Date(at).toISOString() });
     } catch (err) {
       console.error('  ❌ /api/enquiries error:', err.message);
       res.status(500).json({ error: 'Enquiries load failed: ' + err.message });
@@ -147,6 +175,7 @@ module.exports = function registerLeadsRoutes(app, deps) {
       if (!data.length) return res.json({ ok: true });
 
       await sheetsApi.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: 'USER_ENTERED', data } });
+      dropSheet(spreadsheetId);
       res.json({ ok: true, updatedAt: nowStr });
     } catch (err) {
       console.error('  ❌ /api/enquiries/update error:', err.message);
@@ -158,12 +187,7 @@ module.exports = function registerLeadsRoutes(app, deps) {
   app.get('/api/meta-leads', requireAuth, async (req, res) => {
     if (!(await canSee(req, res))) return;
     try {
-      const sheetsApi = await getSheetsClient(READ_SCOPE);
-      const resp = await sheetsApi.spreadsheets.values.get({
-        spreadsheetId: extractSpreadsheetId(META_LEADS_SHEET_ID),
-        range: META_LEADS_REF,
-      });
-      const values = resp.data.values || [];
+      const { values, at } = await readSheet(extractSpreadsheetId(META_LEADS_SHEET_ID), META_LEADS_REF);
       if (!values.length) return res.json(emptyPayload());
 
       // This sheet's rows run wider than its header row: the remark column that
@@ -178,7 +202,7 @@ module.exports = function registerLeadsRoutes(app, deps) {
         else { headers.push('Column ' + (i + 1)); keys.push('col_' + i); }
       }
       const rows = tabulate(values, headers, keys);
-      res.json({ headers, keys, rows, count: rows.length, updatedAt: new Date().toISOString() });
+      res.json({ headers, keys, rows, count: rows.length, updatedAt: new Date(at).toISOString() });
     } catch (err) {
       console.error('  ❌ /api/meta-leads error:', err.message);
       res.status(500).json({ error: 'Meta leads load failed: ' + err.message });
@@ -215,6 +239,7 @@ module.exports = function registerLeadsRoutes(app, deps) {
       if (!data.length) return res.json({ ok: true });
 
       await sheetsApi.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: 'USER_ENTERED', data } });
+      dropSheet(spreadsheetId);
       res.json({ ok: true });
     } catch (err) {
       console.error('  ❌ /api/meta-leads/update error:', err.message);
@@ -226,18 +251,13 @@ module.exports = function registerLeadsRoutes(app, deps) {
   app.get('/api/google-ads', requireAuth, async (req, res) => {
     if (!(await canSee(req, res))) return;
     try {
-      const sheetsApi = await getSheetsClient(READ_SCOPE);
-      const resp = await sheetsApi.spreadsheets.values.get({
-        spreadsheetId: extractSpreadsheetId(GADS_SHEET_ID),
-        range: GADS_TAB,
-      });
-      const values = resp.data.values || [];
+      const { values, at } = await readSheet(extractSpreadsheetId(GADS_SHEET_ID), GADS_TAB);
       if (!values.length) return res.json(emptyPayload());
 
       const headers = values[0].map(h => (h || '').trim());
       const keys = headers.map(toKey);
       const rows = tabulate(values, headers, keys);
-      res.json({ headers, keys, rows, count: rows.length, updatedAt: new Date().toISOString() });
+      res.json({ headers, keys, rows, count: rows.length, updatedAt: new Date(at).toISOString() });
     } catch (err) {
       console.error('  ❌ /api/google-ads error:', err.message);
       res.status(500).json({ error: 'Google Ads leads load failed: ' + err.message });
@@ -281,6 +301,7 @@ module.exports = function registerLeadsRoutes(app, deps) {
       if (!data.length) return res.json({ ok: true });
 
       await sheetsApi.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: 'USER_ENTERED', data } });
+      dropSheet(spreadsheetId);
       res.json({ ok: true });
     } catch (err) {
       console.error('  ❌ /api/google-ads/update error:', err.message);
@@ -292,18 +313,13 @@ module.exports = function registerLeadsRoutes(app, deps) {
   app.get('/api/manual', requireAuth, async (req, res) => {
     if (!(await canSee(req, res))) return;
     try {
-      const sheetsApi = await getSheetsClient(READ_SCOPE);
-      const resp = await sheetsApi.spreadsheets.values.get({
-        spreadsheetId: extractSpreadsheetId(MANUAL_SHEET_ID),
-        range: MANUAL_TAB,
-      });
-      const values = resp.data.values || [];
+      const { values, at } = await readSheet(extractSpreadsheetId(MANUAL_SHEET_ID), MANUAL_TAB);
       if (!values.length) return res.json(emptyPayload());
 
       const headers = values[0].map(h => (h || '').trim());
       const keys = headers.map(toKey);
       const rows = tabulate(values, headers, keys);
-      res.json({ headers, keys, rows, count: rows.length, updatedAt: new Date().toISOString() });
+      res.json({ headers, keys, rows, count: rows.length, updatedAt: new Date(at).toISOString() });
     } catch (err) {
       console.error('  ❌ /api/manual error:', err.message);
       res.status(500).json({ error: 'Manual entries load failed: ' + err.message });
@@ -334,6 +350,7 @@ module.exports = function registerLeadsRoutes(app, deps) {
         spreadsheetId, range: `${MANUAL_TAB}!A1`, valueInputOption: 'USER_ENTERED',
         insertDataOption: 'INSERT_ROWS', requestBody: { values: [row] },
       });
+      dropSheet(spreadsheetId);
       res.json({ ok: true, srNo });
     } catch (err) {
       console.error('  ❌ /api/manual/add error:', err.message);
