@@ -4107,25 +4107,54 @@ app.put('/api/transfers/:id', requireAuth, async (req, res) => {
   if (!acc.allowed) return res.status(403).json({ error: 'Admin or HOD only' });
   try {
     const { action, note } = req.body;
+    const [code, body] = await decideTransfer(req.session, acc, req.params.id, action, note);
+    res.status(code).json(body);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST — decide many transfers at once (a grouped row, or the ticked rows).
+// Each goes through the same rules as a single decision; the ones that fail
+// are reported back with their reason and the rest still go through.
+app.post('/api/transfers/bulk', requireAuth, async (req, res) => {
+  const acc = await transferAccess(req.session);
+  try {
+    const { ids, action, note } = req.body || {};
+    const list = [...new Set((Array.isArray(ids) ? ids : []).map(n => parseInt(n, 10)).filter(Number.isFinite))];
+    if (!list.length) return res.status(400).json({ error: 'No transfers selected' });
+    if (list.length > 1000) return res.status(400).json({ error: 'Select at most 1000 at a time' });
+    let done = 0; const failed = [];
+    for (const id of list) {
+      const [code, body] = await decideTransfer(req.session, acc, id, action, note);
+      if (code === 200) done++; else failed.push({ id, error: body.error });
+      // A bad action or a missing reason fails every row the same way.
+      if (code === 400) return res.status(400).json(body);
+    }
+    res.json({ success: true, done, failed });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// One transfer decision. Returns [httpStatus, body].
+async function decideTransfer(session, acc, id, action, note) {
+  {
     // The comment here used to say 'approved' | 'rejected' and nothing enforced
     // it. status is an ENUM, and non-strict MySQL turns an unexpected value into
     // the empty string rather than erroring — leaving a transfer that is neither
     // pending nor decided: gone from the pending list, task never moved, and the
     // request still answered success.
     if (!['approved', 'rejected'].includes(action)) {
-      return res.status(400).json({ error: 'action must be approved or rejected' });
+      return [400, { error: 'action must be approved or rejected' }];
     }
     if (action === 'rejected' && !String(note || '').trim()) {
-      return res.status(400).json({ error: 'Please give a reason for rejecting' });
+      return [400, { error: 'Please give a reason for rejecting' }];
     }
-    const [rows] = await db.query('SELECT * FROM task_transfers WHERE id=?', [req.params.id]);
-    if (!rows[0]) return res.status(404).json({ error: 'Transfer not found' });
+    const [rows] = await db.query('SELECT * FROM task_transfers WHERE id=?', [id]);
+    if (!rows[0]) return [404, { error: 'Transfer not found' }];
     const tr = rows[0];
 
     // The person receiving the task may decide it; other users may not.
-    const isReceiver = Number(tr.to_user) === Number(req.session.userId);
+    const isReceiver = Number(tr.to_user) === Number(session.userId);
     if (acc.own && !isReceiver) {
-      return res.status(403).json({ error: 'You can only act on transfers coming to you' });
+      return [403, { error: 'You can only act on transfers coming to you' }];
     }
 
     // An HOD may only act on transfers touching their own department. Creating
@@ -4138,14 +4167,14 @@ app.put('/api/transfers/:id', requireAuth, async (req, res) => {
     // Ordered before the pending check on purpose: an HOD with no business here
     // should be turned away without being told whether the transfer is still
     // open or how it was decided.
-    if (req.session.role === 'hod' && !acc.full && !isReceiver) {
-      const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [req.session.userId]);
+    if (session.role === 'hod' && !acc.full && !isReceiver) {
+      const [[me]] = await db.query('SELECT department FROM users WHERE id=?', [session.userId]);
       const dept = me?.department || '';
       const [parties] = await db.query(
         'SELECT department FROM users WHERE id IN (?,?)', [tr.from_user, tr.to_user]);
       // A blank department must not match another blank one into access.
       if (!dept || !parties.some(p => p.department === dept)) {
-        return res.status(403).json({ error: 'You can only act on transfers in your own department' });
+        return [403, { error: 'You can only act on transfers in your own department' }];
       }
     }
 
@@ -4153,14 +4182,14 @@ app.put('/api/transfers/:id', requireAuth, async (req, res) => {
     // could be approved later and would move the task, so two people looking at
     // the same stale list could overwrite each other's decision silently.
     if (tr.status !== 'pending') {
-      return res.status(409).json({ error: `This transfer was already ${tr.status}` });
+      return [409, { error: `This transfer was already ${tr.status}` }];
     }
 
     // The check above is a read; the conditional write is what makes the decision
     // one-time when two people act at the same moment.
     const [claim] = await db.query(
-      `UPDATE task_transfers SET status=?, note=? WHERE id=? AND status='pending'`, [action, note||'', req.params.id]);
-    if (!claim.affectedRows) return res.status(409).json({ error: 'This transfer was already decided' });
+      `UPDATE task_transfers SET status=?, note=? WHERE id=? AND status='pending'`, [action, note||'', id]);
+    if (!claim.affectedRows) return [409, { error: 'This transfer was already decided' }];
 
     if (action === 'approved') {
       const table = getTable(tr.task_type);
@@ -4171,10 +4200,10 @@ app.put('/api/transfers/:id', requireAuth, async (req, res) => {
       const [moved] = await db.query(
         `UPDATE ${table} SET assigned_to=? WHERE id=? AND assigned_to=?`, [tr.to_user, tr.task_id, tr.from_user]);
       if (!moved.affectedRows) {
-        await db.query(`UPDATE task_transfers SET status='pending', note=? WHERE id=?`, [tr.note || '', req.params.id]);
-        return res.status(409).json({
+        await db.query(`UPDATE task_transfers SET status='pending', note=? WHERE id=?`, [tr.note || '', id]);
+        return [409, {
           error: 'This task is no longer with the person who asked to transfer it — the request is out of date. Reject it instead.'
-        });
+        }];
       }
       // The one change that moves a task to a different person, and until now
       // it left nothing behind: "my task went to someone else" was unanswerable.
@@ -4183,13 +4212,13 @@ app.put('/api/transfers/:id', requireAuth, async (req, res) => {
       logTaskActivity({
         taskId: tr.task_id, taskType: tr.task_type, field: 'assigned_to',
         oldValue: tr.from_user, newValue: tr.to_user,
-        changedBy: req.session.userId, source: 'transfer-approved',
+        changedBy: session.userId, source: 'transfer-approved',
         note: `${nameOf(tr.from_user)} -> ${nameOf(tr.to_user)}`
       });
     }
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
+    return [200, { success: true }];
+  }
+}
 
 // GET — My sent transfer requests (for users to track)
 // Fills description (and due_date) on transfer rows with one query per task
