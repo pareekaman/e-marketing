@@ -241,10 +241,25 @@ async function loadMyPaymentRequests() {
     const all = await api(endpoint);
     if (!Array.isArray(all)) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No requests</div>'; return; }
     const sentinels = all.filter(r => r.bank_name === '__system__');
-    const rows = all.filter(r => r.bank_name !== '__system__');
+    const allRows = all.filter(r => r.bank_name !== '__system__');
     // Kept so the edit modal can fill itself from the row already on screen
     // instead of re-fetching one request.
-    _prMyRows = rows;
+    _prMyRows = allRows;
+    // Month filter: the months that have requests, newest first; the choice
+    // survives a reload of the list.
+    const monthOf = r => { const d = new Date(r.created_at); return isNaN(d) ? '' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+    const sel = document.getElementById('prMonthFilter');
+    let month = sel ? sel.value : '';
+    if (sel) {
+      const months = [...new Set(allRows.map(monthOf).filter(Boolean))].sort().reverse();
+      if (month && !months.includes(month)) month = '';
+      sel.innerHTML = '<option value="">All months</option>' + months.map(m => {
+        const [y, mo] = m.split('-');
+        const label = new Date(+y, +mo - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+        return `<option value="${m}"${m === month ? ' selected' : ''}>${label}</option>`;
+      }).join('');
+    }
+    const rows = month ? allRows.filter(r => monthOf(r) === month) : allRows;
     if (!rows.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px">No requests</div>'; return; }
     const statusBadge = s => s==='approved'
       ? '<span style="background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">✅ Approved</span>'
