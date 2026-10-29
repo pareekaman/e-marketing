@@ -475,7 +475,7 @@ function cmOpenAddModal() {
   document.getElementById('cmAddHandlerCount').textContent = 'Select handlers';
   document.getElementById('cmAddDeptCount').textContent = 'Select department';
   document.getElementById('cmAddHandlerDropdown').style.display = 'none';
-  cmAddFillPlatforms();
+  window._cmPlatFill = cmAddFillPlatforms();
 
   document.getElementById('clientAddModal').classList.add('open');
   setTimeout(() => document.getElementById('cmFormName')?.focus(), 0);
@@ -721,6 +721,7 @@ async function cmShowDetail(id, from, to) {
     cmRenderLinksRows();
     cmInitHandlerWidget(id);
     if (canDo('admin_clients')) cmCrmFillOne(id);
+    if (cmCanEdit()) cmFillPlatformCard(id);
     cmDmsLoad(id);
     if (ME.canManageInvoices) cmInvLoad(id);
   } catch (e) {
@@ -1036,6 +1037,13 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       ${client.kickstart_date ? '' : '<div style="font-size:11px;color:#b45309;margin-top:7px">Not set yet — pick the date and save.</div>'}
     </div>
 
+    <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
+      <div class="card-head-title" style="margin-bottom:10px">📣 Platform <span style="font-weight:400;color:#94a3b8;font-size:12px">— also updated in the Onboarding FMS sheet</span></div>
+      <div id="cmPlatforms_${id}" data-current="${dtEscape(client.platforms || '')}" style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:10px;font-size:13px">Loading…</div>
+      <button class="btn btn-primary" style="padding:7px 16px;font-size:12px" onclick="cmSavePlatforms(${id})">💾 Save</button>
+      ${client.platforms ? '' : '<div style="font-size:11px;color:#b45309;margin-top:7px">Not set yet — tick the platforms and save.</div>'}
+    </div>
+
     <div class="task-table-card" style="${canDo('admin_clients') ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
       <div class="card-head-title" style="margin-bottom:10px">🔀 CRM <span style="font-weight:400;color:#94a3b8;font-size:12px">— who added this client; it shows in their CRM list</span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -1246,6 +1254,34 @@ async function cmSaveKickstart(id){
   const client = CM_ALL.find(c => String(c.id) === String(id));
   if (client) { client.kickstart_date = value; cmRenderList(); }
   showToast('✅ Kickstart date saved');
+}
+
+// Ticks for the detail page's Platform card; values outside the list are kept.
+async function cmFillPlatformCard(id) {
+  const box = document.getElementById('cmPlatforms_' + id);
+  if (!box) return;
+  if (!window._cmPlatformList) {
+    const o = (typeof EC_OPTS !== 'undefined' && EC_OPTS) || await api('/api/enquiries/options');
+    window._cmPlatformList = (o && o.platforms) || [];
+  }
+  const cur = (box.dataset.current || '').split('||').filter(Boolean);
+  const list = [...window._cmPlatformList, ...cur.filter(p => !window._cmPlatformList.includes(p))];
+  box.innerHTML = list.map(p => `
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+      <input type="checkbox" class="cmPlatCb_${id}" value="${dtEscape(p)}" ${cur.includes(p) ? 'checked' : ''} style="width:14px;height:14px;accent-color:#4f46e5"/>
+      <span>${dtEscape(p)}</span>
+    </label>`).join('');
+}
+async function cmSavePlatforms(id){
+  const platforms = [...document.querySelectorAll('.cmPlatCb_' + id + ':checked')].map(cb => cb.value);
+  if (!platforms.length) { showToast('Select at least one platform', 'error'); return; }
+  const r = await api('/api/clients/' + id, 'PUT', { platforms });
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  if (r && r.noop) { showToast('You do not have permission to change this client', 'error'); return; }
+  const client = CM_ALL.find(c => String(c.id) === String(id));
+  if (client) { client.platforms = platforms.join('||'); cmRenderList(); }
+  showToast('✅ Platforms saved — updating the FMS sheet');
+  cmRetryFms();
 }
 
 async function cmSaveBrandName(id){
@@ -1504,6 +1540,7 @@ async function cmAdd(){
   if (mobile_no.replace(/\D/g, '').length < 7) { err.textContent = 'Mobile number required'; err.style.display = 'block'; return; }
   if (!kickstart_date) { err.textContent = 'Kickstart meeting date required'; err.style.display = 'block'; return; }
   if (!departments.length) { err.textContent = 'Select at least one department'; err.style.display = 'block'; return; }
+  if (!platforms.length) { err.textContent = 'Select at least one platform'; err.style.display = 'block'; return; }
   // Only demanded of the people who can see the input — the server applies the
   // same rule, so everyone else creates the client with no billing name and one
   // of the named viewers fills it in later.
@@ -1660,6 +1697,13 @@ async function cmAddFillPlatforms() {
 function cmAddTogglePlatformDrop() {
   document.getElementById('cmAddPlatformDropdown')?.classList.toggle('open');
   document.getElementById('cmAddDeptDropdown')?.classList.remove('open');
+}
+// Enquiry Capture's Convert ticks the enquiry's own platforms.
+async function cmAddPresetPlatforms(list) {
+  await window._cmPlatFill;
+  const want = new Set((list || []).map(p => String(p).toLowerCase().trim()));
+  document.querySelectorAll('.cmAddPlatformCb').forEach(cb => { if (want.has(cb.value.toLowerCase().trim())) cb.checked = true; });
+  cmAddPlatformChange();
 }
 function cmAddPlatformChange() {
   const n = document.querySelectorAll('.cmAddPlatformCb:checked').length;

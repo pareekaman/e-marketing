@@ -145,6 +145,17 @@ async function writeClientFmsHold(clientId) {
   if (!c || !c.fms_hold) return;
   const sheets = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
   const holdCol = await fmsHoldColumnLetter(sheets);
+  await writeClientFmsCell(sheets, clientId, c, holdCol, c.fms_hold, 'Hold');
+}
+// Platforms changed on an existing client go into column C of its row.
+async function writeClientFmsPlatforms(clientId) {
+  const [[c]] = await db.query(
+    'SELECT c.name, c.brand_name, c.mobile_no, c.fms_stamp, c.platforms FROM clients c WHERE c.id=?', [clientId]);
+  if (!c) return;
+  const sheets = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
+  await writeClientFmsCell(sheets, clientId, c, 'C', String(c.platforms || '').split('||').filter(Boolean).join(', '), 'Platforms');
+}
+async function writeClientFmsCell(sheets, clientId, c, colLetter, value, what) {
   const tab = `'${CLIENT_FMS_TAB.replace(/'/g, "''")}'`;
   const vals = (await sheets.spreadsheets.values.get({ spreadsheetId: CLIENT_FMS_SHEET_ID, range: `${tab}!A${CLIENT_FMS_FIRST_ROW}:E`, valueRenderOption: 'UNFORMATTED_VALUE' })).data.values || [];
   const brand = c.brand_name || c.name || '';
@@ -152,13 +163,13 @@ async function writeClientFmsHold(clientId) {
   if (at < 0) {
     const digits = v => String(v == null ? '' : v).replace(/\D/g, '');
     const hits = vals.map((r, i) => ({ r: r || [], i })).filter(x => fmsSame(x.r[1], brand) && (!c.mobile_no || digits(x.r[3]) === digits(c.mobile_no)));
-    if (hits.length > 1) throw Object.assign(new Error(`${brand} is in the Onboarding FMS more than once; set its Hold there by hand`), { permanent: true });
-    if (!hits.length) throw Object.assign(new Error(`${brand} was not found in the Onboarding FMS; set its Hold there by hand`), { permanent: true });
+    if (hits.length > 1) throw Object.assign(new Error(`${brand} is in the Onboarding FMS more than once; set its ${what} there by hand`), { permanent: true });
+    if (!hits.length) throw Object.assign(new Error(`${brand} was not found in the Onboarding FMS; set its ${what} there by hand`), { permanent: true });
     at = hits[0].i;
     if (typeof hits[0].r[0] === 'number') await db.query('UPDATE clients SET fms_stamp=? WHERE id=?', [hits[0].r[0], clientId]);
   }
-  await sheets.spreadsheets.values.update({ spreadsheetId: CLIENT_FMS_SHEET_ID, range: `${tab}!${holdCol}${CLIENT_FMS_FIRST_ROW + at}`,
-    valueInputOption: 'RAW', requestBody: { values: [[c.fms_hold]] } });
+  await sheets.spreadsheets.values.update({ spreadsheetId: CLIENT_FMS_SHEET_ID, range: `${tab}!${colLetter}${CLIENT_FMS_FIRST_ROW + at}`,
+    valueInputOption: 'RAW', requestBody: { values: [[value]] } });
 }
 // fms_pending: the client's Onboarding FMS row is still to be written.
 // fms_try_at: when the last attempt started, so a failed one waits out the
@@ -170,6 +181,8 @@ function ensureFmsPendingColumns() {
   const add = sql => db.query(sql).catch(e => { if (e.code !== 'ER_DUP_FIELDNAME') throw e; });
   if (!_fmsPendingCols) _fmsPendingCols = add('ALTER TABLE clients ADD COLUMN fms_pending TINYINT NOT NULL DEFAULT 0, ADD COLUMN fms_try_at DATETIME NULL DEFAULT NULL')
     .then(() => add('ALTER TABLE clients ADD COLUMN fms_stamp DOUBLE NULL DEFAULT NULL, ADD COLUMN fms_hold VARCHAR(10) NULL DEFAULT NULL, ADD COLUMN fms_hold_pending TINYINT NOT NULL DEFAULT 0'))
+    // fms_platforms_pending: platforms edited after the row was written, not yet in column C.
+    .then(() => add('ALTER TABLE clients ADD COLUMN fms_platforms_pending TINYINT NOT NULL DEFAULT 0'))
     .catch(e => { _fmsPendingCols = null; throw e; });
   return _fmsPendingCols;
 }
@@ -451,6 +464,9 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
     if (!brandName) return res.status(400).json({ error: 'Brand name required' });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(kickstartDate)) return res.status(400).json({ error: 'Kickstart meeting date required' });
     if (!departments) return res.status(400).json({ error: 'Select at least one department' });
+    if (!Array.isArray(req.body.platforms) || !req.body.platforms.some(p => String(p || '').trim())) {
+      return res.status(400).json({ error: 'Select at least one platform' });
+    }
     if (mobile.replace(/\D/g, '').length < 7) return res.status(400).json({ error: 'Mobile number required' });
     // A handler is optional (the user asked for that on 2026-10-01). A client
     // without one has no department, so it shows only under All Departments
@@ -581,7 +597,25 @@ app.post('/api/clients/fms-retry', requireAuth, async (req, res) => {
         sent++;
       }
     }
-    const [[{ left }]] = await db.query('SELECT COUNT(*) AS `left` FROM clients WHERE fms_pending=1 OR fms_hold_pending=1');
+    // Platforms edited after the row was written, same rules as Hold.
+    const duePlat = 'fms_platforms_pending=1 AND fms_pending=0 AND (fms_try_at IS NULL OR fms_try_at < NOW() - INTERVAL 1 MINUTE)';
+    if (!failed) {
+      const [platIds] = await db.query(`SELECT id FROM clients WHERE ${duePlat} ORDER BY id LIMIT 5`);
+      for (const { id } of platIds) {
+        const [claim] = await db.query(`UPDATE clients SET fms_try_at=NOW() WHERE id=? AND ${duePlat}`, [id]);
+        if (!claim.affectedRows) continue;
+        try {
+          await writeClientFmsPlatforms(id);
+        } catch (e) {
+          console.error('Onboarding FMS platforms failed for client', id, e.message);
+          if (!e.permanent) { failed++; break; }
+          errors.push({ clientId: id, error: e.message });
+        }
+        await db.query('UPDATE clients SET fms_platforms_pending=0, fms_try_at=NULL WHERE id=?', [id]);
+        sent++;
+      }
+    }
+    const [[{ left }]] = await db.query('SELECT COUNT(*) AS `left` FROM clients WHERE fms_pending=1 OR fms_hold_pending=1 OR fms_platforms_pending=1');
     res.json({ success: true, sent, failed, left: Number(left), errors });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -631,6 +665,10 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
     if (kickstartDate !== null) await ensureKickstartColumn();
     if (!handlerOnly && departments === '') return res.status(400).json({ error: 'Select at least one department' });
     if (departments !== null) await ensureDepartmentsColumn();
+    const platforms = req.body.platforms === undefined || !Array.isArray(req.body.platforms) ? null
+      : [...new Set(req.body.platforms.map(p => String(p || '').trim().slice(0, 100)).filter(Boolean))].join('||').slice(0, 1000);
+    if (!handlerOnly && platforms === '') return res.status(400).json({ error: 'Select at least one platform' });
+    if (platforms !== null && !handlerOnly) { await ensurePlatformsColumn(); await ensureFmsPendingColumns(); }
     // Only update fields that were sent.
     const sets = [], params = [];
     // Structural fields — full editors only; a handler cannot rename/reassign.
@@ -640,6 +678,8 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
       if (billingName !== null) { sets.push('billing_name=?'); params.push(billingName); }
       if (kickstartDate !== null) { sets.push('kickstart_date=?'); params.push(kickstartDate); }
       if (departments !== null) { sets.push('departments=?'); params.push(departments); }
+      // fms-retry then writes it into the client's Onboarding FMS row (column C).
+      if (platforms !== null) { sets.push('platforms=?', 'fms_platforms_pending=1'); params.push(platforms); }
       if (handlerId !== undefined) { sets.push('handler_id=?'); params.push(handlerId); }
     }
     // Active flag — a handler may retire their own client. Not structural: it
@@ -850,9 +890,14 @@ app.get('/api/clients/:id/stats', requireAuth, async (req, res) => {
       const [[k]] = await db.query('SELECT departments FROM clients WHERE id=?', [id]);
       clientDepartments = k?.departments || null;
     } catch {}
+    let clientPlatforms = null;
+    try {
+      const [[k]] = await db.query('SELECT platforms FROM clients WHERE id=?', [id]);
+      clientPlatforms = k?.platforms || null;
+    } catch {}
     res.json({
       client: {
-        id: client.id, name: client.name, brand_name: client.brand_name, kickstart_date: kickstartDate, departments: clientDepartments,
+        id: client.id, name: client.name, brand_name: client.brand_name, kickstart_date: kickstartDate, departments: clientDepartments, platforms: clientPlatforms,
         ...(seesBilling ? { billing_name: client.billing_name } : {}),
         logo_url: client.logo_url,
         handler_id: client.handler_id, handler_name: client.handler_name, handler_email: client.handler_email,

@@ -319,6 +319,7 @@ async function ecAddToClientMaster(id) {
   const wanted = new Set(ecList(e.platforms).map(p => p.toLowerCase().trim()).flatMap(p => [p, EC_PLATFORM_DEPT[p]]).filter(Boolean));
   document.querySelectorAll('.cmAddDeptCb').forEach(cb => { if (wanted.has(cb.value.toLowerCase().trim())) cb.checked = true; });
   cmAddFilterHandlers();
+  cmAddPresetPlatforms(ecList(e.platforms));
 }
 
 async function ecClientAdded(enquiryId, clientId) {
