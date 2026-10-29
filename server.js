@@ -4199,6 +4199,12 @@ async function decideTransfer(session, acc, id, action, note) {
       // goes back to pending and the approver is told to reject it instead.
       const [moved] = await db.query(
         `UPDATE ${table} SET assigned_to=? WHERE id=? AND assigned_to=?`, [tr.to_user, tr.task_id, tr.from_user]);
+      // Already with the person it was going to (moved by an earlier try, or by
+      // hand): there is nothing left to move, so the approval simply stands.
+      const [[now]] = moved.affectedRows ? [[null]] : await db.query(`SELECT assigned_to FROM ${table} WHERE id=?`, [tr.task_id]);
+      if (!moved.affectedRows && now && Number(now.assigned_to) === Number(tr.to_user)) {
+        return [200, { success: true, already: true }];
+      }
       if (!moved.affectedRows) {
         await db.query(`UPDATE task_transfers SET status='pending', note=? WHERE id=?`, [tr.note || '', id]);
         return [409, {
