@@ -409,14 +409,25 @@ async function trDecideMany(ids, action) {
     if (typeof note !== 'string') return;
     if (!note.trim()) { showToast('Please give a reason for rejecting', 'error'); return; }
   } else if (!(await appConfirm(`Approve ${ids.length} transfer request(s)?`))) return;
-  const r = await api('/api/transfers/bulk', 'POST', { ids, action, note });
-  if (r && r.error) { showToast(r.error, 'error'); }
-  else {
-    const word = action === 'approved' ? 'approved' : 'rejected';
-    showToast(r.failed && r.failed.length
-      ? `${r.done} ${word}, ${r.failed.length} could not be: ${r.failed[0].error}`
-      : `✅ ${r.done} transfer request(s) ${word}`, r.failed && r.failed.length ? 'error' : undefined);
+  // Sent ten at a time: every decision is several round trips to the database,
+  // and a long range in one call ran past the server's time limit, so nothing
+  // was decided and nothing was said. Each chunk stands on its own.
+  const CHUNK = 10, word = action === 'approved' ? 'approved' : 'rejected';
+  const bar = document.getElementById('trSelCount');
+  document.querySelectorAll('#transferApprovalsContent button').forEach(b => { b.disabled = true; });
+  let done = 0; const failed = []; let stopped = '';
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    if (bar) bar.textContent = `Working… ${Math.min(i, ids.length)} of ${ids.length}`;
+    let r;
+    try { r = await api('/api/transfers/bulk', 'POST', { ids: ids.slice(i, i + CHUNK), action, note }); }
+    catch (e) { r = { error: (e && e.message) || 'The server did not answer' }; }
+    if (!r || r.error) { stopped = (r && r.error) || 'The server did not answer'; break; }
+    done += r.done || 0;
+    failed.push(...(r.failed || []));
   }
+  if (stopped) showToast(`${done} ${word}; stopped: ${stopped}. Try again for the rest.`, 'error');
+  else if (failed.length) showToast(`${done} ${word}, ${failed.length} could not be: ${failed[0].error}`, 'error');
+  else showToast(`✅ ${done} transfer request(s) ${word}`);
   loadTransferApprovals();
   loadTransferBadge();
 }
