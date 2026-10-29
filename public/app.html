@@ -1120,6 +1120,16 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
           <div id="cmAddHandlerDropdown" style="display:none;position:absolute;top:38px;left:0;z-index:99;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:240px;max-height:220px;overflow-y:auto;padding:6px 0"></div>
         </div>
       </div>
+      <div class="form-group">
+        <label>Platform <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#94a3b8">(optional)</span></label>
+        <div class="multi-select-wrap" style="position:relative">
+          <button type="button" onclick="cmAddTogglePlatformDrop()"
+            style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer;display:flex;align-items:center;gap:6px;min-width:210px">
+            <span id="cmAddPlatformCount">Select platforms</span> ▾
+          </button>
+          <div class="multi-select-dropdown" id="cmAddPlatformDropdown" style="min-width:260px;max-height:240px;overflow-y:auto"></div>
+        </div>
+      </div>
       <div style="margin:14px 0 10px;padding:10px 12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px">
         <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Client Login (optional)</div>
         <div style="font-size:11px;color:#94a3b8;margin-bottom:8px">Fill both fields if this client should be able to log in to their own portal. Leave blank to skip.</div>
@@ -4537,7 +4547,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/helpers.js?v=20261027c"></script>
 <script src="/js/fms.js?v=20261027c"></script>
 <script src="/js/daily.js?v=20261029a"></script>
-<script src="/js/clients.js?v=20261027c"></script>
+<script src="/js/clients.js?v=20261029b"></script>
 <script src="/js/reports.js?v=20261027c"></script>
 <script src="/js/leaves.js?v=20261027d"></script>
 <script src="/js/leave-policy.js?v=20261027c"></script>

@@ -475,6 +475,7 @@ function cmOpenAddModal() {
   document.getElementById('cmAddHandlerCount').textContent = 'Select handlers';
   document.getElementById('cmAddDeptCount').textContent = 'Select department';
   document.getElementById('cmAddHandlerDropdown').style.display = 'none';
+  cmAddFillPlatforms();
 
   document.getElementById('clientAddModal').classList.add('open');
   setTimeout(() => document.getElementById('cmFormName')?.focus(), 0);
@@ -592,6 +593,9 @@ function cmRenderList(){
     const kickBit = c.kickstart_date
       ? ` · <span style="color:#b45309;font-weight:600">🚀 ${dtEscape(cmInvDate(c.kickstart_date))}</span>`
       : ` · <span style="color:#94a3b8">🚀 No kickstart date</span>`;
+    const platformBit = c.platforms
+      ? ` · <span style="color:#4338ca;font-weight:600">📣 ${dtEscape(c.platforms.split('||').join(', '))}</span>`
+      : '';
     const billingBit = (cmCanSeeBilling() && c.billing_name)
       ? ` · <span style="color:#0369a1;font-weight:600">🧾 ${dtEscape(c.billing_name)}</span>`
       : '';
@@ -607,7 +611,7 @@ function cmRenderList(){
           <div class="cm-avatar" style="${avatarStyle}">${initials}</div>
           <div class="cm-client-meta">
             <span class="cm-client-name">${safeName}</span>
-            <div class="cm-client-id">Client #${c.id}${nameBit}${billingBit}${kickBit} · ${handlerLabel}${addedBit}</div>
+            <div class="cm-client-id">Client #${c.id}${nameBit}${billingBit}${kickBit}${platformBit} · ${handlerLabel}${addedBit}</div>
           </div>
         </div>
         <div class="cm-client-actions">
@@ -1492,6 +1496,7 @@ async function cmAdd(){
   const handler_ids = [...document.querySelectorAll('.cmAddHandlerCb:checked')].map(cb => parseInt(cb.value));
   const departments = [...document.querySelectorAll('.cmAddDeptCb:checked')].map(cb => cb.value);
   const handler_id = handler_ids[0] || null;
+  const platforms = [...document.querySelectorAll('.cmAddPlatformCb:checked')].map(cb => cb.value);
   const login_email = document.getElementById('cmFormLoginEmail').value.trim();
   const login_password = document.getElementById('cmFormLoginPassword').value;
   if (!name) { err.textContent = 'Client name required'; err.style.display = 'block'; return; }
@@ -1509,7 +1514,7 @@ async function cmAdd(){
   }
   try {
     const r = await api('/api/clients', 'POST', {
-      name, brand_name, mobile_no, kickstart_date, departments, handler_id, handler_ids, login_email, login_password,
+      name, brand_name, mobile_no, kickstart_date, departments, handler_id, handler_ids, platforms, login_email, login_password,
       // Omitted entirely for anyone who cannot see the field — the server would
       // drop it anyway, but there is no reason to send a value it must ignore.
       ...(cmCanSeeBilling() ? { billing_name } : {}),
@@ -1630,6 +1635,35 @@ async function cmSaveHandlers(id) {
 
 function cmAddToggleDeptDrop() {
   document.getElementById('cmAddDeptDropdown')?.classList.toggle('open');
+  document.getElementById('cmAddPlatformDropdown')?.classList.remove('open');
+}
+
+// Platform choices are the Enquiry form's list, fetched once and shared with it.
+async function cmAddFillPlatforms() {
+  const dd = document.getElementById('cmAddPlatformDropdown');
+  if (!dd) return;
+  dd.classList.remove('open');
+  document.getElementById('cmAddPlatformCount').textContent = 'Select platforms';
+  dd.innerHTML = '';
+  if (typeof EC_OPTS === 'undefined' || !EC_OPTS) {
+    const o = await api('/api/enquiries/options');
+    if (!o || o.error) return;
+    if (typeof EC_OPTS !== 'undefined') EC_OPTS = o;
+    window._cmPlatformList = o.platforms || [];
+  } else window._cmPlatformList = EC_OPTS.platforms || [];
+  dd.innerHTML = window._cmPlatformList.map(p => `
+    <label class="multi-select-item" style="cursor:pointer">
+      <input type="checkbox" class="cmAddPlatformCb" value="${dtEscape(p)}" onchange="cmAddPlatformChange()" style="width:14px;height:14px;accent-color:#4f46e5;cursor:pointer;flex-shrink:0"/>
+      <span>${dtEscape(p)}</span>
+    </label>`).join('');
+}
+function cmAddTogglePlatformDrop() {
+  document.getElementById('cmAddPlatformDropdown')?.classList.toggle('open');
+  document.getElementById('cmAddDeptDropdown')?.classList.remove('open');
+}
+function cmAddPlatformChange() {
+  const n = document.querySelectorAll('.cmAddPlatformCb:checked').length;
+  document.getElementById('cmAddPlatformCount').textContent = n ? `${n} platform${n === 1 ? '' : 's'} selected` : 'Select platforms';
 }
 
 function cmAddToggleHandlerDrop() {

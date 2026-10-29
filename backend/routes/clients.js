@@ -40,7 +40,8 @@ module.exports = function registerClientRoutes(app, deps) {
 
 // ── Onboarding FMS feed ─────────────────────────────────────────────────────────
 // A new client becomes the next row of the Onboarding FMS's "Pre-Order FMS" tab:
-// A conversion date+time, B brand name, C departments, D mobile, E the person
+// A conversion date+time, B brand name, C platforms (blank when none picked;
+// departments are not written since 2026-10-29), D mobile, E the person
 // who added it (the CRM). The FMS then filters each CRM's steps on column E.
 // Points at the original Onboarding FMS since 2026-10-06, when its Pre-Order
 // FMS was given the CRM column like the copy (1TrDtCbK_v_GulwF2fRVh6fKZ_fW5k_p0AnyofztbC-Y,
@@ -73,7 +74,7 @@ async function fmsTabId(sheets) {
 // a row with the same brand, mobile and CRM counts as already written.
 // Returns { row, stamp }: stamp is the serial in A, which finds the row again
 // (writeClientFmsHold) however the sheet is sorted later.
-async function addClientToOnboardingFms({ brand, departments, mobile, crmName }, { retry = false } = {}) {
+async function addClientToOnboardingFms({ brand, platforms, mobile, crmName }, { retry = false } = {}) {
   if (!CLIENT_FMS_SHEET_ID) return {};
   const sheets = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
   const tab = `'${CLIENT_FMS_TAB.replace(/'/g, "''")}'`;
@@ -91,7 +92,7 @@ async function addClientToOnboardingFms({ brand, departments, mobile, crmName },
   const serial = (Date.now() + 5.5 * 3600 * 1000) / 86400000 + 25569;
   await sheets.spreadsheets.values.update({
     spreadsheetId: CLIENT_FMS_SHEET_ID, range: `${tab}!A${row}:E${row}`, valueInputOption: 'RAW',
-    requestBody: { values: [[serial, brand, departments, mobile, crmName]] },
+    requestBody: { values: [[serial, brand, platforms, mobile, crmName]] },
   });
   // Column A is formatted as a bare date; this cell shows the time as well.
   try {
@@ -349,6 +350,11 @@ app.get('/api/clients', requireAuth, async (req, res) => {
         for (const r of rows) r.kickstart_date = ksMap[r.id] || null;
       } catch {}
       try {
+        const [pl] = await db.query(`SELECT id, platforms FROM clients WHERE platforms IS NOT NULL AND platforms <> ''`);
+        const plMap = Object.fromEntries(pl.map(p => [p.id, p.platforms]));
+        for (const r of rows) r.platforms = plMap[r.id] || null;
+      } catch {}
+      try {
         const [ds] = await db.query(`SELECT id, departments FROM clients WHERE departments IS NOT NULL AND departments <> ''`);
         const dMap = Object.fromEntries(ds.map(k => [k.id, k.departments]));
         for (const r of rows) r.departments = dMap[r.id] || null;
@@ -406,6 +412,13 @@ function ensureDepartmentsColumn() {
     .catch(e => { if (e.code !== 'ER_DUP_FIELDNAME') { _deptCol = null; throw e; } });
   return _deptCol;
 }
+// Platforms (Meta Ads, SEO, ...) from the Enquiry list; optional, '||'-joined.
+let _platformsCol = null;
+function ensurePlatformsColumn() {
+  if (!_platformsCol) _platformsCol = db.query('ALTER TABLE clients ADD COLUMN platforms VARCHAR(1000) DEFAULT NULL')
+    .catch(e => { if (e.code !== 'ER_DUP_FIELDNAME') { _platformsCol = null; throw e; } });
+  return _platformsCol;
+}
 let _kickstartCol = null;
 function ensureKickstartColumn() {
   if (!_kickstartCol) _kickstartCol = db.query('ALTER TABLE clients ADD COLUMN kickstart_date DATE DEFAULT NULL')
@@ -461,6 +474,10 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
       [name, brandName, seesBilling ? billingName : null, kickstartDate, departments, handlerIds[0] || null, req.session.userId]);
     const newClientId = r.insertId;
     await ensureMobileColumn().then(() => db.query('UPDATE clients SET mobile_no=? WHERE id=?', [mobile, newClientId])).catch(() => {});
+    const platforms = Array.isArray(req.body.platforms)
+      ? [...new Set(req.body.platforms.map(p => String(p || '').trim().slice(0, 100)).filter(Boolean))].join('||').slice(0, 1000)
+      : '';
+    if (platforms) await ensurePlatformsColumn().then(() => db.query('UPDATE clients SET platforms=? WHERE id=?', [platforms, newClientId])).catch(() => {});
     // Onboarding FMS row. Awaited so the result can be reported, but never fatal.
     // The client is marked pending first, so a failure (or a request that dies
     // half way) leaves it for /api/clients/fms-retry; the mark's time keeps
@@ -471,7 +488,7 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
       .then(() => true, e => { console.error('Onboarding FMS pending mark failed:', e.message); return false; });
     try {
       const [[me]] = await db.query('SELECT name FROM users WHERE id=?', [req.session.userId]);
-      const fmsRow = await addClientToOnboardingFms({ brand: brandName, departments: departments.split('||').join(', '), mobile, crmName: (me && me.name) || '' });
+      const fmsRow = await addClientToOnboardingFms({ brand: brandName, platforms: platforms.split('||').filter(Boolean).join(', '), mobile, crmName: (me && me.name) || '' });
       if (canRetry) await db.query('UPDATE clients SET fms_pending=0, fms_try_at=NULL, fms_stamp=? WHERE id=?', [(fmsRow && fmsRow.stamp) || null, newClientId]);
     } catch (e) {
       console.error('Onboarding FMS row failed:', e.message);
@@ -529,11 +546,12 @@ app.post('/api/clients/fms-retry', requireAuth, async (req, res) => {
     for (const { id } of ids) {
       const [claim] = await db.query(`UPDATE clients SET fms_try_at=NOW() WHERE id=? AND ${due}`, [id]);
       if (!claim.affectedRows) continue;
+      await ensurePlatformsColumn();
       const [[c]] = await db.query(
-        'SELECT c.brand_name, c.departments, c.mobile_no, u.name AS crm FROM clients c LEFT JOIN users u ON u.id = c.added_by WHERE c.id=?', [id]);
+        'SELECT c.brand_name, c.platforms, c.mobile_no, u.name AS crm FROM clients c LEFT JOIN users u ON u.id = c.added_by WHERE c.id=?', [id]);
       let fmsRow;
       try {
-        fmsRow = await addClientToOnboardingFms({ brand: c.brand_name || '', departments: String(c.departments || '').split('||').filter(Boolean).join(', '),
+        fmsRow = await addClientToOnboardingFms({ brand: c.brand_name || '', platforms: String(c.platforms || '').split('||').filter(Boolean).join(', '),
           mobile: c.mobile_no || '', crmName: c.crm || '' }, { retry: true });
       } catch (e) {
         console.error('Onboarding FMS retry failed for client', id, e.message);
