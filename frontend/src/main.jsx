@@ -21,6 +21,7 @@ const PAGES = {
   leaveapprovals: lazy(() => import('./pages/LeaveApprovals.jsx')),
   transfers: lazy(() => import('./pages/TransferApprovals.jsx')),
   payapprovals: lazy(() => import('./pages/PaymentApprovals.jsx')),
+  mdoapprovals: lazy(() => import('./pages/MdoApprovals.jsx')),
 };
 
 const roots = new WeakMap();

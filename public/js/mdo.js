@@ -3,12 +3,27 @@
 // ══════════════════════════════════════════════════════
 async function loadMdoApprovals() {
   const tasksEl = document.getElementById('mdoTasksList');
+  // The list is a React page (frontend/src/pages/MdoApprovals.jsx) since
+  // 2026-10-30; mdoReviewTask stays here.
+  if (tasksEl && tasksEl.dataset.react) {
+    let data;
+    try {
+      const tasks = await api('/api/mdo-tasks');
+      data = Array.isArray(tasks) ? { rows: tasks } : { error: 'Error loading tasks' };
+    } catch(e) { data = { error: 'Error: ' + e.message }; }
+    _mdoData = data;
+    if (MDO_REACT) return MDO_REACT(data);
+    return emkReactMount('mdoapprovals', tasksEl);
+  }
   try {
     const tasks = await api('/api/mdo-tasks');
     if (!Array.isArray(tasks)) { tasksEl.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error loading tasks</div>'; }
     else mdoRenderTasks(tasks);
   } catch(e) { tasksEl.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
 }
+let MDO_REACT = null;   // fn({ rows } | { error }) from the React list
+let _mdoData = null;
+function mdoSetReact(fn) { MDO_REACT = fn; if (fn && _mdoData) fn(_mdoData); }
 
 function mdoRenderTasks(rows) {
   const el = document.getElementById('mdoTasksList');
@@ -53,8 +68,10 @@ function mdoRenderTasks(rows) {
   </table>`;
 }
 
-async function mdoReviewTask(id, status) {
-  const actionCell = document.getElementById('mdoTaskAction-' + id);
+// The React list passes onBusy and draws its own spinner.
+async function mdoReviewTask(id, status, onBusy) {
+  const actionCell = onBusy ? null : document.getElementById('mdoTaskAction-' + id);
+  if (onBusy) onBusy();
   if (actionCell) {
     actionCell.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#64748b;font-weight:600">
       <span style="width:13px;height:13px;border:2px solid #e2e8f0;border-top-color:#4f46e5;border-radius:50%;display:inline-block;animation:spin .7s linear infinite"></span>
