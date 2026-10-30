@@ -508,7 +508,37 @@ document.addEventListener('change', e => {
   if (e.target && ['mtgFormDate', 'mtgStart', 'mtgStartPeriod'].includes(e.target.id)) mtgSyncPastState();
 });
 
+// The form is React (frontend/src/pages/MeetingForm.jsx) since 2026-10-30,
+// mounted into #mtgFormRoot; #meetingModal and the functions below stay as
+// the fallback. These two are its way into this file's caches and calendar.
+let MTG_FORM_REACT = null, _mtgFormWanted = null;
+function mtgFormSetReact(fn) { MTG_FORM_REACT = fn; if (fn && _mtgFormWanted) { const a = _mtgFormWanted; _mtgFormWanted = null; fn(...a); } }
+// Clients are refetched on every open, so one switched active/inactive in
+// Client Master shows up (or drops out) straight away.
+async function mtgFormLoad() {
+  _mtgClientsCache = null;
+  await Promise.all([_mtgEnsureClients(), _mtgEnsureUsers()]);
+  return { clients: _mtgClientsCache || [], users: _mtgUsersCache || [],
+    date: _mtgDayAnchor ? _mtgIso(_mtgDayAnchor) : _mtgTodayIso() };
+}
+// After a save, Done or cancel: show that date (if given) and reload.
+function mtgAfterChange(dateIso) {
+  if (dateIso) {
+    _mtgDayAnchor = _mtgParseIso(dateIso);
+    _mtgMonthAnchor = new Date(_mtgDayAnchor.getFullYear(), _mtgDayAnchor.getMonth(), 1);
+  }
+  _mtgMonthCache = {};
+  _mtgTaskCache = {};
+  loadMeetings();
+}
+
 async function openMeetingModal(id, prefillStart) {
+  const root = document.getElementById('mtgFormRoot');
+  if (root && root.dataset.react) {
+    if (MTG_FORM_REACT) return MTG_FORM_REACT(id || null, prefillStart || '');
+    _mtgFormWanted = [id || null, prefillStart || ''];
+    return emkReactMount('meetingform', root);
+  }
   _mtgEditing = id || null;
   _mtgSeriesRemaining = 0;
   document.getElementById('mtgEditId').value = id || '';

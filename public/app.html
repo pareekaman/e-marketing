@@ -2401,6 +2401,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
   </div>
 
   <!-- Meeting create/edit modal -->
+  <!-- The form is React (frontend/src/pages/MeetingForm.jsx), opened by openMeetingModal(); #meetingModal below is its fallback. -->
+  <div id="mtgFormRoot" data-react="1" data-react-quiet="1"></div>
   <div class="modal-overlay" id="meetingModal">
     <div class="modal" style="width:640px">
       <button class="modal-close" onclick="closeModal('meetingModal')">×</button>
@@ -4311,7 +4313,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261030c"></script>
 <script src="/js/hrm.js?v=20261030b"></script>
-<script src="/js/react-bridge.js?v=20261030zf"></script>
+<script src="/js/react-bridge.js?v=20261030zg"></script>
 <script src="/js/dashboard.js?v=20261030a"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261030e"></script>
@@ -4334,7 +4336,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
      name undefined, and init()'s own catch turns the ReferenceError into a
      redirect back to the login page. -->
 <script src="/js/notify.js?v=20261027c"></script>
-<script src="/js/meetings.js?v=20261030a"></script>
+<script src="/js/meetings.js?v=20261030b"></script>
 <script src="/js/dms.js?v=20261030a"></script>
 <script src="/js/leads.js?v=20261027c"></script>
 <script src="/js/enquiry.js?v=20261030b"></script>

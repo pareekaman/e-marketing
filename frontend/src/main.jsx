@@ -37,6 +37,7 @@ const PAGES = {
   celog: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeLog }))),
   leaveform: lazy(() => import('./pages/LeaveForm.jsx')),
   enquiryform: lazy(() => import('./pages/EnquiryForm.jsx')),
+  meetingform: lazy(() => import('./pages/MeetingForm.jsx')),
 };
 
 const roots = new WeakMap();
