@@ -428,6 +428,17 @@ async function emp360WeekDrill(empId, weekStart, weekEnd, filter) {
 // 📈 DAILY REPORTS (admin, month-wise)
 // ══════════════════════════════════════════════════════
 let DR_DATA = null;
+// The stats, per-user summary and entries table are a React page
+// (frontend/src/pages/DailyReports.jsx) since 2026-10-30, portalled into
+// #drStats / #drSummaryWrap / #drEntriesWrap / #drFilterSummary. The filters,
+// the fetch (DR_DATA) and the exports stay here; renderDRStats/Summary/Entries
+// hand the redraw to the page, which filters with drFilteredEntries().
+let DR_REACT = null;
+let DR_STATE = { loading: true, error: '' };
+function drSetReact(fn){ DR_REACT = fn; }
+function drGetData(){ return { data: DR_DATA, ...DR_STATE }; }
+function drIsOpen(key){ return DR_OPEN_DAYS.has(key); }
+function drSetOpen(key, open){ if (open) DR_OPEN_DAYS.add(key); else DR_OPEN_DAYS.delete(key); }
 
 async function loadDailyReports(){
   const monthInput = document.getElementById('drMonth');
@@ -437,9 +448,20 @@ async function loadDailyReports(){
     const now = new Date();
     monthInput.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   }
-  document.getElementById('drStats').innerHTML = '<div class="empty">Loading...</div>';
-  document.getElementById('drSummaryWrap').innerHTML = '<div class="empty">Loading...</div>';
-  document.getElementById('drEntriesWrap').innerHTML = '<div class="empty">Loading...</div>';
+  // React mode: the stats, summary and entries are drawn by the React page,
+  // which must own those boxes, so they are not written into from here.
+  const react = !!document.getElementById('drReactRoot');
+  if (react) {
+    DR_STATE = { loading: true, error: '' };
+    if (!DR_REACT) {
+      ['drStats', 'drSummaryWrap', 'drEntriesWrap', 'drFilterSummary'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+      emkReactMount('dailyreports', document.getElementById('drReactRoot'));
+    } else DR_REACT();
+  } else {
+    document.getElementById('drStats').innerHTML = '<div class="empty">Loading...</div>';
+    document.getElementById('drSummaryWrap').innerHTML = '<div class="empty">Loading...</div>';
+    document.getElementById('drEntriesWrap').innerHTML = '<div class="empty">Loading...</div>';
+  }
 
   try {
     let qs = '';
@@ -461,12 +483,14 @@ async function loadDailyReports(){
     }
     DR_DATA = report;
     if (DR_DATA.error) throw new Error(DR_DATA.error);
+    if (react) DR_STATE = { loading: false, error: '' };
     renderDRStats();
     renderDRSummary();
     renderDREntriesUserDropdown();
     renderDREntriesClientDropdown();
     renderDREntries();
   } catch(e) {
+    if (react) { DR_STATE = { loading: false, error: e.message }; if (DR_REACT) DR_REACT(); return; }
     document.getElementById('drStats').innerHTML = `<div class="empty">Failed: ${e.message}</div>`;
     document.getElementById('drSummaryWrap').innerHTML = '';
     document.getElementById('drEntriesWrap').innerHTML = '';
@@ -474,6 +498,7 @@ async function loadDailyReports(){
 }
 
 function renderDRStats(){
+  if (document.getElementById('drReactRoot')) return DR_REACT && DR_REACT();   // React draws it
   const d = DR_DATA;
   const totalHours = (d.total_minutes / 60).toFixed(1);
   const monthLabel = new Date(d.month + '-01').toLocaleString('en-US', { month: 'long', year: 'numeric' });
@@ -501,6 +526,7 @@ function renderDRStats(){
 }
 
 function renderDRSummary(){
+  if (document.getElementById('drReactRoot')) return DR_REACT && DR_REACT();   // React draws it
   const wrap = document.getElementById('drSummaryWrap');
   if (!DR_DATA.summary.length) {
     wrap.innerHTML = '<div class="empty">No submissions in this month yet.</div>';
@@ -676,6 +702,7 @@ function drToggleDay(row){
 }
 
 function renderDREntries(){
+  if (document.getElementById('drReactRoot')) return DR_REACT && DR_REACT();   // React draws it
   if (!DR_DATA) return;
   const wrap = document.getElementById('drEntriesWrap');
   const entries = drFilteredEntries();

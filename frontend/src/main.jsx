@@ -16,6 +16,7 @@ const PAGES = {
   meetings: lazy(() => import('./pages/Meetings.jsx')),
   payreq: lazy(() => import('./pages/PaymentRequests.jsx')),
   users: lazy(() => import('./pages/UsersRows.jsx')),
+  dailyreports: lazy(() => import('./pages/DailyReports.jsx')),
 };
 
 const roots = new WeakMap();
