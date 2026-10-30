@@ -2445,34 +2445,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 
   <!-- ── MEETINGS — calendar (month 70% + day timeline 30%) ── -->
   <div id="page-meetings" class="page">
-    <div class="mtg-cal-toolbar">
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <button class="btn btn-outline" onclick="mtgGoToday()" style="padding:6px 14px">Today</button>
-        <button class="btn btn-outline" onclick="mtgShift(-1)" style="padding:6px 10px">←</button>
-        <button class="btn btn-outline" onclick="mtgShift(1)"  style="padding:6px 10px">→</button>
-        <div id="mtgCalLabel" style="font-size:18px;font-weight:700;color:#0f172a;margin-left:6px">—</div>
-      </div>
-      <button class="btn btn-primary" onclick="openMeetingModal()">＋ Schedule</button>
-    </div>
-
-    <div style="display:grid;grid-template-columns:7fr 3fr;gap:16px;margin-top:14px" id="mtgGrid">
-      <!-- Month view (70%) -->
-      <div id="mtgMonthWrap" class="task-table-card" style="padding:0">
-        <div class="mtg-cal-daynames">
-          <div>SUN</div><div>MON</div><div>TUE</div><div>WED</div><div>THU</div><div>FRI</div><div>SAT</div>
-        </div>
-        <div id="mtgMonthGrid" class="mtg-cal-month-grid"></div>
-      </div>
-      <!-- Day timeline (30%) -->
-      <div class="task-table-card" style="padding:0;overflow:hidden">
-        <div class="card-head" style="padding:12px 14px;border-bottom:1px solid #e2e8f0">
-          <div class="card-head-title">Day <span id="mtgDayLabel" style="color:#64748b;font-weight:500;font-size:12px"></span></div>
-        </div>
-        <div id="mtgDayTimeline" style="position:relative;overflow:auto;max-height:560px"></div>
-        <div id="mtgDayList" style="border-top:1px solid #f1f5f9;max-height:200px;overflow:auto"></div>
-        <div id="mtgDayTasks" style="border-top:1px solid #f1f5f9;max-height:240px;overflow:auto"></div>
-      </div>
-    </div>
+    <!-- The Scheduler calendar is a React page (frontend/src/pages/Meetings.jsx), mounted
+         here by loadMeetings(). The meeting form below is still meetings.js's. -->
+    <div id="mtgReactRoot"><div class="empty">Loading…</div></div>
   </div>
 
   <!-- Meeting create/edit modal -->
@@ -4380,7 +4355,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261030b"></script>
 <script src="/js/hrm.js?v=20261030a"></script>
-<script src="/js/react-bridge.js?v=20261030l"></script>
+<script src="/js/react-bridge.js?v=20261030m"></script>
 <script src="/js/dashboard.js?v=20261027c"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261030d"></script>
@@ -4403,7 +4378,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
      name undefined, and init()'s own catch turns the ReferenceError into a
      redirect back to the login page. -->
 <script src="/js/notify.js?v=20261027c"></script>
-<script src="/js/meetings.js?v=20261027c"></script>
+<script src="/js/meetings.js?v=20261030a"></script>
 <script src="/js/dms.js?v=20261027c"></script>
 <script src="/js/leads.js?v=20261027c"></script>
 <script src="/js/enquiry.js?v=20261030a"></script>

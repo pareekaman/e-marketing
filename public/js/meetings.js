@@ -23,10 +23,26 @@ function _mtgParseIso(s) {
   return new Date(y, m-1, d);
 }
 
+// The calendar is a React page (frontend/src/pages/Meetings.jsx) since
+// 2026-10-30. The viewed month and day stay here (the form prefills its date
+// from _mtgDayAnchor and saveMeeting moves both to the saved date); the
+// meeting form, Done, Copy invite and Remove are still this file's, and their
+// loadMeetings() / renderMtgDay() calls come back to the page.
+let MTG_REACT = null;   // { reload, reloadDay, reloadMonth }
+function mtgSetReact(o) { MTG_REACT = o; }
+function mtgGetAnchors() { return { month: _mtgMonthAnchor, day: _mtgDayAnchor }; }
+function mtgSetAnchors(month, day) { if (month) _mtgMonthAnchor = month; if (day) _mtgDayAnchor = day; }
+function mtgRemember(m) { _mtgCopyById[m.id] = m; }
+
 async function loadMeetings() {
   const today = new Date();
   if (!_mtgMonthAnchor) _mtgMonthAnchor = new Date(today.getFullYear(), today.getMonth(), 1);
   if (!_mtgDayAnchor)   _mtgDayAnchor   = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const root = document.getElementById('mtgReactRoot');
+  if (root) {
+    await Promise.all([_mtgEnsureClients(), _mtgEnsureUsers(), _mtgEnsureHolidays()]);
+    return MTG_REACT ? MTG_REACT.reload() : emkReactMount('meetings', root);
+  }
   await Promise.all([_mtgEnsureClients(), _mtgEnsureUsers(), _mtgEnsureHolidays()]);
   await renderMtgMonth();
   await renderMtgDay();
@@ -56,6 +72,7 @@ function mtgShift(dir) {
 }
 
 async function renderMtgMonth() {
+  if (MTG_REACT) return MTG_REACT.reloadMonth();
   const anchor = _mtgMonthAnchor;
   const year = anchor.getFullYear();
   const month = anchor.getMonth(); // 0-indexed
@@ -163,6 +180,7 @@ function _mtgFmtTime(t) {
 }
 
 async function renderMtgDay() {
+  if (MTG_REACT) return MTG_REACT.reloadDay();
   const anchor = _mtgDayAnchor;
   const iso = _mtgIso(anchor);
   document.getElementById('mtgDayLabel').textContent = `· ${fmtDate(iso)}`;

@@ -13,6 +13,7 @@ const PAGES = {
   compliance: lazy(() => import('./pages/Compliance.jsx')),
   feedback: lazy(() => import('./pages/Feedback.jsx')),
   inventory: lazy(() => import('./pages/Inventory.jsx')),
+  meetings: lazy(() => import('./pages/Meetings.jsx')),
 };
 
 const roots = new WeakMap();
