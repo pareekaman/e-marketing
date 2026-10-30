@@ -517,6 +517,8 @@ function renderTasksTable() {
 
   // ── Regular users: single flat table, paginated, always open ───────────
   const totalPages = Math.ceil(tasks.length / ALL_TASKS_PAGE_SIZE);
+  // A kept page (see _atRestoreView) can run past the end once rows drop out.
+  if (allTasksPage > totalPages) allTasksPage = Math.max(1, totalPages);
   const pageTasks = tasks.slice((allTasksPage-1)*ALL_TASKS_PAGE_SIZE, allTasksPage*ALL_TASKS_PAGE_SIZE);
   const pageRows = pageTasks.map(t => _buildTaskRowHtml(t, ctx)).join('');
 
@@ -852,6 +854,35 @@ function _doneEnd(btn) {
   }
 }
 
+// Rebuilding the list after Done put every scroll back at the top and the page
+// back to 1; these keep the user where they were.
+function _atSaveView() {
+  const box = document.getElementById('tasksContent');
+  const scrollers = [];
+  for (let el = box; el; el = el.parentElement) if (el.scrollTop) scrollers.push([el, el.scrollTop]);
+  const se = document.scrollingElement;
+  if (se && se.scrollTop) scrollers.push([se, se.scrollTop]);
+  const inner = {};
+  box?.querySelectorAll('.tg-section').forEach(s => {
+    const sc = s.querySelector('.flat-tasks-scroll');
+    if (sc && sc.scrollTop) inner[s.dataset.tgKey] = sc.scrollTop;
+  });
+  const flat = box?.querySelector('.flat-tasks-scroll:not(.tg-section *)');
+  return { page: allTasksPage, scrollers, inner, flatTop: flat ? flat.scrollTop : 0 };
+}
+function _atRestoreView(v) {
+  if (!v) return;
+  if (v.page > 1 && allTasksPage !== v.page) { allTasksPage = v.page; renderTasksTable(); }
+  const box = document.getElementById('tasksContent');
+  box?.querySelectorAll('.tg-section').forEach(s => {
+    const sc = s.querySelector('.flat-tasks-scroll');
+    if (sc && v.inner[s.dataset.tgKey]) sc.scrollTop = v.inner[s.dataset.tgKey];
+  });
+  const flat = box?.querySelector('.flat-tasks-scroll:not(.tg-section *)');
+  if (flat && v.flatTop) flat.scrollTop = v.flatTop;
+  v.scrollers.forEach(([el, top]) => { el.scrollTop = top; });
+}
+
 async function updateStatus(id, status, from, type) {
   const btn = _doneButtonFromEvent();
   if (!_doneStart(btn)) return;
@@ -873,7 +904,8 @@ async function updateStatus(id, status, from, type) {
     showToast('✅ Task marked done');
   }
   // The list is reloaded before the next Done click is let through.
-  if (from==='dashboard') await loadDashboard(true); else await loadAllTasks();
+  if (from==='dashboard') await loadDashboard(true);
+  else { const view = _atSaveView(); await loadAllTasks(); _atRestoreView(view); }
   loadApprovalBadge();
   } finally { _doneEnd(btn); }
 }
