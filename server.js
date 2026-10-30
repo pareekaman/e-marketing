@@ -11325,9 +11325,25 @@ app.post('/api/deleted-records/:id/restore', requireAuth, requireAdmin, async (r
       }
     }
 
+    // The snapshot is JSON of what mysql2 returned, so DATE / DATETIME columns
+    // came back as Date objects and were stored as UTC ISO text
+    // ("2031-01-01T18:30:00.000Z" for a DATE of 2031-01-02 read in IST), which
+    // MySQL refuses. mysql2 built those Dates in this process's local time, so
+    // the local parts of the parsed value are the original column value.
+    const colType = Object.fromEntries(cols.map(c => [c.Field, String(c.Type || '').toLowerCase()]));
+    const pad = n => String(n).padStart(2, '0');
+    const unIso = (k, v) => {
+      const t = colType[k];
+      if (typeof v !== 'string' || !/^(date|datetime|timestamp)\b/.test(t) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(v)) return v;
+      const d = new Date(v);
+      if (isNaN(d)) return v;
+      const day = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      return t.startsWith('date') && !t.startsWith('datetime') ? day : `${day} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    };
+
     await db.query(
       `INSERT INTO ?? (${keys.map(() => '??').join(',')}) VALUES (${keys.map(() => '?').join(',')})`,
-      [rec.source_table, ...keys, ...keys.map(k => data[k])]);
+      [rec.source_table, ...keys, ...keys.map(k => unIso(k, data[k]))]);
 
     await db.query(
       'UPDATE deleted_records SET restored_at=NOW(), restored_by=? WHERE id=?',
