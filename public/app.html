@@ -1587,58 +1587,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
        INVENTORY PAGE
   ══════════════════════════════════════ -->
   <div id="page-inventory" class="page">
-    <div class="page-header">
-      <!-- No h2 here: the topbar already shows this page's title. -->
-      <div style="display:flex;gap:8px;align-items:center;margin-left:auto">
-        <select id="invFilterType" onchange="renderInventory()" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
-          <option value="">All Types</option>
-          <option value="laptop">💻 Laptop</option>
-          <option value="keyboard">⌨️ Keyboard</option>
-          <option value="mouse">🖱️ Mouse</option>
-          <option value="mobile">📱 Mobile</option>
-          <option value="sim">📶 SIM</option>
-          <option value="charger">🔌 Charger</option>
-          <option value="other">📦 Other</option>
-        </select>
-        <select id="invFilterStatus" onchange="renderInventory()" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
-          <option value="">All Status</option>
-          <option value="available">Available</option>
-          <option value="assigned">Assigned</option>
-          <option value="damaged">Damaged</option>
-          <option value="retired">Retired</option>
-        </select>
-        <button id="invAddBtn" class="btn btn-primary" onclick="openInvAddModal()">＋ Add Item</button>
-      </div>
-    </div>
-
-    <!-- Tab: My Items / All Items / Assignments (admin) -->
-    <div class="tab-group" id="invTabs" style="margin-bottom:16px;width:fit-content">
-      <div class="tab active" onclick="switchInvTab('mine',this)">My Equipment</div>
-      <div class="tab" id="invTabAll" style="display:none" onclick="switchInvTab('all',this)">All Equipment</div>
-      <div class="tab" id="invTabAssign" style="display:none" onclick="switchInvTab('assignments',this)">Assignments</div>
-    </div>
-
-    <!-- Stats row (admin only) -->
-    <div id="invStats" style="display:none;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px">
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">
-        <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Total Items</div>
-        <div id="invStatTotal" style="font-size:26px;font-weight:700;color:var(--accent)">0</div>
-      </div>
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">
-        <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Assigned</div>
-        <div id="invStatAssigned" style="font-size:26px;font-weight:700;color:#f59e0b">0</div>
-      </div>
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">
-        <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Available</div>
-        <div id="invStatAvailable" style="font-size:26px;font-weight:700;color:#10b981">0</div>
-      </div>
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">
-        <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Handover Pending</div>
-        <div id="invStatHandover" style="font-size:26px;font-weight:700;color:#ef4444">0</div>
-      </div>
-    </div>
-
-    <div id="invContent"><div class="empty">Loading…</div></div>
+    <!-- The Inventory page is React (frontend/src/pages/Inventory.jsx), mounted here by
+         loadInventory(). Its pop-ups below are still inventory.js's. -->
+    <div id="invReactRoot"><div class="empty">Loading…</div></div>
   </div>
 
   <!-- ══════════════════════════════════════
@@ -4427,9 +4378,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/themes/picker.js?v=20261027c"></script>
 <script src="/js/core.js?v=20261027c"></script>
 <script src="/js/access.js?v=20261027c"></script>
-<script src="/js/inventory.js?v=20261030a"></script>
+<script src="/js/inventory.js?v=20261030b"></script>
 <script src="/js/hrm.js?v=20261030a"></script>
-<script src="/js/react-bridge.js?v=20261030k"></script>
+<script src="/js/react-bridge.js?v=20261030l"></script>
 <script src="/js/dashboard.js?v=20261027c"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261030d"></script>

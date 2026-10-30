@@ -26,7 +26,18 @@ const invReasonOptions = (allowed) => '<option value="">--select--</option>' +
   allowed.map(k => `<option value="${k}">${INV_RETURN_REASON_OPTS[k]}</option>`).join('');
 const INV_STATUS_COLORS = {available:'#10b981',assigned:'#f59e0b',damaged:'#ef4444',retired:'#94a3b8'};
 
+// The page is React (frontend/src/pages/Inventory.jsx) since 2026-10-30. The
+// items, assignments and open tab stay here: the pop-ups below read them and
+// call loadInventory() after a change, which hands the reload to the page.
+let INV_REACT = null;   // { reload } from the React page
+function invSetReact(o) { INV_REACT = o; }
+function invSetData(items, assignments) { _invItems = items; _invAssignments = assignments; }
+function invGetData() { return { items: _invItems, assignments: _invAssignments, tab: _invTab }; }
+function invSetTab(tab) { _invTab = tab; }
+
 async function loadInventory() {
+  const root = document.getElementById('invReactRoot');
+  if (root) return INV_REACT ? INV_REACT.reload() : emkReactMount('inventory', root);
   // Name kept for the call sites below, but this is no longer "is this person an
   // admin" — it is "may this person edit Inventory", which the panel now decides.
   // It was a hardcoded role list, so setting a hod to View hid nothing: the
@@ -63,6 +74,7 @@ function switchInvTab(tab, el) {
 }
 
 function renderInventory() {
+  if (INV_REACT) return INV_REACT.reload();
   const el = document.getElementById('invContent');
   // Name kept for the call sites below, but this is no longer "is this person an
   // admin" — it is "may this person edit Inventory", which the panel now decides.
