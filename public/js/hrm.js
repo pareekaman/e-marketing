@@ -1121,6 +1121,15 @@ function refreshNavGroupVisibility() {
   });
 }
 
+// Back / Forward: open the page the address now names.
+try { if (!history.state) history.replaceState({ page: new URLSearchParams(location.search).get('page') || 'dashboard' }, '', location.href); } catch {}
+window.addEventListener('popstate', () => {
+  const page = new URLSearchParams(location.search).get('page') || 'dashboard';
+  if (!document.getElementById('page-' + page)) return;
+  window._navFromHistory = true;
+  try { navigate(page, null); } finally { window._navFromHistory = false; }
+});
+
 function navigate(page, el) {
   // A click before /api/me has answered (slow database) used to throw on
   // ME.role and leave the page stuck. Remember the last click and replay it
@@ -1162,6 +1171,17 @@ function navigate(page, el) {
   const moreTab = document.getElementById('mbnMoreTab');
   if (moreTab) moreTab.classList.toggle('active', !document.querySelector('.mobile-bottom-nav .nav-item.active'));
   try { localStorage.setItem('lastPage', page); } catch {}
+  // The address follows the page (?page=, which core.js already opens), so a
+  // link can be shared and Back / Forward move between pages. Not when Back
+  // itself brought us here, or the history would grow on every step back.
+  if (!window._navFromHistory) {
+    const qs = new URLSearchParams(location.search);
+    if ((qs.get('page') || 'dashboard') !== page) {
+      if (page === 'dashboard') qs.delete('page'); else qs.set('page', page);
+      const q = qs.toString();
+      try { history.pushState({ page }, '', location.pathname + (q ? '?' + q : '') + location.hash); } catch {}
+    }
+  }
   document.getElementById('topbarTitle').textContent = pageTitles[page] || page;
   // Greeting under the Dashboard title; css/amber.css shows it (amber look only).
   document.getElementById('topbarTitle').dataset.sub =
