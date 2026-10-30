@@ -11304,6 +11304,9 @@ app.post('/api/deleted-records/:id/restore', requireAuth, requireAdmin, async (r
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
       return res.status(400).json({ error: 'Archived snapshot is not a row object — cannot restore' });
     }
+    if (data.slim) {
+      return res.status(400).json({ error: 'Only the name of this deleted user was kept (past the retention window), so it cannot be restored' });
+    }
 
     // Drop any key that is no longer a real column (the schema may have moved
     // on since the delete), so restore degrades instead of hard-failing.
@@ -11344,13 +11347,24 @@ const DELETED_RECORDS_RETENTION_DAYS = Number(process.env.DELETED_RECORDS_RETENT
 // the record of who deleted it are both gone for good. Owner-approved
 // (2026-07-16) as an explicit trade for keeping the table from growing without
 // bound (record_data can carry base64 photos).
+// Deleted users are the exception (2026-10-30): their tasks show the name from
+// here (fillDeletedUserNames), so past the window a user row is cut down to
+// id, name and email and kept, instead of dropped.
 async function purgeDeletedRecords() {
   const days = DELETED_RECORDS_RETENTION_DAYS;
+  const [old] = await db.query(
+    `SELECT id, record_data FROM deleted_records WHERE source_table='users' AND deleted_at < NOW() - INTERVAL ? DAY
+       AND record_data NOT LIKE '{"slim":true%'`, [days]);
+  for (const o of old) {
+    let d = {}; try { d = JSON.parse(o.record_data) || {}; } catch {}
+    await db.query('UPDATE deleted_records SET record_data=? WHERE id=?',
+      [JSON.stringify({ slim: true, id: d.id ?? null, name: d.name ?? '', email: d.email ?? '' }), o.id]);
+  }
   const [[{ due }]] = await db.query(
-    'SELECT COUNT(*) AS due FROM deleted_records WHERE deleted_at < NOW() - INTERVAL ? DAY', [days]);
+    `SELECT COUNT(*) AS due FROM deleted_records WHERE deleted_at < NOW() - INTERVAL ? DAY AND source_table<>'users'`, [days]);
   if (!due) return { purged: 0, retentionDays: days };
   const [r] = await db.query(
-    'DELETE FROM deleted_records WHERE deleted_at < NOW() - INTERVAL ? DAY', [days]);
+    `DELETE FROM deleted_records WHERE deleted_at < NOW() - INTERVAL ? DAY AND source_table<>'users'`, [days]);
   const purged = r.affectedRows || 0;
   console.log(`purgeDeletedRecords: removed ${purged} archive row(s) older than ${days} days`);
   return { purged, retentionDays: days };
