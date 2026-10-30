@@ -842,10 +842,11 @@ function ccPaintBankHead() {
   if (CC_BANK_HEAD_REACT) return CC_BANK_HEAD_REACT(view);
   emkReactMount('ccbankhead', document.getElementById('ccBankHead'));
 }
-// The React picker's Apply. Saved as a custom range, as ccCalApply always did:
-// its preset lookup matches a colour the buttons no longer use.
-function ccSetDateFilter(from, to) {
-  _ccFilter.preset = 'custom';
+// The React picker's Apply, with the preset the range matches (or none), so
+// the button reads "Last 30 days" over the dates. ccCalApply never managed
+// that: its preset lookup matches a colour the buttons no longer use.
+function ccSetDateFilter(from, to, preset) {
+  _ccFilter.preset = preset || 'custom';
   _ccFilter.dateFrom = from || null;
   _ccFilter.dateTo = to || null;
   ccPaintBankHead();

@@ -17,6 +17,13 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const BTN = 'font-family:inherit';
 const presetRange = key => legacy('ccPresetRange', key) || [null, null];
+// The preset whose range is the one picked, or null for a range of one's own.
+// Same test that lights a preset button up.
+const presetMatches = (key, from, to) => {
+  const [pf, pt] = presetRange(key);
+  return key === 'all' ? (!from && !to) : (pf === from && pt === to);
+};
+const matchedPreset = cal => (PRESETS.find(p => presetMatches(p.key, cal.from, cal.to)) || {}).key || null;
 const pad = n => String(n).padStart(2, '0');
 // Hover tint for plain buttons, as the old inline handlers did it.
 const tint = (on, off) => ({ onMouseOver: e => { e.currentTarget.style.background = on; }, onMouseOut: e => { e.currentTarget.style.background = off; } });
@@ -79,13 +86,15 @@ function DatePicker({ filter, onClose }) {
   const m2 = cal.month + 1 > 11 ? 0 : cal.month + 1, y2 = cal.month + 1 > 11 ? cal.year + 1 : cal.year;
   const arrow = 'border:none;background:none;cursor:pointer;font-size:18px;color:#374151;padding:4px 8px;border-radius:6px';
   return (
-    <div ref={css('display:block;position:absolute;top:calc(100% + 6px);left:0;z-index:999;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.14);padding:0;overflow:hidden;min-width:600px')}>
+    // Hangs from the button's right edge: the bar sits at the right of the row,
+    // so hanging from the left ran the 600px panel off the screen. The id is
+    // for amber.css / dark.css, which give it a solid background.
+    <div id="ccDatePickerWrap" ref={css('display:block;position:absolute;top:calc(100% + 6px);right:0;z-index:999;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.14);padding:0;overflow:hidden;min-width:600px')}>
       <div ref={css('display:flex')}>
         {/* Presets */}
         <div ref={css('padding:16px 8px;border-right:1px solid #f1f5f9;min-width:140px')}>
           {PRESETS.map(p => {
-            const [pf, pt] = presetRange(p.key);
-            const match = p.key === 'all' ? (!cal.from && !cal.to) : (pf === cal.from && pt === cal.to);
+            const match = presetMatches(p.key, cal.from, cal.to);
             const base = 'display:block;width:100%;text-align:left;padding:8px 14px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit;margin-bottom:2px;transition:background .1s;';
             return (
               <button key={p.key} className="cc-preset-btn" data-preset={p.key} onClick={() => pickPreset(p.key)}
@@ -109,7 +118,7 @@ function DatePicker({ filter, onClose }) {
       {/* Footer */}
       <div ref={css('padding:12px 20px;border-top:1px solid #f1f5f9;display:flex;justify-content:flex-end;gap:10px;background:#fafafa')}>
         <button onClick={onClose} {...tint('#f8fafc', '#fff')} ref={css('padding:7px 18px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fff;font-size:13px;font-weight:600;cursor:pointer;' + BTN)}>Cancel</button>
-        <button onClick={() => { onClose(); legacy('ccSetDateFilter', cal.from || null, cal.to || null); }} {...tint('#1e40af', '#4f46e5')}
+        <button onClick={() => { onClose(); legacy('ccSetDateFilter', cal.from || null, cal.to || null, matchedPreset(cal)); }} {...tint('#1e40af', '#4f46e5')}
           ref={css('padding:7px 18px;border:none;border-radius:8px;background:#4f46e5;color:#fff;font-size:13px;font-weight:700;cursor:pointer;' + BTN)}>Apply</button>
       </div>
     </div>

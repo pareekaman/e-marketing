@@ -177,6 +177,9 @@
 :root.amb-dark:not([data-theme]) .modal-overlay{background:rgba(2,4,14,.6) !important;}
 :root.amb-dark:not([data-theme]) .modal{background:linear-gradient(180deg,rgba(16,24,56,.98),rgba(10,16,40,.98)) !important;border-color:var(--dk-line) !important;color:var(--dk-text);}
 :root.amb-dark:not([data-theme]) .modal h3{color:var(--dk-text) !important;}
+/* The Credit Card date picker opens over the statements: the modal's colours, fully solid. */
+:root.amb-dark:not([data-theme]) #ccDatePickerWrap{background:linear-gradient(180deg,rgb(16,24,56),rgb(10,16,40)) !important;border-color:var(--dk-line) !important;}
+:root.amb-dark:not([data-theme]) #ccDatePickerWrap > div:last-child{background:rgba(255,255,255,.03) !important;border-top-color:var(--dk-line) !important;}
 :root.amb-dark:not([data-theme]) .modal-footer{border-top-color:var(--dk-line) !important;}
 :root.amb-dark:not([data-theme]) .modal-close:hover{background:rgba(79,124,255,.16) !important;color:#fff !important;}
 :root.amb-dark:not([data-theme]) :is(.vd-bar,.modal [data-task-row]){background:rgba(79,124,255,.08) !important;border-color:var(--dk-line) !important;}

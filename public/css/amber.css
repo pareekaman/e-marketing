@@ -534,6 +534,12 @@
   box-shadow:0 12px 32px -14px rgba(160,90,20,.26), inset 0 1px 0 rgba(255,255,255,.8);
   -webkit-backdrop-filter:blur(16px) saturate(140%);backdrop-filter:blur(16px) saturate(140%);
 }
+/* The Credit Card date picker matches that style text too, but it opens over
+   the statements, and as glass the rows behind showed through the calendar. */
+:root:not([data-theme]) #ccDatePickerWrap{
+  background:#FFFDF9 !important;border-color:#EAD7AE !important;border-radius:14px !important;
+  -webkit-backdrop-filter:none;backdrop-filter:none;
+}
 /* Page-level selects and inputs: warm borders. */
 :root:not([data-theme]) .page select:not(.modal *),
 :root:not([data-theme]) .page input[type="text"]:not(.modal *),
