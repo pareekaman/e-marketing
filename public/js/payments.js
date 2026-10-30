@@ -367,9 +367,21 @@ function paResetFilters() {
   paRenderApprovalRows(_paAllRows);
 }
 
+let PA_REACT = null;   // fn({ rows, sentinels } | { error }) from the React list
+let _paData = null;
+function paSetReact(fn) { PA_REACT = fn; if (fn && _paData) fn(_paData); }
+// The list is a React page (frontend/src/pages/PaymentApprovals.jsx) since
+// 2026-10-30; the filters, prReview, prDeleteRequest and the bill pop-up stay here.
+function paToReact(el, data) {
+  _paData = data;
+  if (PA_REACT) return PA_REACT(data);
+  return emkReactMount('payapprovals', el);
+}
+
 function paRenderApprovalRows(rows) {
   const el = document.getElementById('paymentApprovalsList');
   if (!el) return;
+  if (el.dataset.react) return paToReact(el, { rows, sentinels: _paSentinels });
   const sentinels = _paSentinels;
   if (!rows.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">No requests found</div>'; return; }
   const isMobile = window.innerWidth < 680;
@@ -491,7 +503,10 @@ async function loadPaymentApprovals() {
   if (!el) return;
   try {
     const all = await api('/api/payment-requests');
-    if (!Array.isArray(all) || all.error) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error loading requests</div>'; return; }
+    if (!Array.isArray(all) || all.error) {
+      if (el.dataset.react) return paToReact(el, { error: 'Error loading requests' });
+      el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error loading requests</div>'; return;
+    }
     _paSentinels = all.filter(r => r.bank_name === '__system__');
     const rows = all.filter(r => r.bank_name !== '__system__');
     _paAllRows = rows;
@@ -504,7 +519,10 @@ async function loadPaymentApprovals() {
       // enhancer in app.html already owns this <select>.
     }
     paApplyFilters();
-  } catch(e) { el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
+  } catch(e) {
+    if (el.dataset.react) return paToReact(el, { error: 'Error: ' + e.message });
+    el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>';
+  }
 }
 
 async function loadPaymentApprovalsBadge() {
@@ -517,11 +535,13 @@ async function loadPaymentApprovalsBadge() {
   } catch(e) {}
 }
 
-async function prReview(id, status) {
+async function prReview(id, status, onBusy) {
   // Give instant feedback — the server call can take a few seconds (it waits on the
   // WhatsApp notification before responding), so swap the buttons for a spinner right away
   // instead of leaving both Approve/Reject clickable while the request is in flight.
-  const actionCell = document.getElementById('paAction-' + id);
+  // The React list passes onBusy and draws its own spinner.
+  const actionCell = onBusy ? null : document.getElementById('paAction-' + id);
+  if (onBusy) onBusy();
   if (actionCell) {
     actionCell.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#64748b;font-weight:600">
       <span style="width:13px;height:13px;border:2px solid #e2e8f0;border-top-color:#4f46e5;border-radius:50%;display:inline-block;animation:spin .7s linear infinite"></span>

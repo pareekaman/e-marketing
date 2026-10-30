@@ -685,7 +685,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         </div>
         <button onclick="paResetFilters()" style="padding:8px 16px;background:#f1f5f9;color:#475569;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;align-self:flex-end">↺ Reset</button>
       </div>
-      <div id="paymentApprovalsList" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <!-- data-react: the list is a React page (frontend/src/pages/PaymentApprovals.jsx), handed its rows by paRenderApprovalRows(). -->
+      <div id="paymentApprovalsList" data-react="1" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
         <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>
       </div>
     </div>
@@ -4357,7 +4358,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261030b"></script>
 <script src="/js/hrm.js?v=20261030a"></script>
-<script src="/js/react-bridge.js?v=20261030s"></script>
+<script src="/js/react-bridge.js?v=20261030t"></script>
 <script src="/js/dashboard.js?v=20261027c"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261030e"></script>
@@ -4373,7 +4374,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/compose-mail.js?v=20261027c"></script>
 <script src="/js/emk-creds.js?v=20261027c"></script>
 <script src="/js/portal.js?v=20261030a"></script>
-<script src="/js/payments.js?v=20261030a"></script>
+<script src="/js/payments.js?v=20261030b"></script>
 <script src="/js/mdo.js?v=20261027c"></script>
 <!-- ⚠️ notify.js MUST load before meetings.js. meetings.js ends by calling
      init(), and init() calls ntMaybeOpen() — loading it later leaves that
