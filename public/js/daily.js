@@ -315,6 +315,14 @@ async function loadTransferApprovals() {
   const container = document.getElementById('transferApprovalsContent');
   if (!container) return;
   const transfers = await api('/api/transfers');
+  // The list is a React page (frontend/src/pages/TransferApprovals.jsx) since
+  // 2026-10-30; handleTransfer and trDecideMany stay here.
+  if (container.dataset.react) {
+    if (Array.isArray(transfers)) setApprovalTabBadge('apprTransferBadge', transfers.length);
+    _trData = Array.isArray(transfers) ? { rows: transfers } : { error: (transfers && transfers.error) || 'Could not load transfers' };
+    if (TR_REACT) return TR_REACT(_trData);
+    return emkReactMount('transfers', container);
+  }
   if (!Array.isArray(transfers)) { container.innerHTML = `<div class="empty">${esc((transfers && transfers.error) || 'Could not load transfers')}</div>`; return; }
   setApprovalTabBadge('apprTransferBadge', transfers.length);
   if (!transfers.length) { container.innerHTML=`<div class="empty">✅ No pending transfer requests!</div>`; return; }
@@ -371,6 +379,10 @@ async function loadTransferApprovals() {
     </table>`;
 }
 
+let TR_REACT = null;   // fn({ rows } | { error }) from the React list
+let _trData = null;
+function trSetReact(fn) { TR_REACT = fn; if (fn && _trData) fn(_trData); }
+
 let _trGroups = [];
 function trToggleGroup(gi) {
   const row = document.getElementById('trGroupDays' + gi);
@@ -400,7 +412,9 @@ function trDecideGroup(gi, action) {
 }
 function trBulkDecide(action) { return trDecideMany(trSelectedIds(), action); }
 // Many at once through /api/transfers/bulk; a reason is asked once for all.
-async function trDecideMany(ids, action) {
+// The React list passes onProgress and greys its own buttons; without it the
+// old markup's buttons and counter are written to directly.
+async function trDecideMany(ids, action, onProgress) {
   if (!ids.length) return;
   let note = '';
   if (action === 'rejected') {
@@ -413,11 +427,12 @@ async function trDecideMany(ids, action) {
   // and a long range in one call ran past the server's time limit, so nothing
   // was decided and nothing was said. Each chunk stands on its own.
   const CHUNK = 10, word = action === 'approved' ? 'approved' : 'rejected';
-  const bar = document.getElementById('trSelCount');
-  document.querySelectorAll('#transferApprovalsContent button').forEach(b => { b.disabled = true; });
+  const bar = onProgress ? null : document.getElementById('trSelCount');
+  if (!onProgress) document.querySelectorAll('#transferApprovalsContent button').forEach(b => { b.disabled = true; });
   let done = 0; const failed = []; let stopped = '';
   for (let i = 0; i < ids.length; i += CHUNK) {
-    if (bar) bar.textContent = `Working… ${Math.min(i, ids.length)} of ${ids.length}`;
+    const step = `Working… ${Math.min(i, ids.length)} of ${ids.length}`;
+    if (onProgress) onProgress(step); else if (bar) bar.textContent = step;
     let r;
     try { r = await api('/api/transfers/bulk', 'POST', { ids: ids.slice(i, i + CHUNK), action, note }); }
     catch (e) { r = { error: (e && e.message) || 'The server did not answer' }; }
