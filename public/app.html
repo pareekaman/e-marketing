@@ -1420,15 +1420,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
     </div>
 
     <!-- My Requests (below form) -->
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap">
-      <div id="prMyListTitle" style="font-size:14px;font-weight:700;color:#0f172a">My Requests</div>
-      <select id="prMonthFilter" onchange="loadMyPaymentRequests()" title="Show one month" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;font-family:inherit;background:#fff;min-width:160px">
-        <option value="">All months</option>
-      </select>
-    </div>
-    <div id="prMyList" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto">
-      <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div>
-    </div>
+    <!-- Title, month filter and the requests table: a React page
+         (frontend/src/pages/PaymentRequests.jsx), mounted here by loadMyPaymentRequests(). -->
+    <div id="prListReactRoot"><div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">Loading...</div></div>
 
   </div><!-- end page-paymentreq -->
 
@@ -4355,7 +4349,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261030b"></script>
 <script src="/js/hrm.js?v=20261030a"></script>
-<script src="/js/react-bridge.js?v=20261030m"></script>
+<script src="/js/react-bridge.js?v=20261030n"></script>
 <script src="/js/dashboard.js?v=20261027c"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261030d"></script>
@@ -4371,7 +4365,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/compose-mail.js?v=20261027c"></script>
 <script src="/js/emk-creds.js?v=20261027c"></script>
 <script src="/js/portal.js?v=20261030a"></script>
-<script src="/js/payments.js?v=20261028a"></script>
+<script src="/js/payments.js?v=20261030a"></script>
 <script src="/js/mdo.js?v=20261027c"></script>
 <!-- ⚠️ notify.js MUST load before meetings.js. meetings.js ends by calling
      init(), and init() calls ntMaybeOpen() — loading it later leaves that

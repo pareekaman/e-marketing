@@ -224,7 +224,18 @@ async function prSubmit() {
   }
 }
 
+// The requests list (title, month filter, table) is a React page
+// (frontend/src/pages/PaymentRequests.jsx) since 2026-10-30. The create form,
+// Edit, Bill and Cancel pop-ups stay in these files and call
+// loadMyPaymentRequests(), which hands the reload to the page.
+let PR_REACT = null;
+function prSetReact(fn) { PR_REACT = fn; }
+function prSetMyRows(rows) { _prMyRows = rows; }
+function prIsBillUploading(id) { return typeof _prBillUploading !== 'undefined' && _prBillUploading.has(id); }
+
 async function loadMyPaymentRequests() {
+  const root = document.getElementById('prListReactRoot');
+  if (root) return PR_REACT ? PR_REACT() : emkReactMount('payreq', root);
   const el = document.getElementById('prMyList');
   if (!el) return;
   try {
