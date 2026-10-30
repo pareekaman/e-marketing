@@ -954,6 +954,13 @@ async function loadLeaveApprovals(){
 
     // Update tab badge
     setApprovalTabBadge('apprLeaveBadge', rows.length + removals.length);
+    // The list is a React page (frontend/src/pages/LeaveApprovals.jsx) since
+    // 2026-10-30; the decision pop-up and decideLeaveRemoval stay here.
+    if (wrap.dataset.react) {
+      _lvApprData = { rows, removals };
+      if (LV_APPR_REACT) return LV_APPR_REACT(_lvApprData);
+      return emkReactMount('leaveapprovals', wrap);
+    }
 
     if (!rows.length) {
       wrap.innerHTML = removals.length
@@ -989,7 +996,15 @@ async function loadLeaveApprovals(){
         </tbody>
       </table>`;
   } catch(e) {
+    if (wrap.dataset.react) {
+      _lvApprData = { error: e.message };
+      if (LV_APPR_REACT) return LV_APPR_REACT(_lvApprData);
+      return emkReactMount('leaveapprovals', wrap);
+    }
     wrap.innerHTML = `<div class="empty" style="color:#dc2626">⚠️ ${dtEscape(e.message)}</div>`;
   }
 }
+let LV_APPR_REACT = null;   // fn({ rows, removals } | { error }) from the React list
+let _lvApprData = null;
+function lvApprSetReact(fn) { LV_APPR_REACT = fn; if (fn && _lvApprData) fn(_lvApprData); }
 
