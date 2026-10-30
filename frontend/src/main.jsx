@@ -7,6 +7,7 @@ import { StrictMode, Suspense, lazy } from 'react';
 
 const PAGES = {
   probe: lazy(() => import('./pages/Probe.jsx')),
+  leaves: lazy(() => import('./pages/LeaveTracker.jsx')),
 };
 
 const roots = new WeakMap();

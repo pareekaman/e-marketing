@@ -51,7 +51,23 @@ async function lvLoadClients(){
   if (LEAVE_PICKED_TYPE === 'extra_working') lvRenderSelectedList();
 }
 
+// The list is a React page (frontend/src/pages/LeaveTracker.jsx) since
+// 2026-10-30. The apply form and the pop-ups below are still this file's; they
+// read LEAVE_DATA (lvSetData keeps it in step) and call loadLeaves() after a
+// change, which hands the reload to the React page.
+let LV_REACT_RELOAD = null;
+function lvSetReactReload(fn){ LV_REACT_RELOAD = fn; }
+function lvSetData(list){ LEAVE_DATA = list; lvRegisterPool(list); }
+
 async function loadLeaves(){
+  const root = document.getElementById('lvReactRoot');
+  if (root) {
+    loadApprovalBadge();
+    // The first mount runs lpLoad itself once its #lpNotice is in the page.
+    if (!LV_REACT_RELOAD) return emkReactMount('leaves', root);
+    lpLoad();   // the Leave & WFH Policy notice, and the sign popup until signed
+    return LV_REACT_RELOAD();
+  }
   const wrap = document.getElementById('lvListWrap');
   wrap.innerHTML = '<div class="empty">Loading…</div>';
   lpLoad();   // the Leave & WFH Policy notice, and the sign popup until signed
