@@ -391,16 +391,32 @@ let misData = {};
 let misFMSData = [];
 let misAllData = [];
 
+// The results are a React page (frontend/src/pages/MisResults.jsx) since
+// 2026-10-30, mounted into #misResults[data-react]; the tabs, Generate, Export
+// and the detail pop-ups stay here. misView hands it what to show and says
+// whether it did, so each caller falls back to the old markup without it.
+let MIS_REACT = null, _misView = null;
+function misSetReact(fn) { MIS_REACT = fn; if (fn && _misView) fn(_misView); }
+function misView(view) {
+  const el = document.getElementById('misResults');
+  if (!el || !el.dataset.react) return false;
+  _misView = view;
+  if (MIS_REACT) MIS_REACT(view); else emkReactMount('mis', el);
+  return true;
+}
+
 function switchMisTab(type, el) {
   misType = type;
   document.querySelectorAll('#page-mis .tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
   if (type === 'fms') {
     if (misFMSData.length) renderFMSMIS(misFMSData);
-    else document.getElementById('misResults').innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Click Generate to load FMS MIS</div>`;
+    else if (!misView({ state: 'message', text: 'Click Generate to load FMS MIS' }))
+      document.getElementById('misResults').innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Click Generate to load FMS MIS</div>`;
   } else if (type === 'all') {
     if (misAllData.length) renderAllMIS(misAllData, misFMSData);
-    else document.getElementById('misResults').innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Click Generate to load All MIS</div>`;
+    else if (!misView({ state: 'message', text: 'Click Generate to load All MIS' }))
+      document.getElementById('misResults').innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Click Generate to load All MIS</div>`;
   } else {
     if (Object.keys(misData).length) renderMIS(misData);
   }
@@ -412,7 +428,8 @@ async function generateMIS() {
   if (!start || !end) { showToast('Please select start and end date','error'); return; }
   if (start > end) { showToast('Start date must be before end date','error'); return; }
 
-  document.getElementById('misResults').innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Loading…</div>`;
+  if (!misView({ state: 'message', text: 'Loading…' }))
+    document.getElementById('misResults').innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Loading…</div>`;
 
   if (misType === 'fms') {
     const data = await api(`/api/mis/fms?start=${start}&end=${end}`);
@@ -420,7 +437,8 @@ async function generateMIS() {
     misFMSData = data;
     renderFMSMIS(data);
   } else if (misType === 'all') {
-    document.getElementById('misResults').innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Loading…</div>`;
+    if (!misView({ state: 'message', text: 'Loading…' }))
+      document.getElementById('misResults').innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Loading…</div>`;
     const [data, fmsData] = await Promise.all([
       api(`/api/mis/all?start=${start}&end=${end}`),
       api(`/api/mis/fms?start=${start}&end=${end}`)
@@ -441,6 +459,7 @@ function renderMIS(data) {
   const container = document.getElementById('misResults');
   const key = misType === 'delegation' ? 'delegation' : 'checklist';
   const rows = data[key] || [];
+  if (misView({ state: 'mis', type: misType, rows })) return;
 
   if (!rows.length) {
     container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">No data found for this date range</div>`;
@@ -591,6 +610,7 @@ function exportMIS() {
 }
 
 function renderFMSMIS(data) {
+  if (misView({ state: 'fms', data })) return;
   const container = document.getElementById('misResults');
   if (!data || !data.length) {
     container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">No FMS data found</div>`;
@@ -636,6 +656,7 @@ function renderFMSMIS(data) {
 }
 
 function renderAllMIS(data, fmsData) {
+  if (misView({ state: 'all', data, fms: fmsData })) return;
   const container = document.getElementById('misResults');
   if (!data || !data.length) {
     container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">No data found for this date range. Click Generate.</div>`;
