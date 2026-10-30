@@ -35,6 +35,7 @@ const PAGES = {
   cechipscc: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsCc }))),
   cefiles: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeFiles }))),
   celog: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeLog }))),
+  leaveform: lazy(() => import('./pages/LeaveForm.jsx')),
 };
 
 const roots = new WeakMap();
@@ -46,8 +47,9 @@ function mount(name, el) {
   if (!root) { root = createRoot(el); roots.set(el, root); }
   root.render(
     <StrictMode>
-      {/* A table body can hold only rows, so it waits without a placeholder. */}
-      <Suspense fallback={/^(TBODY|THEAD|TR|TABLE)$/.test(el.tagName) ? null : <div className="empty">Loading…</div>}>
+      {/* A table body can hold only rows, so it waits without a placeholder;
+          so does a root marked data-react-quiet (a pop-up, shown on demand). */}
+      <Suspense fallback={/^(TBODY|THEAD|TR|TABLE)$/.test(el.tagName) || el.dataset.reactQuiet ? null : <div className="empty">Loading…</div>}>
         <Page />
       </Suspense>
     </StrictMode>

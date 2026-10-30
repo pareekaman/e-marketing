@@ -450,7 +450,25 @@ function lvSetStatus(status, el){
   loadLeaves();
 }
 
+// The form is a React page (frontend/src/pages/LeaveForm.jsx) since
+// 2026-10-30, mounted into #leaveFormRoot; #leaveModal and the functions
+// below stay as the fallback. The getters are for it: the client helpers are
+// consts, which are not on window.
+let LV_FORM_REACT = null, _lvFormWanted = false;
+function lvFormSetReact(fn){ LV_FORM_REACT = fn; if (fn && _lvFormWanted) { _lvFormWanted = false; fn(); } }
+function lvClientNames(){ return [LEAVE_INTERNAL_CLIENT, ...LEAVE_CLIENTS]; }
+function lvClientLabelOf(name){ return lvClientLabel(name); }
+function lvClientCanonicalOf(text){ return lvClientCanonical(text); }
+function lvHasClients(){ return LEAVE_CLIENTS.length > 0; }
+function ewAttachList(form){ return EW_ATTACH[form]; }
+
 function openLeaveForm(){
+  const root = document.getElementById('leaveFormRoot');
+  if (root && root.dataset.react) {
+    if (LV_FORM_REACT) return LV_FORM_REACT();
+    _lvFormWanted = true;
+    return emkReactMount('leaveform', root);
+  }
   document.getElementById('leaveErr').style.display = 'none';
   // Timestamp
   const now = new Date();
