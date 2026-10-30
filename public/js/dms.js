@@ -9,6 +9,53 @@ let _dmsFolderStack = []; // [{id, name}] — nav path within the currently brow
 let _dmsSelectedIds = new Set(); // multi-select for bulk delete in the current folder's Files table
 let _dmsDepts = [];
 
+// The three lists are React (frontend/src/pages/Dms.jsx) since 2026-10-30:
+// #dmsClientList, #dmsDeptList and #dmsFileList carry data-react. State, the
+// Drive calls, the toolbar and the pop-ups stay here; each list is handed
+// what to show. _dmsFilesView is the file list's last state ({state:'idle'|
+// 'loading'|'error', message} or {state:'files', files}); the search text,
+// the selection and canCreate are added when it is handed over.
+let DMS_CLIENTS_REACT = null, DMS_DEPTS_REACT = null, DMS_FILES_REACT = null;
+let _dmsDeptsView = null, _dmsFilesView = null;
+function dmsClientsSetReact(fn) { DMS_CLIENTS_REACT = fn; if (fn) dmsPaintClients(); }
+function dmsDeptsSetReact(fn) { DMS_DEPTS_REACT = fn; if (fn && _dmsDeptsView) fn(_dmsDeptsView); }
+function dmsFilesSetReact(fn) { DMS_FILES_REACT = fn; if (fn && _dmsFilesView) dmsPaintFiles(); }
+const _dmsIsReact = id => !!document.getElementById(id)?.dataset.react;
+function dmsPaintClients() {
+  const el = document.getElementById('dmsClientList');
+  const view = { clients: _dmsClients, q: document.getElementById('dmsClientSearch')?.value || '' };
+  if (DMS_CLIENTS_REACT) return DMS_CLIENTS_REACT(view);
+  emkReactMount('dmsclients', el);
+}
+function dmsDepts(view) {
+  _dmsDeptsView = view;
+  if (DMS_DEPTS_REACT) return DMS_DEPTS_REACT(view);
+  emkReactMount('dmsdepts', document.getElementById('dmsDeptList'));
+}
+function dmsFiles(view) {
+  if (view) _dmsFilesView = view;
+  dmsPaintFiles();
+}
+function dmsPaintFiles() {
+  const view = { ..._dmsFilesView, q: document.getElementById('dmsFileSearch')?.value || '',
+    selected: [..._dmsSelectedIds], canCreate: ME.role === 'admin' || ME.role === 'pc' };
+  if (DMS_FILES_REACT) return DMS_FILES_REACT(view);
+  emkReactMount('dmsfiles', document.getElementById('dmsFileList'));
+}
+// The files the search box leaves showing, for Select all.
+function _dmsShownFiles() {
+  const q = (document.getElementById('dmsFileSearch')?.value || '').toLowerCase();
+  return (_dmsFilesView?.files || []).filter(f => String(f.name).toLowerCase().includes(q));
+}
+function dmsToggleFileSelect(id, on) {
+  if (on) _dmsSelectedIds.add(id); else _dmsSelectedIds.delete(id);
+  dmsUpdateBulkDeleteUI();
+}
+function dmsSelectAllFiles(on) {
+  for (const f of _dmsShownFiles()) { if (on) _dmsSelectedIds.add(f.id); else _dmsSelectedIds.delete(f.id); }
+  dmsUpdateBulkDeleteUI();
+}
+
 async function loadDMS() {
   _dmsSelectedClient = null;
   _dmsBrowseFolderId = null;
@@ -55,6 +102,7 @@ async function dmsLoadDepts() {
 }
 
 function dmsFilterClients() {
+  if (_dmsIsReact('dmsClientList')) return dmsPaintClients();
   const q = (document.getElementById('dmsClientSearch')?.value || '').toLowerCase();
   document.querySelectorAll('#dmsClientList .dms-client-row').forEach(row => {
     row.style.display = row.dataset.name.includes(q) ? '' : 'none';
@@ -63,6 +111,7 @@ function dmsFilterClients() {
 
 function dmsRenderClientList() {
   const el = document.getElementById('dmsClientList');
+  if (el.dataset.react) return dmsPaintClients();
   if (!_dmsClients.length) {
     el.innerHTML = '<div style="padding:16px;color:#94a3b8;font-size:13px;text-align:center">No clients found</div>';
     return;
@@ -118,8 +167,12 @@ async function dmsSelectClient(id) {
   document.getElementById('dmsClientName').textContent = _dmsSelectedClient.name;
   document.getElementById('dmsFolderLink').innerHTML = '';
   document.getElementById('dmsSetupBtn').style.display = 'none';
-  document.getElementById('dmsDeptList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Loading…</div>';
-  document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Select a folder above to browse files.</div>';
+  const react = _dmsIsReact('dmsDeptList');
+  if (react) { dmsDepts({ state: 'loading' }); dmsFiles({ state: 'idle' }); }
+  else {
+    document.getElementById('dmsDeptList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Loading…</div>';
+    document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Select a folder above to browse files.</div>';
+  }
   document.getElementById('dmsBrowserFolderName').textContent = '';
   document.getElementById('dmsCreateFileBtn').style.display = 'none';
   document.getElementById('dmsAddShortcutBtn').style.display = 'none';
@@ -141,6 +194,7 @@ async function dmsSelectClient(id) {
       if (data.drive_configured) {
         document.getElementById('dmsSetupBtn').style.display = 'inline-flex';
       } else {
+        if (react) { dmsDepts({ state: 'notconfigured' }); return; }
         document.getElementById('dmsDeptList').innerHTML =
           '<div style="color:#b45309;font-size:13px;padding:8px 0">Google Drive is not configured. Connect Drive first (admin setting).</div>';
         return;
@@ -154,6 +208,7 @@ async function dmsSelectClient(id) {
     if (addDeptBtn) addDeptBtn.style.display = data.drive_folder_id ? 'inline-flex' : 'none';
 
   } catch (e) {
+    if (react) { dmsDepts({ state: 'error', message: e.message }); return; }
     document.getElementById('dmsDeptList').innerHTML =
       `<div style="color:#dc2626;font-size:13px">Error: ${dtEscape(e.message)}</div>`;
   }
@@ -168,6 +223,7 @@ function dmsBackToRoot() {
 
 function dmsRenderDepts(depts, clientId, hasDriveFolder) {
   const el = document.getElementById('dmsDeptList');
+  if (el.dataset.react) return dmsDepts({ state: 'depts', depts, hasDriveFolder });
   if (!hasDriveFolder) {
     el.innerHTML = '<div style="color:#94a3b8;font-size:13px">Create the client Drive folder first.</div>';
     return;
@@ -207,6 +263,7 @@ function _dmsFmtSize(bytes) {
 }
 
 function dmsFilterFiles() {
+  if (_dmsIsReact('dmsFileList')) { dmsPaintFiles(); dmsUpdateBulkDeleteUI(); return; }
   const q = (document.getElementById('dmsFileSearch')?.value || '').toLowerCase();
   document.querySelectorAll('#dmsFileList .dms-file-card').forEach(row => {
     row.style.display = row.dataset.name.toLowerCase().includes(q) ? '' : 'none';
@@ -289,13 +346,17 @@ async function dmsBrowseFolder(folderId, folderName, mode) {
   if (bulkBtn) bulkBtn.style.display = 'none';
   const searchInput = document.getElementById('dmsFileSearch');
   if (searchInput) searchInput.value = '';
-  document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Loading files…</div>';
+  const react = _dmsIsReact('dmsFileList');
+  if (react) dmsFiles({ state: 'loading' });
+  else document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Loading files…</div>';
   const canCreate = ME.role==='admin' || ME.role==='pc';
   document.getElementById('dmsCreateFileBtn').style.display = canCreate ? 'inline-flex' : 'none';
   document.getElementById('dmsUploadBtn').style.display = canCreate ? 'inline-flex' : 'none';
   document.getElementById('dmsAddShortcutBtn').style.display = canCreate ? 'inline-flex' : 'none';
   try {
     const files = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${folderId}/files`);
+    // An error answer has no length, so it reads as an empty folder, as before.
+    if (react) return dmsFiles({ state: 'files', files: Array.isArray(files) ? files : [] });
     if (!files.length) {
       document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">No files in this folder yet.</div>';
       return;
@@ -342,6 +403,7 @@ async function dmsBrowseFolder(folderId, folderName, mode) {
       </table>
     `;
   } catch (e) {
+    if (react) return dmsFiles({ state: 'error', message: e.message });
     document.getElementById('dmsFileList').innerHTML = `<div style="color:#dc2626;font-size:13px">Error: ${dtEscape(e.message)}</div>`;
   }
 }
@@ -457,6 +519,8 @@ function dmsUpdateBulkDeleteUI() {
   const n = _dmsSelectedIds.size;
   btn.style.display = n ? 'inline-flex' : 'none';
   document.getElementById('dmsBulkDeleteCount').textContent = n;
+  // React draws the boxes, Select all included, from the selection.
+  if (_dmsIsReact('dmsFileList')) return dmsPaintFiles();
   const selectAllCb = document.getElementById('dmsSelectAllCb');
   if (selectAllCb) {
     const rows = Array.from(document.querySelectorAll('#dmsFileList .dms-file-card')).filter(r => r.style.display !== 'none');

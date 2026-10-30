@@ -24,6 +24,9 @@ const PAGES = {
   mdoapprovals: lazy(() => import('./pages/MdoApprovals.jsx')),
   invissues: lazy(() => import('./pages/InvIssueApprovals.jsx')),
   profile: lazy(() => import('./pages/Profile.jsx')),
+  dmsclients: lazy(() => import('./pages/Dms.jsx').then(m => ({ default: m.DmsClients }))),
+  dmsdepts: lazy(() => import('./pages/Dms.jsx').then(m => ({ default: m.DmsDepts }))),
+  dmsfiles: lazy(() => import('./pages/Dms.jsx').then(m => ({ default: m.DmsFiles }))),
 };
 
 const roots = new WeakMap();
