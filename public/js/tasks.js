@@ -152,7 +152,9 @@ async function loadAllTasks() {
         if (id && t.assignedToName) uniqueUsers[id] = t.assignedToName;
       });
       userSel.innerHTML = '<option value="all">All Employees</option>';
-      Object.entries(uniqueUsers).sort((a,b)=>a[1].localeCompare(b[1])).forEach(([id,name]) => {
+      // Deleted doers go last, as their groups do below; '—' would sort them first.
+      const gone = n => /deleted user|\(removed\)$/.test(n);
+      Object.entries(uniqueUsers).sort((a,b)=>(gone(a[1]) - gone(b[1])) || a[1].localeCompare(b[1])).forEach(([id,name]) => {
         const opt = document.createElement('option');
         opt.value = id;
         opt.textContent = name;
