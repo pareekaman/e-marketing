@@ -23,6 +23,19 @@ async function loadRaceTracker() {
 
 let lastRacers = [];
 
+// The race is a React page (frontend/src/pages/RaceResults.jsx) since
+// 2026-10-30, in #raceResults[data-react]; dates, Start Race and the team
+// pop-ups stay here. raceView says whether it handed the view over.
+let RACE_REACT = null, _raceView = null;
+function raceSetReact(fn) { RACE_REACT = fn; if (fn && _raceView) fn(_raceView); }
+function raceView(view) {
+  const el = document.getElementById('raceResults');
+  if (!el || !el.dataset.react) return false;
+  _raceView = view;
+  if (RACE_REACT) RACE_REACT(view); else emkReactMount('race', el);
+  return true;
+}
+
 async function generateRace() {
   const start = document.getElementById('raceStart').value;
   const end   = document.getElementById('raceEnd').value;
@@ -30,10 +43,16 @@ async function generateRace() {
   if (start > end)   { showToast('Start date must be before end date','error'); return; }
 
   const container = document.getElementById('raceResults');
-  container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Loading race…</div>`;
+  if (!raceView({ state: 'message', text: 'Loading race…' }))
+    container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">Loading race…</div>`;
 
   const data = await api(`/api/mis/all?start=${start}&end=${end}`);
-  if (data.error) { showToast(data.error,'error'); container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">${data.error}</div>`; return; }
+  if (data.error) {
+    showToast(data.error,'error');
+    if (!raceView({ state: 'message', text: data.error }))
+      container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">${data.error}</div>`;
+    return;
+  }
   const arr = Array.isArray(data) ? data : [];
   // openAllMISDetail (re-used for lane click) reads dates from #misStart/#misEnd — sync them
   const misStartEl = document.getElementById('misStart');
@@ -57,6 +76,7 @@ function renderRaceTracker(data) {
     });
 
   lastRacers = racers;
+  if (raceView({ state: 'race', racers })) return;
 
   if (!racers.length) {
     container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">No racers found for this date range.</div>`;

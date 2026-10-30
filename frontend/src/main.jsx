@@ -30,6 +30,7 @@ const PAGES = {
   ccoverview: lazy(() => import('./pages/CcOverview.jsx')),
   ccbankhead: lazy(() => import('./pages/CcBankHead.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
+  race: lazy(() => import('./pages/RaceResults.jsx')),
 };
 
 const roots = new WeakMap();
