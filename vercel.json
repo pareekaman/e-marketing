@@ -9,15 +9,26 @@
         "maxDuration": 60
       }
     },
-    {
-      "src": "public/react/**",
-      "use": "@vercel/static"
-    }
+    { "src": "public/react/**", "use": "@vercel/static" },
+    { "src": "public/js/**", "use": "@vercel/static" },
+    { "src": "public/css/**", "use": "@vercel/static" },
+    { "src": "public/img/**", "use": "@vercel/static" },
+    { "src": "public/emarketing-logo.png", "use": "@vercel/static" },
+    { "src": "public/manifest.json", "use": "@vercel/static" }
   ],
   "routes": [
     {
-      "src": "/react/(.*)",
-      "dest": "/public/react/$1"
+      "src": "/react/chunks/(.*)",
+      "headers": { "Cache-Control": "public, max-age=31536000, immutable" },
+      "dest": "/public/react/chunks/$1"
+    },
+    {
+      "src": "/(react|js|css|img)/(.*)",
+      "dest": "/public/$1/$2"
+    },
+    {
+      "src": "/(emarketing-logo\\.png|manifest\\.json)",
+      "dest": "/public/$1"
     },
     {
       "src": "/(.*)",
