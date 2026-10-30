@@ -26,7 +26,18 @@ const EC_PLATFORM_DEPT = {
 };
 const EC_STATUS_COLORS = { Open: ['#475569', '#f1f5f9'], Lost: ['#b91c1c', '#fee2e2'], Converted: ['#15803d', '#dcfce7'], Paused: ['#b45309', '#fef3c7'] };
 
+// The list is a React page (frontend/src/pages/Enquiry.jsx) since 2026-10-30.
+// EC_ALL stays here: the form, status change, import, delete and Add in Client
+// Master below still work on it, and ecRender() / ecLoad() hand the redraw
+// and the reload to the React page.
+let EC_REACT = null;   // { reload, render } from the React page
+function ecSetReact(o){ EC_REACT = o; }
+function ecSetData(rows, opts){ EC_ALL = rows; if (opts && !opts.error) EC_OPTS = opts; }
+function ecGetData(){ return { rows: EC_ALL, opts: EC_OPTS }; }
+
 async function ecLoad() {
+  const root = document.getElementById('ecReactRoot');
+  if (root) return EC_REACT ? EC_REACT.reload() : emkReactMount('enquiry', root);
   const wrap = document.getElementById('ecListWrap');
   wrap.innerHTML = '<div class="empty">Loading enquiries…</div>';
   const addBtn = document.getElementById('ecAddBtn');
@@ -81,6 +92,7 @@ function ecFiltered() {
 }
 
 function ecRender() {
+  if (EC_REACT) return EC_REACT.render();
   const wrap = document.getElementById('ecListWrap');
   const month = new Date().toISOString().slice(0, 7);
   document.getElementById('ecStatTotal').textContent = EC_ALL.length;

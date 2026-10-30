@@ -2736,35 +2736,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
      Logic: /js/enquiry.js   API: backend/routes/enquiries.js
 ═════════════════════════════════════ -->
 <div id="page-enquiry" class="page">
-  <div class="cm-card">
-    <div class="cm-header">
-      <div class="cm-header-text">
-        <div class="cm-sub">Sales enquiries, with the same fields as the Enquiry Capture Google Form.</div>
-      </div>
-      <div class="cm-stats">
-        <div class="cm-stat">
-          <div class="cm-stat-val" id="ecStatTotal">—</div>
-          <div class="cm-stat-label">All Enquiries</div>
-        </div>
-        <div class="cm-stat">
-          <div class="cm-stat-val" id="ecStatMonth">—</div>
-          <div class="cm-stat-label">This Month</div>
-        </div>
-        <div class="cm-stat">
-          <div class="cm-stat-val" id="ecStatConverted" style="color:#16a34a">—</div>
-          <div class="cm-stat-label">Converted</div>
-        </div>
-      </div>
-    </div>
-    <div class="cm-toolbar">
-      <input class="cm-search" type="text" id="ecSearch" placeholder="🔍 Search client, business, mobile or platform..." oninput="ecRender()"/>
-      <div class="cm-add-row">
-        <button class="cm-btn-primary" id="ecAddBtn" style="display:none" onclick="ecOpenForm()">+ New Enquiry</button>
-        <button class="cm-btn-ghost" id="ecImportBtn" style="display:none" onclick="ecImport()" title="Bring in the Google Form's responses; ones already here are skipped">⬇ Import from sheet</button>
-      </div>
-    </div>
-    <div id="ecListWrap" class="dr-table-wrap" style="max-height:none"><div class="empty">Loading enquiries…</div></div>
-  </div>
+  <!-- The Enquiry Capture list is a React page (frontend/src/pages/Enquiry.jsx), mounted
+       here by ecLoad(). The New / Edit Enquiry form below is still enquiry.js's. -->
+  <div id="ecReactRoot"><div class="empty">Loading enquiries…</div></div>
 </div>
 
 <!-- ════════════════════════════════════
@@ -4465,7 +4439,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261030a"></script>
 <script src="/js/hrm.js?v=20261030a"></script>
-<script src="/js/react-bridge.js?v=20261030g"></script>
+<script src="/js/react-bridge.js?v=20261030h"></script>
 <script src="/js/dashboard.js?v=20261027c"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261030d"></script>
@@ -4491,7 +4465,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/meetings.js?v=20261027c"></script>
 <script src="/js/dms.js?v=20261027c"></script>
 <script src="/js/leads.js?v=20261027c"></script>
-<script src="/js/enquiry.js?v=20261029c"></script>
+<script src="/js/enquiry.js?v=20261030a"></script>
 <script src="/js/voice-delegate.js?v=20261027c"></script>
 <script src="/js/chatbot.js?v=20261027c"></script>
 
