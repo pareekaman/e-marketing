@@ -1967,6 +1967,67 @@ function isLeaveReportViewer(user) {
   return access.includes('leaves_all');
 }
 
+// POST /api/batch { paths: ['/api/…', …] } — several GETs in one request.
+// Opening the app fired some twenty small GETs within two seconds, up to
+// thirteen at once; on Vercel each wakes its own function with its own
+// database connection, against a shared cap of about ten, and the overflow
+// waits out retries ("Loading…"). The page's badge counts now come through
+// here as one call. Each path runs through the app itself (app.handle) as a
+// GET with this request's cookies and headers, so every route keeps its own
+// requireAuth, access checks and answer; nothing is reimplemented. Answers
+// come back in order as { status, body }.
+const BATCH_MAX = 20;
+function runInternalGet(req, headers, url) {
+  return new Promise(resolve => {
+    let done = false;
+    const res = Object.create(app.response);
+    const finish = body => {
+      if (done) return;
+      done = true; clearTimeout(timer);
+      resolve({ status: res.statusCode, body: body === undefined ? null : body });
+    };
+    // A route that never answers must not hold the whole batch.
+    const timer = setTimeout(() => { res.statusCode = 504; finish({ error: 'Timed out' }); }, 25000);
+    const sub = Object.create(app.request);
+    // _body: the JSON parser must not wait for a body this request never has.
+    Object.assign(sub, { method: 'GET', url, originalUrl: url, headers, cookies: req.cookies, signedCookies: req.signedCookies,
+      socket: req.socket, connection: req.connection, httpVersion: req.httpVersion, _body: true, body: {} });
+    // Captures the answer instead of writing it to the socket.
+    // headersSent is a getter on http's OutgoingMessage, so it is defined, not assigned.
+    Object.defineProperty(res, 'headersSent', { value: false, writable: true, configurable: true });
+    Object.assign(res, {
+      statusCode: 200, locals: {},
+      setHeader() {}, getHeader() {}, getHeaders() { return {}; }, hasHeader() { return false; }, removeHeader() {},
+      writeHead() { return res; }, write() { return true; },
+      status(c) { res.statusCode = c; return res; },
+      json(b) { finish(b); return res; },
+      send(b) {
+        if (typeof b === 'string' || Buffer.isBuffer(b)) { const s = String(b); try { finish(JSON.parse(s)); } catch { finish({ error: s.slice(0, 200) }); } }
+        else finish(b);
+        return res;
+      },
+      sendStatus(c) { res.statusCode = c; finish({}); return res; },
+      end(b) { if (b) return res.send(b); finish(null); return res; },
+      redirect() { res.statusCode = 302; finish({ error: 'Redirected' }); return res; },
+    });
+    app.handle(sub, res, err => {
+      res.statusCode = err ? (err.status || 500) : 404;
+      finish({ error: err ? (err.message || 'Error') : 'Not found' });
+    });
+  });
+}
+app.post('/api/batch', requireAuth, async (req, res) => {
+  const paths = Array.isArray(req.body && req.body.paths) ? req.body.paths : null;
+  if (!paths || !paths.length || paths.length > BATCH_MAX) return res.status(400).json({ error: `Send 1 to ${BATCH_MAX} paths` });
+  if (paths.some(p => typeof p !== 'string' || !p.startsWith('/api/') || p.startsWith('/api/batch'))) return res.status(400).json({ error: 'Only /api/ GET paths' });
+  const headers = { ...req.headers };
+  delete headers['content-type']; delete headers['content-length']; delete headers['transfer-encoding'];
+  try {
+    const results = await Promise.all(paths.map(url => runInternalGet(req, headers, url)));
+    res.json({ results });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/me', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(

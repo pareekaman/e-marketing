@@ -1,7 +1,49 @@
 // ══════════════════════════════════════════════════════
 // HELPERS
 // ══════════════════════════════════════════════════════
-async function api(url,method='GET',body=null) {
+// The badge counts and similar small GETs the app fires in a burst while it
+// opens (and on its 30-second tick) go out together as one POST /api/batch:
+// on Vercel every request wakes its own function with its own database
+// connection, and twenty at once ran past the shared host's limit. A request
+// is held at most 30ms for others to join it; one that is alone goes out as
+// before. If the batch itself fails (a server without /api/batch, a network
+// blip), each request is sent on its own, so callers see what they always did.
+const API_BATCHABLE = /^\/api\/(approvals\/count|leaves\/pending-count|leaves\/day-removals|inventory\/issues|transfers\/count|tasks\/notifications|tasks\/unseen|feedback\/unseen|feedback\/access|theme|my-week-status|payment-requests\?status=pending)$/;
+let _apiBatchQueue = null;
+function _apiBatched(url) {
+  return new Promise(resolve => {
+    if (!_apiBatchQueue) { _apiBatchQueue = []; setTimeout(_apiBatchFlush, 30); }
+    _apiBatchQueue.push({ url, resolve });
+  });
+}
+function _apiSignedOut() { localStorage.removeItem('authToken'); window.location.replace('/'); }
+async function _apiBatchFlush() {
+  const q = _apiBatchQueue; _apiBatchQueue = null;
+  const alone = () => q.forEach(x => _apiDirect(x.url).then(x.resolve));
+  if (q.length === 1) return alone();
+  let r, j = null;
+  try {
+    r = await fetch('/api/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ paths: q.map(x => x.url) }) });
+  } catch (e) { return alone(); }
+  if (r.status === 401) { _apiSignedOut(); return q.forEach(x => x.resolve({})); }
+  try { j = await r.json(); } catch (e) {}
+  if (!r.ok || !j || !Array.isArray(j.results) || j.results.length !== q.length) return alone();
+  // Each answer as api() would have returned it on its own.
+  j.results.forEach((res, i) => {
+    if (res.status === 401) { _apiSignedOut(); return q[i].resolve({}); }
+    let data = res.body;
+    if (data === null || data === undefined) data = { error: `HTTP ${res.status}` };
+    else if ((res.status < 200 || res.status > 299) && !data.error) data.error = `HTTP ${res.status}`;
+    q[i].resolve(data);
+  });
+}
+
+function api(url, method = 'GET', body = null) {
+  if (method === 'GET' && !body && API_BATCHABLE.test(url)) return _apiBatched(url);
+  return _apiDirect(url, method, body);
+}
+
+async function _apiDirect(url,method='GET',body=null) {
   // Authenticated by the httpOnly session cookie alone (credentials:'include').
   const opts={method, headers:{'Content-Type':'application/json'}, credentials:'include'};
   if (body) opts.body=JSON.stringify(body);
