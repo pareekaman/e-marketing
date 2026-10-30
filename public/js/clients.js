@@ -1809,7 +1809,22 @@ async function cmBulkUpload() {
 // ══════════════════════════════════════════════════════
 let CP_DATA = null;
 
+// The Daily Fill grid is a React page (frontend/src/pages/Compliance.jsx) since
+// 2026-10-30. CP_DATA is still loaded here (reports.js reads it too); the grid
+// is drawn by the React page, which registers its redraw with cpSetReact.
+let CP_REACT = null;
+function cpSetReact(fn){ CP_REACT = fn; }
+function cpGetData(){ return CP_DATA; }
+
 async function loadCompliance(){
+  const root = document.getElementById('cpReactRoot');
+  if (root) {
+    if (!CP_REACT) emkReactMount('compliance', root);
+    try { CP_DATA = await api('/api/compliance/last7'); }
+    catch (e) { CP_DATA = { error: 'Failed to load compliance data' }; }
+    if (CP_REACT) CP_REACT();
+    return;
+  }
   const wrap = document.getElementById('cpGridWrap');
   wrap.innerHTML = '<div class="empty">Loading...</div>';
   try {
@@ -1821,6 +1836,7 @@ async function loadCompliance(){
 }
 
 function renderCompliance(){
+  if (CP_REACT) return CP_REACT();
   if (!CP_DATA) return;
   const wrap = document.getElementById('cpGridWrap');
   const search = (document.getElementById('cpSearch')?.value || '').toLowerCase();

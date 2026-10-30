@@ -10,6 +10,7 @@ const PAGES = {
   leaves: lazy(() => import('./pages/LeaveTracker.jsx')),
   logs: lazy(() => import('./pages/Logs.jsx')),
   enquiry: lazy(() => import('./pages/Enquiry.jsx')),
+  compliance: lazy(() => import('./pages/Compliance.jsx')),
 };
 
 const roots = new WeakMap();
