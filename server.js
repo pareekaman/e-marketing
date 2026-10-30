@@ -2013,7 +2013,12 @@ app.get('/api/me', requireAuth, async (req, res) => {
       rows[0].can = null;
     }
     try {
-      const [bd] = await db.query('SELECT birthday, joining_date FROM users WHERE id=?', [req.session.userId]);
+      // As 'YYYY-MM-DD' strings. Read raw, a DATE comes back as a Date at
+      // midnight IST, which JSON turns into the previous day's 18:30Z — the
+      // Profile page showed and re-saved every date a day early.
+      const [bd] = await db.query(
+        `SELECT DATE_FORMAT(birthday, '%Y-%m-%d') AS birthday, DATE_FORMAT(joining_date, '%Y-%m-%d') AS joining_date
+         FROM users WHERE id=?`, [req.session.userId]);
       rows[0].birthday = bd[0]?.birthday || null;
       rows[0].joining_date = bd[0]?.joining_date || null;
     } catch(e) { rows[0].birthday = null; rows[0].joining_date = null; }
@@ -3514,7 +3519,9 @@ app.get('/api/users', requireAuth, async (req, res) => {
     try {
       const ids = rows.map(r=>r.id);
       if (ids.length) {
-        const [bd] = await db.query(`SELECT id,birthday,joining_date FROM users WHERE id IN (${ids.map(()=>'?').join(',')})`, ids);
+        // As 'YYYY-MM-DD', like /api/me: a raw DATE reaches the edit form as the
+        // previous day's 18:30Z, and saving the form moved the date a day back.
+        const [bd] = await db.query(`SELECT id,DATE_FORMAT(birthday,'%Y-%m-%d') AS birthday,DATE_FORMAT(joining_date,'%Y-%m-%d') AS joining_date FROM users WHERE id IN (${ids.map(()=>'?').join(',')})`, ids);
         const bdMap = Object.fromEntries(bd.map(u=>[u.id, u]));
         for (const r of rows) { r.birthday = bdMap[r.id]?.birthday || null; r.joining_date = bdMap[r.id]?.joining_date || null; }
       }
