@@ -501,13 +501,14 @@ async function init() {
       }
     } catch {}
     if (!restored) loadDashboard();
+    // loadApprovalBadge refreshes the transfer badge too (it ends with
+    // loadTransferBadge), so the transfer count is not fetched on its own —
+    // that was a second /api/transfers/count on every load and every tick.
     loadApprovalBadge();
-    loadTransferBadge();
     // Refresh badges every 30 seconds — guard against duplicate intervals on re-init
     if (window._badgeTimer1) clearInterval(window._badgeTimer1);
     if (window._badgeTimer2) clearInterval(window._badgeTimer2);
     window._badgeTimer1 = setInterval(loadApprovalBadge, 30000);
-    window._badgeTimer2 = setInterval(loadTransferBadge, 30000);
     // New-task popup rides the same 30-second tick, so work delegated while
     // the app is already open surfaces without waiting for a reload. It
     // no-ops while the popup is showing, so the poll cannot stack a copy.

@@ -44,6 +44,19 @@ function releaseDashStatsHold(seq, paint = false) {
   if (paint) updateDashStats(dashType);
 }
 
+// The user list, shared by the header's user switcher and the employee filter:
+// both ask for it while the app opens, which was two /api/users calls. Kept
+// for a minute, so the second caller gets the first one's answer. A failed
+// or non-list answer is not kept.
+let _dashUsersReq = null, _dashUsersAt = 0;
+function dashUsers() {
+  if (_dashUsersReq && Date.now() - _dashUsersAt < 60000) return _dashUsersReq;
+  _dashUsersAt = Date.now();
+  _dashUsersReq = api('/api/users').then(u => { if (!Array.isArray(u)) _dashUsersReq = null; return u; },
+                                         e => { _dashUsersReq = null; throw e; });
+  return _dashUsersReq;
+}
+
 async function loadDashboard(light = false) {
   const seq = newDashSeq();
   // Light refreshes (Done, Reopen, a new task) skip the FMS fetch entirely, so
@@ -62,9 +75,11 @@ async function loadDashboard(light = false) {
   const dateTo   = isPC ? (document.getElementById('pcDateTo')?.value || '') : '';
   const dateParams = (isPC && dateFrom && dateTo) ? `&dateFrom=${dateFrom}&dateTo=${dateTo}` : '';
 
+  // withRevised=1: the revised rows come back in the same answer (revisedTasks),
+  // which saves loadDashRevised's two calls below.
   const baseUrl = (isAdmin || isHod || isPC)
-    ? `/api/dashboard?employee=${empVal}${hodParam}${dateParams}&taskType=`
-    : `/api/dashboard?taskType=`;
+    ? `/api/dashboard?employee=${empVal}${hodParam}${dateParams}&withRevised=1&taskType=`
+    : `/api/dashboard?withRevised=1&taskType=`;
   const [dDel, dChl] = await Promise.all([
     api(baseUrl + 'delegation'),
     api(baseUrl + 'checklist')
@@ -119,7 +134,7 @@ async function loadDashboard(light = false) {
       // Smart dropdown: show only users with pending tasks
       await refreshPCEmployeeDropdown();
     } else if (isAdmin && empFilter.options.length <= 1) {
-      const users = await api('/api/users');
+      const users = await dashUsers();
       if (Array.isArray(users)) users.forEach(u => {
         const opt = document.createElement('option');
         opt.value = u.id; opt.textContent = u.name;
@@ -156,9 +171,15 @@ async function loadDashboard(light = false) {
   // Keep sort state across reloads (don't reset)
   renderDashTable(allTodayPending, dashType);
 
-  // Revised rows are merged into the default Pending view — fetch eagerly so
-  // they appear without an extra click. Re-render once they arrive.
-  loadDashRevised(seq).then(() => renderDashTable(window._lastDashTasks || [], dashType));
+  // Revised rows are merged into the default Pending view. They came with the
+  // load above (withRevised=1); an answer without them — a server from before
+  // that — falls back to fetching them, then re-renders.
+  if (Array.isArray(dDel.revisedTasks) && Array.isArray(dChl.revisedTasks)) {
+    window._lastDashRevised = [...dDel.revisedTasks, ...dChl.revisedTasks];
+    renderDashTable(allTodayPending, dashType);
+  } else {
+    loadDashRevised(seq).then(() => renderDashTable(window._lastDashTasks || [], dashType));
+  }
 
   // Completed rows are lazy — only the stat-card click used to fetch them. That
   // left the Completed view empty whenever anything re-ran this function while
@@ -427,7 +448,7 @@ async function buildDashUserSwitcher(){
   const bar = document.getElementById('topbarActions');
   if (!sel || !bar) return;
   if (!_dashSwitchUsers) {
-    try { const u = await api('/api/users'); _dashSwitchUsers = (Array.isArray(u) ? u : []).filter(x => x.role !== 'client'); }
+    try { const u = await dashUsers(); _dashSwitchUsers = (Array.isArray(u) ? u : []).filter(x => x.role !== 'client'); }
     catch { _dashSwitchUsers = []; }
   }
   // While impersonating, offer a clear way back to the admin's own dashboard.

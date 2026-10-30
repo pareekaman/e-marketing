@@ -2300,18 +2300,26 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
     const chlOrder = rowStatus === 'completed'
       ? 'ORDER BY t.due_date IS NULL, t.due_date DESC, t.id DESC'
       : 'ORDER BY t.due_date ASC';
-    if (taskType === 'delegation' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.no_due_date_reason,t.remarks,t.url,t.client_id,COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${delDateClause} ${userFilter} ${delOrder} LIMIT 500`, delParams);
-      delegationRows = rows;
+    // The row queries, by status clause and order, so the revised rows below run the same ones.
+    const delRows = (statusClause, order) => db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.no_due_date_reason,t.remarks,t.url,t.client_id,COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${statusClause} ${delDateClause} ${userFilter} ${order} LIMIT 500`, delParams).then(r => r[0]);
+    const chlRows = (statusClause, order) => db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,t.client_id,COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,NULL AS completed_on,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM checklist_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${statusClause} ${chlDateClause} ${userFilter} ${order} LIMIT 500`, chlParams).then(r => r[0]);
+    if (taskType === 'delegation' || taskType === 'both') delegationRows = await delRows(rowStatusClause, delOrder);
+    if (taskType === 'checklist' || taskType === 'both') checklistRows = await chlRows(rowStatusClause, chlOrder);
+    // withRevised=1 on the pending load: the revised rows come in the same
+    // answer, as the separate status=revised call would have returned them.
+    // The dashboard used to make that call per type, two more requests (and
+    // two more function wake-ups) on every open.
+    let revisedRows = null;
+    if (req.query.withRevised === '1' && rowStatus === 'pending') {
+      revisedRows = [];
+      if (taskType === 'delegation' || taskType === 'both') revisedRows.push(...await delRows(`AND t.status='revised'`, 'ORDER BY t.due_date ASC'));
+      if (taskType === 'checklist' || taskType === 'both') revisedRows.push(...await chlRows(`AND t.status='revised'`, 'ORDER BY t.due_date ASC'));
     }
-    if (taskType === 'checklist' || taskType === 'both') {
-      const [rows] = await db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,t.client_id,COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,NULL AS completed_on,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM checklist_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${rowStatusClause} ${chlDateClause} ${userFilter} ${chlOrder} LIMIT 500`, chlParams);
-      checklistRows = rows;
-    }
-    await fillDeletedUserNames([...delegationRows, ...checklistRows], [['assigned_to', 'assignedToName'], ['assigned_by', 'assignedByName']]);
+    await fillDeletedUserNames([...delegationRows, ...checklistRows, ...(revisedRows || [])], [['assigned_to', 'assignedToName'], ['assigned_by', 'assignedByName']]);
     // `todayPending` kept for backwards compatibility (regular pending load still uses it).
     // `tasks` is the generic field for any status filter.
-    res.json({ pending, revised, completed, upcoming, todayPending: [...delegationRows, ...checklistRows], tasks: [...delegationRows, ...checklistRows], status: rowStatus });
+    res.json({ pending, revised, completed, upcoming, todayPending: [...delegationRows, ...checklistRows], tasks: [...delegationRows, ...checklistRows], status: rowStatus,
+      ...(revisedRows ? { revisedTasks: revisedRows } : {}) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
