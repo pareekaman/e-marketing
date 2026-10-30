@@ -213,7 +213,7 @@ export default function LeaveForm() {
   const blurCombo = input => setTimeout(() => setCombo(c => (c && document.activeElement !== input && !document.activeElement?.classList?.contains('lv-client-in') ? null : c)), 150);
 
   return (
-    <Modal open={open} onClose={() => { setOpen(false); setCombo(null); }} className="lv-modal">
+    <Modal open={open} onClose={() => { setOpen(false); setCombo(null); }} className="lv-modal" closeX={false}>
       <div className="lv-modal-head">
         <h3 className="lv-modal-title">🗓 Leave Tracker Form</h3>
         <button className="lv-modal-close" onClick={() => setOpen(false)}>✕</button>

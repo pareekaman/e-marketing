@@ -8,10 +8,14 @@
 // own class, and when something outside takes `open` off, it calls onClose
 // so React's state follows.
 import { useEffect, useRef, useState } from 'react';
+import { css } from '../lib/app.js';
 
 const reducedMotion = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-export default function Modal({ open, onClose, className = '', children }) {
+// closeX: the top-right × that helpers.js adds to every old .modal at load
+// (setupModalUX); a form with a close button of its own passes false.
+// style: inline style text for the .modal box (as the old markup wrote it).
+export default function Modal({ open, onClose, className = '', style = '', closeX = true, children }) {
   const [shown, setShown] = useState(open);       // mounted at all
   const [closing, setClosing] = useState(false);  // fading out
   const overlay = useRef(null);
@@ -41,7 +45,10 @@ export default function Modal({ open, onClose, className = '', children }) {
   if (!shown) return null;
   return (
     <div ref={overlay} className={`modal-overlay${open ? ' open' : ''}${closing ? ' closing' : ''}`}>
-      <div className={`modal${className ? ' ' + className : ''}`}>{children}</div>
+      <div className={`modal${className ? ' ' + className : ''}`} ref={style ? css(style) : undefined}>
+        {closeX ? <button type="button" className="modal-close" aria-label="Close" onClick={() => onClose && onClose()}>×</button> : null}
+        {children}
+      </div>
     </div>
   );
 }

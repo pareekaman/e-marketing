@@ -182,7 +182,17 @@ const EC_FIELDS = {
   ecMeetingUrl: 'meeting_url', ecProposalUrl: 'proposal_url', ecMeetingScheduled: 'meeting_scheduled_date',
   ecMeetingDone: 'meeting_done_date', ecProposalDate: 'proposal_date', ecConversionDate: 'conversion_date',
 };
+// The form is React (frontend/src/pages/EnquiryForm.jsx) since 2026-10-30,
+// mounted into #ecFormRoot; #ecModal and ecSave stay as the fallback.
+let EC_FORM_REACT = null, _ecFormWanted;
+function ecFormSetReact(fn) { EC_FORM_REACT = fn; if (fn && _ecFormWanted !== undefined) { const id = _ecFormWanted; _ecFormWanted = undefined; fn(id); } }
 async function ecOpenForm(id) {
+  const root = document.getElementById('ecFormRoot');
+  if (root && root.dataset.react) {
+    if (EC_FORM_REACT) return EC_FORM_REACT(id);
+    _ecFormWanted = id === undefined ? null : id;
+    return emkReactMount('enquiryform', root);
+  }
   if (!canDo('edit_enquiry')) return;
   if (!EC_OPTS) {
     const o = await api('/api/enquiries/options');
