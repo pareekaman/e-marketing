@@ -107,7 +107,21 @@ let _prBillFile = null;
 let _prBillOnly = false;
 const _prBillUploading = new Set();
 
+// The bill and cancel pop-ups are React (frontend/src/pages/PayPopups.jsx)
+// since 2026-10-30, in #prPopupsRoot; the overlays below stay as the fallback.
+// Both kinds call prBillDo / prCancelDo, which hold the actual steps.
+let PR_POPUPS_REACT = null, _prPopupWanted = null;
+function prPopupsSetReact(o) { PR_POPUPS_REACT = o; if (o && _prPopupWanted) { const [k, a] = _prPopupWanted; _prPopupWanted = null; o[k](...a); } }
+function _prPopupReact(kind, args) {
+  const root = document.getElementById('prPopupsRoot');
+  if (!root || !root.dataset.react) return false;
+  if (PR_POPUPS_REACT) PR_POPUPS_REACT[kind](...args);
+  else { _prPopupWanted = [kind, args]; emkReactMount('paypopups', root); }
+  return true;
+}
+
 function prOpenBillModal(id, billOnly = false) {
+  if (_prPopupReact('bill', [id, !!billOnly])) return;
   _prBillPendingId = id;
   _prBillFile = null;
   _prBillOnly = !!billOnly;
@@ -183,29 +197,34 @@ async function prBillSubmit() {
   if (!id) return;
   const submitBtn = document.getElementById('prBillSubmitBtn');
   if (submitBtn) submitBtn.disabled = true;
-
+  // Capture the file refs BEFORE closing the modal (prCloseBillModal nulls them)
+  const rawName = (document.getElementById('prBillFilename')?.value || ('PaymentBill_ID' + id)).trim();
+  const done = await prBillDo(id, _prBillOnly, _prBillFile, rawName, () => prCloseBillModal());
+  if (!done && submitBtn) submitBtn.disabled = false;
+}
+// Marks the payment done (unless billOnly) and starts the bill's upload.
+// close() runs once the request is through; false means it stopped (the
+// reason was toasted) and the pop-up should stay open.
+async function prBillDo(id, billOnly, billFile, rawName, close) {
   try {
-    if (_prBillOnly && !_prBillFile) {
+    if (billOnly && !billFile) {
       showToast('Choose a bill file first', 'error');
-      if (submitBtn) submitBtn.disabled = false;
-      return;
+      return false;
     }
     // 1. Mark as done sentinel — skipped when the row is already paid
-    if (!_prBillOnly) {
+    if (!billOnly) {
       const s = await api('/api/payment-requests', 'POST', {
         bank_name: '__system__', card_number: '__paid__', reason: '__paid__:' + id
       });
-      if (s && s.error) { showToast('Error: ' + s.error, 'error'); if (submitBtn) submitBtn.disabled = false; return; }
+      if (s && s.error) { showToast('Error: ' + s.error, 'error'); return false; }
     }
 
-    // 2. Capture file refs BEFORE closing modal (prCloseBillModal nulls them)
-    const billFile = _prBillFile;
-    const rawName = (document.getElementById('prBillFilename')?.value || ('PaymentBill_ID' + id)).trim();
-    prCloseBillModal();
+    // 2. Close, then upload
+    close();
     loadMyPaymentRequests();
 
     if (billFile && PR_BILL_SCRIPT_URL && !PR_BILL_SCRIPT_URL.includes('PLACEHOLDER')) {
-      showToast(_prBillOnly ? 'Uploading bill…' : '✅ Payment done! Uploading bill');
+      showToast(billOnly ? 'Uploading bill…' : '✅ Payment done! Uploading bill');
       _prBillUploading.add(id);
       loadMyPaymentRequests();
       // fire-and-forget
@@ -236,13 +255,15 @@ async function prBillSubmit() {
     } else {
       showToast('✅ Payment marked as done!');
     }
+    return true;
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
-    if (submitBtn) submitBtn.disabled = false;
+    return false;
   }
 }
 
 function prOpenCancelModal(id) {
+  if (_prPopupReact('cancel', [id])) return;
   const overlay = document.getElementById('prCancelOverlay');
   document.getElementById('prCancelReason').value = '';
   document.getElementById('prCancelBtn').onclick = () => prSubmitCancel(id);
@@ -256,6 +277,10 @@ async function prSubmitCancel(id) {
   const reason = document.getElementById('prCancelReason').value.trim();
   if (!reason) { showToast('Enter a reason for cancellation', 'error'); return; }
   prCloseCancelModal();
+  await prCancelDo(id, reason);
+}
+// Posts the cancellation (the reason is already checked) and reloads the list.
+async function prCancelDo(id, reason) {
   try {
     const s = await api('/api/payment-requests', 'POST', {
       bank_name: '__system__', card_number: '__cancelled__', reason: '__cancelled__:' + id + ':' + reason

@@ -4313,7 +4313,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261030c"></script>
 <script src="/js/hrm.js?v=20261030b"></script>
-<script src="/js/react-bridge.js?v=20261030zg"></script>
+<script src="/js/react-bridge.js?v=20261030zh"></script>
 <script src="/js/dashboard.js?v=20261030a"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261030e"></script>
@@ -4330,7 +4330,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/emk-creds.js?v=20261027c"></script>
 <script src="/js/portal.js?v=20261030a"></script>
 <script src="/js/payments.js?v=20261030b"></script>
-<script src="/js/mdo.js?v=20261030d"></script>
+<script src="/js/mdo.js?v=20261030e"></script>
 <!-- ⚠️ notify.js MUST load before meetings.js. meetings.js ends by calling
      init(), and init() calls ntMaybeOpen() — loading it later leaves that
      name undefined, and init()'s own catch turns the ReferenceError into a
@@ -4503,6 +4503,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
   </div>
 </div>
 
+<!-- The bill and cancel pop-ups are React (frontend/src/pages/PayPopups.jsx), opened by prOpenBillModal / prOpenCancelModal; the overlays below are their fallback. -->
+<div id="prPopupsRoot" data-react="1" data-react-quiet="1"></div>
 <!-- Payment Bill Upload Modal -->
 <div id="prBillOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1001;align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:16px;padding:28px 28px 22px;width:min(440px,94vw);box-shadow:0 12px 40px rgba(0,0,0,.2)">
