@@ -1852,35 +1852,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
        LOGS PAGE — deleted-records archive (admin only)
   ══════════════════════════════════════ -->
   <div id="page-logs" class="page">
-    <div class="page-header">
-      <!-- No h2 here: the topbar already shows this page's title. -->
-      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-left:auto;max-width:100%">
-        <input id="logsSearch" type="text" placeholder="Search…" oninput="renderLogs()"
-          style="flex:1 1 140px;min-width:0;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
-        <select id="logsFilterTable" onchange="renderLogs()"
-          style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
-          <option value="">All Types</option>
-        </select>
-        <button class="btn btn-outline" onclick="loadLogs()">⟳ Refresh</button>
-      </div>
-    </div>
-    <div style="font-size:12px;color:#64748b;margin-bottom:12px">
-      Showing the 150 most recent deletions across the whole task manager. Every delete is archived here automatically.
-    </div>
-    <div id="logsContent"><div class="empty">Loading…</div></div>
-  </div>
-
-  <!-- LOGS: Record detail modal -->
-  <div class="modal-overlay" id="logsDetailModal">
-    <div class="modal" style="width:640px">
-      <button class="modal-close" onclick="closeModal('logsDetailModal')">×</button>
-      <h3>Deleted Record</h3>
-      <div id="logsDetailMeta" style="font-size:12px;color:#64748b;margin-bottom:10px"></div>
-      <pre id="logsDetailJson" style="background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;font-size:11.5px;line-height:1.5;max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-word"></pre>
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick="closeModal('logsDetailModal')">Close</button>
-      </div>
-    </div>
+    <!-- The Logs page is React (frontend/src/pages/Logs.jsx), record pop-up included;
+         loadLogs() mounts it here. -->
+    <div id="logsReactRoot"><div class="empty">Loading…</div></div>
   </div>
 
   <!-- ══════════════════════════════════════
@@ -4489,9 +4463,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/themes/picker.js?v=20261027c"></script>
 <script src="/js/core.js?v=20261027c"></script>
 <script src="/js/access.js?v=20261027c"></script>
-<script src="/js/inventory.js?v=20261027c"></script>
+<script src="/js/inventory.js?v=20261030a"></script>
 <script src="/js/hrm.js?v=20261030a"></script>
-<script src="/js/react-bridge.js?v=20261030e"></script>
+<script src="/js/react-bridge.js?v=20261030g"></script>
 <script src="/js/dashboard.js?v=20261027c"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261030d"></script>

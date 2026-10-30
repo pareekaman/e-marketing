@@ -4,7 +4,7 @@
 // LEAVE_DATA (handed over with lvSetData) and call loadLeaves(), which comes
 // back here through lvSetReactReload.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, me, canDo, canSee, legacy, fmtDate, richText } from '../lib/app.js';
+import { api, me, canDo, canSee, legacy, fmtDate, richText, css } from '../lib/app.js';
 import SearchSelect from '../components/SearchSelect.jsx';
 
 const TYPE_LABEL = { full_day: 'Full Day Leave', half_day: 'Half Day Leave', work_from_home: 'Work From Home', extra_working: 'Extra Working' };
@@ -12,6 +12,8 @@ const TYPE_ICON = { full_day: '🛌', half_day: '⏱', work_from_home: '🏠', e
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const monthLabel = ym => { const [y, m] = ym.split('-'); return m ? `${MONTHS[+m - 1]} ${y}` : 'Undated'; };
 const PREVIEW_WORDS = 50;
+// The team filter date inputs, as app.html wrote them.
+const DATE_STYLE = "padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff";
 
 const canFilterTeam = u => !!u && (u.role === 'admin' || u.role === 'hod' || u.role === 'pc' || u.canViewAllLeaves || canDo('admin_leaves'));
 
@@ -56,17 +58,17 @@ function ExtraBreakdown({ r }) {
           {d.entries.map((e, i) => (
             <div className="lv-extra-bd-line" key={i}>
               • <b>{e.client || ''}</b>
-              {e.department ? <> <span style={{ color: '#64748b' }}>[{e.department}]</span></> : null}
+              {e.department ? <> <span ref={css('color:#64748b')}>[{e.department}]</span></> : null}
               {' — '}<Desc text={e.description} /> <b>({workDur(e)})</b>
             </div>
           ))}
         </div>
       ))}
       {att.length ? (
-        <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div ref={css('margin-top:6px;display:flex;flex-wrap:wrap;gap:6px')}>
           {att.map((a, i) => (
             <a key={i} href={a.link} target="_blank" rel="noopener" title="Open in Google Drive"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', border: '1px solid #c7d2fe', borderRadius: 999, background: '#eef2ff', color: '#3730a3', fontSize: 11, fontWeight: 600, textDecoration: 'none' }}>
+              ref={css('display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid #c7d2fe;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:600;text-decoration:none')}>
               📎 {a.name || 'Attachment'}
             </a>
           ))}
@@ -106,12 +108,12 @@ function Item({ r, user }) {
           {dates.map((d, i) => (
             <span key={i}>{i ? ' · ' : ''}{fmtDate(d.date)}{r.leave_type === 'extra_working' && d.hours ? <span className="lv-hours-pill">{d.hours}h</span> : null}</span>
           ))}
-          {dates.length > 1 ? <span style={{ color: '#94a3b8', fontWeight: 500 }}> · {dates.length} days</span> : null}
+          {dates.length > 1 ? <span ref={css('color:#94a3b8;font-weight:500')}> · {dates.length} days</span> : null}
         </div>
-        {pendingRemoval ? <div style={{ fontSize: 11, color: '#d97706', fontWeight: 600, marginTop: 4 }}>✂ Removal of {pendingRemoval.map(fmtDate).join(', ')} awaiting approval</div> : null}
+        {pendingRemoval ? <div ref={css('font-size:11px;color:#d97706;font-weight:600;margin-top:4px')}>✂ Removal of {pendingRemoval.map(fmtDate).join(', ')} awaiting approval</div> : null}
         {canDelete || canRemoveDays ? (
           <div className="lv-item-btns">
-            {canRemoveDays ? <button className="lv-btn-delete" style={{ color: '#b45309', borderColor: '#fcd34d' }} onClick={() => legacy('openLeaveRemoveDays', r.id)}>✂ Remove days</button> : null}
+            {canRemoveDays ? <button className="lv-btn-delete" ref={css('color:#b45309;border-color:#fcd34d')} onClick={() => legacy('openLeaveRemoveDays', r.id)}>✂ Remove days</button> : null}
             {canDelete ? <button className="lv-btn-delete" onClick={() => legacy('deleteLeave', r.id)}>🗑 Delete</button> : null}
           </div>
         ) : null}
@@ -205,7 +207,7 @@ export default function LeaveTracker() {
 
   let body;
   if (rows === null) body = <div className="empty">Loading…</div>;
-  else if (error) body = <div className="empty" style={{ color: '#dc2626' }}>⚠️ {error}</div>;
+  else if (error) body = <div className="empty" ref={css('color:#dc2626')}>⚠️ {error}</div>;
   else if (!rows.length) body = <div className="empty">No leave records yet.</div>;
   else if (!shown.length) body = <div className="empty">No leaves match the filters.</div>;
   else body = groups.map(g => {
@@ -213,11 +215,11 @@ export default function LeaveTracker() {
     const total = [...g.months.values()].reduce((s, a) => s + a.length, 0);
     return (
       <div className="lv-user-group" key={g.key}>
-        <div className="lv-user-head" onClick={() => toggle(openNames, setOpenNames, g.key)} style={{ cursor: 'pointer', userSelect: 'none' }}>
-          <span><span className="lv-caret" style={{ display: 'inline-block', transition: 'transform .15s', transform: `rotate(${nameOpen ? 90 : 0}deg)`, color: '#94a3b8', fontSize: 11, marginRight: 4 }}>▶</span>{g.name}</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{g.dept ? <small>{g.dept}</small> : null}<small style={{ color: '#94a3b8' }}>{total}</small></span>
+        <div className="lv-user-head" onClick={() => toggle(openNames, setOpenNames, g.key)} ref={css('cursor:pointer;user-select:none')}>
+          <span><span className="lv-caret" ref={css(`display:inline-block;transition:transform .15s;transform:rotate(${nameOpen ? 90 : 0}deg);color:#94a3b8;font-size:11px;margin-right:4px`)}>▶</span>{g.name}</span>
+          <span ref={css('display:flex;align-items:center;gap:10px')}>{g.dept ? <small>{g.dept}</small> : null}<small ref={css('color:#94a3b8')}>{total}</small></span>
         </div>
-        <div style={{ display: nameOpen ? 'block' : 'none' }}>
+        <div ref={css(`display:${nameOpen ? 'block' : 'none'}`)}>
           {[...g.months.keys()].sort((a, b) => b.localeCompare(a)).map(ym => {
             const mk = g.key + '||' + ym;
             const mOpen = openMonths.has(mk);
@@ -225,12 +227,12 @@ export default function LeaveTracker() {
             return (
               <div className="lv-month-group" key={mk}>
                 <div className="lv-month-head" onClick={() => toggle(openMonths, setOpenMonths, mk)}
-                  style={{ cursor: 'pointer', userSelect: 'none', padding: '9px 16px', background: '#f8fafc', borderBottom: '1px solid #eef2f7', fontWeight: 600, fontSize: 13, color: '#0f766e', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className="lv-caret" style={{ display: 'inline-block', transition: 'transform .15s', transform: `rotate(${mOpen ? 90 : 0}deg)`, color: '#94a3b8', fontSize: 10 }}>▶</span>
+                  ref={css('cursor:pointer;user-select:none;padding:9px 16px;background:#f8fafc;border-bottom:1px solid #eef2f7;font-weight:600;font-size:13px;color:#0f766e;display:flex;align-items:center;gap:8px')}>
+                  <span className="lv-caret" ref={css(`display:inline-block;transition:transform .15s;transform:rotate(${mOpen ? 90 : 0}deg);color:#94a3b8;font-size:10px`)}>▶</span>
                   {monthLabel(ym)}
-                  <span style={{ marginLeft: 'auto', color: '#94a3b8', fontWeight: 500, fontSize: 11 }}>{items.length} {items.length === 1 ? 'entry' : 'entries'}</span>
+                  <span ref={css('margin-left:auto;color:#94a3b8;font-weight:500;font-size:11px')}>{items.length} {items.length === 1 ? 'entry' : 'entries'}</span>
                 </div>
-                <div style={{ display: mOpen ? 'block' : 'none' }}>{items.map(r => <Item key={r.id} r={r} user={user} />)}</div>
+                <div ref={css(`display:${mOpen ? 'block' : 'none'}`)}>{items.map(r => <Item key={r.id} r={r} user={user} />)}</div>
               </div>
             );
           })}
@@ -246,10 +248,10 @@ export default function LeaveTracker() {
     <div className="lv-card">
       <div className="lv-header">
         <div>
-          <p className="lv-sub">Apply for leave, work-from-home, or extra working. <span id="lvApproverLine" style={{ color: '#92400e', fontWeight: 600 }}>{approvers}</span></p>
+          <p className="lv-sub">Apply for leave, work-from-home, or extra working. <span id="lvApproverLine" ref={css('color:#92400e;font-weight:600')}>{approvers}</span></p>
         </div>
         <button className="lv-add-btn" onClick={() => legacy('openLeaveForm')}>
-          <span style={{ fontSize: 18, lineHeight: 1 }}>＋</span> Apply for Leave
+          <span ref={css('font-size:18px;line-height:1')}>＋</span> Apply for Leave
         </button>
       </div>
       {/* Filled by leave-policy.js (lpLoad); React leaves their contents alone. */}
@@ -273,15 +275,15 @@ export default function LeaveTracker() {
       </div>
 
       {teamFilters ? (
-        <div id="lvTeamFilters" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14, padding: '10px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+        <div id="lvTeamFilters" ref={css('display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;')}>
           <SearchSelect value={userVal} onChange={setUserVal} placeholder="All Employees"
             options={[{ value: 'all', label: 'All Employees' }, ...employees.map(([id, name]) => ({ value: id, label: name }))]}
             style={{ ...inputStyle, padding: '7px 12px' }} />
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={inputStyle} />
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>to</span>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={inputStyle} />
-          <button onClick={clearFilters} style={{ padding: '6px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 12, background: '#fff', cursor: 'pointer', color: '#64748b' }}>✕ Clear</button>
-          <span id="lvFilterSummary" style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b', fontWeight: 600 }}>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} ref={css(DATE_STYLE)} />
+          <span ref={css('font-size:12px;color:#94a3b8')}>to</span>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} ref={css(DATE_STYLE)} />
+          <button onClick={clearFilters} ref={css('padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;background:#fff;cursor:pointer;color:#64748b')}>✕ Clear</button>
+          <span id="lvFilterSummary" ref={css('margin-left:auto;font-size:12px;color:#64748b;font-weight:600')}>
             {rows && rows.length ? `${shown.length} leaves · ${distinctUsers} ${distinctUsers === 1 ? 'employee' : 'employees'} · ${totalDays} days` : ''}
           </span>
         </div>

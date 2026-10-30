@@ -1,1 +1,0 @@
-const s=(...n)=>window.api(...n),a=()=>window.emkSession?window.emkSession():null,t=n=>window.canDo?window.canDo(n):!1,c=n=>window.canSee?window.canSee(n):!1,e=(n,...o)=>typeof window[n]=="function"?window[n](...o):void 0,i=n=>e("fmtDate",n)??String(n||""),w=n=>{const o=e("dtEscape",String(n??""))??"";return e("dtBold",o)??o};export{s as a,t as b,c,i as f,e as l,a as m,w as r};

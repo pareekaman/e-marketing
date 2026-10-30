@@ -551,7 +551,14 @@ const LOG_TABLE_LABELS = {
 };
 const logTableLabel = t => LOG_TABLE_LABELS[t] || t;
 
+// The Logs page is React (frontend/src/pages/Logs.jsx) since 2026-10-30: the
+// first loadLogs() mounts it, later ones (page open from the nav) reload it.
+let LOGS_REACT_RELOAD = null;
+function logsSetReactReload(fn){ LOGS_REACT_RELOAD = fn; }
+
 async function loadLogs() {
+  const root = document.getElementById('logsReactRoot');
+  if (root) return LOGS_REACT_RELOAD ? LOGS_REACT_RELOAD() : emkReactMount('logs', root);
   const el = document.getElementById('logsContent');
   const r = await api('/api/deleted-records');
   if (r.error) { el.innerHTML = `<div class="empty">⚠️ ${dtEscape(r.error)}</div>`; return; }
