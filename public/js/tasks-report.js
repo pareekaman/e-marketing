@@ -249,7 +249,7 @@ function atReportPdf() {
             <td class="date">${esc(atFmtDay(r.due_date) || '—')}</td>
             <td class="date">${esc(atFmtDay(r.completed_on) || '—')}</td>
             <td class="delay-warning">${esc(days !== null ? `${days} days late` : '—')}</td>
-            <td>${esc(r.remarks?.trim() || 'No reason given')}</td>
+            <td>${esc(r.delay_reason?.trim() || 'No reason given')}</td>
           </tr>
         `;
       }).join('')

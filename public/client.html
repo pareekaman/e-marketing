@@ -742,7 +742,17 @@ async function cpCompleteMyTask(id, btn){
   if (CP_IS_PREVIEW) { showToast('Only the client can mark their own task done', 'error'); return; }
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   try {
-    const r = await api(`/api/tasks/${id}/status`, 'PUT', { status: 'completed', type: 'delegation' });
+    let r = await api(`/api/tasks/${id}/status`, 'PUT', { status: 'completed', type: 'delegation' });
+    // Past its due date: the reason for the delay is required before it closes.
+    if (r && r.error && r.needsDelayReason) {
+      let reason = '';
+      while (!reason) {
+        const v = window.prompt(`This task is ${r.lateDays} day${r.lateDays === 1 ? '' : 's'} past its due date. Please give the reason for the delay:`, '');
+        if (v === null) { if (btn) { btn.disabled = false; btn.textContent = 'Mark Done'; } return; }
+        reason = v.trim();
+      }
+      r = await api(`/api/tasks/${id}/status`, 'PUT', { status: 'completed', type: 'delegation', delay_reason: reason });
+    }
     if (r && r.error) throw new Error(r.error);
     showToast('✅ Marked done');
     loadClientPortal();
