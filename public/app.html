@@ -1286,7 +1286,12 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px 28px 24px;min-height:420px">
       <!-- data-react: the no-bank overview is React (frontend/src/pages/CcOverview.jsx); mdo.js shows it or ccDetailContent. -->
       <div id="ccOverview" data-react="1" style="display:none"></div>
-      <div id="ccDetailContent"><div style="color:#94a3b8;text-align:center;padding:60px 20px;font-size:14px">Loading…</div></div>
+      <div id="ccDetailContent">
+        <!-- data-react: a picked bank's card tabs + filter bar are React (frontend/src/pages/CcBankHead.jsx); mdo.js fills the other two. -->
+        <div id="ccBankHead" data-react="1"></div>
+        <div id="ccDetailMsg"><div style="color:#94a3b8;text-align:center;padding:60px 20px;font-size:14px">Loading…</div></div>
+        <div id="ccStatementsWrap"></div>
+      </div>
     </div>
   </div>
 
@@ -4299,7 +4304,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261030c"></script>
 <script src="/js/hrm.js?v=20261030b"></script>
-<script src="/js/react-bridge.js?v=20261030y"></script>
+<script src="/js/react-bridge.js?v=20261030z"></script>
 <script src="/js/dashboard.js?v=20261027c"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261030e"></script>
@@ -4316,7 +4321,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/emk-creds.js?v=20261027c"></script>
 <script src="/js/portal.js?v=20261030a"></script>
 <script src="/js/payments.js?v=20261030b"></script>
-<script src="/js/mdo.js?v=20261030b"></script>
+<script src="/js/mdo.js?v=20261030c"></script>
 <!-- ⚠️ notify.js MUST load before meetings.js. meetings.js ends by calling
      init(), and init() calls ntMaybeOpen() — loading it later leaves that
      name undefined, and init()'s own catch turns the ReferenceError into a

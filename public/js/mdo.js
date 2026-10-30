@@ -827,6 +827,31 @@ function ccCalSelectPreset(key) {
   ccCalRender();
 }
 
+// A picked bank's card tabs and filter bar are a React page
+// (frontend/src/pages/CcBankHead.jsx) since 2026-10-30, in #ccBankHead above
+// #ccStatementsWrap; it keeps its own date picker. The filter stays here.
+let CC_BANK_HEAD_REACT = null;
+function ccBankHeadSetReact(fn) { CC_BANK_HEAD_REACT = fn; if (fn) ccPaintBankHead(); }
+const _ccHeadIsReact = () => !!document.getElementById('ccBankHead')?.dataset.react;
+function ccPaintBankHead() {
+  const bank = _ccActiveBank;
+  const view = bank && _ccData[bank] ? {
+    cards: Object.keys(_ccData[bank]), active: _ccActiveCard, color: CC_BANK_COLORS[bank] || '#64748b',
+    filter: { ..._ccFilter }, label: ccFilterLabel(), sub: ccFilterSubLabel(),
+  } : {};
+  if (CC_BANK_HEAD_REACT) return CC_BANK_HEAD_REACT(view);
+  emkReactMount('ccbankhead', document.getElementById('ccBankHead'));
+}
+// The React picker's Apply. Saved as a custom range, as ccCalApply always did:
+// its preset lookup matches a colour the buttons no longer use.
+function ccSetDateFilter(from, to) {
+  _ccFilter.preset = 'custom';
+  _ccFilter.dateFrom = from || null;
+  _ccFilter.dateTo = to || null;
+  ccPaintBankHead();
+  ccRenderStatements();
+}
+
 function ccCalApply() {
   const key = document.querySelector('.cc-preset-btn[style*="1a56db"]')?.dataset.preset || 'custom';
   _ccFilter.preset   = key;
@@ -840,18 +865,23 @@ function ccCalApply() {
 function ccFilterApplyAmt() {
   _ccFilter.amtMin = document.getElementById('ccAmtMin')?.value || '';
   _ccFilter.amtMax = document.getElementById('ccAmtMax')?.value || '';
+  if (_ccHeadIsReact()) ccPaintBankHead();
   ccRenderStatements();
 }
 
 function ccFilterClear() {
   _ccFilter = { preset:'all', dateFrom:null, dateTo:null, amtMin:'', amtMax:'' };
-  const minEl = document.getElementById('ccAmtMin'), maxEl = document.getElementById('ccAmtMax');
-  if (minEl) minEl.value = ''; if (maxEl) maxEl.value = '';
+  // The React bar empties its own amount boxes from the filter.
+  if (!_ccHeadIsReact()) {
+    const minEl = document.getElementById('ccAmtMin'), maxEl = document.getElementById('ccAmtMax');
+    if (minEl) minEl.value = ''; if (maxEl) maxEl.value = '';
+  }
   ccUpdateFilterBar();
   ccRenderStatements();
 }
 
 function ccUpdateFilterBar() {
+  if (_ccHeadIsReact()) return ccPaintBankHead();
   const btn = document.getElementById('ccDateFilterBtn');
   if (!btn) return;
   const sub = ccFilterSubLabel();
@@ -1610,6 +1640,26 @@ function ccRenderDetail() {
   const color    = CC_BANK_COLORS[bank] || '#64748b';
   const bankData = _ccData[bank] || {};
   const cards    = Object.keys(bankData);
+
+  // React head: #ccDetailContent keeps its three children — the head, a line
+  // for the empty-bank message, and #ccStatementsWrap — and is never rewritten.
+  if (_ccHeadIsReact()) {
+    const head = document.getElementById('ccBankHead');
+    const msg  = document.getElementById('ccDetailMsg');
+    const wrap = document.getElementById('ccStatementsWrap');
+    if (!cards.length) {
+      head.style.display = 'none';
+      msg.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#94a3b8;font-size:14px">No statements for <strong>${dtEscape(bank)}</strong> yet${ccCanEdit() ? ' — upload a PDF statement above' : ''}.</div>`;
+      if (wrap) wrap.innerHTML = '';
+      return;
+    }
+    if (!_ccActiveCard || !bankData[_ccActiveCard]) _ccActiveCard = cards[0];
+    msg.innerHTML = '';
+    head.style.display = '';
+    ccPaintBankHead();
+    ccRenderStatements();
+    return;
+  }
 
   // If no cards yet, show empty state
   if (!cards.length) {

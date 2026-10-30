@@ -28,6 +28,7 @@ const PAGES = {
   dmsdepts: lazy(() => import('./pages/Dms.jsx').then(m => ({ default: m.DmsDepts }))),
   dmsfiles: lazy(() => import('./pages/Dms.jsx').then(m => ({ default: m.DmsFiles }))),
   ccoverview: lazy(() => import('./pages/CcOverview.jsx')),
+  ccbankhead: lazy(() => import('./pages/CcBankHead.jsx')),
 };
 
 const roots = new WeakMap();
