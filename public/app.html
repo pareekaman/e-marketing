@@ -1311,10 +1311,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
        FEEDBACK PAGE — Admin / HOD view
   ══════════════════════════════════════ -->
   <div id="page-feedback" class="page">
-    <div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:18px">
-      <button class="btn btn-outline" onclick="loadFeedbackAdmin()" style="font-size:12px">🔄 Refresh</button>
-    </div>
-    <div id="feedbackContent"><div class="empty" style="padding:40px">Loading…</div></div>
+    <!-- The feedback cards are a React page (frontend/src/pages/Feedback.jsx), mounted
+         here by loadFeedbackAdmin(). -->
+    <div id="fbReactRoot"><div class="empty" style="padding:40px">Loading…</div></div>
   </div>
 
   <!-- ══════════════════════════════════════
@@ -4430,7 +4429,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261030a"></script>
 <script src="/js/hrm.js?v=20261030a"></script>
-<script src="/js/react-bridge.js?v=20261030j"></script>
+<script src="/js/react-bridge.js?v=20261030k"></script>
 <script src="/js/dashboard.js?v=20261027c"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261030d"></script>
@@ -4445,7 +4444,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/leave-policy.js?v=20261027c"></script>
 <script src="/js/compose-mail.js?v=20261027c"></script>
 <script src="/js/emk-creds.js?v=20261027c"></script>
-<script src="/js/portal.js?v=20261027c"></script>
+<script src="/js/portal.js?v=20261030a"></script>
 <script src="/js/payments.js?v=20261028a"></script>
 <script src="/js/mdo.js?v=20261027c"></script>
 <!-- ⚠️ notify.js MUST load before meetings.js. meetings.js ends by calling

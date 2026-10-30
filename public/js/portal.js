@@ -480,10 +480,16 @@ function setFeedbackBadge(n) {
   });
 }
 
+let FB_REACT_RELOAD = null;
+function fbSetReactReload(fn) { FB_REACT_RELOAD = fn; }
+
 async function loadFeedbackAdmin() {
   // Opening the page counts as seeing every escalation on it.
   setFeedbackBadge(0);
   api('/api/feedback/seen', 'POST', {}).catch(() => {});
+  // The cards are a React page (frontend/src/pages/Feedback.jsx) since 2026-10-30.
+  const root = document.getElementById('fbReactRoot');
+  if (root) return FB_REACT_RELOAD ? FB_REACT_RELOAD() : emkReactMount('feedback', root);
   const wrap = document.getElementById('feedbackContent');
   if (!wrap) return;
   wrap.innerHTML = '<div class="empty" style="padding:40px">Loading…</div>';
