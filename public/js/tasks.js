@@ -468,7 +468,7 @@ function renderTasksTable() {
     // The logged-in user's own group is pinned to the top; deleted-user groups
     // (tasks whose doer no longer exists) sink to the bottom; the rest stay A-Z.
     const _isMe = (g) => String(g.userId) === String(ME.id);
-    const _isDeleted = (g) => (g.name || '').includes('deleted user');
+    const _isDeleted = (g) => /deleted user|\(removed\)$/.test(g.name || '');
     const sortedGroups = [...groups.values()].sort((a,b) =>
       (_isMe(b) - _isMe(a)) ||
       (_isDeleted(a) - _isDeleted(b)) ||
