@@ -11,7 +11,7 @@ function emkReactLoad() {
     _emkReactLoading = new Promise((resolve, reject) => {
       const s = document.createElement('script');
       s.type = 'module';
-      s.src = '/react/emk-react.js?v=20261030zc';
+      s.src = '/react/emk-react.js?v=20261030zd';
       s.onload = () => window.emkReact ? resolve(window.emkReact) : reject(new Error('React bundle loaded without emkReact'));
       s.onerror = () => { _emkReactLoading = null; reject(new Error('Could not load the React bundle')); };
       document.head.appendChild(s);

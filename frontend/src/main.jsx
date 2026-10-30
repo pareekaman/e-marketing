@@ -31,6 +31,10 @@ const PAGES = {
   ccbankhead: lazy(() => import('./pages/CcBankHead.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
+  cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),
+  cechipscc: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsCc }))),
+  cefiles: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeFiles }))),
+  celog: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeLog }))),
 };
 
 const roots = new WeakMap();

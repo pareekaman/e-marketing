@@ -48,6 +48,21 @@ async function loadComposeMail(){
   ceLoadLog();
 }
 
+// The chips, the attachment chips and the log are React
+// (frontend/src/pages/ComposeMail.jsx) since 2026-10-30: #ceChips_to,
+// #ceChips_cc, #ceFiles and #ceLogWrap carry data-react. ceView hands a part
+// its view and says whether it did, so each renderer keeps its old markup as
+// the fallback. Everything else on the page stays here.
+const CE_REACT = {}, _ceViews = {};
+function ceSetReact(part, fn) { CE_REACT[part] = fn; if (fn && _ceViews[part]) fn(_ceViews[part]); }
+const CE_REACT_PAGE = { to: 'cechipsto', cc: 'cechipscc', files: 'cefiles', log: 'celog' };
+function ceView(part, el, view) {
+  if (!el || !el.dataset.react) return false;
+  _ceViews[part] = view;
+  if (CE_REACT[part]) CE_REACT[part](view); else emkReactMount(CE_REACT_PAGE[part], el);
+  return true;
+}
+
 // ── To / CC ──
 function ceLabel(email){
   const u = CE_USERS.find(x => x.email.toLowerCase() === String(email).toLowerCase());
@@ -68,7 +83,7 @@ function ceRenderChips(field){
   // A long list (e.g. All users) shows its first chips and folds the rest.
   const fold = list.length > CE_CHIPS_SHOWN + 2 && !CE_EXPANDED[field];
   const shown = fold ? list.slice(0, CE_CHIPS_SHOWN) : list;
-  box.innerHTML = shown.map((e, i) => {
+  if (!ceView(field, box, { list: [...list], expanded: CE_EXPANDED[field] })) box.innerHTML = shown.map((e, i) => {
     const name = ceLabel(e);
     return `<span class="ce-chip" title="${dtEscape(e)}">${dtEscape(name)}` +
       (name !== e ? ` <span class="ce-chip-mail">${dtEscape(e)}</span>` : '') +
@@ -240,7 +255,7 @@ function ceRenderFiles(){
   const box = document.getElementById('ceFiles');
   const info = document.getElementById('ceFilesInfo');
   if (!box) return;
-  box.innerHTML = CE.files.map((f, i) =>
+  if (!ceView('files', box, { files: CE.files.map(f => ({ name: f.name, size: f.size })) })) box.innerHTML = CE.files.map((f, i) =>
     `<span class="ce-chip ce-file">📎 ${dtEscape(f.name)} <span class="ce-chip-mail">${ceSize(f.size)}</span>` +
     `<button type="button" onclick="ceRemoveFile(${i})" title="Remove">✕</button></span>`).join('');
   if (info) info.textContent = CE.files.length ? `${ceSize(ceFilesBytes())} of 4 MB` : 'Up to 4 MB in total';
@@ -308,6 +323,7 @@ async function ceLoadLog(){
   const wrap = document.getElementById('ceLogWrap');
   if (!wrap) return;
   const rows = await api('/api/compose-mail/log');
+  if (ceView('log', wrap, Array.isArray(rows) ? { rows } : { error: (rows && rows.error) || 'Could not load the list.' })) return;
   if (!Array.isArray(rows)) { wrap.innerHTML = `<div class="empty">${dtEscape((rows && rows.error) || 'Could not load the list.')}</div>`; return; }
   if (!rows.length) { wrap.innerHTML = '<div class="empty">No emails sent from here yet.</div>'; return; }
   const who = list => list.map(e => `<span title="${dtEscape(e)}">${dtEscape(ceLabel(e))}</span>`).join(', ');
