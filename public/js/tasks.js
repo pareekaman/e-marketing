@@ -304,6 +304,23 @@ async function openFmsDoneFromRow(ref) {
   finally { _doneEnd(btn); }
 }
 
+// Under the done date of a delegation task finished late: its reason, or a
+// "reason missing" tag with Add reason for the doer, the assigner or an admin.
+function _delayCellHtml(t) {
+  if (!t || t.type !== 'delegation' || t.status !== 'completed' || !t.completed_on || !t.due_date || t.completed_on <= t.due_date) return '';
+  const days = Math.round((new Date(t.completed_on + 'T00:00:00') - new Date(t.due_date + 'T00:00:00')) / 86400000);
+  if (t.delay_reason) {
+    return `<div style="font-size:10px;color:#b45309;font-weight:600;margin-top:2px;white-space:normal;max-width:180px" title="${esc(t.delay_reason)}">⏱ ${days} day${days === 1 ? '' : 's'} late · <span style="color:#64748b;font-weight:500">${esc(t.delay_reason.length > 40 ? t.delay_reason.slice(0, 40) + '…' : t.delay_reason)}</span></div>`;
+  }
+  if (!taskNeedsDelayReason(t)) return '';
+  const mayAdd = ME.role === 'admin' || ME.role === 'pc' || canDo('admin_tasks')
+    || String(t.assigned_to) === String(ME.id) || String(t.assigned_by) === String(ME.id);
+  return `<div style="margin-top:3px;white-space:nowrap" onclick="event.stopPropagation()">
+    <span style="font-size:10px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:1px 6px;border-radius:8px">⚠ ${days}d late, reason missing</span>
+    ${mayAdd ? `<button class="action-btn revise" style="margin-left:4px;padding:2px 8px;font-size:10px" onclick="addDelayReason(${t.id})">Add reason</button>` : ''}
+  </div>`;
+}
+
 function _buildTaskRowHtml(t, ctx) {
   const { isAdmin, isDelegateByMe, isClickable, showClientCol } = ctx;
   if (t.type === 'fms' || tasksType === 'fms') return _buildFmsRowHtml(t);
@@ -355,7 +372,7 @@ function _buildTaskRowHtml(t, ctx) {
     <td style="white-space:nowrap">${esc(t.assignedToName||'')}</td>
     <td style="white-space:nowrap">${esc((t.assignedByName && t.assignedByName.trim() && t.assignedByName !== '—') ? t.assignedByName : 'Simran Gurnani')}</td>
     <td style="white-space:nowrap">${fmtDate(t.due_date||'')||''}${t.delegated_on ? `<div style="font-size:10px;color:#94a3b8;font-weight:500;margin-top:2px">Given ${fmtDate(t.delegated_on)}</div>` : ''}</td>
-    <td style="white-space:nowrap;color:#16a34a;font-weight:600">${(t.status === 'completed' && t.completed_on) ? fmtDate(t.completed_on) : '<span style="color:#cbd5e1;font-weight:500">—</span>'}</td>
+    <td style="white-space:nowrap;color:#16a34a;font-weight:600">${(t.status === 'completed' && t.completed_on) ? fmtDate(t.completed_on) : '<span style="color:#cbd5e1;font-weight:500">—</span>'}${_delayCellHtml(t)}</td>
     ${clientCell}
     <td style="color:#64748b;max-width:220px;word-break:break-word;overflow-wrap:anywhere;font-size:12px">${esc(t.remarks||'—')}</td>
     <td style="white-space:nowrap"><span class="status-badge ${['pending','completed','revised'].includes(t.status)?t.status:'pending'}">${t.status==='revised'?'Revised':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
@@ -404,6 +421,8 @@ function renderTasksTable() {
       // "Upcoming" = open work still ahead of us this month. The future-date check is what
       // keeps it disjoint from "Pending"; without it every open row shows up in both tabs.
       || (taskStatusFilter === 'upcoming' && (t.status === 'pending' || t.status === 'revised') && t.due_date && t.due_date > _todayStr && t.due_date.slice(0,7) === _todayStr.slice(0,7))
+      // Finished late with no delay reason yet (delegation, since DELAY_REASON_FROM).
+      || (taskStatusFilter === 'reasonmissing' && taskNeedsDelayReason(t))
       || t.status === taskStatusFilter;
     const matchSearch = !search ||
       (t.description||'').toLowerCase().includes(search) ||
@@ -707,6 +726,7 @@ function openTaskDetail(t) {
     row('Status', statusBadge),
     row('Approval', t.approval === 'yes' ? '<span style="color:#16a34a;font-weight:600">Required</span>' : '<span style="color:#64748b">Not required</span>'),
     row('Remarks', t.remarks ? dtEscape(t.remarks) : null),
+    ...(t.delay_reason ? [row('Delay reason', dtEscape(t.delay_reason))] : []),
     row('URL', urlVal || '<span style="color:#94a3b8">No URL</span>'),
   ].filter(Boolean).join('') + askSection + subtasksSection;
   document.getElementById('taskDetailModal').classList.add('open');
@@ -885,11 +905,51 @@ function _atRestoreView(v) {
   v.scrollers.forEach(([el, top]) => { el.scrollTop = top; });
 }
 
+// The reason a task was finished after its due date. Asked again until it is
+// filled in; null when the user cancels.
+async function askDelayReason(lateDays) {
+  for (;;) {
+    const v = await appPromptText(
+      `This task is ${lateDays} day${lateDays === 1 ? '' : 's'} past its due date. Why was it late?`,
+      { title: 'Reason for delay', placeholder: 'e.g. Waiting for the client\'s approval on the creatives', okLabel: 'Save & mark done' });
+    if (typeof v !== 'string') return null;
+    if (v.trim()) return v.trim();
+  }
+}
+
+// A delegation task finished late since 1 Aug 2026 with no reason yet (the
+// reason became required at Done later). Kept in step with DELAY_REASON_FROM
+// in backend/routes/tasks.js.
+const DELAY_REASON_FROM = '2026-08-01';
+function taskNeedsDelayReason(t) {
+  return t && t.type === 'delegation' && t.status === 'completed' && !t.delay_reason
+    && t.completed_on && t.due_date && t.completed_on > t.due_date && t.completed_on >= DELAY_REASON_FROM;
+}
+async function addDelayReason(id) {
+  const t = (allTasksData || []).find(x => String(x.id) === String(id) && x.type === 'delegation');
+  const v = await appPromptText('Why was this task completed after its due date?',
+    { title: 'Reason for delay', placeholder: 'e.g. Waiting for the client\'s approval on the creatives', okLabel: 'Save' });
+  if (typeof v !== 'string') return;
+  if (!v.trim()) { showToast('Please enter the reason', 'error'); return; }
+  const r = await api(`/api/tasks/${id}/delay-reason`, 'PUT', { reason: v.trim() });
+  if (r && r.error) { showToast(r.error, 'error'); return; }
+  showToast('✅ Reason saved');
+  if (t) t.delay_reason = v.trim();
+  const view = _atSaveView(); renderTasksTable(); _atRestoreView(view);
+}
+
 async function updateStatus(id, status, from, type) {
   const btn = _doneButtonFromEvent();
   if (!_doneStart(btn)) return;
   try {
-  const r = await api(`/api/tasks/${id}/status`,'PUT',{status, type: type || dashType});
+  let r = await api(`/api/tasks/${id}/status`,'PUT',{status, type: type || dashType});
+  // Past its due date: ask why, then send the same Done again with the reason.
+  // Cancel leaves the task as it was.
+  if (r && r.error && r.needsDelayReason) {
+    const delay_reason = await askDelayReason(r.lateDays);
+    if (delay_reason === null) return;
+    r = await api(`/api/tasks/${id}/status`,'PUT',{status, type: type || dashType, delay_reason});
+  }
   // "Set a due date first" is the one refusal the user can answer immediately.
   // Only the Dashboard carried a Set-due-date button, so from All Tasks this
   // was a dead end that sent them to another page and back. Ask for the date
@@ -1860,7 +1920,9 @@ async function uploadCSV() {
     if (markDone) {
       // A holiday/week-off skip creates nothing, so there is no row to close.
       if (!res || !res.id) { problems.push(`Row ${n + 1}: created but not marked done${res && res.skipped ? ' (date is a holiday or week-off, so no task was made)' : ''}`); continue; }
-      const st = await api(`/api/tasks/${res.id}/status`, 'PUT', { status: 'completed', type: 'delegation' });
+      // A row already done past its due date needs a delay reason: its remarks, or a plain label.
+      const st = await api(`/api/tasks/${res.id}/status`, 'PUT', { status: 'completed', type: 'delegation',
+        delay_reason: get(r, 'remarks') || 'Marked done on bulk upload' });
       if (st && st.error) problems.push(`Row ${n + 1}: created but not marked done — ${st.error}`);
       else doneCount++;
     }

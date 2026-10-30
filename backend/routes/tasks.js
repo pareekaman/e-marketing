@@ -38,6 +38,22 @@ module.exports = function registerTaskRoutes(app, deps) {
     canSeeTask,
   } = deps;
 
+// Why a delegation task was finished after its due date. Required when it is
+// marked done late (PUT /api/tasks/:id/status); tasks already done late since
+// DELAY_REASON_FROM can be given one afterwards (PUT /api/tasks/:id/delay-reason).
+// Added here, once per instance, so a cold start never reads a missing column.
+let _delayReasonCol = null;
+function ensureDelayReasonColumn() {
+  if (!_delayReasonCol) _delayReasonCol = db.query('ALTER TABLE delegation_tasks ADD COLUMN delay_reason TEXT NULL')
+    .catch(e => { if (e.code !== 'ER_DUP_FIELDNAME') { _delayReasonCol = null; throw e; } });
+  return _delayReasonCol;
+}
+// Late tasks finished before this date are not asked for a reason afterwards.
+const DELAY_REASON_FROM = '2026-08-01';
+// Days past the due date, counted on the IST calendar by the database, so the
+// server's own time zone (UTC on Vercel) does not move the boundary.
+const LATE_DAYS_SQL = `DATEDIFF(DATE(UTC_TIMESTAMP() + INTERVAL 330 MINUTE), due_date)`;
+
 // ══════════════════════════════════════════════════════
 // TASKS
 // ══════════════════════════════════════════════════════
@@ -62,6 +78,7 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     const isClientTasks = (req.query.clients === '1');
     const table = getTable(type || 'delegation');
     const isDeleg = (type || 'delegation') === 'delegation';
+    if (isDeleg) await ensureDelayReasonColumn();
     let where = 'WHERE 1=1';
     const params = [];
 
@@ -122,7 +139,7 @@ app.get('/api/tasks', requireAuth, async (req, res) => {
     const subtaskCols = isDeleg
       ? "COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='completed'),0) AS subtasks_done,COALESCE((SELECT COUNT(*) FROM task_subtasks s WHERE s.task_id=t.id AND s.status='pending'),0) AS subtasks_pending,"
       : "0 AS subtasks_done,0 AS subtasks_pending,";
-    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.no_due_date_reason,t.remarks,t.url,t.client_ask,DATE_FORMAT(t.client_ask_by,'%Y-%m-%d') AS client_ask_date,TIME_FORMAT(t.client_ask_by,'%H:%i') AS client_ask_time,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,NULL AS client_ask,NULL AS client_ask_date,NULL AS client_ask_time,NULL AS completed_on,"}${subtaskCols}t.client_id,COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'— deleted user —') AS assignedByName FROM ${table} t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
+    const [tasks] = await db.query(`SELECT t.id,'${type||'delegation'}' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,${isDeleg?"COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.no_due_date_reason,t.remarks,t.url,t.client_ask,DATE_FORMAT(t.client_ask_by,'%Y-%m-%d') AS client_ask_date,TIME_FORMAT(t.client_ask_by,'%H:%i') AS client_ask_time,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,t.delay_reason,":"'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,NULL AS url,NULL AS client_ask,NULL AS client_ask_date,NULL AS client_ask_time,NULL AS completed_on,NULL AS delay_reason,"}${subtaskCols}t.client_id,COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'— deleted user —') AS assignedByName FROM ${table} t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id ${where} ORDER BY t.due_date ASC`, params);
 
     await fillDeletedUserNames(tasks, [['assigned_to', 'assignedToName'], ['assigned_by', 'assignedByName']]);
 
@@ -741,6 +758,24 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
       }
     }
 
+    // Finished after its due date: the doer says why, before it closes. Every
+    // role, like the due-date rule above; needsDelayReason lets the page ask on
+    // the spot and send the same request again with delay_reason.
+    if (status === 'completed' && tt === 'delegation') {
+      const [[d]] = await db.query(`SELECT ${LATE_DAYS_SQL} AS late FROM delegation_tasks WHERE id=?`, [req.params.id]);
+      if (d && Number(d.late) > 0) {
+        const delayReason = String(req.body.delay_reason || '').trim();
+        if (!delayReason) {
+          return res.status(400).json({
+            error: 'This task is past its due date. Please give the reason for the delay.',
+            needsDelayReason: true, lateDays: Number(d.late)
+          });
+        }
+        await ensureDelayReasonColumn();
+        await db.query('UPDATE delegation_tasks SET delay_reason=? WHERE id=?', [delayReason.slice(0, 2000), req.params.id]);
+      }
+    }
+
     // COMPLETION approval — only when the task was created with approval='yes'.
     if (status === 'completed' && supportsApproval && task.approval === 'yes' && !isPrivileged && !reviserIsAssigner) {
       await db.query(
@@ -776,6 +811,38 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
       note: newDate ? `due -> ${newDate}` : (reason || null)
     });
     res.json({ success: true, needsApproval: false });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// The delay reason for a delegation task that was already finished late
+// (before the reason became required at Done). Its doer, its assigner, or
+// someone with the admin view of tasks may give it; only for tasks completed
+// after their due date, on or after DELAY_REASON_FROM.
+app.put('/api/tasks/:id/delay-reason', requireAuth, async (req, res) => {
+  try {
+    const reason = String(req.body.reason || '').trim();
+    if (!reason) return res.status(400).json({ error: 'Please enter the reason for the delay.' });
+    await ensureDelayReasonColumn();
+    const [[t]] = await db.query(
+      `SELECT id, assigned_to, assigned_by, status,
+              DATE_FORMAT(completed_at, '%Y-%m-%d') AS done_on, DATE_FORMAT(due_date, '%Y-%m-%d') AS due
+         FROM delegation_tasks WHERE id=?`, [req.params.id]);
+    if (!t) return res.status(404).json({ error: 'Task not found' });
+    const uid = Number(req.session.userId);
+    const privileged = ['admin', 'pc'].includes(req.session.role) || await userCanDo(req.session, 'admin_tasks');
+    if (!privileged && uid !== Number(t.assigned_to) && uid !== Number(t.assigned_by)) {
+      return res.status(403).json({ error: 'Not allowed' });
+    }
+    if (t.status !== 'completed' || !t.done_on || !t.due || t.done_on <= t.due) {
+      return res.status(400).json({ error: 'Only a task completed after its due date takes a delay reason.' });
+    }
+    if (t.done_on < DELAY_REASON_FROM) {
+      return res.status(400).json({ error: `Delay reasons are kept for tasks completed from ${DELAY_REASON_FROM}.` });
+    }
+    await db.query('UPDATE delegation_tasks SET delay_reason=? WHERE id=?', [reason.slice(0, 2000), t.id]);
+    logTaskActivity({ taskId: t.id, taskType: 'delegation', oldStatus: 'completed', newStatus: 'completed',
+      changedBy: uid, source: 'delay-reason', note: reason.slice(0, 250) });
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
