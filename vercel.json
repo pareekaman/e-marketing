@@ -8,9 +8,17 @@
         "includeFiles": ["public/**", "node_modules/pdfjs-dist/legacy/build/**"],
         "maxDuration": 60
       }
+    },
+    {
+      "src": "public/react/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
+    {
+      "src": "/react/(.*)",
+      "dest": "/public/react/$1"
+    },
     {
       "src": "/(.*)",
       "dest": "/server.js"
