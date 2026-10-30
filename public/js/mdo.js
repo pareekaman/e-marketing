@@ -1506,10 +1506,27 @@ function ccUpdateField(bank, cardNum, stmtIdx, txIdx, field, val) {
   }
 }
 
+// The no-bank overview is a React page (frontend/src/pages/CcOverview.jsx)
+// since 2026-10-30, in #ccOverview beside #ccDetailContent; one of the two
+// shows at a time.
+let CC_OVERVIEW_REACT = null;
+let _ccOverviewView = null;
+function ccOverviewSetReact(fn) { CC_OVERVIEW_REACT = fn; if (fn && _ccOverviewView) fn(_ccOverviewView); }
+
 function ccRenderDetail() {
   const panel = document.getElementById('ccDetailContent');
   if (!panel) return;
   const bank = _ccActiveBank;
+  const overview = document.getElementById('ccOverview');
+  if (overview && overview.dataset.react) {
+    overview.style.display = bank ? 'none' : '';
+    panel.style.display = bank ? '' : 'none';
+    if (!bank) {
+      _ccOverviewView = { data: _ccData, colors: CC_BANK_COLORS, canEdit: ccCanEdit() };
+      if (CC_OVERVIEW_REACT) return CC_OVERVIEW_REACT(_ccOverviewView);
+      return emkReactMount('ccoverview', overview);
+    }
+  }
   if (!bank) {
     // Build overview: stats across all banks
     const allBanks = Object.keys(_ccData);
