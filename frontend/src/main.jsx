@@ -15,6 +15,7 @@ const PAGES = {
   inventory: lazy(() => import('./pages/Inventory.jsx')),
   meetings: lazy(() => import('./pages/Meetings.jsx')),
   payreq: lazy(() => import('./pages/PaymentRequests.jsx')),
+  users: lazy(() => import('./pages/UsersRows.jsx')),
 };
 
 const roots = new WeakMap();
@@ -26,7 +27,8 @@ function mount(name, el) {
   if (!root) { root = createRoot(el); roots.set(el, root); }
   root.render(
     <StrictMode>
-      <Suspense fallback={<div className="empty">Loading…</div>}>
+      {/* A table body can hold only rows, so it waits without a placeholder. */}
+      <Suspense fallback={/^(TBODY|THEAD|TR|TABLE)$/.test(el.tagName) ? null : <div className="empty">Loading…</div>}>
         <Page />
       </Suspense>
     </StrictMode>

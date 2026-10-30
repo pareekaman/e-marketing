@@ -46,8 +46,21 @@ function downloadUsersCSV() {
 // Map to store full user data for safe edit access (avoids inline special-char bugs)
 const _usersMap = {};
 
+// The table rows are a React page (frontend/src/pages/UsersRows.jsx), mounted
+// into #usersTbody since 2026-10-30. Search, Add, CSV and the Edit form stay
+// here; renderUsersTable() hands the filtered list to the React rows.
+let USERS_REACT = null;   // fn(users) from the React rows
+let _usersShown = null;   // the list most recently handed over
+function usersSetReact(fn) { USERS_REACT = fn; if (fn && _usersShown) fn(_usersShown); }
+
 function renderUsersTable(users) {
   const tbody = document.getElementById('usersTbody');
+  if (tbody && tbody.dataset.react) {
+    _usersShown = users;
+    users.forEach(u => { _usersMap[u.id] = u; });   // openEditUser(id) reads these
+    if (USERS_REACT) return USERS_REACT(users);
+    return emkReactMount('users', tbody);
+  }
   if (!users.length) {
     tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:#94a3b8">No users found</td></tr>`;
     return;
