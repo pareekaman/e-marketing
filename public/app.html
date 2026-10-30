@@ -545,72 +545,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 
   <!-- ── PROFILE ── -->
   <div id="page-profile" class="page">
-    <div class="profile-card">
-
-      <!-- Profile Image Section -->
-      <div style="display:flex;align-items:center;gap:20px;margin-bottom:22px;">
-        <div style="position:relative">
-          <div id="profileAvatar" title="Click to view photo" onclick="viewProfileImage()" style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent-light));display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0;border:3px solid #e2e8f0;cursor:pointer;">?</div>
-          <div title="Change photo" onclick="document.getElementById('profileImgInput').click()" style="position:absolute;bottom:0;right:0;width:24px;height:24px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;cursor:pointer;">
-            <span style="color:#fff;font-size:12px">✏️</span>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:14px;font-weight:600;color:#1e293b" id="profileNameDisplay">—</div>
-          <div style="font-size:12px;color:#64748b;margin-top:2px" id="profileRoleDisplay">—</div>
-          <button class="btn btn-outline" style="margin-top:8px;font-size:12px;padding:5px 12px" onclick="document.getElementById('profileImgInput').click()">📷 Change Photo</button>
-          <button class="btn btn-outline" style="margin-top:8px;margin-left:6px;font-size:12px;padding:5px 12px;color:#dc2626;border-color:#fecaca" onclick="removeProfileImage()">✕ Remove</button>
-        </div>
-      </div>
-      <input type="file" id="profileImgInput" accept="image/*" style="display:none" onchange="handleProfileImage(event)"/>
-
-      <!-- Profile photo viewer (lightbox) -->
-      <div id="profileImgViewer" onclick="closeProfileImage()"
-        style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.85);align-items:center;justify-content:center;cursor:zoom-out">
-        <img id="profileImgViewerImg" src="" alt="Profile photo"
-          style="max-width:90vw;max-height:90vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5);object-fit:contain"/>
-        <button onclick="closeProfileImage()" aria-label="Close"
-          style="position:absolute;top:20px;right:24px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.15);color:#fff;border:none;font-size:22px;cursor:pointer;line-height:1">✕</button>
-      </div>
-
-      <div class="alert success" id="profileSuccess"></div>
-      <div class="alert error" id="profileError"></div>
-      <div class="form-group"><label>Full Name</label><input type="text" id="pName"/></div>
-      <div class="form-group"><label>Email Address</label><input type="email" id="pEmail"/></div>
-      <div class="form-group">
-        <label>Notification Email <span style="color:#64748b;font-weight:400;font-size:12px">(real Gmail/Outlook for task notifications)</span></label>
-        <input type="email" id="pNotifEmail" placeholder="yourrealemail@gmail.com"/>
-      </div>
-      <div class="form-group"><label>Phone Number</label><input type="tel" id="pPhone" placeholder="Enter phone number"/></div>
-      <div class="form-row">
-        <div class="form-group"><label>Birthday</label><input type="date" id="pBirthday"/></div>
-        <div class="form-group"><label>Joining Date</label><input type="date" id="pJoiningDate"/></div>
-      </div>
-      <!-- Extra Working approval route — shown only to the person the server marks eligible (users.js loadEwRoute) -->
-      <!-- A bare switch with no visible text, at the user's request; aria-label names it for screen readers. -->
-      <div id="ewRouteBox" style="display:none;margin-bottom:18px">
-        <label class="dash-team-switch" style="cursor:pointer"><input type="checkbox" id="ewRouteToggle" aria-label="Send my Extra Working to Simran Gurnani only" onchange="setEwRoute(this.checked)"/><span></span></label>
-        <!-- The times the Extra Working request should carry instead of the real
-             clock. They only apply while the switch is on, so they follow it. -->
-        <div id="ewStampBox" style="display:none;margin-top:12px">
-          <div class="form-row">
-            <div class="form-group">
-              <label>Applied On <span style="color:#64748b;font-weight:400;font-size:12px">(blank = real time)</span></label>
-              <input type="datetime-local" id="ewAppliedAt" onchange="saveEwStamps()"/>
-            </div>
-            <div class="form-group">
-              <label>Decided On <span style="color:#64748b;font-weight:400;font-size:12px">(blank = real time)</span></label>
-              <input type="datetime-local" id="ewDecidedAt" onchange="saveEwStamps()"/>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="section-title">Change Password</div>
-      <div class="form-group"><label>Current Password</label><input type="password" id="pCurrent" placeholder="Enter current password"/></div>
-      <div class="form-group"><label>New Password</label><input type="password" id="pNew" placeholder="Enter new password"/></div>
-      <div class="form-group"><label>Confirm Password</label><input type="password" id="pConfirm" placeholder="Confirm new password"/></div>
-      <button class="btn btn-primary" onclick="saveProfile()">Save Changes</button>
-    </div>
+    <!-- The whole page is React (frontend/src/pages/Profile.jsx), mounted by loadProfilePage(). -->
+    <div id="profileRoot" data-react="1"></div>
   </div>
 
   <!-- ── APPROVALS ── -->
@@ -4356,16 +4292,16 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 
 <script src="/js/themes/decor-core.js?v=20261027c"></script>
 <script src="/js/themes/picker.js?v=20261027c"></script>
-<script src="/js/core.js?v=20261027c"></script>
+<script src="/js/core.js?v=20261030a"></script>
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261030c"></script>
-<script src="/js/hrm.js?v=20261030a"></script>
-<script src="/js/react-bridge.js?v=20261030v"></script>
+<script src="/js/hrm.js?v=20261030b"></script>
+<script src="/js/react-bridge.js?v=20261030w"></script>
 <script src="/js/dashboard.js?v=20261027c"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261030e"></script>
 <script src="/js/tasks-report.js?v=20261030f"></script>
-<script src="/js/users.js?v=20261030b"></script>
+<script src="/js/users.js?v=20261030c"></script>
 <script src="/js/helpers.js?v=20261027c"></script>
 <script src="/js/fms.js?v=20261027c"></script>
 <script src="/js/daily.js?v=20261030a"></script>

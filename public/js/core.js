@@ -339,15 +339,7 @@ async function init() {
     document.getElementById('sidebarName').textContent = ME.name;
     const roleLabel = ME.role==='admin' ? '👑 Admin' : ME.role==='hod' ? '🏢 HOD' : ME.role==='pc' ? '🖥️ PC' : ME.role==='client' ? '🏢 Client' : '👤 Employee';
     document.getElementById('sidebarRole').textContent = roleLabel;
-    document.getElementById('pName').value = ME.name;
-    document.getElementById('pEmail').value = ME.email;
-    document.getElementById('pNotifEmail').value = ME.notification_email || '';
-    document.getElementById('pPhone').value = ME.phone || '';
-    document.getElementById('pBirthday').value = ME.birthday ? ME.birthday.split('T')[0] : '';
-    document.getElementById('pJoiningDate').value = ME.joining_date ? ME.joining_date.split('T')[0] : '';
-    document.getElementById('profileNameDisplay').textContent = ME.name;
-    document.getElementById('profileRoleDisplay').textContent = roleLabel;
-    if (typeof loadEwRoute === 'function') loadEwRoute();
+    // The Profile page fills itself from ME when it opens (Profile.jsx).
 
     setAvatarDisplay(ME.profile_image, initials);
 
@@ -546,40 +538,24 @@ function setApprovalTabBadge(id, count) {
   badge.style.display = n > 0 ? 'inline-block' : 'none';
 }
 
-// Set avatar in sidebar + profile page
+// The Profile page (React) repaints from ME through this; set while it is mounted.
+let PROFILE_REACT = null;
+function profileSetReact(fn) { PROFILE_REACT = fn; }
+
+// Set avatar in the sidebar; the Profile page paints its own from ME.
 function setAvatarDisplay(imageData, initials) {
   const sidebar = document.getElementById('sidebarAvatar');
-  const profile = document.getElementById('profileAvatar');
 
   if (imageData) {
-    // Sidebar
     sidebar.style.backgroundImage = `url(${imageData})`;
     sidebar.style.backgroundSize = 'cover';
     sidebar.style.backgroundPosition = 'center';
     sidebar.textContent = '';
-    // Profile
-    profile.style.backgroundImage = `url(${imageData})`;
-    profile.style.backgroundSize = 'cover';
-    profile.style.backgroundPosition = 'center';
-    profile.textContent = '';
   } else {
     sidebar.style.backgroundImage = '';
     sidebar.textContent = initials || '?';
-    profile.style.backgroundImage = '';
-    profile.textContent = initials || '?';
   }
-}
-
-// View profile photo full-size. No photo set → fall back to the file picker so
-// the click still does something useful.
-function viewProfileImage() {
-  if (!ME || !ME.profile_image) { document.getElementById('profileImgInput').click(); return; }
-  document.getElementById('profileImgViewerImg').src = ME.profile_image;
-  document.getElementById('profileImgViewer').style.display = 'flex';
-}
-function closeProfileImage() {
-  document.getElementById('profileImgViewer').style.display = 'none';
-  document.getElementById('profileImgViewerImg').src = '';
+  if (PROFILE_REACT) PROFILE_REACT();
 }
 
 // Handle image file selection

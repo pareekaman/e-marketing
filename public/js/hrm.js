@@ -1195,6 +1195,7 @@ function navigate(page, el) {
   const pageLoaders = {
     dashboard: loadDashboard, alltasks: loadAllTasks, users: loadUsers,
     approvals: loadApprovals, fms: loadFMSAdmin, 'fms-tasks': loadFMSTasks,
+    profile: loadProfilePage,
     daily: loadDailyForm, clients: loadClients, compliance: loadCompliance,
     dailyreports: loadDailyReports, leaves: loadLeaves, race: loadRaceTracker,
     meetings: loadMeetings, 'client-portal': loadClientPortal,
