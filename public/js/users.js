@@ -382,6 +382,10 @@ function switchApprovalTab(tab, el) {
   if (tab==='mdo') loadMdoApprovals();
 }
 
+let APPR_REACT = null;   // fn(list) from the React list
+let _apprList = null;
+function apprSetReact(fn) { APPR_REACT = fn; if (fn && _apprList) fn(_apprList); }
+
 async function loadApprovals() {
   // Transfer tab for everyone: admin/HOD/PC see their scope, others the
   // transfers coming to them.
@@ -412,6 +416,14 @@ async function loadApprovals() {
   const approvals = await api('/api/approvals');
   const container = document.getElementById('approvalsContent');
   setApprovalTabBadge('apprTaskBadge', approvals.length);
+  // The task approvals list is a React page (frontend/src/pages/TaskApprovals.jsx)
+  // since 2026-10-30, mounted into #approvalsContent; the tabs, badges and the
+  // Approve / Reject calls stay here.
+  if (container && container.dataset.react) {
+    _apprList = Array.isArray(approvals) ? approvals : [];
+    if (APPR_REACT) return APPR_REACT(_apprList);
+    return emkReactMount('approvals', container);
+  }
 
   if (!approvals.length) {
     container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">✅ No pending task approvals!</div>`;
