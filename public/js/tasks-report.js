@@ -5,7 +5,12 @@
   const s = document.createElement('style');
   s.textContent = `
     .at-rep{display:flex;flex-wrap:wrap;gap:14px 28px;align-items:flex-start;margin:0 0 14px;padding:12px 16px;border:1px solid var(--border,#e2e8f0);border-radius:12px;background:var(--card,#fff)}
-    .at-rep-col{flex:1 1 300px;min-width:0}
+    .at-rep-col{flex:1 1 300px;min-width:0;max-height:320px;overflow:auto}
+    .at-rep-closed{padding:0}
+    .at-rep-head{flex:1 1 100%;display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;padding:4px 0;cursor:pointer;color:inherit;font:inherit;font-size:13px;text-align:left}
+    .at-rep-closed .at-rep-head{padding:12px 16px}
+    .at-rep-caret{font-size:11px;opacity:.7;width:12px}
+    .at-rep-sub{font-size:11px;opacity:.6;margin-left:auto}
     .at-rep-h{font-size:12px;font-weight:700;margin-bottom:6px}
     .at-rep-days{margin-top:8px;max-height:280px;overflow:auto}
     .at-rep-t{width:100%;border-collapse:collapse;font-size:12px}
@@ -17,6 +22,7 @@
 })();
 let AT_REPORT_ROWS = [];
 let AT_REPORT_DAYS_OPEN = false;
+let AT_REPORT_OPEN = false;
 
 const atIsSelf = t => t.assigned_by != null && String(t.assigned_by) === String(t.assigned_to);
 const atGiverKey = t => atIsSelf(t) ? '__self' : (t.assignedByName || '—');
@@ -64,10 +70,18 @@ function atReportRender(rows) {
   AT_REPORT_ROWS = off ? [] : rows;
   if (!box) return;
   if (off || !rows.length) { box.innerHTML = ''; return; }
-  const t = atReportTables(atReportData(rows), rows.length);
+  const data = atReportData(rows);
+  const head = `<button type="button" class="at-rep-head" onclick="AT_REPORT_OPEN=!AT_REPORT_OPEN;atReportRender(AT_REPORT_ROWS)">
+      <span class="at-rep-caret">${AT_REPORT_OPEN ? '▾' : '▸'}</span>
+      <b>Who gave these ${rows.length} task${rows.length === 1 ? '' : 's'}</b>
+      <span class="at-rep-sub">${data.giverList.length} ${data.giverList.length === 1 ? 'person' : 'people'} · click to ${AT_REPORT_OPEN ? 'hide' : 'see'}</span>
+    </button>`;
+  if (!AT_REPORT_OPEN) { box.innerHTML = `<div class="at-rep at-rep-closed">${head}</div>`; return; }
+  const t = atReportTables(data, rows.length);
   box.innerHTML = `
     <div class="at-rep">
-      <div class="at-rep-col"><div class="at-rep-h">Who gave these ${rows.length} task${rows.length === 1 ? '' : 's'}</div>${t.givers}</div>
+      ${head}
+      <div class="at-rep-col">${t.givers}</div>
       <div class="at-rep-col">
         <button type="button" class="tg-mini-btn" onclick="AT_REPORT_DAYS_OPEN=!AT_REPORT_DAYS_OPEN;atReportRender(AT_REPORT_ROWS)">
           ${AT_REPORT_DAYS_OPEN ? '▾ Hide' : '▸ Show'} day by day (date given)</button>
