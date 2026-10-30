@@ -159,6 +159,12 @@ function atReportPdf() {
     r.completed_on <= r.due_date
   );
 
+  // Completed but with no done date to compare: delegation tasks finished
+  // before 22 Jul 2026 (completed_at was not saved until then) and checklists,
+  // which never keep one. Counted on their own so On Time + Late + this one
+  // adds up to Completed.
+  const noDoneDateTasks = completed.filter(r => !lateTasks.includes(r) && !onTimeTasks.includes(r));
+
   const overdueTasks = pending.filter(r =>
     r.due_date &&
     dateValue(r.due_date) &&
@@ -171,6 +177,7 @@ function atReportPdf() {
     { label: 'Pending', value: pending.length, cls: 'pending', icon: '◷' },
     { label: 'Completed On Time', value: onTimeTasks.length, cls: 'ontime', icon: '✓' },
     { label: 'Completed Late', value: lateTasks.length, cls: 'late', icon: '!' },
+    ...(noDoneDateTasks.length ? [{ label: 'Done Date Not Recorded', value: noDoneDateTasks.length, cls: 'nodate', icon: '?' }] : []),
     { label: 'Overdue', value: overdueTasks.length, cls: 'overdue', icon: '⚠' }
   ];
 
@@ -211,6 +218,8 @@ function atReportPdf() {
       delay = days !== null ? `${days} days late` : '—';
     } else if (onTimeTasks.includes(r)) {
       delay = 'On time';
+    } else if (noDoneDateTasks.includes(r)) {
+      delay = 'Done date not recorded';
     } else if (isOverdue) {
       const days = daysBetween(r.due_date, todayISO);
       delay = days !== null ? `${days} days overdue` : '—';
@@ -474,6 +483,14 @@ function atReportPdf() {
     color: #dc2626;
   }
 
+  .summary-card.nodate {
+    border-top-color: #94a3b8;
+  }
+
+  .summary-card.nodate .summary-icon {
+    color: #64748b;
+  }
+
   /* Summary tables */
   .cols {
     display: flex;
@@ -718,7 +735,7 @@ function atReportPdf() {
   <!-- Summary -->
   <div class="section-heading">Task Summary</div>
 
-  <div class="summary-grid">
+  <div class="summary-grid" style="grid-template-columns:repeat(${summaryCards.length},1fr)">
     ${summaryHTML}
   </div>
 
