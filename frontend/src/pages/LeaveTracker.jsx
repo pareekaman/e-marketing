@@ -5,6 +5,7 @@
 // back here through lvSetReactReload.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, me, canDo, canSee, legacy, fmtDate, richText } from '../lib/app.js';
+import SearchSelect from '../components/SearchSelect.jsx';
 
 const TYPE_LABEL = { full_day: 'Full Day Leave', half_day: 'Half Day Leave', work_from_home: 'Work From Home', extra_working: 'Extra Working' };
 const TYPE_ICON = { full_day: '🛌', half_day: '⏱', work_from_home: '🏠', extra_working: '⚡' };
@@ -273,10 +274,9 @@ export default function LeaveTracker() {
 
       {teamFilters ? (
         <div id="lvTeamFilters" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14, padding: '10px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10 }}>
-          <select data-no-search value={userVal} onChange={e => setUserVal(e.target.value)} style={{ ...inputStyle, padding: '7px 12px' }}>
-            <option value="all">All Employees</option>
-            {employees.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-          </select>
+          <SearchSelect value={userVal} onChange={setUserVal} placeholder="All Employees"
+            options={[{ value: 'all', label: 'All Employees' }, ...employees.map(([id, name]) => ({ value: id, label: name }))]}
+            style={{ ...inputStyle, padding: '7px 12px' }} />
           <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={inputStyle} />
           <span style={{ fontSize: 12, color: '#94a3b8' }}>to</span>
           <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={inputStyle} />
