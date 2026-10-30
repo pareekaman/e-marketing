@@ -701,7 +701,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 
     <!-- Equipment issue approvals panel (admin / Inventory Admin only) -->
     <div id="invIssueApprovalsPanel" style="display:none">
-      <div id="invIssueApprovalsContent" class="flat-tasks-table" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden">
+      <!-- data-react: the list is a React page (frontend/src/pages/InvIssueApprovals.jsx), mounted by loadInvIssueApprovals(). -->
+      <div id="invIssueApprovalsContent" data-react="1" class="flat-tasks-table" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden">
         <div class="empty">Loading…</div>
       </div>
     </div>
@@ -4357,9 +4358,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/themes/picker.js?v=20261027c"></script>
 <script src="/js/core.js?v=20261027c"></script>
 <script src="/js/access.js?v=20261027c"></script>
-<script src="/js/inventory.js?v=20261030b"></script>
+<script src="/js/inventory.js?v=20261030c"></script>
 <script src="/js/hrm.js?v=20261030a"></script>
-<script src="/js/react-bridge.js?v=20261030u"></script>
+<script src="/js/react-bridge.js?v=20261030v"></script>
 <script src="/js/dashboard.js?v=20261027c"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261030e"></script>

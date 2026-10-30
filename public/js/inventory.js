@@ -291,6 +291,13 @@ async function loadInvIssueApprovals() {
   const list = Array.isArray(rows) ? rows : [];
   setApprovalTabBadge('apprInvIssueBadge', list.length);
   if (!el) return;
+  // The list is a React page (frontend/src/pages/InvIssueApprovals.jsx) since
+  // 2026-10-30; decideInvIssue stays here.
+  if (el.dataset.react) {
+    _invIssueList = list;
+    if (INV_ISSUE_REACT) return INV_ISSUE_REACT(list);
+    return emkReactMount('invissues', el);
+  }
   if (!list.length) {
     el.innerHTML = '<div class="empty">✅ No pending equipment issues!</div>';
     return;
@@ -308,6 +315,9 @@ async function loadInvIssueApprovals() {
       </td>
     </tr>`).join('')}</tbody></table>`;
 }
+let INV_ISSUE_REACT = null;   // fn(list) from the React list
+let _invIssueList = null;
+function invIssueSetReact(fn) { INV_ISSUE_REACT = fn; if (fn && _invIssueList) fn(_invIssueList); }
 
 async function decideInvIssue(id, decision) {
   let note = '';
