@@ -418,6 +418,8 @@ function renderTasksTable() {
     const matchDateTo = !dateTo || (t.due_date && t.due_date <= dateTo);
     return matchStatus && matchSearch && matchUser && matchDateFrom && matchDateTo;
   });
+  // Who-gave summary and PDF over exactly these rows (tasks-report.js).
+  if (typeof atReportRender === 'function') atReportRender(tasks);
 
   if (!tasks.length) {
     container.innerHTML = `<div class="empty tasks-slide-in" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">No tasks found</div>`;
