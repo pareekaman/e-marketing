@@ -468,8 +468,9 @@ async function loadDailyReports(){
   const react = !!document.getElementById('drReactRoot');
   if (react) {
     DR_STATE = { loading: true, error: '' };
+    if (!DR_FILTERS && document.getElementById('drFilterRow')) DR_FILTERS = { search: '', type: 'daily', user: '' };
     if (!DR_REACT) {
-      ['drStats', 'drSummaryWrap', 'drEntriesWrap', 'drFilterSummary'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+      ['drStats', 'drSummaryWrap', 'drEntriesWrap', 'drFilterRow'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
       emkReactMount('dailyreports', document.getElementById('drReactRoot'));
     } else DR_REACT();
   } else {
@@ -568,7 +569,34 @@ function renderDRSummary(){
   wrap.innerHTML = html;
 }
 
+// The All Entries filters (search, type, doer, clients) are React since
+// 2026-10-31 (DrFilters in DailyReports.jsx, in #drFilterRow). Their values
+// live here in DR_FILTERS; without the React row the old controls are read.
+// Exports and the PDF read them through drFilterVals() either way.
+const DR_TYPE_LABELS = { daily: 'Daily Task', extra: 'Extra Working (approved)', all: 'Daily Task + Extra Working' };
+let DR_FILTERS = null;   // { search, type, user } while the React row is in use
+function drSetFilters(f){ DR_FILTERS = f; renderDREntries(); }
+function drFilterVals(){
+  if (DR_FILTERS) return DR_FILTERS;
+  return {
+    search: document.getElementById('drSearch')?.value || '',
+    type: document.getElementById('drTypeFilter')?.value || 'daily',
+    user: document.getElementById('drUserFilter')?.value || '',
+  };
+}
+function drClientState(){ return { opts: DR_CLIENT_OPTS, sel: [...DR_CLIENT_SEL], handled: DR_CLIENT_OPTS.filter(drDoerHandles) }; }
+function drClientSet(c, on){
+  if (on) DR_CLIENT_SEL.add(c); else DR_CLIENT_SEL.delete(c);
+  drRenderClientList(); drUpdateClientBtn(); renderDREntries();
+}
+
 function renderDREntriesUserDropdown(){
+  // React row: a chosen doer who is no longer in the list drops back to all,
+  // as a <select> rebuilt without their option did.
+  if (DR_FILTERS) {
+    if (DR_FILTERS.user && !drBaseEntries().some(e => String(e.user_id) === String(DR_FILTERS.user))) DR_FILTERS = { ...DR_FILTERS, user: '' };
+    return;
+  }
   const sel = document.getElementById('drUserFilter');
   const cur = sel.value;
   let html = '<option value="">All Doers</option>';
@@ -587,7 +615,7 @@ let DR_CLIENT_OPTS = [];
 let DR_CLIENT_HANDLERS = new Map();
 // With a doer chosen, the clients they handle come first (then the rest, A-Z).
 function drDoerHandles(name){
-  const doer = document.getElementById('drUserFilter')?.value || '';
+  const doer = drFilterVals().user;
   return !!doer && !!DR_CLIENT_HANDLERS.get(name)?.has(String(doer));
 }
 function renderDREntriesClientDropdown(){
@@ -634,6 +662,7 @@ function drToggleClientDrop(ev){
 document.addEventListener('click', () => document.getElementById('drClientDrop')?.classList.remove('open'));
 
 function drClearEntryFilters(){
+  if (DR_FILTERS) DR_FILTERS = { search: '', type: 'daily', user: '' };
   const s = document.getElementById('drSearch'); if (s) s.value = '';
   const u = document.getElementById('drUserFilter'); if (u) u.value = '';
   DR_CLIENT_SEL.clear();
@@ -651,7 +680,7 @@ function drClearRange(){
 // Rows for the chosen type. Extra Working is a separate list from the server
 // (approved only) and never enters the stats or the per-user summary.
 function drBaseEntries(){
-  const type = document.getElementById('drTypeFilter')?.value || 'daily';
+  const type = drFilterVals().type;
   const extra = DR_DATA.extra_entries || [];
   if (type === 'extra') return extra;
   if (type === 'all') return [...DR_DATA.entries, ...extra].sort((a, b) =>
@@ -661,8 +690,8 @@ function drBaseEntries(){
 
 function drFilteredEntries(){
   if (!DR_DATA) return [];
-  const search = (document.getElementById('drSearch')?.value || '').toLowerCase();
-  const userId = document.getElementById('drUserFilter')?.value || '';
+  const { search: rawSearch, user: userId } = drFilterVals();
+  const search = rawSearch.toLowerCase();
   let entries = drBaseEntries();
   if (userId) entries = entries.filter(e => String(e.user_id) === String(userId));
   if (DR_CLIENT_SEL.size) entries = entries.filter(e => DR_CLIENT_SEL.has(e.client_name));
@@ -849,11 +878,9 @@ function drExportPDF(){
   const rangeLabel = DR_DATA.from && DR_DATA.to
     ? `${DR_DATA.from} → ${DR_DATA.to}`
     : DR_DATA.month;
-  const userId = document.getElementById('drUserFilter')?.value || '';
+  const { user: userId, search, type } = drFilterVals();
   const client  = [...DR_CLIENT_SEL].join(', ');
-  const search  = document.getElementById('drSearch')?.value || '';
-  const typeSel = document.getElementById('drTypeFilter');
-  const typeLabel = typeSel && typeSel.selectedIndex >= 0 ? typeSel.options[typeSel.selectedIndex].text : '';
+  const typeLabel = DR_TYPE_LABELS[type] || '';
   const filterLine = [
     typeLabel ? `Type: ${typeLabel}` : '',
     userId ? `Doer: ${entries[0]?.doer_name || userId}` : '',
