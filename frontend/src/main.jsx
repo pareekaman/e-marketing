@@ -42,6 +42,7 @@ const PAGES = {
   payform: lazy(() => import('./pages/PayForm.jsx')),
   userform: lazy(() => import('./pages/UserForm.jsx')),
   invpopups: lazy(() => import('./pages/InvPopups.jsx')),
+  emp360: lazy(() => import('./pages/Emp360.jsx')),
 };
 
 const roots = new WeakMap();

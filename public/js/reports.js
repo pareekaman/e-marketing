@@ -39,7 +39,8 @@ async function emp360InitPicker(){
     // Default range = current month
     if (!document.getElementById('empFrom').value) emp360Preset('month', true);
   } catch(e) {
-    document.getElementById('emp360Wrap').innerHTML = '<div class="empty">Failed to load employee list</div>';
+    if (!_emp360Show({ empty: 'Failed to load employee list' }))
+      document.getElementById('emp360Wrap').innerHTML = '<div class="empty">Failed to load employee list</div>';
   }
 }
 
@@ -67,21 +68,35 @@ function e3ToggleDay(idx) {
   document.getElementById('e3day' + idx)?.classList.toggle('open');
 }
 
+// The report in #emp360Wrap is React (frontend/src/pages/Emp360.jsx) since
+// 2026-10-31; renderEmp360() below stays as the fallback. It gets either a
+// message ({empty}) or the payload ({data, empId}).
+let EMP360_REACT = null, _emp360State = null;
+function emp360SetReact(fn) { EMP360_REACT = fn; if (fn && _emp360State) fn(_emp360State); }
+function _emp360Show(state) {
+  const wrap = document.getElementById('emp360Wrap');
+  if (!wrap || !wrap.dataset.react) return false;
+  _emp360State = state;
+  if (EMP360_REACT) EMP360_REACT(state); else emkReactMount('emp360', wrap);
+  return true;
+}
+
 async function loadEmp360(){
   const id = document.getElementById('empSelect').value;
   const wrap = document.getElementById('emp360Wrap');
-  if (!id) { wrap.innerHTML = '<div class="empty">Select an employee to see the full 360° view.</div>'; return; }
+  const say = msg => { if (!_emp360Show({ empty: msg })) wrap.innerHTML = `<div class="empty">${dtEscape(msg)}</div>`; };
+  if (!id) { say('Select an employee to see the full 360° view.'); return; }
   const from = document.getElementById('empFrom').value;
   const to   = document.getElementById('empTo').value;
-  wrap.innerHTML = '<div class="empty">Loading…</div>';
+  say('Loading…');
   try {
     const qs = (from && to) ? `?from=${from}&to=${to}` : '';
     const d = await api('/api/compliance/employee/' + id + qs);
     if (d.error) throw new Error(d.error);
     EMP360_DATA = d;
-    renderEmp360();
+    if (!_emp360Show({ data: d, empId: id })) renderEmp360();
   } catch(e) {
-    wrap.innerHTML = `<div class="empty">Failed: ${dtEscape(e.message)}</div>`;
+    say(`Failed: ${e.message}`);
   }
 }
 
