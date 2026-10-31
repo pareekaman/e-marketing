@@ -612,6 +612,14 @@ async function prOpenEditModal(id){
   const reason = parsed.amount != null ? parsed.reason : r.reason;
   let chosen = [];
   try { const p = JSON.parse(r.departments || '[]'); if (Array.isArray(p)) chosen = p; } catch {}
+  // A department the row already carries but the live list has since dropped
+  // (renamed, or its last user left) still has to appear, ticked — otherwise
+  // saving would quietly strip it.
+  const deptOptions = [...new Set([..._prDepts, ...chosen])].sort((a, b) => a.localeCompare(b));
+  // The modal is React (PayPopups.jsx, in #prPopupsRoot) since 2026-10-31; the
+  // overlay below stays as the fallback. Both save through prEditPut().
+  if (_prPopupReact('edit', [{ id: r.id, bank: r.bank_name || '', card: r.card_number || '', bankOptions,
+    cards: _prCards.slice(), currency, amount, reason, chosen, deptOptions }])) return;
 
   document.getElementById('prEditOverlay')?.remove();
   const ov = document.createElement('div');
@@ -619,10 +627,6 @@ async function prOpenEditModal(id){
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
   const fld = 'width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;box-sizing:border-box';
   const lbl = 'display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.3px;margin:0 0 5px';
-  // A department the row already carries but the live list has since dropped
-  // (renamed, or its last user left) still has to appear, ticked — otherwise
-  // saving would quietly strip it.
-  const deptOptions = [...new Set([..._prDepts, ...chosen])].sort((a, b) => a.localeCompare(b));
   ov.innerHTML = `
     <div style="background:#fff;border-radius:14px;padding:20px 22px;width:460px;max-width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.25)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
@@ -759,17 +763,26 @@ async function prSaveEdit(id){
   const btn = document.getElementById('prEditSaveBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   try {
-    const r = await api('/api/payment-requests/' + id, 'PUT', {
+    const e = await prEditPut(id, {
       bank_name: bank, card_number: card, amount: amt, reason: encodedReason, departments: depts
     });
-    if (r && r.error) { fail(r.error); return; }
+    if (e) { fail(e); return; }
     document.getElementById('prEditOverlay')?.remove();
     showToast('✅ Request updated');
     loadMyPaymentRequests();
-  } catch (e) {
-    fail('Could not save: ' + e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Save Changes'; }
+  }
+}
+
+// The save itself, for this modal and the React one: null when it went
+// through, otherwise the message to show inside the modal.
+async function prEditPut(id, body){
+  try {
+    const r = await api('/api/payment-requests/' + id, 'PUT', body);
+    return r && r.error ? r.error : null;
+  } catch (e) {
+    return 'Could not save: ' + e.message;
   }
 }
 
