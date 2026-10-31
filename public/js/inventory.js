@@ -35,6 +35,21 @@ function invSetData(items, assignments) { _invItems = items; _invAssignments = a
 function invGetData() { return { items: _invItems, assignments: _invAssignments, tab: _invTab }; }
 function invSetTab(tab) { _invTab = tab; }
 
+// The pop-ups (add, assign, handover / return request, confirm return, report
+// issue, details, photo) are React (frontend/src/pages/InvPopups.jsx, in
+// #invPopupsRoot) since 2026-10-31; their markup in app.html and the code
+// below stay as the fallback. Each opener hands its arguments over.
+let INV_POPUPS_REACT = null, _invPopupWanted = null;
+function invPopupsSetReact(o) { INV_POPUPS_REACT = o; if (o && _invPopupWanted) { const [k, a] = _invPopupWanted; _invPopupWanted = null; o[k](...a); } }
+function _invPopupReact(kind, args) {
+  const root = document.getElementById('invPopupsRoot');
+  if (!root || !root.dataset.react) return false;
+  if (INV_POPUPS_REACT) INV_POPUPS_REACT[kind](...args);
+  else { _invPopupWanted = [kind, args]; emkReactMount('invpopups', root); }
+  return true;
+}
+const _invReasonList = keys => keys.map(k => ({ value: k, label: INV_RETURN_REASON_OPTS[k] }));
+
 async function loadInventory() {
   const root = document.getElementById('invReactRoot');
   if (root) return INV_REACT ? INV_REACT.reload() : emkReactMount('inventory', root);
@@ -200,6 +215,11 @@ function invCard(item, isAdmin) {
 function openInvDetailModal(id) {
   const item = _invItems.find(i => String(i.id) === String(id));
   if (!item) return;
+  if (_invPopupReact('detail', [item, {
+    emoji: invTypeEmoji(item.type), statusColor: INV_STATUS_COLORS[item.status] || '#94a3b8',
+    type: INV_TYPE_PLAIN[item.type] || item.type, condition: INV_CONDITION_LABELS[item.item_condition] || item.item_condition,
+    returnReason: INV_RETURN_REASON_LABELS[item.return_reason] || item.return_reason, issueLine: item.issue_id ? invIssueLine(item) : '',
+  }])) return;
 
   const statusColor = INV_STATUS_COLORS[item.status] || '#94a3b8';
   const row = (label, value, mono) => value
@@ -253,6 +273,7 @@ function invIssueLine(item) {
 }
 
 function openInvIssueModal(itemId, itemName) {
+  if (_invPopupReact('issue', [itemId, itemName])) return;
   _invIssueItemId = itemId;
   document.getElementById('invIssueDesc').textContent = itemName;
   const today = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
@@ -381,6 +402,7 @@ function previewInvPhoto(event) {
 }
 
 function viewInvPhoto(src) {
+  if (_invPopupReact('photo', [src])) return;
   document.getElementById('invPhotoViewerImg').src = src;
   document.getElementById('invPhotoViewer').style.display = 'flex';
   document.getElementById('invPhotoViewer').classList.add('open');
@@ -390,6 +412,7 @@ function viewInvPhoto(src) {
 // the adder's own equipment (self-assigned); from All Equipment an admin/HOD
 // adds it to the shared pool as unassigned stock.
 function openInvAddModal() {
+  if (_invPopupReact('add', [{ selfAdd: _invTab === 'mine', types: INV_TYPE_LABELS, names: INV_TYPE_PLAIN }])) return;
   _invSelfAddMode = _invTab === 'mine';
   document.getElementById('invAddModalTitle').textContent = _invSelfAddMode ? '＋ Add to My Equipment' : '＋ Add Equipment';
   document.getElementById('invAddModalSaveBtn').textContent = _invSelfAddMode ? 'Add to My Equipment' : 'Save Item';
@@ -453,6 +476,7 @@ async function deleteInvItem(id) {
 }
 
 async function openInvAssignModal(itemId, itemName) {
+  if (_invPopupReact('assign', [itemId, itemName])) return;
   _invAssignItemId = itemId;
   document.getElementById('invAssignItemName').textContent = `Item: ${itemName}`;
   document.getElementById('invAssignErr').style.display = 'none';
@@ -476,6 +500,8 @@ async function doAssign() {
 // Step 1, admin-initiated: the custodian starts a handover (e.g. someone is
 // leaving). Shares its modal with the holder-initiated path below.
 function openInvHandoverModal(assignmentId, itemName, userName) {
+  if (_invPopupReact('handover', [{ id: assignmentId, title: 'Initiate Handover', button: 'Mark as Handover Pending',
+    desc: `Item: ${itemName} — currently with ${userName}`, reasons: _invReasonList(Object.keys(INV_RETURN_REASON_OPTS)) }])) return;
   _invHandoverAssignId = assignmentId;
   document.getElementById('invHandoverTitle').textContent = 'Initiate Handover';
   document.getElementById('invHandoverSubmitBtn').textContent = 'Mark as Handover Pending';
@@ -491,6 +517,8 @@ function openInvHandoverModal(assignmentId, itemName, userName) {
 // only the wording differs, since it's the same act: flag it pending and let
 // an admin confirm receipt.
 function requestInvReturn(assignmentId, itemName) {
+  if (_invPopupReact('handover', [{ id: assignmentId, title: 'Return Equipment', button: 'Request Return',
+    desc: `${itemName} — it stays listed as yours until an admin confirms they've received it.`, reasons: _invReasonList(INV_HOLDER_REASONS) }])) return;
   _invHandoverAssignId = assignmentId;
   document.getElementById('invHandoverTitle').textContent = 'Return Equipment';
   document.getElementById('invHandoverSubmitBtn').textContent = 'Request Return';
@@ -518,6 +546,8 @@ async function doHandover() {
 // here is the final call and decides where the item lands, so it is prefilled
 // with whatever was claimed at step 1 but stays editable.
 function openInvReturnModal(assignmentId, itemName, claimedReason) {
+  if (_invPopupReact('ret', [{ id: assignmentId, desc: `${itemName} — confirm you've received it back.`,
+    reasons: _invReasonList(Object.keys(INV_RETURN_REASON_OPTS)), claimed: claimedReason || '' }])) return;
   _invReturnAssignId = assignmentId;
   document.getElementById('invReturnDesc').textContent = `${itemName} — confirm you've received it back.`;
   document.getElementById('invReturnReason').innerHTML = invReasonOptions(Object.keys(INV_RETURN_REASON_OPTS));

@@ -2021,6 +2021,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
   <div class="modal-overlay" id="invPhotoViewer" onclick="closeModal('invPhotoViewer')" style="background:rgba(0,0,0,.85)">
     <img id="invPhotoViewerImg" src="" alt="" style="max-width:92vw;max-height:92vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
   </div>
+  <!-- The inventory pop-ups above as React (frontend/src/pages/InvPopups.jsx); the
+       openers in inventory.js route here, the markup above is the fallback. -->
+  <div id="invPopupsRoot" data-react="1" data-react-quiet="1"></div>
 
   <!-- HRM: Schedule Interview Modal -->
   <div class="modal-overlay" id="hrmAddModal">
@@ -4315,9 +4318,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/themes/picker.js?v=20261027c"></script>
 <script src="/js/core.js?v=20261030b"></script>
 <script src="/js/access.js?v=20261027c"></script>
-<script src="/js/inventory.js?v=20261030c"></script>
+<script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261030b"></script>
-<script src="/js/react-bridge.js?v=20261031c"></script>
+<script src="/js/react-bridge.js?v=20261031d"></script>
 <script src="/js/dashboard.js?v=20261030a"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261030e"></script>
