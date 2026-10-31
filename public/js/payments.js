@@ -11,7 +11,9 @@ function prToggleCurrency() {
 }
 
 async function initPaymentReqPage() {
-  document.getElementById('prName').value = ME.name || '';
+  // Gone once the React form (below) has replaced the old markup.
+  const nameEl = document.getElementById('prName');
+  if (nameEl) nameEl.value = ME.name || '';
   try {
     const res = await api('/api/payment-requests/cards');
     _prCards = Array.isArray(res) ? res : [];
@@ -82,7 +84,15 @@ async function prRemoveCard(id) {
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
+// The create form is React (frontend/src/pages/PayForm.jsx, mounted into
+// #prFormWrap) since 2026-10-31; the markup in app.html stays as the fallback.
+// It gets the saved cards here, and submits through prSubmitSend().
+let PR_FORM_REACT = null;
+function prFormSetReact(fn) { PR_FORM_REACT = fn; if (fn) fn(_prCards); }
+
 function prPopulateBanks() {
+  const formRoot = document.getElementById('prFormWrap');
+  if (formRoot && formRoot.dataset.react) return PR_FORM_REACT ? PR_FORM_REACT(_prCards) : emkReactMount('payform', formRoot);
   const banks = [...new Set(_prCards.map(c => c.bank_name))].sort();
   const sel = document.getElementById('prBank');
   sel.innerHTML = '<option value="">— Select Bank —</option>' +
@@ -192,21 +202,7 @@ async function prSubmit() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Submitting...'; }
 
   try {
-    // Auto-save new bank/card combo (route might not exist on old server — ignore errors)
-    const isNewBank = bankSel === '__other__';
-    const isNewCard = bankSel === '__other__' || cardSel === '__other__';
-    if (isNewBank || isNewCard) {
-      const cr = await api('/api/payment-requests/cards', 'POST', { bank_name:bank, card_number:card });
-      if (!cr.error) {
-        const fresh = await api('/api/payment-requests/cards');
-        if (Array.isArray(fresh)) { _prCards = fresh; prPopulateBanks(); }
-        if (canDo('admin_paymentreq')) prRenderCardList();
-      }
-    }
-
-    const r = await api('/api/payment-requests', 'POST', { bank_name:bank, card_number:card, amount, reason: encodedReason, departments: _prDeptChosen });
-    if (r.error) { showToast('Error: ' + r.error, 'error'); return; }
-    showToast('✅ Request submitted!');
+    if (!await prSubmitSend(bankSel === '__other__' || cardSel === '__other__', bank, card, amount, encodedReason, _prDeptChosen)) return;
     document.getElementById('prBank').value = '';
     document.getElementById('prBankOther').style.display = 'none';
     document.getElementById('prBankOther').value = '';
@@ -222,6 +218,27 @@ async function prSubmit() {
   finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="16" height="16" fill="none" stroke="#fff" stroke-width="2.5" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Submit Request'; }
   }
+}
+
+// The network half of a submit, for this form and the React one: saves a
+// newly typed bank/card, then the request. True when the request went in.
+async function prSubmitSend(isNewCard, bank, card, amount, encodedReason, departments) {
+  try {
+    // Auto-save new bank/card combo (route might not exist on old server — ignore errors)
+    if (isNewCard) {
+      const cr = await api('/api/payment-requests/cards', 'POST', { bank_name:bank, card_number:card });
+      if (!cr.error) {
+        const fresh = await api('/api/payment-requests/cards');
+        if (Array.isArray(fresh)) { _prCards = fresh; prPopulateBanks(); }
+        if (canDo('admin_paymentreq')) prRenderCardList();
+      }
+    }
+
+    const r = await api('/api/payment-requests', 'POST', { bank_name:bank, card_number:card, amount, reason: encodedReason, departments });
+    if (r.error) { showToast('Error: ' + r.error, 'error'); return false; }
+    showToast('✅ Request submitted!');
+    return true;
+  } catch(e) { showToast('Error: ' + e.message, 'error'); return false; }
 }
 
 // The requests list (title, month filter, table) is a React page

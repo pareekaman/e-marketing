@@ -39,6 +39,7 @@ const PAGES = {
   enquiryform: lazy(() => import('./pages/EnquiryForm.jsx')),
   meetingform: lazy(() => import('./pages/MeetingForm.jsx')),
   paypopups: lazy(() => import('./pages/PayPopups.jsx')),
+  payform: lazy(() => import('./pages/PayForm.jsx')),
 };
 
 const roots = new WeakMap();
