@@ -206,7 +206,21 @@ function uDeptSelectChange() {
   else { txt.style.display = 'none'; txt.value = sel.value; }
 }
 
+// The Add / Edit User form is React (frontend/src/pages/UserForm.jsx, in
+// #userFormRoot) since 2026-10-31; #userModal and the functions below stay as
+// the fallback. It gets the user (null on Add) and the department list.
+let USER_FORM_REACT = null, _userFormWanted = null;
+function userFormSetReact(fn) { USER_FORM_REACT = fn; if (fn && _userFormWanted) { const w = _userFormWanted; _userFormWanted = null; fn(w); } }
+function _userFormReact(data) {
+  const root = document.getElementById('userFormRoot');
+  if (!root || !root.dataset.react) return false;
+  if (USER_FORM_REACT) USER_FORM_REACT(data);
+  else { _userFormWanted = data; emkReactMount('userform', root); }
+  return true;
+}
+
 function openAddUser() {
+  if (_userFormReact({ user: null, depts: uDeptList() })) return;
   document.getElementById('userModalTitle').textContent='Add User';
   ['editUserId','uName','uEmail','uNotifEmail','uPhone','uDepartment','uPosition','uPassword','uBirthday','uJoiningDate'].forEach(id=>document.getElementById(id).value='');
   uPopulateDeptSelect('');
@@ -228,6 +242,7 @@ function openAddUser() {
 function openEditUser(id) {
   const u = _usersMap[id];
   if (!u) { appAlert('User data not found. Please refresh the page.'); return; }
+  if (_userFormReact({ user: u, depts: uDeptList() })) return;
   document.getElementById('userModalTitle').textContent='Edit User';
   document.getElementById('editUserId').value=u.id;
   document.getElementById('uName').value=u.name||'';
@@ -298,8 +313,17 @@ function downloadUserSample() {
 }
 
 async function uploadUsersCSV() {
-  const file = document.getElementById('bulkUserFile').files[0];
-  if (!file) { showToast('Please select a CSV file','error'); return; }
+  const msg = await usersBulkUpload(document.getElementById('bulkUserFile').files[0]);
+  if (!msg) return;
+  const suc = document.getElementById('userSuccess');
+  suc.textContent = msg;
+  suc.style.display='block';
+}
+
+// Reads the CSV and adds its users, for this form and the React one: the
+// result line to show, or null when nothing went through (already toasted).
+async function usersBulkUpload(file) {
+  if (!file) { showToast('Please select a CSV file','error'); return null; }
   const text = await file.text();
   const lines = text.trim().split('\n');
   const hdrs = lines[0].toLowerCase().split(',').map(h=>h.trim());
@@ -310,13 +334,11 @@ async function uploadUsersCSV() {
     const u = {}; hdrs.forEach((h,hi) => u[h]=cols[hi]||'');
     if (u.name && u.email && u.password) users.push(u);
   }
-  if (!users.length) { showToast('No valid rows found','error'); return; }
+  if (!users.length) { showToast('No valid rows found','error'); return null; }
   const r = await api('/api/users/bulk','POST',{users});
-  if (r.error) { showToast(r.error,'error'); return; }
-  const suc = document.getElementById('userSuccess');
-  suc.textContent = `✅ Added: ${r.added}, Skipped: ${r.skipped}`;
-  suc.style.display='block';
+  if (r.error) { showToast(r.error,'error'); return null; }
   loadUsers();
+  return `✅ Added: ${r.added}, Skipped: ${r.skipped}`;
 }
 
 
