@@ -51,6 +51,7 @@ const PAGES = {
   ekadd: lazy(() => import('./pages/EkAddForm.jsx')),
   misdetail: lazy(() => import('./pages/MisDetail.jsx')),
   leaddetail: lazy(() => import('./pages/LeadDetail.jsx')),
+  weektasks: lazy(() => import('./pages/WeekTasks.jsx')),
 };
 
 const roots = new WeakMap();

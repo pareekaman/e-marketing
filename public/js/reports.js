@@ -363,7 +363,21 @@ async function emp360ToggleClient(clientId, makeActive){
   }
 }
 
+// The week drill pop-up is React (frontend/src/pages/WeekTasks.jsx, in
+// #weekTaskRoot) since 2026-11-01; #weekTaskModal and _wtRender stay as the
+// fallback. It is handed { open, title } when a week is clicked, then
+// { tasks } or { error } once they load, and { close } to close.
+let WT_REACT = null, _wtWanted = [];
+function wtSetReact(fn) { WT_REACT = fn; if (fn) { const w = _wtWanted; _wtWanted = []; w.forEach(fn); } }
+function _wtReact(msg) {
+  const root = document.getElementById('weekTaskRoot');
+  if (!root || !root.dataset.react) return false;
+  if (WT_REACT) WT_REACT(msg); else { _wtWanted.push(msg); if (_wtWanted.length === 1) emkReactMount('weektasks', root); }
+  return true;
+}
+
 function closeWeekTaskModal() {
+  if (WT_REACT) WT_REACT({ close: true });
   document.getElementById('weekTaskModal').style.display = 'none';
 }
 
@@ -422,6 +436,17 @@ function _wtRender(filter) {
 function emp360FilterTasks(filter) { _wtRender(filter); }
 
 async function emp360WeekDrill(empId, weekStart, weekEnd, filter) {
+  if (_wtReact({ open: true, title: fmtDate(weekStart) + ' – ' + fmtDate(weekEnd) })) {
+    try {
+      const tasks = await api('/api/compliance/employee/' + empId + '/week-tasks?from=' + weekStart + '&to=' + weekEnd);
+      if (!Array.isArray(tasks) || tasks.error) throw new Error(tasks.error || 'Failed');
+      _wtCache = tasks;
+      _wtReact({ tasks, filter: filter || 'all' });
+    } catch (e) {
+      _wtReact({ error: e.message });
+    }
+    return;
+  }
   const modal = document.getElementById('weekTaskModal');
   const body  = document.getElementById('weekTaskBody');
   document.getElementById('weekTaskTitle').textContent = fmtDate(weekStart) + ' – ' + fmtDate(weekEnd);
