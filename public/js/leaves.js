@@ -915,6 +915,19 @@ function openLeaveRemoveDays(id){
   LV_REMOVE_ID = id;
   const dates = Array.isArray(lr.dates) && lr.dates.length ? lr.dates : [{ date: lr.from_date }];
   const direct = lr.status === 'pending' || canDo('admin_leaves');
+  // The pop-up is React (frontend/src/pages/LeaveRemoveDays.jsx, in
+  // #lvRemoveRoot) since 2026-11-01; #leaveRemoveDaysModal is the fallback.
+  // Both save through lvRemoveDaysSend().
+  const root = document.getElementById('lvRemoveRoot');
+  if (root && root.dataset.react) {
+    const data = {
+      direct,
+      info: `${LEAVE_TYPE_LABEL[lr.leave_type] || lr.leave_type} — tick the days to remove.`,
+      days: dates.map(d => ({ value: String(d.date).slice(0, 10), label: fmtDate(d.date), hours: lr.leave_type === 'extra_working' && d.hours ? d.hours : null })),
+    };
+    if (LV_REMOVE_REACT) LV_REMOVE_REACT(data); else { _lvRemoveWanted = data; emkReactMount('leaveremove', root); }
+    return;
+  }
   document.getElementById('lvRemoveErr').style.display = 'none';
   document.getElementById('lvRemoveReason').value = '';
   document.getElementById('lvRemoveInfo').textContent =
@@ -931,19 +944,32 @@ function openLeaveRemoveDays(id){
   document.getElementById('leaveRemoveDaysModal').classList.add('open');
 }
 
+let LV_REMOVE_REACT = null, _lvRemoveWanted = null;
+function lvRemoveSetReact(fn){ LV_REMOVE_REACT = fn; if (fn && _lvRemoveWanted) { const w = _lvRemoveWanted; _lvRemoveWanted = null; fn(w); } }
+
 async function submitLeaveRemoveDays(){
   const dates = [...document.querySelectorAll('#lvRemoveDays input:checked')].map(i => i.value);
-  const reason = document.getElementById('lvRemoveReason').value.trim();
-  const err = document.getElementById('lvRemoveErr');
-  const fail = m => { err.textContent = m; err.style.display = 'block'; };
-  if (!dates.length) return fail('Pick at least one day to remove');
+  const res = await lvRemoveDaysSend(dates, document.getElementById('lvRemoveReason').value.trim());
+  if (typeof res === 'string') {
+    const err = document.getElementById('lvRemoveErr');
+    err.textContent = res; err.style.display = 'block';
+  }
+}
+
+// The removal itself, for this pop-up and the React one: true once it went
+// through (the pop-up is closed), a message to show, or undefined when the
+// "remove every day" confirm was cancelled.
+async function lvRemoveDaysSend(dates, reason){
+  if (!dates.length) return 'Pick at least one day to remove';
   const lr = LEAVE_DATA.find(x => x.id === LV_REMOVE_ID);
   if (lr && dates.length === (lr.dates || []).length && !await appConfirm('This removes every day, which deletes the whole request. Continue?')) return;
   const r = await api(`/api/leaves/${LV_REMOVE_ID}/remove-days`, 'POST', { dates, reason });
-  if (r.error) return fail(r.error);
+  if (r.error) return r.error;
   closeModal('leaveRemoveDaysModal');
+  if (LV_REMOVE_REACT) LV_REMOVE_REACT(null);
   showToast(r.applied ? '✂ Days removed' : '📨 Sent for approval');
   loadLeaves();
+  return true;
 }
 
 async function decideLeaveRemoval(id, action){

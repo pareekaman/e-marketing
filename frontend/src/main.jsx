@@ -45,6 +45,7 @@ const PAGES = {
   emp360: lazy(() => import('./pages/Emp360.jsx')),
   leavedecision: lazy(() => import('./pages/LeaveDecision.jsx')),
   dmspopups: lazy(() => import('./pages/DmsPopups.jsx')),
+  leaveremove: lazy(() => import('./pages/LeaveRemoveDays.jsx')),
 };
 
 const roots = new WeakMap();
