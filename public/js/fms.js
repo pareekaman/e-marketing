@@ -164,13 +164,15 @@ async function showRaceMetric(metric) {
   const start = document.getElementById('raceStart').value;
   const end   = document.getElementById('raceEnd').value;
 
-  document.getElementById('misDetailTitle').textContent = isPending
-    ? `⏳ Pending Tasks — Team`
-    : `✅ Completed Tasks — Team`;
-  document.getElementById('misDetailScore').innerHTML =
-    `<div style="text-align:center;padding:32px;color:#94a3b8">Loading ${targetStatus} tasks…</div>`;
-  document.getElementById('misDetailBody').innerHTML = '';
-  document.getElementById('misDetailModal').classList.add('open');
+  const title = isPending ? `⏳ Pending Tasks — Team` : `✅ Completed Tasks — Team`;
+  const viaReact = _misDetailReact({ kind: 'race', title, loading: true, isPending, targetStatus });
+  if (!viaReact) {
+    document.getElementById('misDetailTitle').textContent = title;
+    document.getElementById('misDetailScore').innerHTML =
+      `<div style="text-align:center;padding:32px;color:#94a3b8">Loading ${targetStatus} tasks…</div>`;
+    document.getElementById('misDetailBody').innerHTML = '';
+    document.getElementById('misDetailModal').classList.add('open');
+  }
 
   // Only fetch from racers who have at least one task of the target status
   const candidates = lastRacers.filter(r =>
@@ -208,6 +210,7 @@ async function showRaceMetric(metric) {
   const grandTotal = groups.reduce((s,g) => s + g.tasks.length, 0);
   const today = new Date().toISOString().split('T')[0];
 
+  if (viaReact) return _misDetailReact({ kind: 'race', title, update: true, isPending, targetStatus, groups, grandTotal, color, subtle, today });
   if (!grandTotal) {
     document.getElementById('misDetailScore').innerHTML = `
       <div style="text-align:center;padding:24px;color:#64748b">

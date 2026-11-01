@@ -557,6 +557,21 @@ function renderMIS(data) {
     </div>`;
 }
 
+// The MIS / Race task-detail pop-up is React (frontend/src/pages/MisDetail.jsx,
+// in #misDetailRoot) since 2026-11-01; #misDetailModal is the fallback. Its
+// three openers (openMISDetail, openAllMISDetail, fms.js showRaceMetric) fetch
+// and work out what to show as before, then hand over a view. `update: true`
+// fills it without opening it again (the race result, arriving after the
+// pop-up was shown with "Loading…", and perhaps closed).
+let MIS_DETAIL_REACT = null, _misDetailWanted = null;
+function misDetailSetReact(fn) { MIS_DETAIL_REACT = fn; if (fn && _misDetailWanted) { const w = _misDetailWanted; _misDetailWanted = null; fn(w); } }
+function _misDetailReact(view) {
+  const root = document.getElementById('misDetailRoot');
+  if (!root || !root.dataset.react) return false;
+  if (MIS_DETAIL_REACT) MIS_DETAIL_REACT(view); else { _misDetailWanted = view; emkReactMount('misdetail', root); }
+  return true;
+}
+
 // Open MIS detail modal for a user
 async function openMISDetail(userId, userName) {
   const key = misType === 'delegation' ? 'delegation' : 'checklist';
@@ -593,7 +608,9 @@ async function openMISDetail(userId, userName) {
         : `<td></td>`}
     </tr>`).join('');
 
-  document.getElementById('misDetailTitle').textContent = `${row.name} — ${misType === 'delegation' ? 'Delegation' : 'Checklist'} Tasks`;
+  const title = `${row.name} — ${misType === 'delegation' ? 'Delegation' : 'Checklist'} Tasks`;
+  if (_misDetailReact({ kind: 'user', title, score, scoreColor, scoreReason, row, delegation: misType === 'delegation', tasks: data.tasks || [] })) return;
+  document.getElementById('misDetailTitle').textContent = title;
   document.getElementById('misDetailScore').innerHTML = `
     <div style="font-size:28px;font-weight:800;color:${scoreColor}">${score.toFixed(1)}%</div>
     <div style="font-size:13px;color:#64748b;margin-top:4px">${scoreReason}</div>
@@ -846,9 +863,11 @@ async function openAllMISDetail(userId, userName) {
   const score = emp.overallScore;
   const scoreColor = score === null ? '#64748b' : score < 0 ? '#dc2626' : '#16a34a';
 
-  document.getElementById('misDetailTitle').textContent = `${userName} — All Tasks`;
   const fms = emp.fms || { total: 0, pending: 0, done: 0, score: null };
   const completedTotal = (emp.delegation.completed||0) + (emp.checklist.completed||0) + (fms.done||0);
+  if (_misDetailReact({ kind: 'all', title: `${userName} — All Tasks`, emp, score, scoreColor, fms, completedTotal,
+    del: delDetail.tasks || [], chl: chlDetail.tasks || [], fmsTasks: fmsDetail.tasks || [] })) return;
+  document.getElementById('misDetailTitle').textContent = `${userName} — All Tasks`;
   document.getElementById('misDetailScore').innerHTML = `
     <div style="font-size:28px;font-weight:800;color:${scoreColor}">${score !== null ? (score>0?'+':'')+ score.toFixed(1)+'%' : '—'}</div>
     <div style="display:flex;gap:16px;margin-top:10px;font-size:13px;flex-wrap:wrap">

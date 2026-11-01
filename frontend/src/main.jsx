@@ -49,6 +49,7 @@ const PAGES = {
   lpsign: lazy(() => import('./pages/LeavePolicySign.jsx')),
   ekcards: lazy(() => import('./pages/EkCards.jsx')),
   ekadd: lazy(() => import('./pages/EkAddForm.jsx')),
+  misdetail: lazy(() => import('./pages/MisDetail.jsx')),
 };
 
 const roots = new WeakMap();
