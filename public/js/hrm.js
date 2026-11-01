@@ -57,9 +57,34 @@ function switchHrmTab(tab, el) {
   if (tab==='messages') renderHrmMsgTable();
 }
 
+// The candidate tables (the Dashboard's latest eight, the Candidates tab) and
+// the message log are React since 2026-11-01 (frontend/src/pages/HrmTables.jsx,
+// mounted on #hrm-recent-table, #hrm-candidates-table and #hrm-msg-table).
+// Filtering and the message selection stay here; renderHrmRows and the old
+// message markup are the fallback.
+const HRM_REACT = {}, _hrmViews = {};
+const HRM_REACT_PAGE = { recent: 'hrmrecent', list: 'hrmlist', msgs: 'hrmmsgs' };
+function hrmSetReact(part, fn) { HRM_REACT[part] = fn; if (fn && _hrmViews[part]) fn(_hrmViews[part]); }
+function _hrmShow(part, el, view) {
+  if (!el || !el.dataset.react) return false;
+  _hrmViews[part] = view;
+  if (HRM_REACT[part]) HRM_REACT[part](view); else emkReactMount(HRM_REACT_PAGE[part], el);
+  return true;
+}
+// A status's colours, label and badge class, as the rows show them.
+function hrmStatusLook(status) {
+  return {
+    color: HRM_STATUS_COLORS[status] || '#64748b', bg: HRM_STATUS_BG[status] || '#f8fafc',
+    label: HRM_STATUS_LABELS[status] || status,
+    badge: status === 'Offer Sent' ? 'offer' : status === 'Offer Letter Sent' ? 'offer-final' : status,
+  };
+}
+
 function renderHrmRecent() {
   const recent = _hrmCandidates.slice(0,8);
-  document.getElementById('hrm-recent-table').innerHTML = renderHrmRows(recent);
+  const el = document.getElementById('hrm-recent-table');
+  if (_hrmShow('recent', el, { list: recent })) return;
+  el.innerHTML = renderHrmRows(recent);
 }
 
 function renderHrmTable() {
@@ -70,7 +95,9 @@ function renderHrmTable() {
   if (status)   list = list.filter(c=>c.status===status);
   if (position) list = list.filter(c=>c.profile_position===position);
   if (search)   list = list.filter(c=>(c.name||'').toLowerCase().includes(search)||(c.phone||'').includes(search));
-  document.getElementById('hrm-candidates-table').innerHTML = renderHrmRows(list);
+  const el = document.getElementById('hrm-candidates-table');
+  if (_hrmShow('list', el, { list })) return;
+  el.innerHTML = renderHrmRows(list);
 }
 
 function renderHrmRows(list) {
@@ -155,6 +182,7 @@ function renderHrmMsgTable() {
   const el = document.getElementById('hrm-msg-table');
   const loadedIds = new Set(_hrmMessages.map(m=>m.id));
   _hrmMsgSelected = new Set([..._hrmMsgSelected].filter(id=>loadedIds.has(id)));
+  if (_hrmShow('msgs', el, { list, selected: [..._hrmMsgSelected] })) { updateHrmMsgBulkBtn(); return; }
   if (!list.length) { el.innerHTML = '<div class="empty">No messages found.</div>'; updateHrmMsgBulkBtn(); return; }
   const allVisibleSelected = list.every(m=>_hrmMsgSelected.has(m.id));
   const rows = list.map(m=>{
