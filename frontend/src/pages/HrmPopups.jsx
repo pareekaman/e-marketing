@@ -1,9 +1,10 @@
-// HRM → the candidate Details and Update Status pop-ups (were #hrmDetailsModal
-// and #hrmStatusModal in app.html, opened by openHrmDetailsModal /
-// openHrmStatusModal in public/js/hrm.js). A status pick goes through
+// HRM → the candidate Details, Update Status and Joining Details pop-ups (were
+// #hrmDetailsModal, #hrmStatusModal and #hrmJoiningDetailsModal in app.html,
+// opened by openHrmDetailsModal / openHrmStatusModal / viewJoiningDetails in
+// public/js/hrm.js; the joining submission is fetched there). A status pick goes through
 // hrmStatusPick (an offer stage first needs the joining details, then closes
 // this and opens its own form); the save is hrmStatusSend.
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { legacy, css, toast } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
 import SearchSelect from '../components/SearchSelect.jsx';
@@ -92,7 +93,93 @@ function StatusBody({ d, close }) {
   );
 }
 
-const BODIES = { details: DetailsBody, status: StatusBody };
+// Joining Details (was viewJoiningDetails / hrmJoiningExtraRows): what the
+// candidate sent through the joining form. d.r is that submission.
+const JROW = 'display:flex;gap:12px;padding:9px 0;border-bottom:1px solid #f1f5f9';
+function JRow({ label, children }) {
+  return <div ref={css(JROW)}><div ref={css('width:150px;flex-shrink:0;font-size:12px;color:#64748b')}>{label}</div>
+    <div ref={css('font-size:13px;color:#0f172a;font-weight:500;word-break:break-word')}>{children}</div></div>;
+}
+// Mobile numbers hang off the name they belong to rather than taking a row.
+const withMobile = m => (m ? <span ref={css('color:#64748b;font-weight:400')}>{' · ' + m}</span> : null);
+const LINK = 'color:#4f46e5;font-size:12px;font-weight:600;text-decoration:none';
+const NONE = <span ref={css('color:#94a3b8;font-size:12px')}>Not uploaded</span>;
+// The URLs come from the candidate's form, so only a real http(s) link gets an anchor.
+function Files({ urls, name }) {
+  const ok = urls.filter(u => /^https?:\/\//i.test(u || ''));
+  if (!ok.length) return NONE;
+  return ok.map((u, i) => <Fragment key={i}>{i ? '  ' : null}<a href={u} target="_blank" rel="noopener noreferrer" ref={css(LINK)}>{name(i, ok.length)}</a></Fragment>);
+}
+const sides = (i, n) => (n > 1 ? (i === 0 ? 'Front ↗' : 'Back ↗') : 'Open ↗');
+const F = (...urls) => <Files urls={urls} name={sides} />;
+const Head = ({ t }) => <div ref={css('font-size:11px;font-weight:700;color:#4f46e5;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 4px')}>{t}</div>;
+
+// The Fresher / Experienced part (extra_json); older submissions have none.
+function JoiningExtra({ json }) {
+  let x = null;
+  try { x = json ? JSON.parse(json) : null; } catch (e) { x = null; }
+  if (!x || !x.candidate_type) return null;
+  const b = x.bank || {};
+  const exp = x.total_experience || '';
+  return (
+    <>
+      <JRow label="Candidate Type">{x.candidate_type === 'experienced' ? 'Experienced' : 'Fresher'}</JRow>
+      <Head t="Bank Details" />
+      <JRow label="Account Holder">{b.holder || '—'}</JRow><JRow label="Account Number">{b.account || '—'}</JRow>
+      <JRow label="IFSC">{b.ifsc || '—'}</JRow><JRow label="Bank Name">{b.name || '—'}</JRow>
+      {x.candidate_type === 'fresher' ? <>
+        <Head t="Education" />
+        <JRow label="Last Semester Marksheet">{F(x.marksheet_url)}</JRow><JRow label="Degree">{F(x.degree_url)}</JRow>
+        <JRow label="Internship Certificates">{F(x.internship_url)}</JRow>
+      </> : <>
+        <Head t="Experience" />
+        <JRow label="Total Experience">{(exp || '—') + (/^\d+(\.\d+)?$/.test(exp) ? ' years' : '')}</JRow>
+        <JRow label="Last Company">{x.last_company || '—'}</JRow><JRow label="Designation">{x.designation || '—'}</JRow>
+        <JRow label="Last CTC">{x.last_ctc || '—'}</JRow>
+        <JRow label="Experience Letter">{F(x.experience_letter_url)}</JRow><JRow label="Relieving Letter">{F(x.relieving_letter_url)}</JRow>
+        <JRow label="Salary Slips"><Files urls={x.salary_slip_urls || []} name={i => `Slip ${i + 1} ↗`} /></JRow>
+      </>}
+    </>
+  );
+}
+
+function JoiningBody({ d, close }) {
+  const { c, r } = d;
+  const dob = r.dob ? new Date(r.dob).toLocaleDateString('en-IN') : '—';
+  // submitted_at is stored as IST wall time, so it renders as UTC (brain.md §16).
+  const at = r.submitted_at ? new Date(r.submitted_at).toLocaleString('en-IN', { timeZone: 'UTC' }) : '';
+  // Relation is free text, so it goes in the label as typed.
+  const guardian = (n, rel) => `Guardian ${n}${rel ? ` (${rel})` : ''}`;
+  const address = [r.street, r.city, r.state, r.pincode].filter(Boolean).join(', ') || '—';
+  return (
+    <>
+      <h3>📋 Joining Details</h3>
+      <div ref={css('margin-top:12px')}>
+        <div className="hrm-candidate-card">
+          <div className="hrm-candidate-card-name">{c ? c.name : r.full_name}</div>
+          <div className="hrm-candidate-card-sub">{(c ? (c.profile_position || '') : '') + (c && c.department ? ' · ' + c.department : '')}</div>
+        </div>
+        <JRow label="Name">{r.full_name || '—'}{withMobile(r.emp_mobile)}</JRow>
+        <JRow label="Email">{r.email ? <a href={`mailto:${r.email}`} ref={css('color:#4f46e5;text-decoration:none')}>{r.email}</a> : '—'}</JRow>
+        <JRow label={guardian(1, r.guardian1_relation)}>{r.guardian1_name || '—'}{withMobile(r.guardian1_mobile)}</JRow>
+        <JRow label={guardian(2, r.guardian2_relation)}>{r.guardian2_name || '—'}{withMobile(r.guardian2_mobile)}</JRow>
+        <JRow label="Date of Birth">{dob}</JRow>
+        <JRow label="Address">{address}</JRow>
+        <JRow label="Resume">{F(r.resume_file_url)}</JRow>
+        {r.aadhaar_no ? <JRow label="Aadhaar Number">{r.aadhaar_no}</JRow> : null}
+        <JRow label="Aadhaar Card">{F(r.aadhaar_file_url, r.aadhaar_file_url_2)}</JRow>
+        {r.pan_no ? <JRow label="PAN Number">{r.pan_no}</JRow> : null}
+        <JRow label="PAN Card">{F(r.pan_file_url, r.pan_file_url_2)}</JRow>
+        <JoiningExtra json={r.extra_json} />
+        {at ? <div ref={css('font-size:11px;color:#94a3b8;margin-top:10px')}>{`Submitted ${at}`}</div> : null}
+      </div>
+      <div className="modal-footer"><button className="btn btn-outline" onClick={close}>Close</button></div>
+    </>
+  );
+}
+
+const BODIES = { details: DetailsBody, status: StatusBody, joining: JoiningBody };
+const WIDTH = { joining: 'width:520px;max-width:95vw' };
 
 export default function HrmPopups() {
   const [st, setSt] = useState({});
@@ -102,12 +189,13 @@ export default function HrmPopups() {
     legacy('hrmPopSetReact', {
       details: (c, label) => show('details', { c, label }),
       status: c => show('status', { c }),
+      joining: (c, r) => show('joining', { c, r }),
     });
     return () => legacy('hrmPopSetReact', null);
   }, []);
   const closer = kind => () => setSt(s => ({ ...s, [kind]: { ...s[kind], open: false } }));
   return Object.entries(BODIES).map(([kind, Body]) => (st[kind] ? (
-    <Modal key={kind} open={st[kind].open} onClose={closer(kind)} style="width:480px">
+    <Modal key={kind} open={st[kind].open} onClose={closer(kind)} style={WIDTH[kind] || 'width:480px'}>
       <Body key={st[kind].key} d={st[kind].d} close={closer(kind)} />
     </Modal>
   ) : null));

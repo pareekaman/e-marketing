@@ -437,8 +437,8 @@ async function saveHrmCandidate() {
 }
 
 // View a candidate's full details (read-only) — everything entered at schedule.
-// The Details and Update Status pop-ups are React since 2026-11-01
-// (frontend/src/pages/HrmPopups.jsx, in #hrmPopupsRoot); their markup in
+// The Details, Update Status and Joining Details pop-ups are React since
+// 2026-11-01 (frontend/src/pages/HrmPopups.jsx, in #hrmPopupsRoot); their markup in
 // app.html stays as the fallback. Status changes go through hrmStatusPick /
 // hrmStatusSend, shared with the old pop-up.
 let HRM_POP_REACT = null, _hrmPopWanted = null;
@@ -561,7 +561,8 @@ async function viewJoiningDetails(id) {
   const c = _hrmCandidates.find(x => String(x.id) === String(id));
   const r = await api(`/api/hrm/candidates/${id}/joining-details`, 'GET');
   if (!r || r.error) { showToast((r && r.error) || 'Could not load details', 'error'); return; }
-  const dob = r.dob ? new Date(r.dob).toLocaleDateString('en-IN') : '—';
+  if (_hrmPopReact('joining', [c, r])) return;
+  const dob =r.dob ? new Date(r.dob).toLocaleDateString('en-IN') : '—';
   // submitted_at is stored as IST wall time — render it as UTC so it isn't
   // shifted a second time (brain.md §16).
   const at = r.submitted_at ? new Date(r.submitted_at).toLocaleString('en-IN', { timeZone: 'UTC' }) : '';
