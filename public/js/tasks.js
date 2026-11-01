@@ -24,16 +24,27 @@ async function loadAllTasks() {
   const isUser = ME.role==='user';
   const isDesktop = window.innerWidth >= 768;
 
-  // Show/hide assign task button based on role; label follows the active tab so the
-  // user knows which form will open.
+  // Show/hide assign task button; label follows the active tab so the user knows
+  // which form will open.
   const assignBtn = document.getElementById('tasksAssignBtn');
   if (assignBtn) {
-    // Hide for FMS tab (no in-app create — FMS rows come from Google Sheets).
-    const canAssign = (isAdmin || isHod || isUser) && tasksType !== 'fms';
+    // Gated on the same permission POST /api/tasks asks for, not on the role.
+    // The role check that used to be here is what let someone whose Daily Task
+    // level had been dropped to View still open the Delegate form and only
+    // learn on Assign that the server refuses. The dashboard's own + Delegate /
+    // + Checklist buttons have always asked canDo(); this is the page that
+    // drifted. Two consequences worth naming:
+    //   • the key now follows the tab — the Checklist tab's button opens
+    //     openChecklist(), which the route gates on create_checklist.
+    //   • PC gains the button. `pc` was missing from the old role list even
+    //     though its defaults carry create_task and the dashboard already shows
+    //     it the button, so this closes that gap rather than widening access.
+    // Still hidden for FMS (no in-app create — FMS rows come from Google Sheets).
+    const canAssign = tasksType !== 'fms'
+      && canDo(tasksType === 'checklist' ? 'create_checklist' : 'create_task');
     assignBtn.style.display = canAssign ? '' : 'none';
-    if (tasksType === 'checklist')        assignBtn.textContent = '+ Checklist';
-    else if (tasksType === 'delegatebyme') assignBtn.textContent = '+ Delegate Task';
-    else                                   assignBtn.textContent = '+ Delegate Task';
+    // 'delegatebyme' and 'clienttasks' both open the Delegate form, same label.
+    assignBtn.textContent = tasksType === 'checklist' ? '+ Checklist' : '+ Delegate Task';
   }
 
   // Delegate by Me tab — show only for users who can assign tasks
