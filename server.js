@@ -7765,11 +7765,15 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
     }
     // Who is looking: the client themselves, or a staff member previewing.
     const viewerId = resolved.preview ? null : req.session.userId;
+    // Default window: the last month up to today (IST), e.g. 01-10 → 01-11.
+    // A day the previous month does not have (31 March) falls back to that
+    // month's last day.
     const ist = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
-    const y = ist.getUTCFullYear(), m = ist.getUTCMonth();
-    const defaultFrom = `${y}-${String(m+1).padStart(2,'0')}-01`;
-    const lastDay = new Date(Date.UTC(y, m+1, 0)).getUTCDate();
-    const defaultTo = `${y}-${String(m+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+    const y = ist.getUTCFullYear(), m = ist.getUTCMonth(), d = ist.getUTCDate();
+    const iso = dt => dt.toISOString().slice(0, 10);
+    const prevMonthDays = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const defaultFrom = iso(new Date(Date.UTC(y, m - 1, Math.min(d, prevMonthDays))));
+    const defaultTo = iso(new Date(Date.UTC(y, m, d)));
     const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
     const from = isDate(req.query.from) ? req.query.from : defaultFrom;
     const to   = isDate(req.query.to)   ? req.query.to   : defaultTo;
