@@ -28,9 +28,12 @@ async function loadComposeMail(){
   if (!CE_FROM_NAME) api('/api/compose-mail/sender').then(r => {
     if (!r || !r.name) return;
     CE_FROM_NAME = r.name;
+    if (CE_CARD) { CE_CARD.from(r.name); return; }
+    if (_ceCard()) return;   // the React card takes it when it registers
     document.getElementById('ceFromName').textContent = r.name;
     document.getElementById('ceFromAs').hidden = false;
   });
+  if (_ceCard() && !CE_CARD && !_ceCardMounting) { _ceCardMounting = true; emkReactMount('cecard', document.getElementById('ceCard')); }
   // Defaults once per page load; coming back to the tab keeps what was there.
   if (!_ceStarted) { _ceStarted = true; CE.cc = [...CE_DEFAULT_CC]; }
   if (!CE_USERS.length) {
@@ -53,15 +56,49 @@ async function loadComposeMail(){
 // #ceChips_cc, #ceFiles and #ceLogWrap carry data-react. ceView hands a part
 // its view and says whether it did, so each renderer keeps its old markup as
 // the fallback. Everything else on the page stays here.
-const CE_REACT = {}, _ceViews = {};
-function ceSetReact(part, fn) { CE_REACT[part] = fn; if (fn && _ceViews[part]) fn(_ceViews[part]); }
+// A part can have several listeners (the React card reads the chips and
+// files too); ceSubscribe returns the unsubscribe.
+const CE_SUBS = {}, _ceViews = {};
+function ceSubscribe(part, fn) {
+  (CE_SUBS[part] = CE_SUBS[part] || new Set()).add(fn);
+  if (_ceViews[part]) fn(_ceViews[part]);
+  return () => CE_SUBS[part].delete(fn);
+}
+function _ceTell(part, view) {
+  _ceViews[part] = view;
+  const subs = CE_SUBS[part];
+  if (subs) subs.forEach(fn => fn(view));
+  return !!(subs && subs.size);
+}
 const CE_REACT_PAGE = { to: 'cechipsto', cc: 'cechipscc', files: 'cefiles', log: 'celog' };
 function ceView(part, el, view) {
+  // The React card draws the chips and files itself: hand them over, never
+  // mount a separate root into its markup.
+  if (part !== 'log' && _ceCard()) { _ceTell(part, view); return true; }
   if (!el || !el.dataset.react) return false;
-  _ceViews[part] = view;
-  if (CE_REACT[part]) CE_REACT[part](view); else emkReactMount(CE_REACT_PAGE[part], el);
+  if (!_ceTell(part, view)) emkReactMount(CE_REACT_PAGE[part], el);
   return true;
 }
+
+// The rest of the compose card (address boxes and their suggestions, Remove
+// all, subject, toolbar, editor, attach, Send / Clear) is React since
+// 2026-11-01 (CeCard in ComposeMail.jsx, mounted on #ceCard). The state stays
+// here (CE, CE_USERS); the card calls the functions below, and Send / Clear
+// take an io from it instead of reading the old inputs. The editor stays a
+// plain contenteditable #ceEditor that React never re-renders, so the
+// execCommand toolbar works on it unchanged.
+let CE_CARD = null, _ceCardMounting = false;   // { from(name), reset() } from the card
+const _ceCard = () => !!document.getElementById('ceCard')?.dataset.react;
+function ceCardSetReact(o) {
+  CE_CARD = o;
+  if (!o) return;
+  o.from(CE_FROM_NAME);
+  ceRenderChips('to'); ceRenderChips('cc'); ceRenderFiles();
+}
+function ceUsers() { return CE_USERS; }
+function ceList(field) { return CE[field]; }
+function ceIsEmail(s) { return CE_EMAIL_RE.test(String(s || '')); }
+function cePopLast(field) { if (CE[field].length) { CE[field].pop(); ceRenderChips(field); } }
 
 // ── To / CC ──
 function ceLabel(email){
@@ -78,7 +115,7 @@ function ceAdd(field, email){
 function ceRemove(field, i){ CE[field].splice(i, 1); ceRenderChips(field); }
 function ceRenderChips(field){
   const box = document.getElementById('ceChips_' + field);
-  if (!box) return;
+  if (!box && !_ceCard()) return;   // the React card has no such box, but still wants the view
   const list = CE[field];
   // A long list (e.g. All users) shows its first chips and folds the rest.
   const fold = list.length > CE_CHIPS_SHOWN + 2 && !CE_EXPANDED[field];
@@ -156,13 +193,18 @@ function ceKey(field, ev){
 // Pasting several addresses at once (comma, semicolon, space or new line).
 function cePaste(field, ev){
   const text = (ev.clipboardData || window.clipboardData)?.getData('text') || '';
-  const parts = text.split(/[\s,;]+/).map(s => s.replace(/^.*<|>$/g, '').trim()).filter(Boolean);
-  if (parts.length < 2) return;
-  ev.preventDefault();
+  if (cePasteText(field, text)) ev.preventDefault();
+}
+// Several pasted addresses become chips; true when it took the paste (two or
+// more parts), false to let a single one go into the box as typed.
+function cePasteText(field, text){
+  const parts = String(text || '').split(/[\s,;]+/).map(s => s.replace(/^.*<|>$/g, '').trim()).filter(Boolean);
+  if (parts.length < 2) return false;
   const bad = parts.filter(p => !CE_EMAIL_RE.test(p));
   parts.filter(p => CE_EMAIL_RE.test(p)).forEach(p => { if (!CE[field].some(e => e.toLowerCase() === p.toLowerCase())) CE[field].push(p); });
   ceRenderChips(field);
   if (bad.length) showToast(`Not added (not an email address): ${bad.join(', ')}`, 'error');
+  return true;
 }
 function ceBlur(field){
   setTimeout(() => { const l = document.getElementById('ceSug_' + field); if (l) l.style.display = 'none'; }, 150);
@@ -254,24 +296,36 @@ function ceRemoveFile(i){ CE.files.splice(i, 1); ceRenderFiles(); }
 function ceRenderFiles(){
   const box = document.getElementById('ceFiles');
   const info = document.getElementById('ceFilesInfo');
-  if (!box) return;
-  if (!ceView('files', box, { files: CE.files.map(f => ({ name: f.name, size: f.size })) })) box.innerHTML = CE.files.map((f, i) =>
+  if (!box && !_ceCard()) return;   // the React card has no such box, but still wants the view
+  if (!ceView('files', box, { files: CE.files.map(f => ({ name: f.name, size: f.size })), bytes: ceFilesBytes() })) box.innerHTML = CE.files.map((f, i) =>
     `<span class="ce-chip ce-file">📎 ${dtEscape(f.name)} <span class="ce-chip-mail">${ceSize(f.size)}</span>` +
     `<button type="button" onclick="ceRemoveFile(${i})" title="Remove">✕</button></span>`).join('');
   if (info) info.textContent = CE.files.length ? `${ceSize(ceFilesBytes())} of 4 MB` : 'Up to 4 MB in total';
 }
 
 // ── Send / clear ──
-async function ceSend(){
+// What Send and Clear read and set, off the old form's inputs; the React card
+// passes its own.
+function ceDomIO(){
+  const btn = document.getElementById('ceSendBtn');
+  return {
+    pending: f => document.getElementById('ceInput_' + f).value.trim(),
+    clearPending: f => { document.getElementById('ceInput_' + f).value = ''; },
+    subject: () => document.getElementById('ceSubject').value.trim(),
+    editor: () => document.getElementById('ceEditor'),
+    busy: on => { btn.disabled = on; btn.textContent = on ? 'Sending…' : 'Send'; },
+  };
+}
+async function ceSend(io){
   if (_ceSending) return;
+  io = io || ceDomIO();
   // An address still typed in a box, not yet turned into a chip, counts too.
   for (const f of ['to', 'cc']) {
-    const input = document.getElementById('ceInput_' + f);
-    const text = input.value.trim();
-    if (text) { if (!ceAdd(f, text)) return; input.value = ''; }
+    const text = io.pending(f);
+    if (text) { if (!ceAdd(f, text)) return; io.clearPending(f); }
   }
-  const subject = document.getElementById('ceSubject').value.trim();
-  const ed = document.getElementById('ceEditor');
+  const subject = io.subject();
+  const ed = io.editor();
   if (!CE.to.length) return showToast('Add at least one address in To.', 'error');
   const inTo = new Set(CE.to.map(e => e.toLowerCase()));
   const total = CE.to.length + CE.cc.filter(e => !inTo.has(e.toLowerCase())).length;
@@ -286,8 +340,7 @@ async function ceSend(){
   fd.append('html', ed.innerHTML);
   CE.files.forEach(f => fd.append('files', f, f.name));
 
-  const btn = document.getElementById('ceSendBtn');
-  _ceSending = true; btn.disabled = true; btn.textContent = 'Sending…';
+  _ceSending = true; io.busy(true);
   try {
     const r = await fetch('/api/compose-mail/send', { method: 'POST', body: fd, credentials: 'include' });
     const j = await r.json().catch(() => ({}));
@@ -297,23 +350,27 @@ async function ceSend(){
   } catch (e) {
     showToast('Network problem — the email was NOT sent. Please try again.', 'error');
   } finally {
-    _ceSending = false; btn.disabled = false; btn.textContent = 'Send';
+    _ceSending = false; io.busy(false);
     ceLoadLog();
   }
 }
 function ceReset(){
   CE.to = []; CE.cc = [...CE_DEFAULT_CC]; CE.files = []; CE_RANGE = null;
   CE_EXPANDED.to = CE_EXPANDED.cc = false;
-  ['to', 'cc'].forEach(f => { document.getElementById('ceInput_' + f).value = ''; ceRenderChips(f); });
-  document.getElementById('ceSubject').value = '';
-  document.getElementById('ceEditor').innerHTML = '';
+  if (CE_CARD) { CE_CARD.reset(); ['to', 'cc'].forEach(ceRenderChips); }
+  else {
+    ['to', 'cc'].forEach(f => { document.getElementById('ceInput_' + f).value = ''; ceRenderChips(f); });
+    document.getElementById('ceSubject').value = '';
+    document.getElementById('ceEditor').innerHTML = '';
+  }
   ceRenderFiles();
 }
-async function ceClear(){
-  const ed = document.getElementById('ceEditor');
+async function ceClear(io){
+  io = io || ceDomIO();
+  const ed = io.editor();
   const ccChanged = CE.cc.join(',').toLowerCase() !== CE_DEFAULT_CC.join(',').toLowerCase();
   const dirty = CE.to.length || ccChanged || CE.files.length ||
-    document.getElementById('ceSubject').value.trim() || (ed.innerText || '').trim();
+    io.subject() || (ed.innerText || '').trim();
   if (dirty && !await appConfirm('Discard this email?')) return;
   ceReset();
 }

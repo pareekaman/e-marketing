@@ -35,6 +35,7 @@ const PAGES = {
   cechipscc: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsCc }))),
   cefiles: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeFiles }))),
   celog: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeLog }))),
+  cecard: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeCard }))),
   leaveform: lazy(() => import('./pages/LeaveForm.jsx')),
   enquiryform: lazy(() => import('./pages/EnquiryForm.jsx')),
   meetingform: lazy(() => import('./pages/MeetingForm.jsx')),
