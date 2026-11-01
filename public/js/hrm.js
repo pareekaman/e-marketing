@@ -451,7 +451,8 @@ async function hrmCandidateSend(editId, payload, io) {
 }
 
 // View a candidate's full details (read-only) — everything entered at schedule.
-// The Details, Update Status, Joining Details, Offer Letter and Email pop-ups are
+// The Details, Update Status, Joining Details, Offer Letter, Email, Schedule /
+// Edit and Send Offer Letter pop-ups are
 // React since 2026-11-01 (frontend/src/pages/HrmPopups.jsx, in #hrmPopupsRoot); their markup in
 // app.html stays as the fallback. Status changes go through hrmStatusPick /
 // hrmStatusSend, shared with the old pop-up.
@@ -871,6 +872,10 @@ async function openOfferFormModal(id) {
   const c = _hrmCandidates.find(x => String(x.id) === String(id));
   if (!c) return;
   _hrmCurrentId = id;
+  if (document.getElementById('hrmPopupsRoot')?.dataset.react) {
+    await _hrmLoadDepartments();
+    if (_hrmPopReact('offerForm', [c, _hrmDepartments, !!_offerEmailCtx])) return;
+  }
   document.getElementById('offerFName').value     = c.name || '';
   document.getElementById('offerFPosition').value = c.profile_position || '';
   document.getElementById('offerFJoining').value  = c.joining_date ? String(c.joining_date).slice(0,10) : '';
@@ -895,32 +900,38 @@ async function loadHrmDepartmentOptions(selectId, selected) {
     _hrmDepartments.map(d => `<option value="${esc(d)}" ${d===selected?'selected':''}>${esc(d)}</option>`).join('');
 }
 
+// The live preview's letter, dated today; shared with the React form.
+function hrmOfferPreviewHtml(name, position, joiningRaw) {
+  const long = d => d.toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'});
+  return _hrmOfferHtml(name, position, joiningRaw ? long(new Date(joiningRaw)) : '', long(new Date()));
+}
 function updateOfferPreview() {
   const name       = document.getElementById('offerFName').value     || '';
   const position   = document.getElementById('offerFPosition').value || '';
   const joiningRaw = document.getElementById('offerFJoining').value;
-  const joining    = joiningRaw
-    ? new Date(joiningRaw).toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'})
-    : '';
-  const today  = new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'});
-  const html   = _hrmOfferHtml(name, position, joining, today);
+  const html   = hrmOfferPreviewHtml(name, position, joiningRaw);
   const cont   = document.getElementById('offerFormPreview');
   cont.innerHTML = '<iframe id="offerPreviewFrame" style="width:100%;height:420px;border:none;display:block" sandbox="allow-same-origin"></iframe>';
   document.getElementById('offerPreviewFrame').srcdoc = html;
 }
 
 function submitOfferForm() {
-  const offer_name     = document.getElementById('offerFName').value.trim();
-  const offer_position = document.getElementById('offerFPosition').value.trim();
-  const department     = document.getElementById('offerFDepartment').value;
-  const joining_date   = document.getElementById('offerFJoining').value;
-  const salary         = document.getElementById('offerFSalary').value.trim();
+  hrmOfferSend(_hrmCurrentId, {
+    offer_name: document.getElementById('offerFName').value.trim(),
+    offer_position: document.getElementById('offerFPosition').value.trim(),
+    department: document.getElementById('offerFDepartment').value,
+    joining_date: document.getElementById('offerFJoining').value,
+    salary: document.getElementById('offerFSalary').value.trim(),
+  }, () => closeModal('hrmOfferFormModal'));
+}
+// The save (and, when reached from 📧 Email, the send), shared with the React
+// form (HrmPopups.jsx); close() shuts whichever form asked.
+function hrmOfferSend(candidateId, { offer_name, offer_position, department, joining_date, salary }, close) {
   if (!offer_name)   { showToast('Candidate name required', 'error'); return; }
   if (!joining_date) { showToast('Joining date required', 'error'); return; }
-  const candidateId = _hrmCurrentId;
   const ctx = _offerEmailCtx; _offerEmailCtx = null;   // capture + reset the email context
 
-  closeModal('hrmOfferFormModal');
+  close();
   showToast(ctx ? 'Preparing & emailing offer…' : 'Saving offer letter…');
 
   api(`/api/hrm/candidates/${candidateId}/status`, 'PUT', {

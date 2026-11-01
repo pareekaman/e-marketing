@@ -1,10 +1,10 @@
-// HRM → the candidate Details, Update Status, Joining Details, Offer Letter and
-// Email pop-ups (were #hrmDetailsModal, #hrmStatusModal, #hrmJoiningDetailsModal,
-// #hrmOfferViewModal and #hrmEmailModal in app.html, opened by openHrmDetailsModal /
-// openHrmStatusModal / viewJoiningDetails / viewOfferLetter / openEmailModal in public/js/hrm.js;
-// the joining submission is fetched there). A status pick goes through
-// hrmStatusPick (an offer stage first needs the joining details, then closes
-// this and opens its own form); the save is hrmStatusSend.
+// HRM → the candidate pop-ups: Details, Update Status, Joining Details, Offer
+// Letter, Email, Schedule / Edit and Send Offer Letter (were the #hrm…Modal
+// pop-ups in app.html). Each of hrm.js's openers hands its data over through
+// hrmPopSetReact under a kind (the BODIES keys below), and each save goes back
+// through a shared hrm.js function. A status pick goes through hrmStatusPick
+// (an offer stage first needs the joining details, then closes this and opens
+// its own form); the status save is hrmStatusSend.
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { legacy, css, toast } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
@@ -424,8 +424,58 @@ function CandBody({ d, close }) {
   );
 }
 
-const BODIES = { details: DetailsBody, status: StatusBody, joining: JoiningBody, offer: OfferBody, email: EmailBody, cand: CandBody };
-const WIDTH = { joining: 'width:520px;max-width:95vw', offer: 'width:720px;max-width:95vw', email: 'width:460px', cand: 'width:540px' };
+// Send Offer Letter, the preliminary one (was #hrmOfferFormModal:
+// openOfferFormModal / updateOfferPreview / submitOfferForm). d.email is true
+// when it was reached from 📧 Email, so saving also sends; hrmOfferSend does both.
+function OfferFormBody({ d, close }) {
+  const { c, depts } = d;
+  const [f, setF] = useState({
+    name: c.name || '', position: c.profile_position || '', dept: depts.includes(c.department) ? c.department : '',
+    joining: c.joining_date ? String(c.joining_date).slice(0, 10) : '', salary: c.salary || '',
+  });
+  const set = patch => setF(s => ({ ...s, ...patch }));
+  const preview = legacy('hrmOfferPreviewHtml', f.name, f.position, f.joining);
+  const save = () => legacy('hrmOfferSend', c.id, {
+    offer_name: f.name.trim(), offer_position: f.position.trim(), department: f.dept, joining_date: f.joining, salary: f.salary.trim(),
+  }, close);
+  const field = (key, label, type, placeholder) => (
+    <div className="form-group"><label>{label}</label>
+      <input type={type} placeholder={placeholder} value={f[key]} onChange={e => set({ [key]: e.target.value })} /></div>
+  );
+  return (
+    <>
+      <h3>📄 Send Offer Letter</h3>
+      <div className="hrm-offer-form-row" ref={css('display:flex;gap:20px;align-items:flex-start;margin-top:8px')}>
+        <div className="hrm-offer-form-fields" ref={css('width:250px;flex-shrink:0')}>
+          {field('name', 'Candidate Name *', 'text', 'Full name')}
+          {field('position', 'Position *', 'text', 'Job title')}
+          <div className="form-group">
+            <label>Department</label>
+            <SearchSelect value={f.dept} onChange={v => set({ dept: v })} options={[{ value: '', label: '--select--' }, ...depts.map(x => ({ value: x, label: x }))]} placeholder="--select--" />
+          </div>
+          {field('joining', 'Joining Date *', 'date')}
+          {field('salary', 'Salary / CTC', 'text', 'e.g. 6 LPA')}
+          <div ref={css('background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;font-size:12px;color:#1e40af;margin-top:4px;line-height:1.5')}>
+            📄 Offer letter will be saved to Drive. Send it to the candidate with the 📧 Email button.
+          </div>
+        </div>
+        <div ref={css('flex:1;min-width:0')}>
+          <div ref={css('font-size:11px;font-weight:600;color:#64748b;letter-spacing:.5px;margin-bottom:6px')}>PREVIEW</div>
+          <div ref={css('border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;min-height:420px')}>
+            <iframe id="offerPreviewFrame" ref={css('width:100%;height:420px;border:none;display:block')} sandbox="allow-same-origin" srcDoc={preview} />
+          </div>
+        </div>
+      </div>
+      <div className="modal-footer" ref={css('margin-top:16px')}>
+        <button className="btn btn-outline" onClick={close}>Cancel</button>
+        <button className="btn btn-primary" onClick={save}>{d.email ? '📧 Send by Email' : '📄 Generate & Save Offer'}</button>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { details: DetailsBody, status: StatusBody, joining: JoiningBody, offer: OfferBody, email: EmailBody, cand: CandBody, offerForm: OfferFormBody };
+const WIDTH = { joining: 'width:520px;max-width:95vw', offer: 'width:720px;max-width:95vw', email: 'width:460px', cand: 'width:540px', offerForm: 'width:880px;max-width:96vw' };
 
 export default function HrmPopups() {
   const [st, setSt] = useState({});
@@ -439,6 +489,7 @@ export default function HrmPopups() {
       offer: (c, draft) => show('offer', { c, draft }),
       email: (c, type) => show('email', { c, type }),
       cand: (c, depts, hods, office) => show('cand', { c, depts, hods, office }),
+      offerForm: (c, depts, email) => show('offerForm', { c, depts, email }),
     });
     return () => legacy('hrmPopSetReact', null);
   }, []);
