@@ -202,6 +202,8 @@ function cpTogglePin(){const on=!document.documentElement.classList.contains('cp
     <div class="form-group">
       <label id="cpDelHandlerLabel">Handler (auto-assigned)</label>
       <select id="cpDelHandler" style="color:#475569;font-weight:600"></select>
+      <!-- Shown instead of the select when there is only one name to pick. -->
+      <div id="cpDelHandlerName" style="display:none;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:13px;color:#475569;font-weight:600;background:#f8fafc"></div>
     </div>
     <!-- Staff preview only: send this to the handler, or ask the client to do it. -->
     <div class="form-group" id="cpDelDoerRow" style="display:none">
@@ -992,6 +994,18 @@ function cpHandlerOptions(){
   sel.innerHTML = list.map(h =>
     `<option value="${h.id}" ${String(h.id) === String(_cpMe.handler_id) ? 'selected' : ''}>${dtEscape(h.name || 'Handler')}${h.department ? ' · ' + dtEscape(h.department) : ''}</option>`
   ).join('');
+  cpDelHandlerSingle();
+}
+
+// One name and nothing to choose: show it as text, not as a dropdown. The
+// select stays (hidden) because saving reads the chosen id from it.
+function cpDelHandlerSingle(){
+  const sel = document.getElementById('cpDelHandler'), txt = document.getElementById('cpDelHandlerName');
+  if (!sel || !txt) return;
+  const one = sel.options.length <= 1;
+  txt.textContent = one && sel.options[0] ? sel.options[0].textContent : '';
+  txt.style.display = one ? 'block' : 'none';
+  sel.style.display = one ? 'none' : '';
 }
 
 function cpDelDoerChange(){
@@ -1006,6 +1020,7 @@ function cpDelDoerChange(){
     // The client themselves is the doer — a single fixed name, not a choice.
     sel.innerHTML = `<option>${dtEscape(_cpMe.portal_user_name || _cpMe.name || 'Client')}</option>`;
     sel.disabled = true;
+    cpDelHandlerSingle();
   } else {
     cpHandlerOptions();
   }
