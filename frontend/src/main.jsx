@@ -56,6 +56,9 @@ const PAGES = {
   emp360filters: lazy(() => import('./pages/Emp360Filters.jsx')),
   clientportal: lazy(() => import('./pages/ClientPortal.jsx')),
   clientdelegate: lazy(() => import('./pages/ClientPortal.jsx').then(m => ({ default: m.ClientDelegate }))),
+  leadrowsenq: lazy(() => import('./pages/LeadRows.jsx').then(m => ({ default: m.LeadRowsEnq }))),
+  leadrowsml: lazy(() => import('./pages/LeadRows.jsx').then(m => ({ default: m.LeadRowsMl }))),
+  leadrowsgad: lazy(() => import('./pages/LeadRows.jsx').then(m => ({ default: m.LeadRowsGad }))),
 };
 
 const roots = new WeakMap();

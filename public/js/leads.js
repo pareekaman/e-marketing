@@ -112,6 +112,22 @@ function dupKeySet(rows, phoneFn, emailFn) {
 }
 const DUP_CHIP = `<span title="Appears more than once" style="font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;background:color-mix(in srgb,var(--warning) 20%,transparent);color:color-mix(in srgb,var(--warning) 82%,var(--foreground));margin-left:6px;vertical-align:1px">DUP</span>`;
 
+// The Website / Meta / Google Ads tables' rows are React since 2026-11-01
+// (frontend/src/pages/LeadRows.jsx, mounted on each tbody, so the tbody and
+// its arrival animation stay). Filtering, sorting, duplicates and dates stay
+// in the render functions here, which hand over { loading } / { error } /
+// { empty } / { rows, animate }; the old row markup is the fallback.
+const LEAD_ROWS_REACT = {}, _leadRowsViews = {};
+const LEAD_ROWS_PAGE = { enq: 'leadrowsenq', ml: 'leadrowsml', gad: 'leadrowsgad' };
+function leadRowsSetReact(table, fn) { LEAD_ROWS_REACT[table] = fn; if (fn && _leadRowsViews[table]) fn(_leadRowsViews[table]); }
+function leadDupChip() { return DUP_CHIP; }
+function _leadRows(table, tb, view) {
+  if (!tb || !tb.dataset.react) return false;
+  _leadRowsViews[table] = view;
+  if (LEAD_ROWS_REACT[table]) LEAD_ROWS_REACT[table](view); else emkReactMount(LEAD_ROWS_PAGE[table], tb);
+  return true;
+}
+
 function cmpVals(a, b) {
   if (typeof a === 'number' && typeof b === 'number') return a - b;
   return String(a == null ? '' : a).localeCompare(String(b == null ? '' : b), undefined, { numeric: true, sensitivity: 'base' });
@@ -307,10 +323,10 @@ async function loadEnquiries(opts) {
   startEnqAutoRefresh();
   const silent = !!(opts && opts.silent); // auto-refresh: no "Loading…" flash, no count-up
   const tb = document.getElementById('enqTbody');
-  if (tb && !silent) tb.innerHTML = `<tr><td colspan="7" class="empty">Loading…</td></tr>`;
+  if (tb && !silent && !_leadRows('enq', tb, { loading: true })) tb.innerHTML = `<tr><td colspan="7" class="empty">Loading…</td></tr>`;
   const data = await api('/api/enquiries');
   if (!data || data.error) {
-    if (tb && !silent) tb.innerHTML = `<tr><td colspan="7" class="empty" style="color:var(--destructive)">⚠️ ${escapeHtml((data && data.error) || 'Load failed')}</td></tr>`;
+    if (tb && !silent && !_leadRows('enq', tb, { error: (data && data.error) || 'Load failed' })) tb.innerHTML = `<tr><td colspan="7" class="empty" style="color:var(--destructive)">⚠️ ${escapeHtml((data && data.error) || 'Load failed')}</td></tr>`;
     return;
   }
   _enqData = { rows: data.rows || [], keys: data.keys || [], headers: data.headers || [] };
@@ -460,7 +476,10 @@ function renderEnquiries() {
   };
   const ordered = enqSort.key ? sortRows(filtered, enqSort, enqValOf) : [...filtered].reverse();
   const tb = document.getElementById('enqTbody');
-  if (tb) {
+  const enqDate = r => (parseEnqDate(r.submitted_at) ? (r.submitted_at || '').replace(/\s{2,}.*/, '') : (r.submitted_at || '—')) || '—';
+  if (_leadRows('enq', tb, ordered.length ? { animate, rows: ordered.map(r => ({ i: idxOf.get(r), dup: dup.isDup(r.phone, r.email), status: r.status,
+    cells: [enqDate(r), r.name || '—', r.phone || '—', r.service || '—', r.budget || '—', r.source || '—'] })) } : { empty: true })) {}
+  else if (tb) {
     if (!ordered.length) tb.innerHTML = `<tr><td colspan="7" class="empty">No enquiries found</td></tr>`;
     else tb.innerHTML = ordered.map((r, dispIdx) => {
       const i = idxOf.get(r);
@@ -806,9 +825,9 @@ async function loadMetaLeads(opts) {
   startEnqAutoRefresh();
   const silent = !!(opts && opts.silent);
   const tb = document.getElementById('mlTbody');
-  if (tb && !silent) tb.innerHTML = `<tr><td colspan="7" class="empty">Loading…</td></tr>`;
+  if (tb && !silent && !_leadRows('ml', tb, { loading: true })) tb.innerHTML = `<tr><td colspan="7" class="empty">Loading…</td></tr>`;
   const data = await api('/api/meta-leads');
-  if (!data || data.error) { if (tb && !silent) tb.innerHTML = `<tr><td colspan="7" class="empty" style="color:var(--destructive)">⚠️ ${escapeHtml((data && data.error) || 'Load failed')}</td></tr>`; return; }
+  if (!data || data.error) { if (tb && !silent && !_leadRows('ml', tb, { error: (data && data.error) || 'Load failed' })) tb.innerHTML = `<tr><td colspan="7" class="empty" style="color:var(--destructive)">⚠️ ${escapeHtml((data && data.error) || 'Load failed')}</td></tr>`; return; }
   _metaLeads = { rows: data.rows || [], keys: data.keys || [], headers: data.headers || [] };
   const u = document.getElementById('metaLeadsUpdated'); if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); }
   renderMetaLeads();
@@ -933,7 +952,10 @@ function renderMetaLeads() {
   };
   const ordered = mlSort.key ? sortRows(filtered, mlSort, mlValOf) : [...filtered].reverse();
   const tb = document.getElementById('mlTbody');
-  if (tb) {
+  const mlShort = r => { const d = mlDate(r.created_time); return d ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : (r.created_time || '—'); };
+  if (_leadRows('ml', tb, ordered.length ? { rows: ordered.map(r => ({ i: idxOf.get(r), dup: dup.isDup(r.whatsapp_number, r.email), status: r.lead_status,
+    cells: [mlShort(r), r.full_name || '—', r.whatsapp_number || '—', r.city || '—', (r.what_products_do_you_sell || '—').replace(/_/g, ' '), r.platform || '—'] })) } : { empty: true })) {}
+  else if (tb) {
     if (!ordered.length) tb.innerHTML = `<tr><td colspan="7" class="empty">No leads found</td></tr>`;
     else tb.innerHTML = ordered.map(r => {
       const i = idxOf.get(r);
@@ -1112,9 +1134,9 @@ async function loadGoogleAds(opts) {
   startEnqAutoRefresh();
   const silent = !!(opts && opts.silent);
   const tb = document.getElementById('gadTbody');
-  if (tb && !silent) tb.innerHTML = `<tr><td colspan="6" class="empty">Loading…</td></tr>`;
+  if (tb && !silent && !_leadRows('gad', tb, { loading: true })) tb.innerHTML = `<tr><td colspan="6" class="empty">Loading…</td></tr>`;
   const data = await api('/api/google-ads');
-  if (!data || data.error) { if (tb && !silent) tb.innerHTML = `<tr><td colspan="6" class="empty" style="color:var(--destructive)">⚠️ ${escapeHtml((data && data.error) || 'Load failed')}</td></tr>`; return; }
+  if (!data || data.error) { if (tb && !silent && !_leadRows('gad', tb, { error: (data && data.error) || 'Load failed' })) tb.innerHTML = `<tr><td colspan="6" class="empty" style="color:var(--destructive)">⚠️ ${escapeHtml((data && data.error) || 'Load failed')}</td></tr>`; return; }
   _gadData = { rows: data.rows || [], keys: data.keys || [], headers: data.headers || [] };
   const u = document.getElementById('gadUpdated'); if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); }
   renderGoogleAds();
@@ -1209,7 +1231,10 @@ function renderGoogleAds() {
   };
   const ordered = gadSort.key ? sortRows(filtered, gadSort, gadValOf) : [...filtered].reverse();
   const tb = document.getElementById('gadTbody');
-  if (tb) {
+  const gadShort = r => { const d = gadDate(r.created_time); return d ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : (r.created_time || '—'); };
+  if (_leadRows('gad', tb, ordered.length ? { rows: ordered.map(r => ({ i: idxOf.get(r), dup: dup.isDup(r.phone, r.email), status: r.status_1st_call,
+    cells: [gadShort(r), r.name || '—', r.phone || '—', r.email || '—', r.form_id || '—'] })) } : { empty: true })) {}
+  else if (tb) {
     if (!ordered.length) tb.innerHTML = `<tr><td colspan="6" class="empty">No leads found</td></tr>`;
     else tb.innerHTML = ordered.map(r => {
       const i = idxOf.get(r);
