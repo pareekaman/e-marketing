@@ -846,11 +846,20 @@ function openLeaveDecision(id, action){
       : fmtDate(d.date)
   ).join(' · ');
   const bd = lvExtraBreakdownHtml(lr);
-  document.getElementById('lvDecisionInfo').innerHTML = `
+  const infoHtml = `
     <div><b>Employee:</b> ${dtEscape(lr.user_name)}</div>
     <div><b>Type:</b> ${LEAVE_TYPE_LABEL[lr.leave_type]||lr.leave_type}</div>
     <div><b>Dates (${dates.length}):</b> ${datesHtml}</div>
     ${bd ? `<div><b>Work done:</b>${bd}</div>` : `<div><b>Reason:</b> ${dtEscape(lr.reason)}</div>`}`;
+  // The pop-up is React (frontend/src/pages/LeaveDecision.jsx, in
+  // #lvDecisionRoot) since 2026-10-31; #leaveDecisionModal is the fallback.
+  const root = document.getElementById('lvDecisionRoot');
+  if (root && root.dataset.react) {
+    const data = { id, action, infoHtml };
+    if (LV_DECISION_REACT) LV_DECISION_REACT(data); else { _lvDecisionWanted = data; emkReactMount('leavedecision', root); }
+    return;
+  }
+  document.getElementById('lvDecisionInfo').innerHTML = infoHtml;
   const approveBtn = document.getElementById('lvApproveBtn');
   const rejectBtn = document.getElementById('lvRejectBtn');
   approveBtn.style.opacity = action === 'approve' ? '1' : '.7';
@@ -858,22 +867,33 @@ function openLeaveDecision(id, action){
   document.getElementById('leaveDecisionModal').classList.add('open');
 }
 
+let LV_DECISION_REACT = null, _lvDecisionWanted = null;
+function lvDecisionSetReact(fn){ LV_DECISION_REACT = fn; if (fn && _lvDecisionWanted) { const w = _lvDecisionWanted; _lvDecisionWanted = null; fn(w); } }
+
 async function submitLeaveDecision(action){
   if (!LEAVE_DECIDE_ID) return;
   const note = document.getElementById('lvDecisionNote').value.trim();
-  const r = await api('/api/leaves/' + LEAVE_DECIDE_ID, 'PUT', { action, note });
-  if (r.error) {
+  const err = await lvDecisionSend(LEAVE_DECIDE_ID, action, note);
+  if (err) {
     const e = document.getElementById('lvDecisionErr');
-    e.textContent = r.error; e.style.display = 'block';
-    return;
+    e.textContent = err; e.style.display = 'block';
   }
+}
+
+// The decision itself, for this pop-up and the React one: null when it went
+// through (the pop-up is closed), otherwise the message to show in it.
+async function lvDecisionSend(id, action, note){
+  const r = await api('/api/leaves/' + id, 'PUT', { action, note });
+  if (r.error) return r.error;
   closeModal('leaveDecisionModal');
+  if (LV_DECISION_REACT) LV_DECISION_REACT(null);
   showToast(r.stage === 'simran' ? '✅ Approved — sent to Simran Gurnani' : action === 'approve' ? '✅ Leave approved' : '❌ Leave rejected');
   LEAVE_DECIDE_ID = null;
   loadLeaveApprovals();
   loadApprovalBadge();
   // If user is currently on Leave Tracker, also refresh that view
   if (document.getElementById('page-leaves')?.classList.contains('active')) loadLeaves();
+  return null;
 }
 
 async function deleteLeave(id){
