@@ -116,8 +116,8 @@ async function loadDashboard(light = false) {
   const upElEarly = document.getElementById('dUpcoming');
   if (upElEarly && !_dashStatsHold) countUp(upElEarly, window._dashTotals.upcoming);
   updateDashStats(dashType);
-  // "vs last month" + sparkline under each card — amber look only, and never
-  // holds the rest of the dashboard up.
+  // A sparkline under each card — amber look only, and never holds the rest
+  // of the dashboard up.
   if (dashAmberOn()) loadDashTrend((isAdmin || isHod || isPC) ? `?employee=${encodeURIComponent(empVal)}` : '', seq);
 
   if (isAdmin || isHod || isPC) {
@@ -619,29 +619,24 @@ function updateDashStats(type) {
   }
 }
 
-// Fills the four .ov-trend slots from /api/dashboard/trend. For Pending a rise
-// is bad news, so its colours run the other way.
+// Fills the four .ov-trend slots from /api/dashboard/trend.
 const DASH_TREND_CARDS = [
-  ['total', 'dTrendTotal', '#F59E0B', false],
-  ['completed', 'dTrendCompleted', '#10B981', false],
-  ['pending', 'dTrendPending', '#EF4444', true],
-  ['upcoming', 'dTrendUpcoming', '#8B5CF6', false],
+  ['total', 'dTrendTotal', '#F59E0B'],
+  ['completed', 'dTrendCompleted', '#10B981'],
+  ['pending', 'dTrendPending', '#EF4444'],
+  ['upcoming', 'dTrendUpcoming', '#8B5CF6'],
 ];
 async function loadDashTrend(qs, seq) {
   let t;
   try { t = await api('/api/dashboard/trend' + qs); } catch { return; }
   if (seq !== _dashSeq || !t || t.error) return;
-  for (const [key, id, color, riseIsBad] of DASH_TREND_CARDS) {
+  // Only the sparkline: the "↑ x% vs last month" line was taken off on
+  // 2026-11-01 at the user's request.
+  for (const [key, id, color] of DASH_TREND_CARDS) {
     const el = document.getElementById(id);
     const d = t[key];
     if (!el || !d) continue;
-    const chg = d.change;
-    const good = chg === null || chg === 0 ? null : (chg > 0) !== riseIsBad;
-    const chgHtml = chg === null
-      ? `<span class="ov-chg">—</span>`
-      : `<span class="ov-chg ${good ? 'is-good' : 'is-bad'}">${chg > 0 ? '↑' : chg < 0 ? '↓' : ''} ${Math.abs(chg)}%</span>`;
-    el.innerHTML = `<span class="ov-chg-wrap">${chgHtml}<span class="ov-vs">vs last month</span></span>${dashSpark(d.spark, color)}`;
-    el.title = `This month so far: ${d.thisPeriod} · Same days last month: ${d.lastPeriod}`;
+    el.innerHTML = dashSpark(d.spark, color);
   }
 }
 
