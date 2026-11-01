@@ -1,14 +1,14 @@
 // Client Portal (only role 'client' sees it): the tabs, the Overview — greeting,
 // handler, date range, stat cards, task-status chart, upcoming deadlines,
-// recent activity, meetings — and the Give Feedback panel's frame (was
-// cpRenderHtml / cpRenderUpcomingHtml in public/js/portal.js, written into
-// #cpContent). portal.js still fetches the stats and hands them over, draws
-// the chart (cpRenderCharts on the #cpStatusChart canvas), reads the range
-// inputs (cpApplyRange on #cpFrom / #cpTo), opens the delegate pop-up and
-// fills the feedback form into #cpFeedbackFormWrap the first time that tab
-// is opened.
+// recent activity, meetings — and the Give Feedback form (was cpRenderHtml /
+// cpRenderUpcomingHtml / cpBuildFeedbackForm in public/js/portal.js, written
+// into #cpContent). portal.js still fetches the stats and hands them over,
+// draws the chart (cpRenderCharts on the #cpStatusChart canvas), reads the
+// range inputs (cpApplyRange on #cpFrom / #cpTo) and opens the delegate
+// pop-up.
 import { useEffect, useRef, useState } from 'react';
-import { legacy, css, fmtDate } from '../lib/app.js';
+import { api, legacy, css, fmtDate } from '../lib/app.js';
+import SearchSelect from '../components/SearchSelect.jsx';
 
 const n = v => parseInt(v) || 0;
 const hover = (on, off) => ({ onMouseOver: e => on(e.currentTarget.style), onMouseOut: e => off(e.currentTarget.style) });
@@ -222,7 +222,101 @@ function Overview({ s }) {
   );
 }
 
-const FEEDBACK_LOADING = '<div class="empty" style="padding:20px">Loading handlers…</div>';
+const RATING_LABELS = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];
+const PILL = 'background:#fff;border:1px solid #7dd3fc;padding:4px 12px;border-radius:999px;font-weight:600';
+const FB_LABEL = 'font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:8px';
+
+// The Give Feedback form (was cpLoadFeedbackForm / cpBuildFeedbackForm /
+// cpSetRating / cpSubmitFeedback in portal.js): pick the employee (shown
+// as-is when there is only one), a 1–5 star rating and a note; it goes to
+// the two names below plus that employee's HOD.
+function FeedbackForm() {
+  const [st, setSt] = useState({ loading: true });   // { loading } / { error } / { handlers, hodMap } / { thanks }
+  const [emp, setEmp] = useState('');
+  const [rating, setRating] = useState(0);
+  const [preview, setPreview] = useState(0);
+  const [desc, setDesc] = useState('');
+  const [err, setErr] = useState('');
+  // "Submit Another" keeps the thank-you on screen until the form is back, as
+  // the old one did; only the first load says Loading.
+  const load = async first => {
+    if (first) setSt({ loading: true });
+    setRating(0); setPreview(0); setDesc(''); setErr('');
+    try {
+      const r = await api('/api/client-portal/handlers');
+      if (r.error) { setSt({ error: r.error }); return; }
+      const handlers = r.handlers || [];
+      setEmp(handlers.length ? String(handlers[0].id) : '');
+      setSt({ handlers, hodMap: r.hodMap || {} });
+    } catch (e) { setSt({ error: `Failed to load handlers: ${e.message}` }); }
+  };
+  useEffect(() => { load(true); }, []);
+  const submit = async () => {
+    setErr('');
+    if (!emp) return setErr('Please select an employee.');
+    if (!rating) return setErr('Please select a rating.');
+    try {
+      const r = await api('/api/client-portal/feedback', 'POST', { employee_id: emp, rating, description: desc.trim() });
+      if (r.error) return setErr(r.error);
+      setSt({ thanks: true });
+    } catch (e) { setErr('Submission failed. Please try again.'); }
+  };
+
+  if (st.loading) return <div className="empty" ref={css('padding:20px')}>Loading handlers…</div>;
+  if (st.error) return <div ref={css('color:#dc2626')}>{st.error}</div>;
+  if (st.thanks) return (
+    <div ref={css('text-align:center;padding:32px 16px')}>
+      <div ref={css('font-size:48px;margin-bottom:12px')}>🙏</div>
+      <div ref={css('font-size:18px;font-weight:700;color:#0f172a;margin-bottom:6px')}>Thank you for your feedback!</div>
+      <div ref={css('font-size:14px;color:#64748b;margin-bottom:20px')}>Your feedback has been shared with the management team.</div>
+      <button onClick={() => load(false)} ref={css('padding:10px 24px;background:#4f46e5;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer')}>Submit Another</button>
+    </div>
+  );
+  const { handlers, hodMap } = st;
+  if (!handlers.length) return <div ref={css('color:#64748b;text-align:center;padding:24px')}>No handlers assigned to your account yet.</div>;
+  const chosen = handlers.find(h => String(h.id) === emp) || handlers[0];
+  const lit = preview || rating;
+  return (
+    <>
+      {handlers.length === 1 ? (
+        <div ref={css('background:#f8fafc;border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:12px')}>
+          <div ref={css('width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0')}>{legacy('cmInitials', handlers[0].name) || ''}</div>
+          <div><div ref={css('font-weight:700;color:#0f172a;font-size:14px')}>{handlers[0].name}</div><div ref={css('font-size:12px;color:#64748b')}>{handlers[0].department || '—'}</div></div>
+        </div>
+      ) : (
+        <div ref={css('margin-bottom:20px')}>
+          <label ref={css(FB_LABEL)}>Select Employee</label>
+          <SearchSelect value={emp} onChange={setEmp} options={handlers.map(h => ({ value: String(h.id), label: `${h.name} — ${h.department || ''}` }))}
+            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 14, background: '#fff', outline: 'none' }} />
+        </div>
+      )}
+      <div ref={css('background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#0369a1')}>
+        <div ref={css('font-weight:700;margin-bottom:6px')}>📬 Feedback will be shared with:</div>
+        <div ref={css('display:flex;flex-wrap:wrap;gap:8px')}>
+          <span ref={css(PILL)}>Abhishek Jain</span>
+          <span ref={css(PILL)}>Simran Gurnani</span>
+          <span ref={css(PILL)}>{`${hodMap[chosen.department || ''] || '—'} (HOD)`}</span>
+        </div>
+      </div>
+      <div ref={css('margin-bottom:20px')}>
+        <label ref={css(FB_LABEL)}>Rating *</label>
+        <div className="cp-star-row">
+          {[1, 2, 3, 4, 5].map(i => (
+            <span key={i} className={'cp-star' + (i <= lit ? ' lit' : '')} onClick={() => setRating(i)} onMouseOver={() => setPreview(i)} onMouseOut={() => setPreview(0)}>★</span>
+          ))}
+        </div>
+        <div ref={css('font-size:12px;color:#94a3b8;margin-top:4px')}>{rating ? `${rating}/5 — ${RATING_LABELS[rating]}` : 'Click a star to rate'}</div>
+      </div>
+      <div ref={css('margin-bottom:24px')}>
+        <label ref={css(FB_LABEL)}>Description</label>
+        <textarea rows={4} placeholder="Share your experience — what went well, what could be improved…" value={desc} onChange={e => setDesc(e.target.value)}
+          ref={css('width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;resize:vertical;font-family:inherit;outline:none;box-sizing:border-box')} />
+      </div>
+      {err ? <div ref={css('display: block; color: rgb(220, 38, 38); font-size: 13px; margin-bottom: 12px;')}>{err}</div> : null}
+      <button onClick={submit} ref={css('padding:12px 28px;background:#4f46e5;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;width:100%')}>Submit Feedback</button>
+    </>
+  );
+}
 
 // One load of the portal: starts on Overview; the feedback form is fetched
 // the first time its tab opens (into a box React leaves to portal.js).
@@ -239,7 +333,7 @@ function Portal({ s }) {
   }, [tab]);
   const show = t => {
     setTab(t);
-    if (t === 'feedback' && !fbLoaded) { setFbLoaded(true); setTimeout(() => legacy('cpLoadFeedbackForm'), 0); }
+    if (t === 'feedback' && !fbLoaded) setFbLoaded(true);
   };
   return (
     <>
@@ -252,7 +346,8 @@ function Portal({ s }) {
         <div className="task-table-card" ref={css('max-width:600px;margin:0 auto;padding:28px 32px;border-radius:16px')}>
           <div ref={css('font-size:18px;font-weight:700;color:#0f172a;margin-bottom:6px')}>⭐ Share Your Feedback</div>
           <div ref={css('font-size:13px;color:#64748b;margin-bottom:24px')}>Your feedback helps us improve our service for you.</div>
-          <div id="cpFeedbackFormWrap" dangerouslySetInnerHTML={{ __html: FEEDBACK_LOADING }} />
+          {/* The form loads the first time this tab opens. */}
+          <div id="cpFeedbackFormWrap">{fbLoaded ? <FeedbackForm /> : <div className="empty" ref={css('padding:20px')}>Loading handlers…</div>}</div>
         </div>
       </div>
     </>
