@@ -437,9 +437,23 @@ async function saveHrmCandidate() {
 }
 
 // View a candidate's full details (read-only) — everything entered at schedule.
+// The Details and Update Status pop-ups are React since 2026-11-01
+// (frontend/src/pages/HrmPopups.jsx, in #hrmPopupsRoot); their markup in
+// app.html stays as the fallback. Status changes go through hrmStatusPick /
+// hrmStatusSend, shared with the old pop-up.
+let HRM_POP_REACT = null, _hrmPopWanted = null;
+function hrmPopSetReact(o) { HRM_POP_REACT = o; if (o && _hrmPopWanted) { const [k, a] = _hrmPopWanted; _hrmPopWanted = null; o[k](...a); } }
+function _hrmPopReact(kind, args) {
+  const root = document.getElementById('hrmPopupsRoot');
+  if (!root || !root.dataset.react) return false;
+  if (HRM_POP_REACT) HRM_POP_REACT[kind](...args); else { _hrmPopWanted = [kind, args]; emkReactMount('hrmpopups', root); }
+  return true;
+}
+
 function openHrmDetailsModal(id) {
   const c = _hrmCandidates.find(x => String(x.id) === String(id));
   if (!c) return;
+  if (_hrmPopReact('details', [c, HRM_STATUS_LABELS[c.status] || c.status])) return;
   const dateStr = c.interview_date ? new Date(c.interview_date).toLocaleDateString('en-IN') : '—';
   const row = (label, val) => `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9">
       <span style="min-width:130px;color:#64748b;font-size:12px;font-weight:600">${label}</span>
@@ -473,6 +487,7 @@ function openHrmStatusModal(id) {
   _hrmCurrentId = id;
   const c = _hrmCandidates.find(x=>String(x.id)===String(id));
   if (!c) return;
+  if (_hrmPopReact('status', [c])) return;
   document.getElementById('hrm-modal-name').textContent    = c.name;
   document.getElementById('hrm-modal-profile').textContent = c.profile_position||'';
   document.getElementById('hrm-modal-phone').textContent   = c.phone;
@@ -483,30 +498,32 @@ function openHrmStatusModal(id) {
   document.getElementById('hrmStatusModal').classList.add('open');
 }
 
-function onHrmStatusChange() {
-  const s = document.getElementById('hrmNewStatus').value;
+// What picking a status does beyond showing it, for both pop-ups: false when
+// the pick is refused (offer before the joining details), 'away' when an
+// offer stage closed this pop-up and opened its own form, true otherwise.
+function hrmStatusPick(s) {
   // Departments that require the joining-details form can't reach either offer
   // stage until the candidate has submitted it (the server enforces this too).
   if (s === 'Offer Sent' || s === 'Offer Letter Sent') {
     const c = _hrmCandidates.find(x => String(x.id) === String(_hrmCurrentId));
     if (c && c.joining_form_required && !c.joining_details_at) {
-      document.getElementById('hrmNewStatus').value = '';
       showToast('Joining details pending — the offer letter can only be sent after the candidate submits the form.', 'error');
-      return;
+      return false;
     }
-  }
-  if (s === 'Offer Sent') {
     _offerEmailCtx = null;   // save-only when reached via the status dropdown
     closeModal('hrmStatusModal');
-    openOfferFormModal(_hrmCurrentId);
-    return;
+    if (s === 'Offer Sent') openOfferFormModal(_hrmCurrentId);
+    else openFinalOfferFormModal(_hrmCurrentId);
+    return 'away';
   }
-  if (s === 'Offer Letter Sent') {
-    _offerEmailCtx = null;
-    closeModal('hrmStatusModal');
-    openFinalOfferFormModal(_hrmCurrentId);
-    return;
-  }
+  return true;
+}
+
+function onHrmStatusChange() {
+  const s = document.getElementById('hrmNewStatus').value;
+  const r = hrmStatusPick(s);
+  if (r === false) { document.getElementById('hrmNewStatus').value = ''; return; }
+  if (r === 'away') return;
   document.getElementById('hrmReschedFields').style.display = s==='Rescheduled' ? 'block' : 'none';
   document.getElementById('hrmOfferFields').style.display   = 'none';
   document.getElementById('hrmStatusWaNote').style.display  = s ? 'block' : 'none';
@@ -527,11 +544,17 @@ async function submitHrmStatus() {
     body.salary       = document.getElementById('hrmOSalary').value.trim();
     if (!body.joining_date) { showToast('Joining date required','error'); return; }
   }
+  await hrmStatusSend(body);
+}
+
+// The save itself, for both pop-ups: true once it went through.
+async function hrmStatusSend(body) {
   const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/status`,'PUT',body);
-  if (r.error) { showToast(r.error,'error'); return; }
+  if (r.error) { showToast(r.error,'error'); return false; }
   closeModal('hrmStatusModal');
   showToast('Status updated.');
   loadHRM();
+  return true;
 }
 
 async function viewJoiningDetails(id) {

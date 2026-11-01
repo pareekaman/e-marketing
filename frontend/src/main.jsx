@@ -63,6 +63,7 @@ const PAGES = {
   hrmrecent: lazy(() => import('./pages/HrmTables.jsx').then(m => ({ default: m.HrmRecent }))),
   hrmlist: lazy(() => import('./pages/HrmTables.jsx').then(m => ({ default: m.HrmList }))),
   hrmmsgs: lazy(() => import('./pages/HrmTables.jsx').then(m => ({ default: m.HrmMsgs }))),
+  hrmpopups: lazy(() => import('./pages/HrmPopups.jsx')),
 };
 
 const roots = new WeakMap();
