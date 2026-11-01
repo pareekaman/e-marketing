@@ -9,15 +9,31 @@ let EK_RECORDS = [];
 let EK_EMPLOYEES = [];               // the sheet's Employees tab, for the Add New form
 const EK_HIDDEN = '••••••••';
 
+// The cards are a React page (frontend/src/pages/EkCards.jsx, mounted on
+// #ekGrid) since 2026-11-01; ekCard() below stays as the fallback. The
+// search, filters and the add / edit pop-up stay here. The page is handed
+// { loading } / { error } / { list, stamp }: stamp changes on every redraw, so
+// a password shown with 👁 hides again, as when the grid was rebuilt.
+let EK_REACT = null, _ekState = null, _ekStamp = 0;
+function ekSetReact(fn){ EK_REACT = fn; if (fn && _ekState) fn(_ekState); }
+function _ekShow(state){
+  const grid = document.getElementById('ekGrid');
+  if (!grid || !grid.dataset.react) return false;
+  _ekState = state;
+  if (EK_REACT) EK_REACT(state); else emkReactMount('ekcards', grid);
+  return true;
+}
+
 async function loadEmkCreds(){
   const grid = document.getElementById('ekGrid');
   const count = document.getElementById('ekCount');
   count.textContent = 'Loading…';
-  grid.innerHTML = '';
+  if (!_ekShow({ loading: true })) grid.innerHTML = '';
   const r = await api('/api/emk-credentials');
   if (!r || r.error || !Array.isArray(r.records)) {
     count.textContent = '';
-    grid.innerHTML = `<div class="empty">${dtEscape((r && r.error) || 'Could not load the credentials.')}</div>`;
+    const msg = (r && r.error) || 'Could not load the credentials.';
+    if (!_ekShow({ error: msg })) grid.innerHTML = `<div class="empty">${dtEscape(msg)}</div>`;
     return;
   }
   EK_RECORDS = r.records;
@@ -77,6 +93,7 @@ function ekRender(){
       .join(' ').toLowerCase().includes(q));
   });
   document.getElementById('ekCount').textContent = `${list.length} of ${all.length} clients`;
+  if (_ekShow({ list, stamp: ++_ekStamp })) return;
   document.getElementById('ekGrid').innerHTML = list.length
     ? list.map(ekCard).join('')
     : '<div class="empty">No matching results found.</div>';

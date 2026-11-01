@@ -1596,7 +1596,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <button class="btn btn-primary" onclick="ekOpenAdd(null)">＋ Add New</button>
     </div>
     <div class="ek-count" id="ekCount"></div>
-    <div class="ek-grid" id="ekGrid"></div>
+    <!-- The cards are a React page (frontend/src/pages/EkCards.jsx), handed over by ekRender(). -->
+    <div class="ek-grid" id="ekGrid" data-react="1"></div>
   </div>
 
   <!-- EMK Credentials — Add New (a row in the sheet; emk-creds.js ekSaveAdd) -->
@@ -4334,7 +4335,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261030b"></script>
-<script src="/js/react-bridge.js?v=20261101c"></script>
+<script src="/js/react-bridge.js?v=20261101d"></script>
 <script src="/js/dashboard.js?v=20261101a"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261030e"></script>
@@ -4348,7 +4349,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/leaves.js?v=20261101a"></script>
 <script src="/js/leave-policy.js?v=20261101a"></script>
 <script src="/js/compose-mail.js?v=20261030a"></script>
-<script src="/js/emk-creds.js?v=20261027c"></script>
+<script src="/js/emk-creds.js?v=20261101a"></script>
 <script src="/js/portal.js?v=20261030a"></script>
 <script src="/js/payments.js?v=20261031b"></script>
 <script src="/js/mdo.js?v=20261030e"></script>

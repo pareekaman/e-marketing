@@ -47,6 +47,7 @@ const PAGES = {
   dmspopups: lazy(() => import('./pages/DmsPopups.jsx')),
   leaveremove: lazy(() => import('./pages/LeaveRemoveDays.jsx')),
   lpsign: lazy(() => import('./pages/LeavePolicySign.jsx')),
+  ekcards: lazy(() => import('./pages/EkCards.jsx')),
 };
 
 const roots = new WeakMap();
