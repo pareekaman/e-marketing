@@ -118,7 +118,7 @@ const DUP_CHIP = `<span title="Appears more than once" style="font-size:9px;font
 // in the render functions here, which hand over { loading } / { error } /
 // { empty } / { rows, animate }; the old row markup is the fallback.
 const LEAD_ROWS_REACT = {}, _leadRowsViews = {};
-const LEAD_ROWS_PAGE = { enq: 'leadrowsenq', ml: 'leadrowsml', gad: 'leadrowsgad' };
+const LEAD_ROWS_PAGE = { enq: 'leadrowsenq', ml: 'leadrowsml', gad: 'leadrowsgad', man: 'leadrowsman' };
 function leadRowsSetReact(table, fn) { LEAD_ROWS_REACT[table] = fn; if (fn && _leadRowsViews[table]) fn(_leadRowsViews[table]); }
 function leadDupChip() { return DUP_CHIP; }
 function _leadRows(table, tb, view) {
@@ -1396,9 +1396,9 @@ async function loadManual(opts) {
   startEnqAutoRefresh();
   const silent = !!(opts && opts.silent);
   const tb = document.getElementById('manTbody');
-  if (tb && !silent) tb.innerHTML = `<tr><td colspan="8" class="empty">Loading…</td></tr>`;
+  if (tb && !silent && !_leadRows('man', tb, { loading: true })) tb.innerHTML = `<tr><td colspan="8" class="empty">Loading…</td></tr>`;
   const data = await api('/api/manual');
-  if (!data || data.error) { if (tb && !silent) tb.innerHTML = `<tr><td colspan="8" class="empty" style="color:var(--destructive)">⚠️ ${escapeHtml((data && data.error) || 'Load failed')}</td></tr>`; return; }
+  if (!data || data.error) { if (tb && !silent && !_leadRows('man', tb, { error: (data && data.error) || 'Load failed' })) tb.innerHTML = `<tr><td colspan="8" class="empty" style="color:var(--destructive)">⚠️ ${escapeHtml((data && data.error) || 'Load failed')}</td></tr>`; return; }
   _manData = { rows: data.rows || [], keys: data.keys || [], headers: data.headers || [] };
   const u = document.getElementById('manUpdated'); if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); }
   renderManual();
@@ -1435,12 +1435,13 @@ function renderManual() {
   };
   const ordered = manSort.key ? sortRows(filtered, manSort, manValOf) : [...filtered].reverse(); // newest first
   const tb = document.getElementById('manTbody');
-  if (tb) {
+  const manAvg = r => { const avg = (r[K.avg] || '').toString().trim(); return avg ? '₹' + avg : '—'; };
+  if (_leadRows('man', tb, ordered.length ? { rows: ordered.map(r => ({ status: r[K.current],
+    cells: [r[K.sr] || '—', r[K.name] || '—', r[K.company] || '—', r[K.contact] || '—', r[K.phone] || '—', r[K.email] || '—', manAvg(r)] })) } : { empty: true })) {}
+  else if (tb) {
     if (!ordered.length) tb.innerHTML = `<tr><td colspan="8" class="empty">No entries yet — add one above.</td></tr>`;
     else tb.innerHTML = ordered.map(r => {
-      const hasCur = (r[K.current] || '').trim() !== '';
-      const cur = isY(r[K.current]);
-      const curBadge = hasCur ? `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${cur ? 'color-mix(in srgb,var(--success) 13%,transparent)' : 'var(--muted)'};color:${cur ? 'var(--success)' : 'var(--muted-foreground)'}">${cur ? 'Yes' : 'No'}</span>` : '—';
+      const curBadge = manCurBadge(r[K.current]);
       const avg = (r[K.avg] || '').toString().trim();
       return `<tr>
         <td style="color:var(--muted-foreground)">${escapeHtml(r[K.sr] || '—')}</td>
@@ -1455,6 +1456,13 @@ function renderManual() {
     }).join('');
   }
   paintSortArrows('manTable', manSort);
+}
+
+// The Current Client column: Yes / No as a pill, a dash when blank.
+function manCurBadge(v) {
+  if ((v || '').trim() === '') return '—';
+  const cur = /^y(es)?$/i.test((v || '').trim());
+  return `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${cur ? 'color-mix(in srgb,var(--success) 13%,transparent)' : 'var(--muted)'};color:${cur ? 'var(--success)' : 'var(--muted-foreground)'}">${cur ? 'Yes' : 'No'}</span>`;
 }
 
 function clearManualForm() {

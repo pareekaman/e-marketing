@@ -59,6 +59,7 @@ const PAGES = {
   leadrowsenq: lazy(() => import('./pages/LeadRows.jsx').then(m => ({ default: m.LeadRowsEnq }))),
   leadrowsml: lazy(() => import('./pages/LeadRows.jsx').then(m => ({ default: m.LeadRowsMl }))),
   leadrowsgad: lazy(() => import('./pages/LeadRows.jsx').then(m => ({ default: m.LeadRowsGad }))),
+  leadrowsman: lazy(() => import('./pages/LeadRows.jsx').then(m => ({ default: m.LeadRowsMan }))),
 };
 
 const roots = new WeakMap();
