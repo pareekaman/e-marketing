@@ -21,6 +21,31 @@ function openEmployee360(){
   if (empTab) cpTab('emp360', empTab);
 }
 
+// The filter row (picker, dates, presets, Print) is React since 2026-11-01
+// (frontend/src/pages/Emp360Filters.jsx, mounted on #emp360Filters). Its
+// values live here in EMP360_F ({ id, from, to }) and are read through
+// emp360Vals(); without the React row the old controls are read.
+let EMP360_F = null, EMP360_F_REACT = null;
+function emp360FSetReact(fn){ EMP360_F_REACT = fn; if (fn) fn(_emp360FView()); }
+function _emp360FView(){ return { users: EMP360_USERS || [], ...EMP360_F }; }
+function emp360Vals(){
+  if (EMP360_F) return EMP360_F;
+  return { id: document.getElementById('empSelect').value, from: document.getElementById('empFrom').value, to: document.getElementById('empTo').value };
+}
+// A change from the React row; `load` runs the report as the old onchange did.
+function emp360SetF(patch, load){
+  EMP360_F = { ...EMP360_F, ...patch };
+  if (EMP360_F_REACT) EMP360_F_REACT(_emp360FView());
+  if (load) loadEmp360();
+}
+function _emp360FRow(){
+  const row = document.getElementById('emp360Filters');
+  if (!row || !row.dataset.react) return false;
+  if (!EMP360_F) EMP360_F = { id: '', from: '', to: '' };
+  if (EMP360_F_REACT) EMP360_F_REACT(_emp360FView()); else emkReactMount('emp360filters', row);
+  return true;
+}
+
 async function emp360InitPicker(){
   try {
     // Sourced from CP_DATA (already scoped by the backend: admin sees everyone,
@@ -29,6 +54,10 @@ async function emp360InitPicker(){
     if (!CP_DATA) await loadCompliance();
     const users = CP_DATA?.users || [];
     EMP360_USERS = users.filter(u => u.role !== 'client');
+    if (_emp360FRow()) {
+      if (!EMP360_F.from) emp360Preset('month', true);
+      return;
+    }
     const sel = document.getElementById('empSelect');
     sel.innerHTML = '<option value="">— Select employee —</option>' +
       EMP360_USERS.map(u => `<option value="${u.id}">${dtEscape(u.name)}${u.department ? ' · ' + dtEscape(u.department) : ''}</option>`).join('');
@@ -39,6 +68,7 @@ async function emp360InitPicker(){
     // Default range = current month
     if (!document.getElementById('empFrom').value) emp360Preset('month', true);
   } catch(e) {
+    _emp360FRow();
     if (!_emp360Show({ empty: 'Failed to load employee list' }))
       document.getElementById('emp360Wrap').innerHTML = '<div class="empty">Failed to load employee list</div>';
   }
@@ -50,6 +80,7 @@ function emp360Preset(p, skipLoad){
   if (p === 'month') { from = new Date(to.getFullYear(), to.getMonth(), 1); }
   else { from.setMonth(from.getMonth() - Number(p)); }
   const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  if (EMP360_F) { emp360SetF({ from: fmt(from), to: fmt(to) }, !skipLoad); return; }
   document.getElementById('empFrom').value = fmt(from);
   document.getElementById('empTo').value   = fmt(to);
   if (!skipLoad) loadEmp360();
@@ -82,12 +113,10 @@ function _emp360Show(state) {
 }
 
 async function loadEmp360(){
-  const id = document.getElementById('empSelect').value;
+  const { id, from, to } = emp360Vals();
   const wrap = document.getElementById('emp360Wrap');
   const say = msg => { if (!_emp360Show({ empty: msg })) wrap.innerHTML = `<div class="empty">${dtEscape(msg)}</div>`; };
   if (!id) { say('Select an employee to see the full 360° view.'); return; }
-  const from = document.getElementById('empFrom').value;
-  const to   = document.getElementById('empTo').value;
   say('Loading…');
   try {
     const qs = (from && to) ? `?from=${from}&to=${to}` : '';
@@ -210,7 +239,7 @@ function renderEmp360(){
       <th>Week</th><th style="text-align:right">Planned</th><th style="text-align:right">Actual</th><th style="text-align:right">Gap</th>
       <th style="text-align:right">Total Tasks</th><th style="text-align:right">Completed</th><th style="text-align:right">Pending</th>
       <th></th></tr></thead><tbody>`;
-    const empId = document.getElementById('empSelect').value;
+    const empId = emp360Vals().id;
     for (const w of weekly) {
       const gapTone = w.gap == null ? '' : w.gap >= 0 ? 'color:#16a34a;font-weight:700' : 'color:#dc2626;font-weight:700';
       const flag = w.regression
