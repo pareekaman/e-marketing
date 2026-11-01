@@ -270,9 +270,18 @@ let _hrmEditId = null;  // non-null when the Schedule modal is reused to EDIT a 
 async function _hrmLoadHods() {
   try { const h = await api('/api/hrm/hods'); _hrmHods = Array.isArray(h) ? h : []; } catch { _hrmHods = []; }
 }
+// The React form (HrmPopups.jsx, 'cand') gets the candidate (null for a new
+// one), the departments and the HODs, loaded as the old form loads them.
+async function _hrmCandReact(c) {
+  if (!document.getElementById('hrmPopupsRoot')?.dataset.react) return false;
+  await _hrmLoadDepartments();
+  await _hrmLoadHods();
+  return _hrmPopReact('cand', [c, _hrmDepartments, _hrmHods, HRM_OFFICE_ADDRESS]);
+}
 async function openHrmAddModal() {
   if (!canDo('hrm_schedule')) return;
   _hrmEditId = null;
+  if (await _hrmCandReact(null)) return;
   ['hrmCName','hrmCProfile','hrmCPhone','hrmCEmail','hrmCInterviewer','hrmCLink','hrmCNotes'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('hrmCDate').value = '';
   hrmSetTime('');
@@ -308,6 +317,7 @@ async function openHrmEditModal(id) {
   const c = _hrmCandidates.find(x => String(x.id) === String(id));
   if (!c) return;
   _hrmEditId = id;
+  if (await _hrmCandReact(c)) return;
   document.getElementById('hrmAddErr').style.display = 'none';
   document.getElementById('hrmCName').value        = c.name || '';
   document.getElementById('hrmCProfile').value     = c.profile_position || '';
@@ -402,19 +412,15 @@ document.addEventListener('click', (e) => {
   dd.style.display = 'none';
 });
 
-async function saveHrmCandidate() {
-  const name  = document.getElementById('hrmCName').value.trim();
-  const phone = document.getElementById('hrmCPhone').value.trim();
-  const date  = document.getElementById('hrmCDate').value;
-  const time  = document.getElementById('hrmCTime').value;
-  if (!name||!phone) { showErrIn('hrmAddErr','Name and phone are required'); return; }
-  if (!date||!time) { showErrIn('hrmAddErr','Interview date and time are required'); return; }
+function saveHrmCandidate() {
   const payload = {
-    name, phone,
+    name: document.getElementById('hrmCName').value.trim(),
+    phone: document.getElementById('hrmCPhone').value.trim(),
     email: document.getElementById('hrmCEmail').value.trim(),
     profile_position: document.getElementById('hrmCProfile').value.trim(),
     department: document.getElementById('hrmCDepartment').value,
-    interview_date: date, interview_time: time,
+    interview_date: document.getElementById('hrmCDate').value,
+    interview_time: document.getElementById('hrmCTime').value,
     notes: document.getElementById('hrmCNotes').value.trim(),
     interview_mode: document.getElementById('hrmCMode').value,
     meeting_link: document.getElementById('hrmCMode').value === 'offline' ? '' : document.getElementById('hrmCLink').value.trim(),
@@ -422,13 +428,21 @@ async function saveHrmCandidate() {
     interviewer_phone: document.getElementById('hrmCInterviewer').value.trim(),
     interviewer_email: document.getElementById('hrmCInterviewerHod').value
   };
+  return hrmCandidateSend(_hrmEditId, payload, { err: msg => showErrIn('hrmAddErr', msg), close: () => closeModal('hrmAddModal') });
+}
+// The save, shared with the React form (HrmPopups.jsx); editId is null for a
+// new candidate; io = { err(msg), close() }.
+async function hrmCandidateSend(editId, payload, io) {
+  _hrmEditId = editId;
+  if (!payload.name || !payload.phone) { io.err('Name and phone are required'); return; }
+  if (!payload.interview_date || !payload.interview_time) { io.err('Interview date and time are required'); return; }
   const r = _hrmEditId
     ? await api(`/api/hrm/candidates/${_hrmEditId}`, 'PUT', payload)
     : await api('/api/hrm/candidates', 'POST', payload);
-  if (r.error) { showErrIn('hrmAddErr',r.error); return; }
+  if (r.error) { io.err(r.error); return; }
   const wasEdit = !!_hrmEditId;
   _hrmEditId = null;
-  closeModal('hrmAddModal');
+  io.close();
   // Online with the link left blank: say whether Zoom made one
   const zoomNote = payload.interview_mode === 'online' && !payload.meeting_link
     ? (r.meeting_link ? ' Zoom link created.' : ' (No meeting link — Zoom could not create one.)') : '';
@@ -868,11 +882,14 @@ async function openOfferFormModal(id) {
   updateOfferPreview();
 }
 
-async function loadHrmDepartmentOptions(selectId, selected) {
+async function _hrmLoadDepartments() {
   if (!_hrmDepartments.length) {
     const departments = await api('/api/departments');
     _hrmDepartments = Array.isArray(departments) ? departments : [];
   }
+}
+async function loadHrmDepartmentOptions(selectId, selected) {
+  await _hrmLoadDepartments();
   const sel = document.getElementById(selectId);
   sel.innerHTML = '<option value="">--select--</option>' +
     _hrmDepartments.map(d => `<option value="${esc(d)}" ${d===selected?'selected':''}>${esc(d)}</option>`).join('');
