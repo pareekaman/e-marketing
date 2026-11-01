@@ -4,20 +4,37 @@
 let _cpMe = null;
 let _cpStatusChart = null;
 
+// The portal's page (tabs, overview, the feedback panel's frame) is React
+// (frontend/src/pages/ClientPortal.jsx, mounted on #cpContent) since
+// 2026-11-01; cpRenderHtml below stays as the fallback. It is handed
+// { loading } / { error } / { stats }; the chart, the range inputs, the
+// delegate pop-up and the feedback form are still this file's.
+let CPORTAL_REACT = null, _cportalState = null;
+function cportalSetReact(fn) { CPORTAL_REACT = fn; if (fn && _cportalState) fn(_cportalState); }
+function _cportalShow(state) {
+  const wrap = document.getElementById('cpContent');
+  if (!wrap || !wrap.dataset.react) return false;
+  _cportalState = state;
+  if (CPORTAL_REACT) CPORTAL_REACT(state); else emkReactMount('clientportal', wrap);
+  return true;
+}
+
 async function loadClientPortal(from, to) {
   const wrap = document.getElementById('cpContent');
-  wrap.innerHTML = '<div class="empty" style="padding:40px">Loading…</div>';
+  if (!_cportalShow({ loading: true })) wrap.innerHTML = '<div class="empty" style="padding:40px">Loading…</div>';
   _cpFeedbackLoaded = false;
   try {
     const qs = (from && to) ? `?from=${from}&to=${to}` : '';
     const s = await api('/api/client-portal/stats' + qs);
-    if (s.error) { wrap.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">${s.error}</div>`; return; }
+    if (s.error) { if (!_cportalShow({ error: s.error })) wrap.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">${s.error}</div>`; return; }
     _cpMe = s.client || {};
+    if (_cportalShow({ stats: s })) return;   // the page draws the chart once it is on screen
     wrap.innerHTML = cpRenderHtml(s);
     // Render charts after the DOM is in place.
     setTimeout(() => cpRenderCharts(s), 0);
   } catch(e) {
-    wrap.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed to load: ${e.message || 'error'}</div>`;
+    const msg = `Failed to load: ${e.message || 'error'}`;
+    if (!_cportalShow({ error: msg })) wrap.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">${msg}</div>`;
   }
 }
 

@@ -54,6 +54,7 @@ const PAGES = {
   leaddetail: lazy(() => import('./pages/LeadDetail.jsx')),
   weektasks: lazy(() => import('./pages/WeekTasks.jsx')),
   emp360filters: lazy(() => import('./pages/Emp360Filters.jsx')),
+  clientportal: lazy(() => import('./pages/ClientPortal.jsx')),
 };
 
 const roots = new WeakMap();
