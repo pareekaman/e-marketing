@@ -51,8 +51,20 @@ function lpRenderNotice(){
   </details>`;
 }
 
+// The sign pop-up is React (frontend/src/pages/LeavePolicySign.jsx, in
+// #lpSignRoot) since 2026-11-01; #lpPolicyModal is the fallback. Both save
+// through lpSignSend().
+let LP_REACT = null, _lpWanted = null;
+function lpSetReact(fn){ LP_REACT = fn; if (fn && _lpWanted) { const w = _lpWanted; _lpWanted = null; fn(w); } }
+
 function lpOpenSign(){
   _lpPromptedAt = Date.now();
+  const root = document.getElementById('lpSignRoot');
+  if (root && root.dataset.react) {
+    const data = { html: lpPolicyHtml(), name: ME.name || '', date: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'), maxBytes: LP_MAX_BYTES };
+    if (LP_REACT) LP_REACT(data); else { _lpWanted = data; emkReactMount('lpsign', root); }
+    return;
+  }
   LP_SIGNATURE = '';
   document.getElementById('lpSignText').innerHTML = lpPolicyHtml();
   document.getElementById('lpAgree').checked = false;
@@ -89,12 +101,21 @@ async function lpSubmit(){
   if (!LP_SIGNATURE) return lpErr('Upload an image of your signature.');
   const btn = document.getElementById('lpSubmitBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
-  const r = await api('/api/leave-policy/sign', 'POST', { agree: true, signature: LP_SIGNATURE });
+  const res = await lpSignSend(LP_SIGNATURE);
   btn.disabled = false; btn.textContent = 'I Agree & Sign';
-  if (!r || r.error) return lpErr((r && r.error) || 'Could not save. Please try again.');
+  if (res !== true) lpErr(res);
+}
+
+// The signing itself, for this pop-up and the React one: true once it went
+// through (the pop-up is closed), otherwise the message to show in it.
+async function lpSignSend(signature){
+  const r = await api('/api/leave-policy/sign', 'POST', { agree: true, signature });
+  if (!r || r.error) return (r && r.error) || 'Could not save. Please try again.';
   closeModal('lpPolicyModal');
+  if (LP_REACT) LP_REACT(null);
   showToast('✅ Policy signed');
   lpLoad();
+  return true;
 }
 
 // Admin: who has signed (with the signature) and who has not.
