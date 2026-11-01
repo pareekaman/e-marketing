@@ -50,6 +50,7 @@ const PAGES = {
   ekcards: lazy(() => import('./pages/EkCards.jsx')),
   ekadd: lazy(() => import('./pages/EkAddForm.jsx')),
   misdetail: lazy(() => import('./pages/MisDetail.jsx')),
+  leaddetail: lazy(() => import('./pages/LeadDetail.jsx')),
 };
 
 const roots = new WeakMap();

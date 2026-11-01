@@ -332,6 +332,8 @@ function startEnqAutoRefresh() {
     if (typeof document.visibilityState === 'string' && document.visibilityState !== 'visible') return;
     const modal = document.getElementById('enqDetailModal');
     if (modal && modal.classList.contains('open')) return;
+    // The React detail pop-up (LeadDetail.jsx) counts the same.
+    if (document.querySelector('#leadDetailRoot .modal-overlay.open')) return;
     const src = _enqSource;
     if (src === 'website') loadEnquiries({ silent: true });
     else if (src === 'meta') loadMetaLeads({ silent: true });
@@ -644,10 +646,67 @@ function toggleEnqHistory() {
   if (btn) btn.textContent = (show ? '▲ ' : '📜 ') + btn.dataset.label;
 }
 
+// The detail pop-up (shared by Website, Meta and Google Ads leads) is React
+// (frontend/src/pages/LeadDetail.jsx, in #leadDetailRoot) since 2026-11-01;
+// #enqDetailModal is the fallback. Each opener builds a view (name, contact
+// line, status choices, remark history, the read-only fields) with its
+// *DetailView() and hands it over; the old markup is built from the same view.
+// The save functions take an `io` ({ status, remark, say(text, color),
+// focus() }) — from the React pop-up, or read off the old one's inputs.
+let LEAD_DETAIL_REACT = null, _leadDetailWanted = null;
+function leadDetailSetReact(fn) { LEAD_DETAIL_REACT = fn; if (fn && _leadDetailWanted) { const w = _leadDetailWanted; _leadDetailWanted = null; fn(w); } }
+function _leadDetailReact(view) {
+  const root = document.getElementById('leadDetailRoot');
+  if (!root || !root.dataset.react) return false;
+  if (LEAD_DETAIL_REACT) LEAD_DETAIL_REACT(view); else { _leadDetailWanted = view; emkReactMount('leaddetail', root); }
+  return true;
+}
+function _leadDomIO(statusId, remarkId, msgId) {
+  const s = document.getElementById(statusId), rm = document.getElementById(remarkId), msg = document.getElementById(msgId);
+  return {
+    status: s ? s.value : undefined, remark: rm ? rm.value.trim() : '',
+    say: (text, color) => { if (msg) { msg.textContent = text; msg.style.color = color; } },
+    focus: () => { if (rm) rm.focus(); },
+  };
+}
+// A status <select> list: the source's statuses, with the row's own one first
+// when it is not among them.
+function _leadStatusOpts(list, cur) {
+  const opts = [...list];
+  if (!opts.some(o => o.toLowerCase() === cur.toLowerCase())) opts.unshift(cur);
+  return opts;
+}
+// The read-only fields, as the old two-column grid drew them.
+function _leadFieldsHtml(fields) {
+  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 28px">${fields.map(f => `<div style="${f.wide ? 'grid-column:1/-1;' : ''}padding:7px 0;border-bottom:1px solid var(--muted)">
+        <div style="font-size:11px;font-weight:800;color:var(--foreground);text-transform:uppercase;letter-spacing:.4px">${escapeHtml(f.label)}</div>
+        <div style="font-size:14px;color:var(--foreground);margin-top:2px;white-space:pre-wrap;word-break:break-word">${escapeHtml(f.value)}</div>
+      </div>`).join('')}</div>`;
+}
+
+function enqDetailView(r, i) {
+  const curStatus = (r.status || '').trim() || 'NEW';
+  const remarks = parseRemarks(r.notes);
+  // Status and notes are edited above; long fields span both columns.
+  const skip = new Set(['status', 'notes']);
+  const longKeys = new Set(['message', 'challenge', 'looking_for']);
+  const fields = [];
+  _enqData.headers.forEach((h, idx) => {
+    const key = _enqData.keys[idx];
+    if (skip.has(key)) return;
+    const v = (r[key] || '').trim();
+    if (v) fields.push({ label: h, value: v, wide: longKeys.has(key) });
+  });
+  return { name: r.name || 'Enquiry', sub: [r.email, r.phone].filter(Boolean).join(' · '), curStatus,
+    statuses: _leadStatusOpts(ENQ_STATUSES, curStatus), remarks, historyHtml: enqHistoryHtml(remarks), fields,
+    save: 'saveEnquiryUpdate', saveArg: r.enquiry_id || '', key: 'enq' + i };
+}
+
 function openEnqDetail(i) {
   const r = (_enqData.rows || [])[i];
   if (!r) return;
   _enqDetailIdx = i;
+  if (_leadDetailReact(enqDetailView(r, i))) return;
   const nameEl = document.getElementById('enqDetailName');
   const subEl = document.getElementById('enqDetailSub');
   if (nameEl) nameEl.textContent = r.name || 'Enquiry';
@@ -682,42 +741,25 @@ function openEnqDetail(i) {
         </div>
       </div>`;
 
-    // Read-only remaining fields (status/notes are editable above, so skip them).
-    // Two-column grid so everything fits without scrolling; long fields span full width.
-    const skip = new Set(['status', 'notes']);
-    const longKeys = new Set(['message', 'challenge', 'looking_for']);
-    const fields = _enqData.headers.map((h, idx) => {
-      const key = _enqData.keys[idx];
-      if (skip.has(key)) return '';
-      const v = (r[key] || '').trim();
-      if (!v) return '';
-      const span = longKeys.has(key) ? 'grid-column:1/-1;' : '';
-      return `<div style="${span}padding:7px 0;border-bottom:1px solid var(--muted)">
-        <div style="font-size:11px;font-weight:800;color:var(--foreground);text-transform:uppercase;letter-spacing:.4px">${escapeHtml(h)}</div>
-        <div style="font-size:14px;color:var(--foreground);margin-top:2px;white-space:pre-wrap;word-break:break-word">${escapeHtml(v)}</div>
-      </div>`;
-    }).join('');
-
-    body.innerHTML = editBlock + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 28px">${fields}</div>`;
+    // Read-only remaining fields: a two-column grid, long fields full width.
+    body.innerHTML = editBlock + _leadFieldsHtml(enqDetailView(r, i).fields);
   }
   document.getElementById('enqDetailModal').classList.add('open');
 }
 
 // Status/Remark ko live Google Sheet me save karo
-async function saveEnquiryUpdate(enquiryId) {
-  const statusEl = document.getElementById('enqEditStatus');
-  const notesEl = document.getElementById('enqEditNotes');
-  const msg = document.getElementById('enqSaveMsg');
-  const status = statusEl ? statusEl.value : undefined;
-  const newRemark = notesEl ? notesEl.value.trim() : '';
+async function saveEnquiryUpdate(enquiryId, io) {
+  io = io || _leadDomIO('enqEditStatus', 'enqEditNotes', 'enqSaveMsg');
+  const status = io.status;
+  const newRemark = io.remark;
   const row = (_enqData.rows || []).find(x => (x.enquiry_id || '') === enquiryId);
   const origStatus = row ? ((row.status || '').trim() || 'NEW') : 'NEW';
   const statusChanged = status !== undefined && status !== origStatus;
 
   // A remark is required when the status changes, so the reason for the change is recorded.
   if (statusChanged && !newRemark) {
-    if (msg) { msg.textContent = '⚠️ Please add a remark when changing the status'; msg.style.color = 'var(--destructive)'; }
-    if (notesEl) notesEl.focus();
+    io.say('⚠️ Please add a remark when changing the status', 'var(--destructive)');
+    io.focus();
     return;
   }
 
@@ -728,10 +770,10 @@ async function saveEnquiryUpdate(enquiryId) {
     notes = `[${stamp} | ${status || origStatus}] ${newRemark}` + (notes ? '\n' + notes : '');
   }
 
-  if (msg) { msg.textContent = 'Saving…'; msg.style.color = 'var(--muted-foreground)'; }
+  io.say('Saving…', 'var(--muted-foreground)');
   const r = await api('/api/enquiries/update', 'POST', { enquiryId, status, notes });
   if (!r || r.error) {
-    if (msg) { msg.textContent = '⚠️ ' + ((r && r.error) || 'Save failed'); msg.style.color = 'var(--destructive)'; }
+    io.say('⚠️ ' + ((r && r.error) || 'Save failed'), 'var(--destructive)');
     return;
   }
   if (row) { if (status !== undefined) row.status = status; row.notes = notes; if (r.updatedAt) row.last_updated = r.updatedAt; }
@@ -970,9 +1012,26 @@ function toggleMlHistory() {
   if (btn) btn.textContent = (show ? '▲ ' : '📜 ') + btn.dataset.label;
 }
 
+function mlDetailView(r, i) {
+  const curStatus = (r.lead_status || '').trim() || 'CREATED';
+  const remarks = parseRemarks(r.remark);
+  const skip = new Set(['lead_status', 'remark', 'id', 'ad_id', 'adset_id', 'campaign_id', 'form_id', 'col_21']);
+  const fields = [];
+  _metaLeads.headers.forEach((h, idx) => {
+    const key = _metaLeads.keys[idx]; if (skip.has(key)) return;
+    let v = (r[key] || '').trim(); if (!v) return;
+    if (key === 'what_products_do_you_sell' || key === 'when_are_you_planning_to_get_your_website_developed') v = v.replace(/_/g, ' ');
+    fields.push({ label: h, value: v, wide: false });
+  });
+  return { name: r.full_name || 'Lead', sub: [r.email, r.whatsapp_number].filter(Boolean).join(' · '), curStatus,
+    statuses: _leadStatusOpts(META_LEAD_STATUSES, curStatus), remarks, historyHtml: enqHistoryHtml(remarks), fields,
+    save: 'saveMetaLeadUpdate', saveArg: r.id || '', key: 'ml' + i };
+}
+
 function openMetaLeadDetail(i) {
   const r = ((_metaLeads && _metaLeads.rows) || [])[i]; if (!r) return;
   _mlDetailIdx = i;
+  if (_leadDetailReact(mlDetailView(r, i))) return;
   document.getElementById('enqDetailName').textContent = r.full_name || 'Lead';
   document.getElementById('enqDetailSub').textContent = [r.email, r.whatsapp_number].filter(Boolean).join(' · ');
   const body = document.getElementById('enqDetailBody');
@@ -993,30 +1052,23 @@ function openMetaLeadDetail(i) {
     <div style="margin-top:8px"><button class="btn btn-outline btn-sm" id="mlHistoryBtn" data-label="${histLabel}" onclick="toggleMlHistory()">📜 ${histLabel}</button>
       <div id="mlHistory" style="display:none;margin-top:8px;max-height:190px;overflow:auto;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px 12px">${enqHistoryHtml(remarks)}</div></div>
   </div>`;
-  const skip = new Set(['lead_status', 'remark', 'id', 'ad_id', 'adset_id', 'campaign_id', 'form_id', 'col_21']);
-  const fields = _metaLeads.headers.map((h, idx) => {
-    const key = _metaLeads.keys[idx]; if (skip.has(key)) return '';
-    let v = (r[key] || '').trim(); if (!v) return '';
-    if (key === 'what_products_do_you_sell' || key === 'when_are_you_planning_to_get_your_website_developed') v = v.replace(/_/g, ' ');
-    return `<div style="padding:7px 0;border-bottom:1px solid var(--muted)"><div style="font-size:11px;font-weight:800;color:var(--foreground);text-transform:uppercase;letter-spacing:.4px">${escapeHtml(h)}</div><div style="font-size:14px;color:var(--foreground);margin-top:2px;white-space:pre-wrap;word-break:break-word">${escapeHtml(v)}</div></div>`;
-  }).join('');
-  body.innerHTML = editBlock + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 28px">${fields}</div>`;
+  body.innerHTML = editBlock + _leadFieldsHtml(mlDetailView(r, i).fields);
   document.getElementById('enqDetailModal').classList.add('open');
 }
 
-async function saveMetaLeadUpdate(leadId) {
-  const statusEl = document.getElementById('mlEditStatus'), remarkEl = document.getElementById('mlEditRemark'), msg = document.getElementById('mlSaveMsg');
-  const status = statusEl ? statusEl.value : undefined;
-  const newRemark = remarkEl ? remarkEl.value.trim() : '';
+async function saveMetaLeadUpdate(leadId, io) {
+  io = io || _leadDomIO('mlEditStatus', 'mlEditRemark', 'mlSaveMsg');
+  const status = io.status;
+  const newRemark = io.remark;
   const row = ((_metaLeads && _metaLeads.rows) || []).find(x => (x.id || '') === leadId);
   const origStatus = row ? ((row.lead_status || '').trim() || 'CREATED') : 'CREATED';
   const statusChanged = status !== undefined && status !== origStatus;
-  if (statusChanged && !newRemark) { if (msg) { msg.textContent = '⚠️ Please add a remark when changing the status'; msg.style.color = 'var(--destructive)'; } if (remarkEl) remarkEl.focus(); return; }
+  if (statusChanged && !newRemark) { io.say('⚠️ Please add a remark when changing the status', 'var(--destructive)'); io.focus(); return; }
   let remark = row ? (row.remark || '') : '';
   if (newRemark) { const stamp = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', ''); remark = `[${stamp} | ${status || origStatus}] ${newRemark}` + (remark ? '\n' + remark : ''); }
-  if (msg) { msg.textContent = 'Saving…'; msg.style.color = 'var(--muted-foreground)'; }
+  io.say('Saving…', 'var(--muted-foreground)');
   const r = await api('/api/meta-leads/update', 'POST', { leadId, status, remark });
-  if (!r || r.error) { if (msg) { msg.textContent = '⚠️ ' + ((r && r.error) || 'Save failed'); msg.style.color = 'var(--destructive)'; } return; }
+  if (!r || r.error) { io.say('⚠️ ' + ((r && r.error) || 'Save failed'), 'var(--destructive)'); return; }
   if (row) { if (status !== undefined) row.lead_status = status; row.remark = remark; }
   showToast('✅ Saved to sheet'); renderMetaLeads();
   if (_mlDetailIdx >= 0) openMetaLeadDetail(_mlDetailIdx);
@@ -1240,9 +1292,24 @@ function toggleGadHistory() {
   if (btn) btn.textContent = (show ? '▲ ' : '📜 ') + btn.dataset.label;
 }
 
+function gadDetailView(r, i) {
+  const curStatus = (r.status_1st_call || '').trim() || 'New';
+  const remarks = parseRemarks(r.remarks);
+  const skip = new Set(['status_1st_call', 'remarks']);
+  const fields = [];
+  _gadData.headers.forEach((h, idx) => {
+    const key = _gadData.keys[idx]; if (skip.has(key)) return;
+    const v = (r[key] || '').trim(); if (v) fields.push({ label: h, value: v, wide: false });
+  });
+  return { name: r.name || 'Lead', sub: [r.email, r.phone].filter(Boolean).join(' · '), curStatus,
+    statuses: _leadStatusOpts(GAD_STATUSES, curStatus), remarks, historyHtml: enqHistoryHtml(remarks), fields,
+    save: 'saveGadUpdate', saveArg: i, key: 'gad' + i };
+}
+
 function openGadDetail(i) {
   const r = ((_gadData && _gadData.rows) || [])[i]; if (!r) return;
   _gadDetailIdx = i;
+  if (_leadDetailReact(gadDetailView(r, i))) return;
   document.getElementById('enqDetailName').textContent = r.name || 'Lead';
   document.getElementById('enqDetailSub').textContent = [r.email, r.phone].filter(Boolean).join(' · ');
   const body = document.getElementById('enqDetailBody');
@@ -1263,29 +1330,23 @@ function openGadDetail(i) {
     <div style="margin-top:8px"><button class="btn btn-outline btn-sm" id="gadHistoryBtn" data-label="${histLabel}" onclick="toggleGadHistory()">📜 ${histLabel}</button>
       <div id="gadHistory" style="display:none;margin-top:8px;max-height:190px;overflow:auto;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px 12px">${enqHistoryHtml(remarks)}</div></div>
   </div>`;
-  const skip = new Set(['status_1st_call', 'remarks']);
-  const fields = _gadData.headers.map((h, idx) => {
-    const key = _gadData.keys[idx]; if (skip.has(key)) return '';
-    const v = (r[key] || '').trim(); if (!v) return '';
-    return `<div style="padding:7px 0;border-bottom:1px solid var(--muted)"><div style="font-size:11px;font-weight:800;color:var(--foreground);text-transform:uppercase;letter-spacing:.4px">${escapeHtml(h)}</div><div style="font-size:14px;color:var(--foreground);margin-top:2px;white-space:pre-wrap;word-break:break-word">${escapeHtml(v)}</div></div>`;
-  }).join('');
-  body.innerHTML = editBlock + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 28px">${fields}</div>`;
+  body.innerHTML = editBlock + _leadFieldsHtml(gadDetailView(r, i).fields);
   document.getElementById('enqDetailModal').classList.add('open');
 }
 
-async function saveGadUpdate(i) {
-  const statusEl = document.getElementById('gadEditStatus'), remarkEl = document.getElementById('gadEditRemark'), msg = document.getElementById('gadSaveMsg');
+async function saveGadUpdate(i, io) {
   const row = ((_gadData && _gadData.rows) || [])[i]; if (!row) return;
-  const status = statusEl ? statusEl.value : undefined;
-  const newRemark = remarkEl ? remarkEl.value.trim() : '';
+  io = io || _leadDomIO('gadEditStatus', 'gadEditRemark', 'gadSaveMsg');
+  const status = io.status;
+  const newRemark = io.remark;
   const origStatus = (row.status_1st_call || '').trim() || 'New';
   const statusChanged = status !== undefined && status !== origStatus;
-  if (statusChanged && !newRemark) { if (msg) { msg.textContent = '⚠️ Please add a remark when changing the status'; msg.style.color = 'var(--destructive)'; } if (remarkEl) remarkEl.focus(); return; }
+  if (statusChanged && !newRemark) { io.say('⚠️ Please add a remark when changing the status', 'var(--destructive)'); io.focus(); return; }
   let remark = row.remarks || '';
   if (newRemark) { const stamp = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', ''); remark = `[${stamp} | ${status || origStatus}] ${newRemark}` + (remark ? '\n' + remark : ''); }
-  if (msg) { msg.textContent = 'Saving…'; msg.style.color = 'var(--muted-foreground)'; }
+  io.say('Saving…', 'var(--muted-foreground)');
   const r = await api('/api/google-ads/update', 'POST', { createdTime: row.created_time, phone: row.phone, status, remark });
-  if (!r || r.error) { if (msg) { msg.textContent = '⚠️ ' + ((r && r.error) || 'Save failed'); msg.style.color = 'var(--destructive)'; } return; }
+  if (!r || r.error) { io.say('⚠️ ' + ((r && r.error) || 'Save failed'), 'var(--destructive)'); return; }
   if (status !== undefined) row.status_1st_call = status; row.remarks = remark;
   showToast('✅ Saved to sheet'); renderGoogleAds();
   if (_gadDetailIdx >= 0) openGadDetail(_gadDetailIdx);
