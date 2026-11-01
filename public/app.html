@@ -2409,6 +2409,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       </div>
     </div>
   </div>
+  <!-- The pop-up above as React (ClientDelegate in frontend/src/pages/ClientPortal.jsx); cpOpenDelegate
+       routes here, #clientDelegateModal is the fallback. -->
+  <div id="cpDelegateRoot" data-react="1" data-react-quiet="1"></div>
 
   <!-- ── MEETINGS — calendar (month 70% + day timeline 30%) ── -->
   <div id="page-meetings" class="page">
@@ -4351,7 +4354,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261030b"></script>
-<script src="/js/react-bridge.js?v=20261101q"></script>
+<script src="/js/react-bridge.js?v=20261101r"></script>
 <script src="/js/dashboard.js?v=20261101a"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261101a"></script>
@@ -4366,7 +4369,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/leave-policy.js?v=20261101a"></script>
 <script src="/js/compose-mail.js?v=20261101b"></script>
 <script src="/js/emk-creds.js?v=20261101b"></script>
-<script src="/js/portal.js?v=20261101a"></script>
+<script src="/js/portal.js?v=20261101b"></script>
 <script src="/js/payments.js?v=20261031b"></script>
 <script src="/js/mdo.js?v=20261030e"></script>
 <!-- ⚠️ notify.js MUST load before meetings.js. meetings.js ends by calling

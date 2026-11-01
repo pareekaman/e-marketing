@@ -7,7 +7,8 @@
 // range inputs (cpApplyRange on #cpFrom / #cpTo) and opens the delegate
 // pop-up.
 import { useEffect, useRef, useState } from 'react';
-import { api, legacy, css, fmtDate } from '../lib/app.js';
+import { api, toast, legacy, css, fmtDate } from '../lib/app.js';
+import Modal from '../components/Modal.jsx';
 import SearchSelect from '../components/SearchSelect.jsx';
 
 const n = v => parseInt(v) || 0;
@@ -351,6 +352,66 @@ function Portal({ s }) {
         </div>
       </div>
     </>
+  );
+}
+
+// "＋ New Task for Handler" (was #clientDelegateModal, run by cpOpenDelegate /
+// cpSaveDelegate in portal.js). cpOpenDelegate fetches the client's handlers
+// and hands them over with the primary one as the default; the task goes to
+// POST /api/tasks, which checks the handler belongs to this client.
+const PRIORITIES = [{ value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }];
+function DelegateBody({ d, close }) {
+  const [handler, setHandler] = useState(d.options.some(o => o.value === d.primary) ? d.primary : (d.options[0] || {}).value || '');
+  const [desc, setDesc] = useState('');
+  const [date, setDate] = useState(d.today);
+  const [priority, setPriority] = useState('low');
+  const [remarks, setRemarks] = useState('');
+  const [err, setErr] = useState('');
+  const save = async () => {
+    setErr('');
+    const text = desc.trim();
+    if (!text) return setErr('Description required');
+    if (!date) return setErr('Due date required');
+    const r = await api('/api/tasks', 'POST', { type: 'delegation', desc: text, date, priority, remarks: remarks.trim(), approval: 'no', assignedTo: handler || undefined });
+    if (r.error) return setErr(r.error);
+    toast('✅ Task sent to your handler');
+    close();
+    legacy('loadClientPortal');
+  };
+  return (
+    <>
+      <h3>＋ Assign Task to Your Handler</h3>
+      {err ? <div className="alert error" ref={css('display: block;')}>{err}</div> : null}
+      <div className="form-group"><label>Handler *</label>
+        <SearchSelect value={handler} onChange={setHandler} options={d.options} style={{ fontWeight: 600 }} /></div>
+      <div className="form-group"><label>Description *</label>
+        <textarea rows={3} placeholder="What needs to be done?" value={desc} onChange={e => setDesc(e.target.value)} /></div>
+      <div className="form-row">
+        <div className="form-group"><label>Due Date *</label><input type="date" min={d.today} value={date} onChange={e => setDate(e.target.value)} /></div>
+        <div className="form-group"><label>Priority</label><SearchSelect value={priority} onChange={setPriority} options={PRIORITIES} /></div>
+      </div>
+      <div className="form-group"><label>Remarks</label>
+        <textarea rows={2} placeholder="Optional notes" value={remarks} onChange={e => setRemarks(e.target.value)} /></div>
+      <div className="modal-footer">
+        <button className="btn btn-outline" onClick={close}>Cancel</button>
+        <button className="btn btn-primary" onClick={save}>Send to Handler</button>
+      </div>
+    </>
+  );
+}
+export function ClientDelegate() {
+  const [data, setData] = useState(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    let k = 0;
+    legacy('cportalDelSetReact', d => { setData({ ...d, key: ++k }); setOpen(true); });
+    return () => legacy('cportalDelSetReact', null);
+  }, []);
+  const close = () => setOpen(false);
+  return (
+    <Modal open={open} onClose={close} style="width:520px">
+      {data ? <DelegateBody key={data.key} d={data} close={close} /> : null}
+    </Modal>
   );
 }
 

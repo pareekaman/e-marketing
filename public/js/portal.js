@@ -304,9 +304,28 @@ function cpRenderUpcomingHtml(upcoming) {
   </div>`;
 }
 
+// The delegate pop-up is React (ClientDelegate in ClientPortal.jsx, in
+// #cpDelegateRoot) since 2026-11-01; #clientDelegateModal is the fallback.
+// It is handed the handler list (fetched here, as before, before it opens).
+let CPORTAL_DEL_REACT = null, _cportalDelWanted = null;
+function cportalDelSetReact(fn) { CPORTAL_DEL_REACT = fn; if (fn && _cportalDelWanted) { const w = _cportalDelWanted; _cportalDelWanted = null; fn(w); } }
+
 async function cpOpenDelegate() {
   if (!_cpMe?.handler_id) {
     showToast('No handler assigned — contact admin', 'error');
+    return;
+  }
+  const root = document.getElementById('cpDelegateRoot');
+  if (root && root.dataset.react) {
+    // The primary handler alone unless the list comes back; it is the default.
+    let options = [{ value: String(_cpMe.handler_id), label: _cpMe.handler_name || 'Handler' }];
+    try {
+      const r = await api('/api/client-portal/handlers');
+      const handlers = (r && Array.isArray(r.handlers)) ? r.handlers : [];
+      if (handlers.length) options = handlers.map(h => ({ value: String(h.id), label: `${h.name}${h.department ? ' · ' + h.department : ''}` }));
+    } catch (e) { /* keep the single default option */ }
+    const data = { options, primary: String(_cpMe.handler_id), today: new Date().toISOString().split('T')[0] };
+    if (CPORTAL_DEL_REACT) CPORTAL_DEL_REACT(data); else { _cportalDelWanted = data; emkReactMount('clientdelegate', root); }
     return;
   }
   document.getElementById('cpDelErr').style.display = 'none';
