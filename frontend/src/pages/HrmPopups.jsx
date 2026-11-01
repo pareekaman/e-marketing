@@ -1,5 +1,5 @@
 // HRM → the candidate pop-ups: Details, Update Status, Joining Details, Offer
-// Letter, Email, Schedule / Edit and Send Offer Letter (were the #hrm…Modal
+// Letter, Email, Schedule / Edit, Send Offer Letter and Final Offer Letter (were the #hrm…Modal
 // pop-ups in app.html). Each of hrm.js's openers hands its data over through
 // hrmPopSetReact under a kind (the BODIES keys below), and each save goes back
 // through a shared hrm.js function. A status pick goes through hrmStatusPick
@@ -474,8 +474,88 @@ function OfferFormBody({ d, close }) {
   );
 }
 
-const BODIES = { details: DetailsBody, status: StatusBody, joining: JoiningBody, offer: OfferBody, email: EmailBody, cand: CandBody, offerForm: OfferFormBody };
-const WIDTH = { joining: 'width:520px;max-width:95vw', offer: 'width:720px;max-width:95vw', email: 'width:460px', cand: 'width:540px', offerForm: 'width:880px;max-width:96vw' };
+// The Final Offer Letter form (was #hrmFinalOfferFormModal:
+// openFinalOfferFormModal / scheduleFinalOfferPreview / renderFinalOfferPreview
+// / openFinalOfferExactPdf / submitFinalOfferForm). The preview is rendered by
+// the server (hrmFinalPreviewHtml), 450ms after the last keystroke; the save is
+// hrmFinalOfferSend, which also emails when d.email.
+const today = () => { const n = new Date(); return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`; };
+function FinalFormBody({ d, close }) {
+  const { c, depts } = d;
+  const [f, setF] = useState({
+    date: today(), name: c.name || '', position: c.profile_position || '', dept: depts.includes(c.department) ? c.department : '',
+    joining: c.joining_date ? String(c.joining_date).slice(0, 10) : '', salary: c.salary || '', probation: '2',
+  });
+  const set = patch => setF(s => ({ ...s, ...patch }));
+  const [html, setHtml] = useState('');
+  const [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+  // What the letter is drawn from, in the order the old form sent it.
+  const fields = () => ({ name: f.name.trim(), position: f.position.trim(), joining_date: f.joining, salary: f.salary.trim(),
+    probation_months: f.probation || '2', letter_date: f.date || '' });
+  const key = JSON.stringify(fields());
+  const first = useRef(true);
+  useEffect(() => {
+    let live = true;
+    const render = async () => {
+      setStatus('updating…');
+      const h = await legacy('hrmFinalPreviewHtml', JSON.parse(key));
+      if (!live) return;
+      if (h) { setHtml(h); setStatus(''); } else setStatus('preview error');
+    };
+    if (first.current) { first.current = false; render(); return () => { live = false; }; }
+    setStatus('typing…');
+    const t = setTimeout(render, 450);
+    return () => { clearTimeout(t); };
+  }, [key]);
+  const save = () => legacy('hrmFinalOfferSend', c.id, {
+    offer_name: f.name.trim(), offer_position: f.position.trim(), department: f.dept, joining_date: f.joining,
+    salary: f.salary.trim(), probation_months: f.probation || '2', letter_date: f.date || '',
+  }, { busy: on => setBusy(on), close });
+  const input = (key, label, type, placeholder, extra) => (
+    <div className="form-group"><label>{label}</label>
+      <input type={type} placeholder={placeholder} value={f[key]} onChange={e => set({ [key]: e.target.value })} {...extra} /></div>
+  );
+  return (
+    <>
+      <div ref={css('display:flex;max-height:86vh')}>
+        <div ref={css('width:320px;min-width:280px;padding:22px 20px;overflow-y:auto;border-right:1px solid #e2e8f0')}>
+          <h3 ref={css('margin:0 0 14px')}>📬 Offer Letter</h3>
+          {input('date', 'Letter Date', 'date')}
+          {input('name', 'Candidate Name *', 'text', 'Full name')}
+          {input('position', 'Position *', 'text', 'Job title')}
+          <div className="form-group">
+            <label>Department</label>
+            <SearchSelect value={f.dept} onChange={v => set({ dept: v })} options={[{ value: '', label: '--select--' }, ...depts.map(x => ({ value: x, label: x }))]} placeholder="--select--" />
+          </div>
+          {input('joining', 'Joining Date *', 'date')}
+          {input('salary', 'Salary / CTC', 'text', 'e.g. 6 LPA')}
+          {input('probation', 'Probation Period (months)', 'number', undefined, { min: 0, max: 24, step: 1 })}
+          <div ref={css('background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:9px 11px;font-size:11.5px;color:#1e40af;line-height:1.5;margin-top:4px')}>
+            Preview live updates as you type. Save the offer, then send this exact PDF to the candidate with the 📧 Email button.
+          </div>
+        </div>
+        <div ref={css('flex:1;display:flex;flex-direction:column;min-width:0;background:#f1f5f9')}>
+          <div ref={css('padding:8px 14px;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center')}>
+            <span>Live Preview</span>
+            <span ref={css('font-weight:500;text-transform:none;color:#94a3b8')}>{status}</span>
+          </div>
+          <iframe id="finalOfferPreviewFrame" ref={css('flex:1;border:none;width:100%;min-height:60vh;background:#fff')} title="Offer letter preview" srcDoc={html || undefined} />
+        </div>
+      </div>
+      <div className="modal-footer" ref={css('margin:0;padding:12px 20px;border-top:1px solid #e2e8f0;gap:8px')}>
+        <button className="btn btn-outline" onClick={close}>Cancel</button>
+        <button className="btn btn-outline" onClick={() => legacy('openFinalOfferExactPdf', fields())}>🖨️ Preview exact PDF</button>
+        <button className="btn btn-primary" disabled={busy} onClick={save}>
+          {busy ? (d.email ? 'Sending…' : 'Saving…') : (d.email ? '📧 Send by Email' : '📬 Save Offer Letter')}</button>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { details: DetailsBody, status: StatusBody, joining: JoiningBody, offer: OfferBody, email: EmailBody, cand: CandBody, offerForm: OfferFormBody, finalForm: FinalFormBody };
+const WIDTH = { joining: 'width:520px;max-width:95vw', offer: 'width:720px;max-width:95vw', email: 'width:460px', cand: 'width:540px', offerForm: 'width:880px;max-width:96vw',
+  finalForm: 'width:95vw;max-width:1150px;padding:0;overflow:hidden' };
 
 export default function HrmPopups() {
   const [st, setSt] = useState({});
@@ -490,6 +570,7 @@ export default function HrmPopups() {
       email: (c, type) => show('email', { c, type }),
       cand: (c, depts, hods, office) => show('cand', { c, depts, hods, office }),
       offerForm: (c, depts, email) => show('offerForm', { c, depts, email }),
+      finalForm: (c, depts, email) => show('finalForm', { c, depts, email }),
     });
     return () => legacy('hrmPopSetReact', null);
   }, []);

@@ -452,7 +452,7 @@ async function hrmCandidateSend(editId, payload, io) {
 
 // View a candidate's full details (read-only) — everything entered at schedule.
 // The Details, Update Status, Joining Details, Offer Letter, Email, Schedule /
-// Edit and Send Offer Letter pop-ups are
+// Edit, Send Offer Letter and Final Offer Letter pop-ups are
 // React since 2026-11-01 (frontend/src/pages/HrmPopups.jsx, in #hrmPopupsRoot); their markup in
 // app.html stays as the fallback. Status changes go through hrmStatusPick /
 // hrmStatusSend, shared with the old pop-up.
@@ -959,6 +959,10 @@ async function openFinalOfferFormModal(id) {
   const c = _hrmCandidates.find(x => String(x.id) === String(id));
   if (!c) return;
   _hrmCurrentId = id;
+  if (document.getElementById('hrmPopupsRoot')?.dataset.react) {
+    await _hrmLoadDepartments();
+    if (_hrmPopReact('finalForm', [c, _hrmDepartments, !!_offerEmailCtx])) return;
+  }
   document.getElementById('finalOfferFName').value     = c.name || '';
   document.getElementById('finalOfferFPosition').value = c.profile_position || '';
   document.getElementById('finalOfferFJoining').value  = c.joining_date ? String(c.joining_date).slice(0,10) : '';
@@ -1002,17 +1006,22 @@ async function renderFinalOfferPreview() {
   const st = document.getElementById('finalOfferPreviewStatus');
   if (!frame) return;
   if (st) st.textContent = 'updating…';
+  const html = await hrmFinalPreviewHtml(_finalOfferFields());
+  if (html) { frame.srcdoc = html; if (st) st.textContent = ''; }
+  else if (st) st.textContent = 'preview error';
+}
+// The server-rendered letter for these fields, or null; shared with the React form.
+async function hrmFinalPreviewHtml(fields) {
   try {
-    const params = new URLSearchParams(_finalOfferFields());
+    const params = new URLSearchParams(fields);
     const r = await api('/api/hrm/final-offer-preview-html?' + params.toString(), 'GET');
-    if (r && r.html) { frame.srcdoc = r.html; if (st) st.textContent = ''; }
-    else if (st) st.textContent = 'preview error';
-  } catch (e) { if (st) st.textContent = 'preview error'; }
+    return r && r.html ? r.html : null;
+  } catch (e) { return null; }
 }
 
-// Render + open the exact PDF (as sent to the candidate) in a new tab.
-async function openFinalOfferExactPdf() {
-  const f = _finalOfferFields();
+// Render + open the exact PDF (as sent to the candidate) in a new tab. The
+// React form passes its own fields.
+async function openFinalOfferExactPdf(f = _finalOfferFields()) {
   if (!f.name || !f.joining_date) { showToast('Name and joining date required', 'error'); return; }
   showToast('Rendering exact PDF…');
   try {
@@ -1029,26 +1038,34 @@ async function openFinalOfferExactPdf() {
 }
 
 function submitFinalOfferForm() {
-  const offer_name     = document.getElementById('finalOfferFName').value.trim();
-  const offer_position = document.getElementById('finalOfferFPosition').value.trim();
-  const department     = document.getElementById('finalOfferFDepartment').value;
-  const joining_date   = document.getElementById('finalOfferFJoining').value;
-  const salary         = document.getElementById('finalOfferFSalary').value.trim();
+  const btn = document.getElementById('finalOfferSendBtn');
+  hrmFinalOfferSend(_hrmCurrentId, {
+    offer_name: document.getElementById('finalOfferFName').value.trim(),
+    offer_position: document.getElementById('finalOfferFPosition').value.trim(),
+    department: document.getElementById('finalOfferFDepartment').value,
+    joining_date: document.getElementById('finalOfferFJoining').value,
+    salary: document.getElementById('finalOfferFSalary').value.trim(),
+    probation_months: document.getElementById('finalOfferFProbation')?.value || '2',
+    letter_date: document.getElementById('finalOfferFDate')?.value || '',
+  }, {
+    busy: (on, sending) => { if (btn) { btn.disabled = on; btn.textContent = on ? (sending ? 'Sending…' : 'Saving…') : (sending ? '📧 Send by Email' : '📬 Save Offer Letter'); } },
+    close: () => closeModal('hrmFinalOfferFormModal'),
+  });
+}
+// The save (and, when reached from 📧 Email, the send), shared with the React
+// form (HrmPopups.jsx); io = { busy(on, sending), close() }.
+function hrmFinalOfferSend(candidateId, { offer_name, offer_position, department, joining_date, salary, probation_months, letter_date }, io) {
   if (!offer_name)   { showToast('Candidate name required', 'error'); return; }
   if (!joining_date) { showToast('Joining date required', 'error'); return; }
-  const candidateId = _hrmCurrentId;
   const ctx = _offerEmailCtx; _offerEmailCtx = null;   // capture + reset the email context
-  const btn = document.getElementById('finalOfferSendBtn');
-  if (btn) { btn.disabled = true; btn.textContent = ctx ? 'Sending…' : 'Saving…'; }
+  io.busy(true, !!ctx);
 
-  const probation_months = document.getElementById('finalOfferFProbation')?.value || '2';
-  const letter_date = document.getElementById('finalOfferFDate')?.value || '';
   api(`/api/hrm/candidates/${candidateId}/send-final-offer`, 'POST', {
     joining_date, salary, offer_name, offer_position, department, probation_months, letter_date
   }).then(async r => {
-    if (btn) { btn.disabled = false; btn.textContent = ctx ? '📧 Send by Email' : '📬 Save Offer Letter'; }
+    io.busy(false, !!ctx);
     if (!r || r.error) { showToast((r && r.error) || 'Save failed', 'error'); return; }
-    closeModal('hrmFinalOfferFormModal');
+    io.close();
     // Surface a Drive-save failure so it isn't silent (the send/email still works).
     if (r.driveSaved === false && r.driveError) {
       showToast('⚠️ Not saved to Drive: ' + r.driveError, 'error');
