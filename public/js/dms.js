@@ -445,8 +445,25 @@ function dmsFileMenuToggle(event) {
 
 let _dmsRenameFileId = null;
 
+// The four pop-ups below (add department, create file, add link, rename) are
+// React (frontend/src/pages/DmsPopups.jsx, in #dmsPopupsRoot) since
+// 2026-11-01; their markup in app.html stays as the fallback. Both versions
+// save through dmsDeptSend / dmsFileSend / dmsShortcutSend / dmsRenameSend,
+// which return true once it went through, an error message to show, or
+// undefined when there is nothing open to act on.
+let DMS_POPUPS_REACT = null, _dmsPopupWanted = null;
+function dmsPopupsSetReact(o) { DMS_POPUPS_REACT = o; if (o && _dmsPopupWanted) { const [k, a] = _dmsPopupWanted; _dmsPopupWanted = null; o[k](...a); } }
+function _dmsPopupReact(kind, args) {
+  const root = document.getElementById('dmsPopupsRoot');
+  if (!root || !root.dataset.react) return false;
+  if (DMS_POPUPS_REACT) DMS_POPUPS_REACT[kind](...args);
+  else { _dmsPopupWanted = [kind, args]; emkReactMount('dmspopups', root); }
+  return true;
+}
+
 function dmsOpenAddShortcut() {
   if (!_dmsSelectedClient || !_dmsBrowseFolderId) return;
+  if (_dmsPopupReact('shortcut', [])) return;
   document.getElementById('dmsShortcutName').value = '';
   document.getElementById('dmsShortcutUrl').value = '';
   document.getElementById('dmsAddShortcutErr').style.display = 'none';
@@ -454,27 +471,36 @@ function dmsOpenAddShortcut() {
   setTimeout(() => document.getElementById('dmsShortcutName').focus(), 0);
 }
 
+// Shows what a *Send() returned in an old pop-up's error line; true closes it.
+function _dmsSendResult(res, modalId, errEl) {
+  if (res === true) closeModal(modalId);
+  else if (typeof res === 'string') { errEl.textContent = res; errEl.style.display = 'block'; }
+}
+
 async function dmsAddShortcutConfirm() {
   const errEl = document.getElementById('dmsAddShortcutErr');
   errEl.style.display = 'none';
-  const name = document.getElementById('dmsShortcutName').value.trim();
-  const url = document.getElementById('dmsShortcutUrl').value.trim();
-  if (!name) { errEl.textContent = 'Name is required'; errEl.style.display = 'block'; return; }
-  if (!/^https?:\/\//i.test(url)) { errEl.textContent = 'Enter a valid http(s) link'; errEl.style.display = 'block'; return; }
+  const res = await dmsShortcutSend(document.getElementById('dmsShortcutName').value.trim(), document.getElementById('dmsShortcutUrl').value.trim());
+  _dmsSendResult(res, 'dmsAddShortcutModal', errEl);
+}
+async function dmsShortcutSend(name, url) {
+  if (!name) return 'Name is required';
+  if (!/^https?:\/\//i.test(url)) return 'Enter a valid http(s) link';
   if (!_dmsSelectedClient || !_dmsBrowseFolderId) return;
   try {
     const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/external-link`, 'POST', { name, url });
-    if (r?.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
-    closeModal('dmsAddShortcutModal');
+    if (r?.error) return r.error;
     showToast('Link added!');
     dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName, 'jump');
-  } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+    return true;
+  } catch (e) { return e.message; }
 }
 
 function dmsRenameFile(fileId) {
   const card = document.querySelector(`.dms-file-card[data-id="${fileId}"]`);
   if (!card || !_dmsSelectedClient || !_dmsBrowseFolderId) return;
   _dmsRenameFileId = fileId;
+  if (_dmsPopupReact('rename', [card.dataset.name])) return;
   document.getElementById('dmsRenameErr').style.display = 'none';
   const input = document.getElementById('dmsRenameInput');
   input.value = card.dataset.name;
@@ -485,16 +511,20 @@ function dmsRenameFile(fileId) {
 async function dmsRenameConfirm() {
   const errEl = document.getElementById('dmsRenameErr');
   errEl.style.display = 'none';
-  const newName = document.getElementById('dmsRenameInput').value.trim();
-  if (!newName) { errEl.textContent = 'Name is required'; errEl.style.display = 'block'; return; }
-  if (!_dmsRenameFileId || !_dmsSelectedClient || !_dmsBrowseFolderId) { closeModal('dmsRenameModal'); return; }
+  const res = await dmsRenameSend(document.getElementById('dmsRenameInput').value.trim());
+  _dmsSendResult(res, 'dmsRenameModal', errEl);
+}
+async function dmsRenameSend(newName) {
+  if (!newName) return 'Name is required';
+  // Nothing open to rename any more: the pop-up just closes.
+  if (!_dmsRenameFileId || !_dmsSelectedClient || !_dmsBrowseFolderId) return true;
   try {
     const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/files/${_dmsRenameFileId}`, 'PATCH', { name: newName });
-    if (r?.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
-    closeModal('dmsRenameModal');
+    if (r?.error) return r.error;
     showToast('Renamed');
     dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName);
-  } catch (e) { errEl.textContent = 'Rename failed: ' + e.message; errEl.style.display = 'block'; }
+    return true;
+  } catch (e) { return 'Rename failed: ' + e.message; }
 }
 
 async function dmsDeleteFile(fileId) {
@@ -592,6 +622,7 @@ async function dmsSetupFolder() {
 }
 
 function dmsOpenAddDept() {
+  if (_dmsPopupReact('dept', [_dmsDepts.slice()])) return;
   const sel = document.getElementById('dmsAddDeptSelect');
   sel.innerHTML = '<option value="">— select department —</option>' +
     _dmsDepts.map(d => `<option value="${dtEscape(d)}">${dtEscape(d)}</option>`).join('');
@@ -600,18 +631,21 @@ function dmsOpenAddDept() {
 }
 
 async function dmsSaveDept() {
-  const dept = document.getElementById('dmsAddDeptSelect').value.trim();
   const errEl = document.getElementById('dmsAddDeptErr');
   errEl.style.display = 'none';
-  if (!dept) { errEl.textContent = 'Please select a department'; errEl.style.display = 'block'; return; }
+  const res = await dmsDeptSend(document.getElementById('dmsAddDeptSelect').value.trim());
+  _dmsSendResult(res, 'dmsAddDeptModal', errEl);
+}
+async function dmsDeptSend(dept) {
+  if (!dept) return 'Please select a department';
   if (!_dmsSelectedClient) return;
   try {
     const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/departments`, 'POST', { department_name: dept });
-    if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
-    closeModal('dmsAddDeptModal');
+    if (r.error) return r.error;
     showToast('Department folder created!');
     dmsSelectClient(_dmsSelectedClient.id);
-  } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+    return true;
+  } catch (e) { return e.message; }
 }
 
 async function dmsRemoveDept(deptName) {
@@ -626,6 +660,7 @@ async function dmsRemoveDept(deptName) {
 }
 
 function dmsOpenCreateFile(defaultKind) {
+  if (_dmsPopupReact('file', [defaultKind || 'doc'])) return;
   document.getElementById('dmsFileName').value = '';
   document.getElementById('dmsFileKind').value = defaultKind || 'doc';
   document.getElementById('dmsCreateFileErr').style.display = 'none';
@@ -634,23 +669,25 @@ function dmsOpenCreateFile(defaultKind) {
 }
 
 async function dmsSaveFile() {
-  const name = document.getElementById('dmsFileName').value.trim();
-  const kind = document.getElementById('dmsFileKind').value;
   const errEl = document.getElementById('dmsCreateFileErr');
   errEl.style.display = 'none';
-  if (!name) { errEl.textContent = 'File name is required'; errEl.style.display = 'block'; return; }
+  const res = await dmsFileSend(document.getElementById('dmsFileName').value.trim(), document.getElementById('dmsFileKind').value);
+  _dmsSendResult(res, 'dmsCreateFileModal', errEl);
+}
+async function dmsFileSend(name, kind) {
+  if (!name) return 'File name is required';
   if (!_dmsSelectedClient || !_dmsBrowseFolderId) return;
   try {
     const r = await api(
       `/api/clients/${_dmsSelectedClient.id}/dms/folders/${_dmsBrowseFolderId}/files`,
       'POST', { name, kind }
     );
-    if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
-    closeModal('dmsCreateFileModal');
+    if (r.error) return r.error;
     showToast(kind === 'folder' ? 'Folder created!' : 'File created!');
     if (kind !== 'folder' && r.web_view_link) window.open(r.web_view_link, '_blank');
     dmsBrowseFolder(_dmsBrowseFolderId, _dmsBrowseFolderName);
-  } catch (e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+    return true;
+  } catch (e) { return e.message; }
 }
 
 async function dmsUploadPicked(input) {
