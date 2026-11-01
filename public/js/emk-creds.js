@@ -156,6 +156,11 @@ function ekCard(g){
 // (Hostinger ID + password). The other fields are hidden and the row shows as
 // its own login section in the card.
 function ekAddExtra(client, employee, kind){
+  const what = kind === 'host' ? 'Hostinger login' : 'email login';
+  const d = ekSystemData(client, employee);
+  Object.assign(d, { extra: true, only: kind === 'host' ? 'host' : 'mail', focus: kind === 'host' ? 'hostingerId' : 'loginEmail',
+    title: `＋ Add ${what} to ${client}`, hint: `Saved as a new row in the sheet with only this ${what}; it shows inside the ${client} card.` });
+  if (_ekAddReact(d)) return;
   ekAddSystem(client, employee);
   const m = document.getElementById('ekAddModal');
   m.classList.add('ek-extra', kind === 'host' ? 'ek-only-host' : 'ek-only-mail');
@@ -186,6 +191,7 @@ async function ekDeleteRows(rowNos){
 // Add New with this client's name (and its employee) already filled, so the new
 // row lands in the same card.
 function ekAddSystem(client, employee){
+  if (_ekAddReact(ekSystemData(client, employee))) return;
   ekOpenAdd(null);
   document.querySelector('#ekAddModal [data-f="client"]').value = client;
   const emp = document.getElementById('ekAddEmployee');
@@ -198,7 +204,45 @@ function ekAddSystem(client, employee){
 // ── Add New: one row in the sheet; an existing client name puts it in that client's card ──
 let EK_EDIT = null;                  // the record being edited, or null for Add New
 
+// The pop-up is React (frontend/src/pages/EkAddForm.jsx, in #ekAddRoot) since
+// 2026-11-01; #ekAddModal is the fallback. The openers hand it what they
+// would have filled in (ekFormData / ekSystemData); both save through
+// ekSaveSend().
+const EK_FIELDS = ['client', 'employee', 'link', 'userId', 'password', 'loginEmail', 'emailPassword', 'hostingerId', 'hostingerPassword', 'kickstart', 'notes'];
+let EK_ADD_REACT = null, _ekAddWanted = null;
+function ekAddSetReact(fn){ EK_ADD_REACT = fn; if (fn && _ekAddWanted) { const w = _ekAddWanted; _ekAddWanted = null; fn(w); } }
+function _ekAddReact(d){
+  const root = document.getElementById('ekAddRoot');
+  if (!root || !root.dataset.react) return false;
+  if (EK_ADD_REACT) EK_ADD_REACT(d); else { _ekAddWanted = d; emkReactMount('ekadd', root); }
+  return true;
+}
+function ekFormData(rec){
+  EK_EDIT = rec || null;
+  const names = [...EK_EMPLOYEES];
+  if (rec && rec.employee && !names.includes(rec.employee)) names.push(rec.employee);
+  const values = {};
+  EK_FIELDS.forEach(f => { values[f] = !rec ? '' : f === 'kickstart' ? ekIsoDate(rec.kickstart) : (rec[f] || ''); });
+  return {
+    names, clients: ekGroups().map(g => g.client), values, extra: !!(rec && ekExtraOnly(rec)), only: null, focus: null,
+    title: rec ? `✏️ Edit ${rec.client}` : '＋ Add Client Credentials',
+    hint: rec ? `Changes are saved to row ${rec.row} of the EMK Client Credentials sheet.`
+      : "Saved as a new row in the EMK Client Credentials sheet. Use an existing client's name to add another system to that client.",
+  };
+}
+// Add New with this client's name (and its employee) already filled.
+function ekSystemData(client, employee){
+  const d = ekFormData(null);
+  d.values.client = client;
+  if (d.names.includes(employee)) d.values.employee = employee;
+  d.title = `＋ Add system to ${client}`;
+  d.hint = `Saved as a new row in the sheet; it shows as another system in the ${client} card.`;
+  d.focus = 'link';
+  return d;
+}
+
 function ekOpenAdd(rec){
+  if (_ekAddReact(ekFormData(rec))) return;
   EK_EDIT = rec || null;
   // A login-only row is edited with the same short form it was added with
   const modal = document.getElementById('ekAddModal');
@@ -250,15 +294,24 @@ async function ekSaveAdd(){
   if (mcls.contains('ek-extra') && !body.loginEmail && !body.hostingerId) return show('Enter an email or a Hostinger ID.');
   const btn = document.getElementById('ekAddSave');
   btn.disabled = true; btn.textContent = 'Saving…';
+  const res = await ekSaveSend(body);
+  btn.disabled = false; btn.textContent = 'Save';
+  if (res !== true) show(res);
+}
+
+// The save itself, for this pop-up and the React one: true once it went
+// through (the pop-up is closed), otherwise the message to show in it.
+async function ekSaveSend(body){
   const r = EK_EDIT
     ? await api(`/api/emk-credentials/${EK_EDIT.row}`, 'PUT', { ...body, origClient: EK_EDIT.client, origLink: EK_EDIT.link })
     : await api('/api/emk-credentials', 'POST', body);
-  btn.disabled = false; btn.textContent = 'Save';
-  if (!r || r.error) return show((r && r.error) || 'Could not save. Please try again.');
+  if (!r || r.error) return (r && r.error) || 'Could not save. Please try again.';
   closeModal('ekAddModal');
+  if (EK_ADD_REACT) EK_ADD_REACT(null);
   showToast(EK_EDIT ? `✅ Saved to the sheet (row ${r.row})` : `✅ Added to the sheet (row ${r.row})`);
   EK_EDIT = null;
   loadEmkCreds();
+  return true;
 }
 
 function ekRow(label, value, secret){
