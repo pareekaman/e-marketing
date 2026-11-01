@@ -437,8 +437,8 @@ async function saveHrmCandidate() {
 }
 
 // View a candidate's full details (read-only) — everything entered at schedule.
-// The Details, Update Status and Joining Details pop-ups are React since
-// 2026-11-01 (frontend/src/pages/HrmPopups.jsx, in #hrmPopupsRoot); their markup in
+// The Details, Update Status, Joining Details and Offer Letter pop-ups are React
+// since 2026-11-01 (frontend/src/pages/HrmPopups.jsx, in #hrmPopupsRoot); their markup in
 // app.html stays as the fallback. Status changes go through hrmStatusPick /
 // hrmStatusSend, shared with the old pop-up.
 let HRM_POP_REACT = null, _hrmPopWanted = null;
@@ -647,6 +647,7 @@ function viewOfferLetter(id) {
   if (!c) return;
   const driveUrl = c.offer_drive_id ? `https://drive.google.com/file/d/${c.offer_drive_id}/view` : null;
   const isPdf = !!c.offer_drive_id;
+  if (_hrmPopReact('offer', [c, isPdf ? null : _hrmOfferDraft(c)])) return;
 
   const iframeAttrs = isPdf
     ? `src="https://drive.google.com/file/d/${c.offer_drive_id}/preview" allow="autoplay"`
@@ -670,20 +671,25 @@ function viewOfferLetter(id) {
     <iframe id="offerViewFrame" data-pdf="${isPdf ? '1' : '0'}" data-drive-url="${driveUrl||''}" ${iframeAttrs} style="width:100%;height:480px;border:1px solid #e2e8f0;border-radius:8px;display:block"></iframe>
     ${banner}`;
 
-  if (!isPdf) {
-    // Not generated yet — fill in a draft approximation so HR can sanity-check before generating.
-    const joining = c.joining_date ? new Date(c.joining_date).toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'}) : 'To be communicated';
-    const issuedDate = c.updated_at ? new Date(c.updated_at).toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'}) : new Date().toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'});
-    document.getElementById('offerViewFrame').srcdoc = _hrmOfferHtml(c.name, c.profile_position, joining, issuedDate);
-  }
+  if (!isPdf) document.getElementById('offerViewFrame').srcdoc = _hrmOfferDraft(c);
   document.getElementById('hrmOfferViewModal').classList.add('open');
 }
 
-async function generateOfferDoc(id) {
+// Not generated yet — a draft approximation so HR can sanity-check before generating.
+function _hrmOfferDraft(c) {
+  const long = d => new Date(d).toLocaleDateString('en-IN', {day:'2-digit',month:'long',year:'numeric'});
+  const joining = c.joining_date ? long(c.joining_date) : 'To be communicated';
+  const issuedDate = long(c.updated_at || Date.now());
+  return _hrmOfferHtml(c.name, c.profile_position, joining, issuedDate);
+}
+
+// busy(on) shows the Generate button working; the React pop-up passes its own.
+async function generateOfferDoc(id, busy) {
   const btn = document.getElementById(`genOfferBtn-${id}`);
-  if (btn) { btn.textContent = 'Generating…'; btn.disabled = true; }
+  busy = busy || (on => { if (btn) { btn.textContent = on ? 'Generating…' : 'Generate'; btn.disabled = on; } });
+  busy(true);
   const r = await api(`/api/hrm/candidates/${id}/generate-offer`, 'POST', {});
-  if (r.error) { showToast(r.error, 'error'); if (btn) { btn.textContent = 'Generate'; btn.disabled = false; } return; }
+  if (r.error) { showToast(r.error, 'error'); busy(false); return; }
   showToast('Offer letter saved to Drive. Use the 📧 Email button to send it.');
   await loadHRM();
   viewOfferLetter(id); // reopen with updated data

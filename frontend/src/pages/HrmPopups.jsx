@@ -1,7 +1,8 @@
-// HRM → the candidate Details, Update Status and Joining Details pop-ups (were
-// #hrmDetailsModal, #hrmStatusModal and #hrmJoiningDetailsModal in app.html,
-// opened by openHrmDetailsModal / openHrmStatusModal / viewJoiningDetails in
-// public/js/hrm.js; the joining submission is fetched there). A status pick goes through
+// HRM → the candidate Details, Update Status, Joining Details and Offer Letter
+// pop-ups (were #hrmDetailsModal, #hrmStatusModal, #hrmJoiningDetailsModal and
+// #hrmOfferViewModal in app.html, opened by openHrmDetailsModal /
+// openHrmStatusModal / viewJoiningDetails / viewOfferLetter in public/js/hrm.js;
+// the joining submission is fetched there). A status pick goes through
 // hrmStatusPick (an offer stage first needs the joining details, then closes
 // this and opens its own form); the save is hrmStatusSend.
 import { Fragment, useEffect, useRef, useState } from 'react';
@@ -178,8 +179,50 @@ function JoiningBody({ d, close }) {
   );
 }
 
-const BODIES = { details: DetailsBody, status: StatusBody, joining: JoiningBody };
-const WIDTH = { joining: 'width:520px;max-width:95vw' };
+// Preliminary offer letter (was viewOfferLetter): the Drive PDF once it is
+// generated, else hrm.js's draft (d.draft) with a Generate button. Print reads
+// the frame by its id (printOfferLetter), as the old pop-up's did.
+function OfferBody({ d, close }) {
+  const { c, draft } = d;
+  const [busy, setBusy] = useState(false);
+  const pdf = !draft;
+  const driveUrl = c.offer_drive_id ? `https://drive.google.com/file/d/${c.offer_drive_id}/view` : '';
+  const frame = pdf ? { src: `https://drive.google.com/file/d/${c.offer_drive_id}/preview`, allow: 'autoplay' }
+    : { sandbox: 'allow-same-origin allow-scripts allow-modals', srcDoc: draft };
+  return (
+    <>
+      <h3>📄 Offer Letter</h3>
+      <div ref={css('margin-top:12px')}>
+        <iframe id="offerViewFrame" data-pdf={pdf ? '1' : '0'} data-drive-url={driveUrl} {...frame}
+          ref={css('width:100%;height:480px;border:1px solid #e2e8f0;border-radius:8px;display:block')} />
+        {pdf ? (
+          <div ref={css('margin-top:12px;padding:12px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;display:flex;align-items:center;gap:10px')}>
+            <span ref={css('font-size:20px')}>📂</span>
+            <div ref={css('flex:1')}>
+              <div ref={css('font-size:12px;font-weight:600;color:#15803d')}>Saved in Google Drive</div>
+              <div ref={css('font-size:11px;color:#64748b')}>HR Offer Letters folder</div>
+            </div>
+            <a href={driveUrl} target="_blank" ref={css('background:#16a34a;color:#fff;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none')}>Open in Drive →</a>
+          </div>
+        ) : (
+          <div ref={css('margin-top:12px;padding:12px 14px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;display:flex;align-items:center;gap:10px')}>
+            <span ref={css('font-size:18px')}>⚠️</span>
+            <div ref={css('flex:1;font-size:12px;color:#92400e')}>Drive PDF hasn't been generated yet — this is a draft preview. Generate it?</div>
+            <button disabled={busy} onClick={() => legacy('generateOfferDoc', c.id, setBusy)} id={`genOfferBtn-${c.id}`}
+              ref={css('background:#d97706;color:#fff;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;border:none;cursor:pointer')}>{busy ? 'Generating…' : 'Generate'}</button>
+          </div>
+        )}
+      </div>
+      <div className="modal-footer">
+        <button className="btn btn-outline" onClick={close}>Close</button>
+        <button className="btn btn-primary" onClick={() => legacy('printOfferLetter')}>🖨️ Print / Download PDF</button>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { details: DetailsBody, status: StatusBody, joining: JoiningBody, offer: OfferBody };
+const WIDTH = { joining: 'width:520px;max-width:95vw', offer: 'width:720px;max-width:95vw' };
 
 export default function HrmPopups() {
   const [st, setSt] = useState({});
@@ -190,6 +233,7 @@ export default function HrmPopups() {
       details: (c, label) => show('details', { c, label }),
       status: c => show('status', { c }),
       joining: (c, r) => show('joining', { c, r }),
+      offer: (c, draft) => show('offer', { c, draft }),
     });
     return () => legacy('hrmPopSetReact', null);
   }, []);
