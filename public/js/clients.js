@@ -57,9 +57,22 @@ function cmApplyRoleControls(){
 }
 
 let CM_USERS = [];
+// The client list is React since 2026-11-01 (frontend/src/pages/CmList.jsx, in
+// #cmListWrap[data-react]); this file still filters and sorts, and hands over
+// either a message ({msg}) or the rows. Without data-react the old rows draw.
+let CMLIST_REACT = null, _cmListWanted = null;
+function cmListSetReact(o) { CMLIST_REACT = o; if (o && _cmListWanted) { const v = _cmListWanted; _cmListWanted = null; o.show(v); } }
+function _cmListShow(view) {
+  const wrap = document.getElementById('cmListWrap');
+  if (!wrap || !wrap.dataset.react) return false;
+  if (CMLIST_REACT) CMLIST_REACT.show(view); else { _cmListWanted = view; emkReactMount('cmlist', wrap); }
+  return true;
+}
+const _cmListMsg = (wrap, msg) => { if (!_cmListShow({ msg })) wrap.innerHTML = `<div class="empty">${msg}</div>`; };
+
 async function loadClients(){
   const wrap = document.getElementById('cmListWrap');
-  wrap.innerHTML = '<div class="empty">Loading clients…</div>';
+  _cmListMsg(wrap, 'Loading clients…');
   CM_OPEN_ID = null;
   try {
     // scope=master → the server returns only the clients this role may manage
@@ -74,7 +87,7 @@ async function loadClients(){
     cmRenderList();
     cmRetryFms();
   } catch(e) {
-    wrap.innerHTML = '<div class="empty">Failed to load clients</div>';
+    _cmListMsg(wrap, 'Failed to load clients');
     ['cmStatTotal', 'cmStatActive', 'cmStatInactive', 'cmStatVisible'].forEach(id => document.getElementById(id).textContent = '0');
   }
 }
@@ -558,13 +571,14 @@ function cmRenderList(){
   document.getElementById('cmStatVisible').textContent = filtered.length;
 
   if (!CM_ALL.length) {
-    wrap.innerHTML = '<div class="empty">No clients yet — add one above.</div>';
+    _cmListMsg(wrap, 'No clients yet — add one above.');
     return;
   }
   if (!filtered.length) {
-    wrap.innerHTML = `<div class="empty">No ${CM_STATUS ? CM_STATUS + ' ' : ''}clients match${q && dept ? ' your search and department filter' : q ? ' your search' : dept ? ' that department' : ''}.</div>`;
+    _cmListMsg(wrap, `No ${CM_STATUS ? CM_STATUS + ' ' : ''}clients match${q && dept ? ' your search and department filter' : q ? ' your search' : dept ? ' that department' : ''}.`);
     return;
   }
+  if (_cmListShow({ list: filtered, billing: cmCanSeeBilling(), remove: canDo('admin_clients') })) return;
 
   let html = '';
   // 1-based position in the FILTERED list, not CM_ALL — so it always reads
@@ -635,7 +649,9 @@ function cmRenderList(){
 // page's "Mark active/inactive" button uses, so the two views stay in agreement.
 // Patches just this row instead of re-rendering the list, to keep scroll position.
 async function cmToggleActive(id, makeActive){
-  const sw = document.getElementById('cmSw' + id);
+  // The React list shows its own busy state and redraws the row (CMLIST_REACT.patch).
+  const react = !!document.getElementById('cmListWrap')?.dataset.react;
+  const sw = react ? null : document.getElementById('cmSw' + id);
   if (sw) sw.classList.add('is-busy');
   try {
     const r = await api('/api/clients/' + id, 'PUT', { is_active: makeActive });
@@ -647,6 +663,7 @@ async function cmToggleActive(id, makeActive){
     const client = CM_ALL.find(c => String(c.id) === String(id));
     if (client) client.is_active = makeActive;
     cmUpdateStatusCounts();
+    if (react && CMLIST_REACT) CMLIST_REACT.patch(id);
     if (sw) {
       const on = !!makeActive;
       sw.classList.toggle('is-on', on);
