@@ -437,8 +437,8 @@ async function saveHrmCandidate() {
 }
 
 // View a candidate's full details (read-only) — everything entered at schedule.
-// The Details, Update Status, Joining Details and Offer Letter pop-ups are React
-// since 2026-11-01 (frontend/src/pages/HrmPopups.jsx, in #hrmPopupsRoot); their markup in
+// The Details, Update Status, Joining Details, Offer Letter and Email pop-ups are
+// React since 2026-11-01 (frontend/src/pages/HrmPopups.jsx, in #hrmPopupsRoot); their markup in
 // app.html stays as the fallback. Status changes go through hrmStatusPick /
 // hrmStatusSend, shared with the old pop-up.
 let HRM_POP_REACT = null, _hrmPopWanted = null;
@@ -701,7 +701,6 @@ function openEmailModal(id) {
   const c = _hrmCandidates.find(x => String(x.id) === String(id));
   if (!c) return;
   _hrmCurrentId = id;
-  document.getElementById('hrmEmailWho').textContent = `${c.name}${c.profile_position ? ' · ' + c.profile_position : ''}`;
   // Default the "what to send" to the candidate's current stage, so the modal
   // opens on the message that actually matches the record. Every status now has
   // a match, which also means a mis-send takes a deliberate change of the
@@ -714,6 +713,8 @@ function openEmailModal(id) {
     'Offer Sent':         'preliminary',
     'Offer Letter Sent':  'offer',
   };
+  if (_hrmPopReact('email', [c, BY_STATUS[c.status] || 'onboarding'])) return;
+  document.getElementById('hrmEmailWho').textContent = `${c.name}${c.profile_position ? ' · ' + c.profile_position : ''}`;
   document.getElementById('hrmEmailType').value = BY_STATUS[c.status] || 'onboarding';
   // The form HR chose last time for this candidate, if any
   document.getElementById('hrmEmailFormType').value = c.joining_form_type || '';
@@ -735,11 +736,23 @@ function hrmEmailTypeChange() {
 // (opened from the status dropdown). See submitOfferForm / submitFinalOfferForm.
 let _offerEmailCtx = null;
 
-async function submitEmailModal() {
-  const type  = document.getElementById('hrmEmailType').value;
-  const email = document.getElementById('hrmEmailTo').value.trim();
-  const cc    = document.getElementById('hrmEmailCc').value.trim();
-  if (!email) { showErrIn('hrmEmailErr', 'Recipient email is required'); return; }
+function submitEmailModal() {
+  const btn = document.getElementById('hrmEmailSendBtn');
+  return hrmEmailSend(_hrmCurrentId, {
+    type: document.getElementById('hrmEmailType').value,
+    email: document.getElementById('hrmEmailTo').value.trim(),
+    cc: document.getElementById('hrmEmailCc').value.trim(),
+    formType: document.getElementById('hrmEmailFormType').value,
+  }, {
+    err: msg => showErrIn('hrmEmailErr', msg),
+    busy: on => { btn.disabled = on; btn.textContent = on ? 'Sending…' : '📧 Send Email'; },
+    close: () => closeModal('hrmEmailModal'),
+  });
+}
+// The send, shared with the React pop-up (HrmPopups.jsx); io = { err(msg), busy(on), close() }.
+async function hrmEmailSend(id, { type, email, cc, formType }, io) {
+  _hrmCurrentId = id;
+  if (!email) { io.err('Recipient email is required'); return; }
 
   // Offer letters go through the offer form (salary / probation / live preview)
   // before sending — open that modal in "email mode" and send from there.
@@ -748,11 +761,11 @@ async function submitEmailModal() {
     // too; checked here so HR gets the message before filling the whole form).
     const c = _hrmCandidates.find(x => String(x.id) === String(_hrmCurrentId));
     if (c && c.joining_form_required && !c.joining_details_at) {
-      showErrIn('hrmEmailErr', 'Joining details form not submitted yet. Send it first (choose "Onboarding Form"), then send the offer once the candidate has filled it.');
+      io.err('Joining details form not submitted yet. Send it first (choose "Onboarding Form"), then send the offer once the candidate has filled it.');
       return;
     }
     _offerEmailCtx = { to: email, cc };
-    closeModal('hrmEmailModal');
+    io.close();
     if (type === 'preliminary') openOfferFormModal(_hrmCurrentId);
     else openFinalOfferFormModal(_hrmCurrentId);
     return;
@@ -760,14 +773,12 @@ async function submitEmailModal() {
 
   // Everything else — the onboarding link and the four status notifications —
   // carries no attachment and needs no form, so it sends straight from here.
-  const formType = document.getElementById('hrmEmailFormType').value;
-  if (type === 'onboarding' && !formType) { showErrIn('hrmEmailErr', 'Choose which form to send: Fresher or Experienced.'); return; }
-  const btn = document.getElementById('hrmEmailSendBtn');
-  btn.disabled = true; btn.textContent = 'Sending…';
+  if (type === 'onboarding' && !formType) { io.err('Choose which form to send: Fresher or Experienced.'); return; }
+  io.busy(true);
   const r = await api(`/api/hrm/candidates/${_hrmCurrentId}/email-offer`, 'POST', { type, email, cc, ...(type === 'onboarding' ? { form_type: formType } : {}) });
-  btn.disabled = false; btn.textContent = '📧 Send Email';
-  if (!r || r.error) { showErrIn('hrmEmailErr', (r && r.error) || 'Email failed'); return; }
-  closeModal('hrmEmailModal');
+  io.busy(false);
+  if (!r || r.error) { io.err((r && r.error) || 'Email failed'); return; }
+  io.close();
   showToast(`Emailed to ${r.emailedTo}${r.cc ? ' (cc: ' + r.cc + ')' : ''}`);
   loadHRM();
 }

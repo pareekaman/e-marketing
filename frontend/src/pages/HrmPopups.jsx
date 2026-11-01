@@ -1,7 +1,7 @@
-// HRM → the candidate Details, Update Status, Joining Details and Offer Letter
-// pop-ups (were #hrmDetailsModal, #hrmStatusModal, #hrmJoiningDetailsModal and
-// #hrmOfferViewModal in app.html, opened by openHrmDetailsModal /
-// openHrmStatusModal / viewJoiningDetails / viewOfferLetter in public/js/hrm.js;
+// HRM → the candidate Details, Update Status, Joining Details, Offer Letter and
+// Email pop-ups (were #hrmDetailsModal, #hrmStatusModal, #hrmJoiningDetailsModal,
+// #hrmOfferViewModal and #hrmEmailModal in app.html, opened by openHrmDetailsModal /
+// openHrmStatusModal / viewJoiningDetails / viewOfferLetter / openEmailModal in public/js/hrm.js;
 // the joining submission is fetched there). A status pick goes through
 // hrmStatusPick (an offer stage first needs the joining details, then closes
 // this and opens its own form); the save is hrmStatusSend.
@@ -221,8 +221,64 @@ function OfferBody({ d, close }) {
   );
 }
 
-const BODIES = { details: DetailsBody, status: StatusBody, joining: JoiningBody, offer: OfferBody };
-const WIDTH = { joining: 'width:520px;max-width:95vw', offer: 'width:720px;max-width:95vw' };
+// Email to Candidate (was openEmailModal / submitEmailModal). d.type is the
+// default for the candidate's stage; the send is hrmEmailSend, which for an
+// offer letter closes this and opens the offer form instead.
+const EMAIL_TYPES = [
+  { value: 'scheduled', label: '📅 Interview Scheduled' }, { value: 'rescheduled', label: '🔄 Interview Rescheduled' },
+  { value: 'selected', label: '✅ Selected' }, { value: 'rejected', label: '❌ Rejected' },
+  { value: 'onboarding', label: '📋 Onboarding Form (link)' }, { value: 'preliminary', label: '📄 Preliminary Offer Letter (PDF)' },
+  { value: 'offer', label: '📬 Offer Letter (PDF)' }];
+const FORM_TYPES = [{ value: '', label: '— Select —' },
+  { value: 'fresher', label: '🎓 Fresher — bank details + marksheet or degree' },
+  { value: 'experienced', label: '💼 Experienced — bank details + last job, letters, salary slips' }];
+
+function EmailBody({ d, close }) {
+  const c = d.c;
+  const [type, setType] = useState(d.type);
+  // The form HR chose last time for this candidate, if any.
+  const [formType, setFormType] = useState(c.joining_form_type || '');
+  const [to, setTo] = useState(c.email || '');
+  const [cc, setCc] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const send = () => legacy('hrmEmailSend', c.id, { type, email: to.trim(), cc: cc.trim(), formType }, { err: setErr, busy: setBusy, close });
+  return (
+    <>
+      <h3>📧 Email to Candidate</h3>
+      <div className="alert error" ref={css(err ? 'display: block;' : 'display:none')}>{err}</div>
+      <div ref={css('font-size:13px;color:#475569;margin:2px 0 12px')}>{`${c.name}${c.profile_position ? ' · ' + c.profile_position : ''}`}</div>
+      <div className="form-group">
+        <label>What to send *</label>
+        <SearchSelect value={type} onChange={setType} options={EMAIL_TYPES} />
+        <div ref={css('font-size:11px;color:#94a3b8;margin-top:5px')}>
+          Sending an email does not change the candidate's status — use Update Status for that.
+        </div>
+      </div>
+      {type === 'onboarding' ? (
+        <div className="form-group" ref={css('')}>
+          <label>Which form *</label>
+          <SearchSelect value={formType} onChange={setFormType} options={FORM_TYPES} placeholder="— Select —" />
+        </div>
+      ) : null}
+      <div className="form-group">
+        <label>To *</label>
+        <input type="email" placeholder="candidate@example.com" value={to} onChange={e => setTo(e.target.value)} />
+      </div>
+      <div className="form-group">
+        <label>CC (optional)</label>
+        <input type="text" placeholder="comma-separated emails" value={cc} onChange={e => setCc(e.target.value)} />
+      </div>
+      <div className="modal-footer" ref={css('margin-top:14px')}>
+        <button className="btn btn-outline" onClick={close}>Cancel</button>
+        <button className="btn btn-primary" disabled={busy} onClick={send}>{busy ? 'Sending…' : '📧 Send Email'}</button>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { details: DetailsBody, status: StatusBody, joining: JoiningBody, offer: OfferBody, email: EmailBody };
+const WIDTH = { joining: 'width:520px;max-width:95vw', offer: 'width:720px;max-width:95vw', email: 'width:460px' };
 
 export default function HrmPopups() {
   const [st, setSt] = useState({});
@@ -234,6 +290,7 @@ export default function HrmPopups() {
       status: c => show('status', { c }),
       joining: (c, r) => show('joining', { c, r }),
       offer: (c, draft) => show('offer', { c, draft }),
+      email: (c, type) => show('email', { c, type }),
     });
     return () => legacy('hrmPopSetReact', null);
   }, []);
