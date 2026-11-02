@@ -10398,6 +10398,20 @@ async function canDecideLeave(session, lr) {
   return !!(myInfo?.user_role === 'hod' && myInfo?.department && apInfo?.department === myInfo.department);
 }
 
+// Whose Approvals list a day-removal request appears in: the same people who
+// see the leave itself there (GET /api/leaves?scope=approvals) — its approver,
+// the HODs of the approver's department, and Simran (LEAVE_OVERSEER_ID). Not
+// every admin: admin_leaves still lets an admin decide one, as with a leave,
+// but it no longer lands in all their lists.
+async function inLeaveRemovalInbox(session, lr) {
+  const uid = Number(session.userId);
+  if (lr.sole_approver) return Number(lr.approver_id) === uid;
+  if (uid === LEAVE_OVERSEER_ID || Number(lr.approver_id) === uid) return true;
+  const [[myInfo]] = await db.query('SELECT department, COALESCE(user_role, role) AS user_role FROM users WHERE id=?', [uid]);
+  const [[apInfo]] = await db.query('SELECT department FROM users WHERE id=?', [lr.approver_id]);
+  return !!(myInfo?.user_role === 'hod' && myInfo?.department && apInfo?.department === myInfo.department);
+}
+
 // Takes `dates` off the request. Removing every day deletes the request
 // (archived first, like any delete). Returns the number of days left.
 async function applyLeaveDayRemoval(lr, dates, req) {
@@ -10464,7 +10478,7 @@ app.get('/api/leaves/day-removals', requireAuth, async (req, res) => {
       ORDER BY r.created_at DESC`, [req.session.userId]);
     const out = [];
     for (const r of rows) {
-      if (!(await canDecideLeave(req.session, r))) continue;
+      if (!(await inLeaveRemovalInbox(req.session, r))) continue;
       out.push({
         id: r.id, leave_id: r.leave_id, user_name: r.user_name, user_department: r.user_department,
         leave_type: r.leave_type, reason: r.reason, created_at: r.created_at,
@@ -10487,7 +10501,8 @@ app.put('/api/leaves/day-removals/:id', requireAuth, async (req, res) => {
     const [[lr]] = await db.query('SELECT * FROM leave_requests WHERE id=?', [r.leave_id]);
     if (!lr) return res.status(404).json({ error: 'The leave no longer exists' });
     if (Number(r.user_id) === Number(req.session.userId)) return res.status(403).json({ error: 'You cannot decide your own request' });
-    if (!(await canDecideLeave(req.session, lr))) return res.status(403).json({ error: 'Not authorized to act on this request' });
+    if (!(await canDecideLeave(req.session, lr)) && !(await inLeaveRemovalInbox(req.session, lr)))
+      return res.status(403).json({ error: 'Not authorized to act on this request' });
     const note = String(req.body.note || '').trim() || null;
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
     const [upd] = await db.query(
