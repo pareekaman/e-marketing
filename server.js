@@ -11460,14 +11460,16 @@ app.post('/api/deleted-records/restore-batch', requireAuth, requireAdmin, async 
     if (!ids.length) return res.status(400).json({ error: 'Nothing chosen to restore' });
     if (ids.length > 2000) return res.status(400).json({ error: 'Choose at most 2000 records at a time' });
     const [recs] = await db.query('SELECT * FROM deleted_records WHERE id IN (?)', [ids]);
-    let restored = 0; const failed = [];
-    for (const rec of recs) {
-      const r = await restoreDeletedRecord(rec, req.session.userId);
-      if (r.error) failed.push({ id: rec.id, record_id: rec.record_id, error: r.error }); else restored++;
-    }
-    res.json({ ok: true, restored, failed });
+    // One already back (an earlier click that ran past the time limit, say) is
+    // counted, not reported as a failure.
+    const already = recs.filter(r => r.restored_at).length;
+    const r = await restoreDeletedRecords(recs.filter(r => !r.restored_at), req.session.userId);
+    res.json({ ok: true, restored: r.restored, already, failed: r.failed });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+const restoreClashError = (table, id) =>
+  `Cannot restore: ${table} #${id} already exists (that id was reused). Restore it manually if needed.`;
 
 // Put one archived row back. Answers { ok, restored_id, droppedColumns } or
 // { error, status }.
@@ -11476,7 +11478,88 @@ async function restoreDeletedRecord(rec, userId) {
     if (!RESTORABLE_TABLES.has(rec.source_table)) {
       return { error: `${rec.source_table} rows cannot be restored from here` };
     }
+    const [cols] = await db.query('SHOW COLUMNS FROM ??', [rec.source_table]);
+    const p = prepareRestore(rec, cols);
+    if (p.error) return p;
 
+    if (p.id != null) {
+      const [[clash]] = await db.query('SELECT id FROM ?? WHERE id=? LIMIT 1', [rec.source_table, p.id]);
+      if (clash) return { status: 409, error: restoreClashError(rec.source_table, p.id) };
+    }
+
+    await db.query(
+      `INSERT INTO ?? (${p.keys.map(() => '??').join(',')}) VALUES (${p.keys.map(() => '?').join(',')})`,
+      [rec.source_table, ...p.keys, ...p.values]);
+
+    await db.query(
+      'UPDATE deleted_records SET restored_at=NOW(), restored_by=? WHERE id=?',
+      [userId, rec.id]);
+
+    return { ok: true, restored_id: p.id, droppedColumns: p.dropped };
+}
+
+// Many archived rows at once, each put back as restoreDeletedRecord would, in
+// a few queries: one column read per table, one id check, multi-row INSERTs of
+// up to 100 (a chunk that fails is retried row by row, so only the bad row is
+// reported), one UPDATE of the archive. One row at a time, a 300-row series
+// delete ran past Vercel's 60-second limit. Answers { restored, failed }.
+async function restoreDeletedRecords(recs, userId) {
+  const failed = [], done = [];
+  const fail = (rec, error) => failed.push({ id: rec.id, record_id: rec.record_id, error });
+  const byTable = new Map();
+  for (const rec of recs) {
+    if (!RESTORABLE_TABLES.has(rec.source_table)) { fail(rec, `${rec.source_table} rows cannot be restored from here`); continue; }
+    if (!byTable.has(rec.source_table)) byTable.set(rec.source_table, []);
+    byTable.get(rec.source_table).push(rec);
+  }
+  for (const [table, list] of byTable) {
+    const [cols] = await db.query('SHOW COLUMNS FROM ??', [table]);
+    const ready = [];
+    for (const rec of list) {
+      const p = prepareRestore(rec, cols);
+      if (p.error) fail(rec, p.error); else ready.push({ rec, ...p });
+    }
+    const taken = new Set();
+    const ids = ready.map(x => x.id).filter(v => v != null);
+    for (let i = 0; i < ids.length; i += 500) {
+      const [rows] = await db.query('SELECT id FROM ?? WHERE id IN (?)', [table, ids.slice(i, i + 500)]);
+      rows.forEach(r => taken.add(String(r.id)));
+    }
+    // Rows that write the same columns go in together.
+    const groups = new Map();
+    for (const x of ready) {
+      if (x.id != null && taken.has(String(x.id))) { fail(x.rec, restoreClashError(table, x.id)); continue; }
+      if (x.id != null) taken.add(String(x.id));   // the same id twice in one batch: the first wins
+      const sig = x.keys.join(',');
+      if (!groups.has(sig)) groups.set(sig, []);
+      groups.get(sig).push(x);
+    }
+    for (const rows of groups.values()) {
+      const keys = rows[0].keys, cols = keys.map(() => '??').join(',');
+      for (let i = 0; i < rows.length; i += 100) {
+        const chunk = rows.slice(i, i + 100);
+        try {
+          await db.query(`INSERT INTO ?? (${cols}) VALUES ?`, [table, ...keys, chunk.map(x => x.values)]);
+          done.push(...chunk.map(x => x.rec.id));
+        } catch (e) {
+          for (const x of chunk) {
+            try {
+              await db.query(`INSERT INTO ?? (${cols}) VALUES (${keys.map(() => '?').join(',')})`, [table, ...keys, ...x.values]);
+              done.push(x.rec.id);
+            } catch (e2) { fail(x.rec, e2.message); }
+          }
+        }
+      }
+    }
+  }
+  for (let i = 0; i < done.length; i += 500)
+    await db.query('UPDATE deleted_records SET restored_at=NOW(), restored_by=? WHERE id IN (?)', [userId, done.slice(i, i + 500)]);
+  return { restored: done.length, failed };
+}
+
+// What putting one archived row back writes, given its table's columns:
+// { keys, values, id, dropped }, or { error } when it cannot go back.
+function prepareRestore(rec, cols) {
     let data;
     try { data = JSON.parse(rec.record_data); }
     catch (e) { return { error: 'Archived snapshot is not valid JSON — cannot restore' }; }
@@ -11489,20 +11572,10 @@ async function restoreDeletedRecord(rec, userId) {
 
     // Drop any key that is no longer a real column (the schema may have moved
     // on since the delete), so restore degrades instead of hard-failing.
-    const [cols] = await db.query('SHOW COLUMNS FROM ??', [rec.source_table]);
     const live = new Set(cols.map(c => c.Field));
     const keys = Object.keys(data).filter(k => live.has(k));
     if (!keys.length) return { error: 'No columns from the snapshot still exist — cannot restore' };
     const dropped = Object.keys(data).filter(k => !live.has(k));
-
-    if (data.id != null && live.has('id')) {
-      const [[clash]] = await db.query('SELECT id FROM ?? WHERE id=? LIMIT 1', [rec.source_table, data.id]);
-      if (clash) {
-        return { status: 409,
-          error: `Cannot restore: ${rec.source_table} #${data.id} already exists (that id was reused). Restore it manually if needed.`,
-        };
-      }
-    }
 
     // The snapshot is JSON of what mysql2 returned, so DATE / DATETIME columns
     // came back as Date objects and were stored as UTC ISO text
@@ -11520,15 +11593,7 @@ async function restoreDeletedRecord(rec, userId) {
       return t.startsWith('date') && !t.startsWith('datetime') ? day : `${day} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     };
 
-    await db.query(
-      `INSERT INTO ?? (${keys.map(() => '??').join(',')}) VALUES (${keys.map(() => '?').join(',')})`,
-      [rec.source_table, ...keys, ...keys.map(k => unIso(k, data[k]))]);
-
-    await db.query(
-      'UPDATE deleted_records SET restored_at=NOW(), restored_by=? WHERE id=?',
-      [userId, rec.id]);
-
-    return { ok: true, restored_id: data.id ?? null, droppedColumns: dropped };
+    return { keys, values: keys.map(k => unIso(k, data[k])), id: data.id != null && live.has('id') ? data.id : null, dropped };
 }
 
 // How long an archived delete is kept before the purge cron drops it.

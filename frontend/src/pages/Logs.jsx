@@ -56,12 +56,11 @@ function BatchRestore({ id, onClose, onDone }) {
   const [b, setB] = useState(null);
   const [off, setOff] = useState(() => new Set());   // client keys left out
   const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    api(`/api/deleted-records/${id}/batch`).then(r => {
-      if (r.error) { toast(r.error, 'error'); onClose(); return; }
-      setB(r);
-    });
-  }, [id]);
+  const fetchBatch = () => api(`/api/deleted-records/${id}/batch`).then(r => {
+    if (r.error) { toast(r.error, 'error'); onClose(); return; }
+    setB(r);
+  });
+  useEffect(() => { fetchBatch(); }, [id]);
   const key = g => (g.client_id == null ? 'none' : String(g.client_id));
   const open = g => g.rows.filter(x => !x.restored);
   const chosen = b ? b.groups.filter(g => !off.has(key(g))).flatMap(open) : [];
@@ -77,8 +76,10 @@ function BatchRestore({ id, onClose, onDone }) {
     setBusy(true);
     const r = await api('/api/deleted-records/restore-batch', 'POST', { ids: chosen.map(x => x.id) });
     setBusy(false);
-    if (r.error) { legacy('appAlert', r.error, 'Cannot restore'); return; }
-    toast(`Restored ${r.restored} record${r.restored === 1 ? '' : 's'}`);
+    // A request that ran out of time may still have put rows back: show the
+    // batch as it is now rather than as it was when the pop-up opened.
+    if (r.error) { legacy('appAlert', r.error, 'Cannot restore'); setB(null); fetchBatch(); return; }
+    toast(`Restored ${r.restored} record${r.restored === 1 ? '' : 's'}${r.already ? ` · ${r.already} ${r.already === 1 ? 'was' : 'were'} already back` : ''}`);
     if (r.failed && r.failed.length) legacy('appAlert', `${r.failed.length} could not be restored:\n` + r.failed.slice(0, 8).map(f => `#${f.record_id ?? f.id}: ${f.error}`).join('\n'), 'Some were not restored');
     onDone();
   };
