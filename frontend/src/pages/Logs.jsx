@@ -49,6 +49,81 @@ function Detail({ rec, onClose }) {
   );
 }
 
+// "Restore all…": every row of one delete action (a checklist series delete
+// took a task's future dates, and before 2026-11-02 its other clients' too),
+// one tick per client, so the client the delete was meant for can stay deleted.
+function BatchRestore({ id, onClose, onDone }) {
+  const [b, setB] = useState(null);
+  const [off, setOff] = useState(() => new Set());   // client keys left out
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api(`/api/deleted-records/${id}/batch`).then(r => {
+      if (r.error) { toast(r.error, 'error'); onClose(); return; }
+      setB(r);
+    });
+  }, [id]);
+  const key = g => (g.client_id == null ? 'none' : String(g.client_id));
+  const open = g => g.rows.filter(x => !x.restored);
+  const chosen = b ? b.groups.filter(g => !off.has(key(g))).flatMap(open) : [];
+  const flip = g => setOff(s => { const n = new Set(s); n.has(key(g)) ? n.delete(key(g)) : n.add(key(g)); return n; });
+  const span = g => {
+    const days = g.rows.map(x => x.due).filter(Boolean).sort();
+    const fmt = d => d.split('-').reverse().join('-');
+    return !days.length ? '' : days[0] === days[days.length - 1] ? fmt(days[0]) : `${fmt(days[0])} → ${fmt(days[days.length - 1])}`;
+  };
+  const go = async () => {
+    if (!chosen.length) return;
+    if (!await legacy('appConfirm', `Restore ${chosen.length} record${chosen.length === 1 ? '' : 's'} back into the app?`, 'Restore?')) return;
+    setBusy(true);
+    const r = await api('/api/deleted-records/restore-batch', 'POST', { ids: chosen.map(x => x.id) });
+    setBusy(false);
+    if (r.error) { legacy('appAlert', r.error, 'Cannot restore'); return; }
+    toast(`Restored ${r.restored} record${r.restored === 1 ? '' : 's'}`);
+    if (r.failed && r.failed.length) legacy('appAlert', `${r.failed.length} could not be restored:\n` + r.failed.slice(0, 8).map(f => `#${f.record_id ?? f.id}: ${f.error}`).join('\n'), 'Some were not restored');
+    onDone();
+  };
+  const host = document.getElementById('page-logs')?.parentElement || document.body;
+  return createPortal(
+    <div className="modal-overlay open" onMouseDown={e => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+      <div className="modal" ref={css('width:640px;max-width:95vw')}>
+        <button className="modal-close" onClick={onClose}>×</button>
+        <h3>Restore this delete</h3>
+        {!b ? <div className="empty">Loading…</div> : <>
+          <div ref={css('font-size:12px;color:#64748b;margin-bottom:12px;line-height:1.6')}>
+            <b ref={css('color:#0f172a')}>{b.summary || label(b.source_table)}</b><br />
+            Deleted by <b>{b.deleted_by_name || 'system'}</b> on {b.deleted_at_fmt}{b.reason ? ` · ${b.reason}` : ''}<br />
+            Untick a client to leave its records deleted — for example the one the delete was meant for.
+          </div>
+          <div ref={css('max-height:380px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px')}>
+            {b.groups.map(g => {
+              const left = open(g).length;
+              const doers = [...new Set(g.rows.map(x => x.doer).filter(Boolean))].join(', ');
+              return (
+                <label key={key(g)} ref={css(`display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-bottom:1px solid #f1f5f9;cursor:${left ? 'pointer' : 'default'};opacity:${left ? 1 : 0.55}`)}>
+                  <input type="checkbox" disabled={!left || busy} checked={!!left && !off.has(key(g))} onChange={() => flip(g)} ref={css('margin-top:3px;width:15px;height:15px;accent-color:#4f46e5')} />
+                  <div ref={css('flex:1;min-width:0')}>
+                    <div ref={css('font-weight:600;color:#0f172a;font-size:13px')}>{g.client || 'No client'}</div>
+                    <div ref={css('font-size:11px;color:#64748b;margin-top:2px')}>
+                      {left ? `${left} still deleted` : 'All restored'}{g.rows.length !== left ? ` · ${g.rows.length - left} already restored` : ''}{span(g) ? ` · ${span(g)}` : ''}{doers ? ` · 👤 ${doers}` : ''}
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+          {b.restorable ? null : <div ref={css('font-size:12px;color:#b91c1c;margin-top:10px')}>This record type cannot be restored from here.</div>}
+        </>}
+        <div className="modal-footer">
+          <button className="btn btn-outline" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn btn-primary" onClick={go} disabled={busy || !b || !b.restorable || !chosen.length}>
+            {busy ? 'Restoring…' : `Restore ${chosen.length} record${chosen.length === 1 ? '' : 's'}`}</button>
+        </div>
+      </div>
+    </div>,
+    host
+  );
+}
+
 export default function Logs() {
   const [rows, setRows] = useState(null);
   const [restorable, setRestorable] = useState({});
@@ -56,6 +131,7 @@ export default function Logs() {
   const [q, setQ] = useState('');
   const [type, setType] = useState('');
   const [detail, setDetail] = useState(null);
+  const [batch, setBatch] = useState(null);   // a record id whose whole delete is offered back
 
   const load = useCallback(async () => {
     const r = await api('/api/deleted-records');
@@ -127,7 +203,11 @@ export default function Logs() {
               {r.restored_at
                 ? <span ref={css('font-size:11px;color:#64748b')}>by {r.restored_by_name || '—'}</span>
                 : restorable[r.id]
-                  ? <button className="action-btn done" onClick={() => restore(r.id)}>Restore</button>
+                  ? <>
+                      <button className="action-btn done" onClick={() => restore(r.id)}>Restore</button>
+                      {Number(r.batch_open) > 1 ? <button className="action-btn" ref={css('margin-left:6px')} title="Restore every record from this one delete, choosing by client"
+                        onClick={() => setBatch(r.id)}>{`Restore all (${r.batch_open})…`}</button> : null}
+                    </>
                   : <span ref={css('font-size:11px;color:#94a3b8')} title="This record type cannot be restored from here">—</span>}
             </td>
           </tr>
@@ -152,6 +232,7 @@ export default function Logs() {
       </div>
       <div id="logsContent">{content}</div>
       {detail ? <Detail rec={detail} onClose={() => setDetail(null)} /> : null}
+      {batch ? <BatchRestore id={batch} onClose={() => setBatch(null)} onDone={() => { setBatch(null); load(); }} /> : null}
     </>
   );
 }

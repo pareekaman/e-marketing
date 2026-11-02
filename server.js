@@ -11346,6 +11346,13 @@ const RESTORABLE_TABLES = new Set([
   'hrm_candidates', 'client_credentials',
 ]);
 
+// One delete action archives all its rows in a single INSERT (archiveDeleted),
+// so they share the table, the person, the route and the timestamp: that is
+// what ties, say, a checklist series delete's rows together for batch restore.
+const DELETE_BATCH_SQL = (a, b) =>
+  `${a}.source_table = ${b}.source_table AND ${a}.deleted_by <=> ${b}.deleted_by
+   AND ${a}.deleted_via = ${b}.deleted_via AND ${a}.deleted_at = ${b}.deleted_at`;
+
 // GET /api/deleted-records — 150 most recent deletes.
 // record_data is deliberately omitted: it can carry base64 photos and would
 // bloat the list response. Fetch a single row's full JSON via /:id below.
@@ -11364,7 +11371,9 @@ app.get('/api/deleted-records', requireAuth, requireAdmin, async (req, res) => {
              DATE_FORMAT(dr.restored_at, '%d %b %Y, %h:%i %p') AS restored_at_fmt,
              dr.restored_at, dr.restored_by,
              ru.name AS restored_by_name,
-             CHAR_LENGTH(dr.record_data) AS record_size
+             CHAR_LENGTH(dr.record_data) AS record_size,
+             -- rows still deleted from the same delete action (see DELETE_BATCH_SQL)
+             (SELECT COUNT(*) FROM deleted_records b WHERE ${DELETE_BATCH_SQL('b', 'dr')} AND b.restored_at IS NULL) AS batch_open
         FROM deleted_records dr
         LEFT JOIN users ru ON ru.id = dr.restored_by
        ORDER BY dr.id DESC
@@ -11398,19 +11407,84 @@ app.post('/api/deleted-records/:id/restore', requireAuth, requireAdmin, async (r
   try {
     const [[rec]] = await db.query('SELECT * FROM deleted_records WHERE id=?', [req.params.id]);
     if (!rec) return res.status(404).json({ error: 'Not found' });
-    if (rec.restored_at) return res.status(400).json({ error: 'This record was already restored' });
+    const r = await restoreDeletedRecord(rec, req.session.userId);
+    if (r.error) return res.status(r.status || 400).json({ error: r.error });
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/deleted-records/:id/batch — every row of the delete action this
+// record came from (DELETE_BATCH_SQL), grouped by client for the Logs page's
+// "Restore all…" pop-up, so the client the delete was meant for can be left out.
+app.get('/api/deleted-records/:id/batch', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [[rec]] = await db.query(
+      `SELECT *, DATE_FORMAT(deleted_at, '%d %b %Y, %h:%i %p') AS deleted_at_fmt FROM deleted_records WHERE id=?`, [req.params.id]);
+    if (!rec) return res.status(404).json({ error: 'Not found' });
+    const [rows] = await db.query(
+      `SELECT b.id, b.record_id, b.record_data, b.restored_at FROM deleted_records b, deleted_records r
+        WHERE r.id=? AND ${DELETE_BATCH_SQL('b', 'r')} ORDER BY b.id`, [rec.id]);
+    const items = rows.map(r => {
+      let d = {};
+      try { d = JSON.parse(r.record_data) || {}; } catch (e) {}
+      const due = typeof d.due_date === 'string' ? d.due_date : '';
+      return { id: r.id, record_id: r.record_id, restored: !!r.restored_at,
+        client_id: d.client_id ?? null, doer_id: d.assigned_to ?? null,
+        // DATE columns were stored as UTC ISO text of a local-midnight Date (see restoreDeletedRecord)
+        due: /T\d{2}:\d{2}/.test(due) ? (() => { const x = new Date(due); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; })() : due.slice(0, 10) };
+    });
+    const ids = (k) => [...new Set(items.map(i => i[k]).filter(v => v != null))];
+    const names = async (sql, list) => list.length ? new Map((await db.query(sql, [list]))[0].map(x => [x.id, x.name])) : new Map();
+    const clientNames = await names(`SELECT id, COALESCE(NULLIF(TRIM(brand_name),''), name) AS name FROM clients WHERE id IN (?)`, ids('client_id'));
+    const doerNames = await names('SELECT id, name FROM users WHERE id IN (?)', ids('doer_id'));
+    const groups = new Map();
+    for (const i of items) {
+      const key = i.client_id == null ? 'none' : String(i.client_id);
+      if (!groups.has(key)) groups.set(key, { client_id: i.client_id, client: i.client_id == null ? '' : (clientNames.get(i.client_id) || `Client #${i.client_id}`), rows: [] });
+      groups.get(key).rows.push({ ...i, doer: doerNames.get(i.doer_id) || '' });
+    }
+    res.json({
+      summary: rec.summary, deleted_by_name: rec.deleted_by_name, deleted_at_fmt: rec.deleted_at_fmt, reason: rec.delete_reason,
+      source_table: rec.source_table, restorable: RESTORABLE_TABLES.has(rec.source_table),
+      groups: [...groups.values()].sort((a, b) => a.client.localeCompare(b.client)),
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/deleted-records/restore-batch { ids } — restore several archived
+// rows, each exactly as the single Restore does; one that cannot be restored
+// is reported and the rest still go back.
+app.post('/api/deleted-records/restore-batch', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const ids = [...new Set((Array.isArray(req.body && req.body.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger))];
+    if (!ids.length) return res.status(400).json({ error: 'Nothing chosen to restore' });
+    if (ids.length > 2000) return res.status(400).json({ error: 'Choose at most 2000 records at a time' });
+    const [recs] = await db.query('SELECT * FROM deleted_records WHERE id IN (?)', [ids]);
+    let restored = 0; const failed = [];
+    for (const rec of recs) {
+      const r = await restoreDeletedRecord(rec, req.session.userId);
+      if (r.error) failed.push({ id: rec.id, record_id: rec.record_id, error: r.error }); else restored++;
+    }
+    res.json({ ok: true, restored, failed });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Put one archived row back. Answers { ok, restored_id, droppedColumns } or
+// { error, status }.
+async function restoreDeletedRecord(rec, userId) {
+    if (rec.restored_at) return { error: 'This record was already restored' };
     if (!RESTORABLE_TABLES.has(rec.source_table)) {
-      return res.status(400).json({ error: `${rec.source_table} rows cannot be restored from here` });
+      return { error: `${rec.source_table} rows cannot be restored from here` };
     }
 
     let data;
     try { data = JSON.parse(rec.record_data); }
-    catch (e) { return res.status(400).json({ error: 'Archived snapshot is not valid JSON — cannot restore' }); }
+    catch (e) { return { error: 'Archived snapshot is not valid JSON — cannot restore' }; }
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
-      return res.status(400).json({ error: 'Archived snapshot is not a row object — cannot restore' });
+      return { error: 'Archived snapshot is not a row object — cannot restore' };
     }
     if (data.slim) {
-      return res.status(400).json({ error: 'Only the name of this deleted user was kept (past the retention window), so it cannot be restored' });
+      return { error: 'Only the name of this deleted user was kept (past the retention window), so it cannot be restored' };
     }
 
     // Drop any key that is no longer a real column (the schema may have moved
@@ -11418,15 +11492,15 @@ app.post('/api/deleted-records/:id/restore', requireAuth, requireAdmin, async (r
     const [cols] = await db.query('SHOW COLUMNS FROM ??', [rec.source_table]);
     const live = new Set(cols.map(c => c.Field));
     const keys = Object.keys(data).filter(k => live.has(k));
-    if (!keys.length) return res.status(400).json({ error: 'No columns from the snapshot still exist — cannot restore' });
+    if (!keys.length) return { error: 'No columns from the snapshot still exist — cannot restore' };
     const dropped = Object.keys(data).filter(k => !live.has(k));
 
     if (data.id != null && live.has('id')) {
       const [[clash]] = await db.query('SELECT id FROM ?? WHERE id=? LIMIT 1', [rec.source_table, data.id]);
       if (clash) {
-        return res.status(409).json({
+        return { status: 409,
           error: `Cannot restore: ${rec.source_table} #${data.id} already exists (that id was reused). Restore it manually if needed.`,
-        });
+        };
       }
     }
 
@@ -11452,11 +11526,10 @@ app.post('/api/deleted-records/:id/restore', requireAuth, requireAdmin, async (r
 
     await db.query(
       'UPDATE deleted_records SET restored_at=NOW(), restored_by=? WHERE id=?',
-      [req.session.userId, rec.id]);
+      [userId, rec.id]);
 
-    res.json({ ok: true, restored_id: data.id ?? null, droppedColumns: dropped });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
+    return { ok: true, restored_id: data.id ?? null, droppedColumns: dropped };
+}
 
 // How long an archived delete is kept before the purge cron drops it.
 const DELETED_RECORDS_RETENTION_DAYS = Number(process.env.DELETED_RECORDS_RETENTION_DAYS) || 60;
