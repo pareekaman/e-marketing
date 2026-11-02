@@ -353,10 +353,11 @@ async function cmCrmSend(ids, toId) {
   showToast(`🔀 ${r.moved} client${r.moved === 1 ? '' : 's'} moved to ${r.to}`);
   return r;
 }
-async function cmCrmTransferOne(id) {
-  const toId = document.getElementById('cmCrmOne_' + id)?.value;
+// Returns true once moved (the React card then redraws from CM_ALL).
+async function cmCrmTransferOne(id, picked) {
+  const toId = picked === undefined ? document.getElementById('cmCrmOne_' + id)?.value : picked;
   if (!toId) { showToast('Choose a CRM first', 'error'); return; }
-  if (await cmCrmSend([id], toId)) cmCrmFillOne(id);
+  if (await cmCrmSend([id], toId)) { if (!_cmDetOn()) cmCrmFillOne(id); return true; }
 }
 async function cmOpenCrmTransfer() {
   CM_CRM_SEL = new Set();
@@ -790,11 +791,16 @@ async function cmShowDetail(id, from, to) {
     if (s.error) { detail.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed: ${s.error}</div>`; return; }
     CM_LINKS = Array.isArray(s.client?.system_links) ? s.client.system_links.map(l => ({ ...l })) : [];
     detail.innerHTML = cmRenderDetailHtml(s, id, Array.isArray(handlers) ? handlers : []);
-    if (_cmDetOn()) _cmDetMount('cmdetstats', 'cmDetStats', s);
+    if (_cmDetOn()) {
+      _cmDetMount('cmdetstats', 'cmDetStats', s);
+      _cmDetMount('cmdetsettings', 'cmDetSettings', { id, client: s.client || {}, depts: cmAllDepts(),
+        ops: cmCanEditOps(s.client || {}, Array.isArray(handlers) ? handlers : []) });
+    }
     cmRenderLinksRows();
     cmInitHandlerWidget(id);
-    if (canDo('admin_clients')) cmCrmFillOne(id);
-    if (cmCanEdit()) cmFillPlatformCard(id);
+    // The React settings cards load their own CRMs and platforms.
+    if (!_cmDetOn() && canDo('admin_clients')) cmCrmFillOne(id);
+    if (!_cmDetOn() && cmCanEdit()) cmFillPlatformCard(id);
     cmDmsLoad(id);
     if (ME.canManageInvoices) cmInvLoad(id);
   } catch (e) {
@@ -905,14 +911,23 @@ function cmDetailTitleHtml(client) {
       ? `<div style="margin-top:4px;font-size:13px;color:#475569;font-weight:600">🏢 ${dtEscape(client.name)}</div>` : '');
 }
 
-function cmRenderDetailHtml(s, id, currentHandlers) {
-  const client = s.client || {};
-  // WhatsApp group, System Links and Documents are operational data a handler of
-  // THIS client may manage too — not just full editors (edit_clients). Renaming
-  // or reassigning the client stays behind cmCanEdit().
+// WhatsApp group, System Links and Documents are operational data a handler of
+// THIS client may manage too — not just full editors (edit_clients). Renaming
+// or reassigning the client stays behind cmCanEdit().
+function cmCanEditOps(client, currentHandlers) {
   const iHandleThisClient = String(client.handler_id) === String(ME.id)
     || (Array.isArray(currentHandlers) && currentHandlers.some(h => String(h.id) === String(ME.id)));
-  const canEditClientOps = cmCanEdit() || iHandleThisClient;
+  return cmCanEdit() || iHandleThisClient;
+}
+// The departments a client can be put in: every non-client user's.
+function cmAllDepts() {
+  return [...new Set(CM_USERS.filter(u => u.role !== 'client').map(u => u.department || '').filter(Boolean))].sort();
+}
+function cmClientById(id) { return CM_ALL.find(c => String(c.id) === String(id)) || null; }
+
+function cmRenderDetailHtml(s, id, currentHandlers) {
+  const client = s.client || {};
+  const canEditClientOps = cmCanEditOps(client, currentHandlers);
   const del = s.delegation || {}, chl = s.checklist || {};
   const meet = s.meetings || {};
   const range = s.range || {};
@@ -1088,6 +1103,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>`}
 
+    ${_cmDetOn() ? '<div id="cmDetSettings" data-react-quiet="1"></div>' : `
     <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
       <div class="card-head-title" style="margin-bottom:10px">🏢 Departments <span style="font-weight:400;color:#94a3b8;font-size:12px">— the teams this client belongs to</span></div>
       <div id="cmDepts_${id}" style="display:flex;flex-wrap:wrap;gap:6px 14px">
@@ -1171,7 +1187,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       <div style="font-size:11px;color:#94a3b8;margin-top:7px">
         Leave blank to switch the digest off for this client. Sent 9:30 AM, Mon–Fri, only when something is pending.
       </div>
-    </div>
+    </div>`}
 
     <div class="task-table-card" id="cmLinksCard" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
@@ -1296,20 +1312,23 @@ function cmRenderLinksRows(){
 // Save this client's own WhatsApp group. Blank clears it, which switches the
 // pending-task digest off for them — the server never falls back to the shared
 // client group, so a blank here simply means no digest.
-async function cmSaveWaGroup(id){
+// The settings-card saves take the value from the React detail page
+// (CmDetail.jsx) as a second argument, or read the old card's field.
+async function cmSaveWaGroup(id, raw){
   const input = document.getElementById('cmWaGroup_' + id);
-  if (!input) return;
-  const r = await api('/api/clients/' + id, 'PUT', { whatsapp_group_id: input.value.trim() });
+  if (raw === undefined && !input) return;
+  const value = (raw === undefined ? input.value : raw).trim();
+  const r = await api('/api/clients/' + id, 'PUT', { whatsapp_group_id: value });
   if (r && r.error) { showToast(r.error, 'error'); return; }
-  showToast(input.value.trim() ? '✅ WhatsApp group saved' : 'Digest switched off for this client');
+  showToast(value ? '✅ WhatsApp group saved' : 'Digest switched off for this client');
 }
 
 // Save this client's brand name. Structural, like the client name — a handler
 // who is not a full editor never sees this card, because the server would drop
 // the field and answer {noop:true}, leaving the input showing a value that was
 // never written (the same trap the is_active toggle hit).
-async function cmSaveDepartments(id){
-  const departments = [...document.querySelectorAll(`#cmDepts_${id} input:checked`)].map(cb => cb.value);
+async function cmSaveDepartments(id, picked){
+  const departments = picked || [...document.querySelectorAll(`#cmDepts_${id} input:checked`)].map(cb => cb.value);
   if (!departments.length) { showToast('Select at least one department', 'error'); return; }
   const r = await api('/api/clients/' + id, 'PUT', { departments });
   if (r && r.error) { showToast(r.error, 'error'); return; }
@@ -1319,8 +1338,8 @@ async function cmSaveDepartments(id){
   showToast('✅ Departments saved');
 }
 
-async function cmSaveKickstart(id){
-  const value = document.getElementById('cmKickstart_' + id)?.value || '';
+async function cmSaveKickstart(id, raw){
+  const value = (raw === undefined ? document.getElementById('cmKickstart_' + id)?.value : raw) || '';
   if (!value) { showToast('Pick the kickstart meeting date', 'error'); return; }
   const r = await api('/api/clients/' + id, 'PUT', { kickstart_date: value });
   if (r && r.error) { showToast(r.error, 'error'); return; }
@@ -1332,13 +1351,18 @@ async function cmSaveKickstart(id){
 }
 
 // Ticks for the detail page's Platform card; values outside the list are kept.
-async function cmFillPlatformCard(id) {
-  const box = document.getElementById('cmPlatforms_' + id);
-  if (!box) return;
+// The platforms a client can be on (the Enquiry options), loaded once.
+async function cmPlatformList() {
   if (!window._cmPlatformList) {
     const o = (typeof EC_OPTS !== 'undefined' && EC_OPTS) || await api('/api/enquiries/options');
     window._cmPlatformList = (o && o.platforms) || [];
   }
+  return window._cmPlatformList;
+}
+async function cmFillPlatformCard(id) {
+  const box = document.getElementById('cmPlatforms_' + id);
+  if (!box) return;
+  await cmPlatformList();
   const cur = (box.dataset.current || '').split('||').filter(Boolean);
   const list = [...window._cmPlatformList, ...cur.filter(p => !window._cmPlatformList.includes(p))];
   box.innerHTML = list.map(p => `
@@ -1347,8 +1371,8 @@ async function cmFillPlatformCard(id) {
       <span>${dtEscape(p)}</span>
     </label>`).join('');
 }
-async function cmSavePlatforms(id){
-  const platforms = [...document.querySelectorAll('.cmPlatCb_' + id + ':checked')].map(cb => cb.value);
+async function cmSavePlatforms(id, picked){
+  const platforms = picked || [...document.querySelectorAll('.cmPlatCb_' + id + ':checked')].map(cb => cb.value);
   if (!platforms.length) { showToast('Select at least one platform', 'error'); return; }
   const r = await api('/api/clients/' + id, 'PUT', { platforms });
   if (r && r.error) { showToast(r.error, 'error'); return; }
@@ -1359,10 +1383,10 @@ async function cmSavePlatforms(id){
   cmRetryFms();
 }
 
-async function cmSaveBrandName(id){
+async function cmSaveBrandName(id, raw){
   const input = document.getElementById('cmBrandName_' + id);
-  if (!input) return;
-  const value = input.value.trim();
+  if (raw === undefined && !input) return;
+  const value = (raw === undefined ? input.value : raw).trim();
   if (!value) { showToast('Brand name cannot be empty', 'error'); return; }
   const r = await api('/api/clients/' + id, 'PUT', { brand_name: value });
   if (r && r.error) { showToast(r.error, 'error'); return; }
@@ -1376,10 +1400,10 @@ async function cmSaveBrandName(id){
 }
 
 // Same shape as cmSaveBrandName — structural, full editors only.
-async function cmSaveBillingName(id){
+async function cmSaveBillingName(id, raw){
   const input = document.getElementById('cmBillingName_' + id);
-  if (!input) return;
-  const value = input.value.trim();
+  if (raw === undefined && !input) return;
+  const value = (raw === undefined ? input.value : raw).trim();
   if (!value) { showToast('Billing name cannot be empty', 'error'); return; }
   const r = await api('/api/clients/' + id, 'PUT', { billing_name: value });
   if (r && r.error) { showToast(r.error, 'error'); return; }
