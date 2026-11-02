@@ -754,9 +754,30 @@ function cmToggleBulk(){
   panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }
 
+// The client detail page is moving to React a section at a time
+// (frontend/src/pages/CmDetail.jsx). cmRenderDetailHtml leaves an empty box
+// for each React section; cmShowDetail mounts them with CM_DET (read through
+// cmDetData) and unmounts them before the page is drawn again. Without
+// data-react on #cmDetailView every section is the old HTML.
+let CM_DET = {}, CM_DET_ROOTS = [];
+const _cmDetOn = () => !!document.getElementById('cmDetailView')?.dataset.react;
+function cmDetData(part) { return CM_DET[part]; }
+function _cmDetUnmount() {
+  CM_DET_ROOTS.forEach(el => window.emkReact && window.emkReact.unmount(el));
+  CM_DET_ROOTS = [];
+}
+function _cmDetMount(name, boxId, data) {
+  const el = document.getElementById(boxId);
+  if (!el) return;
+  CM_DET[name] = data;
+  CM_DET_ROOTS.push(el);
+  emkReactMount(name, el);
+}
+
 async function cmShowDetail(id, from, to) {
   document.getElementById('cmListView').style.display = 'none';
   const detail = document.getElementById('cmDetailView');
+  _cmDetUnmount();
   detail.style.display = 'block';
   detail.innerHTML = '<div class="empty" style="padding:40px">Loading client details…</div>';
   window.scrollTo(0, 0);
@@ -769,6 +790,7 @@ async function cmShowDetail(id, from, to) {
     if (s.error) { detail.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed: ${s.error}</div>`; return; }
     CM_LINKS = Array.isArray(s.client?.system_links) ? s.client.system_links.map(l => ({ ...l })) : [];
     detail.innerHTML = cmRenderDetailHtml(s, id, Array.isArray(handlers) ? handlers : []);
+    if (_cmDetOn()) _cmDetMount('cmdetstats', 'cmDetStats', s);
     cmRenderLinksRows();
     cmInitHandlerWidget(id);
     if (canDo('admin_clients')) cmCrmFillOne(id);
@@ -866,6 +888,7 @@ async function cmSaveLogin() {
 }
 
 function cmBackToList() {
+  _cmDetUnmount();
   document.getElementById('cmDetailView').style.display = 'none';
   document.getElementById('cmListView').style.display = 'block';
   // The detail page edits CM_ALL in place (handlers, brand, active), but the
@@ -1034,6 +1057,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>
 
+    ${_cmDetOn() ? '<div id="cmDetStats" data-react-quiet="1"></div>' : `
     <div class="cm-detail-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
       ${statCard('Total Tasks', tasksTotal, '#4f46e5', `${del.total||0} delegation · ${chl.total||0} checklist`)}
       ${statCard('Pending', pendingTotal, '#ef4444', overdueTotal > 0 ? `${overdueTotal} overdue` : 'On track')}
@@ -1062,7 +1086,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
         </div>
         <div>${meetingsHtml}</div>
       </div>
-    </div>
+    </div>`}
 
     <div class="task-table-card" style="${cmCanEdit() ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
       <div class="card-head-title" style="margin-bottom:10px">🏢 Departments <span style="font-weight:400;color:#94a3b8;font-size:12px">— the teams this client belongs to</span></div>

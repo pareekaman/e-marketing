@@ -67,6 +67,7 @@ const PAGES = {
   cmlist: lazy(() => import('./pages/CmList.jsx')),
   cmstats: lazy(() => import('./pages/CmToolbar.jsx').then(m => ({ default: m.CmStats }))),
   cmtoolbar: lazy(() => import('./pages/CmToolbar.jsx').then(m => ({ default: m.CmToolbar }))),
+  cmdetstats: lazy(() => import('./pages/CmDetail.jsx').then(m => ({ default: m.CmDetStats }))),
 };
 
 const roots = new WeakMap();
