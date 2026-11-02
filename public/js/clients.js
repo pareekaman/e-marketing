@@ -44,6 +44,10 @@ function cmApplyRoleControls(){
   // and for anyone given the "Add Client & Bulk Upload" tick in Access Control
   // (add_clients) along with Client Master at the Editor level.
   const show = ME.role === 'admin' || (cmCanEdit() && canDo('add_clients')) ? '' : 'none';
+  // The Credentials Vault holds plaintext passwords, so the tab is admin-only.
+  const vaultBtn = document.getElementById('cmTabVaultBtn');
+  if (vaultBtn) vaultBtn.style.display = (ME.role === 'admin') ? '' : 'none';
+  if (_cmBar({ show: { add: show === '', crm: canDo('admin_clients') } })) return;
   const addBtn = document.getElementById('cmAddBtn');
   if (addBtn) addBtn.style.display = show;
   const bulkBtn = document.getElementById('cmBulkBtn');
@@ -51,9 +55,6 @@ function cmApplyRoleControls(){
   // Moving clients between CRMs: Admin, or Client Master at the Admin level.
   const crmBtn = document.getElementById('cmCrmBtn');
   if (crmBtn) crmBtn.style.display = canDo('admin_clients') ? '' : 'none';
-  // The Credentials Vault holds plaintext passwords, so the tab is admin-only.
-  const vaultBtn = document.getElementById('cmTabVaultBtn');
-  if (vaultBtn) vaultBtn.style.display = (ME.role === 'admin') ? '' : 'none';
 }
 
 let CM_USERS = [];
@@ -88,7 +89,8 @@ async function loadClients(){
     cmRetryFms();
   } catch(e) {
     _cmListMsg(wrap, 'Failed to load clients');
-    ['cmStatTotal', 'cmStatActive', 'cmStatInactive', 'cmStatVisible'].forEach(id => document.getElementById(id).textContent = '0');
+    if (!_cmBar({ counts: { total: 0, active: 0, inactive: 0, visible: 0 } }))
+      ['cmStatTotal', 'cmStatActive', 'cmStatInactive', 'cmStatVisible'].forEach(id => document.getElementById(id).textContent = '0');
   }
 }
 
@@ -499,10 +501,12 @@ function cmOpenAddModal() {
 // which HANDLERS are offered and this one filters which CLIENTS are shown,
 // and the two lists happening to match today is not a reason to couple them.
 function cmPopulateDeptFilter(){
+  const depts = [...new Set(CM_USERS.filter(u => u.role !== 'client').map(u => u.department || '').filter(Boolean))].sort();
+  const was = cmVals().dept;
+  if (_cmBar({ depts, f: { ...cmVals(), dept: was && depts.includes(was) ? was : '' } })) return;
   const sel = document.getElementById('cmDeptFilter');
   if (!sel) return;
   const prev = sel.value;
-  const depts = [...new Set(CM_USERS.filter(u => u.role !== 'client').map(u => u.department || '').filter(Boolean))].sort();
   sel.innerHTML = '<option value="">All Departments</option>' +
     depts.map(d => `<option value="${dtEscape(d)}">${dtEscape(d)}</option>`).join('');
   // Reselect what was chosen before a reload, if that department still exists.
@@ -512,17 +516,46 @@ function cmPopulateDeptFilter(){
 // is_active is COALESCE'd to 1 server-side, so undefined counts as active.
 function cmIsActive(c){ return c.is_active === undefined || !!Number(c.is_active); }
 
+// The stats cards and the toolbar are React since 2026-11-02
+// (frontend/src/pages/CmToolbar.jsx: CmStats in #cmStatsRoot, CmToolbar in
+// #cmToolbarRoot). What they show lives here in CM_BAR, and the filters are
+// read through cmVals(); without data-react the old markup in both roots works.
+let CM_BAR = null;
+const CM_BAR_SUBS = new Set();
+function cmBarSubscribe(fn) { CM_BAR_SUBS.add(fn); fn(CM_BAR); return () => CM_BAR_SUBS.delete(fn); }
+function _cmBar(patch) {
+  if (!document.getElementById('cmToolbarRoot')?.dataset.react) return false;
+  const first = !CM_BAR;
+  CM_BAR = { f: { q: '', dept: '', added: '', from: '', to: '' }, status: '', counts: {}, depts: [], show: {}, bulk: false, ...CM_BAR, ...patch };
+  if (first) {
+    emkReactMount('cmstats', document.getElementById('cmStatsRoot'));
+    emkReactMount('cmtoolbar', document.getElementById('cmToolbarRoot'));
+  }
+  CM_BAR_SUBS.forEach(fn => fn(CM_BAR));
+  return true;
+}
+// Search, department and the "Added" period: { q, dept, added, from, to }.
+function cmVals() {
+  if (CM_BAR) return CM_BAR.f;
+  const v = id => document.getElementById(id)?.value || '';
+  return { q: v('cmSearch'), dept: v('cmDeptFilter'), added: v('cmAddedFilter'), from: v('cmAddedFrom'), to: v('cmAddedTo') };
+}
+// A filter changed in the React toolbar.
+function cmSetF(patch) { _cmBar({ f: { ...CM_BAR.f, ...patch } }); cmRenderList(); }
+
 // The All / Active / Inactive cards are both counts and a filter.
 let CM_STATUS = '';
 function cmUpdateStatusCounts(){
   const active = CM_ALL.filter(cmIsActive).length;
+  if (_cmBar({ counts: { ...(CM_BAR && CM_BAR.counts), total: CM_ALL.length, active, inactive: CM_ALL.length - active } })) return;
   document.getElementById('cmStatTotal').textContent = CM_ALL.length;
   document.getElementById('cmStatActive').textContent = active;
   document.getElementById('cmStatInactive').textContent = CM_ALL.length - active;
 }
 function cmSetStatus(s){
   CM_STATUS = s;
-  document.querySelectorAll('.cm-stat-pick').forEach(el => el.classList.toggle('is-sel', el.dataset.status === s));
+  if (!_cmBar({ status: s }))
+    document.querySelectorAll('.cm-stat-pick').forEach(el => el.classList.toggle('is-sel', el.dataset.status === s));
   cmRenderList();
 }
 
@@ -535,8 +568,8 @@ function cmClientDepts(c){
 // Search + department + status card. The list and the Excel export both read
 // this, so the download always matches what is on screen.
 function cmFilteredClients(){
-  const q = (document.getElementById('cmSearch')?.value || '').toLowerCase().trim();
-  const dept = document.getElementById('cmDeptFilter')?.value || '';
+  const q = cmVals().q.toLowerCase().trim();
+  const dept = cmVals().dept;
   // Brand and billing names are searchable too — both are shown on the row, and
   // the brand people recognise (or the entity on an invoice) is often the only
   // name they think to type.
@@ -565,10 +598,11 @@ function cmFilteredClients(){
 
 function cmRenderList(){
   const wrap = document.getElementById('cmListWrap');
-  const q = (document.getElementById('cmSearch')?.value || '').toLowerCase().trim();
-  const dept = document.getElementById('cmDeptFilter')?.value || '';
+  const q = cmVals().q.toLowerCase().trim();
+  const dept = cmVals().dept;
   const filtered = cmFilteredClients();
-  document.getElementById('cmStatVisible').textContent = filtered.length;
+  if (!_cmBar({ counts: { ...(CM_BAR && CM_BAR.counts), visible: filtered.length } }))
+    document.getElementById('cmStatVisible').textContent = filtered.length;
 
   if (!CM_ALL.length) {
     _cmListMsg(wrap, 'No clients yet — add one above.');
@@ -695,14 +729,13 @@ function cmFilter(){ cmRenderList(); }
 // The "Added" filter's period as {from, to} (YYYY-MM-DD, both inclusive), or
 // null for all time. A custom range with only one end set is open on the other.
 function cmAddedRange(){
-  const pick = document.getElementById('cmAddedFilter')?.value || '';
+  const pick = cmVals().added;
   const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const now = new Date();
   if (pick === 'this_month') return { from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), to: ymd(now) };
   if (pick === 'last_month') return { from: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), to: ymd(new Date(now.getFullYear(), now.getMonth(), 0)) };
   if (pick === 'custom') {
-    const from = document.getElementById('cmAddedFrom')?.value || '';
-    const to = document.getElementById('cmAddedTo')?.value || '';
+    const { from, to } = cmVals();
     if (!from && !to) return null;
     return { from: from || '0000-01-01', to: to || '9999-12-31' };
   }
@@ -716,6 +749,7 @@ function cmAddedChange(){
 }
 
 function cmToggleBulk(){
+  if (CM_BAR) { _cmBar({ bulk: !CM_BAR.bulk }); return; }
   const panel = document.getElementById('cmBulkPanel');
   panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }

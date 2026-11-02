@@ -65,6 +65,8 @@ const PAGES = {
   hrmmsgs: lazy(() => import('./pages/HrmTables.jsx').then(m => ({ default: m.HrmMsgs }))),
   hrmpopups: lazy(() => import('./pages/HrmPopups.jsx')),
   cmlist: lazy(() => import('./pages/CmList.jsx')),
+  cmstats: lazy(() => import('./pages/CmToolbar.jsx').then(m => ({ default: m.CmStats }))),
+  cmtoolbar: lazy(() => import('./pages/CmToolbar.jsx').then(m => ({ default: m.CmToolbar }))),
 };
 
 const roots = new WeakMap();
