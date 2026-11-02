@@ -10404,17 +10404,22 @@ async function canDecideLeave(session, lr) {
 }
 
 // Whose Approvals list a day-removal request appears in: the same people who
-// see the leave itself there (GET /api/leaves?scope=approvals) — its approver,
-// the HODs of the approver's department, and Simran (LEAVE_OVERSEER_ID). Not
+// see the leave itself there (GET /api/leaves?scope=approvals) — the holder's
+// approver, the HODs of the approver's department, and Simran (LEAVE_OVERSEER_ID). Not
 // every admin: admin_leaves still lets an admin decide one, as with a leave,
 // but it no longer lands in all their lists.
 async function inLeaveRemovalInbox(session, lr) {
   const uid = Number(session.userId);
   if (lr.sole_approver) return Number(lr.approver_id) === uid;
-  if (uid === LEAVE_OVERSEER_ID || Number(lr.approver_id) === uid) return true;
+  if (uid === LEAVE_OVERSEER_ID) return true;
+  // Deciding a leave writes the decider into approver_id (Simran, say), so
+  // the holder's own approver — their HOD — is looked up again; both count.
+  const approvers = [...new Set([lr.approver_id, await resolveLeaveApprover(lr.user_id)].map(Number).filter(Boolean))];
+  if (approvers.includes(uid)) return true;
   const [[myInfo]] = await db.query('SELECT department, COALESCE(user_role, role) AS user_role FROM users WHERE id=?', [uid]);
-  const [[apInfo]] = await db.query('SELECT department FROM users WHERE id=?', [lr.approver_id]);
-  return !!(myInfo?.user_role === 'hod' && myInfo?.department && apInfo?.department === myInfo.department);
+  if (myInfo?.user_role !== 'hod' || !myInfo?.department) return false;
+  const [apInfo] = await db.query('SELECT department FROM users WHERE id IN (?)', [approvers]);
+  return apInfo.some(a => a.department === myInfo.department);
 }
 
 // Takes `dates` off the request. Removing every day deletes the request
