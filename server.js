@@ -9703,7 +9703,12 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
         where += ' AND lr.user_id=?'; params.push(uid);
       }
     }
-    if (status) { where += ' AND lr.status=?'; params.push(status); }
+    // In My Leaves / Team, "Pending" also takes an approved leave with days
+    // waiting to be removed — it still waits on an approver. The Approvals
+    // list does not: those requests have their own section there.
+    if (status === 'pending' && scope !== 'approvals' && await ensureLeaveDayRemovalTable()) {
+      where += ` AND (lr.status='pending' OR EXISTS (SELECT 1 FROM leave_day_removals dr WHERE dr.leave_id=lr.id AND dr.status='pending'))`;
+    } else if (status) { where += ' AND lr.status=?'; params.push(status); }
     if (req.query.user_id) { where += ' AND lr.user_id=?'; params.push(req.query.user_id); }
     if (req.query.from)    { where += ' AND lr.to_date >= ?'; params.push(req.query.from); }
     if (req.query.to)      { where += ' AND lr.from_date <= ?'; params.push(req.query.to); }
