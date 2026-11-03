@@ -388,6 +388,8 @@ async function cmCrmTransferOne(id, picked) {
 async function cmOpenCrmTransfer() {
   CM_CRM_SEL = new Set();
   const users = await cmCrmUsers();
+  // The React pop-up (CmPopups.jsx) builds its own lists and sends through cmCrmSend.
+  if (_cmPopReact('crm', [users, CM_ALL])) return;
   const owners = new Map();
   for (const c of CM_ALL) {
     const k = c.added_by ? String(c.added_by) : '';

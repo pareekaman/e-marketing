@@ -7,6 +7,7 @@
 //         prefill → cmAddSend)
 //   cv — Add / Edit Credential (cvOpenModal → cvSaveSend)
 //   confirm — the vault's Delete confirm (cvConfirm; answers through resolve)
+//   crm — Transfer clients to another CRM (cmOpenCrmTransfer → cmCrmSend)
 import { useEffect, useRef, useState } from 'react';
 import { legacy, css } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
@@ -254,8 +255,84 @@ function ConfirmBody({ d, close }) {
   );
 }
 
-const BODIES = { login: LoginBody, add: AddBody, cv: CvBody, confirm: ConfirmBody };
-const WIDTH = { login: 'width:480px', add: 'width:520px', cv: 'width:520px', confirm: 'width:420px' };
+// ── Transfer CRM ──
+const CRM_ROW = 'display:flex;align-items:center;gap:8px;margin:0;padding:7px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;font-weight:500;color:#1e293b;text-transform:none;letter-spacing:0;cursor:pointer';
+const CRM_CB = 'width:14px;height:14px;margin:0;accent-color:#4f46e5';
+function CrmBody({ d, close }) {
+  const label = c => legacy('clientLabel', c) || '';
+  const [from, setFrom] = useState('*');
+  const [q, setQ] = useState('');
+  const [to, setTo] = useState('');
+  const [sel, setSel] = useState(() => new Set());
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  // "From": everyone who added clients, with how many, A-Z.
+  const owners = new Map();
+  for (const c of d.clients) {
+    const k = c.added_by ? String(c.added_by) : '';
+    const o = owners.get(k) || { name: c.added_by_name || 'No CRM', n: 0 };
+    o.n++; owners.set(k, o);
+  }
+  const fromOpts = [{ value: '*', label: `All clients (${d.clients.length})` },
+    ...[...owners].sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([k, o]) => ({ value: k, label: `${o.name} (${o.n})` }))];
+  const toOpts = !d.users.length ? [{ value: '', label: 'No one has CRM access yet' }]
+    : [{ value: '', label: 'Choose a CRM…' }, ...d.users.map(u => ({ value: String(u.id), label: u.name }))];
+  const s = q.toLowerCase().trim();
+  const shown = d.clients.filter(c => (from === '*' || String(c.added_by || '') === from)
+    && (!s || ((c.name || '') + ' ' + (c.brand_name || '')).toLowerCase().includes(s)))
+    .sort((a, b) => label(a).localeCompare(label(b)));
+  const allShown = shown.length > 0 && shown.every(c => sel.has(c.id));
+  const pickAll = on => setSel(cur => { const x = new Set(cur); for (const c of shown) on ? x.add(c.id) : x.delete(c.id); return x; });
+  const go = async () => {
+    setErr('');
+    if (!sel.size) return setErr('Select at least one client');
+    if (!to) return setErr('Choose the CRM to move them to');
+    setBusy(true);
+    const r = await legacy('cmCrmSend', [...sel], to);
+    setBusy(false);
+    if (!r) return;
+    close();
+    legacy('loadClients');
+  };
+  return (
+    <>
+      <h3>🔀 Transfer clients to another CRM</h3>
+      {errBox(err)}
+      <div className="form-group">
+        <label>From</label>
+        <SearchSelect value={from} onChange={setFrom} options={fromOpts} />
+      </div>
+      <div className="form-group">
+        <label>Clients</label>
+        <input type="text" placeholder="Search clients..." value={q} onChange={e => setQ(e.target.value)} />
+        <label ref={css('display:flex;align-items:center;gap:8px;margin:8px 0 6px;font-size:12px;font-weight:600;color:#475569;text-transform:none;letter-spacing:0;cursor:pointer')}>
+          <input type="checkbox" checked={allShown} onChange={e => pickAll(e.target.checked)} ref={css(CRM_CB)} />
+          Select all shown
+        </label>
+        <div ref={css('max-height:260px;overflow-y:auto;border:1.5px solid #e2e8f0;border-radius:8px')}>
+          {shown.length ? shown.map(c => (
+            <label key={c.id} ref={css(CRM_ROW)}>
+              <input type="checkbox" checked={sel.has(c.id)} onChange={e => setSel(cur => toggleIn(cur, c.id, e.target.checked))} ref={css(CRM_CB)} />
+              <span ref={css('flex:1;min-width:0')}>{label(c)}</span>
+              <span ref={css('font-size:11px;color:#94a3b8;white-space:nowrap')}>{c.added_by_name || 'No CRM'}</span>
+            </label>
+          )) : <div ref={css('padding:16px;text-align:center;color:#94a3b8;font-size:13px')}>No clients match</div>}
+        </div>
+      </div>
+      <div className="form-group">
+        <label>To CRM <span ref={css('color:#dc2626')}>*</span></label>
+        <SearchSelect value={to} onChange={setTo} options={toOpts} placeholder={toOpts[0].label} />
+      </div>
+      <div className="modal-footer" ref={css('justify-content:space-between')}>
+        <button className="btn btn-outline" onClick={close}>Cancel</button>
+        <button className="btn btn-primary" disabled={busy} onClick={go}>{`🔀 Transfer ${sel.size} client${sel.size === 1 ? '' : 's'}`}</button>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { login: LoginBody, add: AddBody, cv: CvBody, confirm: ConfirmBody, crm: CrmBody };
+const WIDTH = { login: 'width:480px', add: 'width:520px', cv: 'width:520px', confirm: 'width:420px', crm: 'max-width:520px' };
 
 export default function CmPopups() {
   const [st, setSt] = useState({});
@@ -270,6 +347,7 @@ export default function CmPopups() {
       add: data => show('add', data),
       cv: (c, clients) => show('cv', { c, clients }),
       confirm: (msg, okLabel, resolve) => { answer(false); pending.current = resolve; show('confirm', { msg, okLabel, answer }); },
+      crm: (users, clients) => show('crm', { users, clients }),
     });
     return () => legacy('cmPopSetReact', null);
   }, []);
