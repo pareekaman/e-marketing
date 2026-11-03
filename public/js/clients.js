@@ -797,6 +797,7 @@ async function cmShowDetail(id, from, to) {
       _cmDetMount('cmdetsettings', 'cmDetSettings', { id, client: s.client || {}, depts: cmAllDepts(), ops });
       _cmDetMount('cmdetlinks', 'cmDetLinks', { id, links: CM_LINKS, ops });
       _cmDetMount('cmdetdms', 'cmDetDms', { id, ops });
+      if (ME.canManageInvoices) _cmDetMount('cmdetinv', 'cmDetInv', { id });
     }
     cmRenderLinksRows();
     cmInitHandlerWidget(id);
@@ -804,7 +805,7 @@ async function cmShowDetail(id, from, to) {
     if (!_cmDetOn() && canDo('admin_clients')) cmCrmFillOne(id);
     if (!_cmDetOn() && cmCanEdit()) cmFillPlatformCard(id);
     if (!_cmDetOn()) cmDmsLoad(id);   // the React Documents card loads its own
-    if (ME.canManageInvoices) cmInvLoad(id);
+    if (ME.canManageInvoices && !_cmDetOn()) cmInvLoad(id);   // the React Invoices card loads its own
   } catch (e) {
     detail.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed to load: ${e.message}</div>`;
   }
@@ -1211,7 +1212,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       <div id="cmDmsContent"><div style="color:#94a3b8;font-size:12px;padding:8px 0">Loading…</div></div>
     </div>`}
 
-    ${ME.canManageInvoices ? `<div class="task-table-card" style="padding:14px 18px;margin-top:16px">
+    ${ME.canManageInvoices && _cmDetOn() ? '<div id="cmDetInv" data-react-quiet="1"></div>' : ME.canManageInvoices ? `<div class="task-table-card" style="padding:14px 18px;margin-top:16px">
       <div class="card-head-title" style="margin-bottom:12px">🧾 Invoices <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on the client's portal</span></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end">
         <div class="form-group" style="margin:0"><label>Invoice No *</label><input type="text" id="cmInvNo" placeholder="e.g. EM/24-25/101"/></div>

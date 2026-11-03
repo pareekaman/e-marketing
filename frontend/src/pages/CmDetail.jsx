@@ -9,6 +9,8 @@
 //   cmdetlinks — System Links (cmSaveLinksSend)
 //   cmdetdms — Documents: the client's Google Drive folders (was cmDmsLoad …
 //              cmDmsUploadFile), talking to /api/clients/:id/dms itself
+//   cmdetinv — Invoices (was cmInvLoad / cmInvUpload / cmInvDelete), for
+//              invoice managers only; View is clients.js's cmInvView
 import { useEffect, useRef, useState } from 'react';
 import { api, toast, legacy, css, fmtDate, canDo } from '../lib/app.js';
 import SearchSelect from '../components/SearchSelect.jsx';
@@ -449,6 +451,93 @@ export function CmDetDms() {
         <div className="card-head-title">📁 Documents <span ref={css(SUB)}>— Google Drive</span></div>
       </div>
       <div id="cmDmsContent">{body}</div>
+    </div>
+  );
+}
+
+// ── Invoices ──
+const INV_BTN = 'padding:4px 10px;font-size:12px';
+export function CmDetInvoices() {
+  const [d] = useState(() => legacy('cmDetData', 'cmdetinv') || {});
+  const cid = d.id;
+  const [rows, setRows] = useState(null);   // null loading, { error } or the list
+  const [f, setF] = useState({ no: '', date: '', amount: '' });
+  const [busy, setBusy] = useState(false);
+  const file = useRef(null);
+  const live = useRef(true);
+  useEffect(() => () => { live.current = false; }, []);
+  const load = async () => {
+    const r = await api(`/api/clients/${cid}/invoices`);
+    if (live.current) setRows(Array.isArray(r) ? r : { error: (r && r.error) || 'Failed to load' });
+  };
+  useEffect(() => { load(); }, []);
+  const set = (k, v) => setF(s => ({ ...s, [k]: v }));
+
+  const upload = async () => {
+    const no = f.no.trim(), pdf = file.current && file.current.files[0];
+    if (!no) return toast('Invoice number required', 'error');
+    if (!f.date) return toast('Invoice date required', 'error');
+    if (!(Number(f.amount) > 0)) return toast('Amount required', 'error');
+    if (!pdf) return toast('Choose the invoice PDF', 'error');
+    if (pdf.size > 4 * 1024 * 1024) return toast('PDF must be under 4 MB', 'error');
+    const fd = new FormData();
+    fd.append('invoice_no', no); fd.append('invoice_date', f.date); fd.append('amount', f.amount); fd.append('file', pdf);
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/clients/${cid}/invoices`, { method: 'POST', body: fd, credentials: 'include' });
+      const data = await res.json().catch(() => ({ error: res.status === 413 ? 'PDF too large (max 4 MB)' : 'Upload failed' }));
+      if (!res.ok || data.error) { toast(data.error || 'Upload failed', 'error'); return; }
+      toast('✅ Invoice uploaded');
+      setF({ no: '', date: '', amount: '' });
+      if (file.current) file.current.value = '';
+      load();
+    } catch (e) { toast('Upload failed: ' + e.message, 'error'); }
+    finally { setBusy(false); }
+  };
+  const remove = async r => {
+    if (!await legacy('appConfirm', `Delete invoice ${r.invoice_no}? The client will no longer see it.`, 'Delete invoice?')) return;
+    const x = await api(`/api/client-invoices/${r.id}`, 'DELETE');
+    if (x && x.error) { toast(x.error, 'error'); return; }
+    toast('Invoice deleted');
+    load();
+  };
+
+  const NOTE = 'color:#94a3b8;font-size:12px';
+  let list;
+  if (!rows) list = <div ref={css(NOTE)}>Loading…</div>;
+  else if (rows.error) list = <div ref={css('color:#dc2626;font-size:12px')}>{rows.error}</div>;
+  else if (!rows.length) list = <div ref={css(NOTE)}>No invoices uploaded yet.</div>;
+  else list = (
+    <div ref={css('overflow-x:auto')}>
+      <table className="task-table" ref={css('width:100%')}>
+        <thead><tr><th>Invoice No</th><th>Date</th><th ref={css('text-align:right')}>Amount</th><th></th></tr></thead>
+        <tbody>{rows.map(r => (
+          <tr key={r.id}>
+            <td ref={css('font-weight:600')}>{r.invoice_no}</td>
+            <td>{legacy('cmInvDate', r.invoice_date)}</td>
+            <td ref={css('text-align:right')}>{legacy('cmInvMoney', r.amount)}</td>
+            <td ref={css('text-align:right;white-space:nowrap')}>
+              <button className="btn btn-outline" ref={css(INV_BTN)} onClick={() => legacy('cmInvView', r.id)}>View</button>
+              {' '}
+              <button className="btn btn-outline" ref={css(`${INV_BTN};color:#dc2626;border-color:#fecaca`)} onClick={() => remove(r)}>Delete</button>
+            </td>
+          </tr>
+        ))}</tbody>
+      </table>
+    </div>
+  );
+  const field = (label, input) => <div className="form-group" ref={css('margin:0')}><label>{label}</label>{input}</div>;
+  return (
+    <div className="task-table-card" ref={css('padding:14px 18px;margin-top:16px')}>
+      <div className="card-head-title" ref={css('margin-bottom:12px')}>🧾 Invoices <span ref={css(SUB)}>— shown on the client's portal</span></div>
+      <div ref={css('display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end')}>
+        {field('Invoice No *', <input type="text" id="cmInvNo" placeholder="e.g. EM/24-25/101" value={f.no} onChange={e => set('no', e.target.value)} />)}
+        {field('Invoice Date *', <input type="date" id="cmInvDate" value={f.date} onChange={e => set('date', e.target.value)} />)}
+        {field('Amount (₹) *', <input type="number" id="cmInvAmount" min="0" step="0.01" placeholder="0.00" value={f.amount} onChange={e => set('amount', e.target.value)} />)}
+        {field('PDF *', <input type="file" id="cmInvFile" accept="application/pdf,.pdf" ref={file} />)}
+        <button className="btn btn-primary" id="cmInvBtn" ref={css('padding:9px 14px;font-size:13px')} disabled={busy} onClick={upload}>{busy ? 'Uploading…' : '⬆ Upload'}</button>
+      </div>
+      <div id="cmInvList" ref={css('margin-top:14px')}>{list}</div>
     </div>
   );
 }

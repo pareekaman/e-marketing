@@ -71,6 +71,7 @@ const PAGES = {
   cmdetsettings: lazy(() => import('./pages/CmDetail.jsx').then(m => ({ default: m.CmDetSettings }))),
   cmdetlinks: lazy(() => import('./pages/CmDetail.jsx').then(m => ({ default: m.CmDetLinks }))),
   cmdetdms: lazy(() => import('./pages/CmDetail.jsx').then(m => ({ default: m.CmDetDms }))),
+  cmdetinv: lazy(() => import('./pages/CmDetail.jsx').then(m => ({ default: m.CmDetInvoices }))),
 };
 
 const roots = new WeakMap();
