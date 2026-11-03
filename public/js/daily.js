@@ -811,8 +811,21 @@ async function dtSubmitExtra(){
   }
 }
 
+// The history list is React since 2026-11-03 (frontend/src/pages/DtHistory.jsx,
+// in #dtHistoryWrap[data-react]): dtLoadHistory / dtRenderExtraHistory hand it
+// { msg }, { daily: rows } or { extra: DT_EXTRA_MINE }.
+let DT_HIST_REACT = null, _dtHistWanted = null;
+function dtHistSetReact(fn) { DT_HIST_REACT = fn; if (fn && _dtHistWanted) { const v = _dtHistWanted; _dtHistWanted = null; fn(v); } }
+function _dtHistShow(view) {
+  const wrap = document.getElementById('dtHistoryWrap');
+  if (!wrap || !wrap.dataset.react) return false;
+  if (DT_HIST_REACT) DT_HIST_REACT(view); else { _dtHistWanted = view; emkReactMount('dthistory', wrap); }
+  return true;
+}
+
 // One card per date (a request can cover several), newest date first.
 function dtRenderExtraHistory(){
+  if (_dtHistShow({ extra: DT_EXTRA_MINE })) return;
   const wrap = document.getElementById('dtHistoryWrap');
   const days = [];
   for (const r of DT_EXTRA_MINE) {
@@ -879,9 +892,10 @@ async function dtLoadHistory(){
   try {
     const rows = await api('/api/daily-tasks/mine');
     if (!rows || !rows.length) {
-      wrap.innerHTML = '<div class="empty">No past submissions yet.</div>';
+      if (!_dtHistShow({ msg: 'No past submissions yet.' })) wrap.innerHTML = '<div class="empty">No past submissions yet.</div>';
       return;
     }
+    if (_dtHistShow({ daily: rows })) return;
     // Group by date
     const byDate = {};
     for (const r of rows) {
@@ -910,7 +924,7 @@ async function dtLoadHistory(){
     }
     wrap.innerHTML = html;
   } catch(e) {
-    wrap.innerHTML = '<div class="empty">Failed to load history</div>';
+    if (!_dtHistShow({ msg: 'Failed to load history' })) wrap.innerHTML = '<div class="empty">Failed to load history</div>';
   }
 }
 

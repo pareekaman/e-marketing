@@ -75,6 +75,7 @@ const PAGES = {
   cmdethead: lazy(() => import('./pages/CmDetail.jsx').then(m => ({ default: m.CmDetHead }))),
   cmpopups: lazy(() => import('./pages/CmPopups.jsx')),
   cvvault: lazy(() => import('./pages/CmVault.jsx')),
+  dthistory: lazy(() => import('./pages/DtHistory.jsx')),
 };
 
 const roots = new WeakMap();
