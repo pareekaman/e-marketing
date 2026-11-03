@@ -11,6 +11,10 @@
 //              cmDmsUploadFile), talking to /api/clients/:id/dms itself
 //   cmdetinv — Invoices (was cmInvLoad / cmInvUpload / cmInvDelete), for
 //              invoice managers only; View is clients.js's cmInvView
+//   cmdethead — the header: Back, logo, title, handlers (cmSaveHandlers),
+//               the date range (cmShowDetail) and the client login
+//               (cmOpenLoginModal); a brand-name save redraws its title
+//               through cmDetHeadSetReact
 import { useEffect, useRef, useState } from 'react';
 import { api, toast, legacy, css, fmtDate, canDo } from '../lib/app.js';
 import SearchSelect from '../components/SearchSelect.jsx';
@@ -538,6 +542,161 @@ export function CmDetInvoices() {
         <button className="btn btn-primary" id="cmInvBtn" ref={css('padding:9px 14px;font-size:13px')} disabled={busy} onClick={upload}>{busy ? 'Uploading…' : '⬆ Upload'}</button>
       </div>
       <div id="cmInvList" ref={css('margin-top:14px')}>{list}</div>
+    </div>
+  );
+}
+
+// ── Header ──
+const HANDLER_DROP = 'display:none;position:absolute;top:34px;left:0;z-index:99;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:240px;max-height:260px;overflow-y:auto;padding:6px 0';
+const HANDLER_ROW = 'display:flex;align-items:center;gap:8px;padding:7px 14px;cursor:pointer;font-size:13px;transition:background .1s';
+const DATE_IN = 'padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:13px;background:#fff;outline:none';
+const CAPS = 'font-size:11px;color:#1e40af;font-weight:700;text-transform:uppercase;letter-spacing:.4px';
+// The old widget showed / hid its parts with style.display once you used it;
+// done the same way so the style attribute reads the same.
+const displayed = (base, value) => el => { if (!el) return; el.setAttribute('style', base); if (value !== undefined) el.style.display = value; };
+
+function HeadTitle({ client }) {
+  const title = legacy('clientLabel', client) || 'C';
+  return <>
+    <div ref={css('font-size:22px;font-weight:700;color:#0f172a')}>{title}</div>
+    {client.name && title !== client.name ? <div ref={css('margin-top:4px;font-size:13px;color:#475569;font-weight:600')}>{`🏢 ${client.name}`}</div> : null}
+  </>;
+}
+
+export function CmDetHead() {
+  const [d] = useState(() => legacy('cmDetData', 'cmdethead') || { client: {}, handlers: [], users: [], range: {} });
+  const { id } = d;
+  const [client, setClient] = useState(d.client);
+  const edit = !!legacy('cmCanEdit');
+  const users = d.users || [];
+  const depts = [...new Set(users.map(u => u.department || '').filter(Boolean))].sort();
+  const people = users.filter(u => u.role !== 'client');
+  const [picked, setPicked] = useState(() => new Set(d.handlers.map(h => String(h.id))));
+  const [deptPick, setDeptPick] = useState(() => new Set());
+  const [deptOpen, setDeptOpen] = useState(false);
+  const [handlersOpen, setHandlersOpen] = useState(undefined);   // undefined until first opened
+  const [filtered, setFiltered] = useState(false);               // a department was ever picked
+  const [from, setFrom] = useState(d.range.from || '');
+  const [to, setTo] = useState(d.range.to || '');
+  const widget = useRef(null), logoIn = useRef(null);
+
+  // A brand-name save elsewhere on the page redraws the title.
+  useEffect(() => {
+    legacy('cmDetHeadSetReact', { title: c => setClient(cur => ({ ...cur, brand_name: c.brand_name, name: c.name })) });
+    return () => legacy('cmDetHeadSetReact', null);
+  }, []);
+  // A click outside the handlers widget closes both its lists.
+  useEffect(() => {
+    const away = e => {
+      if (widget.current && widget.current.contains(e.target)) return;
+      setDeptOpen(false);
+      setHandlersOpen(o => (o === undefined ? o : false));
+    };
+    document.addEventListener('click', away);
+    return () => document.removeEventListener('click', away);
+  }, []);
+
+  const showAll = !deptPick.size || deptPick.size === depts.length;
+  const flipDept = (dept, on) => { setFiltered(true); setDeptPick(s => { const n = new Set(s); on ? n.add(dept) : n.delete(dept); return n; }); };
+  const flipUser = (uid, on) => setPicked(s => { const n = new Set(s); on ? n.add(uid) : n.delete(uid); return n; });
+  const saved = d.handlers;
+  // Drawn from the client as the page opened; a brand save redraws only the title, as before.
+  const initials = legacy('cmInitials', legacy('clientLabel', d.client) || 'C');
+  const avatar = legacy('cmAvatarStyle', client.name || 'C');
+  const SMALL = 'padding:4px 10px;font-size:11px';
+
+  return (
+    <div ref={css('background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin-bottom:16px')}>
+      <button className="btn btn-outline" ref={css('padding:6px 12px;font-size:12px;margin-bottom:12px')} onClick={() => legacy('cmBackToList')}>← Back to Clients</button>
+      <div ref={css('display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px')}>
+        <div ref={css('display:flex;align-items:center;gap:14px;flex-wrap:wrap')}>
+          {client.logo_url
+            ? <img src={client.logo_url} alt={client.name} ref={css('width:60px;height:60px;border-radius:12px;object-fit:cover;border:1px solid #e2e8f0;flex-shrink:0')} />
+            : <div ref={css(`width:60px;height:60px;border-radius:12px;${avatar};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:22px;flex-shrink:0`)}>{initials}</div>}
+          <div>
+            <div id={`cmDetTitle_${client.id}`}><HeadTitle client={client} /></div>
+            <div ref={css('margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center')}>
+              {saved.length
+                ? saved.map(h => <span key={h.id} ref={css('background:#ccfbf1;color:#0f766e;padding:3px 10px;border-radius:6px;font-weight:600;font-size:12px;display:inline-block;margin:2px 2px')}>{`👤 ${h.name}`}</span>)
+                : <span ref={css('background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:6px;font-weight:600;font-size:12px')}>⚠️ No handler</span>}
+              <span ref={css('font-size:11px;color:#94a3b8')}>{`Client #${client.id}`}</span>
+            </div>
+            <div ref={css('margin-top:8px;display:flex;gap:6px')}>
+              {edit ? <>
+                {client.logo_url ? <>
+                  <button className="btn btn-outline" ref={css(SMALL)} onClick={() => logoIn.current.click()}>Change</button>
+                  {' '}
+                  <button className="btn btn-outline" ref={css(`${SMALL};color:#dc2626;border-color:#fca5a5`)} onClick={() => legacy('cmRemoveLogo', client.id)}>Remove</button>
+                </> : <button className="btn btn-outline" ref={css(SMALL)} onClick={() => logoIn.current.click()}>＋ Upload Logo</button>}
+                <input type="file" id={`cmLogoInput_${client.id}`} accept="image/*" ref={el => { logoIn.current = el; css('display:none')(el); }}
+                  onChange={e => legacy('cmUploadLogo', client.id, e.target)} />
+              </> : null}
+            </div>
+          </div>
+        </div>
+        <div ref={css(`${edit ? 'display:flex' : 'display:none'};gap:8px;align-items:flex-start;flex-wrap:wrap;margin-top:8px`)}>
+          <label ref={css('font-size:11px;color:#64748b;font-weight:600;padding-top:6px')}>Handlers:</label>
+          <div id={`cmHandlerWidget_${id}`} ref={el => { widget.current = el; css('position:relative')(el); }}>
+            <div ref={css('display:flex;gap:6px;flex-wrap:wrap;align-items:center')}>
+              <div className="multi-select-wrap" id={`cmDeptFilterWrap_${id}`} ref={css('position:relative;min-width:200px')}>
+                <button type="button" onClick={() => setDeptOpen(o => !o)}
+                  ref={css('padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;outline:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:190px')}>
+                  <span id={`cmDeptCount_${id}`}>{showAll ? 'All Departments' : `${deptPick.size} selected`}</span> ▾
+                </button>
+                <div className={`multi-select-dropdown${deptOpen ? ' open' : ''}`} id={`cmDeptDropdown_${id}`}>
+                  <div className="multi-select-item" ref={css('font-weight:600;cursor:pointer;border-bottom:1px solid #e2e8f0')} onClick={() => { setFiltered(true); setDeptPick(new Set()); }}>
+                    <input type="checkbox" id={`cmAllDeptsCb_${id}`} checked={showAll} readOnly ref={css('width:14px;height:14px;accent-color:#4f46e5;cursor:pointer;pointer-events:none;flex-shrink:0')} />
+                    <span>All Departments</span>
+                  </div>
+                  {depts.map(dept => (
+                    <label key={dept} className="multi-select-item" data-dept={dept} ref={css('cursor:pointer')}>
+                      <input type="checkbox" className={`cm-dept-cb_${id}`} value={dept} checked={deptPick.has(dept)} onChange={e => flipDept(dept, e.target.checked)}
+                        ref={css('width:14px;height:14px;accent-color:#4f46e5;cursor:pointer;flex-shrink:0')} />
+                      <span>{dept}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <button onClick={() => setHandlersOpen(o => !o)} ref={css('padding:5px 12px;border:1.5px solid #7c3aed;border-radius:6px;font-size:12px;background:#fff;color:#7c3aed;font-weight:600;cursor:pointer')}>
+                👥 <span id={`cmHandlerCount_${id}`}>{picked.size ? `${picked.size} selected` : 'Select handlers'}</span> ▾
+              </button>
+              <button onClick={() => legacy('cmSaveHandlers', id, people.filter(u => picked.has(String(u.id))).map(u => u.id))}
+                ref={css('padding:5px 14px;border:none;border-radius:6px;font-size:12px;background:#7c3aed;color:#fff;font-weight:600;cursor:pointer')}>Save</button>
+            </div>
+            <div id={`cmHandlerDropdown_${id}`} ref={displayed(HANDLER_DROP, handlersOpen === undefined ? undefined : handlersOpen ? 'block' : 'none')}>
+              {people.map(u => (
+                <label key={u.id} data-dept={u.department || ''} ref={displayed(HANDLER_ROW, filtered ? (showAll || deptPick.has(u.department) ? 'flex' : 'none') : undefined)}
+                  onMouseOver={e => { e.currentTarget.style.background = '#f8f5ff'; }} onMouseOut={e => { e.currentTarget.style.background = ''; }}>
+                  <input type="checkbox" className={`cm-handler-cb_${id}`} value={u.id} checked={picked.has(String(u.id))} onChange={e => flipUser(String(u.id), e.target.checked)}
+                    ref={css('width:15px;height:15px;accent-color:#7c3aed;cursor:pointer')} />
+                  <span>{u.name}</span>
+                  {u.department ? <span ref={css('font-size:10px;color:#94a3b8;margin-left:auto')}>{u.department}</span> : null}
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="cm-detail-bar" ref={css('margin-top:14px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;flex-wrap:wrap')}>
+        <div ref={css('display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:10px 14px;border-radius:8px')}>
+          <label ref={css('font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.4px')}>Range</label>
+          <input type="date" id="cmDetailFrom" value={from} onChange={e => setFrom(e.target.value)} ref={css(DATE_IN)} />
+          <span ref={css('font-size:11px;color:#94a3b8')}>to</span>
+          <input type="date" id="cmDetailTo" value={to} onChange={e => setTo(e.target.value)} ref={css(DATE_IN)} />
+          <button className="btn btn-primary" ref={css('padding:6px 14px;font-size:12px')} onClick={() => legacy('cmShowDetail', id, from, to)}>Apply</button>
+          <span ref={css('font-size:11px;color:#64748b')}>Default: current month</span>
+        </div>
+        <div ref={css('display:flex;gap:8px;align-items:center;background:#eff6ff;padding:10px 14px;border-radius:8px;border:1px solid #bfdbfe')}>
+          {d.login && d.login.provisioned ? <>
+            <span ref={css(CAPS)}>Login</span>
+            <span ref={css('font-size:12px;color:#1e293b;font-weight:600')}>{d.login.email}</span>
+            <button className="btn btn-outline" ref={css('padding:5px 10px;font-size:11px')} onClick={() => legacy('cmOpenLoginModal', id, d.login.email)}>Reset</button>
+          </> : <>
+            <span ref={css(CAPS)}>No login set</span>
+            <button className="btn btn-primary" ref={css('padding:5px 12px;font-size:12px')} onClick={() => legacy('cmOpenLoginModal', id, '')}>＋ Provision</button>
+          </>}
+        </div>
+      </div>
     </div>
   );
 }

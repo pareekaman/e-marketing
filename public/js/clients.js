@@ -761,6 +761,9 @@ function cmToggleBulk(){
 // cmDetData) and unmounts them before the page is drawn again. Without
 // data-react on #cmDetailView every section is the old HTML.
 let CM_DET = {}, CM_DET_ROOTS = [];
+// The React header ({ title(client) }), so a brand-name save redraws its title.
+let CM_DET_HEAD = null;
+function cmDetHeadSetReact(o) { CM_DET_HEAD = o; }
 const _cmDetOn = () => !!document.getElementById('cmDetailView')?.dataset.react;
 function cmDetData(part) { return CM_DET[part]; }
 function _cmDetUnmount() {
@@ -792,6 +795,8 @@ async function cmShowDetail(id, from, to) {
     CM_LINKS = Array.isArray(s.client?.system_links) ? s.client.system_links.map(l => ({ ...l })) : [];
     detail.innerHTML = cmRenderDetailHtml(s, id, Array.isArray(handlers) ? handlers : []);
     if (_cmDetOn()) {
+      _cmDetMount('cmdethead', 'cmDetHead', { id, client: s.client || {}, handlers: Array.isArray(handlers) ? handlers : [],
+        login: s.login || null, range: s.range || {}, users: CM_USERS });
       _cmDetMount('cmdetstats', 'cmDetStats', s);
       const ops = cmCanEditOps(s.client || {}, Array.isArray(handlers) ? handlers : []);
       _cmDetMount('cmdetsettings', 'cmDetSettings', { id, client: s.client || {}, depts: cmAllDepts(), ops });
@@ -800,7 +805,7 @@ async function cmShowDetail(id, from, to) {
       if (ME.canManageInvoices) _cmDetMount('cmdetinv', 'cmDetInv', { id });
     }
     cmRenderLinksRows();
-    cmInitHandlerWidget(id);
+    if (!_cmDetOn()) cmInitHandlerWidget(id);   // the React header closes its own dropdowns
     // The React settings cards load their own CRMs and platforms.
     if (!_cmDetOn() && canDo('admin_clients')) cmCrmFillOne(id);
     if (!_cmDetOn() && cmCanEdit()) cmFillPlatformCard(id);
@@ -996,7 +1001,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
        <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;color:#dc2626;border-color:#fca5a5" onclick="cmRemoveLogo(${client.id})">Remove</button>`
     : `<button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="document.getElementById('cmLogoInput_${client.id}').click()">＋ Upload Logo</button>`;
 
-  return `
+  return `${_cmDetOn() ? '<div id="cmDetHead" data-react-quiet="1"></div>' : `
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin-bottom:16px">
       <button class="btn btn-outline" onclick="cmBackToList()" style="padding:6px 12px;font-size:12px;margin-bottom:12px">← Back to Clients</button>
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px">
@@ -1073,7 +1078,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
                <button class="btn btn-primary" style="padding:5px 12px;font-size:12px" onclick="cmOpenLoginModal(${id}, '')">＋ Provision</button>`}
         </div>
       </div>
-    </div>
+    </div>`}
 
     ${_cmDetOn() ? '<div id="cmDetStats" data-react-quiet="1"></div>' : `
     <div class="cm-detail-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
@@ -1400,7 +1405,8 @@ async function cmSaveBrandName(id, raw){
   const client = CM_ALL.find(c => String(c.id) === String(id));
   if (client) client.brand_name = value;
   const titleEl = document.getElementById('cmDetTitle_' + id);
-  if (titleEl && client) titleEl.innerHTML = cmDetailTitleHtml(client);
+  if (client && CM_DET_HEAD) CM_DET_HEAD.title(client);   // the React header redraws its own title
+  else if (titleEl && client) titleEl.innerHTML = cmDetailTitleHtml(client);
   showToast('✅ Brand name saved');
 }
 
@@ -1756,8 +1762,9 @@ function cmHandlerCbChange(id) {
   if (countEl) countEl.textContent = checked.length ? checked.length + ' selected' : 'Select handlers';
 }
 
-async function cmSaveHandlers(id) {
-  const checked = [...document.querySelectorAll(`.cm-handler-cb_${id}:checked`)].map(cb => parseInt(cb.value));
+// picked: the React header's ticked user ids; else the old widget's checkboxes.
+async function cmSaveHandlers(id, picked) {
+  const checked = picked || [...document.querySelectorAll(`.cm-handler-cb_${id}:checked`)].map(cb => parseInt(cb.value));
   try {
     const r = await api('/api/clients/' + id + '/handlers', 'PUT', { user_ids: checked });
     if (r.error) { showToast(r.error, 'error'); return; }
