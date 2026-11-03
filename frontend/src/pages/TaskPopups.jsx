@@ -11,6 +11,9 @@
 //             taskHolidayBulkSend / deleteHoliday; the list follows taskHolidayWatch)
 //   checklist — Add Checklist Task, with its preview line and the CSV upload
 //               (openChecklist → taskChecklistSend / taskChecklistCsvSend)
+//   delegate — Delegate Task: shared fields, task cards, voice fill (it registers
+//              as voice-delegate.js's host) and the CSV upload (openDelegate →
+//              taskDelegateSend / taskDelegateCsvSend)
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { legacy, css } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
@@ -371,8 +374,187 @@ function ChecklistBody({ d, close }) {
   );
 }
 
-const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody, holiday: HolidayBody, checklist: ChecklistBody };
-const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px', holiday: 'max-width:560px', checklist: '' };
+// ── Delegate Task ──
+// One card per task: doer, client, approval, URL and remarks are shared by all
+// of them; due date, doer-defined tick, priority and description differ. The
+// data-* names are the old cards' own, which the themes' CSS reaches for.
+const CARD = 'border:1.5px solid #e2e8f0;border-radius:10px;padding:12px 14px 0;margin-bottom:12px;background:#fafbfc';
+const CARD_X = 'display:none;background:none;border:none;color:#94a3b8;font-size:17px;line-height:1;cursor:pointer;padding:0 4px;border-radius:6px';
+const D_URL = "width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;transition:border .2s;color:#1e293b;background:#fff";
+const D_APPROVAL = [{ value: 'no', label: 'No Approval' }, { value: 'yes', label: 'Yes Approval' }];
+// The voice bar's parts are written by voice-delegate.js itself (classes,
+// text, display), so their refs must be stable: a fresh ref callback on every
+// render would put the starting style back over what voice wrote.
+let _cardKey = 0;
+const newCard = (today, from) => ({ key: ++_cardKey, date: today, doerSets: false, priority: 'low', desc: '', ...from });
+
+function DelegateBody({ d, close }) {
+  const has = (list, v) => v != null && list.some(o => o.value === String(v));
+  const [doer, setDoer] = useState(has(d.users, d.prefill.doerId) ? String(d.prefill.doerId) : '');
+  const [approval, setApproval] = useState('no');
+  const [approver, setApprover] = useState('');
+  const [client, setClient] = useState(has(d.clients, d.prefill.clientId) ? String(d.prefill.clientId) : '');
+  const [url, setUrl] = useState('');
+  const [remarks, setRemarks] = useState('');
+  const [cards, setCards] = useState(() => [newCard(d.today)]);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(null);
+  const [csvBusy, setCsvBusy] = useState(null);
+  const [focusNew, setFocusNew] = useState(0);
+  const root = useRef(null), file = useRef(null);
+  const vd = useRef({});
+  const vdRef = (name, style) => vd.current[name + 'Ref'] || (vd.current[name + 'Ref'] = el => { vd.current[name] = el; if (el && style) el.setAttribute('style', style); });
+
+  const setCard = (key, k, v) => setCards(cs => cs.map(c => (c.key === key ? { ...c, [k]: v } : c)));
+  const setFirst = patch => setCards(cs => cs.map((c, i) => (i ? c : { ...c, ...(typeof patch === 'function' ? patch(c) : patch) })));
+  const pickApproval = v => { setApproval(v); if (v !== 'yes') setApprover(''); };
+  // Ticking "doer-defined" empties and locks the date; unticking puts today back.
+  const tick = (key, on) => setCards(cs => cs.map(c => (c.key !== key ? c : { ...c, doerSets: on, date: on ? '' : (c.date || d.today) })));
+  const add = from => { setCards(cs => [...cs, newCard(d.today, from)]); setFocusNew(n => n + 1); };
+  // Copies the last card (date, doer-defined tick, priority and description).
+  const duplicate = () => { const s = cards[cards.length - 1]; add({ doerSets: s.doerSets, date: s.doerSets ? '' : s.date, priority: s.priority, desc: s.desc }); };
+  // A new card takes the cursor in its description.
+  useEffect(() => { if (focusNew) [...root.current.querySelectorAll('[data-task-row] [data-f="desc"]')].pop()?.focus(); }, [focusNew]);
+
+  // Voice fill talks to this form through vdSetHost (voice-delegate.js).
+  useEffect(() => {
+    const first = f => root.current?.querySelector(`[data-task-row] [data-f="${f}"]`) || null;
+    const flash = el => { if (!el) return; el.classList.remove('vd-filled'); void el.offsetWidth; el.classList.add('vd-filled'); };
+    const EL = {
+      delegateModal: () => root.current?.closest('.modal-overlay') || null,
+      dDate: () => first('date'), dDesc: () => first('desc'), dDoerSetsDate: () => first('doerSets'),
+      vdMicBtn: () => vd.current.mic, vdMicLabel: () => vd.current.label, vdHint: () => vd.current.hint, vdPanel: () => vd.current.panel,
+      vdTranscript: () => vd.current.transcript, vdSummary: () => vd.current.summary, vdError: () => vd.current.error,
+    };
+    const people = d.users.map(u => ({ id: u.value, name: u.label.trim() }));
+    legacy('vdSetHost', {
+      el: id => (EL[id] ? EL[id]() : null),
+      options: id => (id === 'dClient' ? d.clients.map(c => ({ id: c.value, name: c.label.trim() })) : id === 'dDoer' || id === 'dApprover' ? people : []),
+      fill: (id, v) => {
+        if (id === 'dDoer') setDoer(v);
+        else if (id === 'dClient') setClient(v);
+        else if (id === 'dApproval') pickApproval(v);
+        else if (id === 'dApprover') setApprover(v);
+        else if (id === 'dPriority') setFirst({ priority: v });
+        else if (id === 'dDate') { setFirst({ date: v }); flash(first('date')); }
+        else if (id === 'dDesc') { setFirst({ desc: v }); flash(first('desc')); }
+      },
+      untickDoerSets: () => setFirst(c => (c.doerSets ? { doerSets: false, date: c.date || d.today } : {})),
+    });
+    legacy('vdResetVoice');
+    return () => legacy('vdSetHost', null);
+  }, []);
+
+  const assign = async () => {
+    setErr('');
+    const keys = cards.map(c => c.key);
+    const msg = await legacy('taskDelegateSend', { doer, approval, approver, client, url, remarks }, cards, {
+      busy: setBusy,
+      landed: idx => { const gone = new Set(idx.map(i => keys[i])); setCards(cs => cs.filter(c => !gone.has(c.key))); },
+      close,
+    });
+    if (msg) setErr(msg);
+  };
+  const many = cards.length > 1;
+  const email = (d.users.find(u => u.value === approver) || {}).email || '';
+  return (
+    <>
+      <h3 ref={el => { root.current = el && el.parentElement; }}>+ Delegate Task</h3>
+      <div className="vd-bar">
+        <button type="button" className="vd-mic" ref={vdRef('mic')} onClick={() => legacy('vdToggleRecording')}>
+          <span className="vd-mic-icon">🎤</span><span ref={vdRef('label')}>Speak Task</span>
+        </button>
+        <div className="vd-hint" ref={vdRef('hint')}>Say the task, who it is for, and when it is due.</div>
+        <div className="vd-template">Template — <em>“Delegate a task to <b>name</b>, the task will be <b>task</b>, the due date will be <b>date</b>, priority will be <b>level</b>, client name is <b>client</b>.”</em></div>
+      </div>
+      <div className="vd-panel" ref={vdRef('panel')}>
+        <div className="vd-transcript" ref={vdRef('transcript')} data-placeholder="Your words will appear here…"></div>
+        <div className="vd-summary" ref={vdRef('summary')}></div>
+        <div className="vd-error" ref={vdRef('error', 'display:none')}></div>
+      </div>
+      {errBox(err)}
+      <div className="form-row">
+        <div className="form-group">
+          <label>Doer (Assign To)</label>
+          <SearchSelect value={doer} onChange={setDoer} placeholder="Select Doer" options={[{ value: '', label: 'Select Doer' }, ...d.users]} />
+        </div>
+        <div className="form-group">
+          <label>Approval Required</label>
+          <SearchSelect value={approval} onChange={pickApproval} options={D_APPROVAL} />
+        </div>
+      </div>
+      <div className="form-group" ref={displayed('display:none', approval === 'yes' ? 'block' : 'none')}>
+        <label>Approver</label>
+        <SearchSelect value={approver} onChange={setApprover} placeholder="Select Approver" options={[{ value: '', label: 'Select Approver' }, ...d.users]} />
+        <div ref={displayed('margin-top:6px;font-size:12px;color:var(--accent);font-weight:500;display:none', email ? 'block' : 'none')}>
+          📧 <span>{email}</span>
+        </div>
+      </div>
+      <div className="form-group">
+        <label>Client <span ref={css('color:#dc2626')}>*</span></label>
+        <SearchSelect value={client} onChange={setClient} placeholder="— Select Client —" options={[{ value: '', label: '— Select Client —' }, ...d.clients]} />
+      </div>
+      {cards.map((c, i) => (
+        <div data-task-row="" key={c.key} ref={css(CARD)}>
+          <div ref={css('display:flex;align-items:center;justify-content:space-between;height:18px')}>
+            <span data-task-label="" ref={css('font-size:11px;font-weight:700;color:#64748b;letter-spacing:.04em')}>{many ? 'TASK ' + (i + 1) : ''}</span>
+            <button type="button" data-task-remove="" title="Remove this task" ref={displayed(CARD_X, many ? '' : 'none')}
+              onClick={() => setCards(cs => cs.filter(x => x.key !== c.key))}>×</button>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Due Date</label>
+              <input type="date" data-f="date" min={d.today} disabled={c.doerSets} value={c.date} onChange={e => setCard(c.key, 'date', e.target.value)} />
+              <label ref={css('display:flex;align-items:center;gap:6px;margin-top:7px;font-size:12px;color:#475569;font-weight:500;cursor:pointer')}>
+                <input type="checkbox" data-f="doerSets" ref={css('width:auto;margin:0')} checked={c.doerSets} onChange={e => tick(c.key, e.target.checked)} />
+                Doer-defined due date
+              </label>
+            </div>
+            <div className="form-group">
+              <label>Priority</label>
+              <SearchSelect value={c.priority} onChange={v => setCard(c.key, 'priority', v)} options={PRIORITY} />
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Description</label>
+            <textarea data-f="desc" placeholder="Enter task description…" value={c.desc} onChange={e => setCard(c.key, 'desc', e.target.value)} />
+          </div>
+        </div>
+      ))}
+      <button type="button" className="btn btn-outline btn-sm" ref={css('margin-bottom:16px')} onClick={() => add()}>+ Add another task</button>{' '}
+      <button type="button" className="btn btn-outline btn-sm" ref={css('margin-bottom:16px;margin-left:6px')} title="Copy the last task's date, priority and description" onClick={duplicate}>⧉ Duplicate</button>
+      <div className="form-group">
+        <label>URL <span ref={css(OPTIONAL)}>(optional)</span></label>
+        <input type="url" placeholder="https://docs.google.com/…" ref={css(D_URL)} value={url} onChange={e => setUrl(e.target.value)} />
+      </div>
+      <div className="form-group">
+        <label>Remarks</label>
+        <textarea placeholder="Any remarks…" ref={css('min-height:50px')} value={remarks} onChange={e => setRemarks(e.target.value)} />
+      </div>
+      <div className="modal-footer" ref={css('justify-content:space-between;align-items:center')}>
+        <button className="btn btn-outline" onClick={close}>Close</button>
+        <button className="btn btn-primary" disabled={busy != null} onClick={assign}>{busy != null ? busy : 'Assign'}</button>
+      </div>
+      <div className="bulk-section">
+        <div ref={css('display:flex;align-items:center;gap:10px;margin-bottom:10px')}>
+          <div ref={css('flex:1;height:1px;background:#e2e8f0')}></div>
+          <span ref={css('font-size:11px;color:#94a3b8;font-weight:600')}>OR BULK UPLOAD CSV</span>
+          <div ref={css('flex:1;height:1px;background:#e2e8f0')}></div>
+        </div>
+        <div className="file-row">
+          <input type="file" ref={el => { file.current = el; css('font-size:12px;flex:1')(el); }} accept=".csv" />
+          <button className="btn btn-green btn-sm" disabled={csvBusy != null}
+            onClick={() => legacy('taskDelegateCsvSend', file.current.files[0], setCsvBusy, close)}>{csvBusy != null ? csvBusy : '⬆ Upload CSV'}</button>
+          <button className="btn btn-outline btn-sm" onClick={() => legacy('downloadSample')}>⬇ Sample</button>
+        </div>
+        <div ref={css('font-size:11px;color:#94a3b8;margin-top:6px')}>Columns: doer_email, approver_email, due_date, priority, approval, description, remarks, client_name — matched by header name, so any order works and only doer_email, due_date and description are required. Dates as YYYY-MM-DD or MM/DD/YYYY.</div>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody, holiday: HolidayBody, checklist: ChecklistBody, delegate: DelegateBody };
+const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px', holiday: 'max-width:560px', checklist: '', delegate: '' };
 
 export default function TaskPopups() {
   const [st, setSt] = useState({});
@@ -386,6 +568,7 @@ export default function TaskPopups() {
       setdue: (id, reason, ctx, min) => show('setdue', { id, reason, ctx, min }),
       holiday: (min, list) => show('holiday', { min, list }),
       checklist: (today, users, clients) => show('checklist', { today, users, clients }),
+      delegate: (today, users, clients, prefill) => show('delegate', { today, users, clients, prefill }),
     });
     return () => legacy('taskPopSetReact', null);
   }, []);

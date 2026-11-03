@@ -1365,6 +1365,17 @@ function dRemoveTaskRow(btn) {
 }
 
 async function openDelegate(prefill = {}) {
+  if (_taskPopOn()) {
+    if (typeof vdResetVoice === 'function') vdResetVoice();
+    const today = new Date().toISOString().split('T')[0];
+    const [users, clients] = await Promise.all([api('/api/users'), api('/api/clients')]);
+    window._delegateUsers = users || [];
+    _taskPopReact('delegate', [today,
+      (users || []).map(u => ({ value: String(u.id), label: u.name, email: u.email || '' })),
+      sortClientsForPicker((clients || []).filter(isActiveClient)).map(c => ({ value: String(c.id), label: clientLabel(c) })),
+      prefill && typeof prefill === 'object' ? prefill : {}]);
+    return;
+  }
   document.getElementById('delegateErr').style.display='none';
   // First, because every field the resets below reach for lives inside task
   // card one, and that card does not exist until this builds it.
@@ -1509,53 +1520,75 @@ function onDelegateApproverChange() {
 async function saveDelegate() {
   const err = document.getElementById('delegateErr');
   err.style.display='none';
-  const fail = m => { err.textContent = m; err.style.display = 'block'; };
-  const doer = document.getElementById('dDoer').value;
-  const approval = document.getElementById('dApproval').value;
-  const remarks = document.getElementById('dRemarks').value.trim();
-  const url = document.getElementById('dUrl').value.trim() || null;
-  const approver = approval === 'yes' ? document.getElementById('dApprover').value : '';
-  const client_id = document.getElementById('dClient').value || null;
-  if (!doer) return fail('Please select a doer');
-  if (!client_id) return fail('Please select a client');
-  if (approval === 'yes' && !approver) return fail('Please select an approver');
+  const rowEls = dTaskRows();
+  const btn = document.getElementById('delegateSubmitBtn');
+  const btnLabel = btn ? btn.textContent : '';
+  const msg = await taskDelegateSend({
+    doer: document.getElementById('dDoer').value,
+    approval: document.getElementById('dApproval').value,
+    approver: document.getElementById('dApprover').value,
+    client: document.getElementById('dClient').value,
+    url: document.getElementById('dUrl').value,
+    remarks: document.getElementById('dRemarks').value,
+  }, rowEls.map(row => ({
+    date: row.querySelector('[data-f="date"]').value,
+    desc: row.querySelector('[data-f="desc"]').value,
+    priority: row.querySelector('[data-f="priority"]').value,
+    doerSets: row.querySelector('[data-f="doerSets"]').checked
+  })), {
+    busy: label => { if (btn) { btn.disabled = label != null; btn.textContent = label != null ? label : btnLabel; } },
+    landed: idx => { idx.forEach(i => rowEls[i].remove()); dSyncTaskRows(); },
+    close: () => closeModal('delegateModal'),
+  });
+  if (msg) { err.textContent = msg; err.style.display = 'block'; }
+}
+
+// The Assign send, shared by the old modal and the React one. f holds the
+// shared fields and rows the task cards, all as raw values; ui.busy(label)
+// shows the button's progress (null when done), ui.landed(indexes) drops the
+// cards that were created when a later one failed, ui.close() closes the
+// form. Returns the error to show, or nothing.
+async function taskDelegateSend(f, rows, ui) {
+  const doer = f.doer;
+  const approval = f.approval;
+  const remarks = f.remarks.trim();
+  const url = f.url.trim() || null;
+  const approver = approval === 'yes' ? f.approver : '';
+  const client_id = f.client || null;
+  if (!doer) return 'Please select a doer';
+  if (!client_id) return 'Please select a client';
+  if (approval === 'yes' && !approver) return 'Please select an approver';
   // Every card becomes its own task; the fields above are shared by all of them.
-  const rows = dTaskRows();
   const tasks = [];
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const t = {
-      row,
-      date: row.querySelector('[data-f="date"]').value,
-      desc: row.querySelector('[data-f="desc"]').value.trim(),
-      priority: row.querySelector('[data-f="priority"]').value,
-      doerSetsDueDate: row.querySelector('[data-f="doerSets"]').checked
+      i,
+      date: row.date,
+      desc: row.desc.trim(),
+      priority: row.priority,
+      doerSetsDueDate: row.doerSets
     };
     // Naming a card number only helps when there is more than one to tell apart.
     const which = rows.length > 1 ? ' for task ' + (i + 1) : '';
-    if (!t.doerSetsDueDate && !t.date) return fail('Please select a date' + which);
-    if (!t.desc) return fail('Description is required' + which);
+    if (!t.doerSetsDueDate && !t.date) return 'Please select a date' + which;
+    if (!t.desc) return 'Description is required' + which;
     tasks.push(t);
   }
   // Lock the button for the round-trip. Without this a second tap on a slow
   // connection created a second identical task, and the doer then saw the same
   // task again after finishing the first one.
-  const btn = document.getElementById('delegateSubmitBtn');
-  const btnLabel = btn ? btn.textContent : '';
   let failed = null;
   try {
     for (let i = 0; i < tasks.length; i++) {
       const t = tasks[i];
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = tasks.length > 1 ? `Assigning ${i + 1}/${tasks.length}…` : 'Assigning…';
-      }
+      ui.busy(tasks.length > 1 ? `Assigning ${i + 1}/${tasks.length}…` : 'Assigning…');
       const r = await api('/api/tasks','POST',{type:'delegation',desc:t.desc,assignedTo:doer,date:t.date,priority:t.priority,approval,approver,remarks,client_id,url,doerSetsDueDate:t.doerSetsDueDate,quietEmail:tasks.length>1});
       if (r.error) { failed = r.error; break; }
       t.res = r;
     }
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
+    ui.busy(null);
   }
   const done = tasks.filter(t => t.res);
   // Several tasks in one go were created quietly: one summary email per doer.
@@ -1563,14 +1596,13 @@ async function saveDelegate() {
   if (failed) {
     // Clear away the cards that did land. Pressing Assign again with them still
     // on screen would create those tasks a second time.
-    done.forEach(t => t.row.remove());
-    dSyncTaskRows();
+    ui.landed(done.map(t => t.i));
     if (done.length) loadDashboard(true);
-    return fail(done.length
+    return done.length
       ? `${done.length} of ${tasks.length} created — the next one failed: ${failed}`
-      : failed);
+      : failed;
   }
-  closeModal('delegateModal');
+  ui.close();
   if (tasks.length > 1) {
     showToast(`${tasks.length} tasks delegated!`);
   } else {
@@ -1961,8 +1993,17 @@ function csvDate(s) {
   return !isNaN(dt) && dt.toISOString().slice(0, 10) === iso ? iso : null;
 }
 
-async function uploadCSV() {
-  const file = document.getElementById('bulkFile').files[0];
+function uploadCSV() {
+  const btn = document.querySelector('[onclick="uploadCSV()"]');
+  const btnText = btn ? btn.innerHTML : '';
+  return taskDelegateCsvSend(document.getElementById('bulkFile').files[0],
+    text => { if (btn) { btn.disabled = text != null; btn.innerHTML = text != null ? text : btnText; } },
+    () => closeModal('delegateModal'));
+}
+
+// The delegation CSV upload, shared by the old modal and the React one.
+// busy(text) shows the upload button's progress (null when done).
+async function taskDelegateCsvSend(file, busy, close) {
   if (!file) { showToast('Please select a CSV file','error'); return; }
   const rows = parseCsv(await file.text());
   if (rows.length < 2) { showToast('CSV is empty','error'); return; }
@@ -1981,10 +2022,7 @@ async function uploadCSV() {
   // used to start the whole upload again and create every task twice.
   if (_csvUploading) return;
   _csvUploading = true;
-  const btn = document.querySelector('[onclick="uploadCSV()"]');
-  const btnText = btn ? btn.innerHTML : '';
-  const progress = (done, total) => { if (btn) btn.innerHTML = `⏳ Uploading ${done} / ${total}…`; };
-  if (btn) btn.disabled = true;
+  const progress = (done, total) => busy(`⏳ Uploading ${done} / ${total}…`);
   progress(0, rows.length - 1);
   try {
   const [allUsers, allClients] = await Promise.all([api('/api/users'), api('/api/clients')]);
@@ -2042,7 +2080,7 @@ async function uploadCSV() {
   }
   // One summary email per doer instead of one per row (open tasks only).
   if (createdIds.length) api('/api/tasks/notify-batch', 'POST', { ids: createdIds }).catch(() => {});
-  if (count) { closeModal('delegateModal'); loadDashboard(true); }
+  if (count) { close(); loadDashboard(true); }
   if (problems.length) {
     appAlert(`${count} task${count === 1 ? '' : 's'} created${doneCount ? ` (${doneCount} marked done)` : ''}. ${problems.length} row${problems.length === 1 ? ' was' : 's were'} not:\n\n${problems.join('\n')}`, 'Bulk upload');
   } else {
@@ -2050,7 +2088,7 @@ async function uploadCSV() {
   }
   } finally {
     _csvUploading = false;
-    if (btn) { btn.disabled = false; btn.innerHTML = btnText; }
+    busy(null);
   }
 }
 let _csvUploading = false;

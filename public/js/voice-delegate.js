@@ -810,7 +810,13 @@ function vdSpeechCtor() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
-function vdEl(id) { return document.getElementById(id); }
+// The form voice fills: the old Delegate modal in app.html, or the React one
+// (frontend/src/pages/TaskPopups.jsx), which registers itself here as the host
+// while it is open. The host answers el(id) for the voice bar and card one's
+// fields, options(id) for the pickers, fill(id, value) and untickDoerSets().
+let _vdHost = null;
+function vdSetHost(h) { _vdHost = h; }
+function vdEl(id) { return _vdHost ? _vdHost.el(id) : document.getElementById(id); }
 
 function vdEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -821,6 +827,7 @@ function vdEsc(s) {
 // rather than fetching them again. The parser then cannot match a doer or a
 // client that this form has no option to select.
 function vdOptionsOf(id) {
+  if (_vdHost) return _vdHost.options(id);
   const sel = vdEl(id);
   if (!sel) return [];
   return Array.from(sel.options).filter(o => o.value)
@@ -988,6 +995,7 @@ function vdOnError(ev) {
 // becoming somebody's task.
 // ══════════════════════════════════════════════════════
 function vdMarkFilled(id, value) {
+  if (_vdHost) return _vdHost.fill(id, value);
   const el = vdEl(id);
   if (!el) return;
   el.value = value;
@@ -1037,7 +1045,8 @@ function vdApplyTranscript(text) {
     const doerSets = vdEl('dDoerSetsDate');
     // A spoken date and "doer-defined due date" contradict each other, and
     // the tickbox disables the field the date would go into.
-    if (doerSets && doerSets.checked) {
+    if (_vdHost) _vdHost.untickDoerSets();
+    else if (doerSets && doerSets.checked) {
       doerSets.checked = false;
       if (typeof onDoerSetsDateChange === 'function') onDoerSetsDateChange();
     }
@@ -1057,11 +1066,12 @@ function vdApplyTranscript(text) {
   }
 
   if (parsed.approval) {
+    // The React host's fill() runs these follow-ups itself.
     vdMarkFilled('dApproval', parsed.approval);
-    if (typeof onDelegateApprovalChange === 'function') onDelegateApprovalChange();
+    if (!_vdHost && typeof onDelegateApprovalChange === 'function') onDelegateApprovalChange();
     if (parsed.approval === 'yes' && parsed.approver) {
       vdMarkFilled('dApprover', String(parsed.approver.id));
-      if (typeof onDelegateApproverChange === 'function') onDelegateApproverChange();
+      if (!_vdHost && typeof onDelegateApproverChange === 'function') onDelegateApproverChange();
       chips.push(['ok', 'Approval: ' + parsed.approver.name]);
     } else if (parsed.approval === 'yes') {
       chips.push(['miss', 'Approval needed — pick the approver']);
