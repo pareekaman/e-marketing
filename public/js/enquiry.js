@@ -331,17 +331,11 @@ async function ecAddToClientMaster(id) {
     const users = await api('/api/users');
     CM_USERS = Array.isArray(users) ? users : [];
   }
-  cmOpenAddModal();
-  CM_ADD_FROM_ENQUIRY = id;
-  document.getElementById('cmFormName').value = e.client_name || '';
-  document.getElementById('cmFormBrandName').value = e.business_name || '';
-  document.getElementById('cmFormMobile').value = e.mobile || '';
   // Each platform ticks its department: the same name (Google Ads, SEO, …) or
   // the department EC_PLATFORM_DEPT names. Platforms without one tick nothing.
-  const wanted = new Set(ecList(e.platforms).map(p => p.toLowerCase().trim()).flatMap(p => [p, EC_PLATFORM_DEPT[p]]).filter(Boolean));
-  document.querySelectorAll('.cmAddDeptCb').forEach(cb => { if (wanted.has(cb.value.toLowerCase().trim())) cb.checked = true; });
-  cmAddFilterHandlers();
-  cmAddPresetPlatforms(ecList(e.platforms));
+  const wanted = [...new Set(ecList(e.platforms).map(p => p.toLowerCase().trim()).flatMap(p => [p, EC_PLATFORM_DEPT[p]]).filter(Boolean))];
+  cmOpenAddModal({ name: e.client_name || '', brand: e.business_name || '', mobile: e.mobile || '', depts: wanted, platforms: ecList(e.platforms) });
+  CM_ADD_FROM_ENQUIRY = id;
 }
 
 async function ecClientAdded(enquiryId, clientId) {

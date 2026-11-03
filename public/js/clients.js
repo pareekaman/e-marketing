@@ -451,8 +451,11 @@ function cmExportExcel() {
 // enquiry, so the new client gets tied to that enquiry. Any other opening
 // of the form clears it.
 let CM_ADD_FROM_ENQUIRY = null;
-function cmOpenAddModal() {
+// prefill (Enquiry Capture's Convert): { name, brand, mobile, depts, platforms }
+// — depts / platforms are lower-case names to tick.
+function cmOpenAddModal(prefill) {
   CM_ADD_FROM_ENQUIRY = null;
+  if (_cmPopReact('add', [{ depts: cmAllDepts(), people: CM_USERS.filter(u => u.role !== 'client'), billing: cmCanSeeBilling(), prefill: prefill || null }])) return;
   document.getElementById('cmAddErr').style.display = 'none';
   document.getElementById('cmFormName').value = '';
   document.getElementById('cmFormBrandName').value = '';
@@ -495,6 +498,15 @@ function cmOpenAddModal() {
 
   document.getElementById('clientAddModal').classList.add('open');
   setTimeout(() => document.getElementById('cmFormName')?.focus(), 0);
+  if (prefill) {
+    document.getElementById('cmFormName').value = prefill.name || '';
+    document.getElementById('cmFormBrandName').value = prefill.brand || '';
+    document.getElementById('cmFormMobile').value = prefill.mobile || '';
+    const wanted = new Set(prefill.depts || []);
+    document.querySelectorAll('.cmAddDeptCb').forEach(cb => { if (wanted.has(cb.value.toLowerCase().trim())) cb.checked = true; });
+    cmAddFilterHandlers();
+    cmAddPresetPlatforms(prefill.platforms || []);
+  }
 }
 
 // Same department list the handler picker inside Add Client already builds
@@ -1657,30 +1669,37 @@ function cmDmsUploadFile(folderId, clientId) {
 async function cmAdd(){
   const err = document.getElementById('cmAddErr');
   err.style.display = 'none';
-  const name = document.getElementById('cmFormName').value.trim();
-  const brand_name = document.getElementById('cmFormBrandName').value.trim();
-  const billing_name = document.getElementById('cmFormBillingName').value.trim();
-  const kickstart_date = document.getElementById('cmFormKickstart').value;
-  const mobile_no = document.getElementById('cmFormMobile').value.trim();
-  const handler_ids = [...document.querySelectorAll('.cmAddHandlerCb:checked')].map(cb => parseInt(cb.value));
-  const departments = [...document.querySelectorAll('.cmAddDeptCb:checked')].map(cb => cb.value);
+  const msg = await cmAddSend({
+    name: document.getElementById('cmFormName').value.trim(),
+    brand_name: document.getElementById('cmFormBrandName').value.trim(),
+    billing_name: document.getElementById('cmFormBillingName').value.trim(),
+    kickstart_date: document.getElementById('cmFormKickstart').value,
+    mobile_no: document.getElementById('cmFormMobile').value.trim(),
+    handler_ids: [...document.querySelectorAll('.cmAddHandlerCb:checked')].map(cb => parseInt(cb.value)),
+    departments: [...document.querySelectorAll('.cmAddDeptCb:checked')].map(cb => cb.value),
+    platforms: [...document.querySelectorAll('.cmAddPlatformCb:checked')].map(cb => cb.value),
+    login_email: document.getElementById('cmFormLoginEmail').value.trim(),
+    login_password: document.getElementById('cmFormLoginPassword').value,
+  }, () => closeModal('clientAddModal'));
+  if (msg) { err.textContent = msg; err.style.display = 'block'; }
+}
+// The add, shared with the React pop-up (CmPopups.jsx): answers the message to
+// show in the pop-up, or nothing once added (close() has run).
+async function cmAddSend(f, close) {
+  const { name, brand_name, billing_name, kickstart_date, mobile_no, handler_ids, departments, platforms, login_email, login_password } = f;
   const handler_id = handler_ids[0] || null;
-  const platforms = [...document.querySelectorAll('.cmAddPlatformCb:checked')].map(cb => cb.value);
-  const login_email = document.getElementById('cmFormLoginEmail').value.trim();
-  const login_password = document.getElementById('cmFormLoginPassword').value;
-  if (!name) { err.textContent = 'Client name required'; err.style.display = 'block'; return; }
-  if (!brand_name) { err.textContent = 'Brand name required'; err.style.display = 'block'; return; }
-  if (mobile_no.replace(/\D/g, '').length < 7) { err.textContent = 'Mobile number required'; err.style.display = 'block'; return; }
-  if (!kickstart_date) { err.textContent = 'Kickstart meeting date required'; err.style.display = 'block'; return; }
-  if (!departments.length) { err.textContent = 'Select at least one department'; err.style.display = 'block'; return; }
-  if (!platforms.length) { err.textContent = 'Select at least one platform'; err.style.display = 'block'; return; }
+  if (!name) return 'Client name required';
+  if (!brand_name) return 'Brand name required';
+  if (mobile_no.replace(/\D/g, '').length < 7) return 'Mobile number required';
+  if (!kickstart_date) return 'Kickstart meeting date required';
+  if (!departments.length) return 'Select at least one department';
+  if (!platforms.length) return 'Select at least one platform';
   // Only demanded of the people who can see the input — the server applies the
   // same rule, so everyone else creates the client with no billing name and one
   // of the named viewers fills it in later.
-  if (cmCanSeeBilling() && !billing_name) { err.textContent = 'Billing name required'; err.style.display = 'block'; return; }
+  if (cmCanSeeBilling() && !billing_name) return 'Billing name required';
   if ((login_email && !login_password) || (!login_email && login_password)) {
-    err.textContent = 'Fill both login email and password, or leave both blank';
-    err.style.display = 'block'; return;
+    return 'Fill both login email and password, or leave both blank';
   }
   try {
     const r = await api('/api/clients', 'POST', {
@@ -1689,21 +1708,20 @@ async function cmAdd(){
       // drop it anyway, but there is no reason to send a value it must ignore.
       ...(cmCanSeeBilling() ? { billing_name } : {}),
     });
-    if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+    if (r.error) return r.error;
     if (r.client_id && handler_ids.length > 0) {
       await api('/api/clients/' + r.client_id + '/handlers', 'PUT', { user_ids: handler_ids });
     }
     if (r.warning) showToast(r.warning);
     else showToast(login_email ? '✅ Client added with login' : '✅ Client added');
-    closeModal('clientAddModal');
+    close();
     if (r.fms_queued) cmRetryFms();
     const fromEnquiry = CM_ADD_FROM_ENQUIRY;
     CM_ADD_FROM_ENQUIRY = null;
     if (fromEnquiry && typeof ecClientAdded === 'function') ecClientAdded(fromEnquiry, r.client_id);
     else loadClients();
   } catch(e) {
-    err.textContent = 'Failed to add';
-    err.style.display = 'block';
+    return 'Failed to add';
   }
 }
 
