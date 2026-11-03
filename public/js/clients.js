@@ -796,13 +796,14 @@ async function cmShowDetail(id, from, to) {
       const ops = cmCanEditOps(s.client || {}, Array.isArray(handlers) ? handlers : []);
       _cmDetMount('cmdetsettings', 'cmDetSettings', { id, client: s.client || {}, depts: cmAllDepts(), ops });
       _cmDetMount('cmdetlinks', 'cmDetLinks', { id, links: CM_LINKS, ops });
+      _cmDetMount('cmdetdms', 'cmDetDms', { id, ops });
     }
     cmRenderLinksRows();
     cmInitHandlerWidget(id);
     // The React settings cards load their own CRMs and platforms.
     if (!_cmDetOn() && canDo('admin_clients')) cmCrmFillOne(id);
     if (!_cmDetOn() && cmCanEdit()) cmFillPlatformCard(id);
-    cmDmsLoad(id);
+    if (!_cmDetOn()) cmDmsLoad(id);   // the React Documents card loads its own
     if (ME.canManageInvoices) cmInvLoad(id);
   } catch (e) {
     detail.innerHTML = `<div class="empty" style="padding:40px;color:#dc2626">Failed to load: ${e.message}</div>`;
@@ -1202,12 +1203,13 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>`}
 
+    ${_cmDetOn() ? '<div id="cmDetDms" data-react-quiet="1"></div>' : `
     <div class="task-table-card" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">📁 Documents <span style="font-weight:400;color:#94a3b8;font-size:12px">— Google Drive</span></div>
       </div>
       <div id="cmDmsContent"><div style="color:#94a3b8;font-size:12px;padding:8px 0">Loading…</div></div>
-    </div>
+    </div>`}
 
     ${ME.canManageInvoices ? `<div class="task-table-card" style="padding:14px 18px;margin-top:16px">
       <div class="card-head-title" style="margin-bottom:12px">🧾 Invoices <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on the client's portal</span></div>

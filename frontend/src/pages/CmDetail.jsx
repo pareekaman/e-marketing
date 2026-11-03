@@ -7,8 +7,10 @@
 //   cmdetsettings — the Departments, Kickstart, Platform, CRM, Brand Name,
 //                   Billing Name and WhatsApp Group cards
 //   cmdetlinks — System Links (cmSaveLinksSend)
+//   cmdetdms — Documents: the client's Google Drive folders (was cmDmsLoad …
+//              cmDmsUploadFile), talking to /api/clients/:id/dms itself
 import { useEffect, useRef, useState } from 'react';
-import { legacy, css, fmtDate, canDo } from '../lib/app.js';
+import { api, toast, legacy, css, fmtDate, canDo } from '../lib/app.js';
 import SearchSelect from '../components/SearchSelect.jsx';
 
 const n = v => parseInt(v) || 0;
@@ -285,6 +287,168 @@ export function CmDetLinks() {
           ref={styled(SAVE_LINKS, flash === null ? null : { background: on ? '#10b981' : '' })}>
           {busy ? 'Saving…' : on ? '✓ Saved!' : '💾 Save Links'}</button>
       </div>
+    </div>
+  );
+}
+
+// ── Documents (Google Drive) ──
+// The department last looked at, kept from one client to the next as the old
+// DMS_STATE did: opening another client with the same folder shows it first.
+let lastDmsDept = null;
+const DMS_NOTE = 'color:#94a3b8;font-size:13px;padding:12px 0';
+const mimeIcon = m => (m.includes('spreadsheet') ? '📊' : m.includes('document') ? '📄' : m.includes('presentation') ? '📽️' : m.includes('folder') ? '📁' : '📎');
+const DMS_BTN = (bg, color) => `padding:5px 12px;border:none;border-radius:6px;font-size:12px;background:${bg};color:${color};font-weight:600;cursor:pointer`;
+
+export function CmDetDms() {
+  const [d] = useState(() => legacy('cmDetData', 'cmdetdms') || {});
+  const cid = d.id;
+  const [dms, setDms] = useState(null);       // { error } or the /dms answer
+  const [active, setActive] = useState(null);
+  const [files, setFiles] = useState(null);   // null while loading
+  const [settingUp, setSettingUp] = useState(false);
+  const live = useRef(true);
+  useEffect(() => () => { live.current = false; }, []);
+
+  const loadFiles = async folderId => {
+    setFiles(null);
+    const r = await api(`/api/clients/${cid}/dms/folders/${folderId}/files`);
+    if (live.current) setFiles(Array.isArray(r) ? r : []);
+  };
+  const load = async () => {
+    const r = await api(`/api/clients/${cid}/dms`);
+    if (!live.current) return;
+    if (r.error) { setDms({ error: r.error }); return; }
+    const depts = r.departments || [];
+    const keep = depts.find(x => x.department_name === lastDmsDept);
+    const pick = keep ? keep.department_name : (depts.length ? depts[0].department_name : null);
+    lastDmsDept = pick;
+    setDms({ ...r, departments: depts });
+    setActive(pick);
+    const dept = depts.find(x => x.department_name === pick);
+    if (dept) loadFiles(dept.drive_folder_id); else setFiles([]);
+  };
+  useEffect(() => { load(); }, []);
+
+  const select = name => {
+    lastDmsDept = name;
+    setActive(name);
+    const dept = dms.departments.find(x => x.department_name === name);
+    if (dept) loadFiles(dept.drive_folder_id);
+  };
+  const remove = async name => {
+    if (!await legacy('appConfirm', `Remove "${name}" folder link? (The Google Drive folder itself is NOT deleted.)`, 'Remove Folder Link?')) return;
+    const r = await api(`/api/clients/${cid}/dms/departments/${encodeURIComponent(name)}`, 'DELETE');
+    if (r.error) { toast(r.error, 'error'); return; }
+    load();
+  };
+  const addDept = async () => {
+    const name = (window.prompt('Department name to add (e.g. Accounts, Audit, Compliance):') || '').trim();
+    if (!name) return;
+    const r = await api(`/api/clients/${cid}/dms/departments`, 'POST', { department_name: name });
+    if (r.error) { toast(r.error, 'error'); return; }
+    lastDmsDept = name;   // select the new one after the reload
+    load();
+  };
+  const setup = async () => {
+    setSettingUp(true);
+    const r = await api(`/api/clients/${cid}/dms/setup`, 'POST');
+    if (r.error) { toast(r.error, 'error'); setSettingUp(false); return; }
+    load();
+  };
+  const createFile = async (kind, folderId) => {
+    const name = (window.prompt(`Name for the new ${kind === 'sheet' ? 'Google Sheet' : 'Google Doc'}:`) || '').trim();
+    if (!name) return;
+    const r = await api(`/api/clients/${cid}/dms/folders/${folderId}/files`, 'POST', { name, kind });
+    if (r.error) { toast(r.error, 'error'); return; }
+    if (r.web_view_link) window.open(r.web_view_link, '_blank');
+    loadFiles(folderId);
+  };
+  const upload = folderId => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.onchange = async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const fd = new FormData();
+      fd.append('file', file);
+      toast(`Uploading "${file.name}"…`);
+      try {
+        const res = await fetch(`/api/clients/${cid}/dms/folders/${folderId}/upload`, { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.error) { toast(data.error, 'error'); return; }
+        toast('File uploaded!');
+        loadFiles(folderId);
+      } catch (e) { toast('Upload failed: ' + e.message, 'error'); }
+    };
+    input.click();
+  };
+
+  let body;
+  if (!dms) body = <div ref={css('color:#94a3b8;font-size:12px;padding:8px 0')}>Loading…</div>;
+  else if (dms.error) body = <div ref={css('color:#dc2626;font-size:12px;padding:8px 0')}>{`Failed to load DMS: ${dms.error}`}</div>;
+  else if (!dms.drive_configured) body = (
+    <div ref={css('background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;font-size:13px;color:#92400e')}>
+      Share the DMS root Drive folder with the service account's email (Editor access), then set <code>GOOGLE_DRIVE_ROOT_FOLDER_ID</code> in environment variables.
+    </div>);
+  else if (!dms.drive_folder_id) body = (
+    <div ref={css('text-align:center;padding:24px')}>
+      <div ref={css('color:#64748b;font-size:13px;margin-bottom:12px')}>No Drive folder set up for this client yet.</div>
+      <button className="btn btn-primary" ref={css('padding:8px 18px;font-size:13px')} disabled={settingUp} onClick={setup}>{settingUp ? 'Creating…' : '☁️ Create Drive Folder'}</button>
+    </div>);
+  else {
+    const dept = dms.departments.find(x => x.department_name === active);
+    let filesBody;
+    if (!active) filesBody = <div ref={css(DMS_NOTE)}>Add a department folder above to get started.</div>;
+    else if (!dept) filesBody = <div ref={css(DMS_NOTE)}>Department not found.</div>;
+    else if (files === null) filesBody = <div ref={css(DMS_NOTE)}>Loading…</div>;
+    else {
+      const fid = dept.drive_folder_id;
+      filesBody = <>
+        <div ref={css('display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px')}>
+          <div ref={css('font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px')}>{active}</div>
+          <div ref={css('display:flex;gap:6px')}>
+            <button ref={css(DMS_BTN('#eff6ff', '#1d4ed8'))} onClick={() => createFile('doc', fid)}>＋ Doc</button>
+            <button ref={css(DMS_BTN('#f0fdf4', '#16a34a'))} onClick={() => createFile('sheet', fid)}>＋ Sheet</button>
+            <button ref={css(DMS_BTN('#fff7ed', '#c2410c'))} onClick={() => upload(fid)}>⬆ Upload</button>
+            <button title="Refresh" ref={css('padding:5px 10px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;color:#64748b;background:#fff;cursor:pointer')} onClick={() => loadFiles(fid)}>↺</button>
+          </div>
+        </div>
+        {files.length ? files.map((f, i) => (
+          <div key={f.id || i} ref={css('display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:#f8fafc;margin-bottom:6px')}
+            onMouseOver={e => { e.currentTarget.style.background = '#f1f5f9'; }} onMouseOut={e => { e.currentTarget.style.background = '#f8fafc'; }}>
+            <span ref={css('font-size:18px')}>{mimeIcon(f.mimeType || '')}</span>
+            <a href={/^https?:\/\//i.test(f.webViewLink) ? f.webViewLink : '#'} target="_blank" rel="noopener"
+              ref={css('font-size:13px;color:#1d4ed8;font-weight:600;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{f.name}</a>
+            <span ref={css('font-size:11px;color:#94a3b8;white-space:nowrap;flex-shrink:0')}>{f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : ''}</span>
+          </div>
+        )) : <div ref={css(DMS_NOTE)}>No files yet — create one with the buttons above.</div>}
+      </>;
+    }
+    body = <>
+      <div ref={css('display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px')}>
+        {dms.departments.map(x => {
+          const on = x.department_name === active;
+          return (
+            <span key={x.department_name} ref={css('display:inline-flex;align-items:center')}>
+              <button onClick={() => select(x.department_name)}
+                ref={css(`padding:6px 14px;border:none;border-right:none;border-radius:6px 0 0 6px;font-size:12px;font-weight:600;cursor:pointer;${on ? 'background:#7c3aed;color:#fff' : 'background:#f1f5f9;color:#475569'}`)}>{x.department_name}</button>
+              <button onClick={() => remove(x.department_name)} title="Remove"
+                ref={css(`padding:6px 7px;border:none;border-radius:0 6px 6px 0;font-size:11px;cursor:pointer;${on ? 'background:#6d28d9;color:#ddd' : 'background:#e2e8f0;color:#94a3b8'}`)}>✕</button>
+            </span>
+          );
+        })}
+        <button onClick={addDept} ref={css('padding:6px 12px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:12px;color:#7c3aed;font-weight:600;background:#fff;cursor:pointer')}>＋ Department</button>
+      </div>
+      <div id="cmDmsFiles">{filesBody}</div>
+    </>;
+  }
+
+  return (
+    <div className="task-table-card" ref={css(`${d.ops ? '' : 'display:none;'}padding:14px 18px;margin-top:16px`)}>
+      <div ref={css('display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px')}>
+        <div className="card-head-title">📁 Documents <span ref={css(SUB)}>— Google Drive</span></div>
+      </div>
+      <div id="cmDmsContent">{body}</div>
     </div>
   );
 }
