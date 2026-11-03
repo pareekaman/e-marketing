@@ -136,17 +136,30 @@ function cvToggleGroup(name){
   if (_cvExpanded.has(name)) _cvExpanded.delete(name); else _cvExpanded.add(name);
   cvRender();
 }
+// The vault's search box and list are React since 2026-11-03
+// (frontend/src/pages/CmVault.jsx, in #cvRoot): this file still loads
+// CV_DATA and hands over { msg } or { list }; React searches, groups and
+// opens the groups itself. Edit / Delete come back to cvOpenModal / cvDelete.
+let CV_REACT = null, _cvWanted = null;
+function cvSetReact(fn) { CV_REACT = fn; if (fn && _cvWanted) { const v = _cvWanted; _cvWanted = null; fn(v); } }
+function _cvShow(view) {
+  const root = document.getElementById('cvRoot');
+  if (!root || !root.dataset.react) return false;
+  if (CV_REACT) CV_REACT(view); else { _cvWanted = view; emkReactMount('cvvault', root); }
+  return true;
+}
 async function cvLoad(){
   const wrap = document.getElementById('cvListWrap');
-  wrap.innerHTML = '<div class="empty">Loading…</div>';
+  if (!_cvShow({ msg: 'Loading…' })) wrap.innerHTML = '<div class="empty">Loading…</div>';
   try {
     const rows = await api('/api/client-credentials');
     CV_DATA = Array.isArray(rows) ? rows : [];
     cvRender();
-  } catch(e){ wrap.innerHTML = '<div class="empty">Failed to load credentials</div>'; }
+  } catch(e){ if (!_cvShow({ msg: 'Failed to load credentials' })) wrap.innerHTML = '<div class="empty">Failed to load credentials</div>'; }
 }
 
 function cvRender(){
+  if (_cvShow({ list: CV_DATA })) return;
   const wrap = document.getElementById('cvListWrap');
   const q = (document.getElementById('cvSearch')?.value || '').toLowerCase().trim();
   const match = c => !q || [c.client_name, c.client_own_name, c.system_name, c.role_label, c.url, c.username, c.notes]
@@ -246,6 +259,7 @@ function cvGetRole(){
 let _cvConfirmCb = null;
 function cvConfirm(msg, okLabel = 'Delete'){
   return new Promise(resolve => {
+    if (_cmPopReact('confirm', [msg, okLabel, resolve])) return;
     _cvConfirmCb = resolve;
     document.getElementById('cvConfirmMsg').textContent = msg;
     document.getElementById('cvConfirmOk').textContent = okLabel;
@@ -260,6 +274,8 @@ function cvConfirmResolve(val){
 
 function cvOpenModal(id){
   if (ME.role !== 'admin') return;
+  const clients = (CM_ALL || []).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(c => ({ id: c.id, name: c.name }));
+  if (_cmPopReact('cv', [id ? CV_DATA.find(x => x.id === id) || null : null, clients])) return;
   document.getElementById('cvErr').style.display = 'none';
   const sel = document.getElementById('cvClient');
   // Reuse the Client Master list (already role-scoped by the server).
@@ -293,17 +309,27 @@ async function cvSave(){
     password:    document.getElementById('cvPass').value,
     notes:       document.getElementById('cvNotes').value.trim(),
   };
-  if (!payload.client_id) { err.textContent = 'Pick a client'; err.style.display = 'block'; return; }
-  if (!payload.system_name) { err.textContent = 'System name is required'; err.style.display = 'block'; return; }
   const btn = document.getElementById('cvSaveBtn');
-  const label = btn.textContent; btn.disabled = true; btn.textContent = 'Saving…';
+  const label = btn.textContent;
+  const msg = await cvSaveSend(id, payload, {
+    busy: on => { btn.disabled = on; btn.textContent = on ? 'Saving…' : label; },
+    close: () => closeModal('cvModal'),
+  });
+  if (msg) { err.textContent = msg; err.style.display = 'block'; }
+}
+// The save, shared with the React pop-up (CmPopups.jsx): answers the message
+// to show, or nothing once saved; io = { busy(on), close() }.
+async function cvSaveSend(id, payload, io) {
+  if (!payload.client_id) return 'Pick a client';
+  if (!payload.system_name) return 'System name is required';
+  io.busy(true);
   let r;
   try {
     r = id ? await api(`/api/client-credentials/${id}`, 'PUT', payload)
            : await api('/api/client-credentials', 'POST', payload);
-  } finally { btn.disabled = false; btn.textContent = label; }
-  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
-  closeModal('cvModal');
+  } finally { io.busy(false); }
+  if (r.error) return r.error;
+  io.close();
   showToast(id ? '✅ Credential updated' : '✅ Credential saved');
   cvLoad();
 }

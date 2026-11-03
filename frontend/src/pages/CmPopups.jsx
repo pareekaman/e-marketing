@@ -5,9 +5,12 @@
 //   login — Provision / Reset Client Login (cmOpenLoginModal → cmSaveLoginSend)
 //   add — Add Client (cmOpenAddModal, also Enquiry Capture's Convert with a
 //         prefill → cmAddSend)
+//   cv — Add / Edit Credential (cvOpenModal → cvSaveSend)
+//   confirm — the vault's Delete confirm (cvConfirm; answers through resolve)
 import { useEffect, useRef, useState } from 'react';
 import { legacy, css } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
+import SearchSelect from '../components/SearchSelect.jsx';
 
 const errBox = msg => <div className="alert error" ref={css(msg ? 'display: block;' : 'display:none')}>{msg}</div>;
 
@@ -181,21 +184,99 @@ function AddBody({ d, close }) {
   );
 }
 
-const BODIES = { login: LoginBody, add: AddBody };
-const WIDTH = { login: 'width:480px', add: 'width:520px' };
+// ── Credentials Vault ──
+const ROLES = [{ value: '', label: '— None —' }, { value: 'Admin', label: 'Admin' }, { value: 'User', label: 'User' }, { value: 'Other', label: 'Other (type your own)' }];
+function CvBody({ d, close }) {
+  const c = d.c;
+  const role0 = c ? (c.role_label || '') : '';
+  const [f, setF] = useState({
+    client: c ? String(c.client_id) : '', system: c ? c.system_name || '' : '', url: c ? c.url || '' : '',
+    user: c ? c.username || '' : '', pass: c ? c.password || '' : '', notes: c ? c.notes || '' : '',
+    role: !role0 ? '' : role0 === 'Admin' || role0 === 'User' ? role0 : 'Other', other: role0 && role0 !== 'Admin' && role0 !== 'User' ? role0 : '',
+  });
+  const set = (k, v) => setF(s => ({ ...s, [k]: v }));
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setErr('');
+    const msg = await legacy('cvSaveSend', c ? c.id : '', {
+      client_id: f.client, system_name: f.system.trim(), role_label: f.role === 'Other' ? f.other.trim() : f.role,
+      url: f.url.trim(), username: f.user.trim(), password: f.pass, notes: f.notes.trim(),
+    }, { busy: setBusy, close });
+    if (msg) setErr(msg);
+  };
+  const text = (key, label, placeholder) => (
+    <div className="form-group"><label>{label}</label>
+      <input type="text" placeholder={placeholder} autoComplete="off" value={f[key]} onChange={e => set(key, e.target.value)} /></div>
+  );
+  return (
+    <>
+      <h3>{c ? '✏️ Edit Credential' : '＋ Add Credential'}</h3>
+      {errBox(err)}
+      <div className="form-group">
+        <label>Client *</label>
+        <SearchSelect value={f.client} onChange={v => set('client', v)} placeholder="— Select client —"
+          options={[{ value: '', label: '— Select client —' }, ...d.clients.map(x => ({ value: String(x.id), label: x.name }))]} />
+      </div>
+      {text('system', 'System / What is it *', 'e.g. Task Manager, Dashboard')}
+      <div className="form-group">
+        <label>Role (optional)</label>
+        <SearchSelect value={f.role} onChange={v => set('role', v)} options={ROLES} placeholder="— None —" />
+        <input type="text" placeholder="Type the role" autoComplete="off" value={f.other} onChange={e => set('other', e.target.value)}
+          ref={displayed('display:none;margin-top:8px', f.role === 'Other' ? 'block' : 'none')} />
+        <div ref={css('font-size:11px;color:#64748b;margin-top:4px')}>Admin and User logins for the same system are separate entries — set the role here.</div>
+      </div>
+      {text('url', 'Link / URL', 'e.g. bunai.mis.in')}
+      {text('user', 'ID / Username', 'e.g. bunai@mis.com')}
+      {text('pass', 'Password', 'e.g. pass123')}
+      <div className="form-group"><label>Notes (optional)</label>
+        <textarea rows={2} placeholder="Anything else worth remembering" value={f.notes} onChange={e => set('notes', e.target.value)} /></div>
+      <div className="modal-footer">
+        <button className="btn btn-outline" onClick={close}>Cancel</button>
+        <button className="btn btn-primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+      </div>
+    </>
+  );
+}
+
+// The vault's own confirm: Cancel, ×, Esc or the overlay answer "no".
+function ConfirmBody({ d, close }) {
+  const answer = yes => { d.answer(yes); close(); };
+  return (
+    <>
+      <h3>Please confirm</h3>
+      <div ref={css('color:#475569;font-size:14px;margin:8px 0 20px;line-height:1.5')}>{d.msg}</div>
+      <div className="modal-footer">
+        <button className="btn btn-outline" onClick={() => answer(false)}>Cancel</button>
+        <button className="btn btn-primary" ref={css('background:#dc2626;border-color:#dc2626')} onClick={() => answer(true)}>{d.okLabel}</button>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { login: LoginBody, add: AddBody, cv: CvBody, confirm: ConfirmBody };
+const WIDTH = { login: 'width:480px', add: 'width:520px', cv: 'width:520px', confirm: 'width:420px' };
 
 export default function CmPopups() {
   const [st, setSt] = useState({});
   const n = useRef(0);
+  // The vault confirm's pending answer: given once, "no" if it closes unanswered.
+  const pending = useRef(null);
+  const answer = yes => { const r = pending.current; pending.current = null; if (r) r(yes); };
   useEffect(() => {
     const show = (kind, d) => setSt(s => ({ ...s, [kind]: { d, key: ++n.current, open: true } }));
     legacy('cmPopSetReact', {
       login: (id, email) => show('login', { id, email }),
       add: data => show('add', data),
+      cv: (c, clients) => show('cv', { c, clients }),
+      confirm: (msg, okLabel, resolve) => { answer(false); pending.current = resolve; show('confirm', { msg, okLabel, answer }); },
     });
     return () => legacy('cmPopSetReact', null);
   }, []);
-  const closer = kind => () => setSt(s => ({ ...s, [kind]: { ...s[kind], open: false } }));
+  const closer = kind => () => {
+    if (kind === 'confirm') answer(false);
+    setSt(s => ({ ...s, [kind]: { ...s[kind], open: false } }));
+  };
   return Object.entries(BODIES).map(([kind, Body]) => (st[kind] ? (
     <Modal key={kind} open={st[kind].open} onClose={closer(kind)} style={WIDTH[kind]}>
       <Body key={st[kind].key} d={st[kind].d} close={closer(kind)} />
