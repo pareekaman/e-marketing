@@ -1108,17 +1108,18 @@ async function openEditTask(id, type) {
   ]);
   if (data.error) { showToast(data.error,'error'); return; }
   const t = data.task;
+  // Active clients only, plus the task's own client even if it has since gone
+  // inactive, so opening the editor never silently clears it.
+  const pickable = sortClientsForPicker((clients || []).filter(c => isActiveClient(c) || String(c.id) === String(t.client_id)));
+  if (_taskPopReact('edit', [id, type, t, pickable.map(c => ({ value: String(c.id), label: clientLabel(c) }))])) return;
 
   document.getElementById('editTId').value = id;
   document.getElementById('editTType').value = type;
   document.getElementById('editTDesc').value = t.description || '';
   document.getElementById('editTDate').value = t.due_date || '';
   document.getElementById('editTRemarks').value = t.remarks || '';
-  // Active clients only, plus the task's own client even if it has since gone
-  // inactive, so opening the editor never silently clears it.
   document.getElementById('editTClient').innerHTML = '<option value="">— No Client —</option>' +
-    sortClientsForPicker((clients || []).filter(c => isActiveClient(c) || String(c.id) === String(t.client_id)))
-      .map(c => `<option value="${c.id}">${dtEscape(clientLabel(c))}</option>`).join('');
+    pickable.map(c => `<option value="${c.id}">${dtEscape(clientLabel(c))}</option>`).join('');
   document.getElementById('editTClient').value = t.client_id ? String(t.client_id) : '';
   document.getElementById('editTaskErr').style.display = 'none';
 
@@ -1142,32 +1143,46 @@ async function openEditTask(id, type) {
 }
 
 async function saveEditTask() {
-  const id      = document.getElementById('editTId').value;
-  const type    = document.getElementById('editTType').value;
-  const desc    = document.getElementById('editTDesc').value.trim();
-  const date    = document.getElementById('editTDate').value;
-  const remarks = document.getElementById('editTRemarks').value.trim();
-  const err     = document.getElementById('editTaskErr');
+  const err = document.getElementById('editTaskErr');
   err.style.display = 'none';
+  const urlEl = document.getElementById('editTUrl');
+  const msg = await taskEditSend(document.getElementById('editTId').value, document.getElementById('editTType').value, {
+    desc: document.getElementById('editTDesc').value,
+    date: document.getElementById('editTDate').value,
+    remarks: document.getElementById('editTRemarks').value,
+    client: document.getElementById('editTClient').value,
+    priority: document.getElementById('editTPriority').value,
+    approval: document.getElementById('editTApproval').value,
+    time: document.getElementById('editTTime').value,
+    url: urlEl ? urlEl.value : null,
+  }, () => closeModal('editTaskModal'));
+  if (msg) { err.textContent = msg; err.style.display = 'block'; }
+}
 
-  if (!desc) { err.textContent='Description required'; err.style.display='block'; return; }
-  if (!date)  { err.textContent='Date required'; err.style.display='block'; return; }
+// The edit save, shared by the old modal and the React one: f holds the raw
+// field values; returns the error to show, or nothing once saved (close() has
+// run by then).
+async function taskEditSend(id, type, f, close) {
+  const desc    = f.desc.trim();
+  const date    = f.date;
+  const remarks = f.remarks.trim();
+  if (!desc) return 'Description required';
+  if (!date)  return 'Date required';
 
-  const client_id = document.getElementById('editTClient').value || null;
+  const client_id = f.client || null;
   const body = { desc, date, remarks, type, client_id };
   if (type === 'delegation') {
-    body.priority = document.getElementById('editTPriority').value;
-    body.approval = document.getElementById('editTApproval').value;
+    body.priority = f.priority;
+    body.approval = f.approval;
     // Sent even when blank — that is how a clock time gets cleared.
-    body.dueTime  = document.getElementById('editTTime').value;
-    const urlEl = document.getElementById('editTUrl');
-    body.url = urlEl ? (urlEl.value.trim() || null) : null;
+    body.dueTime  = f.time;
+    body.url = f.url != null ? (f.url.trim() || null) : null;
   }
 
   const r = await api(`/api/tasks/${id}/edit`,'PUT', body);
-  if (r.error) { err.textContent = r.error; err.style.display='block'; return; }
+  if (r.error) return r.error;
 
-  closeModal('editTaskModal');
+  close();
   showToast('Task updated!');
   loadAllTasks();
   if (document.getElementById('delegateByMeModal')?.classList.contains('open')) openDelegateByMeModal();

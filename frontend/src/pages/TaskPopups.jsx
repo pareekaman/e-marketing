@@ -5,9 +5,11 @@
 //   revise — Request Revision (openReviseModal → taskReviseSend)
 //   comments — a task's Comments (openComments → taskCommentSend /
 //              taskCommentDelete, the list re-read through taskCommentsGet)
+//   edit — Edit Task (openEditTask → taskEditSend)
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { legacy, css } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
+import SearchSelect from '../components/SearchSelect.jsx';
 
 const errBox = msg => <div className="alert error" ref={css(msg ? 'display: block;' : 'display:none')}>{msg}</div>;
 const TEXTAREA = "min-height:70px;width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;resize:vertical";
@@ -93,8 +95,81 @@ function CommentsBody({ d, close }) {
   );
 }
 
-const BODIES = { revise: ReviseBody, comments: CommentsBody };
-const WIDTH = { revise: 'max-width:380px', comments: '' };
+// ── Edit Task ──
+const OPTIONAL = 'color:#94a3b8;font-weight:400;font-size:11px';
+const URL_IN = "width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff";
+const PRIORITY = [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['urgent', 'Urgent']].map(([value, label]) => ({ value, label }));
+const APPROVAL = [{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }];
+// The old form showed / hid parts with style.display; the same here, so the
+// style attribute reads the same.
+const displayed = (base, value) => el => { if (!el) return; el.setAttribute('style', base); if (value !== undefined) el.style.display = value; };
+
+function EditBody({ d, close }) {
+  const t = d.task, isDeleg = d.type === 'delegation';
+  const [f, setF] = useState({
+    desc: t.description || '', date: t.due_date || '', remarks: t.remarks || '',
+    client: t.client_id ? String(t.client_id) : '',
+    priority: t.priority || 'low', approval: t.approval || 'no',
+    // due_time is delegation-only. It arrives as "14:30:00"; a time input wants HH:MM.
+    time: isDeleg ? String(t.due_time || '').slice(0, 5) : '', url: t.url || '',
+  });
+  const [err, setErr] = useState('');
+  const set = (k, v) => setF(x => ({ ...x, [k]: v }));
+  const save = async () => {
+    setErr('');
+    const msg = await legacy('taskEditSend', String(d.id), d.type, f, close);
+    if (msg) setErr(msg);
+  };
+  const shown = displayed('', isDeleg ? 'block' : 'none');
+  return (
+    <>
+      <h3>✏️ Edit Task</h3>
+      {errBox(err)}
+      <div className="form-group">
+        <label>Description</label>
+        <textarea ref={css(TEXTAREA)} value={f.desc} onChange={e => set('desc', e.target.value)} />
+      </div>
+      <div className="form-row">
+        <div className="form-group">
+          <label>Due Date</label>
+          <input type="date" value={f.date} onChange={e => set('date', e.target.value)} />
+        </div>
+        <div className="form-group" ref={shown}>
+          <label>Due Time <span ref={css(OPTIONAL)}>(optional)</span></label>
+          <input type="time" value={f.time} onChange={e => set('time', e.target.value)} />
+        </div>
+        <div className="form-group" ref={shown}>
+          <label>Priority</label>
+          <SearchSelect value={f.priority} onChange={v => set('priority', v)} options={PRIORITY} />
+        </div>
+      </div>
+      <div className="form-group" ref={shown}>
+        <label>Approval Required</label>
+        <SearchSelect value={f.approval} onChange={v => set('approval', v)} options={APPROVAL} />
+      </div>
+      <div className="form-group">
+        <label>Client <span ref={css(OPTIONAL)}>(optional)</span></label>
+        <SearchSelect value={f.client} onChange={v => set('client', v)} placeholder="— No Client —"
+          options={[{ value: '', label: '— No Client —' }, ...d.clients]} />
+      </div>
+      <div className="form-group">
+        <label>Remarks</label>
+        <input type="text" placeholder="Remarks..." value={f.remarks} onChange={e => set('remarks', e.target.value)} />
+      </div>
+      <div className="form-group" ref={shown}>
+        <label>URL <span ref={css(OPTIONAL)}>(optional)</span></label>
+        <input type="url" placeholder="https://docs.google.com/…" ref={css(URL_IN)} value={f.url} onChange={e => set('url', e.target.value)} />
+      </div>
+      <div className="modal-footer" ref={css('justify-content:space-between')}>
+        <button className="btn btn-outline" onClick={close}>Cancel</button>
+        <button className="btn btn-primary" onClick={save}>Save Changes</button>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody };
+const WIDTH = { revise: 'max-width:380px', comments: '', edit: '' };
 
 export default function TaskPopups() {
   const [st, setSt] = useState({});
@@ -104,6 +179,7 @@ export default function TaskPopups() {
     legacy('taskPopSetReact', {
       revise: (id, type, minDate) => show('revise', { id, type, minDate }),
       comments: (id, type, list) => show('comments', { id, type, list }),
+      edit: (id, type, task, clients) => show('edit', { id, type, task, clients }),
     });
     return () => legacy('taskPopSetReact', null);
   }, []);
