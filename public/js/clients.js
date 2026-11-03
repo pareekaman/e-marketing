@@ -873,6 +873,7 @@ async function cmRemoveLogo(id) {
 }
 
 function cmOpenLoginModal(id, existingEmail) {
+  if (_cmPopReact('login', [id, existingEmail || ''])) return;
   document.getElementById('cmLoginErr').style.display = 'none';
   document.getElementById('cmLoginClientId').value = id;
   document.getElementById('cmLoginEmail').value = existingEmail || '';
@@ -886,19 +887,34 @@ async function cmSaveLogin() {
   const err = document.getElementById('cmLoginErr');
   err.style.display = 'none';
   const id = document.getElementById('cmLoginClientId').value;
-  const email = document.getElementById('cmLoginEmail').value.trim();
-  const password = document.getElementById('cmLoginPassword').value;
-  if (!email || !password) { err.textContent = 'Email and password required'; err.style.display = 'block'; return; }
+  const msg = await cmSaveLoginSend(id, document.getElementById('cmLoginEmail').value.trim(), document.getElementById('cmLoginPassword').value,
+    () => closeModal('clientLoginModal'));
+  if (msg) { err.textContent = msg; err.style.display = 'block'; }
+}
+// The save, shared with the React pop-up (CmPopups.jsx): answers the message
+// to show in the pop-up, or nothing once saved (close() has run).
+async function cmSaveLoginSend(id, email, password, close) {
+  if (!email || !password) return 'Email and password required';
   try {
     const r = await api(`/api/clients/${id}/login`, 'POST', { email, password });
-    if (r?.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+    if (r?.error) return r.error;
     showToast('✅ Login saved — share credentials with the client');
-    closeModal('clientLoginModal');
+    close();
     cmShowDetail(id); // refresh to reflect new login state
   } catch (e) {
-    err.textContent = 'Failed: ' + (e.message || 'error');
-    err.style.display = 'block';
+    return 'Failed: ' + (e.message || 'error');
   }
+}
+
+// Client Master's pop-ups are moving to React (frontend/src/pages/CmPopups.jsx,
+// in #cmPopupsRoot); their app.html markup stays as the fallback.
+let CM_POP_REACT = null, _cmPopWanted = null;
+function cmPopSetReact(o) { CM_POP_REACT = o; if (o && _cmPopWanted) { const [k, a] = _cmPopWanted; _cmPopWanted = null; o[k](...a); } }
+function _cmPopReact(kind, args) {
+  const root = document.getElementById('cmPopupsRoot');
+  if (!root || !root.dataset.react) return false;
+  if (CM_POP_REACT) CM_POP_REACT[kind](...args); else { _cmPopWanted = [kind, args]; emkReactMount('cmpopups', root); }
+  return true;
 }
 
 function cmBackToList() {
