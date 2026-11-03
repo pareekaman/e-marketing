@@ -1090,10 +1090,10 @@ async function taskReviseSend(taskId, taskType, newDate, reason, close) {
 // #taskPopupsRoot); their app.html markup stays as the fallback.
 let TASK_POP_REACT = null, _taskPopWanted = null;
 function taskPopSetReact(o) { TASK_POP_REACT = o; if (o && _taskPopWanted) { const [k, a] = _taskPopWanted; _taskPopWanted = null; o[k](...a); } }
+function _taskPopOn() { const root = document.getElementById('taskPopupsRoot'); return !!(root && root.dataset.react); }
 function _taskPopReact(kind, args) {
-  const root = document.getElementById('taskPopupsRoot');
-  if (!root || !root.dataset.react) return false;
-  if (TASK_POP_REACT) TASK_POP_REACT[kind](...args); else { _taskPopWanted = [kind, args]; emkReactMount('taskpopups', root); }
+  if (!_taskPopOn()) return false;
+  if (TASK_POP_REACT) TASK_POP_REACT[kind](...args); else { _taskPopWanted = [kind, args]; emkReactMount('taskpopups', document.getElementById('taskPopupsRoot')); }
   return true;
 }
 
@@ -1177,6 +1177,7 @@ async function saveEditTask() {
 // COMMENTS
 // ══════════════════════════════════════════════════════
 async function openComments(taskId, taskType) {
+  if (_taskPopOn()) { _taskPopReact('comments', [taskId, taskType, await taskCommentsGet(taskId, taskType)]); return; }
   document.getElementById('commentTaskId').value = taskId;
   document.getElementById('commentTaskType').value = taskType;
   document.getElementById('commentInput').value = '';
@@ -1184,8 +1185,10 @@ async function openComments(taskId, taskType) {
   document.getElementById('commentModal').classList.add('open');
 }
 
+function taskCommentsGet(taskId, taskType) { return api(`/api/comments/${taskType}/${taskId}`); }
+
 async function loadComments(taskId, taskType) {
-  const comments = await api(`/api/comments/${taskType}/${taskId}`);
+  const comments = await taskCommentsGet(taskId, taskType);
   const container = document.getElementById('commentsList');
   if (!comments.length) {
     container.innerHTML = `<div class="comment-empty">No comments yet. Be the first!</div>`;
@@ -1210,20 +1213,32 @@ async function addComment() {
   const taskId = document.getElementById('commentTaskId').value;
   const taskType = document.getElementById('commentTaskType').value;
   const comment = document.getElementById('commentInput').value.trim();
-  if (!comment || _commentSending) return; // Enter + Send, or a double click, posted it twice
+  if (!await taskCommentSend(taskId, taskType, comment)) return;
+  document.getElementById('commentInput').value = '';
+  await loadComments(taskId, taskType);
+}
+
+// The comment send and delete, shared by the old modal and the React one;
+// both answer true once it went through (the caller then reloads the list).
+async function taskCommentSend(taskId, taskType, comment) {
+  if (!comment || _commentSending) return false; // Enter + Send, or a double click, posted it twice
   _commentSending = true;
   let r;
   try { r = await api('/api/comments','POST',{taskId, taskType, comment}); }
   finally { _commentSending = false; }
   // Keep the text when the save failed, instead of clearing it as if it had worked.
-  if (r && r.error) { showToast(r.error, 'error'); return; }
-  document.getElementById('commentInput').value = '';
-  await loadComments(taskId, taskType);
+  if (r && r.error) { showToast(r.error, 'error'); return false; }
+  return true;
+}
+
+async function taskCommentDelete(id) {
+  if (!await appConfirm('Delete this comment?')) return false;
+  await api(`/api/comments/${id}`,'DELETE');
+  return true;
 }
 
 async function deleteComment(id) {
-  if (!await appConfirm('Delete this comment?')) return;
-  await api(`/api/comments/${id}`,'DELETE');
+  if (!await taskCommentDelete(id)) return;
   const taskId = document.getElementById('commentTaskId').value;
   const taskType = document.getElementById('commentTaskType').value;
   await loadComments(taskId, taskType);
