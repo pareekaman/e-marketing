@@ -1587,6 +1587,13 @@ async function saveDelegate() {
 // CHECKLIST MODAL - Recurring
 // ══════════════════════════════════════════════════════
 async function openChecklist() {
+  if (_taskPopOn()) {
+    const today = new Date().toISOString().split('T')[0];
+    const [users, clients] = await Promise.all([api('/api/users'), api('/api/clients')]);
+    _taskPopReact('checklist', [today, users.map(u => ({ value: String(u.id), label: u.name })),
+      sortClientsForPicker((clients || []).filter(isActiveClient)).map(c => ({ value: String(c.id), label: clientLabel(c) }))]);
+    return;
+  }
   document.getElementById('checklistErr').style.display='none';
   document.getElementById('checklistSuccess').style.display='none';
   document.getElementById('cDesc').value='';
@@ -1615,9 +1622,17 @@ async function openChecklist() {
 function updateChecklistPreview() {
   const freq = document.getElementById('cFrequency').value;
   const date = document.getElementById('cDate').value;
-  const customEnd = document.getElementById('cEndDate').value || '';
-  const desc = document.getElementById('cDesc').value.trim();
-  if (!date || !desc) { document.getElementById('cPreview').style.display='none'; return; }
+  const text = taskChecklistPreview(freq, date, document.getElementById('cEndDate').value, document.getElementById('cDesc').value);
+  if (!text) { document.getElementById('cPreview').style.display='none'; return; }
+  document.getElementById('cPreviewText').textContent = text;
+  document.getElementById('cPreview').style.display='block';
+}
+
+// The preview line, shared by the old modal and the React one ('' = no preview).
+function taskChecklistPreview(freq, date, customEnd, desc) {
+  customEnd = customEnd || '';
+  desc = desc.trim();
+  if (!date || !desc) return '';
 
   const counts = {daily:365, weekly:52, alternative_week:26, monthly:12, quarterly:4, yearly:1};
   const labels = {daily:'Daily', weekly:'Weekly', alternative_week:'Alternative Week', monthly:'Monthly', quarterly:'Quarterly', yearly:'Yearly'};
@@ -1627,9 +1642,7 @@ function updateChecklistPreview() {
   // Real count = how many dates the generator would actually emit with the custom cap.
   const realCount = generateDates(date, freq, '', '', customEnd || '').length;
 
-  document.getElementById('cPreviewText').textContent =
-    `"${desc}" — ${realCount} task${realCount===1?'':'s'} will be created from ${date} to ${effectiveEnd} (${labels[freq]})`;
-  document.getElementById('cPreview').style.display='block';
+  return `"${desc}" — ${realCount} task${realCount===1?'':'s'} will be created from ${date} to ${effectiveEnd} (${labels[freq]})`;
 }
 
 function getEndDate(startDate, freq, count) {
@@ -1691,31 +1704,46 @@ async function saveChecklist() {
   const err = document.getElementById('checklistErr');
   const suc = document.getElementById('checklistSuccess');
   err.style.display='none'; suc.style.display='none';
-
-  const doer    = document.getElementById('cDoer').value;
-  const date    = document.getElementById('cDate').value;
-  const endDate = document.getElementById('cEndDate').value || '';
-  const desc    = document.getElementById('cDesc').value.trim();
-  const remarks = document.getElementById('cRemarks').value.trim();
-  const freq    = document.getElementById('cFrequency').value;
-  const clientVal = document.getElementById('cClient').value;
-
-  if (!doer) { err.textContent='Please select an employee'; err.style.display='block'; return; }
-  if (!clientVal) { err.textContent='Please select a client'; err.style.display='block'; return; }
-  if (!date) { err.textContent='Please select a start date'; err.style.display='block'; return; }
-  if (!desc) { err.textContent='Task name is required'; err.style.display='block'; return; }
-  if (endDate && endDate < date) { err.textContent='End date must be on or after start date'; err.style.display='block'; return; }
-
   const btn = document.getElementById('cGenerateBtn');
-  btn.disabled=true; btn.textContent='Generating…';
+  const msg = await taskChecklistSend({
+    doer: document.getElementById('cDoer').value,
+    date: document.getElementById('cDate').value,
+    endDate: document.getElementById('cEndDate').value,
+    desc: document.getElementById('cDesc').value,
+    remarks: document.getElementById('cRemarks').value,
+    freq: document.getElementById('cFrequency').value,
+    client: document.getElementById('cClient').value,
+  }, on => { btn.disabled = on; btn.textContent = on ? 'Generating…' : 'Generate Tasks'; },
+     text => { suc.textContent = text; suc.style.display='block'; },
+     () => closeModal('checklistModal'));
+  if (msg) { err.textContent = msg; err.style.display='block'; }
+}
+
+// The Generate send, shared by the old modal and the React one: f holds the
+// raw field values; busy(on) flips the button, done(text) shows the success
+// line just before close(). Returns the error to show, or nothing.
+async function taskChecklistSend(f, busy, done, close) {
+  const doer    = f.doer;
+  const date    = f.date;
+  const endDate = f.endDate || '';
+  const desc    = f.desc.trim();
+  const remarks = f.remarks.trim();
+  const freq    = f.freq;
+  const clientVal = f.client;
+
+  if (!doer) return 'Please select an employee';
+  if (!clientVal) return 'Please select a client';
+  if (!date) return 'Please select a start date';
+  if (!desc) return 'Task name is required';
+  if (endDate && endDate < date) return 'End date must be on or after start date';
+
+  busy(true);
 
   // No per-user week_off — holiday filtering happens server-side via /api/holidays
   const dates = generateDates(date, freq, '', '', endDate);
   if (!dates.length) {
-    btn.disabled=false; btn.textContent='Generate Tasks';
-    err.textContent = 'No dates would be generated between Start and End. Pick a wider range.';
-    err.style.display='block';
-    return;
+    busy(false);
+    return 'No dates would be generated between Start and End. Pick a wider range.';
   }
   const client_id = clientVal;
 
@@ -1723,14 +1751,13 @@ async function saveChecklist() {
     desc, assignedTo: doer, priority: 'low', remarks, dates, client_id
   });
 
-  btn.disabled=false; btn.textContent='Generate Tasks';
+  busy(false);
 
-  if (result.error) { err.textContent=result.error; err.style.display='block'; return; }
+  if (result.error) return result.error;
 
   const skippedNote = result.skipped ? ` (${result.skipped} holiday date${result.skipped===1?'':'s'} skipped)` : '';
-  suc.textContent = `✅ ${result.count || dates.length} tasks generated!${skippedNote}`;
-  suc.style.display='block';
-  closeModal('checklistModal');
+  done(`✅ ${result.count || dates.length} tasks generated!${skippedNote}`);
+  close();
   loadDashboard(true);
 }
 
@@ -2028,8 +2055,12 @@ async function uploadCSV() {
 }
 let _csvUploading = false;
 
-async function uploadCSVC() {
-  const file = document.getElementById('bulkFileC').files[0];
+function uploadCSVC() {
+  return taskChecklistCsvSend(document.getElementById('bulkFileC').files[0], () => closeModal('checklistModal'));
+}
+
+// The checklist CSV upload, shared by the old modal and the React one.
+async function taskChecklistCsvSend(file, close) {
   if (!file) { showToast('Please select a CSV file','error'); return; }
   const text = await file.text();
   const lines = text.trim().split('\n');
@@ -2097,7 +2128,7 @@ async function uploadCSVC() {
   }
 
   showToast(`✅ ${totalTasks} tasks generated!${skipped ? ` (${skipped} rows skipped)` : ''}`);
-  closeModal('checklistModal');
+  close();
   loadDashboard(true);
 }
 

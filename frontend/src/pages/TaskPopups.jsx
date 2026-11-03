@@ -9,6 +9,8 @@
 //   setdue — Set Due Date, or a reason why not yet (openSetDueDate → taskSetDueSend)
 //   holiday — Holidays: add, CSV upload, remove (openHoliday → taskHolidayAddSend /
 //             taskHolidayBulkSend / deleteHoliday; the list follows taskHolidayWatch)
+//   checklist — Add Checklist Task, with its preview line and the CSV upload
+//               (openChecklist → taskChecklistSend / taskChecklistCsvSend)
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { legacy, css } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
@@ -279,8 +281,98 @@ function HolidayBody({ d, close }) {
   );
 }
 
-const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody, holiday: HolidayBody };
-const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px', holiday: 'max-width:560px' };
+// ── Add Checklist Task ──
+const FREQ = [
+  ['daily', 'Daily (365 tasks/year)'], ['weekly', 'Weekly (52 tasks/year)'], ['alternative_week', 'Alternative Week (26 tasks/year)'],
+  ['monthly', 'Monthly (12 tasks/year)'], ['quarterly', 'Quarterly (4 tasks/year)'], ['yearly', 'Yearly (1 task/year)'],
+].map(([value, label]) => ({ value, label }));
+const okBox = msg => <div className="alert success" ref={css(msg ? 'display: block;' : 'display:none')}>{msg}</div>;
+
+function ChecklistBody({ d, close }) {
+  const [f, setF] = useState({ doer: '', freq: 'daily', date: d.today, endDate: '', client: '', desc: '', remarks: '' });
+  const [err, setErr] = useState('');
+  const [ok, setOk] = useState('');
+  const [busy, setBusy] = useState(false);
+  const file = useRef(null);
+  const set = (k, v) => setF(x => ({ ...x, [k]: v }));
+  const preview = legacy('taskChecklistPreview', f.freq, f.date, f.endDate, f.desc);
+  const generate = async () => {
+    setErr(''); setOk('');
+    const msg = await legacy('taskChecklistSend', f, setBusy, setOk, close);
+    if (msg) setErr(msg);
+  };
+  return (
+    <>
+      <h3>+ Add Checklist Task</h3>
+      {errBox(err)}
+      {okBox(ok)}
+
+      <div className="form-group">
+        <label>Select Employee</label>
+        <SearchSelect value={f.doer} onChange={v => set('doer', v)} placeholder="Select Employee"
+          options={[{ value: '', label: 'Select Employee' }, ...d.users]} />
+      </div>
+
+      <div className="form-group">
+        <label>Frequency</label>
+        <SearchSelect value={f.freq} onChange={v => set('freq', v)} options={FREQ} />
+      </div>
+
+      <div className="form-row">
+        <div className="form-group">
+          <label>Start Date</label>
+          <input type="date" min={d.today} value={f.date} onChange={e => set('date', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label>End Date <span ref={css(OPTIONAL)}>(optional)</span></label>
+          <input type="date" min={d.today} value={f.endDate} onChange={e => set('endDate', e.target.value)} />
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label>Client</label>
+        <SearchSelect value={f.client} onChange={v => set('client', v)} placeholder="Select Client"
+          options={[{ value: '', label: 'Select Client' }, ...d.clients]} />
+      </div>
+
+      <div className="form-group">
+        <label>Task Name / Description</label>
+        <input type="text" placeholder="Enter task name…" value={f.desc} onChange={e => set('desc', e.target.value)} />
+      </div>
+
+      <div className="form-group">
+        <label>Remarks</label>
+        <input type="text" placeholder="Any remarks…" value={f.remarks} onChange={e => set('remarks', e.target.value)} />
+      </div>
+
+      <div ref={displayed('background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;display:none', preview ? 'block' : 'none')}>
+        <strong>Preview:</strong> <span>{preview}</span>
+      </div>
+
+      <div className="modal-footer" ref={css('justify-content:space-between')}>
+        <button className="btn btn-outline" onClick={close}>Close</button>
+        <button className="btn btn-primary" disabled={busy} onClick={generate}>{busy ? 'Generating…' : 'Generate Tasks'}</button>
+      </div>
+
+      <div className="bulk-section">
+        <div ref={css('display:flex;align-items:center;gap:10px;margin-bottom:10px')}>
+          <div ref={css('flex:1;height:1px;background:#e2e8f0')}></div>
+          <span ref={css('font-size:11px;color:#94a3b8;font-weight:600')}>OR BULK UPLOAD CSV</span>
+          <div ref={css('flex:1;height:1px;background:#e2e8f0')}></div>
+        </div>
+        <div className="file-row">
+          <input type="file" ref={el => { file.current = el; if (el) css('font-size:12px;flex:1')(el); }} accept=".csv" />
+          <button className="btn btn-green btn-sm" onClick={() => legacy('taskChecklistCsvSend', file.current.files[0], close)}>⬆ Upload CSV</button>
+          <button className="btn btn-outline btn-sm" onClick={() => legacy('downloadSampleC')}>⬇ Sample</button>
+        </div>
+        <div ref={css('font-size:11px;color:#94a3b8;margin-top:6px')}>Format: user_email, frequency (daily/weekly/monthly/yearly/quarterly/alternative_week), start_date, description, remarks, client_name (required, must match an existing client) — tasks auto-generate!</div>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody, holiday: HolidayBody, checklist: ChecklistBody };
+const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px', holiday: 'max-width:560px', checklist: '' };
 
 export default function TaskPopups() {
   const [st, setSt] = useState({});
@@ -293,6 +385,7 @@ export default function TaskPopups() {
       edit: (id, type, task, clients) => show('edit', { id, type, task, clients }),
       setdue: (id, reason, ctx, min) => show('setdue', { id, reason, ctx, min }),
       holiday: (min, list) => show('holiday', { min, list }),
+      checklist: (today, users, clients) => show('checklist', { today, users, clients }),
     });
     return () => legacy('taskPopSetReact', null);
   }, []);
