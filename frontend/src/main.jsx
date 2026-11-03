@@ -76,6 +76,7 @@ const PAGES = {
   cmpopups: lazy(() => import('./pages/CmPopups.jsx')),
   cvvault: lazy(() => import('./pages/CmVault.jsx')),
   dthistory: lazy(() => import('./pages/DtHistory.jsx')),
+  dtform: lazy(() => import('./pages/DtForm.jsx')),
 };
 
 const roots = new WeakMap();

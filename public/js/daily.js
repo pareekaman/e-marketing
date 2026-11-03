@@ -486,7 +486,28 @@ function dtPad(n){ return n<10 ? '0'+n : n; }
 function dtFormatDate(d){ return `${d.getFullYear()}-${dtPad(d.getMonth()+1)}-${dtPad(d.getDate())}`; }
 function dtFormatDDMMYYYY(d){ return `${dtPad(d.getDate())}/${dtPad(d.getMonth()+1)}/${d.getFullYear()}`; }
 
+// The form (header, date, rows, total, proof files, submit) is React since
+// 2026-11-03 (frontend/src/pages/DtForm.jsx, in #dtFormRoot[data-react]).
+// loadDailyForm hands it the clients and departments; it calls back into the
+// shared helpers below (dtModeSet, dtCheckRows, dtSubmitSend,
+// dtSubmitExtraSend) and dtLoadHistory. It runs its own clock.
+let DT_FORM_REACT = null, _dtFormWanted = null;
+function dtFormSetReact(fn) { DT_FORM_REACT = fn; if (fn && _dtFormWanted) { const v = _dtFormWanted; _dtFormWanted = null; fn(v); } }
+function _dtFormShow(view) {
+  const root = document.getElementById('dtFormRoot');
+  if (!root || !root.dataset.react) return false;
+  if (DT_FORM_REACT) DT_FORM_REACT(view); else { _dtFormWanted = view; emkReactMount('dtform', root); }
+  return true;
+}
+// The mode as the rest of the page sees it: DT_MODE and the history heading.
+function dtModeSet(mode){
+  DT_MODE = mode;
+  const h = document.getElementById('dtHistoryTitle');
+  if (h) h.textContent = mode === 'extra' ? '⚡ My Extra Working Requests' : '📚 My Past Submissions';
+}
+
 function dtTickClock(){
+  if (document.getElementById('dtFormRoot')?.dataset.react) return;   // the React form keeps its own
   const now = new Date();
   const t = `${dtFormatDDMMYYYY(now)} ${dtPad(now.getHours())}:${dtPad(now.getMinutes())}:${dtPad(now.getSeconds())}`;
   const el = document.getElementById('dtNow');
@@ -520,6 +541,17 @@ async function dtSetMode(mode){
 }
 
 async function loadDailyForm(){
+  if (document.getElementById('dtFormRoot')?.dataset.react) {
+    dtModeSet('daily');
+    try {
+      const [clients, departments] = await Promise.all([api('/api/clients'), api('/api/departments')]);
+      DT_CLIENTS = Array.isArray(clients) ? clients : [];
+      DT_DEPARTMENTS = Array.isArray(departments) ? departments : [];
+    } catch(e) { DT_CLIENTS = []; DT_DEPARTMENTS = []; }
+    // A fresh form each time the page opens: Daily mode, today, one empty row.
+    _dtFormShow({ clients: DT_CLIENTS, departments: DT_DEPARTMENTS, opened: Date.now() });
+    return;
+  }
   dtTickClock();
   document.getElementById('dtUserName').textContent = ME.name;
   document.getElementById('dtDoerName').value = ME.name;
@@ -697,14 +729,22 @@ function dtRecalcTotal(){
 // Reads + validates the row table. Returns null (after toasting) if anything
 // is missing, so both submit paths share one set of rules.
 function dtReadRows(){
+  return dtCheckRows([...document.querySelectorAll('#dtRowsBody tr')].map(tr => ({
+    client: tr.querySelector('.dt-client').value, dept: tr.querySelector('.dt-dept').value,
+    desc: tr.querySelector('.dt-desc').value, time: tr.querySelector('.dt-time').value,
+  })));
+}
+// The rules on raw rows { client (id), dept, desc, time }, shared with the
+// React form: the rows to send, or null after the toast.
+function dtCheckRows(raw){
   const out = [];
-  for (const tr of document.querySelectorAll('#dtRowsBody tr')) {
-    const clientId = tr.querySelector('.dt-client').value.trim();
+  for (const row of raw) {
+    const clientId = String(row.client || '').trim();
     const picked = DT_CLIENTS.find(c => String(c.id) === clientId);
     const client = picked ? String(picked.name || '').trim() : '';
-    const dept = tr.querySelector('.dt-dept').value.trim();
-    const desc = tr.querySelector('.dt-desc').value.trim();
-    const time = parseInt(tr.querySelector('.dt-time').value) || 0;
+    const dept = String(row.dept || '').trim();
+    const desc = String(row.desc || '').trim();
+    const time = parseInt(row.time) || 0;
     if (!client || !dept || !desc || time <= 0) {
       showToast('Each row needs Client, Department, Description and Time (>0)','error');
       return null;
@@ -721,25 +761,33 @@ async function dtSubmit(){
   const date = document.getElementById('dtEntryDate').value;
   const read = dtReadRows();
   if (!read) return;
-  const rows = read.map(r => ({
-    client_name: r.client, client_id: r.clientId, department: r.dept, description: r.desc, duration_min: r.time
-  }));
-
   const btn = document.querySelector('.dt-btn-submit');
-  btn.disabled = true; btn.textContent = 'Submitting...';
+  btn.disabled = true;
   try {
-    const r = await api('/api/daily-tasks', 'POST', { entry_date: date, rows });
-    if (r.error) { showToast(r.error, 'error'); }
-    else {
-      showToast(`✅ ${r.count} entries submitted! Confirmation sent on email.`);
+    if (await dtSubmitSend(date, read, t => { btn.textContent = t; })) {
       DT_LOCKED = true;
       await dtCheckLockAndRender();
       await dtLoadHistory();
     }
-  } catch(e) {
-    showToast('Submit failed: ' + e.message, 'error');
   } finally {
     btn.disabled = false; btn.textContent = 'Submit All →';
+  }
+}
+// The daily save, shared with the React form: true once submitted (the toast
+// shown either way). setText(text) is for the button.
+async function dtSubmitSend(date, read, setText){
+  const rows = read.map(r => ({
+    client_name: r.client, client_id: r.clientId, department: r.dept, description: r.desc, duration_min: r.time
+  }));
+  setText('Submitting...');
+  try {
+    const r = await api('/api/daily-tasks', 'POST', { entry_date: date, rows });
+    if (r.error) { showToast(r.error, 'error'); return false; }
+    showToast(`✅ ${r.count} entries submitted! Confirmation sent on email.`);
+    return true;
+  } catch(e) {
+    showToast('Submit failed: ' + e.message, 'error');
+    return false;
   }
 }
 
@@ -778,36 +826,44 @@ async function dtSubmitExtra(){
   const date = document.getElementById('dtEntryDate').value;
   const read = dtReadRows();
   if (!read) return;
+  if (!EW_ATTACH.dt.length) { showToast('Attach at least one file (a screenshot or PDF) as proof of the work.', 'error'); return; }
+  const btn = document.querySelector('.dt-btn-submit');
+  btn.disabled = true;
+  try {
+    if (await dtSubmitExtraSend(date, read, t => { btn.textContent = t; })) {
+      DT_LOCKED = true;
+      await dtCheckLockAndRender();
+      await dtLoadHistory();
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = 'Submit for Approval →';
+  }
+}
+// The Extra Working request, shared with the React form: uploads the proof
+// files (EW_ATTACH.dt), then files the request. true once sent.
+async function dtSubmitExtraSend(date, read, setText){
   const entries = read.map(r => ({
     client: r.client, client_id: r.clientId, department: r.dept, description: r.desc, minutes: r.time
   }));
-  if (!EW_ATTACH.dt.length) { showToast('Attach at least one file (a screenshot or PDF) as proof of the work.', 'error'); return; }
-
-  const btn = document.querySelector('.dt-btn-submit');
-  btn.disabled = true; btn.textContent = 'Submitting...';
+  setText('Submitting...');
   try {
     let attachments;
     try {
-      attachments = await ewAttachUpload('dt', (i, n, pct) => { btn.textContent = `Uploading ${i}/${n} (${pct}%)…`; });
-    } catch (e) { showToast('Upload failed: ' + e.message, 'error'); return; }
-    btn.textContent = 'Submitting...';
+      attachments = await ewAttachUpload('dt', (i, n, pct) => setText(`Uploading ${i}/${n} (${pct}%)…`));
+    } catch (e) { showToast('Upload failed: ' + e.message, 'error'); return false; }
+    setText('Submitting...');
     const r = await api('/api/leaves', 'POST', {
       leave_type: 'extra_working',
       dates: [{ date, entries }],
       attachments
     });
-    if (r.error) { showToast(r.error, 'error'); }
-    else {
-      ewAttachReset('dt');
-      showToast(`⚡ Extra Working sent for approval (${entries.length} row${entries.length>1?'s':''}).`);
-      DT_LOCKED = true;
-      await dtCheckLockAndRender();
-      await dtLoadHistory();
-    }
+    if (r.error) { showToast(r.error, 'error'); return false; }
+    ewAttachReset('dt');
+    showToast(`⚡ Extra Working sent for approval (${entries.length} row${entries.length>1?'s':''}).`);
+    return true;
   } catch(e) {
     showToast('Submit failed: ' + e.message, 'error');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Submit for Approval →';
+    return false;
   }
 }
 
