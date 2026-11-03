@@ -6,6 +6,7 @@
 //   comments — a task's Comments (openComments → taskCommentSend /
 //              taskCommentDelete, the list re-read through taskCommentsGet)
 //   edit — Edit Task (openEditTask → taskEditSend)
+//   setdue — Set Due Date, or a reason why not yet (openSetDueDate → taskSetDueSend)
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { legacy, css } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
@@ -168,8 +169,51 @@ function EditBody({ d, close }) {
   );
 }
 
-const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody };
-const WIDTH = { revise: 'max-width:380px', comments: '', edit: '' };
+// ── Set Due Date ──
+function SetDueBody({ d, close }) {
+  // Reopening a task that already carries a reason shows it, so the doer edits
+  // what they said last time instead of writing it out again from scratch.
+  const [noDate, setNoDate] = useState(!!d.reason);
+  const [date, setDate] = useState('');
+  const [reason, setReason] = useState(d.reason);
+  const [err, setErr] = useState('');
+  // Ticking "no date yet" swaps the date field for the reason field.
+  const tick = on => { setNoDate(on); if (on) setDate(''); };
+  const save = async () => {
+    setErr('');
+    const msg = await legacy('taskSetDueSend', d.id, d.ctx, noDate, date, reason, close);
+    if (msg) setErr(msg);
+  };
+  return (
+    <>
+      <h3>🗓 Set Due Date</h3>
+      <p ref={css('font-size:12px;color:#64748b;margin:-6px 0 12px')}>Pick a realistic due date based on your current workload.</p>
+      {errBox(err)}
+      <div className="form-group">
+        <label>Due Date</label>
+        <input type="date" min={d.min} disabled={noDate} value={date} onChange={e => setDate(e.target.value)} />
+      </div>
+      <label ref={css('display:flex;align-items:center;gap:8px;font-size:13px;color:#334155;cursor:pointer;margin:2px 0 10px')}>
+        <input type="checkbox" ref={css('width:15px;height:15px;cursor:pointer')} checked={noDate} onChange={e => tick(e.target.checked)} />
+        I can't set a date yet
+      </label>
+      <div className="form-group" ref={displayed('display:none', noDate ? '' : 'none')}>
+        <label>Reason</label>
+        <textarea rows="3" maxLength="500" placeholder="Why can't a due date be set yet?" value={reason} onChange={e => setReason(e.target.value)} />
+        <div ref={css('font-size:11px;color:#94a3b8;margin-top:4px')}>
+          This shows on the task row. The task still can't be marked done until a date is set.
+        </div>
+      </div>
+      <div ref={css('display:flex;gap:8px;justify-content:flex-end;margin-top:6px')}>
+        <button className="btn btn-outline" onClick={close}>Cancel</button>
+        <button className="btn btn-primary" onClick={save}>Save</button>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody };
+const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px' };
 
 export default function TaskPopups() {
   const [st, setSt] = useState({});
@@ -180,6 +224,7 @@ export default function TaskPopups() {
       revise: (id, type, minDate) => show('revise', { id, type, minDate }),
       comments: (id, type, list) => show('comments', { id, type, list }),
       edit: (id, type, task, clients) => show('edit', { id, type, task, clients }),
+      setdue: (id, reason, ctx, min) => show('setdue', { id, reason, ctx, min }),
     });
     return () => legacy('taskPopSetReact', null);
   }, []);

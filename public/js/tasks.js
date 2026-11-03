@@ -1413,10 +1413,12 @@ let _setDueCtx = {};
 function openSetDueDate(id, existingReason, opts) {
   _setDueTaskId = id;
   _setDueCtx = opts || {};
+  const min = new Date().toISOString().split('T')[0];
+  if (_taskPopReact('setdue', [id, existingReason || '', _setDueCtx, min])) return;
   document.getElementById('setDueErr').style.display = 'none';
   const inp = document.getElementById('setDueInput');
   inp.value = '';
-  inp.min = new Date().toISOString().split('T')[0];
+  inp.min = min;
   // Reopening a task that already carries a reason shows it, so the doer edits
   // what they said last time instead of writing it out again from scratch.
   const box = document.getElementById('setDueNoDate');
@@ -1437,14 +1439,21 @@ async function submitSetDueDate() {
   const err = document.getElementById('setDueErr'); err.style.display = 'none';
   const noDate = document.getElementById('setDueNoDate').checked;
   const date   = document.getElementById('setDueInput').value;
-  const reason = document.getElementById('setDueReason').value.trim();
-  if (!noDate && !date)   { err.textContent = 'Please pick a date';   err.style.display = 'block'; return; }
-  if (noDate  && !reason) { err.textContent = 'Please write a reason'; err.style.display = 'block'; return; }
-  const r = await api(`/api/tasks/${_setDueTaskId}/due-date`, 'PUT',
+  const reason = document.getElementById('setDueReason').value;
+  const msg = await taskSetDueSend(_setDueTaskId, _setDueCtx, noDate, date, reason,
+    () => { closeModal('setDueDateModal'); _setDueCtx = {}; });
+  if (msg) { err.textContent = msg; err.style.display = 'block'; }
+}
+// The due-date save, shared by the old modal and the React one: returns the
+// error to show, or nothing once saved (close() has run by then).
+async function taskSetDueSend(id, ctx, noDate, date, reason, close) {
+  reason = reason.trim();
+  if (!noDate && !date)   return 'Please pick a date';
+  if (noDate  && !reason) return 'Please write a reason';
+  const r = await api(`/api/tasks/${id}/due-date`, 'PUT',
     noDate ? { reason } : { date });
-  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
-  closeModal('setDueDateModal');
-  const ctx = _setDueCtx; _setDueCtx = {};
+  if (r.error) return r.error;
+  close();
   showToast(r.reasonSaved
     ? 'Reason saved — task still needs a due date before it can be marked done'
     : (r.effectiveDate ? `Due date set: ${fmtDate(r.effectiveDate)}` : 'Due date set'));
@@ -1453,7 +1462,8 @@ async function submitSetDueDate() {
   // not a date, so that branch still leaves the task open, exactly as the
   // server would if the completion were retried.
   if (ctx.completeAfter && !r.reasonSaved) {
-    return updateStatus(_setDueTaskId, 'completed', ctx.from, ctx.type);
+    await updateStatus(id, 'completed', ctx.from, ctx.type);
+    return;
   }
   if (ctx.from && ctx.from !== 'dashboard') loadAllTasks(); else loadDashboard(true);
 }
