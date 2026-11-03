@@ -1739,6 +1739,7 @@ async function saveChecklist() {
 // ══════════════════════════════════════════════════════
 async function openHoliday() {
   const today = new Date().toISOString().split('T')[0];
+  if (_taskPopOn()) { await refreshHolidays(); _taskPopReact('holiday', [today, holidays.slice()]); return; }
   document.getElementById('hDate').value='';
   document.getElementById('hDate').min=today;
   document.getElementById('hName').value='';
@@ -1759,15 +1760,24 @@ async function refreshHolidays() {
 async function addHoliday() {
   const err = document.getElementById('holidayErr');
   err.style.display = 'none';
-  const date = document.getElementById('hDate').value;
-  const name = document.getElementById('hName').value.trim();
-  if (!date||!name) { err.textContent='Date and name required!'; err.style.display='block'; return; }
+  const msg = await taskHolidayAddSend(document.getElementById('hDate').value, document.getElementById('hName').value, () => {
+    document.getElementById('hDate').value='';
+    document.getElementById('hName').value='';
+  });
+  if (msg) { err.textContent = msg; err.style.display = 'block'; }
+}
+
+// The holiday add and the CSV upload, shared by the old modal and the React
+// one: each returns the error to show, or nothing once saved. cleared() empties
+// the form before the list is re-read (the React list follows taskHolidayWatch).
+async function taskHolidayAddSend(date, name, cleared) {
+  name = name.trim();
+  if (!date||!name) return 'Date and name required!';
 
   const r = await api('/api/holidays','POST',{ date, name });
-  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+  if (r.error) return r.error;
 
-  document.getElementById('hDate').value='';
-  document.getElementById('hName').value='';
+  cleared();
   await refreshHolidays();
 
   const parts = [];
@@ -1785,7 +1795,11 @@ async function deleteHoliday(id) {
   showToast('🗑 Holiday removed');
 }
 
+let _holidayWatch = null;
+function taskHolidayWatch(fn) { _holidayWatch = fn; }
+
 function renderHolidayList() {
+  if (_holidayWatch) _holidayWatch(holidays.slice());
   const container = document.getElementById('holidayList');
   if (!holidays.length) { container.innerHTML='<div class="empty" style="padding:16px">No holidays added yet</div>'; return; }
   container.innerHTML = holidays.map(h => `
@@ -1803,12 +1817,17 @@ function downloadHolidaySample() {
 async function uploadHolidayBulk() {
   const err = document.getElementById('holidayErr');
   err.style.display = 'none';
-  const file = document.getElementById('holidayBulkFile').files[0];
-  if (!file) { err.textContent = 'Please select a CSV file'; err.style.display = 'block'; return; }
+  const msg = await taskHolidayBulkSend(document.getElementById('holidayBulkFile').files[0],
+    () => { document.getElementById('holidayBulkFile').value = ''; });
+  if (msg) { err.textContent = msg; err.style.display = 'block'; }
+}
+
+async function taskHolidayBulkSend(file, cleared) {
+  if (!file) return 'Please select a CSV file';
 
   const text = await file.text();
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (!lines.length) { err.textContent = 'CSV is empty'; err.style.display = 'block'; return; }
+  if (!lines.length) return 'CSV is empty';
 
   // Skip header if present (starts with "date" or contains "date,name")
   const firstLow = lines[0].toLowerCase();
@@ -1827,14 +1846,12 @@ async function uploadHolidayBulk() {
     if (!name) { errors.push(`Line ${i+1}: empty name`); continue; }
     list.push({ date, name });
   }
-  if (!list.length) {
-    err.textContent = 'No valid rows. ' + (errors[0] || ''); err.style.display = 'block'; return;
-  }
+  if (!list.length) return 'No valid rows. ' + (errors[0] || '');
 
   const r = await api('/api/holidays/bulk', 'POST', { holidays: list });
-  if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }
+  if (r.error) return r.error;
 
-  document.getElementById('holidayBulkFile').value = '';
+  cleared();
   await refreshHolidays();
   const parts = [`✅ ${r.added} holiday(s) added`];
   if (r.skipped) parts.push(`${r.skipped} skipped`);

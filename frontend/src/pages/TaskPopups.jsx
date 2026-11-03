@@ -7,6 +7,8 @@
 //              taskCommentDelete, the list re-read through taskCommentsGet)
 //   edit — Edit Task (openEditTask → taskEditSend)
 //   setdue — Set Due Date, or a reason why not yet (openSetDueDate → taskSetDueSend)
+//   holiday — Holidays: add, CSV upload, remove (openHoliday → taskHolidayAddSend /
+//             taskHolidayBulkSend / deleteHoliday; the list follows taskHolidayWatch)
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { legacy, css } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
@@ -212,8 +214,73 @@ function SetDueBody({ d, close }) {
   );
 }
 
-const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody };
-const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px' };
+// ── Holidays ──
+function HolidayBody({ d, close }) {
+  const [list, setList] = useState(d.list);
+  const [date, setDate] = useState('');
+  const [name, setName] = useState('');
+  const [err, setErr] = useState('');
+  const file = useRef(null);
+  // Every re-read of the holiday list (add, upload, remove) lands here.
+  useEffect(() => { legacy('taskHolidayWatch', setList); return () => legacy('taskHolidayWatch', null); }, []);
+  const add = async () => {
+    setErr('');
+    const msg = await legacy('taskHolidayAddSend', date, name, () => { setDate(''); setName(''); });
+    if (msg) setErr(msg);
+  };
+  const upload = async () => {
+    setErr('');
+    const msg = await legacy('taskHolidayBulkSend', file.current.files[0], () => { file.current.value = ''; });
+    if (msg) setErr(msg);
+  };
+  return (
+    <>
+      <h3>🗓 Holidays</h3>
+      {errBox(err)}
+      <div className="form-row">
+        <div className="form-group">
+          <label>Date</label>
+          <input type="date" min={d.min} value={date} onChange={e => setDate(e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label>Holiday Name</label>
+          <input type="text" placeholder="e.g. Diwali" value={name} onChange={e => setName(e.target.value)} />
+        </div>
+      </div>
+      <button className="btn btn-primary" ref={css('width:100%;margin-bottom:14px')} onClick={add}>+ Add Holiday</button>
+
+      <div ref={css('background:#fff7ed;border:1.5px dashed #fcd34d;border-radius:10px;padding:14px 16px;margin-bottom:16px')}>
+        <div ref={css('display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px')}>
+          <div>
+            <div ref={css('font-size:13px;font-weight:700;color:#92400e')}>📂 Bulk Upload (CSV)</div>
+            <div ref={css('font-size:11px;color:#78350f;margin-top:2px')}>Format: <code>date,name</code> per line — date as YYYY-MM-DD or DD-MM-YYYY</div>
+          </div>
+          <button className="btn btn-outline btn-sm" ref={css('padding:6px 12px;font-size:12px')} onClick={() => legacy('downloadHolidaySample')}>⬇ Sample</button>
+        </div>
+        <div ref={css('display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px')}>
+          <input type="file" ref={el => { file.current = el; if (el) css('font-size:12px;flex:1;min-width:200px')(el); }} accept=".csv,.txt" />
+          <button className="btn btn-green btn-sm" ref={css('padding:8px 14px')} onClick={upload}>📤 Upload CSV</button>
+        </div>
+      </div>
+
+      <div ref={css('font-size:12px;font-weight:600;color:#64748b;margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px')}>Holiday List</div>
+      <div ref={css('max-height:260px;overflow-y:auto')}>
+        {!list.length ? <div className="empty" ref={css('padding:16px')}>No holidays added yet</div> : list.map(h => (
+          <div className="holiday-item" key={h.id}>
+            <span><strong>{legacy('formatDate', h.holiday_date || h.date)}</strong> — {h.name}</span>
+            <button className="action-btn delete" onClick={() => legacy('deleteHoliday', h.id)}>Remove</button>
+          </div>
+        ))}
+      </div>
+      <div ref={css('margin-top:16px')}>
+        <button className="btn btn-outline" ref={css('width:100%')} onClick={close}>Close</button>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody, holiday: HolidayBody };
+const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px', holiday: 'max-width:560px' };
 
 export default function TaskPopups() {
   const [st, setSt] = useState({});
@@ -225,6 +292,7 @@ export default function TaskPopups() {
       comments: (id, type, list) => show('comments', { id, type, list }),
       edit: (id, type, task, clients) => show('edit', { id, type, task, clients }),
       setdue: (id, reason, ctx, min) => show('setdue', { id, reason, ctx, min }),
+      holiday: (min, list) => show('holiday', { min, list }),
     });
     return () => legacy('taskPopSetReact', null);
   }, []);
