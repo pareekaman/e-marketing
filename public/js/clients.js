@@ -793,8 +793,9 @@ async function cmShowDetail(id, from, to) {
     detail.innerHTML = cmRenderDetailHtml(s, id, Array.isArray(handlers) ? handlers : []);
     if (_cmDetOn()) {
       _cmDetMount('cmdetstats', 'cmDetStats', s);
-      _cmDetMount('cmdetsettings', 'cmDetSettings', { id, client: s.client || {}, depts: cmAllDepts(),
-        ops: cmCanEditOps(s.client || {}, Array.isArray(handlers) ? handlers : []) });
+      const ops = cmCanEditOps(s.client || {}, Array.isArray(handlers) ? handlers : []);
+      _cmDetMount('cmdetsettings', 'cmDetSettings', { id, client: s.client || {}, depts: cmAllDepts(), ops });
+      _cmDetMount('cmdetlinks', 'cmDetLinks', { id, links: CM_LINKS, ops });
     }
     cmRenderLinksRows();
     cmInitHandlerWidget(id);
@@ -1189,6 +1190,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>`}
 
+    ${_cmDetOn() ? '<div id="cmDetLinks" data-react-quiet="1"></div>' : `
     <div class="task-table-card" id="cmLinksCard" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">🔗 System Links <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on this client's portal</span></div>
@@ -1198,7 +1200,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       <div style="display:flex;justify-content:flex-end;margin-top:10px">
         <button class="btn btn-primary" id="cmSaveLinksBtn" style="padding:6px 16px;font-size:12px;transition:background .2s" onclick="cmSaveLinks(${id})">💾 Save Links</button>
       </div>
-    </div>
+    </div>`}
 
     <div class="task-table-card" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
@@ -1415,20 +1417,27 @@ async function cmSaveBillingName(id, raw){
 
 function cmAddLinkRow(){ CM_LINKS.push({ label:'', url:'', liveDate:'' }); cmRenderLinksRows(); }
 function cmRemoveLinkRow(i){ CM_LINKS.splice(i,1); cmRenderLinksRows(); }
-async function cmSaveLinks(id){
-  const clean = CM_LINKS
+// The save, shared with the React card (CmDetail.jsx): rows without a name or
+// URL are dropped; answers the saved list, or null after showing the error.
+async function cmSaveLinksSend(id, links) {
+  const clean = links
     .map(l => ({ label:(l.label||'').trim(), url:(l.url||'').trim(), liveDate:(l.liveDate||'').trim() }))
     .filter(l => l.label && l.url);
+  const r = await api('/api/clients/' + id, 'PUT', { system_links: clean });
+  if (r.error) { appAlert(r.error, 'Error'); return null; }
+  showToast('🔗 System links saved');
+  return clean;
+}
+async function cmSaveLinks(id){
   const btn = document.getElementById('cmSaveLinksBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
-  const r = await api('/api/clients/' + id, 'PUT', { system_links: clean });
-  if (r.error) {
+  const clean = await cmSaveLinksSend(id, CM_LINKS);
+  if (!clean) {
     if (btn) { btn.disabled = false; btn.textContent = '💾 Save Links'; }
-    appAlert(r.error, 'Error'); return;
+    return;
   }
   CM_LINKS = clean;
   cmRenderLinksRows();
-  showToast('🔗 System links saved');
   // Clear green-flash confirmation so it's obvious the save went through.
   const card = document.getElementById('cmLinksCard');
   if (card) {

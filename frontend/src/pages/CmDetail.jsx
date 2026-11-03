@@ -6,7 +6,8 @@
 //   cmdetstats — the five stat cards, Recent Activity and the meetings list
 //   cmdetsettings — the Departments, Kickstart, Platform, CRM, Brand Name,
 //                   Billing Name and WhatsApp Group cards
-import { useEffect, useState } from 'react';
+//   cmdetlinks — System Links (cmSaveLinksSend)
+import { useEffect, useRef, useState } from 'react';
 import { legacy, css, fmtDate, canDo } from '../lib/app.js';
 import SearchSelect from '../components/SearchSelect.jsx';
 
@@ -219,5 +220,71 @@ export function CmDetSettings() {
         placeholder="1203634...@g.us" mono note="Leave blank to switch the digest off for this client. Sent 9:30 AM, Mon–Fri, only when something is pending."
         save={v => legacy('cmSaveWaGroup', id, v)} />
     </>
+  );
+}
+
+// ── System Links ──
+const LINK_IN = 'padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;outline:none;font-family:inherit';
+const LINK_GRID = 'display:grid;grid-template-columns:1fr 150px 1.4fr 38px;gap:8px';
+const LINK_COL = 'font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px';
+const LINKS_CARD = 'padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s';
+const SAVE_LINKS = 'padding:6px 16px;font-size:12px;transition:background .2s';
+// The old card flashed green after a save by setting style properties, then
+// cleared them; done the same way so the style attribute reads the same.
+const styled = (base, props) => el => {
+  if (!el) return;
+  el.setAttribute('style', base);
+  if (!props) return;
+  for (const [k, v] of Object.entries(props)) { if (!v) el.style[k] = 'red'; el.style[k] = v; }
+};
+
+export function CmDetLinks() {
+  const [d] = useState(() => legacy('cmDetData', 'cmdetlinks') || { links: [] });
+  const [links, setLinks] = useState(() => (d.links || []).map(l => ({ ...l })));
+  const [busy, setBusy] = useState(false);
+  const [flash, setFlash] = useState(null);   // null: never saved; true for 1.6s after a save; then false
+  const timer = useRef(0);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const edit = (i, key, v) => setLinks(ls => ls.map((l, j) => (j === i ? { ...l, [key]: v } : l)));
+  const save = async () => {
+    setBusy(true);
+    const clean = await legacy('cmSaveLinksSend', d.id, links);
+    setBusy(false);
+    if (!clean) return;
+    setLinks(clean.map(l => ({ ...l })));
+    setFlash(true);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setFlash(false), 1600);
+  };
+  const on = flash === true;
+  return (
+    <div className="task-table-card" id="cmLinksCard"
+      ref={styled(`${d.ops ? '' : 'display:none;'}${LINKS_CARD}`, flash === null ? null : { boxShadow: on ? '0 0 0 2px #10b981' : '', borderColor: on ? '#10b981' : '' })}>
+      <div ref={css('display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px')}>
+        <div className="card-head-title">🔗 System Links <span ref={css(SUB)}>— shown on this client's portal</span></div>
+        <button className="btn btn-outline" ref={css('padding:5px 11px;font-size:12px')} onClick={() => setLinks(ls => [...ls, { label: '', url: '', liveDate: '' }])}>＋ Add Link</button>
+      </div>
+      <div id="cmLinksList">
+        {!links.length ? <div ref={css('color:#94a3b8;font-size:12px;padding:8px 2px')}>No links yet — click "Add Link" to add the systems this client should see (e.g. IMS, CRM).</div> : <>
+          <div ref={css(`${LINK_GRID};margin-bottom:6px;padding:0 2px`)}>
+            <div ref={css(LINK_COL)}>Name</div><div ref={css(LINK_COL)}>Live Date</div><div ref={css(LINK_COL)}>Open (URL)</div><div></div>
+          </div>
+          {links.map((l, i) => (
+            <div key={i} ref={css(`${LINK_GRID};align-items:center;margin-bottom:8px`)}>
+              <input type="text" value={l.label || ''} placeholder="e.g. IMS Store" onChange={e => edit(i, 'label', e.target.value)} ref={css(LINK_IN)} />
+              <input type="date" value={l.liveDate || ''} onChange={e => edit(i, 'liveDate', e.target.value)} ref={css(LINK_IN)} />
+              <input type="url" value={l.url || ''} placeholder="https://…" onChange={e => edit(i, 'url', e.target.value)} ref={css(LINK_IN)} />
+              <button className="btn btn-outline" ref={css('padding:6px 8px;font-size:12px;color:#dc2626;border-color:#fca5a5')} title="Remove"
+                onClick={() => setLinks(ls => ls.filter((_, j) => j !== i))}>🗑</button>
+            </div>
+          ))}
+        </>}
+      </div>
+      <div ref={css('display:flex;justify-content:flex-end;margin-top:10px')}>
+        <button className="btn btn-primary" id="cmSaveLinksBtn" disabled={busy} onClick={save}
+          ref={styled(SAVE_LINKS, flash === null ? null : { background: on ? '#10b981' : '' })}>
+          {busy ? 'Saving…' : on ? '✓ Saved!' : '💾 Save Links'}</button>
+      </div>
+    </div>
   );
 }
