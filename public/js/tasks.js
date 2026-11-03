@@ -666,6 +666,7 @@ function openAssignForActiveTab() {
 }
 
 function openTaskDetail(t) {
+  if (_taskPopReact('detail', [t])) return;
   const priorityColors = { urgent:'#dc2626', high:'#ea580c', medium:'#d97706', low:'#16a34a' };
   const statusLabels = { pending:'Pending', completed:'Completed', revised:'Revised', transferred:'Transferred' };
   const row = (label, value) => value
@@ -747,7 +748,7 @@ function openTaskDetail(t) {
 async function loadSubtasks(taskId) {
   const wrap = document.getElementById('tdSubtasksList');
   if (!wrap) return;
-  const r = await api(`/api/tasks/${taskId}/subtasks`);
+  const r = await taskSubtasksGet(taskId);
   if (!wrap.isConnected) return; // modal closed before the fetch resolved
   if (r.error) { wrap.innerHTML = `<span style="color:#dc2626">${dtEscape(r.error)}</span>`; return; }
   const items = r.subtasks || [];
@@ -797,6 +798,11 @@ async function loadSubtasks(taskId) {
 // is never silently dropped.
 function tdAskTimeOptions(selected) {
   const sel = String(selected || '').slice(0, 5);
+  return tdAskTimeList(selected).map(o => `<option value="${o.value}"${o.value && o.value === sel ? ' selected' : ''}>${o.label}</option>`).join('');
+}
+// The same slots as [{ value, label }], "Time —" first; the React pop-up's list.
+function tdAskTimeList(selected) {
+  const sel = String(selected || '').slice(0, 5);
   const label = (v) => {
     const [h, m] = v.split(':').map(Number);
     const period = h < 12 ? 'AM' : 'PM', h12 = h % 12 === 0 ? 12 : h % 12;
@@ -807,17 +813,22 @@ function tdAskTimeOptions(selected) {
     slots.push(`${String(Math.floor(mins/60)).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`);
   }
   if (sel && !slots.includes(sel)) slots.unshift(sel);
-  return `<option value="">Time —</option>` +
-    slots.map(v => `<option value="${v}"${v === sel ? ' selected' : ''}>${label(v)}</option>`).join('');
+  return [{ value: '', label: 'Time —' }, ...slots.map(v => ({ value: v, label: label(v) }))];
 }
 
 // Record what we still need from the client on this task. The server enforces
 // the two rules (task must have a due date; the ask cannot fall after it), so a
 // stale form here cannot slip past them.
 async function saveClientAsk(taskId) {
-  const note = document.getElementById('tdAskNote')?.value.trim() || '';
-  const body = { note, byDate: document.getElementById('tdAskDate')?.value || '',
-                       byTime: document.getElementById('tdAskTime')?.value || '' };
+  return taskClientAskSend(taskId, document.getElementById('tdAskNote')?.value || '',
+    document.getElementById('tdAskDate')?.value || '', document.getElementById('tdAskTime')?.value || '');
+}
+
+// The client-ask save and the sub-task actions, shared by the old modal and
+// the React one. Each answers true when the list should be re-read.
+async function taskClientAskSend(taskId, note, byDate, byTime) {
+  note = note.trim();
+  const body = { note, byDate, byTime };
   const r = await api(`/api/tasks/${taskId}/client-ask`, 'PUT', body);
   if (r && r.error) { showToast(r.error, 'error'); return; }
   showToast(note ? 'Saved — goes to the client group in the next digest' : 'Cleared');
@@ -829,24 +840,37 @@ async function saveClientAsk(taskId) {
 async function saveSubtaskRemark(id, taskId) {
   const input = document.getElementById('stRemark_' + id);
   if (!input) return;
-  const r = await api(`/api/subtasks/${id}`, 'PUT', { remarks: input.value.trim() });
-  if (r && r.error) { showToast(r.error, 'error'); return; }
-  showToast(input.value.trim() ? 'Remark saved' : 'Remark cleared');
-  loadSubtasks(taskId);
+  if (await taskSubtaskRemarkSend(id, input.value)) loadSubtasks(taskId);
+}
+async function taskSubtaskRemarkSend(id, value) {
+  value = value.trim();
+  const r = await api(`/api/subtasks/${id}`, 'PUT', { remarks: value });
+  if (r && r.error) { showToast(r.error, 'error'); return false; }
+  showToast(value ? 'Remark saved' : 'Remark cleared');
+  return true;
 }
 
 async function toggleSubtask(id, taskId, checked) {
+  await taskSubtaskToggleSend(id, checked);
+  loadSubtasks(taskId);
+}
+async function taskSubtaskToggleSend(id, checked) {
   const r = await api(`/api/subtasks/${id}`, 'PUT', { status: checked ? 'completed' : 'pending' });
   if (r.error) { showToast(r.error, 'error'); }
-  loadSubtasks(taskId);
+  return true;
 }
 
 async function deleteSubtask(id, taskId) {
-  if (!await appConfirm('Delete this sub-task?')) return;
-  const r = await api(`/api/subtasks/${id}`, 'DELETE');
-  if (r.error) { showToast(r.error, 'error'); return; }
-  loadSubtasks(taskId);
+  if (await taskSubtaskDeleteSend(id)) loadSubtasks(taskId);
 }
+async function taskSubtaskDeleteSend(id) {
+  if (!await appConfirm('Delete this sub-task?')) return false;
+  const r = await api(`/api/subtasks/${id}`, 'DELETE');
+  if (r.error) { showToast(r.error, 'error'); return false; }
+  return true;
+}
+
+function taskSubtasksGet(taskId) { return api(`/api/tasks/${taskId}/subtasks`); }
 
 function toggleBlock(header) { header.nextElementSibling.classList.toggle('open'); }
 

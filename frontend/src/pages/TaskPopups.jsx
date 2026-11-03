@@ -14,8 +14,10 @@
 //   delegate — Delegate Task: shared fields, task cards, voice fill (it registers
 //              as voice-delegate.js's host) and the CSV upload (openDelegate →
 //              taskDelegateSend / taskDelegateCsvSend)
+//   detail — Task Detail, with the client ask and the client's sub-tasks
+//            (openTaskDetail → taskClientAskSend / taskSubtask*Send)
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { legacy, css } from '../lib/app.js';
+import { legacy, css, fmtDate } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
 import SearchSelect from '../components/SearchSelect.jsx';
 
@@ -553,8 +555,146 @@ function DelegateBody({ d, close }) {
   );
 }
 
-const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody, holiday: HolidayBody, checklist: ChecklistBody, delegate: DelegateBody };
-const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px', holiday: 'max-width:560px', checklist: '', delegate: '' };
+// ── Task Detail ──
+const TD_PRIORITY = { urgent: '#dc2626', high: '#ea580c', medium: '#d97706', low: '#16a34a' };
+const TD_STATUS = { pending: 'Pending', completed: 'Completed', revised: 'Revised', transferred: 'Transferred' };
+const TD_SECTION = 'margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0';
+const TD_HEAD = 'font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px';
+const TD_TIME = { padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', background: '#fff' };
+const TH = 'padding:4px 8px';
+const TD_CELL = 'padding:6px 8px';
+
+function TdRow({ label, children }) {
+  return (
+    <div ref={css('display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid #f1f5f9;padding-bottom:10px')}>
+      <span ref={css('min-width:110px;color:#64748b;font-size:12px;font-weight:600;padding-top:1px')}>{label}</span>
+      <span ref={css('flex:1;word-break:break-word;overflow-wrap:anywhere')}>{children}</span>
+    </div>
+  );
+}
+
+// Sub-tasks the client added: done / pending, delete, and the handler's remark.
+function TdSubtasks({ taskId }) {
+  const [r, setR] = useState(null);   // null while loading
+  const [n, setN] = useState(0);      // each re-read redraws the remark boxes from the saved values
+  const live = useRef(true);
+  const load = async () => { const x = await legacy('taskSubtasksGet', taskId); if (live.current) { setR(x); setN(k => k + 1); } };
+  useEffect(() => { load(); return () => { live.current = false; }; }, []);
+  const remarks = useRef({});
+  if (!r) return 'Loading…';
+  if (r.error) return <span ref={css('color:#dc2626')}>{r.error}</span>;
+  const items = r.subtasks || [];
+  if (!items.length) return <span ref={css('color:#94a3b8')}>No sub-tasks yet</span>;
+  return (
+    <table ref={css('width:100%;border-collapse:collapse;font-size:12px')}>
+      <thead><tr ref={css('text-align:left;color:#94a3b8;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px')}>
+        {['S.No', 'Task', 'Date', 'Done', 'Priority', 'Status', 'Action'].map(h => <th key={h} ref={css(TH)}>{h}</th>)}
+      </tr></thead>
+      <tbody>{items.map((s, i) => {
+        const done = s.status === 'completed';
+        return [
+          <tr key={s.id} ref={css('border-bottom:1px solid #f1f5f9')}>
+            <td ref={css(TD_CELL + ';color:#94a3b8')}>{i + 1}</td>
+            <td ref={css(TD_CELL + ';color:#0f172a;word-break:break-word;' + (done ? 'text-decoration:line-through;color:#94a3b8' : ''))}>{s.description}</td>
+            <td ref={css(TD_CELL + ';white-space:nowrap;color:#64748b')}>{fmtDate(s.created_at)}</td>
+            <td ref={css(TD_CELL + ';white-space:nowrap;color:#64748b')}>{s.completed_at ? fmtDate(s.completed_at) : '—'}</td>
+            <td ref={css(TD_CELL + ';color:' + (TD_PRIORITY[s.priority] || TD_PRIORITY.low) + ';font-weight:600;text-transform:capitalize')}>{s.priority || 'low'}</td>
+            <td ref={css(TD_CELL)}>{done
+              ? <span ref={css('font-size:10px;color:#15803d;font-weight:700;background:#dcfce7;padding:2px 8px;border-radius:8px')}>✓ Done</span>
+              : <span ref={css('font-size:10px;color:#b91c1c;font-weight:700;background:#fee2e2;padding:2px 8px;border-radius:8px')}>⏳ Pending</span>}</td>
+            <td ref={css(TD_CELL + ';white-space:nowrap')}>
+              <button className="action-btn" ref={css('padding:1px 6px;font-size:11px;' + (done ? '' : 'opacity:.35'))} title="Mark done"
+                onClick={async () => { await legacy('taskSubtaskToggleSend', s.id, !done); load(); }}>✅</button>{' '}
+              <button className="action-btn" ref={css('padding:1px 6px;font-size:11px;margin-left:4px')} title="Delete"
+                onClick={async () => { if (await legacy('taskSubtaskDeleteSend', s.id)) load(); }}>🗑️</button>
+            </td>
+          </tr>,
+          <tr key={s.id + 'r'} ref={css('border-bottom:1px solid #f1f5f9')}>
+            <td></td>
+            <td colSpan="6" ref={css('padding:0 8px 8px')}>
+              <div ref={css('display:flex;gap:6px;align-items:center')}>
+                <input type="text" key={n} defaultValue={s.remarks || ''} ref={el => { remarks.current[s.id] = el; css('flex:1;padding:5px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:11.5px;outline:none')(el); }}
+                  placeholder="Remark — e.g. FMS sheet not sent by client" />
+                <button className="action-btn" ref={css('padding:3px 9px;font-size:11px')}
+                  onClick={async () => { if (await legacy('taskSubtaskRemarkSend', s.id, remarks.current[s.id].value)) load(); }}>Save</button>
+              </div>
+            </td>
+          </tr>,
+        ];
+      })}</tbody>
+    </table>
+  );
+}
+
+function DetailBody({ d, close }) {
+  const t = d.t;
+  const [ask, setAsk] = useState({ note: t.client_ask || '', date: t.client_ask_date || '', time: String(t.client_ask_time || '').slice(0, 5) });
+  const times = legacy('tdAskTimeList', t.client_ask_time || '') || [];
+  const pc = TD_PRIORITY[t.priority] || '#64748b';
+  const by = t.assignedByName && t.assignedByName.trim() && t.assignedByName !== '—' ? t.assignedByName : 'Simran Gurnani';
+  const rows = [
+    ['Description', t.description || ''],
+    ['Doer', t.assignedToName || ''],
+    ['Assigned By', by],
+    ['Delegated On', fmtDate(t.delegated_on || '')],
+    ['Due Date', fmtDate(t.due_date || '')],
+    // Only when there is something to show: a task closed before completed_at
+    // existed has no Completed On line rather than an empty or invented one.
+    ['Completed On', t.status === 'completed' && t.completed_on ? <span ref={css('color:#16a34a;font-weight:600')}>{fmtDate(t.completed_on)}</span> : null],
+    ['Client', t.client_name ? <span ref={css('background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:6px;font-weight:600')}>{`🏢 ${t.client_name}`}</span> : null],
+    ['Priority', t.priority ? <span ref={css(`background:${pc}22;color:${pc};padding:2px 9px;border-radius:5px;font-weight:600;font-size:12px`)}>{t.priority.charAt(0).toUpperCase() + t.priority.slice(1)}</span> : null],
+    ['Status', t.waiting_approval == 1
+      ? <span className="status-badge revised" ref={css('font-size:12px')}>⏳ Revision Requested — awaiting approval</span>
+      : t.status ? <span className={'status-badge ' + t.status} ref={css('font-size:12px')}>{TD_STATUS[t.status] || t.status}</span> : null],
+    ['Approval', t.approval === 'yes' ? <span ref={css('color:#16a34a;font-weight:600')}>Required</span> : <span ref={css('color:#64748b')}>Not required</span>],
+    ['Remarks', t.remarks || null],
+    ...(t.delay_reason ? [['Delay reason', t.delay_reason]] : []),
+    ['URL', t.url ? <a href={t.url} target="_blank" rel="noopener" ref={css('color:#2563eb;text-decoration:underline;word-break:break-all')}>{t.url}</a> : <span ref={css('color:#94a3b8')}>No URL</span>],
+  ];
+  const deleg = t.type === 'delegation' && t.id;
+  return (
+    <>
+      <h3 ref={css('margin-bottom:18px')}>{'📋 ' + (t.description || 'Task Detail')}</h3>
+      <div ref={css('display:flex;flex-direction:column;gap:12px;font-size:13.5px;color:#1e293b')}>
+        {rows.filter(([, v]) => v).map(([label, v]) => <TdRow key={label} label={label}>{v}</TdRow>)}
+        {/* What we still need FROM the client to finish this: it goes to their
+            WhatsApp group in the next digest, so the task needs its own due date first. */}
+        {deleg && t.client_id ? (
+          <div ref={css(TD_SECTION)}>
+            <div ref={css(TD_HEAD)}>📥 Needed from client</div>
+            {t.due_date ? <>
+              <input type="text" value={ask.note} onChange={e => setAsk(a => ({ ...a, note: e.target.value }))} placeholder="e.g. Standard hours sheet not received"
+                ref={css('width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12.5px;outline:none')} />
+              <div ref={css('display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap')}>
+                <span ref={css('font-size:11px;color:#64748b;font-weight:600')}>Needed by</span>
+                <input type="date" max={t.due_date || ''} value={ask.date} onChange={e => setAsk(a => ({ ...a, date: e.target.value }))}
+                  ref={css('padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px')} />
+                <SearchSelect value={ask.time} onChange={v => setAsk(a => ({ ...a, time: v }))} options={times} placeholder="Time —" style={TD_TIME} />
+                <span ref={css('font-size:11px;color:#94a3b8')}>IST</span>
+                <button className="action-btn" ref={css('padding:4px 11px;font-size:11px')} onClick={() => legacy('taskClientAskSend', t.id, ask.note, ask.date, ask.time)}>Save</button>
+              </div>
+              <div ref={css('font-size:11px;color:#94a3b8;margin-top:5px')}>Cannot be later than this task's own due date. Blank clears it.</div>
+            </> : <div ref={css('font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 10px')}>
+              Set this task's due date first — then you can record what you need from the client.
+            </div>}
+          </div>
+        ) : null}
+        {deleg ? (
+          <div ref={css(TD_SECTION)}>
+            <div ref={css(TD_HEAD)}>🧩 Sub-tasks <span ref={css('font-weight:500;color:#94a3b8')}>(added by client)</span></div>
+            <div ref={css('overflow-x:auto;font-size:13px;color:#94a3b8')}><TdSubtasks taskId={t.id} /></div>
+          </div>
+        ) : null}
+      </div>
+      <div className="modal-footer" ref={css('margin-top:18px')}>
+        <button className="btn btn-outline" onClick={close}>Close</button>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody, holiday: HolidayBody, checklist: ChecklistBody, delegate: DelegateBody, detail: DetailBody };
+const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px', holiday: 'max-width:560px', checklist: '', delegate: '', detail: 'width:560px;max-width:96vw' };
 
 export default function TaskPopups() {
   const [st, setSt] = useState({});
@@ -569,6 +709,7 @@ export default function TaskPopups() {
       holiday: (min, list) => show('holiday', { min, list }),
       checklist: (today, users, clients) => show('checklist', { today, users, clients }),
       delegate: (today, users, clients, prefill) => show('delegate', { today, users, clients, prefill }),
+      detail: t => show('detail', { t }),
     });
     return () => legacy('taskPopSetReact', null);
   }, []);
