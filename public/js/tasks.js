@@ -1037,6 +1037,7 @@ function openReviseModal(taskId, taskType) {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const minDate = tomorrow.toISOString().split('T')[0];
+  if (_taskPopReact('revise', [taskId, taskType, minDate])) return;
 
   document.getElementById('reviseTaskId').value = taskId;
   document.getElementById('reviseTaskType').value = taskType;
@@ -1054,9 +1055,15 @@ async function submitRevise() {
   const reason   = document.getElementById('reviseReason').value.trim();
   const err      = document.getElementById('reviseErr');
   err.style.display = 'none';
+  const msg = await taskReviseSend(taskId, taskType, newDate, reason, () => closeModal('reviseDateModal'));
+  if (msg) { err.textContent = msg; err.style.display = 'block'; }
+}
 
-  if (!newDate) { err.textContent='Please select a new date'; err.style.display='block'; return; }
-  if (!reason)  { err.textContent='Please enter a reason for the revision'; err.style.display='block'; return; }
+// The revise send, shared by the old modal and the React one: returns the
+// error to show, or nothing once it went through (close() has run by then).
+async function taskReviseSend(taskId, taskType, newDate, reason, close) {
+  if (!newDate) return 'Please select a new date';
+  if (!reason)  return 'Please enter a reason for the revision';
 
   // Send revise request with new date
   const r = await api(`/api/tasks/${taskId}/status`,'PUT',{
@@ -1066,9 +1073,9 @@ async function submitRevise() {
     reason
   });
 
-  if (r.error) { err.textContent = r.error; err.style.display='block'; return; }
+  if (r.error) return r.error;
 
-  closeModal('reviseDateModal');
+  close();
   if (r.needsApproval) {
     showToast('✅ Revision request sent to the assigner for approval!');
   } else {
@@ -1077,6 +1084,17 @@ async function submitRevise() {
   loadDashboard(true);
   loadAllTasks();
   loadApprovalBadge();
+}
+
+// The task pop-ups are moving to React (frontend/src/pages/TaskPopups.jsx, in
+// #taskPopupsRoot); their app.html markup stays as the fallback.
+let TASK_POP_REACT = null, _taskPopWanted = null;
+function taskPopSetReact(o) { TASK_POP_REACT = o; if (o && _taskPopWanted) { const [k, a] = _taskPopWanted; _taskPopWanted = null; o[k](...a); } }
+function _taskPopReact(kind, args) {
+  const root = document.getElementById('taskPopupsRoot');
+  if (!root || !root.dataset.react) return false;
+  if (TASK_POP_REACT) TASK_POP_REACT[kind](...args); else { _taskPopWanted = [kind, args]; emkReactMount('taskpopups', root); }
+  return true;
 }
 
 // ══════════════════════════════════════════════════════
