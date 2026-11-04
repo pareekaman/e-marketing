@@ -71,7 +71,23 @@ function AddBody({ d, close }) {
   const [plats, setPlats] = useState(() => new Set());
   const [err, setErr] = useState('');
   const nameIn = useRef(null);
+  const deptWrap = useRef(null), platWrap = useRef(null), handBtn = useRef(null), handDrop = useRef(null);
   useEffect(() => { const t = setTimeout(() => nameIn.current?.focus(), 0); return () => clearTimeout(t); }, []);
+  // A click anywhere outside an open list closes it; ticking inside keeps it open.
+  // (The old form left them open until their own button was clicked again, so a
+  // long Department list sat over the fields below it.)
+  useEffect(() => {
+    const away = e => setOpen(o => {
+      const inside = (...rs) => rs.some(r => r.current && r.current.contains(e.target));
+      const n = { ...o };
+      if (o.dept && !inside(deptWrap)) n.dept = false;
+      if (o.plat && !inside(platWrap)) n.plat = false;
+      if (o.handlers && !inside(handBtn, handDrop)) n.handlers = false;
+      return n.dept === o.dept && n.plat === o.plat && n.handlers === o.handlers ? o : n;
+    });
+    document.addEventListener('mousedown', away);
+    return () => document.removeEventListener('mousedown', away);
+  }, []);
   // The platform choices are the Enquiry form's; a Convert ticks the enquiry's own.
   useEffect(() => {
     let live = true;
@@ -118,7 +134,7 @@ function AddBody({ d, close }) {
         <label>Department * <span ref={css('font-weight:400;text-transform:none;letter-spacing:0;color:#94a3b8')}>· Handlers (optional)</span></label>
         <div ref={css('position:relative')}>
           <div ref={css('display:flex;gap:6px;flex-wrap:wrap;align-items:center')}>
-            <div className="multi-select-wrap" ref={css('position:relative')}>
+            <div className="multi-select-wrap" ref={el => { deptWrap.current = el; css('position:relative')(el); }}>
               <button type="button" ref={css(DROP_BTN)} onClick={() => setOpen(o => ({ ...o, dept: !o.dept, plat: false }))}>
                 <span>{deptLabel}</span> ▾
               </button>
@@ -135,12 +151,12 @@ function AddBody({ d, close }) {
                 ))}
               </div>
             </div>
-            <button type="button" ref={css('padding:5px 12px;border:1.5px solid #7c3aed;border-radius:6px;font-size:12px;background:#fff;color:#7c3aed;font-weight:600;cursor:pointer')}
+            <button type="button" ref={el => { handBtn.current = el; css('padding:5px 12px;border:1.5px solid #7c3aed;border-radius:6px;font-size:12px;background:#fff;color:#7c3aed;font-weight:600;cursor:pointer')(el); }}
               onClick={() => setOpen(o => ({ ...o, handlers: o.handlers === undefined ? true : !o.handlers, dept: false }))}>
               👥 <span>{handlers.size ? `${handlers.size} selected` : 'Select handlers'}</span> ▾
             </button>
           </div>
-          <div ref={displayed(HANDLERS_DROP, open.handlers === undefined ? 'none' : open.handlers ? 'block' : 'none')}>
+          <div ref={el => { handDrop.current = el; displayed(HANDLERS_DROP, open.handlers === undefined ? 'none' : open.handlers ? 'block' : 'none')(el); }}>
             {d.people.map(u => (
               <label key={u.id} data-dept={u.department || ''} ref={displayed(HANDLER_ROW, filtered ? (showAll || depts.has(u.department) ? 'flex' : 'none') : undefined)}
                 onMouseOver={e => { e.currentTarget.style.background = '#f8f5ff'; }} onMouseOut={e => { e.currentTarget.style.background = ''; }}>
@@ -155,7 +171,7 @@ function AddBody({ d, close }) {
       </div>
       <div className="form-group">
         <label>Platform *</label>
-        <div className="multi-select-wrap" ref={css('position:relative')}>
+        <div className="multi-select-wrap" ref={el => { platWrap.current = el; css('position:relative')(el); }}>
           <button type="button" ref={css(DROP_BTN)} onClick={() => setOpen(o => ({ ...o, plat: !o.plat, dept: false }))}>
             <span>{plats.size ? `${plats.size} platform${plats.size === 1 ? '' : 's'} selected` : 'Select platforms'}</span> ▾
           </button>
