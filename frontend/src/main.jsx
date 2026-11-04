@@ -42,6 +42,7 @@ const PAGES = {
   paypopups: lazy(() => import('./pages/PayPopups.jsx')),
   payform: lazy(() => import('./pages/PayForm.jsx')),
   userform: lazy(() => import('./pages/UserForm.jsx')),
+  deptmanager: lazy(() => import('./pages/DeptManager.jsx')),
   invpopups: lazy(() => import('./pages/InvPopups.jsx')),
   emp360: lazy(() => import('./pages/Emp360.jsx')),
   leavedecision: lazy(() => import('./pages/LeaveDecision.jsx')),

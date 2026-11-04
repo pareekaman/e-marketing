@@ -115,6 +115,17 @@ function canSee(page) {
   return ME.can.pages.includes(page);
 }
 
+// Departments an admin added before anyone is in them (Users → Departments).
+// The department pickers build their lists from users.department and fold
+// these in with withExtraDepts(); loaded once at start, refreshed on a change.
+let EXTRA_DEPTS = [];
+async function deptExtraLoad() {
+  const r = await api('/api/departments/extra');
+  if (Array.isArray(r)) EXTRA_DEPTS = r;
+}
+function deptExtraSet(list) { if (Array.isArray(list)) EXTRA_DEPTS = list; }
+function withExtraDepts(list) { return [...new Set([...(list || []), ...EXTRA_DEPTS])].sort(); }
+
 function canDo(action) {
   if (!ME || !ME.can) return false;
   if (ME.can.all) return true;
@@ -335,6 +346,7 @@ async function init() {
     // Client logins belong on the dedicated /client page, not the team app.
     if (ME.role === 'client') { window.location.replace('/client'); return; }
     loadAppTheme();
+    deptExtraLoad();
     const initials = ME.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
     document.getElementById('sidebarName').textContent = ME.name;
     const roleLabel = ME.role==='admin' ? '👑 Admin' : ME.role==='hod' ? '🏢 HOD' : ME.role==='pc' ? '🖥️ PC' : ME.role==='client' ? '🏢 Client' : '👤 Employee';

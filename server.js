@@ -8667,6 +8667,59 @@ require('./backend/routes/clients')(app, {
 // ══════════════════════════════════════════════════════
 // DEPARTMENTS — unique list from users.department
 // ══════════════════════════════════════════════════════
+
+// Departments nobody is in yet. Every department list in the app is the
+// distinct users.department values, so a department used to exist only once
+// someone was put in it; an admin can now add a name here first (Users →
+// Departments). Kept as a JSON array in app_settings. A name someone already
+// carries is not stored again, and removing one here does not touch users.
+const EXTRA_DEPTS_KEY = 'extra_departments';
+async function extraDepartments() {
+  try {
+    const [[row]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [EXTRA_DEPTS_KEY]);
+    const list = JSON.parse((row && row.value) || '[]');
+    return Array.isArray(list) ? list.filter(d => typeof d === 'string' && d.trim()).map(d => d.trim()) : [];
+  } catch { return []; }
+}
+// The added names, and every department people carry with its head count.
+async function departmentOverview() {
+  const [rows] = await db.query(
+    `SELECT department, COUNT(*) AS people FROM users
+      WHERE department IS NOT NULL AND department != '' AND COALESCE(role,'') <> 'client'
+      GROUP BY department ORDER BY department ASC`);
+  return { extra: await extraDepartments(), withPeople: rows.map(r => ({ name: r.department, people: Number(r.people) })) };
+}
+const saveExtraDepartments = list => db.query(
+  'INSERT INTO app_settings (key_name, value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)', [EXTRA_DEPTS_KEY, JSON.stringify(list)]);
+
+app.get('/api/departments/extra', requireAuth, async (req, res) => {
+  try { res.json(await extraDepartments()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/departments/overview', requireAuth, requireAdmin, async (req, res) => {
+  try { res.json(await departmentOverview()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/departments/extra', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const name = String(req.body.name || '').replace(/\s+/g, ' ').trim();
+    if (!name) return res.status(400).json({ error: 'Type the department name' });
+    if (name.length > 60) return res.status(400).json({ error: 'Keep the name under 60 characters' });
+    const { extra, withPeople } = await departmentOverview();
+    const key = name.toLowerCase();
+    const clash = [...extra, ...withPeople.map(d => d.name)].find(d => d.trim().toLowerCase() === key);
+    if (clash) return res.status(400).json({ error: `"${clash}" already exists` });
+    await saveExtraDepartments([...extra, name].sort((a, b) => a.localeCompare(b)));
+    res.json(await departmentOverview());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.delete('/api/departments/extra', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const name = String((req.body && req.body.name) || req.query.name || '').trim();
+    const extra = await extraDepartments();
+    if (!extra.includes(name)) return res.status(404).json({ error: 'That department is not in the added list' });
+    await saveExtraDepartments(extra.filter(d => d !== name));
+    res.json(await departmentOverview());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/departments', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -8675,7 +8728,7 @@ app.get('/api/departments', requireAuth, async (req, res) => {
        ORDER BY department ASC`
     );
     const fromUsers = rows.map(r => r.department);
-    const extras = ['YouTube', 'LinkedIn', 'MDO'];
+    const extras = ['YouTube', 'LinkedIn', 'MDO', ...(await extraDepartments())];
     // Departments to hide from the daily-form dropdown (kept on user records).
     const hidden = new Set(['mis executive']);
     const merged = [...new Set([...fromUsers, ...extras])]

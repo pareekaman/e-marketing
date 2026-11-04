@@ -4,8 +4,28 @@
 let allUsersData = [];
 
 async function loadUsers() {
+  const deptBtn = document.getElementById('usersDeptBtn');
+  if (deptBtn) deptBtn.style.display = ME && ME.role === 'admin' ? '' : 'none';
   allUsersData = await api('/api/users');
   renderUsersTable(allUsersData);
+}
+
+// ── Departments (admin): add one before anyone is in it ──
+// The pop-up is React (frontend/src/pages/DeptManager.jsx, in #deptManagerRoot).
+let DEPT_MGR_REACT = null, _deptMgrWanted = false;
+function deptMgrSetReact(fn) { DEPT_MGR_REACT = fn; if (fn && _deptMgrWanted) { _deptMgrWanted = false; fn(); } }
+function openDeptManager() {
+  const root = document.getElementById('deptManagerRoot');
+  if (!root || !ME || ME.role !== 'admin') return;
+  if (DEPT_MGR_REACT) DEPT_MGR_REACT(); else { _deptMgrWanted = true; emkReactMount('deptmanager', root); }
+}
+// Add / remove: the new list, or the error to show. The pickers pick it up at once.
+async function deptMgrSend(method, name) {
+  const r = await api('/api/departments/extra', method, { name });
+  if (r.error) return r.error;
+  deptExtraSet(r.extra);
+  showToast(method === 'POST' ? `🏷 "${name.trim()}" added` : `🗑 "${name}" removed`);
+  return r;
 }
 
 function filterUsers() {
@@ -171,9 +191,11 @@ function readExtraAccessFromForm() {
 // handler dropdown) is derived the same way: distinct, non-empty
 // users.department values, off whichever user list is already loaded.
 // _usersMap already holds every user by the time this runs (populated at
-// Users-page load), so no extra fetch is needed here.
+// Users-page load), so no extra fetch is needed here. The pickers where a
+// department is chosen (this one, a client's departments) also take the ones
+// an admin added before anyone is in them (withExtraDepts; Users → Departments).
 function uDeptList() {
-  return [...new Set(Object.values(_usersMap).map(u => (u.department || '').trim()).filter(Boolean))].sort();
+  return withExtraDepts(Object.values(_usersMap).map(u => (u.department || '').trim()).filter(Boolean));
 }
 
 // selected: the department to preselect — '' for a blank Add User form, or

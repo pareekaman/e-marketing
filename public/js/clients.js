@@ -498,7 +498,7 @@ function cmOpenAddModal(prefill) {
   document.getElementById('cmFormLoginPassword').value = '';
 
   // Populate dept filter dropdown
-  const depts = [...new Set(CM_USERS.filter(u=>u.role!=='client').map(u=>u.department||'').filter(Boolean))].sort();
+  const depts = withExtraDepts(CM_USERS.filter(u=>u.role!=='client').map(u=>u.department||'').filter(Boolean));
   document.getElementById('cmAddDeptDropdown').innerHTML =
     `<div class="multi-select-item" onclick="cmAddSelectAllDepts()" style="font-weight:600;cursor:pointer;border-bottom:1px solid #e2e8f0">
       <input type="checkbox" id="cmAddAllDeptsCb" checked style="width:14px;height:14px;accent-color:#4f46e5;cursor:pointer;pointer-events:none;flex-shrink:0"/>
@@ -542,7 +542,7 @@ function cmOpenAddModal(prefill) {
 // which HANDLERS are offered and this one filters which CLIENTS are shown,
 // and the two lists happening to match today is not a reason to couple them.
 function cmPopulateDeptFilter(){
-  const depts = [...new Set(CM_USERS.filter(u => u.role !== 'client').map(u => u.department || '').filter(Boolean))].sort();
+  const depts = withExtraDepts(CM_USERS.filter(u => u.role !== 'client').map(u => u.department || '').filter(Boolean));
   const was = cmVals().dept;
   if (_cmBar({ depts, f: { ...cmVals(), dept: was && depts.includes(was) ? was : '' } })) return;
   const sel = document.getElementById('cmDeptFilter');
@@ -983,9 +983,10 @@ function cmCanEditOps(client, currentHandlers) {
     || (Array.isArray(currentHandlers) && currentHandlers.some(h => String(h.id) === String(ME.id)));
   return cmCanEdit() || iHandleThisClient;
 }
-// The departments a client can be put in: every non-client user's.
+// The departments a client can be put in: every non-client user's, plus the
+// ones an admin added before anyone is in them (withExtraDepts, core.js).
 function cmAllDepts() {
-  return [...new Set(CM_USERS.filter(u => u.role !== 'client').map(u => u.department || '').filter(Boolean))].sort();
+  return withExtraDepts(CM_USERS.filter(u => u.role !== 'client').map(u => u.department || '').filter(Boolean));
 }
 function cmClientById(id) { return CM_ALL.find(c => String(c.id) === String(id)) || null; }
 

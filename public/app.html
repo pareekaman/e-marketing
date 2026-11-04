@@ -514,6 +514,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
           <input type="text" id="userSearch" placeholder="Search by name, email, dept, role…" oninput="filterUsers()"
             style="padding:8px 12px 8px 32px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;width:240px"/>
         </div>
+        <button class="btn btn-outline" id="usersDeptBtn" onclick="openDeptManager()" style="display:none">🏷 Departments</button>
         <button class="btn btn-primary" onclick="openAddUser()">+ Add User</button>
 <button class="btn btn-outline" onclick="downloadUsersCSV()" style="display:flex;align-items:center;gap:6px;white-space:nowrap">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -3751,6 +3752,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <!-- The Add / Edit User form above as a React pop-up (frontend/src/pages/UserForm.jsx);
      openAddUser / openEditUser route here, #userModal is the fallback. -->
 <div id="userFormRoot" data-react="1" data-react-quiet="1"></div>
+<!-- Users → "🏷 Departments" (admin): frontend/src/pages/DeptManager.jsx, opened by openDeptManager. New, no old markup. -->
+<div id="deptManagerRoot" data-react="1" data-react-quiet="1"></div>
 
 <!-- ══════════════════════════════════════
      FMS DONE MODAL
@@ -4375,20 +4378,20 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 
 <script src="/js/themes/decor-core.js?v=20261027c"></script>
 <script src="/js/themes/picker.js?v=20261027c"></script>
-<script src="/js/core.js?v=20261030b"></script>
+<script src="/js/core.js?v=20261104a"></script>
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261101h"></script>
-<script src="/js/react-bridge.js?v=20261104b"></script>
+<script src="/js/react-bridge.js?v=20261104c"></script>
 <script src="/js/dashboard.js?v=20261101a"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261103h"></script>
 <script src="/js/tasks-report.js?v=20261101a"></script>
-<script src="/js/users.js?v=20261031a"></script>
+<script src="/js/users.js?v=20261104a"></script>
 <script src="/js/helpers.js?v=20261101a"></script>
 <script src="/js/fms.js?v=20261101a"></script>
 <script src="/js/daily.js?v=20261103c"></script>
-<script src="/js/clients.js?v=20261103g"></script>
+<script src="/js/clients.js?v=20261104a"></script>
 <script src="/js/reports.js?v=20261101b"></script>
 <script src="/js/leaves.js?v=20261104a"></script>
 <script src="/js/leave-policy.js?v=20261101a"></script>
