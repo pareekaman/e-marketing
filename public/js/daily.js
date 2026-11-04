@@ -5,6 +5,20 @@ let _bdFromUserId = null;
 let _bdDateTasks = [];
 
 async function openBulkDeleteModal() {
+  if (_taskPopOn()) {
+    const isAdmin = ME.role === 'admin', isHod = ME.role === 'hod';
+    let eligible = [];
+    if (isAdmin || isHod) {
+      const allUsers = await api('/api/users');
+      eligible = isAdmin ? allUsers : allUsers.filter(u => u.department === ME.department);
+    }
+    _taskPopReact('bulkdelete', [{
+      mode: isAdmin ? 'admin' : isHod ? 'hod' : 'self', meId: ME.id,
+      users: eligible.map(u => ({ value: String(u.id), label: `${u.name} — ${u.email} (${u.department||u.role})` })),
+      yearUsers: eligible.filter(u => u.role !== 'client').map(u => ({ value: String(u.id), label: u.name, email: u.email })),
+    }]);
+    return;
+  }
   document.getElementById('bulkDeleteErr').style.display = 'none';
   document.getElementById('bdStep1').style.display = 'none';
   document.getElementById('bdStep2').style.display = 'none';
@@ -66,21 +80,7 @@ async function onBdDateChange() {
   document.getElementById('bdCancelBtn').style.display = 'none';
   document.getElementById('bdDateLabel').textContent = date;
 
-  // Fetch tasks for this user on this date
-  const [delData, chlData] = await Promise.all([
-    api('/api/tasks?type=delegation'),
-    api('/api/tasks?type=checklist')
-  ]);
-
-  const allTasks = [];
-  const pick = (data, type) => {
-    const list = data.grouped
-      ? (data.grouped.find(g => g.userId === _bdFromUserId)?.tasks || [])
-      : (data.tasks || []);
-    list.forEach(t => { if (t.due_date === date) allTasks.push({...t, taskType: type}); });
-  };
-  pick(delData, 'delegation');
-  pick(chlData, 'checklist');
+  const allTasks = await bdTasksOn(_bdFromUserId, date);
   _bdDateTasks = allTasks;
 
   if (!allTasks.length) {
@@ -99,12 +99,37 @@ async function onBdDateChange() {
     </div>`).join('');
 }
 
+// The bulk-delete steps, shared by the old modal and the React one.
+// The user's delegation and checklist tasks due on that date.
+async function bdTasksOn(userId, date) {
+  // Fetch tasks for this user on this date
+  const [delData, chlData] = await Promise.all([
+    api('/api/tasks?type=delegation'),
+    api('/api/tasks?type=checklist')
+  ]);
+
+  const allTasks = [];
+  const pick = (data, type) => {
+    const list = data.grouped
+      ? (data.grouped.find(g => g.userId === userId)?.tasks || [])
+      : (data.tasks || []);
+    list.forEach(t => { if (t.due_date === date) allTasks.push({...t, taskType: type}); });
+  };
+  pick(delData, 'delegation');
+  pick(chlData, 'checklist');
+  return allTasks;
+}
+
 async function _doBulkDelete(tasks) {
-  if (!tasks.length) {
-    document.getElementById('bulkDeleteErr').textContent = 'No tasks selected';
+  const msg = await bdDeleteSend(tasks, () => closeModal('bulkDeleteModal'));
+  if (msg) {
+    document.getElementById('bulkDeleteErr').textContent = msg;
     document.getElementById('bulkDeleteErr').style.display = 'block';
-    return;
   }
+}
+// Returns the error to show, or nothing (also when the confirm was declined).
+async function bdDeleteSend(tasks, close) {
+  if (!tasks.length) return 'No tasks selected';
   if (!await appConfirm(`Are you sure you want to permanently delete ${tasks.length} task(s)?`, 'Bulk delete tasks')) return;
 
   let deleted = 0;
@@ -113,7 +138,7 @@ async function _doBulkDelete(tasks) {
     if (!r.error) deleted++;
   }
 
-  closeModal('bulkDeleteModal');
+  close();
   showToast(`🗑 ${deleted} task(s) deleted!`);
   loadAllTasks();
 }
@@ -141,11 +166,12 @@ function onBdYearUserChange() {
 
 async function openDelete12MonthsConfirm() {
   const sel = document.getElementById('bdYearUser');
-  const userId = sel.value;
+  const opt = sel.options[sel.selectedIndex];
+  return bdYearDeleteSend(sel.value, opt ? opt.text : '', opt?.dataset?.email || '', () => closeModal('bulkDeleteModal'));
+}
+// Every checklist task of one employee (admin only).
+async function bdYearDeleteSend(userId, userName, userEmail, close) {
   if (!userId) { appAlert('Please select an employee first!'); return; }
-
-  const userName = sel.options[sel.selectedIndex].text;
-  const userEmail = sel.options[sel.selectedIndex]?.dataset?.email || '';
 
   // Fetch total checklist count (all time, no year filter)
   const data = await api(`/api/tasks/checklist-year-count?userId=${userId}&year=all`);
@@ -166,7 +192,7 @@ async function openDelete12MonthsConfirm() {
   const result = await api('/api/tasks/checklist-year-delete', 'POST', { userId: parseInt(userId) });
   if (result.error) { appAlert('Error: ' + result.error, 'Error'); return; }
 
-  closeModal('bulkDeleteModal');
+  close();
   showToast(`🗑 ${result.deleted} checklist tasks deleted for ${userName}!`);
   loadAllTasks();
 }

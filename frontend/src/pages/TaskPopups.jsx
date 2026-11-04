@@ -16,6 +16,8 @@
 //              taskDelegateSend / taskDelegateCsvSend)
 //   detail — Task Detail, with the client ask and the client's sub-tasks
 //            (openTaskDetail → taskClientAskSend / taskSubtask*Send)
+//   bulkdelete — Bulk Delete Tasks, from daily.js (openBulkDeleteModal → bdTasksOn /
+//                bdDeleteSend / bdYearDeleteSend)
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { legacy, css, fmtDate } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
@@ -693,8 +695,120 @@ function DetailBody({ d, close }) {
   );
 }
 
-const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody, holiday: HolidayBody, checklist: ChecklistBody, delegate: DelegateBody, detail: DetailBody };
-const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px', holiday: 'max-width:560px', checklist: '', delegate: '', detail: 'width:560px;max-width:96vw' };
+// ── Bulk Delete ──
+// Steps: the doer (admin / HOD; everyone else deletes their own), a date, then
+// that day's tasks to tick. Admin also gets "delete every checklist task".
+const BD_PICK = { width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontFamily: "'Inter',sans-serif", outline: 'none', background: '#fff' };
+const BD_YEAR = { width: '100%', padding: '8px 10px', border: '1.5px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', fontFamily: "'Inter',sans-serif", outline: 'none', background: '#fff' };
+
+function BulkDeleteBody({ d, close }) {
+  const self = d.mode === 'self';
+  const [pick, setPick] = useState('');        // what the doer box shows
+  const [user, setUser] = useState(self ? d.meId : null);   // whose tasks: only a real pick changes it
+  const [date, setDate] = useState('');
+  const [label, setLabel] = useState('');
+  const [list, setList] = useState(null);      // null = the step is not reached yet; 'loading'; or the day's tasks
+  const [ticked, setTicked] = useState([]);
+  const [cancelShown, setCancelShown] = useState(true);
+  const [err, setErr] = useState('');
+  const [yearUser, setYearUser] = useState('');
+  const asked = useRef(0);
+  const pickDoer = v => {
+    setPick(v);
+    if (!v) return;
+    setUser(parseInt(v)); setDate(''); setList(null);
+  };
+  const pickDate = async v => {
+    setDate(v);
+    if (!v || !user) return;
+    setErr(''); setList('loading'); setCancelShown(false); setLabel(v);
+    const n = ++asked.current;
+    const tasks = await legacy('bdTasksOn', user, v);
+    if (n !== asked.current) return;
+    setList(tasks); setTicked(tasks.map(() => true));
+  };
+  const remove = async tasks => { setErr(''); const msg = await legacy('bdDeleteSend', tasks, close); if (msg) setErr(msg); };
+  const listShown = list != null;
+  const yearPicked = d.yearUsers.find(u => u.value === yearUser);
+  return (
+    <>
+      <h3>🗑 Bulk Delete Tasks</h3>
+      {errBox(err)}
+
+      <div ref={displayed('display:none', self ? 'none' : 'block')}>
+        <div className="form-group">
+          <label>Select Doer (whose tasks to delete)</label>
+          <SearchSelect value={pick} onChange={pickDoer} placeholder="-- Select user --" style={BD_PICK}
+            options={[{ value: '', label: '-- Select user --' }, ...d.users]} />
+        </div>
+      </div>
+
+      <div ref={displayed('display:none', self || user != null ? 'block' : 'none')}>
+        <div className="form-group">
+          <label>Select Date</label>
+          <input type="date" value={date} onChange={e => pickDate(e.target.value)}
+            ref={css("width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none")} />
+        </div>
+      </div>
+
+      <div ref={displayed('display:none', listShown ? 'block' : 'none')}>
+        <div ref={css('font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px')}>
+          Tasks on — <span ref={css('color:#dc2626')}>{label}</span>
+        </div>
+        <div ref={css('background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;max-height:260px;overflow-y:auto;margin-bottom:14px')}>
+          {list === 'loading' ? <div ref={css('padding:10px;color:#94a3b8;font-size:13px')}>Loading...</div>
+            : Array.isArray(list) && !list.length ? <div ref={css('padding:12px;color:#94a3b8;font-size:13px;text-align:center')}>No tasks on this date</div>
+            : Array.isArray(list) ? list.map((t, i) => {
+              const pending = t.status === 'pending';
+              return (
+                <div key={i} ref={css('display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #f1f5f9')}>
+                  <input type="checkbox" className="bd-cb" checked={!!ticked[i]} onChange={e => setTicked(x => x.map((v, j) => (j === i ? e.target.checked : v)))}
+                    ref={css('width:15px;height:15px;accent-color:#dc2626;cursor:pointer;flex-shrink:0')} />
+                  <span ref={css('font-size:13px;flex:1')}>{t.description || '—'}</span>
+                  <span ref={css(`font-size:11px;background:${pending ? '#fef2f2' : '#f0fdf4'};color:${pending ? '#dc2626' : '#16a34a'};padding:2px 7px;border-radius:8px;font-weight:600`)}>{t.status}</span>
+                  <span ref={css('font-size:11px;background:#eff6ff;color:#1d4ed8;padding:2px 7px;border-radius:8px;font-weight:600')}>{t.taskType}</span>
+                </div>
+              );
+            }) : null}
+        </div>
+
+        <div ref={css('background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:12px;color:#dc2626;margin-bottom:12px')}>
+          ⚠️ This action is permanent and cannot be undone!
+        </div>
+
+        <div ref={css('display:flex;gap:8px;justify-content:flex-end')}>
+          <button className="btn btn-outline" onClick={close}>Cancel</button>
+          <button className="btn btn-outline btn-sm" ref={css('border-color:#dc2626;color:#dc2626')}
+            onClick={() => remove(Array.isArray(list) ? list.filter((_, i) => ticked[i]) : [])}>🗑 Delete Selected</button>
+          <button className="btn btn-danger btn-sm" onClick={() => remove(Array.isArray(list) ? list : [])}>🗑 Delete All</button>
+        </div>
+      </div>
+
+      <div ref={displayed('display:none;margin-top:18px;border-top:1.5px dashed #fecaca;padding-top:16px', d.mode === 'admin' ? 'block' : 'none')}>
+        <div ref={css('font-size:13px;font-weight:700;color:#dc2626;margin-bottom:10px')}>🗓 Delete All Checklist Tasks</div>
+        <div ref={css('display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap')}>
+          <div ref={css('flex:1;min-width:160px')}>
+            <label ref={css('font-size:12px;font-weight:600;color:#64748b;display:block;margin-bottom:4px')}>Employee</label>
+            <SearchSelect value={yearUser} onChange={setYearUser} placeholder="-- Select Employee --" style={BD_YEAR}
+              options={[{ value: '', label: '-- Select Employee --' }, ...d.yearUsers]} />
+            <div ref={displayed('display:none;margin-top:5px;padding:5px 10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:12px;color:#1d4ed8;font-weight:600', yearPicked && yearPicked.email ? 'block' : 'none')}>
+              📧 <span>{yearPicked && yearPicked.email ? yearPicked.email : ''}</span>
+            </div>
+          </div>
+          <button className="btn btn-danger btn-sm" ref={css('white-space:nowrap;margin-bottom:1px')}
+            onClick={() => legacy('bdYearDeleteSend', yearUser, yearPicked ? yearPicked.label : '-- Select Employee --', yearPicked ? yearPicked.email || '' : '', close)}>🗑 Delete All Checklist</button>
+        </div>
+      </div>
+
+      <div ref={displayed('margin-top:12px;text-align:right', cancelShown ? 'block' : 'none')}>
+        <button className="btn btn-outline" onClick={close}>Cancel</button>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody, holiday: HolidayBody, checklist: ChecklistBody, delegate: DelegateBody, detail: DetailBody, bulkdelete: BulkDeleteBody };
+const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px', holiday: 'max-width:560px', checklist: '', delegate: '', detail: 'width:560px;max-width:96vw', bulkdelete: 'max-width:600px' };
 
 export default function TaskPopups() {
   const [st, setSt] = useState({});
@@ -710,6 +824,7 @@ export default function TaskPopups() {
       checklist: (today, users, clients) => show('checklist', { today, users, clients }),
       delegate: (today, users, clients, prefill) => show('delegate', { today, users, clients, prefill }),
       detail: t => show('detail', { t }),
+      bulkdelete: data => show('bulkdelete', data),
     });
     return () => legacy('taskPopSetReact', null);
   }, []);
