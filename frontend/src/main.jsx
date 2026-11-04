@@ -47,6 +47,7 @@ const PAGES = {
   leavedecision: lazy(() => import('./pages/LeaveDecision.jsx')),
   dmspopups: lazy(() => import('./pages/DmsPopups.jsx')),
   leaveremove: lazy(() => import('./pages/LeaveRemoveDays.jsx')),
+  leavemove: lazy(() => import('./pages/LeaveMoveDay.jsx')),
   lpsign: lazy(() => import('./pages/LeavePolicySign.jsx')),
   ekcards: lazy(() => import('./pages/EkCards.jsx')),
   ekadd: lazy(() => import('./pages/EkAddForm.jsx')),

@@ -20,6 +20,9 @@ function Item({ r, user }) {
   const canDelete = (r.user_id === user.id && r.status === 'pending') || canDo('admin_leaves');
   const canRemoveDays = dates.length > 1 && r.status !== 'rejected' && !r.pending_removal && (r.user_id === user.id || canDo('admin_leaves'));
   const pendingRemoval = Array.isArray(r.pending_removal) && r.pending_removal.length ? r.pending_removal : null;
+  // Moving a day to another date: the server sends can_move_days only to
+  // Naman Gupta, on his own Extra Working.
+  const canMove = !!r.can_move_days && !pendingRemoval;
   let who = null;
   if (r.status === 'pending' && r.leave_type === 'extra_working' && r.ew_needs_hod !== undefined && !Number(r.ew_needs_hod)) who = ['Approver', 'Simran Gurnani'];
   else if (r.status === 'pending') who = r.dept_hod_names ? ['Approver', r.dept_hod_names] : (r.approver_name ? ['Approver', r.approver_name] : null);
@@ -48,8 +51,9 @@ function Item({ r, user }) {
           {dates.length > 1 ? <span ref={css('color:#94a3b8;font-weight:500')}> · {dates.length} days</span> : null}
         </div>
         {pendingRemoval ? <div ref={css('font-size:11px;color:#d97706;font-weight:600;margin-top:4px')}>✂ Removal of {pendingRemoval.map(fmtDate).join(', ')} awaiting approval</div> : null}
-        {canDelete || canRemoveDays ? (
+        {canDelete || canRemoveDays || canMove ? (
           <div className="lv-item-btns">
+            {canMove ? <button className="lv-btn-delete" ref={css('color:#1d4ed8;border-color:#bfdbfe')} onClick={() => legacy('openLeaveMoveDay', r.id)}>📅 Change date</button> : null}
             {canRemoveDays ? <button className="lv-btn-delete" ref={css('color:#b45309;border-color:#fcd34d')} onClick={() => legacy('openLeaveRemoveDays', r.id)}>✂ Remove days</button> : null}
             {canDelete ? <button className="lv-btn-delete" onClick={() => legacy('deleteLeave', r.id)}>🗑 Delete</button> : null}
           </div>

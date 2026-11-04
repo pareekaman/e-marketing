@@ -9765,6 +9765,10 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
       const byLeave = new Map(pend.map(p => [p.leave_id, JSON.parse(p.dates_json || '[]')]));
       for (const r of rows) r.pending_removal = byLeave.get(r.id) || null;
     }
+    // Only Naman Gupta, on his own Extra Working (POST /api/leaves/:id/move-day).
+    for (const r of rows)
+      r.can_move_days = Number(uid) === EW_SIMRAN_ONLY_USER_ID && Number(r.user_id) === Number(uid)
+        && r.leave_type === 'extra_working' && r.status !== 'rejected';
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -10468,6 +10472,52 @@ app.post('/api/leaves/:id/remove-days', requireAuth, async (req, res) => {
     await db.query(`INSERT INTO leave_day_removals (leave_id, user_id, dates_json, reason) VALUES (?,?,?,?)`,
       [id, uid, JSON.stringify(dates.sort()), reason]);
     res.json({ ok: true, applied: false });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Naman Gupta can move one day of his own Extra Working request to another
+// date. The day keeps its work (clients, hours, description) and the request
+// keeps its proof files, status and stamps; only the date changes. Nobody else
+// gets this — the Leave Tracker shows the button from can_move_days.
+app.post('/api/leaves/:id/move-day', requireAuth, async (req, res) => {
+  try {
+    const uid = Number(req.session.userId);
+    if (uid !== EW_SIMRAN_ONLY_USER_ID) return res.status(403).json({ error: 'Not available for your account' });
+    const id = parseInt(req.params.id, 10);
+    const [[lr]] = await db.query('SELECT * FROM leave_requests WHERE id=?', [id]);
+    if (!lr) return res.status(404).json({ error: 'Not found' });
+    if (Number(lr.user_id) !== uid || lr.leave_type !== 'extra_working')
+      return res.status(403).json({ error: 'You can only move days of your own Extra Working' });
+    if (lr.status === 'rejected') return res.status(400).json({ error: 'This request was rejected' });
+
+    const from = String(req.body.from || '').slice(0, 10);
+    const to = String(req.body.to || '').slice(0, 10);
+    const valid = s => /^\d{4}-\d{2}-\d{2}$/.test(s) && _addDays(s, 0) === s;
+    if (!valid(to)) return res.status(400).json({ error: 'Pick the new date' });
+    const days = leaveDayItems(lr).map(d => ({ ...d, date: _toDateStr(d.date) }));
+    const day = days.find(d => d.date === from);
+    if (!day) return res.status(400).json({ error: 'That day is not part of this request' });
+    if (to === from) return res.status(400).json({ error: 'Pick a different date' });
+    if (days.some(d => d.date === to)) return res.status(400).json({ error: `${to} is already in this request` });
+
+    // A removal waiting on this request names its days by date; moving one
+    // under it would leave the approver deciding on a day that is gone.
+    if (await ensureLeaveDayRemovalTable()) {
+      const [[open]] = await db.query(`SELECT id FROM leave_day_removals WHERE leave_id=? AND status='pending'`, [id]);
+      if (open) return res.status(400).json({ error: 'A removal request is waiting on this leave — move days after it is decided' });
+    }
+    // One Extra Working request per date, as when applying.
+    const [others] = await db.query(
+      `SELECT id, dates_json, from_date, to_date FROM leave_requests
+        WHERE user_id=? AND leave_type='extra_working' AND status IN ('pending','approved') AND id<>?`, [uid, id]);
+    if (others.some(o => leaveDayItems(o).some(d => _toDateStr(d.date) === to)))
+      return res.status(400).json({ error: `You already have Extra Working on ${to}` });
+
+    day.date = to;
+    days.sort((a, b) => a.date.localeCompare(b.date));
+    await db.query('UPDATE leave_requests SET dates_json=?, from_date=?, to_date=? WHERE id=?',
+      [JSON.stringify(days), days[0].date, days[days.length - 1].date, id]);
+    res.json({ ok: true, dates: days.map(d => d.date) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

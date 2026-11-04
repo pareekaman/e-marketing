@@ -403,6 +403,8 @@ function lvItemHtml(r) {
   // already waiting for approval.
   const canRemoveDays = dates.length > 1 && r.status !== 'rejected' && !r.pending_removal
     && (r.user_id === ME.id || canDo('admin_leaves'));
+  // Naman Gupta only, on his own Extra Working (the server sets can_move_days).
+  const canMove = !!r.can_move_days && !(Array.isArray(r.pending_removal) && r.pending_removal.length);
   const pendingRemoval = Array.isArray(r.pending_removal) && r.pending_removal.length
     ? `<div style="font-size:11px;color:#d97706;font-weight:600;margin-top:4px">✂ Removal of ${r.pending_removal.map(fmtDate).join(', ')} awaiting approval</div>` : '';
   return `<div class="lv-item">
@@ -427,7 +429,7 @@ function lvItemHtml(r) {
     <div class="lv-item-actions">
       <div class="lv-item-date">${dateLine}${countLabel}</div>
       ${pendingRemoval}
-      ${(canDelete || canRemoveDays) ? `<div class="lv-item-btns">${canRemoveDays ? `<button class="lv-btn-delete" style="color:#b45309;border-color:#fcd34d" onclick="openLeaveRemoveDays(${r.id})">✂ Remove days</button>` : ''}${canDelete ? `<button class="lv-btn-delete" onclick="deleteLeave(${r.id})">🗑 Delete</button>` : ''}</div>` : ''}
+      ${(canDelete || canRemoveDays || canMove) ? `<div class="lv-item-btns">${canMove ? `<button class="lv-btn-delete" style="color:#1d4ed8;border-color:#bfdbfe" onclick="openLeaveMoveDay(${r.id})">📅 Change date</button>` : ''}${canRemoveDays ? `<button class="lv-btn-delete" style="color:#b45309;border-color:#fcd34d" onclick="openLeaveRemoveDays(${r.id})">✂ Remove days</button>` : ''}${canDelete ? `<button class="lv-btn-delete" onclick="deleteLeave(${r.id})">🗑 Delete</button>` : ''}</div>` : ''}
     </div>
   </div>`;
 }
@@ -968,6 +970,34 @@ async function lvRemoveDaysSend(dates, reason){
   closeModal('leaveRemoveDaysModal');
   if (LV_REMOVE_REACT) LV_REMOVE_REACT(null);
   showToast(r.applied ? '✂ Days removed' : '📨 Sent for approval');
+  loadLeaves();
+  return true;
+}
+
+// ── Move a day of Extra Working to another date (Naman Gupta only) ──
+// The server decides who may: it marks his own Extra Working rows with
+// can_move_days, and POST /api/leaves/:id/move-day checks again. The pop-up
+// is React (frontend/src/pages/LeaveMoveDay.jsx, in #lvMoveRoot).
+let LV_MOVE_REACT = null, _lvMoveWanted = null;
+function lvMoveSetReact(fn){ LV_MOVE_REACT = fn; if (fn && _lvMoveWanted) { const w = _lvMoveWanted; _lvMoveWanted = null; fn(w); } }
+function openLeaveMoveDay(id){
+  const lr = LEAVE_DATA.find(x => x.id === id);
+  const root = document.getElementById('lvMoveRoot');
+  if (!lr || !lr.can_move_days || !root) return;
+  const data = { id, days: (lr.dates || []).map(d => {
+    const v = String(d.date).slice(0, 10);
+    return { value: v, label: fmtDate(v), hours: d.hours || null };
+  }) };
+  if (LV_MOVE_REACT) LV_MOVE_REACT(data); else { _lvMoveWanted = data; emkReactMount('leavemove', root); }
+}
+// true once moved (the pop-up is closed and the list re-read), or the message to show.
+async function lvMoveDaySend(id, from, to){
+  if (!from) return 'Pick the day to move';
+  if (!to) return 'Pick the new date';
+  const r = await api(`/api/leaves/${id}/move-day`, 'POST', { from, to });
+  if (r.error) return r.error;
+  if (LV_MOVE_REACT) LV_MOVE_REACT(null);
+  showToast(`📅 ${fmtDate(from)} moved to ${fmtDate(to)}`);
   loadLeaves();
   return true;
 }
