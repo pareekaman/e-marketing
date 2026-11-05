@@ -468,9 +468,32 @@ async function deleteFMSSheet(id) {
 // guess, and nothing is saved until Apply.
 let FMS_COL = null;        // { id, headers: Map column letter -> header, headerRow }
 let FMS_COL_TIMER = null;
+// The pop-up is React (frontend/src/pages/FmsColumns.jsx) when #fmsColRoot
+// carries data-react; #fmsColModal is the fallback. Both read, preview and
+// apply through fmsColRead / fmsColDry / fmsColApplySend.
+let FMS_COL_REACT = null, _fmsColWanted = null;
+function fmsColSetReact(fn) { FMS_COL_REACT = fn; if (fn && _fmsColWanted) { const w = _fmsColWanted; _fmsColWanted = null; fn(w); } }
+function _fmsColReact(data) {
+  const root = document.getElementById('fmsColRoot');
+  if (!root || !root.dataset.react) return false;
+  if (FMS_COL_REACT) FMS_COL_REACT(data); else { _fmsColWanted = data; emkReactMount('fmscolumns', root); }
+  return true;
+}
+function fmsColRead(id) { return api(`/api/fms/${id}/columns`); }
+function fmsColDry(id, inp) { return api(`/api/fms/${id}/shift-columns`, 'POST', { ...inp, dryRun: true }); }
+// Saves the shift. Returns why nothing changed, or closes, toasts and re-reads the FMS.
+async function fmsColApplySend(id, inp, close) {
+  const r = await api(`/api/fms/${id}/shift-columns`, 'POST', inp);
+  if (!r || r.error || r.blocked || r.dryRun) return (r && (r.error || r.blocked)) || 'Nothing was changed';
+  close();
+  showToast(`Columns updated: ${r.moving} saved column${r.moving === 1 ? '' : 's'} moved`);
+  loadFMSDetail(id);
+}
+
 async function fmsOpenColumnCheck() {
   const id = fmsActiveId;
   if (!id) return;
+  if (_fmsColReact({ id })) return;
   FMS_COL = null;
   const stateEl = document.getElementById('fmsColState');
   document.getElementById('fmsColPreview').innerHTML = '';
@@ -478,7 +501,7 @@ async function fmsOpenColumnCheck() {
   document.getElementById('fmsColApplyBtn').disabled = true;
   stateEl.innerHTML = '<span style="color:#64748b">Reading the sheet\'s header row…</span>';
   document.getElementById('fmsColModal').classList.add('open');
-  const r = await api(`/api/fms/${id}/columns`);
+  const r = await fmsColRead(id);
   if (!r || r.error) { stateEl.innerHTML = `<span style="color:#dc2626">${esc((r && r.error) || 'Could not read the sheet')}</span>`; return; }
   FMS_COL = { id, headers: new Map((r.headers || []).map(h => [h.col, h.name])), headerRow: r.headerRow };
   const off = (r.steps || []).filter(s => s.shift !== 0).slice(0, 3)
@@ -525,7 +548,7 @@ async function fmsColPreviewNow() {
   btn.disabled = true;
   const inp = fmsColInput();
   if (!/^[A-Z]{1,3}$/.test(inp.at) || !(inp.count >= 1)) { box.innerHTML = ''; return; }
-  const r = await api(`/api/fms/${FMS_COL.id}/shift-columns`, 'POST', { ...inp, dryRun: true });
+  const r = await fmsColDry(FMS_COL.id, inp);
   if (!r || r.error) { err.textContent = (r && r.error) || 'Could not work out the change'; err.style.display = 'block'; box.innerHTML = ''; return; }
   const header = c => (c && FMS_COL.headers.get(c)) || '';
   const expect = { plan: ['planned', 'plan'], actual: ['actual'], hold: ['hold'] };
@@ -554,16 +577,12 @@ async function fmsColApply() {
   if (!FMS_COL) return;
   const btn = document.getElementById('fmsColApplyBtn'), err = document.getElementById('fmsColErr');
   btn.disabled = true;
-  const r = await api(`/api/fms/${FMS_COL.id}/shift-columns`, 'POST', fmsColInput());
-  if (!r || r.error || r.blocked || r.dryRun) {
-    err.textContent = (r && (r.error || r.blocked)) || 'Nothing was changed';
+  const msg = await fmsColApplySend(FMS_COL.id, fmsColInput(), () => closeModal('fmsColModal'));
+  if (msg) {
+    err.textContent = msg;
     err.style.display = 'block';
     btn.disabled = false;
-    return;
   }
-  closeModal('fmsColModal');
-  showToast(`Columns updated: ${r.moving} saved column${r.moving === 1 ? '' : 's'} moved`);
-  loadFMSDetail(FMS_COL.id);
 }
 
 // ── Edit FMS ──
