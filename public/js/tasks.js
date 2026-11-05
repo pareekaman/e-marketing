@@ -406,6 +406,21 @@ function toggleTaskGroup(headerEl) {
   }
 }
 
+// The list in #tasksContent is React (frontend/src/pages/AllTasks.jsx) when it
+// carries data-react; the HTML builders here are the fallback. React gets the
+// filtered rows (or the Awaiting Date answer) on every render, keeps a group's
+// open state through atTgOpen and turns pages through atGoPage.
+let AT_LIST_REACT = null, _atListWanted = null;
+function atListSetReact(fn) { AT_LIST_REACT = fn; if (fn && _atListWanted) { const w = _atListWanted; _atListWanted = null; fn(w); } }
+function _atListReact(data) {
+  const root = document.getElementById('tasksContent');
+  if (!root || !root.dataset.react) return false;
+  if (AT_LIST_REACT) AT_LIST_REACT(data); else { _atListWanted = data; emkReactMount('alltasks', root); }
+  return true;
+}
+function atTgOpen(key, open) { if (open) _tgOpenKeys.add(key); else _tgOpenKeys.delete(key); }
+function atGoPage(n) { allTasksPage = n; renderTasksTable(); }
+
 function tgSetAll(open) {
   document.querySelectorAll('#tasksContent .tg-section').forEach(s => {
     s.classList.toggle('open', open);
@@ -452,6 +467,15 @@ function renderTasksTable() {
   });
   // Who-gave summary and PDF over exactly these rows (tasks-report.js).
   if (typeof atReportRender === 'function') atReportRender(tasks);
+
+  // React draws the list (frontend/src/pages/AllTasks.jsx); the page number
+  // stays here, so a kept page that ran past the end is pulled back first.
+  if (!useGroupView && tasks.length) {
+    const pages = Math.ceil(tasks.length / ALL_TASKS_PAGE_SIZE);
+    if (allTasksPage > pages) allTasksPage = Math.max(1, pages);
+  }
+  if (_atListReact({ kind: 'list', tasks, tasksType, isAdmin, useGroupView,
+    page: allTasksPage, pageSize: ALL_TASKS_PAGE_SIZE, openKeys: [..._tgOpenKeys] })) return;
 
   if (!tasks.length) {
     container.innerHTML = `<div class="empty tasks-slide-in" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">No tasks found</div>`;
@@ -587,6 +611,7 @@ function renderTasksTable() {
 function renderAwaitingDate(data) {
   const el = document.getElementById('tasksContent');
   if (!el) return;
+  if (_atListReact({ kind: 'awaiting', data })) return;
   const depts = (data && data.departments) || [];
   if (data && data.error) {
     el.innerHTML = `<div class="empty" style="color:#dc2626">${esc(data.error)}</div>`;

@@ -491,7 +491,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       </div>
     </div>
     <div id="atReportBox"></div>
-    <div id="tasksContent"></div>
+    <!-- The list is React (frontend/src/pages/AllTasks.jsx), handed its rows by tasks.js. -->
+    <div id="tasksContent" data-react="1" data-react-quiet="1"></div>
   </div>
 
   <!-- ── USERS ── -->
@@ -4384,10 +4385,10 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261105c"></script>
+<script src="/js/react-bridge.js?v=20261105d"></script>
 <script src="/js/dashboard.js?v=20261101a"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
-<script src="/js/tasks.js?v=20261103h"></script>
+<script src="/js/tasks.js?v=20261105a"></script>
 <script src="/js/tasks-report.js?v=20261101a"></script>
 <script src="/js/users.js?v=20261104a"></script>
 <script src="/js/helpers.js?v=20261101a"></script>

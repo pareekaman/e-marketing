@@ -8,6 +8,7 @@ import { StrictMode, Suspense, lazy } from 'react';
 const PAGES = {
   probe: lazy(() => import('./pages/Probe.jsx')),
   notifybell: lazy(() => import('./pages/NotifyBell.jsx')),
+  alltasks: lazy(() => import('./pages/AllTasks.jsx')),
   leaves: lazy(() => import('./pages/LeaveTracker.jsx')),
   logs: lazy(() => import('./pages/Logs.jsx')),
   enquiry: lazy(() => import('./pages/Enquiry.jsx')),
