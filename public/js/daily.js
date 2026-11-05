@@ -202,6 +202,19 @@ let _transferFromUserId = null;
 let _transferDateTasks = [];
 
 async function openNewTransferModal() {
+  if (_taskPopOn()) {
+    const isAdmin = ME.role === 'admin', isHod = ME.role === 'hod';
+    let eligible = [];
+    if (isAdmin || isHod) {
+      const allUsers = await api('/api/users');
+      eligible = isAdmin ? allUsers : allUsers.filter(u => u.department === ME.department && u.id !== ME.id);
+    }
+    _taskPopReact('transfer', [{
+      pick: isAdmin || isHod, meId: ME.id,
+      users: eligible.map(u => ({ value: String(u.id), label: `${u.name} (${u.department||u.role})` })),
+    }]);
+    return;
+  }
   document.getElementById('transferErr').style.display = 'none';
   document.getElementById('transferStep1').style.display = 'none';
   document.getElementById('transferStep2').style.display = 'none';
@@ -258,29 +271,14 @@ async function onTransferDateChange() {
   document.getElementById('transferCancelBtn').style.display = 'none';
   document.getElementById('transferDateLabel').textContent = from === to ? from : `${from} → ${to}`;
 
-  const [delData, chlData] = await Promise.all([
-    api(`/api/tasks?type=delegation&from=${from}&to=${to}`),
-    api(`/api/tasks?type=checklist&from=${from}&to=${to}`)
-  ]);
-
-  const allTasks = [];
-  const pick = (data, type) => {
-    const list = data.grouped
-      ? (data.grouped.find(g => g.userId === _transferFromUserId)?.tasks || [])
-      : (data.tasks || []);
-    list.forEach(t => { if (t.due_date >= from && t.due_date <= to && (t.status === 'pending' || t.status === 'revised')) allTasks.push({...t, taskType: type}); });
-  };
-  pick(delData, 'delegation');
-  pick(chlData, 'checklist');
-  allTasks.sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '') || (a.taskType < b.taskType ? -1 : 1));
+  const { tasks: allTasks, sent } = await trTasksIn(_transferFromUserId, from, to);
   _transferDateTasks = allTasks;
 
   if (!allTasks.length) {
     document.getElementById('transferTasksListNew').innerHTML =
       '<div style="padding:12px;color:#94a3b8;font-size:13px;text-align:center">No pending or revised tasks in this range</div>';
   } else {
-    const pendingRes = await api('/api/transfers/pending-tasks');
-    const pendingIds = new Set((pendingRes||[]).map(p=>`${p.task_type}_${p.task_id}`));
+    const pendingIds = new Set(sent);
     document.getElementById('transferTasksListNew').innerHTML = allTasks.map((t,i) => {
       const isPending = pendingIds.has(`${t.taskType}_${t.id}`);
       return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #f1f5f9">
@@ -295,27 +293,59 @@ async function onTransferDateChange() {
     }).join('');
   }
 
-  const allUsers = await api('/api/users');
-  const eligible = (ME.role === 'hod')
-    ? allUsers.filter(u => u.department === ME.department && u.id !== _transferFromUserId)
-    : allUsers.filter(u => u.id !== _transferFromUserId);
   document.getElementById('transferToUser').innerHTML =
     '<option value="">-- Select user --</option>' +
-    eligible.map(u=>`<option value="${u.id}">${esc(u.name)} (${esc(u.department||u.role)})</option>`).join('');
+    (await trTargets(_transferFromUserId)).map(u=>`<option value="${u.value}">${esc(u.label)}</option>`).join('');
+}
+
+// The transfer steps, shared by the old modal and the React one.
+// The person's pending / revised tasks due in the range (date order), and the
+// ones already waiting on a transfer ("type_id" keys) — those cannot be picked again.
+async function trTasksIn(userId, from, to) {
+  const [delData, chlData] = await Promise.all([
+    api(`/api/tasks?type=delegation&from=${from}&to=${to}`),
+    api(`/api/tasks?type=checklist&from=${from}&to=${to}`)
+  ]);
+
+  const allTasks = [];
+  const pick = (data, type) => {
+    const list = data.grouped
+      ? (data.grouped.find(g => g.userId === userId)?.tasks || [])
+      : (data.tasks || []);
+    list.forEach(t => { if (t.due_date >= from && t.due_date <= to && (t.status === 'pending' || t.status === 'revised')) allTasks.push({...t, taskType: type}); });
+  };
+  pick(delData, 'delegation');
+  pick(chlData, 'checklist');
+  allTasks.sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '') || (a.taskType < b.taskType ? -1 : 1));
+  if (!allTasks.length) return { tasks: allTasks, sent: [] };
+  const pendingRes = await api('/api/transfers/pending-tasks');
+  return { tasks: allTasks, sent: (pendingRes||[]).map(p=>`${p.task_type}_${p.task_id}`) };
+}
+// Who the tasks can go to: anyone but their doer (a HOD: their own department).
+async function trTargets(fromUserId) {
+  const allUsers = await api('/api/users');
+  const eligible = (ME.role === 'hod')
+    ? allUsers.filter(u => u.department === ME.department && u.id !== fromUserId)
+    : allUsers.filter(u => u.id !== fromUserId);
+  return eligible.map(u => ({ value: String(u.id), label: `${u.name} (${u.department||u.role})` }));
 }
 
 async function _doTransfer(tasks) {
   const err = document.getElementById('transferErr');
   err.style.display = 'none';
-  const toUserId = document.getElementById('transferToUser').value;
-  if (!toUserId) { err.textContent='Please select a "Transfer To" user'; err.style.display='block'; return; }
-  if (!tasks.length) { err.textContent='No tasks selected'; err.style.display='block'; return; }
+  const msg = await trSend(tasks, document.getElementById('transferToUser').value, () => closeModal('transferModal'));
+  if (msg) { err.textContent = msg; err.style.display = 'block'; }
+}
+// Returns the error to show, or nothing once the requests went.
+async function trSend(tasks, toUserId, close) {
+  if (!toUserId) return 'Please select a "Transfer To" user';
+  if (!tasks.length) return 'No tasks selected';
   const r = await api('/api/transfers','POST',{
     tasks: tasks.map(t => ({ taskId: t.id, taskType: t.taskType })),
     toUserId: parseInt(toUserId)
   });
-  if (r.error) { err.textContent = r.error; err.style.display='block'; return; }
-  closeModal('transferModal');
+  if (r.error) return r.error;
+  close();
   if (r.count > 0) showToast(`✅ ${r.count} transfer request(s) sent for approval!`);
   else showToast('⚠️ All tasks already have a pending transfer request!', 'error');
   loadTransferBadge();

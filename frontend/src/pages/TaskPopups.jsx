@@ -18,6 +18,8 @@
 //            (openTaskDetail → taskClientAskSend / taskSubtask*Send)
 //   bulkdelete — Bulk Delete Tasks, from daily.js (openBulkDeleteModal → bdTasksOn /
 //                bdDeleteSend / bdYearDeleteSend)
+//   transfer — Transfer Tasks, from daily.js (openNewTransferModal → trTasksIn /
+//              trTargets / trSend)
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { legacy, css, fmtDate } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
@@ -807,8 +809,125 @@ function BulkDeleteBody({ d, close }) {
   );
 }
 
-const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody, holiday: HolidayBody, checklist: ChecklistBody, delegate: DelegateBody, detail: DetailBody, bulkdelete: BulkDeleteBody };
-const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px', holiday: 'max-width:560px', checklist: '', delegate: '', detail: 'width:560px;max-width:96vw', bulkdelete: 'max-width:600px' };
+// ── Transfer Tasks ──
+// Steps: the doer (admin / HOD; everyone else moves their own), a date range,
+// then that range's open tasks and who takes them. The move happens once the
+// request is approved.
+const TR_DATE = "width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none";
+
+function TransferBody({ d, close }) {
+  const [pick, setPick] = useState('');
+  const [user, setUser] = useState(d.pick ? null : d.meId);   // whose tasks: only a real pick changes it
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [label, setLabel] = useState('');
+  const [list, setList] = useState(null);    // null = step not reached; 'loading'; or { tasks, sent }
+  const [ticked, setTicked] = useState([]);
+  const [targets, setTargets] = useState([]);
+  const [toUser, setToUser] = useState('');
+  const [cancelShown, setCancelShown] = useState(true);
+  const [err, setErr] = useState('');
+  const asked = useRef(0);
+  const pickDoer = v => {
+    setPick(v);
+    if (!v) return;
+    setUser(parseInt(v)); setFrom(''); setTo(''); setList(null);
+  };
+  const pickDates = async (f, t) => {
+    setFrom(f); setTo(t);
+    let a = f, b = t || f;              // an empty "To" is a single day
+    if (!a || !user) return;
+    if (b < a) { const x = a; a = b; b = x; }
+    setErr(''); setList('loading'); setCancelShown(false); setLabel(a === b ? a : `${a} → ${b}`);
+    const n = ++asked.current;
+    const got = await legacy('trTasksIn', user, a, b);
+    if (n !== asked.current) return;
+    setList(got); setTicked(got.tasks.map(() => true));
+    const who = await legacy('trTargets', user);
+    if (n !== asked.current) return;
+    setTargets(who); setToUser('');
+  };
+  const send = async tasks => { setErr(''); const msg = await legacy('trSend', tasks, toUser, close); if (msg) setErr(msg); };
+  const ready = list && list !== 'loading';
+  const sent = new Set(ready ? list.sent : []);
+  const key = t => `${t.taskType}_${t.id}`;
+  return (
+    <>
+      <h3>🔀 Transfer Tasks</h3>
+      {errBox(err)}
+
+      <div ref={displayed('display:none', d.pick ? 'block' : 'none')}>
+        <div className="form-group">
+          <label>Select Doer (whose tasks to transfer)</label>
+          <SearchSelect value={pick} onChange={pickDoer} placeholder="-- Select user --" style={BD_PICK}
+            options={[{ value: '', label: '-- Select user --' }, ...d.users]} />
+        </div>
+      </div>
+
+      <div ref={displayed('display:none', !d.pick || user != null ? 'block' : 'none')}>
+        <div className="form-group">
+          <label>Select Date Range <span ref={css('font-weight:400;color:#94a3b8;font-size:11px')}>(leave “To” empty for a single day)</span></label>
+          <div ref={css('display:flex;gap:10px;flex-wrap:wrap')}>
+            <div ref={css('flex:1;min-width:140px')}>
+              <div ref={css('font-size:11px;color:#64748b;margin-bottom:4px')}>From</div>
+              <input type="date" value={from} onChange={e => pickDates(e.target.value, to)} ref={css(TR_DATE)} />
+            </div>
+            <div ref={css('flex:1;min-width:140px')}>
+              <div ref={css('font-size:11px;color:#64748b;margin-bottom:4px')}>To</div>
+              <input type="date" value={to} onChange={e => pickDates(from, e.target.value)} ref={css(TR_DATE)} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div ref={displayed('display:none', list != null ? 'block' : 'none')}>
+        <div ref={css('font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px')}>
+          Tasks in selected range — <span ref={css('color:#7c3aed')}>{label}</span>
+        </div>
+        <div ref={css('background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;max-height:220px;overflow-y:auto;margin-bottom:12px')}>
+          {list === 'loading' ? <div ref={css('padding:10px;color:#94a3b8;font-size:13px')}>Loading...</div>
+            : ready && !list.tasks.length ? <div ref={css('padding:12px;color:#94a3b8;font-size:13px;text-align:center')}>No pending or revised tasks in this range</div>
+            : ready ? list.tasks.map((t, i) => (
+              <div key={i} ref={css('display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #f1f5f9')}>
+                {sent.has(key(t))
+                  ? <span ref={css('font-size:10px;background:#fef9c3;color:#92400e;padding:2px 7px;border-radius:10px;font-weight:600;border:1px solid #fde68a;white-space:nowrap')}>⏳ Sent</span>
+                  : <input type="checkbox" className="tr-date-cb" checked={!!ticked[i]} onChange={e => setTicked(x => x.map((v, j) => (j === i ? e.target.checked : v)))}
+                    ref={css('width:15px;height:15px;accent-color:#7c3aed;cursor:pointer;flex-shrink:0')} />}
+                <span ref={css('font-size:10px;background:#f1f5f9;color:#475569;padding:2px 6px;border-radius:6px;font-weight:600;white-space:nowrap')}>{t.due_date || '—'}</span>
+                <span ref={css('font-size:13px;flex:1')}>{t.description || '—'}</span>
+                <span ref={css('font-size:11px;background:#eff6ff;color:#1d4ed8;padding:2px 7px;border-radius:8px;font-weight:600')}>{t.taskType}</span>
+              </div>
+            )) : null}
+        </div>
+
+        <div className="form-group">
+          <label>Transfer To <span ref={css('color:#ef4444')}>*</span></label>
+          <SearchSelect value={toUser} onChange={setToUser} placeholder="-- Select user --" style={BD_PICK}
+            options={[{ value: '', label: '-- Select user --' }, ...targets]} />
+        </div>
+
+        <div ref={css('background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px;padding:8px 12px;font-size:12px;color:#7c3aed;margin-bottom:12px')}>
+          ℹ️ Task will be transferred after approval
+        </div>
+
+        <div ref={css('display:flex;gap:8px;justify-content:flex-end')}>
+          <button className="btn btn-outline" onClick={close}>Cancel</button>
+          <button className="btn btn-outline" ref={css('border-color:#7c3aed;color:#7c3aed')}
+            onClick={() => send(ready ? list.tasks.filter((t, i) => !sent.has(key(t)) && ticked[i]) : [])}>✅ Transfer Selected</button>
+          <button className="btn btn-sm" ref={css("background:#7c3aed;color:#fff;padding:8px 16px;border-radius:8px;font-family:'Inter',sans-serif;font-weight:600;cursor:pointer;border:none")}
+            onClick={() => send(ready ? list.tasks : [])}>🔀 Transfer All</button>
+        </div>
+      </div>
+
+      <div ref={displayed('margin-top:12px;text-align:right', cancelShown ? 'block' : 'none')}>
+        <button className="btn btn-outline" onClick={close}>Cancel</button>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody, holiday: HolidayBody, checklist: ChecklistBody, delegate: DelegateBody, detail: DetailBody, bulkdelete: BulkDeleteBody, transfer: TransferBody };
+const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px', holiday: 'max-width:560px', checklist: '', delegate: '', detail: 'width:560px;max-width:96vw', bulkdelete: 'max-width:600px', transfer: 'max-width:600px' };
 
 export default function TaskPopups() {
   const [st, setSt] = useState({});
@@ -825,6 +944,7 @@ export default function TaskPopups() {
       delegate: (today, users, clients, prefill) => show('delegate', { today, users, clients, prefill }),
       detail: t => show('detail', { t }),
       bulkdelete: data => show('bulkdelete', data),
+      transfer: data => show('transfer', data),
     });
     return () => legacy('taskPopSetReact', null);
   }, []);
