@@ -4397,7 +4397,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261105l"></script>
+<script src="/js/react-bridge.js?v=20261105m"></script>
 <script src="/js/dashboard.js?v=20261101a"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261105b"></script>
@@ -4414,7 +4414,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/emk-creds.js?v=20261101b"></script>
 <script src="/js/portal.js?v=20261101b"></script>
 <script src="/js/payments.js?v=20261031b"></script>
-<script src="/js/mdo.js?v=20261105b"></script>
+<script src="/js/mdo.js?v=20261105c"></script>
 <!-- ⚠️ notify.js MUST load before meetings.js. meetings.js ends by calling
      init(), and init() calls ntMaybeOpen() — loading it later leaves that
      name undefined, and init()'s own catch turns the ReferenceError into a
@@ -4531,6 +4531,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 </script>
 
 <!-- CC Summary Modal -->
+<!-- data-react: the Summary pop-up is React (frontend/src/pages/CcSummary.jsx), handed its totals by ccBuildSummaryModal; #ccSummaryModal below is the fallback. -->
+<div id="ccSummaryRoot" data-react="1" data-react-quiet="1"></div>
 <div id="ccSummaryModal" onclick="if(event.target===this)ccCloseSummaryModal()" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(15,23,42,.45);align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:16px;width:600px;max-width:96vw;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.22);overflow:hidden">
     <!-- Header -->

@@ -446,19 +446,36 @@ function ccOwnBuildPanel() {
 
 let _ccSummaryOpenSi = null;
 
+// The Summary pop-up is React (frontend/src/pages/CcSummary.jsx) when
+// #ccSummaryRoot carries data-react; #ccSummaryModal is the fallback. The
+// totals are still worked out here, from the statement's visible rows, and
+// handed over as { open, tab, dept, owner } (each a list of [name, totals]).
+let CC_SUM_REACT = null, _ccSumWanted = false;
+const _ccSumView = { open: false, tab: 'dept', dept: [], owner: [] };
+function ccSumSetReact(fn) { CC_SUM_REACT = fn; if (fn && _ccSumWanted) { _ccSumWanted = false; fn({ ..._ccSumView }); } }
+function _ccSumOn() { const root = document.getElementById('ccSummaryRoot'); return !!(root && root.dataset.react); }
+function _ccSumPush(patch) {
+  if (!_ccSumOn()) return false;
+  Object.assign(_ccSumView, patch);
+  if (CC_SUM_REACT) CC_SUM_REACT({ ..._ccSumView });
+  else { _ccSumWanted = true; emkReactMount('ccsummary', document.getElementById('ccSummaryRoot')); }
+  return true;
+}
+
 function ccRefreshSummaryIfOpen(si) {
   if (_ccSummaryOpenSi === si) ccBuildSummaryModal(si);
 }
 
 function ccCloseSummaryModal() {
   const modal = document.getElementById('ccSummaryModal');
-  if (modal) modal.style.display = 'none';
+  if (!_ccSumPush({ open: false }) && modal) modal.style.display = 'none';
   const btn = _ccSummaryOpenSi !== null ? document.getElementById('ccSummaryBtn-' + _ccSummaryOpenSi) : null;
   if (btn) btn.style.background = 'rgba(255,255,255,.15)';
   _ccSummaryOpenSi = null;
 }
 
 function ccSumSwitchTab(tab) {
+  if (_ccSumPush({ tab })) return;
   document.getElementById('ccSumContent-dept').style.display  = tab === 'dept'  ? '' : 'none';
   document.getElementById('ccSumContent-owner').style.display = tab === 'owner' ? '' : 'none';
   document.getElementById('ccSumTab-dept').style.background  = tab === 'dept'  ? '#4f46e5' : '#f1f5f9';
@@ -496,6 +513,9 @@ function ccBuildSummaryModal(si) {
     ownMap[own].count++;  ownMap[own].amt  += amt;
     if (isCredit) ownMap[own].credit += Math.abs(amt); else ownMap[own].debit += amt;
   });
+  // Biggest spend first, in both tables.
+  const sorted = map => Object.entries(map).sort((a,b) => b[1].debit - a[1].debit);
+  if (_ccSumPush({ dept: sorted(deptMap), owner: sorted(ownMap) })) return;
   const fmtAmt = (v) => {
     const color = v >= 0 ? '#dc2626' : '#16a34a';
     const prefix = v < 0 ? '+ ' : '';
@@ -1185,8 +1205,9 @@ function ccToggleSummary(si) {
   const btn = document.getElementById('ccSummaryBtn-' + si);
   const modal = document.getElementById('ccSummaryModal');
   if (!modal) return;
+  const react = _ccSumOn();
   // If already open for this si, close it
-  if (_ccSummaryOpenSi === si && modal.style.display !== 'none') {
+  if (_ccSummaryOpenSi === si && (react ? _ccSumView.open : modal.style.display !== 'none')) {
     ccCloseSummaryModal(); return;
   }
   // Close previous if open for different si
@@ -1198,7 +1219,7 @@ function ccToggleSummary(si) {
   if (btn) btn.style.background = 'rgba(255,255,255,.35)';
   ccBuildSummaryModal(si);
   ccSumSwitchTab('dept');
-  modal.style.display = 'flex';
+  if (react) _ccSumPush({ open: true }); else modal.style.display = 'flex';
 }
 
 function ccBulkApply(si, bank, card) {
