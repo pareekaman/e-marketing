@@ -58,7 +58,7 @@
   // own way: sparks for Diwali and Dussehra, a puff of gulal for Holi, snowflakes for Christmas and
   // Shivratri, petals for the rest. The click itself goes through untouched; typing fields are left out.
   // Sounds, made here with Web Audio (no files), off until the person turns them on (the 🔊 button
-  // by the dashboard switch; kept per browser). sound(kind, vol): pop, bang, whoosh, chime, bell, flute.
+  // by the dashboard switch; kept per browser). sound(kind, vol): pop, bang, whoosh, chime, bell, flute, conch, dhol (giggle, wee, yelp: children's voices).
   var soundOn = false, actx = null, lastBang = 0;
   try { soundOn = localStorage.getItem('festSound') === '1'; } catch (e) {}
   function audio() {
@@ -118,6 +118,32 @@
     } else if (kind === 'flute') {
       var notes = [587, 659, 784], fq = notes[Math.floor(Math.random() * notes.length)];
       tone(ac, out, fq, t, 'sine', 0.3, 0.7, true); tone(ac, out, fq * 2, t, 'sine', 0.05, 0.6);
+    } else if (kind === 'conch') {
+      // a shankh: a reedy tone that swells in, slides up to its note, wavers, and dies away, with breath over it
+      var co = ac.createOscillator(), cf = ac.createBiquadFilter(), cg = ac.createGain(), cl = ac.createOscillator(), clg = ac.createGain();
+      co.type = 'sawtooth'; co.frequency.setValueAtTime(218, t); co.frequency.exponentialRampToValueAtTime(233, t + 0.35); co.frequency.setValueAtTime(233, t + 1.7); co.frequency.exponentialRampToValueAtTime(200, t + 2.2);
+      cl.frequency.value = 5; clg.gain.value = 2.5; cl.connect(clg); clg.connect(co.frequency);
+      cf.type = 'lowpass'; cf.frequency.value = 1100; cf.Q.value = 3;
+      cg.gain.setValueAtTime(0.0001, t); cg.gain.exponentialRampToValueAtTime(0.45, t + 0.4); cg.gain.setValueAtTime(0.45, t + 1.6); cg.gain.exponentialRampToValueAtTime(0.0001, t + 2.3);
+      co.connect(cf); cf.connect(cg); cg.connect(out); co.start(t); cl.start(t); co.stop(t + 2.4); cl.stop(t + 2.4);
+      n = noise(ac, 2.3); fl = ac.createBiquadFilter(); fl.type = 'bandpass'; fl.frequency.value = 1600; fl.Q.value = 0.8;
+      g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 0.4); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.3);
+      n.connect(fl); fl.connect(g); g.connect(out); n.start(t);
+    } else if (kind === 'dhol') {
+      // one bar on a dhol: dha (the deep side) and ta (the high side) — dha, ta ta, dha, ta
+      [[0, 1], [0.28, 0], [0.42, 0], [0.56, 1], [0.84, 0]].forEach(function (s) {
+        var st0 = t + s[0];
+        if (s[1]) {
+          var dh = ac.createOscillator(), dg = ac.createGain();
+          dh.type = 'sine'; dh.frequency.setValueAtTime(120, st0); dh.frequency.exponentialRampToValueAtTime(52, st0 + 0.3);
+          env(ac, dg, st0, 0.9, 0.004, 0.35); dh.connect(dg); dg.connect(out); dh.start(st0); dh.stop(st0 + 0.4);
+        } else {
+          var tn = noise(ac, 0.12), tf = ac.createBiquadFilter(), tg = ac.createGain();
+          tf.type = 'bandpass'; tf.frequency.value = 1900; tf.Q.value = 1.4;
+          env(ac, tg, st0, 0.55, 0.002, 0.08); tn.connect(tf); tf.connect(tg); tg.connect(out); tn.start(st0);
+          tone(ac, out, 340, st0, 'triangle', 0.25, 0.1);
+        }
+      });
     }
   }
   var TAP_SOUND = { spark: 'pop', gulal: 'whoosh', snow: 'chime' };
