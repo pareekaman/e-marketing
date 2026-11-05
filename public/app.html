@@ -302,8 +302,10 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
     </button>
     <div class="topbar-title" id="topbarTitle">Dashboard</div>
     <!-- Notification bell. Sits outside #topbarActions on purpose — that block
-         is hidden for most roles, and everybody has their own notifications. -->
-    <div class="nt-bell-wrap" id="ntBellWrap">
+         is hidden for most roles, and everybody has their own notifications.
+         data-react: its button and panel are React (frontend/src/pages/NotifyBell.jsx),
+         drawn inside this element; the markup below is the fallback. -->
+    <div class="nt-bell-wrap" id="ntBellWrap" data-react="1" data-react-quiet="1">
       <button class="nt-bell-btn" id="ntBellBtn" onclick="ntTogglePanel(event)" aria-label="Notifications">
         🔔<span class="nt-badge" id="ntBadge" style="display:none">0</span>
       </button>
@@ -4382,7 +4384,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261105b"></script>
+<script src="/js/react-bridge.js?v=20261105c"></script>
 <script src="/js/dashboard.js?v=20261101a"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261103h"></script>
@@ -4404,7 +4406,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
      init(), and init() calls ntMaybeOpen() — loading it later leaves that
      name undefined, and init()'s own catch turns the ReferenceError into a
      redirect back to the login page. -->
-<script src="/js/notify.js?v=20261105a"></script>
+<script src="/js/notify.js?v=20261105b"></script>
 <script src="/js/meetings.js?v=20261030b"></script>
 <script src="/js/dms.js?v=20261101a"></script>
 <script src="/js/leads.js?v=20261101c"></script>

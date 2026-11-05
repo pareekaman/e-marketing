@@ -134,13 +134,28 @@ function ntPanelOpen() {
   return !!(p && p.classList.contains('open'));
 }
 
+// The bell's button and panel are React (frontend/src/pages/NotifyBell.jsx),
+// drawn inside #ntBellWrap itself — amber-ui.js inserts topbar buttons before
+// that element, so it stays where it was. The markup in app.html is the
+// fallback. React gets { unread, items } on every refresh.
+let NT_BELL_REACT = null, _ntBellWanted = null;
+function ntBellSetReact(fn) { NT_BELL_REACT = fn; if (fn && _ntBellWanted) { const w = _ntBellWanted; _ntBellWanted = null; fn(w); } }
+function _ntBellReact(data) {
+  const root = document.getElementById('ntBellWrap');
+  if (!root || !root.dataset.react) return false;
+  if (NT_BELL_REACT) NT_BELL_REACT(data); else { _ntBellWanted = data; emkReactMount('notifybell', root); }
+  return true;
+}
+
 async function ntRefreshBell() {
-  const badge = document.getElementById('ntBadge');
-  if (!badge) return;
+  if (!document.getElementById('ntBellWrap')) return;
   try {
     const r = await api('/api/tasks/notifications');
     if (!r || r.error) return;
     _ntItems = r.items || [];
+    if (_ntBellReact({ unread: r.unread || 0, items: _ntItems })) return;
+    const badge = document.getElementById('ntBadge');
+    if (!badge) return;
     badge.textContent = r.unread > 99 ? '99+' : String(r.unread || 0);
     badge.style.display = r.unread ? '' : 'none';
     const mark = document.getElementById('ntMarkAll');
@@ -186,14 +201,18 @@ function ntTogglePanel(ev) {
 
 // Clicking a row is a deliberate act, so it counts as reading that one.
 async function ntRowClick(id) {
-  const item = _ntItems.find(t => t.id === id);
   document.getElementById('ntPanel')?.classList.remove('open');
+  await ntReadOne(id);
+  if (typeof navigate === 'function') navigate('alltasks');
+}
+// Shared with the React bell: an unread row that is clicked counts as read.
+async function ntReadOne(id) {
+  const item = _ntItems.find(t => t.id === id);
   if (item && item.is_new) {
     item.is_new = 0;
     try { await api('/api/tasks/seen', 'POST', { ids: [id] }); } catch (e) { /* offered again */ }
     ntRefreshBell();
   }
-  if (typeof navigate === 'function') navigate('alltasks');
 }
 
 async function ntMarkAllRead() {
