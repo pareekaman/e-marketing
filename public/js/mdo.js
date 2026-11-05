@@ -1833,6 +1833,17 @@ function ccRenderStatements() {
   // last card would reappear here against unrelated rows.
   _ccBulkDept = {};
 
+  // React draws the statements (frontend/src/pages/CcStatements.jsx) when the
+  // wrap carries data-react; everything that works on them afterwards — search,
+  // ticks, Bulk Apply, the owner / dept pickers, bills, Drive, Summary — is
+  // still here and finds them by the same ids.
+  if (wrap.dataset.react) {
+    _ccStmtsView = { bank, card: cardNum, color, stmts, canEdit, canAdmin: ccCanAdmin(),
+      own: _CC_OWN_OPTIONS.slice(), previews: { ..._ccStmtPreviewUrls }, filter: { ..._ccFilter } };
+    if (CC_STMTS_REACT) CC_STMTS_REACT(_ccStmtsView); else emkReactMount('ccstatements', wrap);
+    return;
+  }
+
   if (!stmts.length) {
     wrap.innerHTML = `<div style="text-align:center;padding:40px;color:#94a3b8;font-size:14px">No statements for this card yet.</div>`;
     return;
@@ -2077,7 +2088,12 @@ function ccRenderStatements() {
     </div>`;
   }).join('');
 
-  // Set department + ownership labels after render
+  ccPaintStmtLabels(stmts);
+}
+
+// Department + ownership labels, painted onto the drawn rows. Also called by
+// the React statements after each draw.
+function ccPaintStmtLabels(stmts) {
   stmts.forEach((s, si) => {
     (s.transactions||[]).forEach((t, oi) => {
       if (t.expenses) {
@@ -2088,4 +2104,7 @@ function ccRenderStatements() {
     });
   });
 }
+
+let CC_STMTS_REACT = null, _ccStmtsView = null;
+function ccStmtsSetReact(fn) { CC_STMTS_REACT = fn; if (fn && _ccStmtsView) fn(_ccStmtsView); }
 

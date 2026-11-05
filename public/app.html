@@ -1317,7 +1317,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         <!-- data-react: a picked bank's card tabs + filter bar are React (frontend/src/pages/CcBankHead.jsx); mdo.js fills the other two. -->
         <div id="ccBankHead" data-react="1"></div>
         <div id="ccDetailMsg"><div style="color:#94a3b8;text-align:center;padding:60px 20px;font-size:14px">Loading…</div></div>
-        <div id="ccStatementsWrap"></div>
+        <!-- data-react: the statements are React (frontend/src/pages/CcStatements.jsx), handed over by ccRenderStatements. -->
+        <div id="ccStatementsWrap" data-react="1" data-react-quiet="1"></div>
       </div>
     </div>
   </div>
@@ -4396,7 +4397,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261105k"></script>
+<script src="/js/react-bridge.js?v=20261105l"></script>
 <script src="/js/dashboard.js?v=20261101a"></script>
 <script src="/js/amber-ui.js?v=20261027c"></script>
 <script src="/js/tasks.js?v=20261105b"></script>
@@ -4413,7 +4414,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/emk-creds.js?v=20261101b"></script>
 <script src="/js/portal.js?v=20261101b"></script>
 <script src="/js/payments.js?v=20261031b"></script>
-<script src="/js/mdo.js?v=20261105a"></script>
+<script src="/js/mdo.js?v=20261105b"></script>
 <!-- ⚠️ notify.js MUST load before meetings.js. meetings.js ends by calling
      init(), and init() calls ntMaybeOpen() — loading it later leaves that
      name undefined, and init()'s own catch turns the ReferenceError into a
