@@ -1787,9 +1787,58 @@ function openFMSDoneByRow(sheetRowNumber) {
   if (idx < 0) { showToast('That row was just updated. The list is refreshing.', 'error'); if (typeof loadFMSTaskRows === 'function') loadFMSTaskRows(); return; }
   openFMSDoneModal(idx);
 }
+// The pop-up is React (frontend/src/pages/FmsDone.jsx) when #fmsDoneRoot
+// carries data-react; #fmsDoneModal is the fallback. React gets the row, the
+// times, whether it is late, the extra fields and their gates, and saves
+// through fmsDonePost like saveFMSDone does.
+let FMS_DONE_REACT = null, _fmsDoneWanted = null;
+function fmsDoneSetReact(fn) { FMS_DONE_REACT = fn; if (fn && _fmsDoneWanted) { const w = _fmsDoneWanted; _fmsDoneWanted = null; fn(w); } }
+function _fmsDoneReact(data) {
+  const root = document.getElementById('fmsDoneRoot');
+  if (!root || !root.dataset.react) return false;
+  if (FMS_DONE_REACT) FMS_DONE_REACT(data); else { _fmsDoneWanted = data; emkReactMount('fmsdone', root); }
+  return true;
+}
+
+// "Actual" is now, as DD/MM/YYYY HH:mm:ss (saved to the sheet as it is); the
+// row is late when now is past its plan value.
+function _fmsDoneNow(planValue) {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const actualStr = `${pad(now.getDate())}/${pad(now.getMonth()+1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  const planVal = (planValue || '').trim();
+  let isDelayed = false;
+  try {
+    // Try various date formats: DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD, DD-MM-YYYY HH:MM:SS
+    let planDate;
+    const ddmmyyyy = planVal.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(.*)?$/);
+    const yyyymmdd = planVal.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(.*)?$/);
+    if (ddmmyyyy) {
+      const [, d, m, y, time=''] = ddmmyyyy;
+      planDate = new Date(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}${time.replace(' ','T')||'T23:59:59'}`);
+    } else if (yyyymmdd) {
+      planDate = new Date(planVal);
+    }
+    if (planDate && !isNaN(planDate.getTime()) && now > planDate) isDelayed = true;
+  } catch(e) {}
+  return { actualStr, isDelayed };
+}
+
+function _fmsDoneOpenReact(row) {
+  const root = document.getElementById('fmsDoneRoot');
+  if (!root || !root.dataset.react) return false;
+  const { actualStr, isDelayed } = _fmsDoneNow(row.planValue);
+  const activeStep = window._fmsActiveStepData;
+  const extraRows = (activeStep && activeStep.extraRows) ? activeStep.extraRows.filter(r => r.col_letter) : [];
+  _fmsExtraGates = fmsBuildExtraGates(extraRows);
+  return _fmsDoneReact({ fmsId: fmsTasksActiveFmsId, stepId: fmsTasksActiveStepId, rowNumber: row.sheetRowNumber,
+    data: row.data, planValue: row.planValue, actual: actualStr, delayed: isDelayed, extraRows, gates: _fmsExtraGates });
+}
+
 function openFMSDoneModal(rowIdx) {
   const row = window._fmsCurrentRows[rowIdx];
   if (!row) return;
+  if (_fmsDoneOpenReact(row)) return;
 
   document.getElementById('fmsDoneFmsId').value = fmsTasksActiveFmsId;
   document.getElementById('fmsDoneStepId').value = fmsTasksActiveStepId;
@@ -1808,28 +1857,9 @@ function openFMSDoneModal(rowIdx) {
   // Set plan display
   document.getElementById('fmsDonePlanDisplay').textContent = row.planValue || '—';
 
-  // Set actual = current full timestamp (DD/MM/YYYY HH:mm:ss) — saved to sheet as-is
-  const now = new Date();
-  const pad = n => String(n).padStart(2,'0');
-  const actualStr = `${pad(now.getDate())}/${pad(now.getMonth()+1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  // Actual = now, and late when now is past the plan (_fmsDoneNow)
+  const { actualStr, isDelayed } = _fmsDoneNow(row.planValue);
   document.getElementById('fmsDoneActualDisplay').textContent = actualStr;
-
-  // Check delay: actual > plan = delayed
-  const planVal = (row.planValue || '').trim();
-  let isDelayed = false;
-  try {
-    // Try various date formats: DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD, DD-MM-YYYY HH:MM:SS
-    let planDate;
-    const ddmmyyyy = planVal.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(.*)?$/);
-    const yyyymmdd = planVal.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(.*)?$/);
-    if (ddmmyyyy) {
-      const [, d, m, y, time=''] = ddmmyyyy;
-      planDate = new Date(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}${time.replace(' ','T')||'T23:59:59'}`);
-    } else if (yyyymmdd) {
-      planDate = new Date(planVal);
-    }
-    if (planDate && !isNaN(planDate.getTime()) && now > planDate) isDelayed = true;
-  } catch(e) {}
 
   document.getElementById('fmsDoneDelaySection').style.display = isDelayed ? 'block' : 'none';
   document.getElementById('fmsDoneDelayReason').value = '';
@@ -1977,19 +2007,25 @@ async function saveFMSDone() {
     return { colLetter: r.col_letter, value: el ? el.value.trim() : '' };
   }).filter(e => e.colLetter && e.value !== '');
 
+  const err = await fmsDonePost(fmsId, stepId, rowNum, actualValue, delayReason, extraInputs, () => closeModal('fmsDoneModal'),
+    () => { saveBtn.textContent = '💾 Save to Sheet'; saveBtn.disabled = false; });
+  if (err) { errEl.textContent = err; errEl.style.display = 'block'; }
+}
+
+// Shared with the React pop-up: saves a Done to the sheet. Returns the
+// server's error, or closes the pop-up, toasts and reloads every list that
+// shows the row. `settled` runs once the answer is in, before either.
+async function fmsDonePost(fmsId, stepId, rowNum, actualValue, delayReason, extraInputs, close, settled) {
   const r = await api(`/api/fms-tasks/${fmsId}/steps/${stepId}/done`, 'POST', {
     rowNumber: parseInt(rowNum),
     actualValue,
     delayReason,
     extraInputs
   });
+  if (settled) settled();
+  if (r.error) return r.error;
 
-  saveBtn.textContent = '💾 Save to Sheet';
-  saveBtn.disabled = false;
-
-  if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
-
-  closeModal('fmsDoneModal');
+  close();
   showToast('✅ Saved to Google Sheet!');
   // Reload rows on whichever page is visible
   if (typeof loadFMSTaskRows === 'function') loadFMSTaskRows();

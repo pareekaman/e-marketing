@@ -72,7 +72,7 @@ export default function SearchSelect({ value, onChange, options, style, classNam
       {open && pos ? createPortal(
         <div ref={panelRef} className="ss-panel ss-open" style={{ left: pos.left, top: pos.top, width: pos.width, maxHeight: pos.maxHeight }}>
           {filtered.length ? filtered.map((o, i) => (
-            <div key={String(o.value)}
+            <div key={i + '|' + String(o.value)}
               className={`ss-opt${String(o.value) === String(value) ? ' ss-sel' : ''}${i === active ? ' ss-active' : ''}`}
               onMouseDown={e => { e.preventDefault(); choose(o); }}
               onMouseEnter={() => setActive(i)}>
