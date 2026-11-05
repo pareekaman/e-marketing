@@ -1,13 +1,23 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&display=swap');
+/* the everyday amber look, scoped to Diwali (generated: scripts/build-diwali-amber.js); this file's rules override it */
+@import url('/css/themes/diwali-amber.css');
 /* Diwali — deep orange and gold on a warm cream page, aubergine sidebar. */
 :root[data-theme="diwali"] {
   --brand-1:#FFC107; --brand-2:#F29900;
   --brand-2-rgb:242,153,0;
   --accent:#C2410C; --accent-dark:#9A3412; --accent-light:#EA580C;
   --accent-rgb:194,65,12; --accent-light-rgb:234,88,12;
-  --page-bg:#FDF5E6; --sidebar-top:#2D1240; --sidebar-bottom:#1C0B2B;
+  --page-bg:#FDF5E6; --sidebar-top:#8E1B2C; --sidebar-bottom:#4A0A16;
 }
 
 /* Decoration (js/themes/diwali.js) */
+/* the floor the scene stands on: a warm band along the foot of the page with a soft edge, and room
+   at the end of the page so nothing is left under it */
+.dw-band { position:absolute; left:60px; right:0; bottom:0; height:196px; pointer-events:none;
+  background:radial-gradient(60% 120% at 50% 100%, rgba(251,191,36,.28), transparent 70%), linear-gradient(180deg, rgba(253,243,225,0) 0, rgba(253,240,218,.94) 34%, #FBE6C4 100%);
+  border-top:0; box-shadow:inset 0 1px 0 rgba(242,213,138,.0); }
+:root.dw-band-on .main { padding-bottom:206px; }
+.sidebar:hover ~ #themeDecor .dw-band { left:232px; }
 .td-rangoli { left:70px; bottom:8px; width:150px; filter:drop-shadow(0 3px 6px rgba(0,0,0,.2)); }
 @keyframes td-spin { to { transform:rotate(360deg); } }
 .td-diya { bottom:8px; width:46px; filter:drop-shadow(0 3px 4px rgba(0,0,0,.25)); }
@@ -22,7 +32,15 @@
 @media (prefers-reduced-motion: reduce) { .td-rangoli, .td-flame { animation:none; } .td-rangoli, .td-diya { transition:none; } }
 
 /* Lighting: string lights (jhalar) along the top — a wire and four bulb layers that light up in turn */
-.td-jhalar { position:absolute; left:60px; right:0; top:0; height:26px; }
+/* a marigold-and-mango-leaf toran swagged along the very top (as in the Diwali design mock-up), with the
+   string lights hanging just below it */
+.dw-toran { position:absolute; left:60px; right:0; top:-3px; height:24px; z-index:1; pointer-events:none; background:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22120%22%20height%3D%2240%22%20viewBox%3D%220%200%20120%2040%22%3E%3Cpath%20d%3D%22M30%2015.65685424949238%20Q25%2026.65685424949238%2030%2035.65685424949238%20Q35%2026.65685424949238%2030%2015.65685424949238%20Z%22%20fill%3D%22%2315803D%22%2F%3E%3Cpath%20d%3D%22M30%2016.65685424949238%20V33.65685424949238%22%20stroke%3D%22%230F5132%22%20stroke-width%3D%22.8%22%2F%3E%3Cpath%20d%3D%22M60%2018%20Q55%2029%2060%2038%20Q65%2029%2060%2018%20Z%22%20fill%3D%22%2316A34A%22%2F%3E%3Cpath%20d%3D%22M60%2019%20V36%22%20stroke%3D%22%230F5132%22%20stroke-width%3D%22.8%22%2F%3E%3Cpath%20d%3D%22M90%2015.65685424949238%20Q85%2026.65685424949238%2090%2035.65685424949238%20Q95%2026.65685424949238%2090%2015.65685424949238%20Z%22%20fill%3D%22%2315803D%22%2F%3E%3Cpath%20d%3D%22M90%2016.65685424949238%20V33.65685424949238%22%20stroke%3D%22%230F5132%22%20stroke-width%3D%22.8%22%2F%3E%3Cpath%20d%3D%22M60%2030%20Q55%2030%2055%2036%20H65%20Q65%2030%2060%2030%20Z%22%20fill%3D%22%23D4A017%22%20stroke%3D%22%238A5A00%22%20stroke-width%3D%22.6%22%2F%3E%3Ccircle%20cx%3D%2260%22%20cy%3D%2237%22%20r%3D%221.3%22%20fill%3D%22%238A5A00%22%2F%3E%3Ccircle%20cx%3D%220%22%20cy%3D%224.0%22%20r%3D%225.6%22%20fill%3D%22%23F97316%22%2F%3E%3Ccircle%20cx%3D%220%22%20cy%3D%224.0%22%20r%3D%223.6%22%20fill%3D%22none%22%20stroke%3D%22%23C2410C%22%20stroke-width%3D%221%22%20stroke-dasharray%3D%221.4%201.2%22%2F%3E%3Ccircle%20cx%3D%22-1.4%22%20cy%3D%222.4%22%20r%3D%221.4%22%20fill%3D%22%23FFF7C2%22%20fill-opacity%3D%22.7%22%2F%3E%3Ccircle%20cx%3D%2210%22%20cy%3D%226.3%22%20r%3D%225.6%22%20fill%3D%22%23FACC15%22%2F%3E%3Ccircle%20cx%3D%2210%22%20cy%3D%226.3%22%20r%3D%223.6%22%20fill%3D%22none%22%20stroke%3D%22%23CA8A04%22%20stroke-width%3D%221%22%20stroke-dasharray%3D%221.4%201.2%22%2F%3E%3Ccircle%20cx%3D%228.6%22%20cy%3D%224.7%22%20r%3D%221.4%22%20fill%3D%22%23FFF7C2%22%20fill-opacity%3D%22.7%22%2F%3E%3Ccircle%20cx%3D%2220%22%20cy%3D%228.5%22%20r%3D%225.6%22%20fill%3D%22%23F97316%22%2F%3E%3Ccircle%20cx%3D%2220%22%20cy%3D%228.5%22%20r%3D%223.6%22%20fill%3D%22none%22%20stroke%3D%22%23C2410C%22%20stroke-width%3D%221%22%20stroke-dasharray%3D%221.4%201.2%22%2F%3E%3Ccircle%20cx%3D%2218.6%22%20cy%3D%226.9%22%20r%3D%221.4%22%20fill%3D%22%23FFF7C2%22%20fill-opacity%3D%22.7%22%2F%3E%3Ccircle%20cx%3D%2230%22%20cy%3D%2210.4%22%20r%3D%225.6%22%20fill%3D%22%23FACC15%22%2F%3E%3Ccircle%20cx%3D%2230%22%20cy%3D%2210.4%22%20r%3D%223.6%22%20fill%3D%22none%22%20stroke%3D%22%23CA8A04%22%20stroke-width%3D%221%22%20stroke-dasharray%3D%221.4%201.2%22%2F%3E%3Ccircle%20cx%3D%2228.6%22%20cy%3D%228.8%22%20r%3D%221.4%22%20fill%3D%22%23FFF7C2%22%20fill-opacity%3D%22.7%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2211.8%22%20r%3D%225.6%22%20fill%3D%22%23F97316%22%2F%3E%3Ccircle%20cx%3D%2240%22%20cy%3D%2211.8%22%20r%3D%223.6%22%20fill%3D%22none%22%20stroke%3D%22%23C2410C%22%20stroke-width%3D%221%22%20stroke-dasharray%3D%221.4%201.2%22%2F%3E%3Ccircle%20cx%3D%2238.6%22%20cy%3D%2210.2%22%20r%3D%221.4%22%20fill%3D%22%23FFF7C2%22%20fill-opacity%3D%22.7%22%2F%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2212.7%22%20r%3D%225.6%22%20fill%3D%22%23FACC15%22%2F%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2212.7%22%20r%3D%223.6%22%20fill%3D%22none%22%20stroke%3D%22%23CA8A04%22%20stroke-width%3D%221%22%20stroke-dasharray%3D%221.4%201.2%22%2F%3E%3Ccircle%20cx%3D%2248.6%22%20cy%3D%2211.1%22%20r%3D%221.4%22%20fill%3D%22%23FFF7C2%22%20fill-opacity%3D%22.7%22%2F%3E%3Ccircle%20cx%3D%2260%22%20cy%3D%2213.0%22%20r%3D%225.6%22%20fill%3D%22%23F97316%22%2F%3E%3Ccircle%20cx%3D%2260%22%20cy%3D%2213.0%22%20r%3D%223.6%22%20fill%3D%22none%22%20stroke%3D%22%23C2410C%22%20stroke-width%3D%221%22%20stroke-dasharray%3D%221.4%201.2%22%2F%3E%3Ccircle%20cx%3D%2258.6%22%20cy%3D%2211.4%22%20r%3D%221.4%22%20fill%3D%22%23FFF7C2%22%20fill-opacity%3D%22.7%22%2F%3E%3Ccircle%20cx%3D%2270%22%20cy%3D%2212.7%22%20r%3D%225.6%22%20fill%3D%22%23FACC15%22%2F%3E%3Ccircle%20cx%3D%2270%22%20cy%3D%2212.7%22%20r%3D%223.6%22%20fill%3D%22none%22%20stroke%3D%22%23CA8A04%22%20stroke-width%3D%221%22%20stroke-dasharray%3D%221.4%201.2%22%2F%3E%3Ccircle%20cx%3D%2268.6%22%20cy%3D%2211.1%22%20r%3D%221.4%22%20fill%3D%22%23FFF7C2%22%20fill-opacity%3D%22.7%22%2F%3E%3Ccircle%20cx%3D%2280%22%20cy%3D%2211.8%22%20r%3D%225.6%22%20fill%3D%22%23F97316%22%2F%3E%3Ccircle%20cx%3D%2280%22%20cy%3D%2211.8%22%20r%3D%223.6%22%20fill%3D%22none%22%20stroke%3D%22%23C2410C%22%20stroke-width%3D%221%22%20stroke-dasharray%3D%221.4%201.2%22%2F%3E%3Ccircle%20cx%3D%2278.6%22%20cy%3D%2210.2%22%20r%3D%221.4%22%20fill%3D%22%23FFF7C2%22%20fill-opacity%3D%22.7%22%2F%3E%3Ccircle%20cx%3D%2290%22%20cy%3D%2210.4%22%20r%3D%225.6%22%20fill%3D%22%23FACC15%22%2F%3E%3Ccircle%20cx%3D%2290%22%20cy%3D%2210.4%22%20r%3D%223.6%22%20fill%3D%22none%22%20stroke%3D%22%23CA8A04%22%20stroke-width%3D%221%22%20stroke-dasharray%3D%221.4%201.2%22%2F%3E%3Ccircle%20cx%3D%2288.6%22%20cy%3D%228.8%22%20r%3D%221.4%22%20fill%3D%22%23FFF7C2%22%20fill-opacity%3D%22.7%22%2F%3E%3Ccircle%20cx%3D%22100%22%20cy%3D%228.5%22%20r%3D%225.6%22%20fill%3D%22%23F97316%22%2F%3E%3Ccircle%20cx%3D%22100%22%20cy%3D%228.5%22%20r%3D%223.6%22%20fill%3D%22none%22%20stroke%3D%22%23C2410C%22%20stroke-width%3D%221%22%20stroke-dasharray%3D%221.4%201.2%22%2F%3E%3Ccircle%20cx%3D%2298.6%22%20cy%3D%226.9%22%20r%3D%221.4%22%20fill%3D%22%23FFF7C2%22%20fill-opacity%3D%22.7%22%2F%3E%3Ccircle%20cx%3D%22110%22%20cy%3D%226.3%22%20r%3D%225.6%22%20fill%3D%22%23FACC15%22%2F%3E%3Ccircle%20cx%3D%22110%22%20cy%3D%226.3%22%20r%3D%223.6%22%20fill%3D%22none%22%20stroke%3D%22%23CA8A04%22%20stroke-width%3D%221%22%20stroke-dasharray%3D%221.4%201.2%22%2F%3E%3Ccircle%20cx%3D%22108.6%22%20cy%3D%224.7%22%20r%3D%221.4%22%20fill%3D%22%23FFF7C2%22%20fill-opacity%3D%22.7%22%2F%3E%3Ccircle%20cx%3D%22120%22%20cy%3D%224.0%22%20r%3D%225.6%22%20fill%3D%22%23F97316%22%2F%3E%3Ccircle%20cx%3D%22120%22%20cy%3D%224.0%22%20r%3D%223.6%22%20fill%3D%22none%22%20stroke%3D%22%23C2410C%22%20stroke-width%3D%221%22%20stroke-dasharray%3D%221.4%201.2%22%2F%3E%3Ccircle%20cx%3D%22118.6%22%20cy%3D%222.4%22%20r%3D%221.4%22%20fill%3D%22%23FFF7C2%22%20fill-opacity%3D%22.7%22%2F%3E%3C%2Fsvg%3E") repeat-x 0 0 / 72px 24px;
+  filter:drop-shadow(0 2px 2px rgba(124,45,18,.25)); transform-origin:50% 0; animation:dw-toran-sway 4s ease-in-out infinite alternate; }
+@keyframes dw-toran-sway { from { transform:skewX(-1.5deg); } to { transform:skewX(1.5deg); } }
+.sidebar:hover ~ #themeDecor .dw-toran { left:232px; }
+@media (prefers-reduced-motion: reduce) { .dw-toran { animation:none; } }
+/* the toran stands in for the string of lights along the top, which would otherwise cross the header text */
+.td-jhalar { position:absolute; left:60px; right:0; top:0; height:26px; display:none; }
 .td-jhalar i { position:absolute; inset:0; background-repeat:repeat-x; background-size:96px 26px; will-change:opacity; }
 .td-jhalar .w { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='26'%3E%3Cpath d='M0 2 Q48 12 96 2' fill='none' stroke='%237C2D12' stroke-width='1.3'/%3E%3C/svg%3E"); }
 .td-jhalar .b1 { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='26'%3E%3Ccircle cx='12' cy='11.2' r='8' fill='%23FFC107' fill-opacity='.18'/%3E%3Ccircle cx='12' cy='11.2' r='5.5' fill='%23FFC107' fill-opacity='.35'/%3E%3Crect x='10.5' y='4.2' width='3' height='3' fill='%23334155'/%3E%3Cellipse cx='12' cy='11.2' rx='3' ry='4.2' fill='%23FFC107'/%3E%3Cellipse cx='11' cy='9.7' rx='1' ry='1.5' fill='white' fill-opacity='.7'/%3E%3C/svg%3E"); animation:td-chase 1.2s ease-in-out infinite; }
@@ -43,7 +61,7 @@
 @keyframes td-glow { from { opacity:.45; transform:scale(.9); } to { opacity:1; transform:scale(1.2); } }
 @media (prefers-reduced-motion: reduce) { .td-jhalar i, .td-lantern, .td-lglow, .td-tassel, .td-glow { animation:none; } }
 /* "शुभ दीपावली" above the rangoli; Devanagari needs a system font, Inter has none */
-.td-greet { position:absolute; left:78px; bottom:156px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
+.td-greet { position:absolute; left:78px; bottom:166px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
   color:#fff; padding:7px 14px; border-radius:999px; background:linear-gradient(135deg,#F59E0B,#C2410C 60%,#BE185D);
   box-shadow:0 0 0 2px rgba(255,255,255,.75), 0 0 18px rgba(255,170,0,.7); transition:translate .3s var(--ease);
   animation:td-greet 2.4s ease-in-out infinite alternate; }
@@ -64,22 +82,35 @@
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cellipse cx='70' cy='54' rx='4' ry='12' fill='%23F59E0B' fill-opacity='.10' transform='rotate(0 70 70)'/%3E%3Cellipse cx='70' cy='54' rx='4' ry='12' fill='%23F59E0B' fill-opacity='.10' transform='rotate(30 70 70)'/%3E%3Cellipse cx='70' cy='54' rx='4' ry='12' fill='%23F59E0B' fill-opacity='.10' transform='rotate(60 70 70)'/%3E%3Cellipse cx='70' cy='54' rx='4' ry='12' fill='%23F59E0B' fill-opacity='.10' transform='rotate(90 70 70)'/%3E%3Cellipse cx='70' cy='54' rx='4' ry='12' fill='%23F59E0B' fill-opacity='.10' transform='rotate(120 70 70)'/%3E%3Cellipse cx='70' cy='54' rx='4' ry='12' fill='%23F59E0B' fill-opacity='.10' transform='rotate(150 70 70)'/%3E%3Cellipse cx='70' cy='54' rx='4' ry='12' fill='%23F59E0B' fill-opacity='.10' transform='rotate(180 70 70)'/%3E%3Cellipse cx='70' cy='54' rx='4' ry='12' fill='%23F59E0B' fill-opacity='.10' transform='rotate(210 70 70)'/%3E%3Cellipse cx='70' cy='54' rx='4' ry='12' fill='%23F59E0B' fill-opacity='.10' transform='rotate(240 70 70)'/%3E%3Cellipse cx='70' cy='54' rx='4' ry='12' fill='%23F59E0B' fill-opacity='.10' transform='rotate(270 70 70)'/%3E%3Cellipse cx='70' cy='54' rx='4' ry='12' fill='%23F59E0B' fill-opacity='.10' transform='rotate(300 70 70)'/%3E%3Cellipse cx='70' cy='54' rx='4' ry='12' fill='%23F59E0B' fill-opacity='.10' transform='rotate(330 70 70)'/%3E%3Cellipse cx='70' cy='62' rx='3' ry='7' fill='%23DB2777' fill-opacity='.08' transform='rotate(0 70 70)'/%3E%3Cellipse cx='70' cy='62' rx='3' ry='7' fill='%23DB2777' fill-opacity='.08' transform='rotate(45 70 70)'/%3E%3Cellipse cx='70' cy='62' rx='3' ry='7' fill='%23DB2777' fill-opacity='.08' transform='rotate(90 70 70)'/%3E%3Cellipse cx='70' cy='62' rx='3' ry='7' fill='%23DB2777' fill-opacity='.08' transform='rotate(135 70 70)'/%3E%3Cellipse cx='70' cy='62' rx='3' ry='7' fill='%23DB2777' fill-opacity='.08' transform='rotate(180 70 70)'/%3E%3Cellipse cx='70' cy='62' rx='3' ry='7' fill='%23DB2777' fill-opacity='.08' transform='rotate(225 70 70)'/%3E%3Cellipse cx='70' cy='62' rx='3' ry='7' fill='%23DB2777' fill-opacity='.08' transform='rotate(270 70 70)'/%3E%3Cellipse cx='70' cy='62' rx='3' ry='7' fill='%23DB2777' fill-opacity='.08' transform='rotate(315 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(0 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(22.5 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(45 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(67.5 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(90 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(112.5 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(135 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(157.5 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(180 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(202.5 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(225 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(247.5 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(270 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(292.5 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(315 70 70)'/%3E%3Ccircle cx='70' cy='42' r='1.4' fill='%23F97316' fill-opacity='.12' transform='rotate(337.5 70 70)'/%3E%3Ccircle cx='70' cy='70' r='3' fill='%23F59E0B' fill-opacity='.14'/%3E%3Ccircle cx='0' cy='0' r='1.8' fill='%23F59E0B' fill-opacity='.12'/%3E%3Ccircle cx='140' cy='0' r='1.8' fill='%23F59E0B' fill-opacity='.12'/%3E%3Ccircle cx='0' cy='140' r='1.8' fill='%23F59E0B' fill-opacity='.12'/%3E%3Ccircle cx='140' cy='140' r='1.8' fill='%23F59E0B' fill-opacity='.12'/%3E%3C/svg%3E") repeat 0 0 / 140px 140px,
     radial-gradient(1000px 400px at 50% -160px, rgba(245,158,11,.22), transparent 70%),
-    var(--page-bg);
+    /* as in the Diwali design mock-up: a cream page warmed by soft saffron and rose glows at the
+       edges, and a faint rangoli watermark in the middle */
+    radial-gradient(760px 560px at 0% 100%, rgba(249,115,22,.20), transparent 70%),
+    radial-gradient(760px 560px at 100% 100%, rgba(219,39,119,.15), transparent 70%),
+    radial-gradient(600px 420px at 100% 0%, rgba(250,204,21,.14), transparent 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='520' height='520' viewBox='0 0 200 200'%3E%3Cg fill='none' stroke='%23D97706' stroke-opacity='.16' stroke-width='1.2'%3E%3Ccircle cx='100' cy='100' r='90'/%3E%3Ccircle cx='100' cy='100' r='70'/%3E%3Ccircle cx='100' cy='100' r='24'/%3E%3Cg id='p'%3E%3Cpath d='M100 30 Q112 52 100 76 Q88 52 100 30 Z'/%3E%3Cpath d='M100 12 Q106 22 100 30 Q94 22 100 12 Z'/%3E%3C/g%3E%3Cuse href='%23p' transform='rotate(45 100 100)'/%3E%3Cuse href='%23p' transform='rotate(90 100 100)'/%3E%3Cuse href='%23p' transform='rotate(135 100 100)'/%3E%3Cuse href='%23p' transform='rotate(180 100 100)'/%3E%3Cuse href='%23p' transform='rotate(225 100 100)'/%3E%3Cuse href='%23p' transform='rotate(270 100 100)'/%3E%3Cuse href='%23p' transform='rotate(315 100 100)'/%3E%3C/g%3E%3C/svg%3E") center 55% / 520px no-repeat,
+    linear-gradient(180deg,#FFF8EC 0%,#FDF3E1 100%);
   background-attachment:fixed;
 }
 /* cards: a gold edge and the warm glow of a diya; the stat cards carry a small rangoli in the corner */
 :root[data-theme="diwali"] .ov-card, :root[data-theme="diwali"] .chart-card, :root[data-theme="diwali"] .task-table-card {
-  box-shadow:0 0 0 1px rgba(217,119,6,.16), 0 14px 28px -16px rgba(245,158,11,.6);
+  /* as in the Diwali design mock-up: a thin gold border all round, a warm shadow, softer corners */
+  border:1.5px solid #F2D58A; border-radius:18px;
+  box-shadow:0 10px 26px -14px rgba(217,119,6,.55), 0 2px 6px -2px rgba(180,83,9,.12);
+}
+/* a marigold on the top-right corner of the chart cards (the stat cards have their own; the task table clips
+   its corners and its tabs sit in that corner, so it has none) */
+:root[data-theme="diwali"] .chart-card, :root[data-theme="diwali"] .task-table-card { position:relative; }
+:root[data-theme="diwali"] .chart-card::after {
+  content:''; position:absolute; top:-11px; right:-9px; width:26px; height:26px; pointer-events:none; z-index:2;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30' viewBox='0 0 30 30'%3E%3Cg fill='%23F59E0B'%3E%3Cellipse cx='15' cy='7' rx='3' ry='6' transform='rotate(0 15 15)'/%3E%3Cellipse cx='15' cy='7' rx='3' ry='6' transform='rotate(30 15 15)'/%3E%3Cellipse cx='15' cy='7' rx='3' ry='6' transform='rotate(60 15 15)'/%3E%3Cellipse cx='15' cy='7' rx='3' ry='6' transform='rotate(90 15 15)'/%3E%3Cellipse cx='15' cy='7' rx='3' ry='6' transform='rotate(120 15 15)'/%3E%3Cellipse cx='15' cy='7' rx='3' ry='6' transform='rotate(150 15 15)'/%3E%3Cellipse cx='15' cy='7' rx='3' ry='6' transform='rotate(180 15 15)'/%3E%3Cellipse cx='15' cy='7' rx='3' ry='6' transform='rotate(210 15 15)'/%3E%3Cellipse cx='15' cy='7' rx='3' ry='6' transform='rotate(240 15 15)'/%3E%3Cellipse cx='15' cy='7' rx='3' ry='6' transform='rotate(270 15 15)'/%3E%3Cellipse cx='15' cy='7' rx='3' ry='6' transform='rotate(300 15 15)'/%3E%3Cellipse cx='15' cy='7' rx='3' ry='6' transform='rotate(330 15 15)'/%3E%3C/g%3E%3Cg fill='%23FB923C'%3E%3Cellipse cx='15' cy='9.5' rx='2.4' ry='4' transform='rotate(15 15 15)'/%3E%3Cellipse cx='15' cy='9.5' rx='2.4' ry='4' transform='rotate(75 15 15)'/%3E%3Cellipse cx='15' cy='9.5' rx='2.4' ry='4' transform='rotate(135 15 15)'/%3E%3Cellipse cx='15' cy='9.5' rx='2.4' ry='4' transform='rotate(195 15 15)'/%3E%3Cellipse cx='15' cy='9.5' rx='2.4' ry='4' transform='rotate(255 15 15)'/%3E%3Cellipse cx='15' cy='9.5' rx='2.4' ry='4' transform='rotate(315 15 15)'/%3E%3C/g%3E%3Ccircle cx='15' cy='15' r='3.6' fill='%23B45309'/%3E%3C/svg%3E") center / contain no-repeat; filter:drop-shadow(0 1px 2px rgba(180,83,9,.35));
 }
 :root[data-theme="diwali"] .ov-card {
   background:
-    linear-gradient(90deg,#B45309,#F59E0B,#FDE68A,#F59E0B,#B45309) top / 100% 3px no-repeat,
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='44'%3E%3Cellipse cx='22' cy='13' rx='3.2' ry='8' fill='%23F59E0B' fill-opacity='.45' transform='rotate(0 22 22)'/%3E%3Cellipse cx='22' cy='13' rx='3.2' ry='8' fill='%23F59E0B' fill-opacity='.45' transform='rotate(45 22 22)'/%3E%3Cellipse cx='22' cy='13' rx='3.2' ry='8' fill='%23F59E0B' fill-opacity='.45' transform='rotate(90 22 22)'/%3E%3Cellipse cx='22' cy='13' rx='3.2' ry='8' fill='%23F59E0B' fill-opacity='.45' transform='rotate(135 22 22)'/%3E%3Cellipse cx='22' cy='13' rx='3.2' ry='8' fill='%23F59E0B' fill-opacity='.45' transform='rotate(180 22 22)'/%3E%3Cellipse cx='22' cy='13' rx='3.2' ry='8' fill='%23F59E0B' fill-opacity='.45' transform='rotate(225 22 22)'/%3E%3Cellipse cx='22' cy='13' rx='3.2' ry='8' fill='%23F59E0B' fill-opacity='.45' transform='rotate(270 22 22)'/%3E%3Cellipse cx='22' cy='13' rx='3.2' ry='8' fill='%23F59E0B' fill-opacity='.45' transform='rotate(315 22 22)'/%3E%3Ccircle cx='22' cy='5' r='1' fill='%23B45309' fill-opacity='.5' transform='rotate(0 22 22)'/%3E%3Ccircle cx='22' cy='5' r='1' fill='%23B45309' fill-opacity='.5' transform='rotate(30 22 22)'/%3E%3Ccircle cx='22' cy='5' r='1' fill='%23B45309' fill-opacity='.5' transform='rotate(60 22 22)'/%3E%3Ccircle cx='22' cy='5' r='1' fill='%23B45309' fill-opacity='.5' transform='rotate(90 22 22)'/%3E%3Ccircle cx='22' cy='5' r='1' fill='%23B45309' fill-opacity='.5' transform='rotate(120 22 22)'/%3E%3Ccircle cx='22' cy='5' r='1' fill='%23B45309' fill-opacity='.5' transform='rotate(150 22 22)'/%3E%3Ccircle cx='22' cy='5' r='1' fill='%23B45309' fill-opacity='.5' transform='rotate(180 22 22)'/%3E%3Ccircle cx='22' cy='5' r='1' fill='%23B45309' fill-opacity='.5' transform='rotate(210 22 22)'/%3E%3Ccircle cx='22' cy='5' r='1' fill='%23B45309' fill-opacity='.5' transform='rotate(240 22 22)'/%3E%3Ccircle cx='22' cy='5' r='1' fill='%23B45309' fill-opacity='.5' transform='rotate(270 22 22)'/%3E%3Ccircle cx='22' cy='5' r='1' fill='%23B45309' fill-opacity='.5' transform='rotate(300 22 22)'/%3E%3Ccircle cx='22' cy='5' r='1' fill='%23B45309' fill-opacity='.5' transform='rotate(330 22 22)'/%3E%3Ccircle cx='22' cy='22' r='4' fill='%23DB2777' fill-opacity='.45'/%3E%3C/svg%3E") no-repeat right 10px top 10px / 44px 44px,
     linear-gradient(180deg, rgba(254,243,199,.6), #fff 60px);
 }
 :root[data-theme="diwali"] .chart-card, :root[data-theme="diwali"] .task-table-card {
   background:
-    linear-gradient(90deg,#B45309,#F59E0B,#FDE68A,#F59E0B,#B45309) top / 100% 3px no-repeat,
     linear-gradient(180deg, rgba(254,243,199,.45), #fff 60px);
 }
 :root[data-theme="diwali"] .ov-card::before { background:linear-gradient(180deg,#FDE68A,#F59E0B,#B45309); }
@@ -108,76 +139,30 @@
 }
 @keyframes dw-twinkle { from { opacity:.15; } to { opacity:1; } }
 :root[data-theme="diwali"] .nav-item.active {
-  background:linear-gradient(90deg,rgba(245,158,11,.40),rgba(245,158,11,.10)); color:#FDE68A;
-  box-shadow:inset 0 0 0 1px rgba(253,230,138,.35);
+  /* an amber pill, as in the Diwali design mock-up */
+  background:linear-gradient(90deg,#F59E0B,#FBBF24); color:#4A0A16; font-weight:700;
+  box-shadow:0 4px 14px -4px rgba(245,158,11,.75), inset 0 0 0 1px rgba(255,247,194,.6);
 }
-:root[data-theme="diwali"] .nav-item.active::before { background:linear-gradient(180deg,#FDE68A,#F59E0B); box-shadow:0 0 10px rgba(245,158,11,.8); }
+:root[data-theme="diwali"] .nav-item.active svg { filter:none; color:#4A0A16; }
+:root[data-theme="diwali"] .nav-item { color:#FDE8C8; }
+:root[data-theme="diwali"] .nav-item:hover { background:rgba(253,230,138,.12); color:#FFF7E6; }
+/* the section labels (WORK, PEOPLE & HR, REPORTS) in gold, a thin gold rule under each */
+:root[data-theme="diwali"] .nav-group-label-text { color:#FCD34D; letter-spacing:.8px; }
+:root[data-theme="diwali"] .nav-item.active::before { display:none; }
 :root[data-theme="diwali"] ::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#FDE68A,#F59E0B,#B45309); background-clip:content-box; }
 @media (prefers-reduced-motion: reduce) { :root[data-theme="diwali"] .topbar::after, :root[data-theme="diwali"] .sidebar::before { animation:none; } }
 
-/* The children running about with their bombs (js/themes/diwali.js, a strip placed inline along the
-   foot of the page): legs swing while they run (.dk-running), the thrower's arm swings (.dk-throwing),
-   a child hit by a bomb turns soot-black with hair on end (.dk-sooty) and laughs (.dk-laughing). */
-.dk-kid { filter:drop-shadow(0 3px 3px rgba(0,0,0,.25)); will-change:transform; }
-/* The painted children (diwali.js): .dk-fig turns them to face the way they run; one painting at a
-   time — running, tossing (.dk-throwing), or sooty (.dk-sooty; those without a sooty painting are
-   darkened instead). They bob as they run. */
-.dk-fig { display:block; transform-origin:50% 100%; }
-.dk-fig img { display:none; width:100%; height:auto; }
-.dk-fig img.dk-run { display:block; }
-.dk-throwing .dk-fig img.dk-run, .dk-sooty:not(.dk-nosoot) .dk-fig img.dk-run { display:none; }
-.dk-throwing .dk-fig img.dk-toss { display:block; }
-.dk-sooty:not(.dk-nosoot) .dk-fig img.dk-black { display:block; }
-.dk-sooty:not(.dk-nosoot) .dk-fig img.dk-toss { display:none; }
-.dk-sooty.dk-nosoot .dk-fig img { filter:brightness(.35) sepia(.4); transition:filter .4s; }
-.dk-running .dk-fig img { animation:dk-bob .32s ease-in-out infinite alternate; }
-@keyframes dk-bob { from { translate:0 0; rotate:-3deg; } to { translate:0 -5px; rotate:3deg; } }
-.dk-spin .dk-fig { animation:dk-spin-up .9s cubic-bezier(.3,.7,.4,1); }
-.dk-dance .dk-fig { animation:dk-hop .25s ease-in-out infinite alternate; }
-.dk-laughing .dk-fig { animation:dk-shake .18s ease-in-out 8 alternate; }
-@media (prefers-reduced-motion: reduce) { .dk-running .dk-fig img, .dk-spin .dk-fig, .dk-dance .dk-fig, .dk-laughing .dk-fig { animation:none; } }
-/* Lakshmi ji and Ganesh ji at the right with an aarti thali circling before them; the family by the rangoli */
+/* Lakshmi ji and Ganesh ji at the right with an aarti thali circling before them */
 .dw-puja { right:110px; bottom:0; width:230px; filter:drop-shadow(0 0 14px rgba(255,190,60,.7)) drop-shadow(0 4px 6px rgba(0,0,0,.2)); }
 .dw-puja > img { display:block; width:100%; height:auto; }
 .dw-thali { left:50%; margin-left:-27px; bottom:12px; width:54px; animation:nv-aarti 3.2s linear infinite; filter:drop-shadow(0 0 8px rgba(255,170,0,.8)); }
 .dw-thali img { display:block; width:100%; height:auto; }
 @keyframes nv-aarti { from { transform:translateY(-36px) rotate(0deg) translateY(36px) rotate(0deg); } to { transform:translateY(-36px) rotate(360deg) translateY(36px) rotate(-360deg); } }
-.dw-family { left:330px; bottom:0; width:170px; filter:drop-shadow(0 4px 6px rgba(0,0,0,.25)); transition:translate .3s var(--ease); }
-.dw-family img, .td-rangoli img, .td-diya img, .td-lantern img { display:block; width:100%; height:auto; }
-.sidebar:hover ~ #themeDecor .dw-family { translate:172px 0; }
+.td-rangoli img, .td-diya img, .td-lantern img { display:block; width:100%; height:auto; }
 @media (prefers-reduced-motion: reduce) { .dw-thali { animation:none; } }
-.dk-kid svg { transform-origin:50% 50%; }
-.dk-leg1, .dk-leg2 { transform-box:view-box; }
-.dk-leg1 { transform-origin:26px 76px; } .dk-leg2 { transform-origin:34px 76px; }
-.dk-running .dk-leg1 { animation:dk-step .4s ease-in-out infinite alternate; }
-.dk-running .dk-leg2 { animation:dk-step .4s ease-in-out infinite alternate-reverse; }
-@keyframes dk-step { from { transform:rotate(-18deg); } to { transform:rotate(18deg); } }
-.dk-arm { transform-box:fill-box; transform-origin:0 0; }
-.dk-throwing .dk-arm { animation:dk-throw .45s ease-out; }
-@keyframes dk-throw { 0% { transform:rotate(0); } 40% { transform:rotate(-70deg); } 100% { transform:rotate(0); } }
-.dk-soot { display:none; }
-.dk-sooty .dk-soot { display:inline; }
-.dk-sooty .dk-smile { display:none; }
-.dk-laugh { position:absolute; left:50%; bottom:100%; transform:translateX(-50%) scale(.4); opacity:0; white-space:nowrap; pointer-events:none;
-  font:800 12px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif; color:#7C2D12; padding:4px 8px; border-radius:10px;
-  background:#FEF3C7; box-shadow:0 0 0 1.5px #F59E0B, 0 4px 10px -4px rgba(0,0,0,.3); transition:opacity .2s, transform .25s cubic-bezier(.34,1.56,.64,1); }
-.dk-laughing .dk-laugh { opacity:1; transform:translateX(-50%) scale(1); }
-.dk-laughing svg { animation:dk-shake .18s ease-in-out 8 alternate; }
-@keyframes dk-shake { from { translate:0 0; } to { translate:0 -3px; } }
-@media (prefers-reduced-motion: reduce) { .dk-running .dk-leg1, .dk-running .dk-leg2, .dk-throwing .dk-arm, .dk-laughing svg { animation:none; } }
-/* hit by a rocket: up into the air with a full turn; hit by an anar: hopping about */
-.dk-spin svg { animation:dk-spin-up .9s cubic-bezier(.3,.7,.4,1); }
-@keyframes dk-spin-up { 0% { translate:0 0; rotate:0deg; } 45% { translate:0 -40px; rotate:200deg; } 100% { translate:0 0; rotate:360deg; } }
-.dk-dance svg { animation:dk-hop .25s ease-in-out infinite alternate; }
-@keyframes dk-hop { from { translate:-3px 0; rotate:-8deg; } to { translate:3px -12px; rotate:8deg; } }
-@media (prefers-reduced-motion: reduce) { .dk-spin svg, .dk-dance svg { animation:none; } }
-
-/* The sky-shot box by the diyas (it shakes while it fires, .dw-firing), and the wish from the
-   E-Marketing family that shows across the top after each round's finale (.dw-wish-on). */
-.dw-skyshot { filter:drop-shadow(0 3px 3px rgba(0,0,0,.3)); }
-.dw-skyshot.dw-firing svg { animation:dw-recoil .14s ease-in-out infinite alternate; }
-@keyframes dw-recoil { from { transform:translateY(0); } to { transform:translateY(1.5px) scaleY(.96); } }
-.dw-wish { position:absolute; left:50%; top:72px; z-index:3; pointer-events:none; text-align:center; white-space:nowrap; opacity:0;
+/* The wish from the E-Marketing family that shows above the gate after each round's finale
+   (.dw-wish-on). */
+.dw-wish { position:absolute; left:50%; top:auto; bottom:214px; z-index:3; pointer-events:none; text-align:center; white-space:nowrap; opacity:0;
   transform:translateX(-50%) scale(.5); padding:12px 28px 13px; border-radius:20px; color:#fff;
   background:linear-gradient(135deg,#B45309,#DC2626 40%,#BE185D 70%,#7E22CE);
   box-shadow:0 0 0 3px rgba(253,230,138,.95), 0 0 40px rgba(245,158,11,.7), 0 16px 34px -12px rgba(0,0,0,.45); }
@@ -186,4 +171,90 @@
 .dw-wish.dw-wish-on { animation:dw-wish 7s ease-out forwards; }
 @keyframes dw-wish { 0% { opacity:0; transform:translateX(-50%) scale(.5); } 8% { opacity:1; transform:translateX(-50%) scale(1.08); } 13% { transform:translateX(-50%) scale(1); }
   85% { opacity:1; transform:translateX(-50%) scale(1); } 100% { opacity:0; transform:translateX(-50%) translateY(-10px) scale(.96); } }
-@media (prefers-reduced-motion: reduce) { .dw-skyshot.dw-firing svg { animation:none; } }
+
+/* Headings, as in the Diwali design mock-up: deep maroon in a bold serif, each with its icon tile in
+   warm Diwali colours (the icon tiles and h4 icons are in app.html for the everyday look and hidden
+   under a festival theme; Diwali shows them again). The emoji stand-ins are hidden. */
+:root[data-theme=diwali] .topbar-title {
+  background:none; -webkit-background-clip:border-box; background-clip:border-box; color:#7A1E2B;
+  font-family:'Playfair Display',Georgia,'Times New Roman',serif; font-weight:800; font-size:24px; letter-spacing:.2px;
+}
+:root[data-theme=diwali] .card-head-title, :root[data-theme=diwali] .chart-card h3, :root[data-theme=diwali] .dash-perf-head h3 {
+  display:flex; align-items:center; color:#7A1E2B; font-family:'Playfair Display',Georgia,serif; font-weight:700; font-size:18px;
+}
+:root[data-theme=diwali] .dash-perf-grid h4 { color:#7A1E2B; font-family:'Playfair Display',Georgia,serif; font-weight:700; font-size:15px; }
+/* only in the headings: elsewhere (buttons, type pills) the emoji are all there is under a theme */
+:root[data-theme=diwali] .card-head-title .amb-hide, :root[data-theme=diwali] .chart-card h3 .amb-hide, :root[data-theme=diwali] .dash-perf-head h3 .amb-hide, :root[data-theme=diwali] .dash-perf-grid h4 .amb-hide { display:none; }
+:root[data-theme=diwali] .amb-ico {
+  display:inline-grid; place-items:center; flex-shrink:0; width:34px; height:34px; border-radius:10px; margin-right:10px; color:#fff;
+  box-shadow:0 6px 12px -6px rgba(122,30,43,.45), inset 0 1px 0 rgba(255,255,255,.45);
+}
+:root[data-theme=diwali] .amb-ico svg { width:18px; height:18px; }
+:root[data-theme=diwali] .amb-ico-red { background:linear-gradient(145deg,#F87171,#B91C1C); }
+:root[data-theme=diwali] .amb-ico-amber { background:linear-gradient(145deg,#FCD34D,#EA580C); }
+:root[data-theme=diwali] .amb-only.amb-h4-ico { display:inline-grid; place-items:center; width:24px; height:24px; border-radius:7px; margin-right:6px; vertical-align:middle; color:#fff; }
+:root[data-theme=diwali] .amb-h4-ico svg { width:14px; height:14px; }
+:root[data-theme=diwali] .amb-h4-amber { background:linear-gradient(145deg,#FCD34D,#EA580C); }
+:root[data-theme=diwali] .amb-h4-red { background:linear-gradient(145deg,#F87171,#B91C1C); }
+
+/* the gold stars hanging at the top right (diwali.js), on cords from the toran */
+.dw-star { top:10px; transform-origin:50% 0; animation:dw-star-swing 2.4s ease-in-out infinite alternate; filter:drop-shadow(0 0 8px rgba(245,183,10,.75)) drop-shadow(0 3px 4px rgba(0,0,0,.2)); }
+@keyframes dw-star-swing { from { transform:rotate(-7deg); } to { transform:rotate(7deg); } }
+@media (prefers-reduced-motion: reduce) { .dw-star { animation:none; } }
+
+/* On the amber look (diwali-amber.css) the sidebar is cream glass, with !important on its background
+   (scoped :not(.amb-dark), so .sidebar.sidebar here to outrank it); Diwali keeps its maroon sidebar of
+   the mock-up, and the light text to go with it. */
+:root[data-theme="diwali"] .sidebar.sidebar {
+  background:
+    radial-gradient(200px 150px at 50% 108%, rgba(245,158,11,.40), transparent 70%),
+    linear-gradient(180deg,var(--sidebar-top) 0%,var(--sidebar-bottom) 100%) !important;
+  -webkit-backdrop-filter:none; backdrop-filter:none; border-right:0; box-shadow:6px 0 30px -12px rgba(74,10,22,.45);
+}
+:root[data-theme="diwali"] .logo-text { color:#FFF7E6; }
+:root[data-theme="diwali"] .sidebar-logo, :root[data-theme="diwali"] .sidebar-user { border-color:rgba(253,230,138,.18); }
+:root[data-theme="diwali"] .nav-group-header { color:#FCD34D; }
+:root[data-theme="diwali"] .nav-group-header:hover { color:#FDE68A; }
+:root[data-theme="diwali"] .nav-divider { border-top-color:rgba(253,230,138,.18); }
+:root[data-theme="diwali"] .sidebar-user:hover { background:rgba(253,230,138,.10); }
+:root[data-theme="diwali"] .su-name { color:#FFF7E6; }
+:root[data-theme="diwali"] .su-role { color:#FCD34D; }
+:root[data-theme="diwali"] .nav-item.active { background:linear-gradient(90deg,#F59E0B,#FBBF24); color:#4A0A16; }
+
+/* Shri Ram's return to Ayodhya (diwali.js story()): the gate in the middle with Ayodhya's people on either
+   side, Ram, Sita ji and Lakshman ji in its arch once the viman has come down (.dw-home), Hanuman ji kneeling
+   before them (.dw-hanuman), and a row of diyas along the ground lit one by one (.dw-lit). --dw-light runs
+   from 0 at dusk to 1 with every diya lit; the gate, the people and the floor brighten with it. */
+.dw-ay { position:absolute; left:330px; right:350px; bottom:0; height:200px; pointer-events:none; --dw-light:0; }
+.dw-ay > div { position:absolute; bottom:0; }
+.dw-ay img { display:block; width:100%; height:auto; }
+.dw-ay-gate { left:50%; width:40%; max-width:300px; transform:translateX(-50%); transition:filter .5s;
+  filter:brightness(calc(.42 + .58 * var(--dw-light))) drop-shadow(0 0 calc(16px * var(--dw-light)) rgba(255,190,60,.75)); }
+.dw-ay-left, .dw-ay-right { width:25%; max-width:190px; transition:filter .5s;
+  filter:brightness(calc(.5 + .5 * var(--dw-light))) drop-shadow(0 4px 5px rgba(0,0,0,.25)); }
+.dw-ay-left { left:0; }
+.dw-ay-right { right:0; }
+.dw-ay-rsl { left:50%; bottom:8px; width:12.5%; max-width:92px; opacity:0; transform:translate(-50%, 14px) scale(.9); transform-origin:50% 100%;
+  transition:opacity 1.2s ease, transform 1.2s ease; filter:drop-shadow(0 4px 6px rgba(0,0,0,.3)); }
+.dw-ay-rsl::before { content:''; position:absolute; left:-45%; right:-45%; top:-12%; bottom:20%; z-index:-1;
+  background:radial-gradient(closest-side, rgba(255,236,160,.95), rgba(255,190,60,.5) 55%, rgba(255,170,0,0)); animation:dw-halo 2.4s ease-in-out infinite alternate; }
+@keyframes dw-halo { from { opacity:.7; transform:scale(.94); } to { opacity:1; transform:scale(1.06); } }
+.dw-home .dw-ay-rsl { opacity:1; transform:translate(-50%, 0) scale(1); }
+.dw-ay-hanuman { left:calc(50% + 48px); bottom:6px; width:8.5%; max-width:64px; opacity:0; transform:translateY(10px);
+  transition:opacity 1s ease, transform 1s ease; filter:drop-shadow(0 4px 5px rgba(0,0,0,.3)); }
+.dw-hanuman .dw-ay-hanuman { opacity:1; transform:none; }
+.dw-ay-diyas { left:0; right:0; height:24px; z-index:2; display:flex; justify-content:space-around; align-items:flex-end; }
+.dw-ay-diya { width:22px; filter:brightness(.7); transition:filter .4s; }
+.dw-ay-diya svg { display:block; width:100%; height:auto; overflow:visible; }
+.dw-ay-diya:not(.dw-lit) .td-flame, .dw-ay-diya:not(.dw-lit) .td-glow { visibility:hidden; }
+.dw-ay-diya.dw-lit { filter:drop-shadow(0 0 6px rgba(255,170,0,.95)); }
+.dw-ay-diya.dw-lit svg { animation:dw-light-up .5s cubic-bezier(.34,1.56,.64,1); }
+@keyframes dw-light-up { from { transform:scale(.6); } to { transform:scale(1); } }
+/* dusk over the floor, lifting as the diyas are lit */
+.dw-band::after { content:''; position:absolute; inset:0; pointer-events:none; opacity:calc(1 - var(--dw-light, 1)); transition:opacity .6s;
+  background:linear-gradient(180deg, rgba(49,46,129,0) 0, rgba(49,46,129,.34) 40%, rgba(30,27,75,.6) 100%); }
+/* the Pushpak Viman, flown over the page by diwali.js */
+.dw-viman { left:0; top:0; width:190px; opacity:0; z-index:2; transform-origin:50% 50%; will-change:transform, opacity;
+  filter:drop-shadow(0 0 16px rgba(255,200,80,.8)) drop-shadow(0 8px 10px rgba(0,0,0,.25)); }
+.dw-viman img { display:block; width:100%; height:auto; }
+@media (prefers-reduced-motion: reduce) { .dw-ay-rsl::before, .dw-ay-diya.dw-lit svg { animation:none; } .dw-ay > div, .dw-ay-diya { transition:none; } }
