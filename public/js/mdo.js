@@ -316,16 +316,35 @@ function ccSave() {
   } catch(e) {}
 }
 
+// The bank picker, Upload and the upload status line are React
+// (frontend/src/pages/CcTop.jsx) when #ccTopRoot carries data-react; the
+// markup in app.html is the fallback. React gets { banks, bank, canEdit, status }:
+//   status: null | {kind:'scan'} | {kind:'pwd', wrong} | {kind:'err', msg} | {kind:'ok', text, kept}
+// Upload still runs ccUploadPdf / ccRetryWithPassword (#ccPdfPwdRetry is React's box).
+let CC_TOP_REACT = null, _ccTopWanted = false;
+const _ccTopView = { banks: [], bank: '', canEdit: false, status: null };
+function ccTopSetReact(fn) { CC_TOP_REACT = fn; if (fn && _ccTopWanted) { _ccTopWanted = false; fn({ ..._ccTopView }); } }
+function _ccTopPush(patch) {
+  const root = document.getElementById('ccTopRoot');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_ccTopView, patch);
+  if (CC_TOP_REACT) CC_TOP_REACT({ ..._ccTopView });
+  else { _ccTopWanted = true; emkReactMount('cctop', root); }
+  return true;
+}
+
 async function loadCreditCards() {
   const dd = document.getElementById('ccBankDropdown');
-  if (dd) {
-    dd.innerHTML = '<option value="">— Select Bank —</option>' +
-      CC_BANKS.map(b => `<option value="${b}">${b}</option>`).join('');
-    if (_ccActiveBank) dd.value = _ccActiveBank;
-  }
   // Read-only viewers get no statement upload
-  const upBtn = document.getElementById('ccUploadBtn');
-  if (upBtn) upBtn.style.display = ccCanEdit() ? 'inline-flex' : 'none';
+  if (!_ccTopPush({ banks: CC_BANKS, bank: _ccActiveBank || '', canEdit: ccCanEdit() })) {
+    if (dd) {
+      dd.innerHTML = '<option value="">— Select Bank —</option>' +
+        CC_BANKS.map(b => `<option value="${b}">${b}</option>`).join('');
+      if (_ccActiveBank) dd.value = _ccActiveBank;
+    }
+    const upBtn = document.getElementById('ccUploadBtn');
+    if (upBtn) upBtn.style.display = ccCanEdit() ? 'inline-flex' : 'none';
+  }
   try {
     const depts = await api('/api/credit-cards/departments');
     _ccDepts = Array.isArray(depts) ? depts : [];
@@ -341,6 +360,7 @@ async function loadCreditCards() {
     if (firstBank) { _ccActiveBank = firstBank; if (dd) dd.value = firstBank; }
   }
   if (_ccActiveBank && dd) dd.value = _ccActiveBank;
+  _ccTopPush({ bank: _ccActiveBank || '' });
   // With no bank picked this draws the overview; skipping it left "Loading…" up.
   ccRenderDetail();
 }
@@ -352,6 +372,7 @@ function ccSelectBank(bank) {
   ccSave();
   const dd = document.getElementById('ccBankDropdown');
   if (dd && bank) dd.value = bank;
+  _ccTopPush({ bank: bank || '' });
   ccRenderDetail();
 }
 
@@ -999,7 +1020,10 @@ async function ccRetryWithPassword() {
 async function _ccDoUpload(password) {
   const file = _ccPendingFile;
   if (!file) return;
-  const status = document.getElementById('ccUploadStatus');
+  // React draws the status line from a view; the markup path writes it as before.
+  const react = _ccTopPush({});
+  const status = react ? null : document.getElementById('ccUploadStatus');
+  if (react) _ccTopPush({ status: { kind: 'scan' } });
   if (status) status.innerHTML = '<span style="color:#4f46e5">⏳ Scanning PDF… (30–60 sec)</span>';
   try {
     const fd = new FormData();
@@ -1012,6 +1036,7 @@ async function _ccDoUpload(password) {
     const data = await r.json();
 
     if (data.error === 'PDF_PASSWORD_REQUIRED' || data.error === 'PDF_WRONG_PASSWORD') {
+      if (react) { _ccTopPush({ status: { kind: 'pwd', wrong: data.error === 'PDF_WRONG_PASSWORD' } }); return; }
       const wrongMsg = data.error === 'PDF_WRONG_PASSWORD' ? '<span style="color:#dc2626">❌ Wrong password.</span> ' : '';
       if (status) status.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px">
         ${wrongMsg}<span style="color:#d97706">🔒 PDF is password protected. Enter password:</span>
@@ -1037,6 +1062,7 @@ async function _ccDoUpload(password) {
     }
 
     if (!r.ok || data.error) {
+      if (react) _ccTopPush({ status: { kind: 'err', msg: data.error || 'Upload failed' } });
       if (status) status.innerHTML = `<span style="color:#dc2626">❌ ${dtEscape(data.error||'Upload failed')}</span>`;
       return;
     }
@@ -1057,6 +1083,7 @@ async function _ccDoUpload(password) {
     ccSave();
     const dd = document.getElementById('ccBankDropdown');
     if (dd) dd.value = data.bankName;
+    _ccTopPush({ bank: data.bankName || '' });
     ccRenderDetail();
     const n = data.transactionsAdded;
     // A re-upload syncs the statement — say what changed, not just what was added
@@ -1065,9 +1092,14 @@ async function _ccDoUpload(password) {
     if (data.transactionsRemoved) parts.push(`${data.transactionsRemoved} duplicate${data.transactionsRemoved!==1?'s':''} removed`);
     const summary = parts.join(', ');
     const kept = data.staleKept ? ` — ${data.staleKept} old row${data.staleKept!==1?'s':''} kept because this upload does not match the statement total; please review` : '';
+    if (react) {
+      _ccTopPush({ status: { kind: 'ok', text: `✅ ${data.bankName} (${data.cardNumber}): ${summary}`, kept } });
+      setTimeout(() => { _ccTopPush({ status: null }); }, kept ? 15000 : 8000);
+    }
     if (status) { status.innerHTML = `<span style="color:#16a34a">✅ ${dtEscape(data.bankName)} (${dtEscape(data.cardNumber)}): ${summary}</span>${kept ? `<span style="color:#d97706">${kept}</span>` : ''}`; setTimeout(()=>{ status.innerHTML=''; }, kept ? 15000 : 8000); }
     showToast(`${data.bankName}: ${summary}`);
   } catch(e) {
+    if (react) _ccTopPush({ status: { kind: 'err', msg: e.message } });
     if (status) status.innerHTML = `<span style="color:#dc2626">❌ ${e.message}</span>`;
   }
 }

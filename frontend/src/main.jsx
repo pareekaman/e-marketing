@@ -37,6 +37,7 @@ const PAGES = {
   dmsfiles: lazy(() => import('./pages/Dms.jsx').then(m => ({ default: m.DmsFiles }))),
   ccoverview: lazy(() => import('./pages/CcOverview.jsx')),
   ccbankhead: lazy(() => import('./pages/CcBankHead.jsx')),
+  cctop: lazy(() => import('./pages/CcTop.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),
