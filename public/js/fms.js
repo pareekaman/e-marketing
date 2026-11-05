@@ -281,7 +281,41 @@ let fmsActiveStep = 0;
 let fmsAllUsers = [];
 let fmsSheetHeaders = [];
 
+// The page is React (frontend/src/pages/FmsAdmin.jsx) when #page-fms carries
+// data-react; the markup in app.html is the fallback. The functions below
+// still fetch and keep fmsActiveId / fmsActiveStep (Edit FMS and Check Columns
+// read them) and hand React a view of the page through faSetReact:
+//   empty: null | { kind: 'loading' | 'none' | 'error', error }
+//   tabs, activeId, detail: null | { sheet, steps }, step, sync: null | the /sync answer, syncBusy
+let FA_REACT = null, _faWanted = false;
+const _faView = { empty: null, tabs: null, activeId: null, detail: null, step: 0, sync: null, syncBusy: false };
+function faSetReact(fn) { FA_REACT = fn; if (fn && _faWanted) { _faWanted = false; fn({ ..._faView }); } }
+// The Delete button passes the active id as it is at the click, as the old
+// onclick="deleteFMSSheet(fmsActiveId)" did.
+function faActiveId() { return fmsActiveId; }
+function _faOn() { const root = document.getElementById('page-fms'); return !!(root && root.dataset.react); }
+function _faPush(patch) {
+  if (!_faOn()) return false;
+  Object.assign(_faView, patch);
+  if (FA_REACT) FA_REACT({ ..._faView });
+  else { _faWanted = true; emkReactMount('fmsadmin', document.getElementById('page-fms')); }
+  return true;
+}
+
 async function loadFMSAdmin() {
+  if (_faOn()) {
+    if (!fmsAllSheets.length) _faPush({ empty: { kind: 'loading' } });
+    const usersRes = await api('/api/users');
+    fmsAllUsers = Array.isArray(usersRes) ? usersRes : [];
+    const sheets = await api('/api/fms');
+    if (!Array.isArray(sheets)) { _faPush({ tabs: [], detail: null, empty: { kind: 'error', error: sheets && sheets.error } }); return; }
+    fmsAllSheets = sheets;
+    if (!sheets.length) { _faPush({ tabs: [], detail: null, empty: { kind: 'none' } }); return; }
+    _faPush({ empty: null, tabs: sheets.map(s => ({ id: s.id, label: s.fms_name || s.sheet_name })), activeId: fmsActiveId });
+    if (!fmsActiveId && sheets.length) loadFMSDetail(sheets[0].id);
+    else if (fmsActiveId) loadFMSDetail(fmsActiveId);
+    return;
+  }
   const tabsEl = document.getElementById('fmsListTabs');
   const emptyEl = document.getElementById('fmsEmpty');
   const detailEl = document.getElementById('fmsDetailView');
@@ -331,6 +365,16 @@ function fmsSetOpenSheetLink(id) {
 
 async function loadFMSDetail(id) {
   fmsActiveId = id;
+  if (_faOn()) {
+    _faPush({ activeId: id });
+    const data = await api(`/api/fms/${id}`);
+    // A failed read left the old page showing the previous FMS (it threw on
+    // data.sheet); the same here, without the throw.
+    if (!data || !data.sheet) { _faPush({ empty: null }); return; }
+    fmsActiveStep = 0;
+    _faPush({ empty: null, detail: { id, sheet: data.sheet, steps: data.steps || [] }, step: 0, sync: null });
+    return;
+  }
   const sheet_data = fmsAllSheets.find(s=>s.id===id);
   document.querySelectorAll('.fms-name-tab').forEach(t => {
     t.classList.toggle('active', sheet_data && t.textContent.trim() === (sheet_data.fms_name||sheet_data.sheet_name));
@@ -361,6 +405,7 @@ async function loadFMSDetail(id) {
 
 function showFMSStep(idx) {
   fmsActiveStep = idx;
+  if (_faPush({ step: idx })) return;
   document.querySelectorAll('.fms-step-tab').forEach((t,i) => t.classList.toggle('active', i===idx));
   const steps = JSON.parse(document.getElementById('fmsDetailView').dataset.steps || '[]');
   showFMSStepData(steps, idx);
@@ -410,7 +455,7 @@ async function deleteFMSSheet(id) {
   if (!await appConfirm('Delete this FMS? This cannot be undone!', 'Delete FMS')) return;
   await api(`/api/fms/${id}`,'DELETE');
   fmsActiveId = null;
-  document.getElementById('fmsDetailView').style.display='none';
+  if (!_faPush({ detail: null })) document.getElementById('fmsDetailView').style.display='none';
   showToast('FMS deleted!');
   loadFMSAdmin();
 }
@@ -639,6 +684,12 @@ async function saveEditFMS() {
 
 // ── Sync Data ──
 async function syncFMSData() {
+  if (_faOn()) {
+    _faPush({ syncBusy: true });
+    const r = await api(`/api/fms/${fmsActiveId}/sync`);
+    _faPush({ syncBusy: false, sync: r });
+    return;
+  }
   const syncBtn = document.querySelector('[onclick="syncFMSData()"]');
   if (syncBtn) { syncBtn.textContent='⏳ Syncing...'; syncBtn.disabled=true; }
 

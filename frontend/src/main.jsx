@@ -11,6 +11,7 @@ const PAGES = {
   alltasks: lazy(() => import('./pages/AllTasks.jsx')),
   fmstasks: lazy(() => import('./pages/FmsTasks.jsx')),
   fmsdone: lazy(() => import('./pages/FmsDone.jsx')),
+  fmsadmin: lazy(() => import('./pages/FmsAdmin.jsx')),
   leaves: lazy(() => import('./pages/LeaveTracker.jsx')),
   logs: lazy(() => import('./pages/Logs.jsx')),
   enquiry: lazy(() => import('./pages/Enquiry.jsx')),
