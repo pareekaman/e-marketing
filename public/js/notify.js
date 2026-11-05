@@ -25,7 +25,8 @@ let _ntUpto = null;       // cursor the dismissal clears against — see ntDismi
 // the failure would be invisible. The class is the truth either way.
 function ntIsOpen() {
   const m = document.getElementById('newTaskModal');
-  return !!(m && m.classList.contains('open'));
+  // The React pop-up (TaskPopups.jsx, kind 'newtask') counts the same way.
+  return !!(m && m.classList.contains('open')) || !!document.querySelector('#taskPopupsRoot .modal-overlay.open .nt-modal');
 }
 
 // Called from init() and from the badge poll. Silent on failure: a
@@ -51,6 +52,9 @@ function ntShow(tasks, total, upto) {
   const n = total || tasks.length;
   _ntShownIds = tasks.map(t => t.id);
   _ntUpto = upto || null;
+  // React draws the same pop-up (frontend/src/pages/TaskPopups.jsx); its two
+  // buttons come back through ntDismiss, which reads the two values above.
+  if (typeof _taskPopReact === 'function' && _taskPopReact('newtask', [tasks, n])) return;
   head.textContent = n === 1
     ? 'A new task has been assigned to you'
     : n + ' new tasks have been assigned to you';

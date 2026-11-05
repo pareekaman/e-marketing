@@ -4,7 +4,7 @@
 .nt-modal{max-width:520px;}
 .nt-head{display:flex;align-items:center;gap:10px;margin:-4px 0 4px;}
 .nt-bell{font-size:22px;line-height:1;}
-#ntCount{font-size:15px;font-weight:700;color:#1e293b;}
+#ntCount,.nt-count{font-size:15px;font-weight:700;color:#1e293b;}
 .nt-sub{font-size:12px;color:#64748b;margin:0 0 14px;}
 
 .nt-list{max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:9px;margin-bottom:16px;}

@@ -20,6 +20,8 @@
 //                bdDeleteSend / bdYearDeleteSend)
 //   transfer — Transfer Tasks, from daily.js (openNewTransferModal → trTasksIn /
 //              trTargets / trSend)
+//   newtask — the tasks given to me while I was away, from notify.js (ntShow;
+//             both buttons go through ntDismiss)
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { legacy, css, fmtDate } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
@@ -926,8 +928,47 @@ function TransferBody({ d, close }) {
   );
 }
 
-const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody, holiday: HolidayBody, checklist: ChecklistBody, delegate: DelegateBody, detail: DetailBody, bulkdelete: BulkDeleteBody, transfer: TransferBody };
-const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px', holiday: 'max-width:560px', checklist: '', delegate: '', detail: 'width:560px;max-width:96vw', bulkdelete: 'max-width:600px', transfer: 'max-width:600px' };
+// ── New tasks for me (notify.js) ──
+// What was delegated to me while I was away. Both buttons mark them read
+// (ntDismiss); × and Esc only close, so they come back on the next poll.
+function NewTaskBody({ d, close }) {
+  const dismiss = go => { close(); legacy('ntDismiss', go); };
+  const hidden = d.n - d.tasks.length;
+  return (
+    <>
+      <div className="nt-head">
+        <span className="nt-bell">🔔</span>
+        <span className="nt-count">{d.n === 1 ? 'A new task has been assigned to you' : d.n + ' new tasks have been assigned to you'}</span>
+      </div>
+      <p className="nt-sub">These were assigned to you while you were away.</p>
+      <div className="nt-list">
+        {d.tasks.map(t => (
+          <div className="nt-item" key={t.id}>
+            <div className="nt-item-top">
+              <span className={'nt-prio nt-prio-' + (t.priority || 'low')}>{t.priority || 'low'}</span>
+              {t.client_name ? <span className="nt-client">{t.client_name}</span> : null}
+              {/* A doer-defined deadline has no date yet: say so rather than print an empty field. */}
+              {t.awaiting_due_date ? <span className="nt-due nt-due-open">You set the date</span>
+                : t.due_date ? <span className="nt-due">{'Due ' + legacy('ntDate', t.due_date)}</span> : null}
+            </div>
+            <div className="nt-desc">{t.description || ''}</div>
+            <div className="nt-by">{'From ' + (t.assigned_by_name || 'someone') + ' · ' + (t.assigned_at || '')}</div>
+          </div>
+        ))}
+        {hidden > 0 ? <div className="nt-more">{'and ' + hidden + ' more — open All Tasks to see everything'}</div> : null}
+      </div>
+      <div className="modal-footer" ref={css('justify-content:space-between;align-items:center')}>
+        <button className="btn btn-outline" onClick={() => dismiss(false)}>Got it</button>
+        <button className="btn btn-primary" onClick={() => dismiss(true)}>View my tasks</button>
+      </div>
+    </>
+  );
+}
+
+const BODIES = { revise: ReviseBody, comments: CommentsBody, edit: EditBody, setdue: SetDueBody, holiday: HolidayBody, checklist: ChecklistBody, delegate: DelegateBody, detail: DetailBody, bulkdelete: BulkDeleteBody, transfer: TransferBody, newtask: NewTaskBody };
+const WIDTH = { revise: 'max-width:380px', comments: '', edit: '', setdue: 'max-width:380px', holiday: 'max-width:560px', checklist: '', delegate: '', detail: 'width:560px;max-width:96vw', bulkdelete: 'max-width:600px', transfer: 'max-width:600px', newtask: '' };
+// The .modal's own class, where the old markup had one (its width lives there).
+const CLASS = { newtask: 'nt-modal' };
 
 export default function TaskPopups() {
   const [st, setSt] = useState({});
@@ -945,12 +986,13 @@ export default function TaskPopups() {
       detail: t => show('detail', { t }),
       bulkdelete: data => show('bulkdelete', data),
       transfer: data => show('transfer', data),
+      newtask: (tasks, n) => show('newtask', { tasks, n }),
     });
     return () => legacy('taskPopSetReact', null);
   }, []);
   const closer = kind => () => setSt(s => ({ ...s, [kind]: { ...s[kind], open: false } }));
   return Object.entries(BODIES).map(([kind, Body]) => (st[kind] ? (
-    <Modal key={kind} open={st[kind].open} onClose={closer(kind)} style={WIDTH[kind]}>
+    <Modal key={kind} open={st[kind].open} onClose={closer(kind)} style={WIDTH[kind]} className={CLASS[kind] || ''}>
       <Body key={st[kind].key} d={st[kind].d} close={closer(kind)} />
     </Modal>
   ) : null));
