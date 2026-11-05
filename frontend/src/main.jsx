@@ -14,6 +14,7 @@ const PAGES = {
   fmsadmin: lazy(() => import('./pages/FmsAdmin.jsx')),
   fmscolumns: lazy(() => import('./pages/FmsColumns.jsx')),
   fmsadd: lazy(() => import('./pages/FmsAdd.jsx')),
+  fmssteps: lazy(() => import('./pages/FmsSteps.jsx')),
   leaves: lazy(() => import('./pages/LeaveTracker.jsx')),
   logs: lazy(() => import('./pages/Logs.jsx')),
   enquiry: lazy(() => import('./pages/Enquiry.jsx')),

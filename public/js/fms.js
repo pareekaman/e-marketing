@@ -593,11 +593,14 @@ async function openEditFMS() {
   const data = await api(`/api/fms/${fmsActiveId}`);
   const { sheet, steps } = data;
 
-  document.getElementById('editFmsFmsName').value = sheet.fms_name || sheet.sheet_name;
-  document.getElementById('editFmsSheetName').value = sheet.sheet_name;
-  document.getElementById('editFmsSheetId').value = sheet.sheet_id;
-  document.getElementById('editFmsHeaderRow').value = sheet.header_row;
-  document.getElementById('fmsEditErr').style.display='none';
+  const react = _fmsStepsOn();
+  if (!react) {
+    document.getElementById('editFmsFmsName').value = sheet.fms_name || sheet.sheet_name;
+    document.getElementById('editFmsSheetName').value = sheet.sheet_name;
+    document.getElementById('editFmsSheetId').value = sheet.sheet_id;
+    document.getElementById('editFmsHeaderRow').value = sheet.header_row;
+    document.getElementById('fmsEditErr').style.display='none';
+  }
 
   fmsSteps = steps.map(s => ({
     stepName: s.step_name,
@@ -614,17 +617,21 @@ async function openEditFMS() {
 
   fmsDeleteMode = false;
   fmsDupMode = false;
-  document.getElementById('editFmsDeleteModeBtn').textContent = '🗑 Select to Delete';
-  document.getElementById('fmsConfirmDeleteBtn').style.display='none';
-  const dupBtn = document.getElementById('editFmsDupModeBtn');
-  const dupConfBtn = document.getElementById('editFmsDupConfirmBtn');
-  if (dupBtn) dupBtn.textContent = '📋 Duplicate';
-  if (dupConfBtn) dupConfBtn.style.display = 'none';
-
-  // Open modal first — show loading
-  document.getElementById('fmsEditModal').classList.add('open');
   const container = document.getElementById('fmsEditStepsContainer');
-  container.innerHTML = `<div style="text-align:center;padding:20px;color:#64748b">⏳ Loading headers...</div>`;
+  if (react) {
+    _fmsStepsReact({ open: 'edit', basics: { fmsName: sheet.fms_name || sheet.sheet_name, sheetName: sheet.sheet_name, sheetId: sheet.sheet_id, headerRow: sheet.header_row } });
+  } else {
+    document.getElementById('editFmsDeleteModeBtn').textContent = '🗑 Select to Delete';
+    document.getElementById('fmsConfirmDeleteBtn').style.display='none';
+    const dupBtn = document.getElementById('editFmsDupModeBtn');
+    const dupConfBtn = document.getElementById('editFmsDupConfirmBtn');
+    if (dupBtn) dupBtn.textContent = '📋 Duplicate';
+    if (dupConfBtn) dupConfBtn.style.display = 'none';
+
+    // Open modal first — show loading
+    document.getElementById('fmsEditModal').classList.add('open');
+    container.innerHTML = `<div style="text-align:center;padding:20px;color:#64748b">⏳ Loading headers...</div>`;
+  }
 
   // Fetch headers
   fmsSheetHeaders = [];
@@ -641,6 +648,7 @@ async function openEditFMS() {
     showToast('⚠️ Headers fetch failed','error');
   }
 
+  if (react) { _fmsStepsReact({ ready: true, steps: JSON.parse(JSON.stringify(fmsSteps)), headers: fmsSheetHeaders, users: fmsAllUsers }); return; }
   // Render steps with or without headers
   container.innerHTML = '';
   fmsSteps.forEach((_,i) => appendFMSStepBox(i, 'fmsEditStepsContainer'));
@@ -688,17 +696,8 @@ async function saveEditFMS() {
 
   console.log('Saving steps count:', fmsSteps.length); // debug
 
-  const r = await api(`/api/fms/${fmsActiveId}`,'PUT',{
-    fmsName: fmsName || sheetName,
-    sheetName, sheetId, headerRow,
-    steps: fmsSteps.map(s=>({...s, showCols:s.showCols||[], delayReasonCol:s.delayReasonCol||'', doerNameCol:s.doerNameCol||s.doer_name_col||'', extraRows:(s.extraRows||[]).map(r=>({...r,dropdown_options:r.dropdown_options||''}))}))
-  });
-  if (r.error) { err.textContent=r.error; err.style.display='block'; return; }
-
-  closeModal('fmsEditModal');
-  showToast('✅ FMS updated! Steps: ' + fmsSteps.length);
-  fmsSheetHeaders = [];
-  loadFMSAdmin();
+  const msg = await fmsSaveEditSend({ fmsName, sheetName, sheetId, headerRow }, fmsSteps, () => closeModal('fmsEditModal'));
+  if (msg) { err.textContent=msg; err.style.display='block'; }
 }
 
 // ── Sync Data ──
@@ -933,18 +932,22 @@ async function proceedToStepsConfig() {
 
   // Build default steps
   fmsSteps = [];
+  const react = _fmsStepsOn();
   const container = document.getElementById('fmsStepsContainer');
-  container.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b">⏳ Loading headers...</div>';
+  if (!react) container.innerHTML = '<div style="text-align:center;padding:20px;color:#64748b">⏳ Loading headers...</div>';
   for (let i=0; i<fmsData.totalSteps; i++) {
     fmsSteps.push({ stepName:`Step ${i+1}`, doers:[], planCol:'', actualCol:'', extraInput:'no', extraCol:'', extraRows:[], showCols:[], delayReasonCol:'', doerNameCol:'' }); // extraRows items: {col_letter, field_type, label}
   }
 
   fmsDeleteMode = false;
-  const addDelBtn = document.getElementById('fmsAddDeleteModeBtn');
-  const addDelConfBtn = document.getElementById('fmsAddConfirmDeleteBtn');
-  if (addDelBtn) addDelBtn.textContent = '🗑 Select to Delete';
-  if (addDelConfBtn) addDelConfBtn.style.display='none';
-  document.getElementById('fmsStepsModal').classList.add('open');
+  if (react) _fmsStepsReact({ open: 'add' });
+  else {
+    const addDelBtn = document.getElementById('fmsAddDeleteModeBtn');
+    const addDelConfBtn = document.getElementById('fmsAddConfirmDeleteBtn');
+    if (addDelBtn) addDelBtn.textContent = '🗑 Select to Delete';
+    if (addDelConfBtn) addDelConfBtn.style.display='none';
+    document.getElementById('fmsStepsModal').classList.add('open');
+  }
 
   // Fetch headers after modal open
   fmsSheetHeaders = [];
@@ -971,6 +974,7 @@ async function proceedToStepsConfig() {
     showToast('⚠️ Headers fetch failed — using text input','error');
   }
 
+  if (react) { _fmsStepsReact({ ready: true, steps: JSON.parse(JSON.stringify(fmsSteps)), headers: fmsSheetHeaders, users: fmsAllUsers }); return; }
   // Re-render steps with headers
   container.innerHTML = '';
   fmsSteps.forEach((_, i) => appendFMSStepBox(i, 'fmsStepsContainer'));
@@ -1580,6 +1584,64 @@ function setupDragEvents(el) {
   });
 }
 
+// ── The step editor in React ──
+// Configure Steps (a new FMS) and Edit FMS are React (frontend/src/pages/FmsSteps.jsx)
+// when #fmsStepsRoot carries data-react; #fmsStepsModal / #fmsEditModal and the
+// box builders above are the fallback. fms.js still fetches users, the FMS and
+// the sheet's headers (with their toasts) and saves through the senders below.
+let FMS_STEPS_REACT = null, _fmsStepsWanted = [];
+function fmsStepsSetReact(fn) { FMS_STEPS_REACT = fn; if (fn) { const w = _fmsStepsWanted; _fmsStepsWanted = []; w.forEach(fn); } }
+function _fmsStepsOn() { const root = document.getElementById('fmsStepsRoot'); return !!(root && root.dataset.react); }
+function _fmsStepsReact(data) {
+  if (!_fmsStepsOn()) return false;
+  if (FMS_STEPS_REACT) FMS_STEPS_REACT(data);
+  else { _fmsStepsWanted.push(data); emkReactMount('fmssteps', document.getElementById('fmsStepsRoot')); }
+  return true;
+}
+function fmsDataGet() { return fmsData; }
+
+// The steps as the server takes them: blank names become "Step n", each step
+// carries its place, and the optional fields are never missing.
+function _fmsStepsBody(steps) {
+  steps.forEach((s, i) => { s.stepName = String(s.stepName || '').trim() || `Step ${i+1}`; s.step_order = i+1; });
+  return steps.map(s=>({...s, showCols: s.showCols||[], delayReasonCol: s.delayReasonCol||'', doerNameCol: s.doerNameCol||s.doer_name_col||'', extraRows: (s.extraRows||[]).map(r=>({...r, dropdown_options: r.dropdown_options||''}))}));
+}
+// Saves a new FMS from Configure Steps. A refusal is a toast, as it always was.
+async function fmsSaveNewSend(steps, close) {
+  const body = {
+    fmsName: fmsData.fmsName || fmsData.sheetName,
+    sheetName: fmsData.sheetName,
+    sheetId: fmsData.sheetId,
+    headerRow: fmsData.headerRow,
+    totalSteps: steps.length,
+    steps: _fmsStepsBody(steps)
+  };
+  if (body.steps.some(s=>!s.stepName)) { showToast('Please enter a name for all steps','error'); return; }
+  const r = await api('/api/fms', 'POST', body);
+  if (r.error) { showToast(r.error,'error'); return; }
+  close();
+  showToast('✅ FMS saved successfully!');
+  fmsActiveId = r.id;
+  fmsSheetHeaders = [];
+  loadFMSAdmin();
+}
+// Saves Edit FMS. Returns the message to show in the form, or closes and reloads.
+async function fmsSaveEditSend(f, steps, close) {
+  const sheetName = String(f.sheetName || '').trim();
+  const fmsName = String(f.fmsName || '').trim() || sheetName;
+  if (!sheetName) return 'Sheet Tab Name required';
+  const r = await api(`/api/fms/${fmsActiveId}`,'PUT',{
+    fmsName: fmsName || sheetName,
+    sheetName, sheetId: String(f.sheetId || '').trim(), headerRow: parseInt(f.headerRow)||1,
+    steps: _fmsStepsBody(steps)
+  });
+  if (r.error) return r.error;
+  close();
+  showToast('✅ FMS updated! Steps: ' + steps.length);
+  fmsSheetHeaders = [];
+  loadFMSAdmin();
+}
+
 // ── Save FMS ──
 async function saveFMS() {
   const boxes = document.querySelectorAll('#fmsStepsContainer .fms-step-box');
@@ -1596,25 +1658,7 @@ async function saveFMS() {
     });
   });
 
-  if (fmsSteps.some(s=>!s.stepName)) { showToast('Please enter a name for all steps','error'); return; }
-
-  const body = {
-    fmsName: fmsData.fmsName || fmsData.sheetName,
-    sheetName: fmsData.sheetName,
-    sheetId: fmsData.sheetId,
-    headerRow: fmsData.headerRow,
-    totalSteps: fmsSteps.length,
-    steps: fmsSteps.map(s=>({...s, showCols: s.showCols||[], delayReasonCol: s.delayReasonCol||'', doerNameCol: s.doerNameCol||s.doer_name_col||'', extraRows: (s.extraRows||[]).map(r=>({...r, dropdown_options: r.dropdown_options||''}))}))
-  };
-
-  const r = await api('/api/fms', 'POST', body);
-  if (r.error) { showToast(r.error,'error'); return; }
-
-  closeModal('fmsStepsModal');
-  showToast('✅ FMS saved successfully!');
-  fmsActiveId = r.id;
-  fmsSheetHeaders = [];
-  loadFMSAdmin();
+  await fmsSaveNewSend(fmsSteps, () => closeModal('fmsStepsModal'));
 }
 
 // ══════════════════════════════════════════════════════
