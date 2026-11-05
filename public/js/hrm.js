@@ -1236,9 +1236,10 @@ function refreshNavGroupVisibility() {
 }
 
 // Back / Forward: open the page the address now names.
-try { if (!history.state) history.replaceState({ page: new URLSearchParams(location.search).get('page') || 'dashboard' }, '', location.href); } catch {}
+// The address carries the tab's name (pageToUrl / pageFromUrl, core.js).
+try { if (!history.state) history.replaceState({ page: pageFromUrl(new URLSearchParams(location.search).get('page')) || 'dashboard' }, '', location.href); } catch {}
 window.addEventListener('popstate', () => {
-  const page = new URLSearchParams(location.search).get('page') || 'dashboard';
+  const page = pageFromUrl(new URLSearchParams(location.search).get('page')) || 'dashboard';
   if (!document.getElementById('page-' + page)) return;
   window._navFromHistory = true;
   try { navigate(page, null); } finally { window._navFromHistory = false; }
@@ -1290,8 +1291,8 @@ function navigate(page, el) {
   // itself brought us here, or the history would grow on every step back.
   if (!window._navFromHistory) {
     const qs = new URLSearchParams(location.search);
-    if ((qs.get('page') || 'dashboard') !== page) {
-      if (page === 'dashboard') qs.delete('page'); else qs.set('page', page);
+    if ((qs.get('page') || 'dashboard') !== pageToUrl(page)) {
+      if (page === 'dashboard') qs.delete('page'); else qs.set('page', pageToUrl(page));
       const q = qs.toString();
       try { history.pushState({ page }, '', location.pathname + (q ? '?' + q : '') + location.hash); } catch {}
     }

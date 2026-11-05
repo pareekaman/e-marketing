@@ -95,6 +95,18 @@ function renderDbmTable() {
 // STATE
 // ══════════════════════════════════════════════════════
 let ME = null;
+
+// The name a page goes by in the address bar (?page=). Three tabs were renamed
+// after their page id was already stored in permissions (Access Control keeps
+// 'meetings', 'feedback', 'fms' and the edit_/admin_ keys built on them), so
+// the id stays and only the address shows the name on the tab. An old link
+// with the id still opens the page.
+const PAGE_URL_NAMES = { meetings: 'scheduler', feedback: 'escalation', fms: 'fms-admin' };
+function pageToUrl(page) { return PAGE_URL_NAMES[page] || page; }
+function pageFromUrl(name) {
+  const hit = Object.keys(PAGE_URL_NAMES).find(id => PAGE_URL_NAMES[id] === name);
+  return hit || name;
+}
 // 'paymentreq' and 'feedback' are in every role's defaults on purpose: the
 // Payment Request nav used to be shown to everyone unconditionally, and the
 // Feedback nav is granted by /api/feedback/access. Both are now additionally
@@ -487,7 +499,16 @@ async function init() {
       // ?page=inventory makes a shareable deep link (there is no router — the
       // app is one document and navigate() just swaps .page divs). An explicit
       // link beats the remembered tab, so it is checked first.
-      const wanted = new URLSearchParams(location.search).get('page');
+      const asked = new URLSearchParams(location.search).get('page');
+      const wanted = asked && pageFromUrl(asked);
+      // An old link (?page=meetings) is rewritten to the tab's name in place,
+      // without a new history step.
+      if (asked && pageToUrl(wanted) !== asked) {
+        try {
+          const qs = new URLSearchParams(location.search); qs.set('page', pageToUrl(wanted));
+          history.replaceState({ page: wanted }, '', location.pathname + '?' + qs.toString() + location.hash);
+        } catch {}
+      }
       const lastPage = wanted || localStorage.getItem('lastPage');
       // Mirror navigate()'s own role guards so a disallowed saved page doesn't
       // silently no-op and leave the (still-default) dashboard without its data loaded.
