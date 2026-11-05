@@ -1394,17 +1394,19 @@ async function loadDoersFromColumn(idx) {
     return;
   }
 
-  // Get sheet ID + tab name + header row from whichever modal is open (new or edit)
+  // Sheet ID + tab name + header row: the Edit form's fields, or for a new FMS
+  // what the Add form handed over (fmsData) — the React Add form has no fields
+  // in #fmsAddModal to read back.
   const isEdit = document.getElementById('fmsEditModal')?.classList.contains('open');
   const sheetId = isEdit
     ? document.getElementById('editFmsSheetId').value.trim()
-    : document.getElementById('fmsSheetId').value.trim();
+    : String(fmsData.sheetId || '').trim();
   const tabName = isEdit
     ? document.getElementById('editFmsSheetName').value.trim()
-    : document.getElementById('fmsSheetName').value.trim();
+    : String(fmsData.sheetName || '').trim();
   const headerRow = isEdit
     ? (parseInt(document.getElementById('editFmsHeaderRow').value)||1)
-    : (parseInt(document.getElementById('fmsHeaderRow').value)||1);
+    : (parseInt(fmsData.headerRow)||1);
 
   if (!sheetId) {
     resultBox.innerHTML = '<span style="color:#dc2626">⚠️ Please enter the Sheet ID above first.</span>';
