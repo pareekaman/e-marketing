@@ -254,11 +254,10 @@ async function openFmsTaskFromRow(ref) {
   try {
     if (!ref || !ref.fmsId) return;
     navigate('fms-tasks', document.getElementById('nav-fms-tasks'));
+    // Waits for the FMS list (fms.js) to arrive, then picks this FMS in it.
     for (let tries = 0; tries < 20; tries++) {
-      const sel = document.getElementById('fmsTasksSelect');
-      if (sel && [...sel.options].some(o => String(o.value) === String(ref.fmsId))) {
-        sel.value = String(ref.fmsId);
-        await onFMSTasksSelect();
+      if (fmsTasksHas(ref.fmsId)) {
+        await fmsTasksPick(ref.fmsId);
         return;
       }
       await new Promise(r => setTimeout(r, 100));

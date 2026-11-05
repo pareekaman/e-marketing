@@ -1533,7 +1533,40 @@ let fmsTasksActiveStepId = null;
 let fmsTasksActiveStepData = null;
 let fmsTrainPaused = false;
 
+// The page is React (frontend/src/pages/FmsTasks.jsx) when #page-fms-tasks
+// carries data-react; the markup in app.html is the fallback. The functions
+// below still fetch and keep the active FMS / step / rows (the Done pop-up and
+// All Tasks read them) and hand React a view of the page through ftSetReact.
+let FT_REACT = null, _ftWanted = false;
+let _ftList = null;   // the FMS list once loaded, for fmsTasksHas
+const _ftView = { refresh: false, list: null, fmsId: '', train: null, step: null, rows: null, count: '', loadLabel: 'Load Tasks', loadBusy: false, empty: false };
+function ftSetReact(fn) { FT_REACT = fn; if (fn && _ftWanted) { _ftWanted = false; fn({ ..._ftView }); } }
+function _ftOn() { const root = document.getElementById('page-fms-tasks'); return !!(root && root.dataset.react); }
+function _ftPush(patch) {
+  if (!_ftOn()) return false;
+  Object.assign(_ftView, patch);
+  if (FT_REACT) FT_REACT({ ..._ftView });
+  else { _ftWanted = true; emkReactMount('fmstasks', document.getElementById('page-fms-tasks')); }
+  return true;
+}
+// For All Tasks → FMS "Open": is this FMS in the list yet, and pick it.
+function fmsTasksHas(id) { return (_ftList || []).some(f => String(f.id) === String(id)); }
+function fmsTasksPick(id) {
+  if (_ftOn()) return onFMSTasksSelect(String(id));
+  document.getElementById('fmsTasksSelect').value = String(id);
+  return onFMSTasksSelect();
+}
+
 async function loadFMSTasks() {
+  _ftList = null;
+  if (_ftPush({ refresh: true, list: 'loading', fmsId: '', train: null, step: null, empty: false })) {
+    const list = await api('/api/fms-tasks');
+    _ftList = list;
+    if (!list.length) { _ftPush({ list: [], empty: true }); return; }
+    _ftPush({ list: list.map(f => ({ value: String(f.id), label: f.fms_name || f.sheet_name })) });
+    if (list.length === 1) onFMSTasksSelect(String(list[0].id));
+    return;
+  }
   document.getElementById('fmsTasksRefreshBtn').style.display = 'block';
   const sel = document.getElementById('fmsTasksSelect');
   const trainContainer = document.getElementById('fmsTrainContainer');
@@ -1546,6 +1579,7 @@ async function loadFMSTasks() {
   emptyEl.style.display = 'none';
 
   const list = await api('/api/fms-tasks');
+  _ftList = list;
   if (!list.length) {
     sel.innerHTML = '<option value="">-- No FMS available --</option>';
     emptyEl.style.display = 'block';
@@ -1569,7 +1603,18 @@ async function loadFMSTasks() {
   // sidebar: it draws it as a fixed panel on <body>, never a native popup.
 }
 
-async function onFMSTasksSelect() {
+async function onFMSTasksSelect(pickedId) {
+  if (_ftOn()) {
+    // React passes the picked id; the rest is what the markup path does below.
+    const id = String(pickedId == null ? '' : pickedId);
+    if (!id) { _ftPush({ fmsId: '', train: null, step: null }); return; }
+    fmsTasksActiveFmsId = parseInt(id);
+    fmsTasksActiveStepId = null;
+    _ftPush({ fmsId: id, train: 'loading', step: null });
+    const data = await api(`/api/fms-tasks/${id}`);
+    buildFMSTrain(data.steps, data.sheet);
+    return;
+  }
   const fmsId = document.getElementById('fmsTasksSelect').value;
   const trainContainer = document.getElementById('fmsTrainContainer');
   const stepPanel = document.getElementById('fmsTaskStepPanel');
@@ -1593,6 +1638,12 @@ async function onFMSTasksSelect() {
 
 function buildFMSTrain(steps, sheet) {
   window._fmsAllSteps = steps; // Store all steps for modal use
+  if (_ftOn()) {
+    // The engine shows the FMS's name, cut to 12 letters, as the old select's text was.
+    const f = (_ftList || []).find(x => String(x.id) === String(_ftView.fmsId));
+    if (Array.isArray(steps)) _ftPush({ train: { steps, label: f ? String(f.fms_name || f.sheet_name || '') : '' } });
+    return;
+  }
   const isAdmin = ME.role === 'admin';
   const uid = ME.id;
 
@@ -1631,6 +1682,10 @@ function selectFMSStep(stepId, stepName, doerNames) {
   fmsTasksActiveStepId = stepId;
   // Store active step data for modal
   window._fmsActiveStepData = (window._fmsAllSteps || []).find(s => s.id === stepId) || null;
+  if (_ftPush({ step: { id: stepId, name: stepName, doers: doerNames }, rows: null, count: '' })) {
+    document.getElementById('fmsTaskStepPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
 
   // Highlight selected coach
   document.querySelectorAll('.fms-coach').forEach(c => {
@@ -1650,6 +1705,15 @@ function selectFMSStep(stepId, stepName, doerNames) {
 
 async function loadFMSTaskRows() {
   if (!fmsTasksActiveFmsId || !fmsTasksActiveStepId) return;
+  if (_ftOn()) {
+    _ftPush({ loadLabel: '⏳ Loading...', loadBusy: true });
+    const r = await api(`/api/fms-tasks/${fmsTasksActiveFmsId}/steps/${fmsTasksActiveStepId}/rows`);
+    _ftPush({ loadLabel: 'Refresh', loadBusy: false });
+    if (r.error) { showToast(r.error, 'error'); return; }
+    _ftPush({ count: r.total ? `${r.total} pending row(s)` : '✅ All done!', rows: r });
+    if (r.rows && r.rows.length) window._fmsCurrentRows = r.rows;
+    return;
+  }
   const btn = document.getElementById('fmsTaskLoadBtn');
   btn.textContent = '⏳ Loading...';
   btn.disabled = true;
