@@ -752,14 +752,29 @@ async function syncFMSData() {
 }
 
 // ── Add New FMS Flow ──
+// The Add form and the Share notice are React (frontend/src/pages/FmsAdd.jsx)
+// when #fmsAddRoot carries data-react; #fmsAddModal / #fmsShareModal are the
+// fallback. React validates, hands the form over through fmsAddSet, shows the
+// notice and moves on to proceedToStepsConfig (the steps pop-up is still old).
+let FMS_ADD_REACT = null, _fmsAddWanted = null;
+function fmsAddSetReact(fn) { FMS_ADD_REACT = fn; if (fn && _fmsAddWanted) { const w = _fmsAddWanted; _fmsAddWanted = null; fn(w); } }
+function _fmsAddReact(data) {
+  const root = document.getElementById('fmsAddRoot');
+  if (!root || !root.dataset.react) return false;
+  if (FMS_ADD_REACT) FMS_ADD_REACT(data); else { _fmsAddWanted = data; emkReactMount('fmsadd', root); }
+  return true;
+}
+function fmsAddSet(data) { fmsData = data; }
+
 function openAddFMS() {
+  fmsActiveId = null; // ✅ Reset so saveFMS doesn't PUT on wrong ID
+  if (_fmsAddReact({ open: true })) return;
   document.getElementById('fmsFmsName').value='';
   document.getElementById('fmsSheetName').value='';
   document.getElementById('fmsSheetId').value='';
   document.getElementById('fmsHeaderRow').value='1';
   document.getElementById('fmsTotalSteps').value='1';
   document.getElementById('fmsAddErr').style.display='none';
-  fmsActiveId = null; // ✅ Reset so saveFMS doesn't PUT on wrong ID
   document.getElementById('fmsAddModal').classList.add('open');
 }
 
@@ -787,14 +802,19 @@ function proceedToShareNotice() {
 // The service account the server reads sheets as (GET /api/fms/share-email),
 // fetched once per page load.
 let _fmsShareEmail = '';
+// Shared with the React notice: the email, from the cache or the server ('' when it failed).
+function fmsShareEmailNow() { return _fmsShareEmail; }
+function fmsShareEmailLoad() {
+  if (_fmsShareEmail) return Promise.resolve(_fmsShareEmail);
+  return api('/api/fms/share-email').then(r => { _fmsShareEmail = (r && r.email) || ''; return _fmsShareEmail; });
+}
 function startShareCountdown() {
   // Set email via JS to avoid Cloudflare masking
   const emailEl = document.getElementById('fmsShareEmail');
   if (emailEl) {
     emailEl.textContent = _fmsShareEmail || 'Loading…';
-    if (!_fmsShareEmail) api('/api/fms/share-email').then(r => {
-      _fmsShareEmail = (r && r.email) || '';
-      emailEl.textContent = _fmsShareEmail || 'Could not load the sharing email. Please ask an admin.';
+    if (!_fmsShareEmail) fmsShareEmailLoad().then(email => {
+      emailEl.textContent = email || 'Could not load the sharing email. Please ask an admin.';
     });
   }
 

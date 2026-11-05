@@ -13,6 +13,7 @@ const PAGES = {
   fmsdone: lazy(() => import('./pages/FmsDone.jsx')),
   fmsadmin: lazy(() => import('./pages/FmsAdmin.jsx')),
   fmscolumns: lazy(() => import('./pages/FmsColumns.jsx')),
+  fmsadd: lazy(() => import('./pages/FmsAdd.jsx')),
   leaves: lazy(() => import('./pages/LeaveTracker.jsx')),
   logs: lazy(() => import('./pages/Logs.jsx')),
   enquiry: lazy(() => import('./pages/Enquiry.jsx')),
