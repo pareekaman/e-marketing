@@ -29,6 +29,23 @@ let _dashStatsHold = 0; // seq of the load holding the cards; 0 = not holding
 // what did arrive, which is exactly the behaviour that existed before.
 const DASH_STATS_HOLD_MS = 2500;
 
+// The four cards are React (frontend/src/pages/DashCards.jsx) when #dashCards
+// carries data-react; their old markup is the fallback. The figures are still
+// worked out here (updateDashStats, loadDashTrend, goToAllTasksFromDash) and
+// handed over as { nums, revised, err, trend, active }. The hold below still
+// dims the cards through the .is-loading class on #dashCards.
+let DASH_CARDS_REACT = null, _dashCardsWanted = false;
+const _dashCardsView = { nums: null, revised: 0, err: false, trend: {}, active: null };
+function dashCardsSetReact(fn) { DASH_CARDS_REACT = fn; if (fn && _dashCardsWanted) { _dashCardsWanted = false; fn({ ..._dashCardsView }); } }
+function _dashCardsOn() { const root = document.getElementById('dashCards'); return !!(root && root.dataset.react); }
+function _dashCardsReact(patch) {
+  if (!_dashCardsOn()) return false;
+  Object.assign(_dashCardsView, patch);
+  if (DASH_CARDS_REACT) DASH_CARDS_REACT({ ..._dashCardsView });
+  else { _dashCardsWanted = true; emkReactMount('dashcards', document.getElementById('dashCards')); }
+  return true;
+}
+
 function beginDashStatsHold(seq) {
   _dashStatsHold = seq;
   document.querySelector('.overview-cards')?.classList.add('is-loading');
@@ -93,9 +110,11 @@ async function loadDashboard(light = false) {
     releaseDashStatsHold(seq);
     const errMsg = dDel.error || dChl.error;
     console.error('Dashboard API error:', errMsg);
-    document.getElementById('dTotal').textContent = 'Err';
-    document.getElementById('dCompleted').textContent = 'Err';
-    document.getElementById('dPending').textContent = 'Err';
+    if (!_dashCardsReact({ err: true })) {
+      document.getElementById('dTotal').textContent = 'Err';
+      document.getElementById('dCompleted').textContent = 'Err';
+      document.getElementById('dPending').textContent = 'Err';
+    }
     if (!_dashRowsReact({ kind: 'error', msg: errMsg }))
       document.getElementById('dashTbody').innerHTML = `<tr><td colspan="6" style="color:red;padding:16px;text-align:center">⚠️ Data load failed: ${dtEscape(errMsg)}<br><small>Please refresh, or contact your administrator if this persists.</small></td></tr>`;
     return;
@@ -548,21 +567,24 @@ function updateDashStats(type) {
   const total = pending + completed + revised + upcoming;
   // Pending card shows the strict pending count; revised is surfaced as a
   // separate subtitle within the same card so the two numbers stay distinct.
-  const totalEl = document.getElementById('dTotal');
-  const cEl     = document.getElementById('dCompleted');
-  const pEl     = document.getElementById('dPending');
-  const pBreak  = document.getElementById('dPendingBreakdown');
-  if (totalEl) countUp(totalEl, total);
-  if (cEl)     countUp(cEl,     completed);
-  if (pEl)     countUp(pEl,     pending);
-  if (pBreak) {
-    if (revised > 0) { pBreak.textContent = `+ ${revised} revised`; pBreak.style.display = 'block'; }
-    else             { pBreak.style.display = 'none'; }
+  // The cards are React when #dashCards carries data-react; the ring below is drawn here either way.
+  if (!_dashCardsReact({ err: false, nums: { total, completed, pending, upcoming }, revised })) {
+    const totalEl = document.getElementById('dTotal');
+    const cEl     = document.getElementById('dCompleted');
+    const pEl     = document.getElementById('dPending');
+    const pBreak  = document.getElementById('dPendingBreakdown');
+    if (totalEl) countUp(totalEl, total);
+    if (cEl)     countUp(cEl,     completed);
+    if (pEl)     countUp(pEl,     pending);
+    if (pBreak) {
+      if (revised > 0) { pBreak.textContent = `+ ${revised} revised`; pBreak.style.display = 'block'; }
+      else             { pBreak.style.display = 'none'; }
+    }
+    // Upcoming — server-side count, already resolved for the current type above.
+    const upEl = document.getElementById('dUpcoming');
+    if (upEl) countUp(upEl, upcoming);
   }
-  // Upcoming — server-side count, already resolved for the current type above.
   const upcomingCount = upcoming;
-  const upEl = document.getElementById('dUpcoming');
-  if (upEl) countUp(upEl, upcomingCount);
 
   if (dashChartInst) dashChartInst.destroy();
   const canvas = document.getElementById('dashChart');
@@ -633,6 +655,12 @@ async function loadDashTrend(qs, seq) {
   if (seq !== _dashSeq || !t || t.error) return;
   // Only the sparkline: the "↑ x% vs last month" line was taken off on
   // 2026-11-01 at the user's request.
+  if (_dashCardsOn()) {
+    const trend = {};
+    for (const [key, , color] of DASH_TREND_CARDS) if (t[key]) trend[key] = dashSpark(t[key].spark, color);
+    _dashCardsReact({ trend: { ..._dashCardsView.trend, ...trend } });
+    return;
+  }
   for (const [key, id, color] of DASH_TREND_CARDS) {
     const el = document.getElementById(id);
     const d = t[key];
@@ -755,12 +783,14 @@ let dashStatusFilter = 'pending';
 async function goToAllTasksFromDash(status) {
   dashStatusFilter = status;
   // Visually mark which card is active.
-  document.querySelectorAll('.ov-card').forEach(c => c.classList.remove('ov-card-active'));
-  const cardSel = status === 'completed' ? '.ov-card.completed'
-                : status === 'all'       ? '.ov-card.total'
-                : status === 'upcoming'  ? '.ov-card.upcoming'
-                : '.ov-card.pending';
-  document.querySelector(cardSel)?.classList.add('ov-card-active');
+  if (!_dashCardsReact({ active: status })) {
+    document.querySelectorAll('.ov-card').forEach(c => c.classList.remove('ov-card-active'));
+    const cardSel = status === 'completed' ? '.ov-card.completed'
+                  : status === 'all'       ? '.ov-card.total'
+                  : status === 'upcoming'  ? '.ov-card.upcoming'
+                  : '.ov-card.pending';
+    document.querySelector(cardSel)?.classList.add('ov-card-active');
+  }
 
   // Update the table title so the user knows what they're looking at.
   const titleEl = document.querySelector('#dashTbody')?.closest('.task-table-card')?.querySelector('.card-head-title');
