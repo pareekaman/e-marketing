@@ -96,7 +96,8 @@ async function loadDashboard(light = false) {
     document.getElementById('dTotal').textContent = 'Err';
     document.getElementById('dCompleted').textContent = 'Err';
     document.getElementById('dPending').textContent = 'Err';
-    document.getElementById('dashTbody').innerHTML = `<tr><td colspan="6" style="color:red;padding:16px;text-align:center">⚠️ Data load failed: ${dtEscape(errMsg)}<br><small>Please refresh, or contact your administrator if this persists.</small></td></tr>`;
+    if (!_dashRowsReact({ kind: 'error', msg: errMsg }))
+      document.getElementById('dashTbody').innerHTML = `<tr><td colspan="6" style="color:red;padding:16px;text-align:center">⚠️ Data load failed: ${dtEscape(errMsg)}<br><small>Please refresh, or contact your administrator if this persists.</small></td></tr>`;
     return;
   }
 
@@ -918,6 +919,19 @@ function toggleDashDateSort() {
   if (window._lastDashTasks) renderDashTable(window._lastDashTasks, dashType);
 }
 
+// The table rows are React (frontend/src/pages/DashRows.jsx) when #dashTbody
+// carries data-react; the HTML below is the fallback. renderDashTable still
+// picks, filters and sorts the rows, writes the header and fills _dashTaskMap,
+// then hands over { kind: 'rows' | 'fms' | 'error', ... }.
+let DASH_ROWS_REACT = null, _dashRowsWanted = null;
+function dashRowsSetReact(fn) { DASH_ROWS_REACT = fn; if (fn && _dashRowsWanted) { const w = _dashRowsWanted; _dashRowsWanted = null; fn(w); } }
+function _dashRowsOn() { const tb = document.getElementById('dashTbody'); return !!(tb && tb.dataset.react); }
+function _dashRowsReact(data) {
+  if (!_dashRowsOn()) return false;
+  if (DASH_ROWS_REACT) DASH_ROWS_REACT(data); else { _dashRowsWanted = data; emkReactMount('dashrows', document.getElementById('dashTbody')); }
+  return true;
+}
+
 function renderDashTable(tasks, type) {
   // Show ALL pending tasks (delegation + checklist + FMS) combined
   const isAdmin = ME.role==='admin' || ME.role==='hod';
@@ -939,6 +953,7 @@ function renderDashTable(tasks, type) {
     let fmsRows = (window._lastDashFMS || []).slice();
     if (_dashDateSortState === 1) fmsRows = [...fmsRows].sort((a,b) => (a.due_date||'').localeCompare(b.due_date||''));
     else if (_dashDateSortState === 2) fmsRows = [...fmsRows].sort((a,b) => (b.due_date||'').localeCompare(a.due_date||''));
+    if (_dashRowsReact({ kind: 'fms', rows: fmsRows })) return;
     if (!fmsRows.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty">No pending FMS rows 🎉</td></tr>`; return; }
     tbody.innerHTML = fmsRows.map(_buildFmsRowHtml).join('');
     return;
@@ -1002,10 +1017,16 @@ function renderDashTable(tasks, type) {
     allPending = [...allPending].sort((a,b) => (b.due_date||b.date||'').localeCompare(a.due_date||a.date||''));
   }
   const colCount = (showPriority ? 7 : 6) + 1; // +1: the # column (amber only)
+  const emptyMsg = dashStatusFilter === 'completed' ? 'No completed tasks in this window'
+                 : dashStatusFilter === 'all'       ? 'No tasks in this window'
+                 : 'No pending tasks 🎉';
+  // React draws the rows; the ⋮ menu still finds a task in _dashTaskMap.
+  if (_dashRowsOn()) {
+    allPending.forEach(t => { if (t.type !== 'fms' && t.id) window._dashTaskMap[t.id] = t; });
+    _dashRowsReact({ kind: 'rows', rows: allPending, showPriority, isAdmin, isPC, meId: ME.id, colCount, emptyMsg });
+    return;
+  }
   if (!allPending.length) {
-    const emptyMsg = dashStatusFilter === 'completed' ? 'No completed tasks in this window'
-                   : dashStatusFilter === 'all'       ? 'No tasks in this window'
-                   : 'No pending tasks 🎉';
     tbody.innerHTML=`<tr><td colspan="${colCount}" class="empty">${emptyMsg}</td></tr>`;
     return;
   }

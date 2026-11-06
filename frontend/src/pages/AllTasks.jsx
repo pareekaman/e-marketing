@@ -44,7 +44,8 @@ function DelayCell({ t }) {
   );
 }
 
-function FmsRow({ t }) {
+// Also the Dashboard's FMS tab (DashRows.jsx), which showed the same row.
+export function FmsRow({ t }) {
   const ref = { fmsId: t.fmsId, stepId: t.stepId, rowNumber: t.rowNumber };
   const lateBadge = t.isLate
     ? <span ref={css('font-size:10px;background:#fef2f2;color:#dc2626;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #fecaca')}>⏰ Late</span>

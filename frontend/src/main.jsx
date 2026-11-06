@@ -42,6 +42,7 @@ const PAGES = {
   ccsummary: lazy(() => import('./pages/CcSummary.jsx')),
   ccpickers: lazy(() => import('./pages/CcPickers.jsx')),
   ccrename: lazy(() => import('./pages/CcRename.jsx')),
+  dashrows: lazy(() => import('./pages/DashRows.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),
