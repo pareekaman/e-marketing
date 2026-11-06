@@ -411,8 +411,37 @@ function ccOwnSaveOptions() { try { localStorage.setItem('cc_own_options', JSON.
 
 let _ccOwnDropCtx = null; // { bank, card, si, oi }
 
+// The owner and department pickers are React (frontend/src/pages/CcPickers.jsx)
+// when #ccPickersRoot carries data-react; #ccOwnDropPanel / #ccDeptDropPanel are
+// the fallback. Which row is open, what is ticked and every save stay here;
+// React is handed { open, left, top, other, options | rows } per picker.
+let CC_PICK_REACT = null, _ccPickWanted = false;
+const _ccPickView = { own: { open: false }, dept: { open: false } };
+function ccPickSetReact(fn) { CC_PICK_REACT = fn; if (fn && _ccPickWanted) { _ccPickWanted = false; fn({ own: { ..._ccPickView.own }, dept: { ..._ccPickView.dept } }); } }
+function _ccPickOn() { const root = document.getElementById('ccPickersRoot'); return !!(root && root.dataset.react); }
+function _ccPickPush(kind, patch) {
+  if (!_ccPickOn()) return false;
+  _ccPickView[kind] = { ..._ccPickView[kind], ...patch };
+  const view = { own: { ..._ccPickView.own }, dept: { ..._ccPickView.dept } };
+  if (CC_PICK_REACT) CC_PICK_REACT(view); else { _ccPickWanted = true; emkReactMount('ccpickers', document.getElementById('ccPickersRoot')); }
+  return true;
+}
+// Under the button that opened it, in page coordinates (the old panel's place).
+function _ccPickAt(btnId) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return {};
+  const rect = btn.getBoundingClientRect();
+  return { left: rect.left, top: rect.bottom + 4 + window.scrollY };
+}
+
 function ccOwnToggleDrop(bank, card, si, oi) {
   if (!ccCanEdit()) return;
+  if (_ccPickOn()) {
+    if (_ccOwnDropCtx && _ccOwnDropCtx.si === si && _ccOwnDropCtx.oi === oi) { _ccOwnDropCtx = null; _ccPickPush('own', { open: false }); return; }
+    _ccOwnDropCtx = { bank, card, si, oi };
+    _ccPickPush('own', { open: true, ..._ccPickAt(`ccOwnBtn-${si}-${oi}`), options: _CC_OWN_OPTIONS.slice(), other: false });
+    return;
+  }
   const panel = document.getElementById('ccOwnDropPanel');
   if (_ccOwnDropCtx && _ccOwnDropCtx.si === si && _ccOwnDropCtx.oi === oi) {
     panel.style.display = 'none'; _ccOwnDropCtx = null; return;
@@ -429,6 +458,7 @@ function ccOwnToggleDrop(bank, card, si, oi) {
 }
 
 function ccOwnBuildPanel() {
+  if (_ccPickPush('own', { options: _CC_OWN_OPTIONS.slice(), other: false })) return;
   const items = document.getElementById('ccOwnDropItems');
   if (!items) return;
   const clearRow = `<div onclick="ccOwnClear()" style="padding:7px 14px;font-size:12px;color:#94a3b8;cursor:pointer;border-bottom:1px solid #f1f5f9;font-style:italic" onmouseover="this.style.background='#fef2f2';this.style.color='#ef4444'" onmouseout="this.style.background='';this.style.color='#94a3b8'">✕ &nbsp;Clear selection</div>`;
@@ -562,7 +592,7 @@ function ccOwnSelectOption(val) {
   ccUpdateField(bank, card, si, oi, 'expenses', val);
   const label = document.getElementById(`ccOwnLabel-${si}-${oi}`);
   if (label) { label.textContent = val; label.style.color = '#0f172a'; }
-  document.getElementById('ccOwnDropPanel').style.display = 'none';
+  _ccOwnHide();
   _ccOwnDropCtx = null;
   ccRefreshSummaryIfOpen(si);
 }
@@ -573,7 +603,7 @@ function ccOwnClear() {
   ccUpdateField(bank, card, si, oi, 'expenses', '');
   const label = document.getElementById(`ccOwnLabel-${si}-${oi}`);
   if (label) { label.textContent = '— Owner —'; label.style.color = '#94a3b8'; }
-  document.getElementById('ccOwnDropPanel').style.display = 'none';
+  _ccOwnHide();
   _ccOwnDropCtx = null;
   ccRefreshSummaryIfOpen(si);
 }
@@ -585,35 +615,44 @@ function ccOwnDeleteOption(val) {
   ccOwnBuildPanel();
 }
 
+function _ccOwnHide() {
+  const panel = document.getElementById('ccOwnDropPanel');
+  if (panel) panel.style.display = 'none';
+  _ccPickPush('own', { open: false });
+}
+
 function ccOwnShowOtherInput() {
+  if (_ccPickPush('own', { other: true })) return;
   document.getElementById('ccOwnOtherBtn').style.display = 'none';
   document.getElementById('ccOwnOtherInputRow').style.display = 'flex';
   setTimeout(() => document.getElementById('ccOwnPanelTxt')?.focus(), 30);
 }
 
-function ccOwnConfirmPanel() {
+// `text` comes from the React picker; the old panel's box is read otherwise.
+function ccOwnConfirmPanel(text) {
   if (!ccCanEdit()) return;
-  const val = (document.getElementById('ccOwnPanelTxt')?.value || '').trim();
+  const val = (text != null ? String(text) : (document.getElementById('ccOwnPanelTxt')?.value || '')).trim();
   if (!val || !_ccOwnDropCtx) return;
   const { bank, card, si, oi } = _ccOwnDropCtx;
   if (!_CC_OWN_OPTIONS.includes(val)) { _CC_OWN_OPTIONS.push(val); ccOwnSaveOptions(); }
   ccUpdateField(bank, card, si, oi, 'expenses', val);
   const label = document.getElementById(`ccOwnLabel-${si}-${oi}`);
   if (label) { label.textContent = val; label.style.color = '#0f172a'; }
-  document.getElementById('ccOwnDropPanel').style.display = 'none';
+  _ccOwnHide();
   _ccOwnDropCtx = null;
   ccRefreshSummaryIfOpen(si);
 }
 
 function ccOwnCancelPanel() {
-  document.getElementById('ccOwnDropPanel').style.display = 'none';
+  _ccOwnHide();
   _ccOwnDropCtx = null;
 }
 
 document.addEventListener('click', function(e) {
-  if (!e.target.closest('#ccOwnDropPanel') && !e.target.closest('[id^="ccOwnBtn-"]')) {
+  if (!e.target.closest('#ccOwnDropPanel, [data-cc-pick="own"]') && !e.target.closest('[id^="ccOwnBtn-"]')) {
     const panel = document.getElementById('ccOwnDropPanel');
     if (panel) { panel.style.display = 'none'; _ccOwnDropCtx = null; }
+    if (_ccPickView.own.open) _ccPickPush('own', { open: false });
   }
 });
 // ─────────────────────────────────────────────────────────
@@ -663,6 +702,14 @@ function ccDeptPaintBulk(si) {
 
 function ccDeptToggleDrop(bank, card, si, oi) {
   if (!ccCanEdit()) return;
+  if (_ccPickOn()) {
+    if (_ccDeptDropCtx && _ccDeptDropCtx.si === si && _ccDeptDropCtx.oi === oi) { _ccDeptDropCtx = null; _ccPickPush('dept', { open: false }); return; }
+    const t = _ccData[bank]?.[card]?.[si]?.transactions[oi];
+    _ccDeptDropCtx = { bank, card, si, oi, sel: ccDeptList(t && t.department) };
+    ccDeptBuildPanel();
+    _ccPickPush('dept', { open: true, ..._ccPickAt(`ccDeptBtn-${si}-${oi}`) });
+    return;
+  }
   const panel = document.getElementById('ccDeptDropPanel');
   if (_ccDeptDropCtx && _ccDeptDropCtx.si === si && _ccDeptDropCtx.oi === oi) {
     panel.style.display = 'none'; _ccDeptDropCtx = null; return;
@@ -681,6 +728,13 @@ function ccDeptToggleDrop(bank, card, si, oi) {
 
 function ccDeptBulkToggleDrop(si) {
   if (!ccCanEdit()) return;
+  if (_ccPickOn()) {
+    if (_ccDeptDropCtx && _ccDeptDropCtx.bulk && _ccDeptDropCtx.si === si) { _ccDeptDropCtx = null; _ccPickPush('dept', { open: false }); return; }
+    _ccDeptDropCtx = { bulk: true, si, sel: (_ccBulkDept[si] || []).slice() };
+    ccDeptBuildPanel();
+    _ccPickPush('dept', { open: true, ..._ccPickAt('ccBulkDeptBtn-' + si) });
+    return;
+  }
   const panel = document.getElementById('ccDeptDropPanel');
   if (_ccDeptDropCtx && _ccDeptDropCtx.bulk && _ccDeptDropCtx.si === si) {
     panel.style.display = 'none'; _ccDeptDropCtx = null; return;
@@ -698,9 +752,13 @@ function ccDeptBulkToggleDrop(si) {
 
 function ccDeptBuildPanel() {
   const items = document.getElementById('ccDeptDropItems');
-  if (!items) return;
   const sel  = (_ccDeptDropCtx && _ccDeptDropCtx.sel) || [];
   const bulk = !!(_ccDeptDropCtx && _ccDeptDropCtx.bulk);
+  if (_ccPickPush('dept', { other: false, rows: [
+    bulk ? { val: '__CLEAR__', text: '🗑 Clear Dept', on: sel.includes('__CLEAR__'), canDelete: false } : { clear: true },
+    ..._ccDepts.map(opt => ({ val: opt, text: opt, on: sel.includes(opt), canDelete: ccCanAdmin() })),
+  ] })) return;
+  if (!items) return;
   // Bulk needs a way to say "wipe the department on these rows", which is not the
   // same as "pick nothing" — so there it is a sentinel option, not a reset link.
   const topRow = bulk
@@ -768,14 +826,16 @@ async function ccDeptDeleteOption(val) {
 }
 
 function ccDeptShowOtherInput() {
+  if (_ccPickPush('dept', { other: true })) return;
   document.getElementById('ccDeptOtherBtn').style.display = 'none';
   document.getElementById('ccDeptOtherInputRow').style.display = 'flex';
   setTimeout(() => document.getElementById('ccDeptPanelTxt')?.focus(), 30);
 }
 
-async function ccDeptConfirmPanel() {
+// `text` comes from the React picker; the old panel's box is read otherwise.
+async function ccDeptConfirmPanel(text) {
   if (!ccCanEdit()) return;
-  const val = (document.getElementById('ccDeptPanelTxt')?.value || '').trim();
+  const val = (text != null ? String(text) : (document.getElementById('ccDeptPanelTxt')?.value || '')).trim();
   if (!val || !_ccDeptDropCtx) return;
   try {
     const res = await api('/api/credit-cards/departments', 'POST', { name: val });
@@ -792,10 +852,11 @@ function ccDeptCancelPanel() {
 }
 
 document.addEventListener('click', function(e) {
-  if (!e.target.closest('#ccDeptDropPanel') && !e.target.closest('[id^="ccDeptBtn-"]')
+  if (!e.target.closest('#ccDeptDropPanel, [data-cc-pick="dept"]') && !e.target.closest('[id^="ccDeptBtn-"]')
       && !e.target.closest('[id^="ccBulkDeptBtn-"]')) {
     const panel = document.getElementById('ccDeptDropPanel');
     if (panel) { panel.style.display = 'none'; _ccDeptDropCtx = null; }
+    if (_ccPickView.dept.open) _ccPickPush('dept', { open: false });
   }
 });
 // ─────────────────────────────────────────────────────────

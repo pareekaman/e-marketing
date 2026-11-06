@@ -40,6 +40,7 @@ const PAGES = {
   cctop: lazy(() => import('./pages/CcTop.jsx')),
   ccstatements: lazy(() => import('./pages/CcStatements.jsx')),
   ccsummary: lazy(() => import('./pages/CcSummary.jsx')),
+  ccpickers: lazy(() => import('./pages/CcPickers.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),
