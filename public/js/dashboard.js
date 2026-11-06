@@ -518,14 +518,38 @@ function clearPCDateFilter() {
 // is open and lets an admin jump into any other user's dashboard (real
 // impersonation: a fresh user-scoped token, so the whole app renders as them). ──
 let _dashSwitchUsers = null;
+// The switcher's contents are React (frontend/src/pages/DashUserSwitcher.jsx) when
+// #topbarActions carries data-react; its markup in app.html is the fallback.
+// View: { opts: [{ value, label }], value } — value is whose dashboard is open.
+let DASH_SW_REACT = null, _dashSwWanted = false;
+const _dashSwView = { opts: [], value: '' };
+function dashSwSetReact(fn) { DASH_SW_REACT = fn; if (fn && _dashSwWanted) { _dashSwWanted = false; fn({ ..._dashSwView }); } }
+function _dashSwReact(patch) {
+  const root = document.getElementById('topbarActions');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_dashSwView, patch);
+  if (DASH_SW_REACT) DASH_SW_REACT({ ..._dashSwView });
+  else { _dashSwWanted = true; emkReactMount('dashuserswitcher', root); }
+  return true;
+}
+// React's pick: it shows the chosen name while the switch goes through, as the old box did.
+function dashSwPick(v) { _dashSwReact({ value: String(v) }); onDashUserSwitch(v); }
 async function buildDashUserSwitcher(){
   if (!(ME.role === 'admin' || ME.impersonatedBy)) return;
   const sel = document.getElementById('dashUserSwitcher');
   const bar = document.getElementById('topbarActions');
-  if (!sel || !bar) return;
+  const swReact = !!(bar && bar.dataset.react);
+  if ((!sel && !swReact) || !bar) return;
   if (!_dashSwitchUsers) {
     try { const u = await dashUsers(); _dashSwitchUsers = (Array.isArray(u) ? u : []).filter(x => x.role !== 'client'); }
     catch { _dashSwitchUsers = []; }
+  }
+  if (swReact) {
+    const opts = (ME.impersonatedBy ? [{ value: '__self__', label: '⤺ Back to my dashboard' }] : [])
+      .concat(_dashSwitchUsers.map(u => ({ value: String(u.id), label: `${u.name}${u.department ? ' · ' + u.department : ''}` })));
+    _dashSwReact({ opts, value: String(ME.id) });
+    bar.style.display = 'flex';
+    return;
   }
   // While impersonating, offer a clear way back to the admin's own dashboard.
   let opts = ME.impersonatedBy ? `<option value="__self__">⤺ Back to my dashboard</option>` : '';
@@ -547,7 +571,7 @@ async function onDashUserSwitch(val){
     const r = await api('/api/admin/impersonate', 'POST', { userId: id });
     if (r && r.error) {
       showToast(r.error, 'error');
-      const sel = document.getElementById('dashUserSwitcher'); if (sel) sel.value = String(ME.id);
+      if (!_dashSwReact({ value: String(ME.id) })) { const sel = document.getElementById('dashUserSwitcher'); if (sel) sel.value = String(ME.id); }
       return;
     }
     // Fresh token is set as a cookie — reload so the app renders entirely as that

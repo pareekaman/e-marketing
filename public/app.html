@@ -317,7 +317,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         <div class="nt-panel-list" id="ntPanelList"></div>
       </div>
     </div>
-    <div class="topbar-right" id="topbarActions" style="display:none;align-items:center;gap:8px">
+    <!-- data-react: the "Dashboard:" switcher is React (frontend/src/pages/DashUserSwitcher.jsx), handed its list by dashboard.js; this markup is the fallback. -->
+    <div class="topbar-right" id="topbarActions" data-react="1" data-react-quiet="1" style="display:none;align-items:center;gap:8px">
       <span style="font-size:13px;color:#64748b;font-weight:600;white-space:nowrap">👁 Dashboard:</span>
       <select id="dashUserSwitcher" onchange="onDashUserSwitch(this.value)"
         title="Open another user's dashboard"
@@ -4400,8 +4401,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261106f"></script>
-<script src="/js/dashboard.js?v=20261106e"></script>
+<script src="/js/react-bridge.js?v=20261106g"></script>
+<script src="/js/dashboard.js?v=20261106f"></script>
 <script src="/js/amber-ui.js?v=20261106a"></script>
 <script src="/js/tasks.js?v=20261105b"></script>
 <script src="/js/tasks-report.js?v=20261101a"></script>
