@@ -62,6 +62,32 @@ function _dashBtnsReact(patch) {
   return true;
 }
 
+// The employee filter is React (frontend/src/pages/DashEmpFilter.jsx) when
+// #dashEmpFilterWrap carries data-react; the markup in app.html (the <select>,
+// its click-catcher and hrm.js's hand-built list) is the fallback. View:
+// { show, opts: [{ value, label }], value }. Everything here reads the chosen
+// employee through dashEmpValue(), so it never depends on React having drawn yet.
+let DASH_EMP_REACT = null, _dashEmpWanted = false;
+const _dashEmpView = { show: false, opts: [{ value: 'all', label: 'All Employees' }], value: 'all' };
+function dashEmpSetReact(fn) { DASH_EMP_REACT = fn; if (fn && _dashEmpWanted) { _dashEmpWanted = false; fn({ ..._dashEmpView }); } }
+function _dashEmpOn() { const root = document.getElementById('dashEmpFilterWrap'); return !!(root && root.dataset.react); }
+function _dashEmpReact(patch) {
+  if (!_dashEmpOn()) return false;
+  Object.assign(_dashEmpView, patch);
+  if (DASH_EMP_REACT) DASH_EMP_REACT({ ..._dashEmpView });
+  else { _dashEmpWanted = true; emkReactMount('dashempfilter', document.getElementById('dashEmpFilterWrap')); }
+  return true;
+}
+function dashEmpValue(sel) { return _dashEmpOn() ? _dashEmpView.value : (sel ? sel.value : 'all'); }
+// Picks an employee without reloading (amber-ui.js search does the reload itself).
+function dashEmpSetValue(v) {
+  if (_dashEmpReact({ value: String(v) })) return;
+  const sel = document.getElementById('dashEmployeeFilter');
+  if (sel) sel.value = v;
+}
+// React's list: a pick sets the value and reloads, as the old list's change event did.
+function dashEmpPick(v) { dashEmpSetValue(v); onPCFilterChange(); }
+
 function beginDashStatsHold(seq) {
   _dashStatsHold = seq;
   document.querySelector('.overview-cards')?.classList.add('is-loading');
@@ -96,7 +122,7 @@ async function loadDashboard(light = false) {
   // there is nothing for them to wait on.
   if (!light) beginDashStatsHold(seq);
   const empFilter = document.getElementById('dashEmployeeFilter');
-  const empVal = empFilter ? empFilter.value : 'all';
+  const empVal = dashEmpValue(empFilter);
   const isAdmin = ME.role === 'admin';
   const isHod = ME.role === 'hod';
   const isPC = ME.role === 'pc';
@@ -159,9 +185,12 @@ async function loadDashboard(light = false) {
   if (isAdmin || isHod || isPC) {
     // Only admin (and PC) may switch the dashboard to another employee's view.
     // HOD sees their department's aggregate but cannot drill into individuals.
-    empFilter.style.display = (isAdmin || isPC) ? 'block' : 'none';
-    const empFilterCatcher = document.getElementById('dashEmpFilterClickCatcher');
-    if (empFilterCatcher) empFilterCatcher.style.display = (isAdmin || isPC) ? 'block' : 'none';
+    const empReact = _dashEmpReact({ show: isAdmin || isPC });
+    if (!empReact) {
+      empFilter.style.display = (isAdmin || isPC) ? 'block' : 'none';
+      const empFilterCatcher = document.getElementById('dashEmpFilterClickCatcher');
+      if (empFilterCatcher) empFilterCatcher.style.display = (isAdmin || isPC) ? 'block' : 'none';
+    }
 
     if (isPC) {
       // Show date range filter for PC
@@ -169,7 +198,10 @@ async function loadDashboard(light = false) {
       if (drFilter) drFilter.style.display = 'flex';
       // Smart dropdown: show only users with pending tasks
       await refreshPCEmployeeDropdown();
-    } else if (isAdmin && empFilter.options.length <= 1) {
+    } else if (isAdmin && empReact && _dashEmpView.opts.length <= 1) {
+      const users = await dashUsers();
+      if (Array.isArray(users)) _dashEmpReact({ opts: [..._dashEmpView.opts, ...users.map(u => ({ value: String(u.id), label: u.name }))] });
+    } else if (isAdmin && !empReact && empFilter.options.length <= 1) {
       const users = await dashUsers();
       if (Array.isArray(users)) users.forEach(u => {
         const opt = document.createElement('option');
@@ -522,11 +554,18 @@ async function onDashUserSwitch(val){
 // Refresh PC employee dropdown — show only users with pending tasks
 async function refreshPCEmployeeDropdown() {
   const empFilter = document.getElementById('dashEmployeeFilter');
-  if (!empFilter) return;
+  const empReact = _dashEmpOn();
+  if (!empFilter && !empReact) return;
   const dateFrom = document.getElementById('pcDateFrom')?.value || '';
   const dateTo   = document.getElementById('pcDateTo')?.value   || '';
   const dateQ    = (dateFrom && dateTo) ? `?dateFrom=${dateFrom}&dateTo=${dateTo}` : '';
   const pendingUsers = await api(`/api/users/with-pending-tasks${dateQ}`);
+  if (empReact) {
+    const opts = [{ value: 'all', label: 'All Employees' }, ...(pendingUsers || []).map(u => ({ value: String(u.id), label: u.name }))];
+    const cur = _dashEmpView.value;
+    _dashEmpReact({ opts, value: cur && opts.some(o => o.value === cur) ? cur : 'all' });
+    return;
+  }
   // Save current dropdown value
   const currentVal = empFilter.value;
   empFilter.innerHTML = '<option value="all">All Employees</option>';
@@ -842,7 +881,7 @@ async function goToAllTasksFromDash(status) {
 // loadDashboard so it stays in sync after status changes).
 async function loadDashCompleted(seq = newDashSeq()) {
   const empFilter = document.getElementById('dashEmployeeFilter');
-  const empVal = empFilter ? empFilter.value : 'all';
+  const empVal = dashEmpValue(empFilter);
   const isAdmin = ME.role === 'admin';
   const isHod = ME.role === 'hod';
   const isPC = ME.role === 'pc';
@@ -872,7 +911,7 @@ async function loadDashCompleted(seq = newDashSeq()) {
 // Same pattern as loadDashCompleted but for revised rows.
 async function loadDashRevised(seq = newDashSeq()) {
   const empFilter = document.getElementById('dashEmployeeFilter');
-  const empVal = empFilter ? empFilter.value : 'all';
+  const empVal = dashEmpValue(empFilter);
   const isAdmin = ME.role === 'admin';
   const isHod = ME.role === 'hod';
   const isPC = ME.role === 'pc';
@@ -901,7 +940,7 @@ async function loadDashFMS(seq = newDashSeq()) {
   const isPC    = ME.role === 'pc';
 
   const empFilter = document.getElementById('dashEmployeeFilter');
-  const empVal = empFilter ? empFilter.value : 'all';
+  const empVal = dashEmpValue(empFilter);
   const url = `/api/fms-dashboard${(isAdmin||isHod||isPC) ? `?employee=${empVal}` : ''}`;
 
   const data = await api(url);

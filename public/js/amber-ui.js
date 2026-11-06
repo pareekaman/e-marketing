@@ -106,7 +106,9 @@ function amberSearchRun() {
     go: () => {
       navigate('dashboard', document.querySelector('.sidebar .nav-item'));
       const sel = document.getElementById('dashEmployeeFilter');
-      if (sel) { sel.value = p.id; if (typeof onPCFilterChange === 'function') onPCFilterChange(); }
+      // dashEmpSetValue: the filter may be React (dashboard.js), whose value lives in its view.
+      if (typeof dashEmpSetValue === 'function' && typeof _dashEmpOn === 'function' && _dashEmpOn()) { dashEmpSetValue(p.id); onPCFilterChange(); }
+      else if (sel) { sel.value = p.id; if (typeof onPCFilterChange === 'function') onPCFilterChange(); }
     },
   }));
   (window._lastDashTasks || []).filter(t => has(t.description) || has(t.client_name) || has(t.assignedToName)).slice(0, 6).forEach(t => hits.push({

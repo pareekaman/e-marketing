@@ -329,7 +329,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
   <div id="page-dashboard" class="page active">
     <div class="dash-topbar">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <div style="position:relative;display:inline-block" id="dashEmpFilterWrap">
+        <!-- data-react: the employee filter is React (frontend/src/pages/DashEmpFilter.jsx), handed its list by dashboard.js; this markup is the fallback. -->
+        <div style="position:relative;display:inline-block" id="dashEmpFilterWrap" data-react="1" data-react-quiet="1">
           <select id="dashEmployeeFilter" onchange="onPCFilterChange()" tabindex="-1"
             style="pointer-events:none;padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff;display:none">
             <option value="all">All Employees</option>
@@ -4399,9 +4400,9 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261106d"></script>
-<script src="/js/dashboard.js?v=20261106c"></script>
-<script src="/js/amber-ui.js?v=20261027c"></script>
+<script src="/js/react-bridge.js?v=20261106e"></script>
+<script src="/js/dashboard.js?v=20261106d"></script>
+<script src="/js/amber-ui.js?v=20261106a"></script>
 <script src="/js/tasks.js?v=20261105b"></script>
 <script src="/js/tasks-report.js?v=20261101a"></script>
 <script src="/js/users.js?v=20261104a"></script>

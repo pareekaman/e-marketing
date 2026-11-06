@@ -45,6 +45,7 @@ const PAGES = {
   dashrows: lazy(() => import('./pages/DashRows.jsx')),
   dashcards: lazy(() => import('./pages/DashCards.jsx')),
   dashbtns: lazy(() => import('./pages/DashBtns.jsx')),
+  dashempfilter: lazy(() => import('./pages/DashEmpFilter.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),
