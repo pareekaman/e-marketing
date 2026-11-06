@@ -1538,22 +1538,7 @@ async function ccOpenStatementDrive(bank, cardNum, stmtIdx, btn) {
 
     const safe = s => String(s||'').replace(/[^a-zA-Z0-9_-]/g,'_').substring(0,20);
     const suggested = 'CC_' + safe(bank) + '_' + safe(stmt.statement_date) + '_Statement.pdf';
-    const userFilename = await new Promise(resolve => {
-      const overlay = document.getElementById('ccRenameOverlay');
-      const input = document.getElementById('ccRenameInput');
-      const okBtn = document.getElementById('ccRenameOkBtn');
-      const cancelBtn = document.getElementById('ccRenameCancelBtn');
-      input.value = suggested;
-      overlay.style.display = 'flex';
-      setTimeout(() => { input.focus(); input.select(); }, 50);
-      const finish = (val) => {
-        overlay.style.display = 'none';
-        okBtn.onclick = null; cancelBtn.onclick = null;
-        resolve(val);
-      };
-      okBtn.onclick = () => finish(input.value.trim() || null);
-      cancelBtn.onclick = () => finish(null);
-    });
+    const userFilename = await _ccAskFilename(suggested);
     if (!userFilename) { if (btn) { btn.style.opacity = ''; btn.style.pointerEvents = ''; } return; }
     const filename = userFilename.endsWith('.pdf') ? userFilename : userFilename + '.pdf';
     const pdfB64 = doc.output('datauristring').split(',')[1];
@@ -1582,6 +1567,45 @@ async function ccOpenStatementDrive(bank, cardNum, stmtIdx, btn) {
     if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
     showToast('Failed: ' + e.message, 'error');
   }
+}
+
+// "Save to Drive — enter a name for the file". Resolves with the name typed
+// (trimmed) or null for Cancel. React (frontend/src/pages/CcRename.jsx) when
+// #ccRenameRoot carries data-react, answering through ccRenameDone;
+// #ccRenameOverlay is the fallback.
+let CC_RENAME_REACT = null, _ccRenameWanted = null, _ccRenameResolve = null;
+function ccRenameSetReact(fn) { CC_RENAME_REACT = fn; if (fn && _ccRenameWanted) { const w = _ccRenameWanted; _ccRenameWanted = null; fn(w); } }
+function ccRenameDone(val) {
+  const resolve = _ccRenameResolve;
+  _ccRenameResolve = null;
+  if (CC_RENAME_REACT) CC_RENAME_REACT(null);
+  if (resolve) resolve(val);
+}
+function _ccAskFilename(suggested) {
+  const root = document.getElementById('ccRenameRoot');
+  if (root && root.dataset.react) {
+    return new Promise(resolve => {
+      _ccRenameResolve = resolve;
+      const d = { suggested, at: Date.now() };
+      if (CC_RENAME_REACT) CC_RENAME_REACT(d); else { _ccRenameWanted = d; emkReactMount('ccrename', root); }
+    });
+  }
+  return new Promise(resolve => {
+    const overlay = document.getElementById('ccRenameOverlay');
+    const input = document.getElementById('ccRenameInput');
+    const okBtn = document.getElementById('ccRenameOkBtn');
+    const cancelBtn = document.getElementById('ccRenameCancelBtn');
+    input.value = suggested;
+    overlay.style.display = 'flex';
+    setTimeout(() => { input.focus(); input.select(); }, 50);
+    const finish = (val) => {
+      overlay.style.display = 'none';
+      okBtn.onclick = null; cancelBtn.onclick = null;
+      resolve(val);
+    };
+    okBtn.onclick = () => finish(input.value.trim() || null);
+    cancelBtn.onclick = () => finish(null);
+  });
 }
 
 async function ccSaveToDrive(bank, cardNum, stmtIdx, txIdx) {
