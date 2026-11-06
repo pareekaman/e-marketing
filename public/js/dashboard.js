@@ -88,6 +88,8 @@ function dashEmpSetValue(v) {
 // React's list: a pick sets the value and reloads, as the old list's change event did.
 function dashEmpPick(v) { dashEmpSetValue(v); onPCFilterChange(); }
 
+let _pcDatesMounted = false;   // PC's date range, mounted the first time it is shown (loadDashboard)
+
 function beginDashStatsHold(seq) {
   _dashStatsHold = seq;
   document.querySelector('.overview-cards')?.classList.add('is-loading');
@@ -196,6 +198,9 @@ async function loadDashboard(light = false) {
       // Show date range filter for PC
       const drFilter = document.getElementById('pcDateRangeFilter');
       if (drFilter) drFilter.style.display = 'flex';
+      // React (frontend/src/pages/PcDateRange.jsx) draws its contents when it carries
+      // data-react; the inputs keep their ids and values, so every reader below is unchanged.
+      if (drFilter && drFilter.dataset.react && !_pcDatesMounted) { _pcDatesMounted = true; emkReactMount('pcdaterange', drFilter); }
       // Smart dropdown: show only users with pending tasks
       await refreshPCEmployeeDropdown();
     } else if (isAdmin && empReact && _dashEmpView.opts.length <= 1) {

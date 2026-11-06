@@ -338,8 +338,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
           <div id="dashEmpFilterClickCatcher" onclick="openDashEmpDropdown(event)" style="position:absolute;inset:0;cursor:pointer;display:none"></div>
           <div id="dashEmpFilterList" class="dash-emp-filter-list"></div>
         </div>
-        <!-- PC-only date range filter -->
-        <div id="pcDateRangeFilter" style="display:none;align-items:center;gap:6px;flex-wrap:wrap;">
+        <!-- PC-only date range filter. data-react: its contents are React (frontend/src/pages/PcDateRange.jsx); this markup is the fallback. -->
+        <div id="pcDateRangeFilter" data-react="1" data-react-quiet="1" style="display:none;align-items:center;gap:6px;flex-wrap:wrap;">
           <label style="font-size:12px;color:#64748b;font-weight:600">From:</label>
           <input type="date" id="pcDateFrom" onchange="onPCFilterChange()"
             style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:#1e293b;background:#fff">
@@ -4400,8 +4400,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261106e"></script>
-<script src="/js/dashboard.js?v=20261106d"></script>
+<script src="/js/react-bridge.js?v=20261106f"></script>
+<script src="/js/dashboard.js?v=20261106e"></script>
 <script src="/js/amber-ui.js?v=20261106a"></script>
 <script src="/js/tasks.js?v=20261105b"></script>
 <script src="/js/tasks-report.js?v=20261101a"></script>
