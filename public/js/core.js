@@ -170,6 +170,7 @@ function canSeeManpurTasks() {
 function renderManpurTasksBtn() {
   const wrap = document.getElementById('dashBtns');
   if (!wrap || !canSeeManpurTasks()) return;
+  if (typeof _dashBtnsReact === 'function' && _dashBtnsReact({ manpur: MANPUR_TASKS_URL })) return;
   if (document.getElementById('manpurTasksBtn')) return;
   wrap.insertAdjacentHTML('afterbegin',
     `<button id="manpurTasksBtn" class="btn" style="background:#0ea5e9;color:#fff"
@@ -185,6 +186,7 @@ function renderManpurTasksBtn() {
 function renderBaCredentialsBtn() {
   const wrap = document.getElementById('dashBtns');
   if (!wrap || !(ME && ME.canSeeEmkCredentials)) return;
+  if (typeof _dashBtnsReact === 'function' && _dashBtnsReact({ ba: true })) return;
   if (document.getElementById('baCredentialsBtn')) return;
   const b = document.createElement('button');
   b.id = 'baCredentialsBtn';

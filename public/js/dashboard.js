@@ -46,6 +46,22 @@ function _dashCardsReact(patch) {
   return true;
 }
 
+// The action buttons are React (frontend/src/pages/DashBtns.jsx) when #dashBtns
+// carries data-react; the markup loadDashboard wrote is the fallback. View:
+// { holidays, checklist, delegate, transfer, manpur: url | null, ba } — the last
+// two come from core.js renderManpurTasksBtn / renderBaCredentialsBtn.
+let DASH_BTNS_REACT = null, _dashBtnsWanted = false;
+const _dashBtnsView = { holidays: false, checklist: false, delegate: false, transfer: false, manpur: null, ba: false };
+function dashBtnsSetReact(fn) { DASH_BTNS_REACT = fn; if (fn && _dashBtnsWanted) { _dashBtnsWanted = false; fn({ ..._dashBtnsView }); } }
+function _dashBtnsReact(patch) {
+  const root = document.getElementById('dashBtns');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_dashBtnsView, patch);
+  if (DASH_BTNS_REACT) DASH_BTNS_REACT({ ..._dashBtnsView });
+  else { _dashBtnsWanted = true; emkReactMount('dashbtns', root); }
+  return true;
+}
+
 function beginDashStatsHold(seq) {
   _dashStatsHold = seq;
   document.querySelector('.overview-cards')?.classList.add('is-loading');
@@ -166,7 +182,10 @@ async function loadDashboard(light = false) {
   // Outside the role gate: the permissions alone decide, so any employee
   // granted Delegate / Checklist / Transfer gets the button (the routes check
   // the same keys). Until now a plain user never saw them here.
-  {
+  // React (DashBtns.jsx) gets which ones show; the two person-specific buttons
+  // are wiped here as the innerHTML below wipes them, and put back just after.
+  if (!_dashBtnsReact({ holidays: ME.role === 'admin', checklist: canDo('create_checklist'), delegate: canDo('create_task'),
+                        transfer: canDo('transfer_task'), manpur: null, ba: false })) {
     const btns = [];
     // dash-btn-quiet: css/amber.css draws these as outline buttons, leaving
     // Delegate the one filled button.
