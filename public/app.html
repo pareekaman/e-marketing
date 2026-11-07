@@ -430,18 +430,20 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         <!-- The wraps carry ids of their own because the chart renderer swaps
              the canvas out for a message when there is nothing to draw. Found
              by its canvas, the wrap would then be unfindable and the chart
-             could never come back. -->
+             could never come back.
+             data-react: each wrap's inside (the canvas, or a message) is React
+             (frontend/src/pages/DashPerfWrap.jsx); Chart.js still draws on the canvas. -->
         <div class="dash-perf-card">
           <h4><span class="amb-hide">🥇 </span><span class="amb-only amb-h4-ico amb-h4-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg></span>Top 5 Performers</h4>
-          <div class="perf-chart-wrap" id="dashTopChartWrap"><canvas id="dashTopChart"></canvas></div>
+          <div class="perf-chart-wrap" id="dashTopChartWrap" data-react="1" data-react-quiet="1"><canvas id="dashTopChart"></canvas></div>
         </div>
         <div class="dash-perf-card">
           <h4><span class="amb-hide">🐢 </span><span class="amb-only amb-h4-ico amb-h4-red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v16M5 13l7 7 7-7"/></svg></span>Bottom 5 Performers</h4>
-          <div class="perf-chart-wrap" id="dashBottomChartWrap"><canvas id="dashBottomChart"></canvas></div>
+          <div class="perf-chart-wrap" id="dashBottomChartWrap" data-react="1" data-react-quiet="1"><canvas id="dashBottomChart"></canvas></div>
         </div>
         <div class="dash-perf-card">
           <h4><span class="amb-hide">🔥 </span><span class="amb-only amb-h4-ico amb-h4-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg></span>Top 5 Most Active</h4>
-          <div class="perf-chart-wrap" id="dashActiveChartWrap"><canvas id="dashActiveChart"></canvas></div>
+          <div class="perf-chart-wrap" id="dashActiveChartWrap" data-react="1" data-react-quiet="1"><canvas id="dashActiveChart"></canvas></div>
         </div>
       </div>
     </div>
@@ -4403,8 +4405,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261107a"></script>
-<script src="/js/dashboard.js?v=20261107a"></script>
+<script src="/js/react-bridge.js?v=20261107b"></script>
+<script src="/js/dashboard.js?v=20261107b"></script>
 <script src="/js/amber-ui.js?v=20261106a"></script>
 <script src="/js/tasks.js?v=20261105b"></script>
 <script src="/js/tasks-report.js?v=20261101a"></script>

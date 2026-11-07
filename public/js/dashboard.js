@@ -329,10 +329,44 @@ function _dashPerfDatesMount() {
   return _dashPerfDatesReady;
 }
 
+// The three chart cards' insides are React (frontend/src/pages/DashPerfWrap.jsx) when
+// their wraps carry data-react: the canvas, or a message in its place. Chart.js still
+// draws on that canvas. View per card: the message, or null for the canvas. The first
+// load waits for all three to be drawn (at most 5s), so no chart lands on a canvas
+// React is about to replace.
+const DASH_PERF_KEYS = { top: 'dashTopChart', bottom: 'dashBottomChart', active: 'dashActiveChart' };
+const DASH_PERF_WRAP = {}, _dashPerfWrapView = {}, _dashPerfWrapWait = {};
+let _dashPerfWrapsReady = null;
+function dashPerfWrapSetReact(key, fn) {
+  DASH_PERF_WRAP[key] = fn;
+  if (!fn) return;
+  // A tick later: the card registers from its own effect, where flushSync may not run.
+  if (_dashPerfWrapView[key] !== undefined) setTimeout(() => { if (DASH_PERF_WRAP[key]) DASH_PERF_WRAP[key](_dashPerfWrapView[key]); }, 0);
+  if (_dashPerfWrapWait[key]) _dashPerfWrapWait[key]();
+}
+function _dashPerfWrapsOn() { const w = document.getElementById('dashTopChartWrap'); return !!(w && w.dataset.react); }
+function _dashPerfWrapsMount() {
+  if (!_dashPerfWrapsOn()) return null;
+  if (!_dashPerfWrapsReady) {
+    const waits = Object.keys(DASH_PERF_KEYS).map(k => new Promise(r => { _dashPerfWrapWait[k] = r; }));
+    _dashPerfWrapsReady = Promise.race([Promise.all(waits), new Promise(r => setTimeout(r, 5000))]);
+    for (const [k, id] of Object.entries(DASH_PERF_KEYS)) emkReactMount('perfwrap' + k, document.getElementById(id + 'Wrap'));
+  }
+  return _dashPerfWrapsReady;
+}
+function _dashPerfWrapSet(key, note) {
+  if (!_dashPerfWrapsOn()) return false;
+  _dashPerfWrapView[key] = note;
+  if (DASH_PERF_WRAP[key]) DASH_PERF_WRAP[key](note);
+  return true;
+}
+
 async function loadDashboardPerfCharts(){
   if (!ME) return;
   const reactReady = _dashPerfDatesMount();
+  const wrapsReady = _dashPerfWrapsMount();
   if (reactReady) await reactReady;
+  if (wrapsReady) await wrapsReady;
   const team = dashPerfTeamOn();
   const teamWrap = document.getElementById('dashPerfTeamWrap');
   if (teamWrap) teamWrap.style.display = dashPerfIsTeamHead() ? 'inline-flex' : 'none';
@@ -481,6 +515,7 @@ function renderPerfNote(canvasId, key, text){
   const wrap = perfChartWrap(canvasId);
   if (!wrap) return;
   if (dashPerfCharts[key]) { dashPerfCharts[key].destroy(); dashPerfCharts[key] = null; }
+  if (_dashPerfWrapSet(key, text)) return;
   wrap.innerHTML = `<div class="perf-empty">${dtEscape(text)}</div>`;
 }
 
@@ -488,11 +523,18 @@ function renderDashPerfChart(canvasId, key, labels, values, color, axisLabel, br
   const wrap = perfChartWrap(canvasId);
   if (!wrap) return;
   if (!labels.length) {
+    if (_dashPerfWrapsOn()) {
+      if (dashPerfCharts[key]) { dashPerfCharts[key].destroy(); dashPerfCharts[key] = null; }
+      _dashPerfWrapSet(key, 'No data in this date range');
+      return;
+    }
     wrap.innerHTML = '<div class="perf-empty">No data in this date range</div>';
     if (dashPerfCharts[key]) { dashPerfCharts[key].destroy(); dashPerfCharts[key] = null; }
     return;
   }
-  if (!wrap.querySelector('canvas')) {
+  // React puts the canvas back synchronously (flushSync), so it is there to draw on below.
+  if (_dashPerfWrapSet(key, null)) {}
+  else if (!wrap.querySelector('canvas')) {
     wrap.innerHTML = `<canvas id="${canvasId}"></canvas>`;
   }
   const ctx = document.getElementById(canvasId).getContext('2d');
