@@ -421,8 +421,10 @@ async function loadApprovalBadge() {
 }
 
 function switchApprovalTab(tab, el) {
-  document.querySelectorAll('#page-approvals .tab').forEach(t=>t.classList.remove('active'));
-  if (el) el.classList.add('active');
+  if (!_apprTabsReact({ active: tab })) {   // React tabs (core.js): the active one is in the view
+    document.querySelectorAll('#page-approvals .tab').forEach(t=>t.classList.remove('active'));
+    if (el) el.classList.add('active');
+  }
   document.getElementById('approvalsPanel').style.display = tab==='task' ? 'block' : 'none';
   document.getElementById('transferApprovalsPanel').style.display = tab==='transfer' ? 'block' : 'none';
   const leavePanel = document.getElementById('leaveApprovalsPanel');
@@ -450,7 +452,7 @@ function apprSetReact(fn) { APPR_REACT = fn; if (fn && _apprList) fn(_apprList);
 async function loadApprovals() {
   // Transfer tab for everyone: admin/HOD/PC see their scope, others the
   // transfers coming to them.
-  document.getElementById('apprTabTransfer').style.display = 'block';
+  apprShowTab('transfer', 'apprTabTransfer');
   // WhatsApp Tasks tab — disabled (feature postponed)
   // if (ME.role === 'admin' || ME.name === 'Naman Gupta') {
   //   document.getElementById('apprTabWa').style.display = 'block';
@@ -459,16 +461,16 @@ async function loadApprovals() {
   // of the approver names, so a rename had to be made in two files or the tab
   // and the API disagreed about who was allowed in.
   if (ME.canApprovePayments) {
-    document.getElementById('apprTabPayment').style.display = 'block';
+    apprShowTab('payment', 'apprTabPayment');
     loadPaymentApprovalsBadge();
   }
   // MDO Approvals tab — Purvi Saini only
   if (ME.canReviewMdoTasks) {
-    document.getElementById('apprTabMdo').style.display = 'block';
+    apprShowTab('mdo', 'apprTabMdo');
   }
   // Equipment Issues tab — whoever can approve a reported fault
   if (invIsIssueApprover()) {
-    document.getElementById('apprTabInvIssue').style.display = 'block';
+    apprShowTab('invissue', 'apprTabInvIssue');
     loadInvIssueApprovals();
   }
   // Also pre-load leave approvals (so badge stays in sync)

@@ -547,6 +547,8 @@ async function loadPaymentApprovalsBadge() {
     const all = await api('/api/payment-requests');
     if (!Array.isArray(all)) return;
     const pending = all.filter(r => r.bank_name !== '__system__' && r.status === 'pending').length;
+    // The Approvals tabs may be React (core.js _apprTabsReact).
+    if (typeof _apprTabsReact === 'function' && _apprTabsReact({ badges: { apprPaymentBadge: pending } })) return;
     const badge = document.getElementById('apprPaymentBadge');
     if (badge) { badge.textContent = pending; badge.style.display = pending ? 'inline-block' : 'none'; }
   } catch(e) {}

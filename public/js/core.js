@@ -578,7 +578,31 @@ async function init() {
 
 // Pending count on an Approvals page tab. Every tab's badge goes through this,
 // so a tab that has no pending items hides its badge instead of showing a 0.
+// The Approvals page's tabs are React (frontend/src/pages/ApprTabs.jsx) when #apprTabsRoot
+// carries data-react; their markup in app.html is the fallback. View:
+// { active, show: { transfer, wa, payment, mdo, invissue }, badges: { <badge id>: count } }.
+let APPR_TABS_REACT = null;
+const _apprTabsView = { active: 'task', show: {}, badges: {} };
+function apprTabsSetReact(fn) { APPR_TABS_REACT = fn; if (fn) fn({ ..._apprTabsView }); }
+function _apprTabsReact(patch) {
+  const root = document.getElementById('apprTabsRoot');
+  if (!root || !root.dataset.react) return false;
+  if (patch.active) _apprTabsView.active = patch.active;
+  if (patch.show) _apprTabsView.show = { ..._apprTabsView.show, ...patch.show };
+  if (patch.badges) _apprTabsView.badges = { ..._apprTabsView.badges, ...patch.badges };
+  if (APPR_TABS_REACT) APPR_TABS_REACT({ ..._apprTabsView });
+  else if (!root._tabsMounted) { root._tabsMounted = true; emkReactMount('apprtabs', root); }
+  return true;
+}
+// A tab shown for this person (loadApprovals): React's flag, or the old style.display.
+function apprShowTab(key, elId) {
+  if (_apprTabsReact({ show: { [key]: true } })) return;
+  const el = document.getElementById(elId);
+  if (el) el.style.display = 'block';
+}
+
 function setApprovalTabBadge(id, count) {
+  if (_apprTabsReact({ badges: { [id]: Number(count) || 0 } })) return;
   const badge = document.getElementById(id);
   if (!badge) return;
   const n = Number(count) || 0;
