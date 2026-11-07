@@ -66,7 +66,8 @@ function atReportRender(rows) {
   const box = document.getElementById('atReportBox');
   const pdfBtn = document.getElementById('atPdfBtn');
   const off = typeof tasksType !== 'undefined' && tasksType === 'fms';
-  if (pdfBtn) pdfBtn.style.display = off ? 'none' : '';
+  // React's All Tasks buttons (tasks.js _tasksBtnsReact) take it as a flag.
+  if (!(typeof _tasksBtnsReact === 'function' && _tasksBtnsReact({ pdf: !off })) && pdfBtn) pdfBtn.style.display = off ? 'none' : '';
   AT_REPORT_ROWS = off ? [] : rows;
   if (!box) return;
   if (off || !rows.length) { box.innerHTML = ''; return; }

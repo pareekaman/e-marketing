@@ -469,7 +469,9 @@ async function init() {
     // Action buttons driven by canDo()
     if (canDo('delete_task')) {
       const bb = document.getElementById('bulkDeleteBtn');
-      if (bb) bb.style.display = ME.role === 'admin' ? 'inline-flex' : 'none';
+      // React's All Tasks buttons (tasks.js _tasksBtnsReact) take the same display.
+      if (typeof _tasksBtnsReact === 'function' && _tasksBtnsReact({ bulk: ME.role === 'admin' ? 'inline-flex' : 'none' })) {}
+      else if (bb) bb.style.display = ME.role === 'admin' ? 'inline-flex' : 'none';
     }
     if (canDo('set_plan')) {
       const sp = document.getElementById('setPlanBtn');

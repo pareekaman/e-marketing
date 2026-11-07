@@ -27,7 +27,11 @@ async function loadAllTasks() {
   // Show/hide assign task button; label follows the active tab so the user knows
   // which form will open.
   const assignBtn = document.getElementById('tasksAssignBtn');
-  if (assignBtn) {
+  if (_tasksBtnsOn()) {
+    // React (TasksButtons.jsx) gets the same decision as the block below.
+    _tasksBtnsReact({ assign: tasksType !== 'fms' && canDo(tasksType === 'checklist' ? 'create_checklist' : 'create_task'),
+                      assignLabel: tasksType === 'checklist' ? '+ Checklist' : '+ Delegate Task' });
+  } else if (assignBtn) {
     // Gated on the same permission POST /api/tasks asks for, not on the role.
     // The role check that used to be here is what let someone whose Daily Task
     // level had been dropped to View still open the Delegate form and only
@@ -81,7 +85,7 @@ async function loadAllTasks() {
   if (tasksType === 'awaitingdate') {
     if (statusRow) statusRow.style.display = 'none';
     if (filtersDiv) filtersDiv.style.display = 'none';
-    if (assignBtn) assignBtn.style.display = 'none';
+    if (!_tasksBtnsReact({ assign: false }) && assignBtn) assignBtn.style.display = 'none';
     const data = await api('/api/tasks/awaiting-date');
     if (seq !== _allTasksSeq) return;
     renderAwaitingDate(data);
@@ -227,6 +231,23 @@ function _tasksUserReact(patch) {
 }
 // React's employee box: the pick lands in the hidden select (flushSync) before filterTasks reads it.
 function tasksUserPick(v) { _tasksUserReact({ value: String(v) }); filterTasks(); }
+
+// The buttons (Transfer / + Assign / Bulk Delete / PDF) are React (frontend/src/pages/
+// TasksButtons.jsx) when #tasksBtnsRoot carries data-react; the buttons inside it in
+// app.html are the fallback. View: { assign, assignLabel, bulk, pdf } — each null until
+// its owner decides: loadAllTasks (assign), core.js init (bulk), atReportRender (pdf).
+let TASKS_BTNS_REACT = null;
+const _tasksBtnsView = { assign: null, assignLabel: null, bulk: null, pdf: null };
+function tasksBtnsSetReact(fn) { TASKS_BTNS_REACT = fn; if (fn) fn({ ..._tasksBtnsView }); }
+function _tasksBtnsOn() { const r = document.getElementById('tasksBtnsRoot'); return !!(r && r.dataset.react); }
+function _tasksBtnsReact(patch) {
+  const root = document.getElementById('tasksBtnsRoot');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_tasksBtnsView, patch);
+  if (TASKS_BTNS_REACT) TASKS_BTNS_REACT({ ..._tasksBtnsView });
+  else if (!root._btnsMounted) { root._btnsMounted = true; emkReactMount('tasksbuttons', root); }
+  return true;
+}
 
 // The search box is React (frontend/src/pages/TasksSearch.jsx) when #taskSearchWrap carries
 // data-react. The input keeps its id and its own value (filterTasks and the PDF read it);
