@@ -371,12 +371,15 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <div class="task-table-card">
         <div class="card-head">
           <div class="card-head-title"><span class="amb-ico amb-ico-red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M5 3 2 6"/><path d="m22 6-3-3"/></svg></span><span>Overdue Pending Tasks<small class="amb-sub">Tasks pending with no due date or delayed.</small></span></div>
+          <!-- data-react: the type tabs are React (frontend/src/pages/DashTabs.jsx), which draws the whole .tab-group (helpers.js puts its sliding pill inside it); the group below is the fallback. -->
+          <div id="dashTabsRoot" data-react="1" data-react-quiet="1" style="display:contents">
           <div class="tab-group" id="dashTypeTabGroup">
             <div class="tab active" id="dashTabAll"     onclick="dashTab('all',this)">All</div>
             <div class="tab"        id="dashTabDel"     onclick="dashTab('delegation',this)">Delegation</div>
             <div class="tab"        id="dashTabChl"     onclick="dashTab('checklist',this)">Checklist</div>
             <div class="tab"        id="dashTabFMS"     onclick="dashTab('fms',this)">FMS</div>
             <div class="tab"        id="dashTabRevised" onclick="dashTab('revised',this)" style="display:none">Revised</div>
+          </div>
           </div>
         </div>
         <div style="overflow-x:auto;max-height:370px;overflow-y:auto;">
@@ -4405,8 +4408,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261107b"></script>
-<script src="/js/dashboard.js?v=20261107b"></script>
+<script src="/js/react-bridge.js?v=20261107c"></script>
+<script src="/js/dashboard.js?v=20261107c"></script>
 <script src="/js/amber-ui.js?v=20261106a"></script>
 <script src="/js/tasks.js?v=20261105b"></script>
 <script src="/js/tasks-report.js?v=20261101a"></script>

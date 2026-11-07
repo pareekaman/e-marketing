@@ -233,6 +233,7 @@ async function loadDashboard(light = false) {
   // the same keys). Until now a plain user never saw them here.
   // React (DashBtns.jsx) gets which ones show; the two person-specific buttons
   // are wiped here as the innerHTML below wipes them, and put back just after.
+  _dashTabsReact({});   // mounts the type tabs (React) on the first load; no-op after
   if (!_dashBtnsReact({ holidays: ME.role === 'admin', checklist: canDo('create_checklist'), delegate: canDo('create_task'),
                         transfer: canDo('transfer_task'), manpur: null, ba: false })) {
     const btns = [];
@@ -922,10 +923,26 @@ const dashRingCenter = {
   }
 };
 
+// The type tabs are React (frontend/src/pages/DashTabs.jsx) when #dashTabsRoot carries
+// data-react; the .tab-group inside it in app.html is the fallback. View: { active, revised }.
+let DASH_TABS_REACT = null;
+const _dashTabsView = { active: 'all', revised: false };
+function dashTabsSetReact(fn) { DASH_TABS_REACT = fn; if (fn) fn({ ..._dashTabsView }); }
+function _dashTabsReact(patch) {
+  const root = document.getElementById('dashTabsRoot');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_dashTabsView, patch);
+  if (DASH_TABS_REACT) DASH_TABS_REACT({ ..._dashTabsView });
+  else if (!root._dashMounted) { root._dashMounted = true; emkReactMount('dashtabs', root); }
+  return true;
+}
+
 function dashTab(type, el) {
   dashType = type;
-  document.querySelectorAll('#dashTypeTabGroup .tab').forEach(t=>t.classList.remove('active'));
-  if(el) el.classList.add('active');
+  if (!_dashTabsReact({ active: type })) {
+    document.querySelectorAll('#dashTypeTabGroup .tab').forEach(t=>t.classList.remove('active'));
+    if(el) el.classList.add('active');
+  }
   // Refresh stat cards + chart from cached totals; table re-renders from the same cache.
   updateDashStats(dashType);
   if (window._lastDashTasks) {
@@ -972,8 +989,10 @@ async function goToAllTasksFromDash(status) {
     await loadDashRevised();
   }
   // Show Revised tab only on upcoming view; hide on others
-  const revisedTab = document.getElementById('dashTabRevised');
-  if (revisedTab) revisedTab.style.display = status === 'upcoming' ? '' : 'none';
+  if (!_dashTabsReact({ revised: status === 'upcoming' })) {
+    const revisedTab = document.getElementById('dashTabRevised');
+    if (revisedTab) revisedTab.style.display = status === 'upcoming' ? '' : 'none';
+  }
   // If switching away from upcoming while Revised tab was active, reset to All
   if (status !== 'upcoming' && dashType === 'revised') {
     dashTab('all', document.getElementById('dashTabAll'));

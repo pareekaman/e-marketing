@@ -53,6 +53,7 @@ const PAGES = {
   perfwraptop: lazy(() => import('./pages/DashPerfWrap.jsx').then(m => ({ default: m.Top }))),
   perfwrapbottom: lazy(() => import('./pages/DashPerfWrap.jsx').then(m => ({ default: m.Bottom }))),
   perfwrapactive: lazy(() => import('./pages/DashPerfWrap.jsx').then(m => ({ default: m.Active }))),
+  dashtabs: lazy(() => import('./pages/DashTabs.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),
