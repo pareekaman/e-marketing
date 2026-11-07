@@ -3,10 +3,26 @@
 // ══════════════════════════════════════════════════════
 let allUsersData = [];
 
+// The actions row (search, 🏷 Departments, + Add User, CSV) is React (frontend/src/pages/
+// UsersActions.jsx) when #usersTabActions carries data-react; its markup in app.html is the
+// fallback. The search input keeps id="userSearch" and its own value (filterUsers reads it).
+// View: { dept } — whether Departments shows (admin), null until loadUsers decides.
+let USERS_ACT_REACT = null;
+const _usersActView = { dept: null };
+function usersActSetReact(fn) { USERS_ACT_REACT = fn; if (fn) fn({ ..._usersActView }); }
+function _usersActReact(patch) {
+  const root = document.getElementById('usersTabActions');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_usersActView, patch);
+  if (USERS_ACT_REACT) USERS_ACT_REACT({ ..._usersActView });
+  else if (!root._actMounted) { root._actMounted = true; emkReactMount('usersactions', root); }
+  return true;
+}
+
 async function loadUsers() {
   if (typeof _usersTabsReact === 'function') _usersTabsReact({});   // mounts the sub-tabs (React, access.js)
   const deptBtn = document.getElementById('usersDeptBtn');
-  if (deptBtn) deptBtn.style.display = ME && ME.role === 'admin' ? '' : 'none';
+  if (!_usersActReact({ dept: !!(ME && ME.role === 'admin') }) && deptBtn) deptBtn.style.display = ME && ME.role === 'admin' ? '' : 'none';
   allUsersData = await api('/api/users');
   renderUsersTable(allUsersData);
 }
