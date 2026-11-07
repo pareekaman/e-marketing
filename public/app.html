@@ -350,7 +350,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
           <button onclick="clearPCDateFilter()" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;background:#fff;cursor:pointer;color:#64748b">✕ Clear</button>
         </div>
         <!-- Festival theme on/off for this person only; shown while the company has a festival theme (core.js syncThemeToggle) -->
-        <div id="themeToggle" class="theme-toggle" style="display:none" role="group" aria-label="Festival theme, for you">
+        <!-- data-react: the buttons are React (frontend/src/pages/ThemeToggle.jsx), kept in step by core.js syncThemeToggle; this markup is the fallback. -->
+        <div id="themeToggle" class="theme-toggle" data-react="1" data-react-quiet="1" style="display:none" role="group" aria-label="Festival theme, for you">
           <span class="tt-label">Festival theme</span>
           <button type="button" data-mode="full" onclick="setMyThemeMode('full')" title="Everything: figures, animation and colours">Full</button>
           <button type="button" data-mode="lite" onclick="setMyThemeMode('lite')" title="Colours and a light decoration, no moving figures">Lite</button>
@@ -4405,11 +4406,11 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 
 <script src="/js/themes/decor-core.js?v=20261027c"></script>
 <script src="/js/themes/picker.js?v=20261027c"></script>
-<script src="/js/core.js?v=20261106a"></script>
+<script src="/js/core.js?v=20261107a"></script>
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261107d"></script>
+<script src="/js/react-bridge.js?v=20261107e"></script>
 <script src="/js/dashboard.js?v=20261107d"></script>
 <script src="/js/amber-ui.js?v=20261106a"></script>
 <script src="/js/tasks.js?v=20261105b"></script>

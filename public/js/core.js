@@ -275,10 +275,20 @@ async function loadAppTheme() {
 // (the colours and a light decoration, no figures; for slower computers) or Off. It shows only while
 // the company has a festival theme on; with Normal there is nothing to choose.
 let _companyTheme = 'normal', _themeOff = false, _themeMode = 'full';
+let THEME_TOGGLE_REACT = null, _themeToggleWanted = null;
+function themeToggleSetReact(fn) { THEME_TOGGLE_REACT = fn; if (fn && _themeToggleWanted) { const w = _themeToggleWanted; _themeToggleWanted = null; fn(w); } }
 function syncThemeToggle() {
   const box = document.getElementById('themeToggle');
   if (!box) return;
   box.style.display = _companyTheme === 'normal' ? 'none' : '';
+  // React (frontend/src/pages/ThemeToggle.jsx) draws the buttons when #themeToggle carries
+  // data-react; it gets the mode, the sound state (null when the decoration has none) and off.
+  if (box.dataset.react) {
+    const view = { mode: _themeMode, off: _themeOff, sound: window.ThemeDecor && ThemeDecor.soundOn ? !!ThemeDecor.soundOn() : null };
+    if (THEME_TOGGLE_REACT) THEME_TOGGLE_REACT(view);
+    else { _themeToggleWanted = view; if (!box._ttMounted) { box._ttMounted = true; emkReactMount('themetoggle', box); } }
+    return;
+  }
   box.querySelectorAll('button[data-mode]').forEach(b => {
     const on = b.dataset.mode === _themeMode;
     b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
