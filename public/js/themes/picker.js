@@ -354,9 +354,34 @@ function showThemeTab() {
   if (tab) tab.style.display = '';
 }
 
+// The picker is drawn by React (frontend/src/pages/ThemePicker.jsx) when #themePicker carries
+// data-react; the HTML below is the fallback. All state and saving stay here; the view carries
+// each card's scene as the same HTML string (art) so the illustrations are unchanged.
+let TP_REACT = null, _tpWanted = null, _tpSeq = 0;
+function tpSetReact(fn) { TP_REACT = fn; if (fn && _tpWanted) { const w = _tpWanted; _tpWanted = null; fn(w); } }
+function _tpPush(view) {
+  const box = document.getElementById('themePicker');
+  if (!box || !box.dataset.react) return false;
+  if (TP_REACT) TP_REACT(view);
+  else { _tpWanted = view; if (!box._tpMounted) { box._tpMounted = true; emkReactMount('themepicker', box); } }
+  return true;
+}
+function _tpView() {
+  return {
+    state: 'ready', seq: ++_tpSeq, auto: _themeAuto, autoArt: tpArtAuto(),
+    autoNote: (_themeAuto ? 'Today: ' + tpFestName(_themeCurrent) : 'Follows the festival calendar') +
+      (_themeNext ? ' · Next: ' + tpFestName(_themeNext.theme) + ' from ' + tpShortDate(_themeNext.from) : ''),
+    cards: THEME_CHOICES.map(t => ({ key: t.key, icon: t.icon, name: t.name, note: t.note, c: t.c,
+      active: !_themeAuto && t.key === _themeCurrent, art: t.art ? t.art() : null })),
+    nv: _themeCurrent === 'navratri' && !_themeAuto ? NV_DAY_CHOICES.map(c => ({ ...c, on: c.day === _nvDayCurrent })) : null,
+    message: _festMessage || '',
+  };
+}
+
 function paintThemePicker() {
   const box = document.getElementById('themePicker');
   if (!box) return;
+  if (_tpPush(_tpView())) return;
   box.innerHTML =
     '<div class="tp-head"><div class="tp-title">Festival Theme</div>' +
     '<div class="tp-sub">Pick Auto and the theme changes by itself with each festival, or pick one theme to keep it until you change it. It applies to every user, on their next page load or when they come back to the app after a few minutes.</div></div>' +
@@ -432,9 +457,9 @@ async function setNavratriDay(day) {
 async function renderThemePicker() {
   const box = document.getElementById('themePicker');
   if (!box) return;
-  if (_themeCurrent === null) box.innerHTML = '<div class="empty">Loading…</div>';
+  if (_themeCurrent === null && !_tpPush({ state: 'loading' })) box.innerHTML = '<div class="empty">Loading…</div>';
   const r = await api('/api/theme');
-  if (r.error) { box.innerHTML = '<div class="empty">Could not load the current theme.</div>'; return; }
+  if (r.error) { if (!_tpPush({ state: 'error' })) box.innerHTML = '<div class="empty">Could not load the current theme.</div>'; return; }
   _themeCurrent = r.theme;
   _themeAuto = !!r.auto;
   _themeNext = r.next || null;

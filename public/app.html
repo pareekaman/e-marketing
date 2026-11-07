@@ -569,7 +569,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 
     <!-- Theme sub-panel (theme owner only — theme_admin_ids; see js/themes/picker.js) -->
     <div id="usersSubPanel-theme" style="display:none">
-      <div id="themePicker"></div>
+      <!-- data-react: the picker is React (frontend/src/pages/ThemePicker.jsx), handed its view by themes/picker.js. -->
+      <div id="themePicker" data-react="1" data-react-quiet="1"></div>
     </div>
   </div>
 
@@ -4418,12 +4419,12 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 </div>
 
 <script src="/js/themes/decor-core.js?v=20261027c"></script>
-<script src="/js/themes/picker.js?v=20261107a"></script>
+<script src="/js/themes/picker.js?v=20261107b"></script>
 <script src="/js/core.js?v=20261107b"></script>
 <script src="/js/access.js?v=20261107b"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261107n"></script>
+<script src="/js/react-bridge.js?v=20261107o"></script>
 <script src="/js/dashboard.js?v=20261107e"></script>
 <script src="/js/amber-ui.js?v=20261107a"></script>
 <script src="/js/tasks.js?v=20261107e"></script>
