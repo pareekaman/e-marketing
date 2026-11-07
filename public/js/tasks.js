@@ -48,18 +48,20 @@ async function loadAllTasks() {
   }
 
   // Delegate by Me tab — show only for users who can assign tasks
-  const dbmTab = document.getElementById('tasksTabDelByMe');
-  if (dbmTab) dbmTab.style.display = (isAdmin || isHod || isUser) ? '' : 'none';
-
   // Client Tasks tab — a manager-only view of every task delegated TO a client.
-  const clientsTab = document.getElementById('tasksTabClients');
-  if (clientsTab) clientsTab.style.display = (isAdmin || isHod || isPC) ? '' : 'none';
-
   // Awaiting Date tab — open work carrying no deadline at all. Admin sees every
   // department, a hod only their own (the route enforces both); PC and plain
   // users do not get it, so the tab stays hidden for them.
-  const awaitingTab = document.getElementById('tasksTabAwaiting');
-  if (awaitingTab) awaitingTab.style.display = (isAdmin || isHod || canDo('admin_tasks')) ? '' : 'none';
+  // React (frontend/src/pages/TasksTabs.jsx) takes the three as flags.
+  if (!_tasksTabsReact({ dbm: !!(isAdmin || isHod || isUser), clients: !!(isAdmin || isHod || isPC),
+                         awaiting: !!(isAdmin || isHod || canDo('admin_tasks')) })) {
+    const dbmTab = document.getElementById('tasksTabDelByMe');
+    if (dbmTab) dbmTab.style.display = (isAdmin || isHod || isUser) ? '' : 'none';
+    const clientsTab = document.getElementById('tasksTabClients');
+    if (clientsTab) clientsTab.style.display = (isAdmin || isHod || isPC) ? '' : 'none';
+    const awaitingTab = document.getElementById('tasksTabAwaiting');
+    if (awaitingTab) awaitingTab.style.display = (isAdmin || isHod || canDo('admin_tasks')) ? '' : 'none';
+  }
 
   // Show doer filter + date range to everyone on desktop (employee dropdown
   // stays "All Employees" for non-admin/PC since backend scopes to own tasks).
@@ -675,10 +677,27 @@ function awdToggle(id, head) {
   if (caret) caret.textContent = open ? '▾' : '▸';
 }
 
+// The type tabs are React (frontend/src/pages/TasksTabs.jsx) when #tasksTabsRoot carries
+// data-react; the .tab-group inside it in app.html is the fallback.
+// View: { active, dbm, clients, awaiting } — the last three null until loadAllTasks decides.
+let TASKS_TABS_REACT = null;
+const _tasksTabsView = { active: 'delegation', dbm: null, clients: null, awaiting: null };
+function tasksTabsSetReact(fn) { TASKS_TABS_REACT = fn; if (fn) fn({ ..._tasksTabsView }); }
+function _tasksTabsReact(patch) {
+  const root = document.getElementById('tasksTabsRoot');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_tasksTabsView, patch);
+  if (TASKS_TABS_REACT) TASKS_TABS_REACT({ ..._tasksTabsView });
+  else if (!root._tabsMounted) { root._tabsMounted = true; emkReactMount('taskstabs', root); }
+  return true;
+}
+
 function tasksTab(type, el) {
   tasksType = type;
-  document.querySelectorAll('#tasksTypeTabGroup .tab').forEach(t=>t.classList.remove('active'));
-  el.classList.add('active');
+  if (!_tasksTabsReact({ active: type })) {
+    document.querySelectorAll('#tasksTypeTabGroup .tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+  }
   withPageLoader(loadAllTasks);
 }
 
