@@ -292,10 +292,70 @@ function accIsDirty(userId) {
   return !(same(a.pages, b.pages) && same(a.actions, b.actions));
 }
 
+// ── React view ─────────────────────────────────────────────────────────────
+// The matrix is drawn by React (frontend/src/pages/AccessMatrix.jsx) when
+// #accessMatrix carries data-react; the HTML strings below are the fallback.
+// Only the drawing moved: every bit of state and logic (the working copies,
+// accLevelOf / accSetLevel, the extra_access fold-in, saving) is still here,
+// and _accView() hands React a plain picture of it. React's events call the
+// same functions the inline handlers did.
+let ACC_REACT = null, _accWanted = null;
+let _accState = 'idle', _accError = '', _accQuery = '', _accLoadSeq = 0;
+let _accStatus = {}, _accSaving = {};   // per user: the "Saving…" line and the Done button while saving
+function accSetReact(fn) { ACC_REACT = fn; if (fn && _accWanted) { const w = _accWanted; _accWanted = null; fn(w); } }
+function _accOn() { const b = document.getElementById('accessMatrix'); return !!(b && b.dataset.react); }
+function _accPush() {
+  const box = document.getElementById('accessMatrix');
+  if (!box || !box.dataset.react) return false;
+  const v = _accView();
+  if (ACC_REACT) ACC_REACT(v);
+  else { _accWanted = v; if (!box._accMounted) { box._accMounted = true; emkReactMount('accessmatrix', box); } }
+  return true;
+}
+function _accView() {
+  if (_accState !== 'ready') return { state: _accState, error: _accError };
+  return {
+    state: 'ready', q: _accQuery, sel: _accSelUser, seq: _accLoadSeq,
+    users: _accUsers.map(u => ({ id: u.id, name: u.name, role: u.role, roleLabel: accRoleLabel(u.role), department: u.department || '' })),
+    panel: _accSelUser != null ? _accPanelView(_accSelUser) : null,
+  };
+}
+function _accPanelView(userId) {
+  const u = _accUsers.find(x => x.id === userId);
+  if (!u) return null;
+  const role = _accRoles[userId];
+  const base = {
+    id: u.id, name: u.name, department: u.department || '', role,
+    roles: ['admin', 'hod', 'pc', 'user'].map(r => ({ value: r, label: accRoleLabel(r) })),
+    isMe: !!(ME && String(ME.id) === String(userId)),
+    dirty: accIsDirty(userId), saving: !!_accSaving[userId], status: _accStatus[userId] || null,
+  };
+  if (role === 'admin') return { ...base, admin: true };
+  const perms = _accPerms[userId] || { pages: [], actions: [] };
+  const depts = [...new Set(_accUsers.map(x => x.department || '').filter(Boolean))].sort();
+  return { ...base, admin: false, rows: PERM_TREE.map(pg => {
+    const lvl = accLevelOf(perms, pg), dim = lvl === 'none';
+    return {
+      page: pg.page, icon: pg.icon, label: pg.label, note: pg.note || '', lvl, dim, locked: !!pg.locked, readOnly: !!pg.readOnly,
+      showWarn: !pg.enforced && pg.grantable !== false && !pg.locked && !pg.readOnly,
+      levels: ACC_LEVELS.filter(l => !(pg.readOnly && l.key === 'edit') && !(l.key === 'admin' && !(pg.adminActions || []).length))
+        .map(l => ({ value: l.key, label: l.label })),
+      clients: pg.page === 'clients' && !dim ? {
+        first: u.cm_priority_dept || '', depts,
+        billing: (perms.actions || []).includes('billing_name'),
+        crm: (perms.actions || []).includes('crm_clients'),
+        add: (perms.actions || []).includes('add_clients'),
+      } : null,
+    };
+  }) };
+}
+
 async function renderAccessMatrix() {
   const box = document.getElementById('accessMatrix');
   if (!box) return;
-  box.innerHTML = '<div class="empty">Loading…</div>';
+  const react = _accOn();
+  if (react) { _accState = 'loading'; _accPush(); }
+  else box.innerHTML = '<div class="empty">Loading…</div>';
 
   try {
     // Role defaults come with the users, so accDefaultsFor() is ready before the
@@ -306,6 +366,7 @@ async function renderAccessMatrix() {
     _accUsers = Array.isArray(data) ? data.filter(u => u.role !== 'client') : [];
     allUsersData = _accUsers;
   } catch(e) {
+    if (react) { _accState = 'error'; _accError = e.message; _accPush(); return; }
     box.innerHTML = `<div class="empty" style="color:#ef4444">Failed to load: ${esc(e.message)}</div>`;
     return;
   }
@@ -333,6 +394,14 @@ async function renderAccessMatrix() {
     _accSaved[u.id] = { pages: [...perms.pages], actions: [...perms.actions] };
     _accRoles[u.id] = u.role;
     _accSavedRoles[u.id] = u.role;
+  }
+
+  if (react) {
+    // A fresh draw, as the innerHTML below was: empty search, no status lines.
+    _accState = 'ready'; _accQuery = ''; _accStatus = {}; _accSaving = {};
+    _accPush();
+    if (_accSelUser) loadUserPerms(_accSelUser);
+    return;
   }
 
   const userItems = _accUsers.map(u => `
@@ -415,6 +484,13 @@ async function selectAccUser(userId) {
 
 function loadUserPerms(userId) {
   _accSelUser = userId;
+  if (_accOn()) {
+    // The old redraw replaced the whole panel, so its status line and a disabled
+    // Done button were gone afterwards; the view clears them the same way.
+    delete _accStatus[userId]; _accSaving[userId] = false; _accLoadSeq++;
+    _accPush();
+    return;
+  }
   document.querySelectorAll('.acc-user-item').forEach(el => el.classList.remove('active'));
   const li = document.getElementById(`acc-li-${userId}`);
   if (li) { li.classList.add('active'); li.scrollIntoView({ block:'nearest' }); }
@@ -558,9 +634,10 @@ function accClientsFirstHtml(u) {
 }
 async function accSetClientsFirst(userId, dept) {
   const r = await api(`/api/users/${userId}/cm-priority-dept`, 'PUT', { dept });
-  if (!r || r.error) { showToast((r && r.error) || 'Failed to save', 'error'); return; }
+  if (!r || r.error) { showToast((r && r.error) || 'Failed to save', 'error'); _accPush(); return; }
   const u = _accUsers.find(x => x.id === userId);
   if (u) u.cm_priority_dept = r.dept;
+  _accPush();
   showToast(r.dept ? `${r.dept} clients will show first` : 'Client Master back to A-Z', 'success');
 }
 
@@ -581,6 +658,7 @@ function onAccRoleChange(userId, role) {
 
 // Reflect unsaved state on the Done button so it is obvious a save is pending.
 function accSyncDirty(userId) {
+  if (_accPush()) return;   // React draws the Done button from the view
   const btn = document.getElementById(`acc-save-${userId}`);
   if (!btn) return;
   const dirty = accIsDirty(userId);
@@ -589,12 +667,16 @@ function accSyncDirty(userId) {
 }
 
 async function saveUserPerms(userId) {
-  const btn = document.getElementById(`acc-save-${userId}`);
-  const st  = document.getElementById(`acc-st-${userId}`);
+  // Under React the status line and the Done button come from the view.
+  const react = _accOn();
+  const btn = react ? null : document.getElementById(`acc-save-${userId}`);
+  const st  = react ? null : document.getElementById(`acc-st-${userId}`);
   const setStatus = (text, color) => {
+    if (react) { _accStatus[userId] = { text, color }; _accPush(); return; }
     if (!st) return;
     st.textContent = text; st.style.color = color; st.style.opacity = '1';
   };
+  if (react) _accSaving[userId] = true;
   if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
   setStatus('⏳ Saving…', '#f59e0b');
 
@@ -607,7 +689,7 @@ async function saveUserPerms(userId) {
       _accSavedRoles[userId] = _accRoles[userId];
       const u = _accUsers.find(x => x.id === userId);
       if (u) u.role = _accRoles[userId];
-      const badge = document.getElementById(`acc-badge-${userId}`);
+      const badge = react ? null : document.getElementById(`acc-badge-${userId}`);   // React: from u.role in the view
       if (badge) { badge.className = `role-badge ${_accRoles[userId]}`; badge.textContent = accRoleLabel(_accRoles[userId]); }
     }
 
@@ -637,6 +719,7 @@ function resetUserPerms(userId) {
 }
 
 function filterAccMatrix(q) {
+  if (_accOn()) { _accQuery = q || ''; _accPush(); return; }
   const s = (q||'').toLowerCase();
   document.querySelectorAll('#accUserList .acc-user-item').forEach(el => {
     const name = el.querySelector('.acc-user-item-name')?.textContent?.toLowerCase() || '';

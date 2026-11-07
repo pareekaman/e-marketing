@@ -6,7 +6,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-export default function SearchSelect({ value, onChange, options, style, className = '', placeholder = 'Search…' }) {
+// disabled: shows the value as usual but never opens (the enhancer opened even over a
+// disabled <select>, so a "locked" choice could still be changed through it).
+export default function SearchSelect({ value, onChange, options, style, className = '', placeholder = 'Search…', disabled = false }) {
   const inputRef = useRef(null);
   const panelRef = useRef(null);
   const [open, setOpen] = useState(false);
@@ -23,7 +25,7 @@ export default function SearchSelect({ value, onChange, options, style, classNam
     if (r) setPos({ left: r.left, top: r.bottom + 4, width: r.width, maxHeight: Math.max(120, Math.min(260, window.innerHeight - r.bottom - 12)) });
   };
   const show = () => {
-    if (open) return;
+    if (open || disabled) return;
     setQuery(''); setOpen(true); place();
     setActive(Math.max(0, options.findIndex(o => String(o.value) === String(value))));
   };
@@ -64,6 +66,7 @@ export default function SearchSelect({ value, onChange, options, style, classNam
         style={style}
         value={open ? query : (current ? current.label : '')}
         placeholder={open ? (current ? current.label : placeholder) : placeholder}
+        readOnly={disabled || undefined}
         onFocus={show}
         onClick={show}
         onChange={e => { if (!open) show(); setQuery(e.target.value); setActive(0); }}
