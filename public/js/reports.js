@@ -528,6 +528,7 @@ function _drToolbarMount() {
 
 async function loadDailyReports(){
   _drToolbarMount();
+  _drRemPush();   // and the reminder panels
   const monthInput = document.getElementById('drMonth');
   const fromInput  = document.getElementById('drDateFrom');
   const toInput    = document.getElementById('drDateTo');
@@ -1050,8 +1051,37 @@ function drExportPDF(){
 // ══════════════════════════════════════════════════════
 // 📢 DAILY REMINDER — admin trigger + preview
 // ══════════════════════════════════════════════════════
+// The two panels and their result boxes are React (frontend/src/pages/DrReminders.jsx) when
+// #drReminderRoot carries data-react; the markup in app.html is the fallback. The result HTML is
+// still built below. _drBox(id) gives the functions below what they always wrote to: the real
+// box, or under React a stand-in taking the same style.display / className / innerHTML writes
+// into the view { reminderResult: { show, cls, html }, pendingSummaryResult: { … } }.
+let DR_REM_REACT = null;
+const _drRemView = {};
+function drRemSetReact(fn) { DR_REM_REACT = fn; if (fn) fn({ ..._drRemView }); }
+function _drRemPush() {
+  const root = document.getElementById('drReminderRoot');
+  if (!root || !root.dataset.react) return false;
+  if (DR_REM_REACT) DR_REM_REACT({ ..._drRemView });
+  else if (!root._remMounted) { root._remMounted = true; emkReactMount('drreminders', root); }
+  return true;
+}
+function _drBox(id) {
+  const root = document.getElementById('drReminderRoot');
+  if (!root || !root.dataset.react) return document.getElementById(id);
+  const cur = _drRemView[id] = { ...(_drRemView[id] || { show: false, cls: 'dr-reminder-result', html: '' }) };
+  const set = patch => { _drRemView[id] = Object.assign(_drRemView[id], patch); _drRemPush(); };
+  return {
+    style: { set display(v) { set({ show: v === 'block' }); } },
+    set className(v) { set({ cls: v }); },
+    get className() { return _drRemView[id].cls; },
+    set innerHTML(v) { set({ html: v }); },
+    get innerHTML() { return _drRemView[id].html; },
+  };
+}
+
 async function reminderPreview(){
-  const box = document.getElementById('reminderResult');
+  const box = _drBox('reminderResult');
   box.style.display = 'block';
   box.className = 'dr-reminder-result';
   box.innerHTML = '<i>Loading preview…</i>';
@@ -1095,7 +1125,7 @@ async function reminderSendNow(force){
   // force: the admin already saw the off-day message and pressed Send anyway.
   if (!force && !await appConfirm('Send the daily reminder WhatsApp now?\n\nThis will message the group with names of users who haven\'t filled today\'s report.', 'Send Reminder')) return;
 
-  const box = document.getElementById('reminderResult');
+  const box = _drBox('reminderResult');
   box.style.display = 'block';
   box.className = 'dr-reminder-result';
   box.innerHTML = '<i>Sending…</i>';
@@ -1143,7 +1173,7 @@ async function reminderSendNow(force){
 // ══════════════════════════════════════════════════════
 async function pendingSummarySendNow(){
   if (!await appConfirm('Send the 3 pending-task-summary messages now (WhatsApp + email)?', 'Send Pending Summary')) return;
-  const box = document.getElementById('pendingSummaryResult');
+  const box = _drBox('pendingSummaryResult');
   box.style.display = 'block';
   box.className = 'dr-reminder-result';
   box.innerHTML = '<i>Sending 3 messages…</i>';
