@@ -68,6 +68,7 @@ const PAGES = {
   themepicker: lazy(() => import('./pages/ThemePicker.jsx')),
   apprtabs: lazy(() => import('./pages/ApprTabs.jsx')),
   pafilters: lazy(() => import('./pages/PaFilters.jsx')),
+  drtoolbar: lazy(() => import('./pages/DrToolbar.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),

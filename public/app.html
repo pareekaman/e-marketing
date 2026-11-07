@@ -1195,7 +1195,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
        ══════════════════════════════════════════════════════ -->
   <div id="page-dailyreports" class="page">
     <div class="dr-card">
-      <div class="dr-toolbar">
+      <!-- data-react: the toolbar is React (frontend/src/pages/DrToolbar.jsx); reports.js still reads its boxes by id. This markup is the fallback. -->
+      <div class="dr-toolbar" id="drToolbarRoot" data-react="1" data-react-quiet="1">
         <div class="dr-range-group">
           <label>Month</label>
           <input type="month" id="drMonth" onchange="loadDailyReports()"/>
@@ -4425,7 +4426,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261107b"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261107q"></script>
+<script src="/js/react-bridge.js?v=20261107r"></script>
 <script src="/js/dashboard.js?v=20261107e"></script>
 <script src="/js/amber-ui.js?v=20261107a"></script>
 <script src="/js/tasks.js?v=20261107e"></script>
@@ -4435,7 +4436,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/fms.js?v=20261105g"></script>
 <script src="/js/daily.js?v=20261105a"></script>
 <script src="/js/clients.js?v=20261104a"></script>
-<script src="/js/reports.js?v=20261101b"></script>
+<script src="/js/reports.js?v=20261107a"></script>
 <script src="/js/leaves.js?v=20261104a"></script>
 <script src="/js/leave-policy.js?v=20261101a"></script>
 <script src="/js/compose-mail.js?v=20261101b"></script>

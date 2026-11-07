@@ -509,13 +509,31 @@ function drGetData(){ return { data: DR_DATA, ...DR_STATE }; }
 function drIsOpen(key){ return DR_OPEN_DAYS.has(key); }
 function drSetOpen(key, open){ if (open) DR_OPEN_DAYS.add(key); else DR_OPEN_DAYS.delete(key); }
 
+// The toolbar (Month / From / To / Reset / exports) is React (frontend/src/pages/DrToolbar.jsx)
+// when #drToolbarRoot carries data-react; its markup in app.html is the fallback. Its inputs keep
+// their ids and their own values. A value written here before React has drawn them would land in
+// the fallback box React replaces, so writes also go to _drRange, which React's boxes start from.
+const _drRange = { month: '', from: '', to: '' };
+function drRangeInit() { return { ..._drRange }; }
+function _drToolbarMount() {
+  const root = document.getElementById('drToolbarRoot');
+  if (root && root.dataset.react && !root._tbMounted) {
+    // Anything already in the fallback boxes carries over.
+    _drRange.month = document.getElementById('drMonth')?.value || _drRange.month;
+    _drRange.from = document.getElementById('drDateFrom')?.value || _drRange.from;
+    _drRange.to = document.getElementById('drDateTo')?.value || _drRange.to;
+    root._tbMounted = true; emkReactMount('drtoolbar', root);
+  }
+}
+
 async function loadDailyReports(){
+  _drToolbarMount();
   const monthInput = document.getElementById('drMonth');
   const fromInput  = document.getElementById('drDateFrom');
   const toInput    = document.getElementById('drDateTo');
   if (!monthInput.value && !(fromInput?.value && toInput?.value)) {
     const now = new Date();
-    monthInput.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    monthInput.value = _drRange.month = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   }
   // React mode: the stats, summary and entries are drawn by the React page,
   // which must own those boxes, so they are not written into from here.
@@ -726,6 +744,7 @@ function drClearEntryFilters(){
 }
 
 function drClearRange(){
+  _drRange.from = _drRange.to = '';
   const f = document.getElementById('drDateFrom'); if (f) f.value = '';
   const t = document.getElementById('drDateTo'); if (t) t.value = '';
   loadDailyReports();
