@@ -62,6 +62,20 @@ function atReportTables({ giverList, dayList }, total) {
   };
 }
 
+// React bridge for the box (AtReport.jsx). View: { total, open, days, givers, dayRows } or null.
+let AT_REPORT_REACT = null, _atReportWanted;
+function atReportSetReact(fn) { AT_REPORT_REACT = fn; if (fn && _atReportWanted !== undefined) { const w = _atReportWanted; _atReportWanted = undefined; fn(w); } }
+function _atReportReact(view) {
+  const box = document.getElementById('atReportBox');
+  if (AT_REPORT_REACT) AT_REPORT_REACT(view);
+  else { _atReportWanted = view; if (!box._repMounted) { box._repMounted = true; emkReactMount('atreport', box); } }
+}
+// React's two toggles: the box itself, and its day-by-day table.
+function atReportToggle(which) {
+  if (which === 'open') AT_REPORT_OPEN = !AT_REPORT_OPEN; else AT_REPORT_DAYS_OPEN = !AT_REPORT_DAYS_OPEN;
+  atReportRender(AT_REPORT_ROWS);
+}
+
 function atReportRender(rows) {
   const box = document.getElementById('atReportBox');
   const pdfBtn = document.getElementById('atPdfBtn');
@@ -70,6 +84,18 @@ function atReportRender(rows) {
   if (!(typeof _tasksBtnsReact === 'function' && _tasksBtnsReact({ pdf: !off })) && pdfBtn) pdfBtn.style.display = off ? 'none' : '';
   AT_REPORT_ROWS = off ? [] : rows;
   if (!box) return;
+  // React (frontend/src/pages/AtReport.jsx) when #atReportBox carries data-react: it gets
+  // the counts worked out here, or null for an empty box.
+  if (box.dataset.react) {
+    if (off || !rows.length) { _atReportReact(null); return; }
+    const d = atReportData(rows);
+    _atReportReact({
+      total: rows.length, open: AT_REPORT_OPEN, days: AT_REPORT_DAYS_OPEN,
+      givers: d.giverList.map(g => ({ name: g.name, head: g.key === '__self' ? 'Self' : g.name, total: g.total, done: g.done })),
+      dayRows: d.dayList.map(({ day, counts }) => ({ day: atFmtDay(day), cells: d.giverList.map(g => counts.get(g.key) || 0) })),
+    });
+    return;
+  }
   if (off || !rows.length) { box.innerHTML = ''; return; }
   const data = atReportData(rows);
   const head = `<button type="button" class="at-rep-head" onclick="AT_REPORT_OPEN=!AT_REPORT_OPEN;atReportRender(AT_REPORT_ROWS)">
