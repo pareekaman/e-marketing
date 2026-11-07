@@ -863,7 +863,12 @@ function dashRowMenu(ev, id, type) {
   items.push(['📋 Open in All Tasks', () => {
     navigate('alltasks', document.getElementById('nav-alltasks'));
     const box = document.getElementById('taskSearch');
-    if (box && t) setTimeout(() => { box.value = t.description || ''; if (typeof filterTasks === 'function') filterTasks(); }, 600);
+    // taskSearchSet (tasks.js) writes whichever box is there by then — the search box
+    // may be React by then (TasksSearch.jsx), drawn after this click — and remembers the text.
+    if (box && t) setTimeout(() => {
+      if (typeof taskSearchSet === 'function') taskSearchSet(t.description || ''); else box.value = t.description || '';
+      if (typeof filterTasks === 'function') filterTasks();
+    }, 600);
   }]);
   const pop = document.createElement('div');
   pop.id = 'dashRowMenuPop';

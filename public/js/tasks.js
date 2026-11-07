@@ -70,6 +70,7 @@ async function loadAllTasks() {
     filtersDiv.style.display = isDesktop ? 'flex' : 'none';
   }
   _tasksUserReact({});   // mounts the filter row (React) on the first load
+  _taskSearchMount();     // and the search box
 
   // Awaiting Date tab — its own shape (department > doer > tasks) and its own
   // fixed scope, so it returns before the shared table path runs. The status
@@ -226,6 +227,28 @@ function _tasksUserReact(patch) {
 }
 // React's employee box: the pick lands in the hidden select (flushSync) before filterTasks reads it.
 function tasksUserPick(v) { _tasksUserReact({ value: String(v) }); filterTasks(); }
+
+// The search box is React (frontend/src/pages/TasksSearch.jsx) when #taskSearchWrap carries
+// data-react. The input keeps its id and its own value (filterTasks and the PDF read it);
+// taskSearchSet writes whichever box is there and remembers the text, so a box React draws
+// later starts with it (taskSearchInit).
+let _taskSearchText = '';
+function taskSearchSet(text) {
+  _taskSearchText = text;
+  const box = document.getElementById('taskSearch');
+  if (box) box.value = text;
+}
+function taskSearchInit() { return _taskSearchText; }
+function taskSearchTyped(text) { _taskSearchText = text; filterTasks(); }
+function _taskSearchMount() {
+  const root = document.getElementById('taskSearchWrap');
+  if (root && root.dataset.react && !root._searchMounted) {
+    // Whatever was typed into the fallback box carries over.
+    const old = document.getElementById('taskSearch');
+    if (old && old.value) _taskSearchText = old.value;
+    root._searchMounted = true; emkReactMount('taskssearch', root);
+  }
+}
 
 function clearTasksDateFilter() {
   const f = document.getElementById('tasksDateFrom');

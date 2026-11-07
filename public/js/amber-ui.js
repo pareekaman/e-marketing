@@ -131,13 +131,15 @@ function amberSearchRun() {
 function amberShowTasksFor(text) {
   navigate('alltasks', document.getElementById('nav-alltasks'));
   let tries = 0;
+  // taskSearchSet (tasks.js) also keeps the text for the React search box, should it draw after this.
+  const setBox = v => { if (typeof taskSearchSet === 'function') taskSearchSet(v); else { const b = document.getElementById('taskSearch'); if (b) b.value = v; } };
   const apply = () => {
     const box = document.getElementById('taskSearch');
     if (box && typeof allTasksData !== 'undefined' && Array.isArray(allTasksData) && allTasksData.length) {
-      box.value = text;
+      setBox(text);
       if (typeof filterTasks === 'function') filterTasks();
     } else if (++tries < 20) setTimeout(apply, 250);
-    else if (box) { box.value = text; if (typeof filterTasks === 'function') filterTasks(); }
+    else if (box) { setBox(text); if (typeof filterTasks === 'function') filterTasks(); }
   };
   setTimeout(apply, 300);
 }
