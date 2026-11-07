@@ -69,6 +69,7 @@ async function loadAllTasks() {
   if (filtersDiv) {
     filtersDiv.style.display = isDesktop ? 'flex' : 'none';
   }
+  _tasksUserReact({});   // mounts the filter row (React) on the first load
 
   // Awaiting Date tab — its own shape (department > doer > tasks) and its own
   // fixed scope, so it returns before the shared table path runs. The status
@@ -158,7 +159,19 @@ async function loadAllTasks() {
   // keeping the dropdown from delegation/checklist load so the user can still filter server-side).
   if ((isAdmin || isPC || canDo('admin_tasks')) && isDesktop && tasksType !== 'fms') {
     const userSel = document.getElementById('tasksUserFilter');
-    if (userSel) {
+    if (_tasksUserOn()) {
+      // Same list as below, handed to React (TasksFilters.jsx) as { opts, value }.
+      const uniqueUsers = {};
+      allTasks.forEach(t => {
+        const id = t.assignedToId || t.assigned_to;
+        if (id && t.assignedToName) uniqueUsers[id] = t.assignedToName;
+      });
+      const gone = n => /deleted user|\(removed\)$/.test(n);
+      const opts = [{ value: 'all', label: 'All Employees' }].concat(Object.entries(uniqueUsers)
+        .sort((a,b)=>(gone(a[1]) - gone(b[1])) || a[1].localeCompare(b[1])).map(([id, name]) => ({ value: String(id), label: name })));
+      const prevVal = _tasksUserView.value;
+      _tasksUserReact({ opts, value: prevVal && opts.some(o => o.value === prevVal) ? prevVal : 'all' });
+    } else if (userSel) {
       const prevVal = userSel.value;
       const uniqueUsers = {};
       allTasks.forEach(t => {
@@ -192,6 +205,27 @@ async function loadAllTasks() {
 
   renderTasksTable();
 }
+
+// The employee + date filter row is React (frontend/src/pages/TasksFilters.jsx) when
+// #tasksUserDateFilters carries data-react; its markup in app.html is the fallback.
+// React keeps a hidden <select id="tasksUserFilter"> in step with the view (this file and
+// tasks-report.js read its value and option text) and the date inputs keep their ids.
+// View: { opts: [{ value, label }], value }.
+let TASKS_USER_REACT = null;
+const _tasksUserView = { opts: [{ value: 'all', label: 'All Employees' }], value: 'all' };
+function tasksUserView() { return { ..._tasksUserView }; }
+function tasksUserSetReact(fn) { TASKS_USER_REACT = fn; }
+function _tasksUserOn() { const r = document.getElementById('tasksUserDateFilters'); return !!(r && r.dataset.react); }
+function _tasksUserReact(patch) {
+  const root = document.getElementById('tasksUserDateFilters');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_tasksUserView, patch);
+  if (TASKS_USER_REACT) TASKS_USER_REACT({ ..._tasksUserView });
+  else if (!root._filtersMounted) { root._filtersMounted = true; emkReactMount('tasksfilters', root); }
+  return true;
+}
+// React's employee box: the pick lands in the hidden select (flushSync) before filterTasks reads it.
+function tasksUserPick(v) { _tasksUserReact({ value: String(v) }); filterTasks(); }
 
 function clearTasksDateFilter() {
   const f = document.getElementById('tasksDateFrom');
