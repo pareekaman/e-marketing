@@ -377,7 +377,28 @@ function paApplyFilters() {
   paRenderApprovalRows(filtered);
 }
 
+// The filter row is React (frontend/src/pages/PaFilters.jsx) when #paFiltersRoot carries
+// data-react; its markup in app.html is the fallback. React keeps a hidden
+// <select id="paFilterEmployee"> in step with this view (paApplyFilters reads it; the
+// updates are flushSync'd) and the date / amount inputs keep their ids.
+// View: { opts: [{ value, label }], value }.
+let PA_FILT_REACT = null;
+const _paFiltView = { opts: [{ value: '', label: 'All Employees' }], value: '' };
+function paFiltView() { return { ..._paFiltView }; }
+function paFiltSetReact(fn) { PA_FILT_REACT = fn; }
+function _paFiltReact(patch) {
+  const root = document.getElementById('paFiltersRoot');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_paFiltView, patch);
+  if (PA_FILT_REACT) PA_FILT_REACT({ ..._paFiltView });
+  else if (!root._filtMounted) { root._filtMounted = true; emkReactMount('pafilters', root); }
+  return true;
+}
+// React's employee box: the pick is in the hidden select before paApplyFilters reads it.
+function paFiltPick(v) { _paFiltReact({ value: String(v) }); paApplyFilters(); }
+
 function paResetFilters() {
+  _paFiltReact({ value: '' });   // React's employee box back to All Employees
   const ids = ['paFilterEmployee','paFilterDateFrom','paFilterDateTo','paFilterAmtMin','paFilterAmtMax'];
   ids.forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('paFilterEmployee')?._ssSync?.();
@@ -528,7 +549,11 @@ async function loadPaymentApprovals() {
     const rows = all.filter(r => r.bank_name !== '__system__');
     _paAllRows = rows;
     const empSel = document.getElementById('paFilterEmployee');
-    if (empSel) {
+    const names0 = [...new Set(rows.map(r => r.name).filter(Boolean))].sort();
+    if (_paFiltReact({ opts: [{ value: '', label: 'All Employees' }].concat(names0.map(n => ({ value: n, label: n }))),
+                       value: names0.includes(_paFiltView.value) ? _paFiltView.value : '' })) {
+      // React (PaFilters.jsx) has the list; same names, same kept choice as below.
+    } else if (empSel) {
       const names = [...new Set(rows.map(r => r.name).filter(Boolean))].sort();
       const curVal = empSel.value;
       empSel.innerHTML = '<option value="">All Employees</option>' + names.map(n => `<option value="${dtEscape(n)}"${n===curVal?'selected':''}>${dtEscape(n)}</option>`).join('');

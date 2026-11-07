@@ -627,8 +627,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 
     <!-- Payment Approvals panel (Naman only) -->
     <div id="paymentApprovalsPanel" style="display:none">
-      <!-- Filters -->
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px">
+      <!-- Filters. data-react: React (frontend/src/pages/PaFilters.jsx) draws their contents; this markup is the fallback. -->
+      <div id="paFiltersRoot" data-react="1" data-react-quiet="1" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px">
         <div style="flex:1;min-width:150px">
           <label style="display:block;font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;text-transform:uppercase">Employee</label>
           <select id="paFilterEmployee" onchange="paApplyFilters()" style="width:100%;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none">
@@ -4425,7 +4425,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261107b"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261107p"></script>
+<script src="/js/react-bridge.js?v=20261107q"></script>
 <script src="/js/dashboard.js?v=20261107e"></script>
 <script src="/js/amber-ui.js?v=20261107a"></script>
 <script src="/js/tasks.js?v=20261107e"></script>
@@ -4441,7 +4441,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/compose-mail.js?v=20261101b"></script>
 <script src="/js/emk-creds.js?v=20261101b"></script>
 <script src="/js/portal.js?v=20261101b"></script>
-<script src="/js/payments.js?v=20261107a"></script>
+<script src="/js/payments.js?v=20261107b"></script>
 <script src="/js/mdo.js?v=20261106a"></script>
 <!-- ⚠️ notify.js MUST load before meetings.js. meetings.js ends by calling
      init(), and init() calls ntMaybeOpen() — loading it later leaves that
