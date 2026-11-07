@@ -86,6 +86,7 @@ async function loadAllTasks() {
     return;
   }
   if (statusRow) statusRow.style.display = '';
+  _tasksStatusReact();   // mounts the status tabs (React) on the first load
 
   // FMS Tasks tab — fetch from the FMS dashboard endpoint and normalize into the same shape
   if (tasksType === 'fms') {
@@ -207,11 +208,27 @@ function filterTasks() {
   renderTasksTable();
 }
 
+// The status tabs are React (frontend/src/pages/TasksStatusTabs.jsx) when #tasksStatusTabRow
+// carries data-react; the .tab-group inside it in app.html is the fallback. View: { active }.
+let TASKS_STATUS_REACT = null;
+function tasksStatusSetReact(fn) { TASKS_STATUS_REACT = fn; if (fn) fn({ active: taskStatusFilter }); }
+function _tasksStatusReact() {
+  const root = document.getElementById('tasksStatusTabRow');
+  if (!root || !root.dataset.react) return false;
+  if (TASKS_STATUS_REACT) TASKS_STATUS_REACT({ active: taskStatusFilter });
+  else if (!root._tabsMounted) { root._tabsMounted = true; emkReactMount('tasksstatustabs', root); }
+  return true;
+}
+
 function filterTaskStatus(status, el) {
   taskStatusFilter = status;
   allTasksPage = 1;
-  document.querySelectorAll('#page-alltasks .tab-group .tab').forEach(t=>t.classList.remove('active'));
-  el.classList.add('active');
+  // Only this row's tabs. It used to clear every .tab on the page, which took the
+  // highlight off the type tab above as well (fixed 2026-11-07).
+  if (!_tasksStatusReact()) {
+    document.querySelectorAll('#tasksStatusTabRow .tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+  }
   renderTasksTable();
 }
 

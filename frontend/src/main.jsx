@@ -57,6 +57,7 @@ const PAGES = {
   dashhead: lazy(() => import('./pages/DashHead.jsx')),
   themetoggle: lazy(() => import('./pages/ThemeToggle.jsx')),
   taskstabs: lazy(() => import('./pages/TasksTabs.jsx')),
+  tasksstatustabs: lazy(() => import('./pages/TasksStatusTabs.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),
