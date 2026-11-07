@@ -48,6 +48,7 @@ const PAGES = {
   dashempfilter: lazy(() => import('./pages/DashEmpFilter.jsx')),
   pcdaterange: lazy(() => import('./pages/PcDateRange.jsx')),
   dashuserswitcher: lazy(() => import('./pages/DashUserSwitcher.jsx')),
+  dashlegend: lazy(() => import('./pages/DashLegend.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),

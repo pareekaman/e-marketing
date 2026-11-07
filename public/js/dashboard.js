@@ -88,6 +88,18 @@ function dashEmpSetValue(v) {
 // React's list: a pick sets the value and reloads, as the old list's change event did.
 function dashEmpPick(v) { dashEmpSetValue(v); onPCFilterChange(); }
 
+// The Task Overview legend is React (frontend/src/pages/DashLegend.jsx) when
+// #dashLegend carries data-react; updateDashStats hands it { ring, items }.
+let DASH_LEGEND_REACT = null, _dashLegendWanted = null;
+function dashLegendSetReact(fn) { DASH_LEGEND_REACT = fn; if (fn && _dashLegendWanted) { fn(_dashLegendWanted); _dashLegendWanted = null; } }
+function _dashLegendReact(view) {
+  const root = document.getElementById('dashLegend');
+  if (!root || !root.dataset.react) return false;
+  if (DASH_LEGEND_REACT) DASH_LEGEND_REACT(view);
+  else { _dashLegendWanted = view; emkReactMount('dashlegend', root); }
+  return true;
+}
+
 let _pcDatesMounted = false;   // PC's date range, mounted the first time it is shown (loadDashboard)
 
 function beginDashStatsHold(seq) {
@@ -717,6 +729,12 @@ function updateDashStats(type) {
   });
   // Amber look: all four in a 2x2 legend with count and share, zeros included,
   // so the layout never shifts.
+  // React (frontend/src/pages/DashLegend.jsx) when #dashLegend carries data-react:
+  // it gets the ring's four entries, or ring:false for the original legend.
+  if (_dashLegendReact(ring
+    ? { ring: true, items: Object.entries({ Completed: completed, Pending: pending, Revised: revised, Upcoming: upcomingCount })
+        .map(([l, n]) => ({ l, n, pct: (n / total * 100).toFixed(1), a: RING[l][0], b: RING[l][1] })) }
+    : { ring: false })) return;
   const legend = document.getElementById('dashLegend');
   // Keep the page's original legend so a festival theme gets it back.
   if (legend && legend.dataset.orig === undefined) legend.dataset.orig = legend.innerHTML;
