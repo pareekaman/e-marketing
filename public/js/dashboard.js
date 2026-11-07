@@ -313,8 +313,26 @@ function dashPerfSetTeam(on){
   loadDashboardPerfCharts();
 }
 
+// The section's controls (My Team, From, To) are React (frontend/src/pages/DashPerfDates.jsx)
+// when .dash-perf-dates carries data-react. The elements keep their ids and hold their own
+// state, so the code below reads and sets them as before — once React has drawn them,
+// which the first call waits for (at most 5s; if React never comes, the fallback rules).
+let _dashPerfDatesReady = null, _dashPerfDatesDone = null;
+function dashPerfDatesReady() { if (_dashPerfDatesDone) _dashPerfDatesDone(); }
+function _dashPerfDatesMount() {
+  const root = document.querySelector('#dashPerfSection .dash-perf-dates');
+  if (!root || !root.dataset.react) return null;
+  if (!_dashPerfDatesReady) {
+    _dashPerfDatesReady = Promise.race([new Promise(r => { _dashPerfDatesDone = r; }), new Promise(r => setTimeout(r, 5000))]);
+    emkReactMount('dashperfdates', root);
+  }
+  return _dashPerfDatesReady;
+}
+
 async function loadDashboardPerfCharts(){
   if (!ME) return;
+  const reactReady = _dashPerfDatesMount();
+  if (reactReady) await reactReady;
   const team = dashPerfTeamOn();
   const teamWrap = document.getElementById('dashPerfTeamWrap');
   if (teamWrap) teamWrap.style.display = dashPerfIsTeamHead() ? 'inline-flex' : 'none';

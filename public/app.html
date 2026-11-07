@@ -414,7 +414,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
     <div id="dashPerfSection" class="dash-perf-section" style="display:none">
       <div class="dash-perf-head">
         <h3><span class="amb-ico amb-ico-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20V13"/><path d="M12 20V8"/><path d="M18 20V4"/></svg></span><span class="amb-hide">📈 </span><span>Performance &amp; Activity<small class="amb-sub">Top contributors, low performers and most active users.</small></span> <span id="dashPerfScopeLabel" style="font-size:12px;font-weight:600;color:#64748b"></span></h3>
-        <div class="dash-perf-dates">
+        <!-- data-react: My Team / From / To are React (frontend/src/pages/DashPerfDates.jsx); loadDashboardPerfCharts still runs them by id. This markup is the fallback. -->
+        <div class="dash-perf-dates" data-react="1" data-react-quiet="1">
           <label id="dashPerfTeamWrap" style="display:none;align-items:center;gap:7px;cursor:pointer;margin-right:10px" title="Show only your department">
             <span class="dash-team-switch"><input type="checkbox" id="dashPerfTeam" onchange="dashPerfSetTeam(this.checked)"/><span></span></span>
             <span style="font-weight:600;color:#334155">My Team</span>
@@ -4402,8 +4403,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261106h"></script>
-<script src="/js/dashboard.js?v=20261106g"></script>
+<script src="/js/react-bridge.js?v=20261107a"></script>
+<script src="/js/dashboard.js?v=20261107a"></script>
 <script src="/js/amber-ui.js?v=20261106a"></script>
 <script src="/js/tasks.js?v=20261105b"></script>
 <script src="/js/tasks-report.js?v=20261101a"></script>
