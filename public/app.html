@@ -384,7 +384,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         </div>
         <div style="overflow-x:auto;max-height:370px;overflow-y:auto;">
           <table style="min-width:600px">
-            <thead id="dashThead" style="position:sticky;top:0;z-index:2;background:#f8fafc">
+            <!-- data-react: the header row is React (frontend/src/pages/DashHead.jsx), handed its layout by renderDashTable; this row is the fallback. -->
+            <thead id="dashThead" data-react="1" style="position:sticky;top:0;z-index:2;background:#f8fafc">
               <tr>
                 <th class="amb-cell">#</th>
                 <th style="white-space:nowrap">Type</th>
@@ -4408,8 +4409,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261027c"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261107c"></script>
-<script src="/js/dashboard.js?v=20261107c"></script>
+<script src="/js/react-bridge.js?v=20261107d"></script>
+<script src="/js/dashboard.js?v=20261107d"></script>
 <script src="/js/amber-ui.js?v=20261106a"></script>
 <script src="/js/tasks.js?v=20261105b"></script>
 <script src="/js/tasks-report.js?v=20261101a"></script>

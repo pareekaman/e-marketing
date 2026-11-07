@@ -1126,7 +1126,9 @@ async function loadDashFMS(seq = newDashSeq()) {
 function toggleDashDateSort() {
   _dashDateSortState = (_dashDateSortState + 1) % 3; // 0→1→2→0
   const icon = document.getElementById('dashDateSortIcon');
-  if (icon) {
+  // Under React (DashHead.jsx) the icon is not touched here: renderDashTable below
+  // redraws the header with ⇅, exactly as its innerHTML always did.
+  if (icon && !_dashHeadOn()) {
     icon.textContent = _dashDateSortState === 0 ? '⇅' : _dashDateSortState === 1 ? '↑' : '↓';
     icon.style.color = _dashDateSortState === 0 ? '#94a3b8' : '#4f46e5';
   }
@@ -1137,6 +1139,17 @@ function toggleDashDateSort() {
 // carries data-react; the HTML below is the fallback. renderDashTable still
 // picks, filters and sorts the rows, writes the header and fills _dashTaskMap,
 // then hands over { kind: 'rows' | 'fms' | 'error', ... }.
+// The table header is React (frontend/src/pages/DashHead.jsx) when #dashThead carries
+// data-react; renderDashTable hands it { fms, doer, priority } instead of its innerHTML.
+let DASH_HEAD_REACT = null, _dashHeadWanted = null;
+function dashHeadSetReact(fn) { DASH_HEAD_REACT = fn; if (fn && _dashHeadWanted) { const w = _dashHeadWanted; _dashHeadWanted = null; fn(w); } }
+function _dashHeadOn() { const th = document.getElementById('dashThead'); return !!(th && th.dataset.react); }
+function _dashHeadReact(view) {
+  if (!_dashHeadOn()) return false;
+  if (DASH_HEAD_REACT) DASH_HEAD_REACT(view); else { _dashHeadWanted = view; emkReactMount('dashhead', document.getElementById('dashThead')); }
+  return true;
+}
+
 let DASH_ROWS_REACT = null, _dashRowsWanted = null;
 function dashRowsSetReact(fn) { DASH_ROWS_REACT = fn; if (fn && _dashRowsWanted) { const w = _dashRowsWanted; _dashRowsWanted = null; fn(w); } }
 function _dashRowsOn() { const tb = document.getElementById('dashTbody'); return !!(tb && tb.dataset.react); }
@@ -1157,7 +1170,7 @@ function renderDashTable(tasks, type) {
   // FMS tab — swap to the rich FMS layout (FMS-Step / Details / Planned Date / Action)
   // with Done + Open buttons, same as the All Tasks → FMS tab.
   if (type === 'fms') {
-    thead.innerHTML = `<tr>
+    if (!_dashHeadReact({ fms: true, doer: '', priority: false })) thead.innerHTML = `<tr>
       <th style="white-space:nowrap">FMS — Step</th>
       <th>Details</th>
       <th style="white-space:nowrap;cursor:pointer;user-select:none" onclick="toggleDashDateSort()" title="Click to sort by date">Planned Date <span id="dashDateSortIcon" style="font-size:10px;color:#94a3b8">⇅</span></th>
@@ -1174,7 +1187,7 @@ function renderDashTable(tasks, type) {
   }
 
   // Default unified layout (All / Delegation / Checklist) — restore original headers
-  thead.innerHTML = `<tr>
+  if (!_dashHeadReact({ fms: false, doer: (isAdmin||isPC) ? 'Doer' : 'Assigned By', priority: type === 'delegation' })) thead.innerHTML = `<tr>
     <th class="amb-cell">#</th>
     <th style="white-space:nowrap">Type</th>
     <th style="max-width:240px">Description</th>
