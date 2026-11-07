@@ -13,9 +13,26 @@ const esc = s => escapeHtml(String(s == null ? '' : s));
 // none of the other characters.
 const jsArg = v => escapeHtml(JSON.stringify(String(v == null ? '' : v)));
 
+// The sub-tabs (Users / Access Control / Theme) are React (frontend/src/pages/UsersTabs.jsx)
+// when #usersTabsRoot carries data-react; the .tab-group inside it in app.html is the
+// fallback. View: { active, theme } — theme (the Theme tab shows) set by picker.js showThemeTab.
+let USERS_TABS_REACT = null;
+const _usersTabsView = { active: 'users', theme: false };
+function usersTabsSetReact(fn) { USERS_TABS_REACT = fn; if (fn) fn({ ..._usersTabsView }); }
+function _usersTabsReact(patch) {
+  const root = document.getElementById('usersTabsRoot');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_usersTabsView, patch);
+  if (USERS_TABS_REACT) USERS_TABS_REACT({ ..._usersTabsView });
+  else if (!root._tabsMounted) { root._tabsMounted = true; emkReactMount('userstabs', root); }
+  return true;
+}
+
 function switchUsersTab(tab, el) {
-  document.querySelectorAll('#page-users .tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
+  if (!_usersTabsReact({ active: tab })) {
+    document.querySelectorAll('#page-users .tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+  }
   document.getElementById('usersSubPanel-users').style.display  = tab === 'users'  ? 'block' : 'none';
   document.getElementById('usersSubPanel-access').style.display = tab === 'access' ? 'block' : 'none';
   document.getElementById('usersTabActions').style.display      = tab === 'users'  ? 'flex'  : 'none';

@@ -62,6 +62,7 @@ const PAGES = {
   taskssearch: lazy(() => import('./pages/TasksSearch.jsx')),
   tasksbuttons: lazy(() => import('./pages/TasksButtons.jsx')),
   atreport: lazy(() => import('./pages/AtReport.jsx')),
+  userstabs: lazy(() => import('./pages/UsersTabs.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),

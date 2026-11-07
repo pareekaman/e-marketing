@@ -4,6 +4,7 @@
 let allUsersData = [];
 
 async function loadUsers() {
+  if (typeof _usersTabsReact === 'function') _usersTabsReact({});   // mounts the sub-tabs (React, access.js)
   const deptBtn = document.getElementById('usersDeptBtn');
   if (deptBtn) deptBtn.style.display = ME && ME.role === 'admin' ? '' : 'none';
   allUsersData = await api('/api/users');

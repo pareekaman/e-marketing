@@ -348,6 +348,8 @@ function tpFestName(key) { const c = THEME_CHOICES.find(t => t.key === key); ret
 function tpShortDate(ymd) { return new Date(ymd + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); }
 
 function showThemeTab() {
+  // The Users sub-tabs may be React (access.js _usersTabsReact).
+  if (typeof _usersTabsReact === 'function' && _usersTabsReact({ theme: true })) return;
   const tab = document.getElementById('usersSubTab-theme');
   if (tab) tab.style.display = '';
 }
