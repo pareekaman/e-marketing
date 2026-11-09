@@ -160,15 +160,38 @@ function dmsRenderClientList() {
   `;
 }
 
+// The client header (back, breadcrumb, name, Drive link, Create Drive Folder) and the
+// "+ Add Department" button are React (frontend/src/pages/DmsHead.jsx, in #dmsHeadRow and
+// #dmsDeptHead) when those carry data-react; their markup in app.html is the fallback.
+// One view for both: { name, folder: url | null, setup / addDept: display | null, busy }.
+let DMS_HEAD_REACT = null, DMS_DEPTHEAD_REACT = null;
+const _dmsHeadView = { name: '', folder: null, setup: null, busy: false, addDept: null };
+function dmsHeadSetReact(fn) { DMS_HEAD_REACT = fn; if (fn) fn({ ..._dmsHeadView }); }
+function dmsDeptHeadSetReact(fn) { DMS_DEPTHEAD_REACT = fn; if (fn) fn({ ..._dmsHeadView }); }
+function _dmsHead(patch) {
+  const a = document.getElementById('dmsHeadRow'), b = document.getElementById('dmsDeptHead');
+  if (!a || !a.dataset.react) return false;
+  Object.assign(_dmsHeadView, patch);
+  if (DMS_HEAD_REACT) DMS_HEAD_REACT({ ..._dmsHeadView });
+  else if (!a._hMounted) { a._hMounted = true; emkReactMount('dmshead', a); }
+  if (b && b.dataset.react) {
+    if (DMS_DEPTHEAD_REACT) DMS_DEPTHEAD_REACT({ ..._dmsHeadView });
+    else if (!b._hMounted) { b._hMounted = true; emkReactMount('dmsdepthead', b); }
+  }
+  return true;
+}
+
 async function dmsSelectClient(id) {
   _dmsSelectedClient = _dmsClients.find(c => c.id === id);
   if (!_dmsSelectedClient) return;
 
   document.getElementById('dmsRootView').style.display = 'none';
   document.getElementById('dmsDetail').style.display = 'block';
-  document.getElementById('dmsClientName').textContent = _dmsSelectedClient.name;
-  document.getElementById('dmsFolderLink').innerHTML = '';
-  document.getElementById('dmsSetupBtn').style.display = 'none';
+  if (!_dmsHead({ name: _dmsSelectedClient.name, folder: null, setup: 'none' })) {
+    document.getElementById('dmsClientName').textContent = _dmsSelectedClient.name;
+    document.getElementById('dmsFolderLink').innerHTML = '';
+    document.getElementById('dmsSetupBtn').style.display = 'none';
+  }
   const react = _dmsIsReact('dmsDeptList');
   if (react) { dmsDepts({ state: 'loading' }); dmsFiles({ state: 'idle' }); }
   else {
@@ -185,8 +208,9 @@ async function dmsSelectClient(id) {
 
     if (data.drive_folder_id) {
       const driveUrl = `https://drive.google.com/drive/folders/${data.drive_folder_id}`;
-      document.getElementById('dmsFolderLink').innerHTML =
-        `<a href="${driveUrl}" target="_blank" style="color:#4f46e5;font-size:12px;text-decoration:none">Open in Google Drive ↗</a>`;
+      if (!_dmsHead({ folder: driveUrl }))
+        document.getElementById('dmsFolderLink').innerHTML =
+          `<a href="${driveUrl}" target="_blank" style="color:#4f46e5;font-size:12px;text-decoration:none">Open in Google Drive ↗</a>`;
       // Browse the client's own root folder immediately — department folders
       // are an optional extra layer, not a requirement to see any files.
       dmsBrowseFolder(data.drive_folder_id, _dmsSelectedClient.name);
@@ -194,7 +218,7 @@ async function dmsSelectClient(id) {
 
     if (!data.drive_folder_id) {
       if (data.drive_configured) {
-        document.getElementById('dmsSetupBtn').style.display = 'inline-flex';
+        if (!_dmsHead({ setup: 'inline-flex' })) document.getElementById('dmsSetupBtn').style.display = 'inline-flex';
       } else {
         if (react) { dmsDepts({ state: 'notconfigured' }); return; }
         document.getElementById('dmsDeptList').innerHTML =
@@ -206,8 +230,10 @@ async function dmsSelectClient(id) {
     dmsRenderDepts(data.departments || [], id, !!data.drive_folder_id);
 
     // Show add-dept button only if folder exists
-    const addDeptBtn = document.getElementById('dmsAddDeptBtn');
-    if (addDeptBtn) addDeptBtn.style.display = data.drive_folder_id ? 'inline-flex' : 'none';
+    if (!_dmsHead({ addDept: data.drive_folder_id ? 'inline-flex' : 'none' })) {
+      const addDeptBtn = document.getElementById('dmsAddDeptBtn');
+      if (addDeptBtn) addDeptBtn.style.display = data.drive_folder_id ? 'inline-flex' : 'none';
+    }
 
   } catch (e) {
     if (react) { dmsDepts({ state: 'error', message: e.message }); return; }
@@ -632,7 +658,8 @@ async function dmsBulkSetup() {
 
 async function dmsSetupFolder() {
   if (!_dmsSelectedClient) return;
-  const btn = document.getElementById('dmsSetupBtn');
+  // Under React the button's busy state is in the view; the stand-in takes the same writes.
+  const btn = _dmsHead({}) ? { set disabled(v) { _dmsHead({ busy: !!v }); }, set textContent(v) {} } : document.getElementById('dmsSetupBtn');
   btn.disabled = true; btn.textContent = 'Creating…';
   try {
     const r = await api(`/api/clients/${_dmsSelectedClient.id}/dms/setup`, 'POST');
