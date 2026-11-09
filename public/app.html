@@ -1835,10 +1835,13 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
   ══════════════════════════════════════ -->
   <div id="page-hrm" class="page">
     <!-- Sub-navigation tabs -->
+    <!-- data-react: the tabs are React (frontend/src/pages/HrmTabs.jsx), which draws the whole .tab-group; the group below is the fallback. -->
+    <div id="hrmTabsRoot" data-react="1" data-react-quiet="1" style="display:contents">
     <div class="tab-group" style="margin-bottom:18px;width:fit-content">
       <div class="tab active" onclick="switchHrmTab('dashboard',this)">Dashboard</div>
       <div class="tab" onclick="switchHrmTab('candidates',this)">Candidates</div>
       <div class="tab" onclick="switchHrmTab('messages',this)">Email Log</div>
+    </div>
     </div>
 
     <!-- HRM Dashboard -->
@@ -1864,7 +1867,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <div class="hrm-card">
         <div class="card-head">
           <div class="card-head-title">Recent Candidates</div>
-          <div style="display:flex;gap:8px;align-items:center">
+          <div id="hrmDashHead" data-react="1" data-react-quiet="1" style="display:flex;gap:8px;align-items:center">
             <button class="hrm-view-all" onclick="switchHrmTab('candidates',document.querySelector('#page-hrm .tab-group .tab:nth-child(2)'))">View All →</button>
             <button class="btn btn-primary btn-sm" id="hrmScheduleBtnTop" onclick="openHrmAddModal()">＋ Schedule Interview</button>
           </div>
@@ -4443,8 +4446,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/core.js?v=20261109a"></script>
 <script src="/js/access.js?v=20261107b"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
-<script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261109h"></script>
+<script src="/js/hrm.js?v=20261109a"></script>
+<script src="/js/react-bridge.js?v=20261109i"></script>
 <script src="/js/dashboard.js?v=20261107e"></script>
 <script src="/js/amber-ui.js?v=20261107a"></script>
 <script src="/js/tasks.js?v=20261107e"></script>

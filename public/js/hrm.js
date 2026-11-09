@@ -20,7 +20,10 @@ async function loadHRM() {
 
   // View-level access gets the page read-only: no scheduling, no status edits.
   const canSchedule = canDo('hrm_schedule');
+  // React's top button (HrmTabs.jsx) takes it as a flag; the rest are set directly.
+  const reactTop = _hrmTabs({ schedule: canSchedule });
   ['hrmScheduleBtnTop','hrmScheduleBtnList'].forEach(id => {
+    if (reactTop && id === 'hrmScheduleBtnTop') return;
     const b = document.getElementById(id);
     if (b) b.style.display = canSchedule ? '' : 'none';
   });
@@ -48,9 +51,32 @@ async function loadHRM() {
   renderHrmMsgTable();
 }
 
+// The three tabs (in #hrmTabsRoot) and the Dashboard card's View All / Schedule Interview
+// buttons (in #hrmDashHead) are React (frontend/src/pages/HrmTabs.jsx) when those carry
+// data-react; their markup is the fallback. View: { active, schedule } — schedule (the
+// Schedule button shows, hrm_schedule) null until loadHRM decides.
+let HRM_TABS_REACT = null, HRM_DASHHEAD_REACT = null;
+const _hrmTabsView = { active: 'dashboard', schedule: null };
+function hrmTabsSetReact(fn) { HRM_TABS_REACT = fn; if (fn) fn({ ..._hrmTabsView }); }
+function hrmDashHeadSetReact(fn) { HRM_DASHHEAD_REACT = fn; if (fn) fn({ ..._hrmTabsView }); }
+function _hrmTabs(patch) {
+  const a = document.getElementById('hrmTabsRoot'), b = document.getElementById('hrmDashHead');
+  if (!a || !a.dataset.react) return false;
+  Object.assign(_hrmTabsView, patch);
+  if (HRM_TABS_REACT) HRM_TABS_REACT({ ..._hrmTabsView });
+  else if (!a._hMounted) { a._hMounted = true; emkReactMount('hrmtabs', a); }
+  if (b && b.dataset.react) {
+    if (HRM_DASHHEAD_REACT) HRM_DASHHEAD_REACT({ ..._hrmTabsView });
+    else if (!b._hMounted) { b._hMounted = true; emkReactMount('hrmdashhead', b); }
+  }
+  return true;
+}
+
 function switchHrmTab(tab, el) {
-  document.querySelectorAll('#page-hrm .tab-group .tab').forEach(t=>t.classList.remove('active'));
-  el.classList.add('active');
+  if (!_hrmTabs({ active: tab })) {
+    document.querySelectorAll('#page-hrm .tab-group .tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+  }
   ['dashboard','candidates','messages'].forEach(s => {
     document.getElementById('hrm-'+s).style.display = s===tab ? 'block' : 'none';
   });

@@ -1,0 +1,6 @@
+import{r as a,j as s}from"./vendor-DdgGs7Sa.js";import{l as e,c as l}from"./app-DYCEQstd.js";const i=[["dashboard","Dashboard"],["candidates","Candidates"],["messages","Email Log"]];function u(){const[n,r]=a.useState({active:"dashboard",schedule:null});return a.useEffect(()=>(e("hrmTabsSetReact",r),e("initTabIndicators"),()=>e("hrmTabsSetReact",null)),[]),s.jsxs("div",{className:"tab-group",ref:l("margin-bottom:18px;width:fit-content"),children:[i.map(([t,c])=>[`
+      `,s.jsx("div",{className:"tab"+(n.active===t?" active":""),onClick:()=>e("switchHrmTab",t),children:c},t)]),`
+    `]})}function m(){const[n,r]=a.useState({active:"dashboard",schedule:null}),t=a.useRef(null);return a.useEffect(()=>(e("hrmDashHeadSetReact",r),()=>e("hrmDashHeadSetReact",null)),[]),a.useLayoutEffect(()=>{t.current&&n.schedule!=null&&(t.current.style.display=n.schedule?"":"none")}),s.jsxs(s.Fragment,{children:[`
+            `,s.jsx("button",{className:"hrm-view-all",onClick:()=>e("switchHrmTab","candidates"),children:"View All →"}),`
+            `,s.jsx("button",{className:"btn btn-primary btn-sm",id:"hrmScheduleBtnTop",ref:t,onClick:()=>e("openHrmAddModal"),children:"＋ Schedule Interview"}),`
+          `]})}export{m as HrmDashHead,u as default};
