@@ -2747,8 +2747,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         </div>
       </div>
       <div id="enqWebSubtitle" style="font-size:12px;color:var(--muted-foreground);display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:5px">
-        <span style="display:inline-flex;align-items:center;gap:6px"><span class="live-dot"></span>Live · updated <span id="enqUpdated">—</span></span>
-        <span id="enqDateRange" class="enq-daterange" style="display:none"></span>
+        <span style="display:inline-flex;align-items:center;gap:6px"><span class="live-dot"></span>Live · updated <span id="enqUpdated" data-react="1" data-react-quiet="1">—</span></span>
+        <span id="enqDateRange" data-react="1" data-react-quiet="1" class="enq-daterange" style="display:none"></span>
       </div>
     </div>
     <div id="enqToolbar" data-react="1" data-react-quiet="1" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -2822,14 +2822,14 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
     <div class="chart-card">
       <h3>By Status</h3>
       <div class="chart-wrap" style="height:196px"><canvas id="enqChart"></canvas></div>
-      <div id="enqChartLegend" class="enq-legend"></div>
+      <div id="enqChartLegend" data-react="1" data-react-quiet="1" class="enq-legend"></div>
     </div>
   </div>
 
   <div class="enq-grid">
     <div class="task-table-card">
       <div class="card-head">
-        <div class="card-head-title">Enquiries <span id="enqCount" style="font-size:12px;color:var(--muted-foreground);font-weight:500"></span></div>
+        <div class="card-head-title">Enquiries <span id="enqCount" data-react="1" data-react-quiet="1" style="font-size:12px;color:var(--muted-foreground);font-weight:500"></span></div>
       </div>
       <div style="overflow-x:auto;overflow-y:auto;max-height:58vh">
         <table id="enqTable" class="sortable" style="min-width:660px">
@@ -2845,15 +2845,15 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
     <div class="enq-side">
       <div class="chart-card">
         <h3>Pipeline</h3>
-        <div id="enqFunnel" class="funnel"></div>
+        <div id="enqFunnel" data-react="1" data-react-quiet="1" class="funnel"></div>
       </div>
       <div class="chart-card">
         <h3>By Source</h3>
-        <div id="enqBySource" class="enq-bars"></div>
+        <div id="enqBySource" data-react="1" data-react-quiet="1" class="enq-bars"></div>
       </div>
       <div class="chart-card">
         <h3>Top Services</h3>
-        <div id="enqByService" class="enq-bars"></div>
+        <div id="enqByService" data-react="1" data-react-quiet="1" class="enq-bars"></div>
       </div>
     </div>
   </div>
@@ -2862,7 +2862,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
   <div id="enqView-meta" style="display:none">
     <div id="metaLeadsView">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-        <div style="font-size:12px;color:var(--muted-foreground);display:inline-flex;align-items:center;gap:6px"><span class="live-dot"></span>Meta Lead Ads · Live · updated <span id="metaLeadsUpdated">—</span></div>
+        <div style="font-size:12px;color:var(--muted-foreground);display:inline-flex;align-items:center;gap:6px"><span class="live-dot"></span>Meta Lead Ads · Live · updated <span id="metaLeadsUpdated" data-react="1" data-react-quiet="1">—</span></div>
         <div id="mlBar" data-react="1" data-react-quiet="1" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select id="mlStatusFilter" class="meta-days-select" onchange="onMlStatusFilter()" title="Filter by status"><option value="">All statuses</option></select>
           <input type="text" id="metaLeadsSearch" placeholder="Search name, phone, email, city…" oninput="renderMetaLeads()"
@@ -2919,13 +2919,13 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         <div class="chart-card">
           <h3>By Status</h3>
           <div class="chart-wrap" style="height:196px"><canvas id="mlChart"></canvas></div>
-          <div id="mlChartLegend" class="enq-legend"></div>
+          <div id="mlChartLegend" data-react="1" data-react-quiet="1" class="enq-legend"></div>
         </div>
       </div>
 
       <div class="enq-grid">
         <div class="task-table-card">
-          <div class="card-head"><div class="card-head-title">Leads <span id="mlCount" style="font-size:12px;color:var(--muted-foreground);font-weight:500"></span></div></div>
+          <div class="card-head"><div class="card-head-title">Leads <span id="mlCount" data-react="1" data-react-quiet="1" style="font-size:12px;color:var(--muted-foreground);font-weight:500"></span></div></div>
           <div style="overflow-x:auto;overflow-y:auto;max-height:58vh">
             <table id="mlTable" class="sortable" style="min-width:780px">
               <thead data-react="1" style="position:sticky;top:0;z-index:2;background:var(--muted)">
@@ -2938,15 +2938,15 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
         <div class="enq-side">
           <div class="chart-card">
             <h3>Pipeline</h3>
-            <div id="mlFunnel" class="funnel"></div>
+            <div id="mlFunnel" data-react="1" data-react-quiet="1" class="funnel"></div>
           </div>
           <div class="chart-card">
             <h3>By City</h3>
-            <div id="mlByCity" class="enq-bars"></div>
+            <div id="mlByCity" data-react="1" data-react-quiet="1" class="enq-bars"></div>
           </div>
           <div class="chart-card">
             <h3>By Product</h3>
-            <div id="mlByProduct" class="enq-bars"></div>
+            <div id="mlByProduct" data-react="1" data-react-quiet="1" class="enq-bars"></div>
           </div>
         </div>
       </div>
@@ -2956,7 +2956,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 
   <div id="enqView-google" style="display:none">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-      <div style="font-size:12px;color:var(--muted-foreground);display:inline-flex;align-items:center;gap:6px"><span class="live-dot"></span>Google Ads Leads · Live · updated <span id="gadUpdated">—</span></div>
+      <div style="font-size:12px;color:var(--muted-foreground);display:inline-flex;align-items:center;gap:6px"><span class="live-dot"></span>Google Ads Leads · Live · updated <span id="gadUpdated" data-react="1" data-react-quiet="1">—</span></div>
       <div id="gadBar" data-react="1" data-react-quiet="1" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="gadStatusFilter" class="meta-days-select" onchange="onGadStatusFilter()" title="Filter by status"><option value="">All statuses</option></select>
         <input type="text" id="gadSearch" placeholder="Search name, phone, email, form…" oninput="renderGoogleAds()"
@@ -3013,13 +3013,13 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <div class="chart-card">
         <h3>By Status</h3>
         <div class="chart-wrap" style="height:196px"><canvas id="gadChart"></canvas></div>
-        <div id="gadChartLegend" class="enq-legend"></div>
+        <div id="gadChartLegend" data-react="1" data-react-quiet="1" class="enq-legend"></div>
       </div>
     </div>
 
     <div class="enq-grid">
       <div class="task-table-card">
-        <div class="card-head"><div class="card-head-title">Leads <span id="gadCount" style="font-size:12px;color:var(--muted-foreground);font-weight:500"></span></div></div>
+        <div class="card-head"><div class="card-head-title">Leads <span id="gadCount" data-react="1" data-react-quiet="1" style="font-size:12px;color:var(--muted-foreground);font-weight:500"></span></div></div>
         <div style="overflow-x:auto;overflow-y:auto;max-height:58vh">
           <table id="gadTable" class="sortable" style="min-width:720px">
             <thead data-react="1" style="position:sticky;top:0;z-index:2;background:var(--muted)">
@@ -3032,15 +3032,15 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       <div class="enq-side">
         <div class="chart-card">
           <h3>Pipeline</h3>
-          <div id="gadFunnel" class="funnel"></div>
+          <div id="gadFunnel" data-react="1" data-react-quiet="1" class="funnel"></div>
         </div>
         <div class="chart-card">
           <h3>By Form</h3>
-          <div id="gadByForm" class="enq-bars"></div>
+          <div id="gadByForm" data-react="1" data-react-quiet="1" class="enq-bars"></div>
         </div>
         <div class="chart-card">
           <h3>By Industry</h3>
-          <div id="gadByIndustry" class="enq-bars"></div>
+          <div id="gadByIndustry" data-react="1" data-react-quiet="1" class="enq-bars"></div>
         </div>
       </div>
     </div>
@@ -4452,7 +4452,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261107b"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261109c"></script>
-<script src="/js/react-bridge.js?v=20261109w"></script>
+<script src="/js/react-bridge.js?v=20261109x"></script>
 <script src="/js/dashboard.js?v=20261107e"></script>
 <script src="/js/amber-ui.js?v=20261107a"></script>
 <script src="/js/tasks.js?v=20261107e"></script>
@@ -4477,7 +4477,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/notify.js?v=20261105b"></script>
 <script src="/js/meetings.js?v=20261030b"></script>
 <script src="/js/dms.js?v=20261109c"></script>
-<script src="/js/leads.js?v=20261109g"></script>
+<script src="/js/leads.js?v=20261109h"></script>
 <script src="/js/enquiry.js?v=20261103a"></script>
 <script src="/js/voice-delegate.js?v=20261103a"></script>
 <script src="/js/chatbot.js?v=20261027c"></script>

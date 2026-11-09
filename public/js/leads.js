@@ -218,9 +218,24 @@ function fillStatusOptions(selId, rows, statusFn, current) {
 }
 
 // Simple horizontal pipeline funnel (New → In Progress → Won) with conversion %.
+// Display widgets (frontend/src/pages/LeadBoxes.jsx), one React root per element, used once the
+// element carries data-react (its old innerHTML is the fallback). View by kind:
+// { stages } funnel · { bars, color } bars · { legend } status legend · { text, dup } text (+ duplicates).
+const LEAD_BOX_REACT = {}, _leadBoxViews = {};
+function leadBoxView(id) { return _leadBoxViews[id] || null; }
+function leadBoxSetReact(id, fn) { LEAD_BOX_REACT[id] = fn; }
+function _leadBox(id, view) {
+  const el = id && document.getElementById(id);
+  if (!el || !el.dataset.react) return false;
+  _leadBoxViews[id] = view;
+  if (LEAD_BOX_REACT[id]) LEAD_BOX_REACT[id](view);
+  else if (!el._lbMounted) { el._lbMounted = true; emkReactMount('leadbox:' + id, el); }
+  return true;
+}
 function renderFunnel(containerId, stages) {
   const el = document.getElementById(containerId); if (!el) return;
   const max = Math.max(1, ...stages.map(s => s.value));
+  if (_leadBox(containerId, { stages: stages.map(s => ({ label: s.label, value: s.value, color: s.color, width: Math.max(4, Math.round((s.value / max) * 100)) })) })) return;
   el.innerHTML = stages.map(s => `
     <div class="funnel-row">
       <div class="funnel-label">${escapeHtml(s.label)}</div>
@@ -301,7 +316,8 @@ function renderEnqDateRange(rows) {
   if (!dates.length) { el.style.display = 'none'; return; }
   const fmt = d => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
   const min = dates[0], max = dates[dates.length - 1];
-  el.textContent = `${fmt(min)} – ${fmt(max)} ${max.getFullYear()}`;
+  const txt = `${fmt(min)} – ${fmt(max)} ${max.getFullYear()}`;
+  if (!_leadBox(el.id, { text: txt })) el.textContent = txt;
   el.style.display = 'inline-block';
 }
 
@@ -463,7 +479,7 @@ async function loadEnquiries(opts) {
   }
   _enqData = { rows: data.rows || [], keys: data.keys || [], headers: data.headers || [] };
   const u = document.getElementById('enqUpdated');
-  if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); }
+  if (u) { const d = new Date(data.updatedAt); { const t = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); if (!_leadBox(u.id, { text: t })) u.textContent = t; } }
   if (!silent) _enqAnimate = true; // animate the KPI numbers counting up on this fresh load
   renderEnquiries();
 }
@@ -585,7 +601,7 @@ function renderEnquiries() {
   const dup = dupKeySet(rows, r => r.phone, r => r.email);
   const dupNote = dup.count() ? ` · <span style="color:color-mix(in srgb,var(--warning) 82%,var(--foreground))">${dup.count()} duplicate${dup.count() > 1 ? 's' : ''}</span>` : '';
   const cnt = document.getElementById('enqCount');
-  if (cnt) cnt.innerHTML = ((enqCardFilter !== 'all' || q || enqStatusFilter) ? `(${filtered.length} of ${total})` : `(${total})`) + dupNote;
+  if (cnt && !_leadBox(cnt.id, { text: ((enqCardFilter !== 'all' || q || enqStatusFilter) ? `(${filtered.length} of ${total})` : `(${total})`), dup: dup.count() })) cnt.innerHTML = ((enqCardFilter !== 'all' || q || enqStatusFilter) ? `(${filtered.length} of ${total})` : `(${total})`) + dupNote;
 
   renderFunnel('enqFunnel', [
     { label: 'Total', value: total, color: cssVar('--chart-1') },
@@ -709,8 +725,9 @@ function renderEnqBreakdowns(rows) {
   const bars = (containerId, counts, accentVar) => {
     const el = document.getElementById(containerId); if (!el) return;
     const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6);
-    if (!entries.length) { el.innerHTML = '<div class="enq-bars-empty">No data</div>'; return; }
+    if (!entries.length) { if (!_leadBox(containerId, { bars: [] })) el.innerHTML = '<div class="enq-bars-empty">No data</div>'; return; }
     const max = entries[0][1] || 1;
+    if (_leadBox(containerId, { bars: entries.map(([label, val]) => ({ label, value: val, width: Math.max(6, Math.round((val / max) * 100)) })), color: cssVar(accentVar) })) return;
     el.innerHTML = entries.map(([label, val]) => `
       <div class="enq-bar-row">
         <div class="enq-bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
@@ -757,12 +774,13 @@ function renderEnqChart(rows) {
   });
   if (enqChartInst) enqChartInst.destroy();
   const legend = document.getElementById('enqChartLegend');
-  if (!labels.length) { if (legend) legend.innerHTML = ''; return; }
+  if (!labels.length) { if (legend && !_leadBox(legend.id, { legend: [] })) legend.innerHTML = ''; return; }
   enqChartInst = new Chart(canvas.getContext('2d'), {
     type: 'doughnut',
     data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 3, borderColor: cssVar('--card', '#fff'), hoverOffset: 8 }] },
     options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.label}: ${c.raw}` } } } }
   });
+  if (legend && _leadBox(legend.id, { legend: labels.map((l, i) => ({ label: l, count: counts[l], color: colors[i] })) })) return;
   if (legend) legend.innerHTML = labels.map((l, i) => `<span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:${colors[i]};display:inline-block"></span>${escapeHtml(l)} (${counts[l]})</span>`).join('');
 }
 
@@ -965,7 +983,7 @@ async function loadMetaLeads(opts) {
   const data = await api('/api/meta-leads');
   if (!data || data.error) { if (tb && !silent && !_leadRows('ml', tb, { error: (data && data.error) || 'Load failed' })) tb.innerHTML = `<tr><td colspan="7" class="empty" style="color:var(--destructive)">⚠️ ${escapeHtml((data && data.error) || 'Load failed')}</td></tr>`; return; }
   _metaLeads = { rows: data.rows || [], keys: data.keys || [], headers: data.headers || [] };
-  const u = document.getElementById('metaLeadsUpdated'); if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); }
+  const u = document.getElementById('metaLeadsUpdated'); if (u) { const d = new Date(data.updatedAt); { const t = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); if (!_leadBox(u.id, { text: t })) u.textContent = t; } }
   renderMetaLeads();
 }
 
@@ -1065,7 +1083,7 @@ function renderMetaLeads() {
   const dup = dupKeySet(rows, r => r.whatsapp_number, r => r.email);
   const dupNote = dup.count() ? ` · <span style="color:color-mix(in srgb,var(--warning) 82%,var(--foreground))">${dup.count()} duplicate${dup.count() > 1 ? 's' : ''}</span>` : '';
   const cnt = document.getElementById('mlCount');
-  if (cnt) cnt.innerHTML = ((mlCardFilter !== 'all' || q || mlStatusFilter) ? `(${filtered.length} of ${total})` : `(${total})`) + dupNote;
+  if (cnt && !_leadBox(cnt.id, { text: ((mlCardFilter !== 'all' || q || mlStatusFilter) ? `(${filtered.length} of ${total})` : `(${total})`), dup: dup.count() })) cnt.innerHTML = ((mlCardFilter !== 'all' || q || mlStatusFilter) ? `(${filtered.length} of ${total})` : `(${total})`) + dupNote;
 
   renderFunnel('mlFunnel', [
     { label: 'Total', value: total, color: cssVar('--chart-1') },
@@ -1129,12 +1147,13 @@ function renderMlChart(rows) {
   const colors = labels.map(l => cssVar(mlStatusColor(l).slice(4, -1), '#f0a133'));
   if (mlChartInst) mlChartInst.destroy();
   const legend = document.getElementById('mlChartLegend');
-  if (!labels.length) { if (legend) legend.innerHTML = ''; return; }
+  if (!labels.length) { if (legend && !_leadBox(legend.id, { legend: [] })) legend.innerHTML = ''; return; }
   mlChartInst = new Chart(canvas.getContext('2d'), {
     type: 'doughnut',
     data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 3, borderColor: cssVar('--card', '#fff'), hoverOffset: 8 }] },
     options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.label}: ${c.raw}` } } } }
   });
+  if (legend && _leadBox(legend.id, { legend: labels.map((l, i) => ({ label: l, count: counts[l], color: colors[i] })) })) return;
   if (legend) legend.innerHTML = labels.map((l, i) => `<span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:${colors[i]};display:inline-block"></span>${escapeHtml(l)} (${counts[l]})</span>`).join('');
 }
 
@@ -1147,8 +1166,9 @@ function renderMlBreakdowns(rows) {
   const bars = (containerId, counts, accentVar) => {
     const el = document.getElementById(containerId); if (!el) return;
     const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6);
-    if (!entries.length) { el.innerHTML = '<div class="enq-bars-empty">No data</div>'; return; }
+    if (!entries.length) { if (!_leadBox(containerId, { bars: [] })) el.innerHTML = '<div class="enq-bars-empty">No data</div>'; return; }
     const max = entries[0][1] || 1;
+    if (_leadBox(containerId, { bars: entries.map(([label, val]) => ({ label, value: val, width: Math.max(6, Math.round((val / max) * 100)) })), color: cssVar(accentVar) })) return;
     el.innerHTML = entries.map(([label, val]) => `
       <div class="enq-bar-row">
         <div class="enq-bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
@@ -1277,7 +1297,7 @@ async function loadGoogleAds(opts) {
   const data = await api('/api/google-ads');
   if (!data || data.error) { if (tb && !silent && !_leadRows('gad', tb, { error: (data && data.error) || 'Load failed' })) tb.innerHTML = `<tr><td colspan="6" class="empty" style="color:var(--destructive)">⚠️ ${escapeHtml((data && data.error) || 'Load failed')}</td></tr>`; return; }
   _gadData = { rows: data.rows || [], keys: data.keys || [], headers: data.headers || [] };
-  const u = document.getElementById('gadUpdated'); if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); }
+  const u = document.getElementById('gadUpdated'); if (u) { const d = new Date(data.updatedAt); { const t = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); if (!_leadBox(u.id, { text: t })) u.textContent = t; } }
   renderGoogleAds();
 }
 
@@ -1348,7 +1368,7 @@ function renderGoogleAds() {
   const dup = dupKeySet(rows, r => r.phone, r => r.email);
   const dupNote = dup.count() ? ` · <span style="color:color-mix(in srgb,var(--warning) 82%,var(--foreground))">${dup.count()} duplicate${dup.count() > 1 ? 's' : ''}</span>` : '';
   const cnt = document.getElementById('gadCount');
-  if (cnt) cnt.innerHTML = ((gadCardFilter !== 'all' || q || gadStatusFilter) ? `(${filtered.length} of ${total})` : `(${total})`) + dupNote;
+  if (cnt && !_leadBox(cnt.id, { text: ((gadCardFilter !== 'all' || q || gadStatusFilter) ? `(${filtered.length} of ${total})` : `(${total})`), dup: dup.count() })) cnt.innerHTML = ((gadCardFilter !== 'all' || q || gadStatusFilter) ? `(${filtered.length} of ${total})` : `(${total})`) + dupNote;
 
   renderFunnel('gadFunnel', [
     { label: 'Total', value: total, color: cssVar('--chart-1') },
@@ -1416,12 +1436,13 @@ function renderGadChart(rows) {
   });
   if (gadChartInst) gadChartInst.destroy();
   const legend = document.getElementById('gadChartLegend');
-  if (!labels.length) { if (legend) legend.innerHTML = ''; return; }
+  if (!labels.length) { if (legend && !_leadBox(legend.id, { legend: [] })) legend.innerHTML = ''; return; }
   gadChartInst = new Chart(canvas.getContext('2d'), {
     type: 'doughnut',
     data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 3, borderColor: cssVar('--card', '#fff'), hoverOffset: 8 }] },
     options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.label}: ${c.raw}` } } } }
   });
+  if (legend && _leadBox(legend.id, { legend: labels.map((l, i) => ({ label: l, count: counts[l], color: colors[i] })) })) return;
   if (legend) legend.innerHTML = labels.map((l, i) => `<span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:50%;background:${colors[i]};display:inline-block"></span>${escapeHtml(l)} (${counts[l]})</span>`).join('');
 }
 
@@ -1433,8 +1454,9 @@ function renderGadBreakdowns(rows) {
   const bars = (containerId, counts, accentVar) => {
     const el = document.getElementById(containerId); if (!el) return;
     const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6);
-    if (!entries.length) { el.innerHTML = '<div class="enq-bars-empty">No data</div>'; return; }
+    if (!entries.length) { if (!_leadBox(containerId, { bars: [] })) el.innerHTML = '<div class="enq-bars-empty">No data</div>'; return; }
     const max = entries[0][1] || 1;
+    if (_leadBox(containerId, { bars: entries.map(([label, val]) => ({ label, value: val, width: Math.max(6, Math.round((val / max) * 100)) })), color: cssVar(accentVar) })) return;
     el.innerHTML = entries.map(([label, val]) => `
       <div class="enq-bar-row">
         <div class="enq-bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div>

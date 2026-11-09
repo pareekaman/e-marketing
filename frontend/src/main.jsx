@@ -157,6 +157,10 @@ const PAGES = {
   taskpopups: lazy(() => import('./pages/TaskPopups.jsx')),
 };
 
+// Leads Enquiry's display widgets: one page per element, all from LeadBoxes.jsx (box(id)).
+const LEAD_BOXES = ['enqFunnel', 'enqBySource', 'enqByService', 'enqChartLegend', 'enqCount', 'enqUpdated', 'enqDateRange', 'mlFunnel', 'mlByCity', 'mlByProduct', 'mlChartLegend', 'mlCount', 'metaLeadsUpdated', 'gadFunnel', 'gadByForm', 'gadByIndustry', 'gadChartLegend', 'gadCount', 'gadUpdated'];
+for (const id of LEAD_BOXES) PAGES['leadbox:' + id] = lazy(() => import('./pages/LeadBoxes.jsx').then(m => ({ default: m.box(id) })));
+
 const roots = new WeakMap();
 
 function mount(name, el) {
