@@ -281,6 +281,8 @@ function showToast(msg,type='success') {
 
   function init(group){
     if (group._tabInd) return;
+    // A React tab group draws its own pill (frontend/src/components/TabInd.jsx).
+    if ([...group.children].some(c => c.classList.contains('tab-ind'))) return;
     const ind = document.createElement('span');
     ind.className = 'tab-ind';
     group.insertBefore(ind, group.firstChild);

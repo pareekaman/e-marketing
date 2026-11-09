@@ -7,6 +7,7 @@
 // .tab-group itself, so helpers.js's sliding pill (initTabIndicators) lives in it unharmed.
 import { useEffect, useRef, useState } from 'react';
 import { legacy, css } from '../lib/app.js';
+import { useTabInd } from '../components/TabInd.jsx';
 
 const LABEL = 'font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;text-transform:uppercase';
 const INPUT = "padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;";
@@ -14,9 +15,9 @@ const TABS = [['delegation', 'misTabDel', 'Delegation MIS'], ['checklist', 'misT
 
 export default function MisFilters() {
   const [v, setV] = useState({ active: 'delegation' });
+  const ti = useTabInd();   // the sliding pill behind the active tab
   useEffect(() => {
     legacy('misFiltSetReact', setV);
-    legacy('initTabIndicators');
     return () => legacy('misFiltSetReact', null);
   }, []);
   const box = useRef(key => el => {
@@ -42,7 +43,7 @@ export default function MisFilters() {
       </div>
     </div>
     <div ref={css('display:flex;gap:6px;margin-top:14px;')}>
-      <div className="tab-group">
+      <div className={'tab-group' + ti.cls} ref={ti.ref}>{ti.ind}
         {TABS.map(([key, id, label]) => (
           <div key={key} className={'tab' + (v.active === key ? ' active' : '')} id={id} onClick={() => legacy('switchMisTab', key)}>{label}</div>
         ))}

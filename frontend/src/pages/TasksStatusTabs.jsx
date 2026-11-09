@@ -5,6 +5,7 @@
 // tasks.js still shows / hides the row itself (hidden on Awaiting Date).
 import { useEffect, useState } from 'react';
 import { legacy } from '../lib/app.js';
+import { useTabInd } from '../components/TabInd.jsx';
 
 const TABS = [['all', 'statusTabAll', 'All'], ['pending', 'statusTabPending', 'Pending'], ['upcoming', 'statusTabUpcoming', 'Upcoming'],
   ['completed', 'statusTabCompleted', 'Completed'],
@@ -12,15 +13,15 @@ const TABS = [['all', 'statusTabAll', 'All'], ['pending', 'statusTabPending', 'P
 
 export default function TasksStatusTabs() {
   const [v, setV] = useState(null);
+  const ti = useTabInd();   // the sliding pill behind the active tab
   useEffect(() => {
     legacy('tasksStatusSetReact', setV);
-    legacy('initTabIndicators');
     return () => legacy('tasksStatusSetReact', null);
   }, []);
   const active = v ? v.active : 'pending';
   return <>
     {'\n      '}
-    <div className="tab-group">
+    <div className={'tab-group' + ti.cls} ref={ti.ref}>{ti.ind}
       {TABS.map(([key, id, label, title]) => ['\n        ',
         <div key={key} className={'tab' + (active === key ? ' active' : '')} id={id} title={title}
           onClick={() => legacy('filterTaskStatus', key)}>{label}</div>])}

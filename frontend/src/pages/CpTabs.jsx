@@ -5,16 +5,17 @@
 // into #cpHeadRoot (the .cp-header row); its button calls loadCompliance, as before.
 import { useEffect, useState } from 'react';
 import { legacy, css } from '../lib/app.js';
+import { useTabInd } from '../components/TabInd.jsx';
 
 export default function CpTabs() {
   const [active, setActive] = useState('daily');
+  const ti = useTabInd();   // the sliding pill behind the active tab
   useEffect(() => {
     legacy('cpTabsSetReact', setActive);
-    legacy('initTabIndicators');
     return () => legacy('cpTabsSetReact', null);
   }, []);
   return (
-    <div className="tab-group" ref={css('margin-bottom:18px')}>{'\n        '}
+    <div className={'tab-group' + ti.cls} ref={el => { css('margin-bottom:18px')(el); ti.ref(el); }}>{ti.ind}{'\n        '}
       <div className={'tab' + (active === 'daily' ? ' active' : '')} id="cpTabDaily" onClick={() => legacy('cpTab', 'daily')}>📅 Daily Fill (7-day)</div>{'\n        '}
       <div className={'tab' + (active === 'emp360' ? ' active' : '')} id="cpTabEmp" onClick={() => legacy('cpTab', 'emp360')}>👤 Employee 360</div>{'\n      '}
     </div>

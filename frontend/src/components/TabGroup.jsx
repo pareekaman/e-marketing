@@ -1,16 +1,17 @@
-// A .tab-group with the sliding pill helpers.js adds to every tab group
-// (initTabIndicators puts a span.tab-ind in front of the tabs). Tabs are
-// always rendered and hidden with display:none rather than left out, so React
-// never inserts or removes a child next to that foreign span.
+// A .tab-group with the sliding pill behind the active tab (TabInd.jsx; it used to be the span
+// helpers.js's initTabIndicators put in front of the tabs). Tabs are always rendered and hidden
+// with display:none rather than left out.
 // tabs: [{ key, label, hidden }]
-import { useEffect, useRef } from 'react';
-import { legacy, css } from '../lib/app.js';
+import { useRef } from 'react';
+import { css } from '../lib/app.js';
+import { useTabInd } from './TabInd.jsx';
 
 export default function TabGroup({ id, tabs, active, onPick, style }) {
   const ref = useRef(null);
-  useEffect(() => { legacy('initTabIndicators'); }, []);
+  const ti = useTabInd();
   return (
-    <div className="tab-group" id={id} ref={el => { ref.current = el; if (el && style) el.setAttribute('style', style); }}>
+    <div className={'tab-group' + ti.cls} id={id} ref={el => { ref.current = el; ti.ref(el); if (el && style) el.setAttribute('style', style); }}>
+      {ti.ind}
       {tabs.map(t => (
         <div key={t.key} className={`tab${t.key === active ? ' active' : ''}`}
           ref={css(t.hidden ? 'display:none' : (t.style || ''))}

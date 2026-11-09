@@ -7,6 +7,7 @@
 // Same markup as before (ids, whitespace, Revised's style), so the pill and themes see no change.
 import { useEffect, useState } from 'react';
 import { legacy } from '../lib/app.js';
+import { useTabInd } from '../components/TabInd.jsx';
 
 const TABS = [['all', 'dashTabAll', 'All'], ['delegation', 'dashTabDel', 'Delegation'], ['checklist', 'dashTabChl', 'Checklist'],
   ['fms', 'dashTabFMS', 'FMS'], ['revised', 'dashTabRevised', 'Revised']];
@@ -14,9 +15,9 @@ const W = '\n            ';
 
 export default function DashTabs() {
   const [v, setV] = useState({ active: 'all', revised: false });
+  const ti = useTabInd();   // the sliding pill behind the active tab
   useEffect(() => {
     legacy('dashTabsSetReact', setV);
-    legacy('initTabIndicators');
     return () => legacy('dashTabsSetReact', null);
   }, []);
   // Revised starts as app.html wrote it; after that only its display changes, as before.
@@ -26,7 +27,7 @@ export default function DashTabs() {
     el.style.display = v.revised ? '' : 'none';
   };
   return (
-    <div className="tab-group" id="dashTypeTabGroup">
+    <div className={'tab-group' + ti.cls} id="dashTypeTabGroup" ref={ti.ref}>{ti.ind}
       {TABS.map(([key, id, label]) => [
         W,
         <div key={key} className={'tab' + (v.active === key ? ' active' : '')} id={id}

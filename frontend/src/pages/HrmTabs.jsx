@@ -6,18 +6,19 @@
 // shows (hrm_schedule) — its display is set with the same style call as before.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { legacy, css } from '../lib/app.js';
+import { useTabInd } from '../components/TabInd.jsx';
 
 const TABS = [['dashboard', 'Dashboard'], ['candidates', 'Candidates'], ['messages', 'Email Log']];
 
 export default function HrmTabs() {
   const [v, setV] = useState({ active: 'dashboard', schedule: null });
+  const ti = useTabInd();   // the sliding pill behind the active tab
   useEffect(() => {
     legacy('hrmTabsSetReact', setV);
-    legacy('initTabIndicators');
     return () => legacy('hrmTabsSetReact', null);
   }, []);
   return (
-    <div className="tab-group" ref={css('margin-bottom:18px;width:fit-content')}>
+    <div className={'tab-group' + ti.cls} ref={el => { css('margin-bottom:18px;width:fit-content')(el); ti.ref(el); }}>{ti.ind}
       {TABS.map(([key, label]) => ['\n      ',
         <div key={key} className={'tab' + (v.active === key ? ' active' : '')} onClick={() => legacy('switchHrmTab', key)}>{label}</div>])}
       {'\n    '}

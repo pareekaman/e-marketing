@@ -7,6 +7,7 @@
 // Their display is set with the same DOM call as before, so the attributes match.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { legacy } from '../lib/app.js';
+import { useTabInd } from '../components/TabInd.jsx';
 
 const TABS = [['delegation', 'tasksTabDel', 'Delegation'], ['checklist', 'tasksTabChl', 'Checklist'],
   ['delegatebyme', 'tasksTabDelByMe', 'Delegate by Me', 'dbm'], ['clienttasks', 'tasksTabClients', 'Client Tasks', 'clients'],
@@ -16,9 +17,9 @@ const W = '\n        ';
 export default function TasksTabs() {
   const [v, setV] = useState({ active: 'delegation', dbm: null, clients: null, awaiting: null });
   const els = useRef({});
+  const ti = useTabInd();   // the sliding pill behind the active tab
   useEffect(() => {
     legacy('tasksTabsSetReact', setV);
-    legacy('initTabIndicators');
     return () => legacy('tasksTabsSetReact', null);
   }, []);
   useLayoutEffect(() => {
@@ -28,7 +29,7 @@ export default function TasksTabs() {
     }
   });
   return (
-    <div className="tab-group" id="tasksTypeTabGroup">
+    <div className={'tab-group' + ti.cls} id="tasksTypeTabGroup" ref={ti.ref}>{ti.ind}
       {TABS.map(([key, id, label]) => [
         W,
         <div key={key} className={'tab' + (v.active === key ? ' active' : '')} id={id}

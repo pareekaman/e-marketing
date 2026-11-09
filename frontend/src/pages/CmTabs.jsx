@@ -6,18 +6,19 @@
 // the same style.display call as before, so the attribute matches.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { legacy, css } from '../lib/app.js';
+import { useTabInd } from '../components/TabInd.jsx';
 
 export default function CmTabs() {
   const [v, setV] = useState({ active: 'clients', vault: null });
   const vault = useRef(null);
+  const ti = useTabInd();   // the sliding pill behind the active tab
   useEffect(() => {
     legacy('cmTabsSetReact', setV);
-    legacy('initTabIndicators');
     return () => legacy('cmTabsSetReact', null);
   }, []);
   useLayoutEffect(() => { if (vault.current && v.vault != null) vault.current.style.display = v.vault ? '' : 'none'; });
   return (
-    <div className="tab-group" ref={css('margin-bottom:18px')}>{'\n      '}
+    <div className={'tab-group' + ti.cls} ref={el => { css('margin-bottom:18px')(el); ti.ref(el); }}>{ti.ind}{'\n      '}
       <div className={'tab' + (v.active === 'clients' ? ' active' : '')} id="cmTabClientsBtn" onClick={() => legacy('cmTab', 'clients')}>🏢 Clients</div>{'\n      '}
       <div className={'tab' + (v.active === 'vault' ? ' active' : '')} id="cmTabVaultBtn" onClick={() => legacy('cmTab', 'vault')}
         ref={el => { vault.current = el; if (el && !el._cm) { el._cm = true; el.setAttribute('style', 'display:none'); } }}>🔑 Credentials Vault</div>{'\n    '}

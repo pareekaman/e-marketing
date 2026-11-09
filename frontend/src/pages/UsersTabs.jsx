@@ -6,15 +6,16 @@
 // Same markup as before (icons, whitespace, the Theme tab's style).
 import { useEffect, useState } from 'react';
 import { legacy, css } from '../lib/app.js';
+import { useTabInd } from '../components/TabInd.jsx';
 
 const ICO = css('margin-right:5px');
 const W1 = '\n        ', W2 = '\n          ';
 
 export default function UsersTabs() {
   const [v, setV] = useState({ active: 'users', theme: false });
+  const ti = useTabInd();   // the sliding pill behind the active tab
   useEffect(() => {
     legacy('usersTabsSetReact', setV);
-    legacy('initTabIndicators');
     return () => legacy('usersTabsSetReact', null);
   }, []);
   const cls = k => 'tab' + (v.active === k ? ' active' : '');
@@ -25,7 +26,7 @@ export default function UsersTabs() {
     if (v.theme) el.style.display = '';
   };
   return (
-    <div className="tab-group" ref={css('width:fit-content')}>{W1}
+    <div className={'tab-group' + ti.cls} ref={el => { css('width:fit-content')(el); ti.ref(el); }}>{ti.ind}{W1}
       <div className={cls('users')} id="usersSubTab-users" onClick={() => legacy('switchUsersTab', 'users')}>{W2}
         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" ref={ICO}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
         {W2 + 'Users' + W1}
