@@ -168,7 +168,7 @@ function toggleSort(sort, key, rerender) {
 // *SortBy) and, once painted, the ▲ / ▼ span and the pointer cursor exactly as below.
 // View per table: { key, dir, painted }.
 const LEAD_HEAD_REACT = {}, _leadHeadViews = {};
-const LEAD_HEAD_PAGE = { enqTable: 'leadheadenq', mlTable: 'leadheadml' };
+const LEAD_HEAD_PAGE = { enqTable: 'leadheadenq', mlTable: 'leadheadml', gadTable: 'leadheadgad' };
 function leadHeadView(tableId) { return _leadHeadViews[tableId] ? { ..._leadHeadViews[tableId] } : null; }
 function leadHeadSetReact(tableId, fn) { LEAD_HEAD_REACT[tableId] = fn; }
 function _leadHead(tableId, patch) {
@@ -202,7 +202,7 @@ function gadSortBy(k) { toggleSort(gadSort, k, renderGoogleAds); }
 function manSortBy(k) { toggleSort(manSort, k, renderManual); }
 function onEnqStatusFilter() { enqStatusFilter = (_enqTb({}) ? _enqTbView.status : (document.getElementById('enqStatusFilter') || {}).value) || ''; renderEnquiries(); }
 function onMlStatusFilter() { mlStatusFilter = (_lui('mlBar') ? _leadUiOf('mlBar').view.status : (document.getElementById('mlStatusFilter') || {}).value) || ''; renderMetaLeads(); }
-function onGadStatusFilter() { gadStatusFilter = (document.getElementById('gadStatusFilter') || {}).value || ''; renderGoogleAds(); }
+function onGadStatusFilter() { gadStatusFilter = (_lui('gadBar') ? _leadUiOf('gadBar').view.status : (document.getElementById('gadStatusFilter') || {}).value) || ''; renderGoogleAds(); }
 // Status dropdown ko current data ke distinct statuses se bharta hai.
 function fillStatusOptions(selId, rows, statusFn, current) {
   const set = new Set();
@@ -322,6 +322,9 @@ const LEAD_UI_SPEC = {
   enqDays: { root: 'enqTimeHead', page: 'enqtimehead', def: { days: 'auto' } },
   mlDays: { root: 'mlTimeHead', page: 'mltimehead', def: { days: 'auto' } },
   mlBar: { root: 'mlBar', page: 'mlbar', def: { statuses: [], status: '' } },
+  gadKpi: { root: 'gadKpis', page: 'gadkpis', def: { sel: 'all' } },
+  gadDays: { root: 'gadTimeHead', page: 'gadtimehead', def: { days: 'auto' } },
+  gadBar: { root: 'gadBar', page: 'gadbar', def: { statuses: [], status: '' } },
 };
 const _leadUi = {};
 const _leadUiOf = key => _leadUi[key] || (_leadUi[key] = { view: { ...LEAD_UI_SPEC[key].def }, fn: null, onReady: null });
@@ -348,15 +351,15 @@ function _leadKpiWait(key, render) {
   _leadUiOf(key).onReady = render; _lui(key);
   return true;
 }
-const LEAD_DAYS_KEY = { enqTimeDays: 'enqDays', mlTimeDays: 'mlDays' };
+const LEAD_DAYS_KEY = { enqTimeDays: 'enqDays', mlTimeDays: 'mlDays', gadTimeDays: 'gadDays' };
 function leadDaysPick(key, v) {
   _lui(key, { days: String(v) });
-  ({ enqDays: renderEnqTimeChart, mlDays: renderMlTimeChart })[key]();
+  ({ enqDays: renderEnqTimeChart, mlDays: renderMlTimeChart, gadDays: renderGadTimeChart })[key]();
 }
-const LEAD_BAR_KEY = { mlStatusFilter: 'mlBar' };
+const LEAD_BAR_KEY = { mlStatusFilter: 'mlBar', gadStatusFilter: 'gadBar' };
 function leadBarPick(key, v) {
   _lui(key, { status: String(v) });
-  ({ mlBar: onMlStatusFilter })[key]();
+  ({ mlBar: onMlStatusFilter, gadBar: onGadStatusFilter })[key]();
 }
 
 // KPI card click -> table us filter par. Dobara same card -> 'all' (toggle off).
@@ -1258,6 +1261,8 @@ function gadDailySeries(rows, days) {
 
 async function loadGoogleAds(opts) {
   startEnqAutoRefresh();
+  _luiMount('gadKpi'); _luiMount('gadDays'); _luiMount('gadBar'); // the React pieces, on the first visit
+  if (!LEAD_HEAD_REACT.gadTable) _leadHead('gadTable', {});
   const silent = !!(opts && opts.silent);
   const tb = document.getElementById('gadTbody');
   if (tb && !silent && !_leadRows('gad', tb, { loading: true })) tb.innerHTML = `<tr><td colspan="6" class="empty">Loading…</td></tr>`;
@@ -1270,7 +1275,7 @@ async function loadGoogleAds(opts) {
 
 function selectGadCard(f) {
   gadCardFilter = (gadCardFilter === f && f !== 'all') ? 'all' : f;
-  ['all', 'new', 'progress', 'won', 'week'].forEach(k => { const el = document.getElementById('gadCard-' + k); if (el) el.classList.toggle('selected', k === gadCardFilter); });
+  if (!_lui('gadKpi', { sel: gadCardFilter })) ['all', 'new', 'progress', 'won', 'week'].forEach(k => { const el = document.getElementById('gadCard-' + k); if (el) el.classList.toggle('selected', k === gadCardFilter); });
   renderGoogleAds();
 }
 
@@ -1284,6 +1289,7 @@ function gadStatusBadge(status) {
 }
 
 function renderGoogleAds() {
+  if (_leadKpiWait('gadKpi', renderGoogleAds)) return;
   const allRows = (_gadData && _gadData.rows) || [];
   const rows = allRows.filter(r => enqInRange(gadDate(r.created_time)));
   const now = new Date();

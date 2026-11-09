@@ -14,6 +14,7 @@ const SEARCH = w => `padding:8px 12px;border:1.5px solid var(--border);border-ra
 // indent: spaces before each control in the markup.
 const SOURCES = {
   ml: { key: 'mlBar', select: 'mlStatusFilter', search: 'metaLeadsSearch', placeholder: 'Search name, phone, email, city…', width: '230px', render: 'renderMetaLeads', load: 'loadMetaLeads', indent: 10 },
+  gad: { key: 'gadBar', select: 'gadStatusFilter', search: 'gadSearch', placeholder: 'Search name, phone, email, form…', width: '230px', render: 'renderGoogleAds', load: 'loadGoogleAds', indent: 8 },
 };
 const nl = n => '\n' + ' '.repeat(n);
 
@@ -45,3 +46,4 @@ function makeBar(src) {
 }
 
 export const MlBar = makeBar('ml');
+export const GadBar = makeBar('gad');

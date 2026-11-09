@@ -14,6 +14,7 @@ const DAYS = [{ value: 'auto', label: 'Auto (all data)' }, { value: '14', label:
 const SOURCES = {
   enq: { key: 'enqDays', id: 'enqTimeDays', title: 'Enquiries over time', indent: 8 },
   ml: { key: 'mlDays', id: 'mlTimeDays', title: 'Leads over time', indent: 12 },
+  gad: { key: 'gadDays', id: 'gadTimeDays', title: 'Leads over time', indent: 10 },
 };
 const nl = n => '\n' + ' '.repeat(n);
 
@@ -38,3 +39,4 @@ function makeHead(src) {
 
 export const EnqTimeHead = makeHead('enq');
 export const MlTimeHead = makeHead('ml');
+export const GadTimeHead = makeHead('gad');

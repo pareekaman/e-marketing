@@ -23,6 +23,7 @@ const ICONS = {
 const SOURCES = {
   enq: { key: 'enqKpi', select: 'selectEnqCard', p: 'enq', total: 'Total Enquiries', wonKey: 'won', wonId: 'Won', wonLabel: 'Won', indent: 4 },
   ml: { key: 'mlKpi', select: 'selectMlCard', p: 'ml', total: 'Total Leads', wonKey: 'converted', wonId: 'Converted', wonLabel: 'Converted', indent: 8 },
+  gad: { key: 'gadKpi', select: 'selectGadCard', p: 'gad', total: 'Total Leads', wonKey: 'won', wonId: 'Won', wonLabel: 'Converted', indent: 6 },
 };
 const cardsOf = s => [
   { k: 'all', cls: 'total', title: 'Show all', label: s.total, id: 'Total', spark: true },
@@ -59,3 +60,4 @@ function makeKpis(src) {
 
 export const EnqKpis = makeKpis('enq');
 export const MlKpis = makeKpis('ml');
+export const GadKpis = makeKpis('gad');
