@@ -190,7 +190,10 @@ async function loadDashboard(light = false) {
   // and would be correct, but one card counting up beside three dimmed ones
   // reads as a glitch. The release paints all four together.
   const upElEarly = document.getElementById('dUpcoming');
-  if (upElEarly && !_dashStatsHold) countUp(upElEarly, window._dashTotals.upcoming);
+  // React cards (DashCards.jsx) count it up themselves from the view.
+  if (!_dashStatsHold && !_dashCardsReact({ nums: { ...(_dashCardsView.nums || {}), upcoming: window._dashTotals.upcoming } })) {
+    if (upElEarly) countUp(upElEarly, window._dashTotals.upcoming);
+  }
   updateDashStats(dashType);
   // A sparkline under each card — amber look only, and never holds the rest
   // of the dashboard up.
@@ -823,7 +826,8 @@ async function loadDashTrend(qs, seq) {
   // 2026-11-01 at the user's request.
   if (_dashCardsOn()) {
     const trend = {};
-    for (const [key, , color] of DASH_TREND_CARDS) if (t[key]) trend[key] = dashSpark(t[key].spark, color);
+    // React draws the line (DashCards.jsx Spark, the same curve as dashSpark below).
+    for (const [key, , color] of DASH_TREND_CARDS) if (t[key]) trend[key] = { values: t[key].spark || [], color };
     _dashCardsReact({ trend: { ..._dashCardsView.trend, ...trend } });
     return;
   }
