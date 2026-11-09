@@ -287,10 +287,47 @@ function renderEnqDateRange(rows) {
   el.style.display = 'inline-block';
 }
 
+// The Website KPI cards (#enqKpis: icon, label, which one is selected, the clicks) are React
+// (frontend/src/pages/EnqKpis.jsx); their markup in app.html is the fallback. renderEnquiries
+// still writes the numbers, sparklines and sub-lines into them by id. React's mount clears the
+// markup those writes go into, so until the cards are drawn renderEnquiries waits, and runs as
+// soon as they are (with the count-up still to come). View: { sel }.
+let ENQ_KPI_REACT = null, _enqKpiWaiting = false;
+const _enqKpiView = { sel: 'all' };
+function enqKpiView() { return { ..._enqKpiView }; }
+function enqKpiSetReact(fn) {
+  ENQ_KPI_REACT = fn;
+  // Next tick: this runs inside React's effect, and renderEnquiries flushSync's other roots.
+  if (fn && _enqKpiWaiting) { _enqKpiWaiting = false; setTimeout(renderEnquiries, 0); }
+}
+function _enqKpi(patch) {
+  const root = document.getElementById('enqKpis');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_enqKpiView, patch);
+  if (ENQ_KPI_REACT) ENQ_KPI_REACT({ ..._enqKpiView });
+  else if (!root._ekMounted) { root._ekMounted = true; emkReactMount('enqkpis', root); }
+  return true;
+}
+// The "Enquiries over time" picker (Auto / Last 14 / 30 / 90 days) is React too
+// (EnqTimeHead.jsx in #enqTimeHead), over a hidden <select id="enqTimeDays">. View: { days }.
+let ENQ_DAYS_REACT = null;
+const _enqDaysView = { days: 'auto' };
+function enqDaysView() { return { ..._enqDaysView }; }
+function enqDaysSetReact(fn) { ENQ_DAYS_REACT = fn; }
+function _enqDays(patch) {
+  const root = document.getElementById('enqTimeHead');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_enqDaysView, patch);
+  if (ENQ_DAYS_REACT) ENQ_DAYS_REACT({ ..._enqDaysView });
+  else if (!root._edMounted) { root._edMounted = true; emkReactMount('enqtimehead', root); }
+  return true;
+}
+function enqDaysPick(v) { _enqDays({ days: String(v) }); renderEnqTimeChart(); }
+
 // KPI card click -> table us filter par. Dobara same card -> 'all' (toggle off).
 function selectEnqCard(f) {
   enqCardFilter = (enqCardFilter === f && f !== 'all') ? 'all' : f;
-  ['all', 'new', 'progress', 'won', 'week'].forEach(k => {
+  if (!_enqKpi({ sel: enqCardFilter })) ['all', 'new', 'progress', 'won', 'week'].forEach(k => {
     const el = document.getElementById('enqCard-' + k);
     if (el) el.classList.toggle('selected', k === enqCardFilter);
   });
@@ -367,6 +404,8 @@ async function loadEnquiries(opts) {
   startEnqAutoRefresh();
   if (!SRC_DD_REACT) _srcDd({}); // mounts the React source picker on the first visit
   if (!ENQ_TB_REACT) _enqTb({});  // and the toolbar
+  if (!ENQ_KPI_REACT) _enqKpi({}); // the KPI cards
+  if (!ENQ_DAYS_REACT) _enqDays({}); // and the chart's days picker
   const silent = !!(opts && opts.silent); // auto-refresh: no "Loading…" flash, no count-up
   const tb = document.getElementById('enqTbody');
   if (tb && !silent && !_leadRows('enq', tb, { loading: true })) tb.innerHTML = `<tr><td colspan="7" class="empty">Loading…</td></tr>`;
@@ -433,6 +472,8 @@ function enqDeltaLabel(cur, prev, suffix) {
 }
 
 function renderEnquiries() {
+  const kroot = document.getElementById('enqKpis');
+  if (kroot && kroot.dataset.react && !ENQ_KPI_REACT) { _enqKpiWaiting = true; _enqKpi({}); return; }
   const allRows = _enqData.rows || [];
   const rows = allRows.filter(r => enqInRange(parseEnqDate(r.submitted_at)));
   const now = new Date();
@@ -558,7 +599,7 @@ function renderLeadsTimeChart(canvasId, selectId, rows, dateFn, noun) {
   const canvas = document.getElementById(canvasId);
   if (!canvas || typeof Chart === 'undefined') return;
   const sel = document.getElementById(selectId);
-  const mode = sel ? sel.value : 'auto';
+  const mode = selectId === 'enqTimeDays' && _enqDays({}) ? _enqDaysView.days : (sel ? sel.value : 'auto');
   const dayMs = 86400000;
   const startOfDay = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
   const fmtD = d => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
