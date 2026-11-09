@@ -1998,6 +1998,7 @@ function cpSetReact(fn){ CP_REACT = fn; }
 function cpGetData(){ return CP_DATA; }
 
 async function loadCompliance(){
+  if (typeof _cpMount === 'function') _cpMount();   // the tabs and Refresh row (React, reports.js)
   const root = document.getElementById('cpReactRoot');
   if (root) {
     if (!CP_REACT) emkReactMount('compliance', root);

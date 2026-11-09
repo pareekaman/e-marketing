@@ -73,6 +73,8 @@ const PAGES = {
   misfilters: lazy(() => import('./pages/MisFilters.jsx')),
   missetplan: lazy(() => import('./pages/MisSetPlan.jsx')),
   racefilters: lazy(() => import('./pages/RaceFilters.jsx')),
+  cptabs: lazy(() => import('./pages/CpTabs.jsx')),
+  cphead: lazy(() => import('./pages/CpTabs.jsx').then(m => ({ default: m.CpHead }))),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),

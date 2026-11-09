@@ -4,9 +4,30 @@
 let EMP360_USERS = null;   // cached employee list for the picker
 let EMP360_DATA  = null;   // last loaded 360 payload
 
+// The two tabs are React (frontend/src/pages/CpTabs.jsx, in #cpTabsRoot) and so is the
+// Refresh row (in #cpHeadRoot) when they carry data-react; their markup is the fallback.
+// View for the tabs: the active one. loadCompliance mounts both (_cpMount).
+let CP_TABS_REACT = null, _cpActive = 'daily';
+function cpTabsSetReact(fn){ CP_TABS_REACT = fn; if (fn) fn(_cpActive); }
+function _cpTabsReact(which){
+  const root = document.getElementById('cpTabsRoot');
+  if (!root || !root.dataset.react) return false;
+  _cpActive = which;
+  if (CP_TABS_REACT) CP_TABS_REACT(which);
+  else if (!root._tabsMounted) { root._tabsMounted = true; emkReactMount('cptabs', root); }
+  return true;
+}
+function _cpMount(){
+  _cpTabsReact(_cpActive);
+  const head = document.getElementById('cpHeadRoot');
+  if (head && head.dataset.react && !head._headMounted) { head._headMounted = true; emkReactMount('cphead', head); }
+}
+
 function cpTab(which, el){
-  document.querySelectorAll('#cpTabDaily,#cpTabEmp').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
+  if (!_cpTabsReact(which)) {
+    document.querySelectorAll('#cpTabDaily,#cpTabEmp').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+  }
   document.getElementById('cpTab-daily').style.display  = which === 'daily'  ? 'block' : 'none';
   document.getElementById('cpTab-emp360').style.display = which === 'emp360' ? 'block' : 'none';
   if (which === 'emp360' && !EMP360_USERS) emp360InitPicker();
