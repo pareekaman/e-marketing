@@ -55,10 +55,14 @@ async function generateRace() {
   }
   const arr = Array.isArray(data) ? data : [];
   // openAllMISDetail (re-used for lane click) reads dates from #misStart/#misEnd — sync them
-  const misStartEl = document.getElementById('misStart');
-  const misEndEl   = document.getElementById('misEnd');
-  if (misStartEl) misStartEl.value = start;
-  if (misEndEl)   misEndEl.value   = end;
+  // misSetRange (helpers.js) also keeps them for the MIS card's React boxes.
+  if (typeof misSetRange === 'function') misSetRange(start, end);
+  else {
+    const misStartEl = document.getElementById('misStart');
+    const misEndEl   = document.getElementById('misEnd');
+    if (misStartEl) misStartEl.value = start;
+    if (misEndEl)   misEndEl.value   = end;
+  }
   misAllData = arr;
   renderRaceTracker(arr);
 }

@@ -447,10 +447,37 @@ function misView(view) {
   return true;
 }
 
+// The filter card (Start / End, Generate, Export, the type tabs) is React (frontend/src/pages/
+// MisFilters.jsx) when #misFiltersRoot carries data-react; its markup in app.html is the fallback.
+// The date boxes keep their ids and their own values; a value written before React has drawn
+// them also goes into _misRange (misSetRange), which React's boxes start from. View: { active }.
+let MIS_FILT_REACT = null;
+const _misRange = { start: '', end: '' };
+function misRangeInit() { return { ..._misRange }; }
+function misFiltSetReact(fn) { MIS_FILT_REACT = fn; if (fn) fn({ active: misType }); }
+function _misFiltOn() { const r = document.getElementById('misFiltersRoot'); return !!(r && r.dataset.react); }
+function _misFiltPush() {
+  const root = document.getElementById('misFiltersRoot');
+  if (!root || !root.dataset.react) return false;
+  if (MIS_FILT_REACT) MIS_FILT_REACT({ active: misType });
+  else if (!root._filtMounted) { root._filtMounted = true; emkReactMount('misfilters', root); }
+  return true;
+}
+// Writes the two dates wherever they are drawn (and remembers them for React's boxes).
+function misSetRange(start, end) {
+  _misRange.start = start; _misRange.end = end;
+  const s = document.getElementById('misStart'), e = document.getElementById('misEnd');
+  if (s) s.value = start;
+  if (e) e.value = end;
+  _misFiltPush();
+}
+
 function switchMisTab(type, el) {
   misType = type;
-  document.querySelectorAll('#page-mis .tab').forEach(t=>t.classList.remove('active'));
-  el.classList.add('active');
+  if (!_misFiltPush()) {
+    document.querySelectorAll('#page-mis .tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+  }
   if (type === 'fms') {
     if (misFMSData.length) renderFMSMIS(misFMSData);
     else if (!misView({ state: 'message', text: 'Click Generate to load FMS MIS' }))
@@ -935,8 +962,7 @@ function setDefaultMISDates() {
   const monday = new Date(today);
   const dow = today.getDay();
   monday.setDate(today.getDate() + (dow === 0 ? -6 : 1 - dow));
-  document.getElementById('misStart').value = monday.toISOString().split('T')[0];
-  document.getElementById('misEnd').value = today.toISOString().split('T')[0];
+  misSetRange(monday.toISOString().split('T')[0], today.toISOString().split('T')[0]);
   // Race Tracker uses the same default window
   const rs = document.getElementById('raceStart');
   const re = document.getElementById('raceEnd');
