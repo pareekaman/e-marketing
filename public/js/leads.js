@@ -168,7 +168,7 @@ function toggleSort(sort, key, rerender) {
 // *SortBy) and, once painted, the ▲ / ▼ span and the pointer cursor exactly as below.
 // View per table: { key, dir, painted }.
 const LEAD_HEAD_REACT = {}, _leadHeadViews = {};
-const LEAD_HEAD_PAGE = { enqTable: 'leadheadenq' };
+const LEAD_HEAD_PAGE = { enqTable: 'leadheadenq', mlTable: 'leadheadml' };
 function leadHeadView(tableId) { return _leadHeadViews[tableId] ? { ..._leadHeadViews[tableId] } : null; }
 function leadHeadSetReact(tableId, fn) { LEAD_HEAD_REACT[tableId] = fn; }
 function _leadHead(tableId, patch) {
@@ -201,7 +201,7 @@ function mlSortBy(k) { toggleSort(mlSort, k, renderMetaLeads); }
 function gadSortBy(k) { toggleSort(gadSort, k, renderGoogleAds); }
 function manSortBy(k) { toggleSort(manSort, k, renderManual); }
 function onEnqStatusFilter() { enqStatusFilter = (_enqTb({}) ? _enqTbView.status : (document.getElementById('enqStatusFilter') || {}).value) || ''; renderEnquiries(); }
-function onMlStatusFilter() { mlStatusFilter = (document.getElementById('mlStatusFilter') || {}).value || ''; renderMetaLeads(); }
+function onMlStatusFilter() { mlStatusFilter = (_lui('mlBar') ? _leadUiOf('mlBar').view.status : (document.getElementById('mlStatusFilter') || {}).value) || ''; renderMetaLeads(); }
 function onGadStatusFilter() { gadStatusFilter = (document.getElementById('gadStatusFilter') || {}).value || ''; renderGoogleAds(); }
 // Status dropdown ko current data ke distinct statuses se bharta hai.
 function fillStatusOptions(selId, rows, statusFn, current) {
@@ -209,6 +209,7 @@ function fillStatusOptions(selId, rows, statusFn, current) {
   rows.forEach(r => { const s = (statusFn(r) || '').trim(); if (s) set.add(s); });
   // The Website one is React (EnqToolbar.jsx): it gets the list and the shown value.
   if (selId === 'enqStatusFilter' && _enqTb({ statuses: [...set].sort(), status: current && set.has(current) ? current : '' })) return;
+  if (LEAD_BAR_KEY[selId] && _lui(LEAD_BAR_KEY[selId], { statuses: [...set].sort(), status: current && set.has(current) ? current : '' })) return;
   const sel = document.getElementById(selId); if (!sel) return;
   const opts = ['<option value="">All statuses</option>'].concat([...set].sort().map(s =>
     `<option value="${escapeHtml(s)}"${s === current ? ' selected' : ''}>${escapeHtml(s)}</option>`));
@@ -304,47 +305,64 @@ function renderEnqDateRange(rows) {
   el.style.display = 'inline-block';
 }
 
-// The Website KPI cards (#enqKpis: icon, label, which one is selected, the clicks) are React
-// (frontend/src/pages/EnqKpis.jsx); their markup in app.html is the fallback. renderEnquiries
-// still writes the numbers, sparklines and sub-lines into them by id. React's mount clears the
-// markup those writes go into, so until the cards are drawn renderEnquiries waits, and runs as
-// soon as they are (with the count-up still to come). View: { sel }.
-let ENQ_KPI_REACT = null, _enqKpiWaiting = false;
-const _enqKpiView = { sel: 'all' };
-function enqKpiView() { return { ..._enqKpiView }; }
-function enqKpiSetReact(fn) {
-  ENQ_KPI_REACT = fn;
-  // Next tick: this runs inside React's effect, and renderEnquiries flushSync's other roots.
-  if (fn && _enqKpiWaiting) { _enqKpiWaiting = false; setTimeout(renderEnquiries, 0); }
+// Per-source React pieces, each in its own root (its markup in app.html is the fallback):
+//  *Kpi  — the KPI cards' shells (LeadKpis.jsx): icon, label, which one is selected, the
+//          clicks. The render functions still write the numbers, sparklines and sub-lines into
+//          them by id. React's mount clears the markup those writes go into, so until the
+//          cards are drawn the render waits (_leadKpiWait) and runs as soon as they are, with
+//          the count-up still to come. View: { sel }.
+//  *Days — the "… over time" Auto / 14 / 30 / 90 days picker (LeadTimeHead.jsx), over a hidden
+//          <select id="*TimeDays">. View: { days }.
+//  *Bar  — Meta / Google's status filter, search and Refresh (LeadBar.jsx), over a hidden
+//          <select id="*StatusFilter">; the search input keeps its id. View: { statuses, status }.
+// A key's root is used only once it carries data-react.
+const LEAD_UI_SPEC = {
+  enqKpi: { root: 'enqKpis', page: 'enqkpis', def: { sel: 'all' } },
+  mlKpi: { root: 'mlKpis', page: 'mlkpis', def: { sel: 'all' } },
+  enqDays: { root: 'enqTimeHead', page: 'enqtimehead', def: { days: 'auto' } },
+  mlDays: { root: 'mlTimeHead', page: 'mltimehead', def: { days: 'auto' } },
+  mlBar: { root: 'mlBar', page: 'mlbar', def: { statuses: [], status: '' } },
+};
+const _leadUi = {};
+const _leadUiOf = key => _leadUi[key] || (_leadUi[key] = { view: { ...LEAD_UI_SPEC[key].def }, fn: null, onReady: null });
+function leadUiView(key) { return LEAD_UI_SPEC[key] ? { ..._leadUiOf(key).view } : null; }
+function leadUiSetReact(key, fn) {
+  const u = _leadUiOf(key); u.fn = fn;
+  // Next tick: this runs inside React's effect, and the renders flushSync other roots.
+  if (fn && u.onReady) { const f = u.onReady; u.onReady = null; setTimeout(f, 0); }
 }
-function _enqKpi(patch) {
-  const root = document.getElementById('enqKpis');
+function _lui(key, patch) {
+  const s = LEAD_UI_SPEC[key], root = s && document.getElementById(s.root);
   if (!root || !root.dataset.react) return false;
-  Object.assign(_enqKpiView, patch);
-  if (ENQ_KPI_REACT) ENQ_KPI_REACT({ ..._enqKpiView });
-  else if (!root._ekMounted) { root._ekMounted = true; emkReactMount('enqkpis', root); }
+  const u = _leadUiOf(key);
+  Object.assign(u.view, patch || {});
+  if (u.fn) u.fn({ ...u.view });
+  else if (!root._luMounted) { root._luMounted = true; emkReactMount(s.page, root); }
   return true;
 }
-// The "Enquiries over time" picker (Auto / Last 14 / 30 / 90 days) is React too
-// (EnqTimeHead.jsx in #enqTimeHead), over a hidden <select id="enqTimeDays">. View: { days }.
-let ENQ_DAYS_REACT = null;
-const _enqDaysView = { days: 'auto' };
-function enqDaysView() { return { ..._enqDaysView }; }
-function enqDaysSetReact(fn) { ENQ_DAYS_REACT = fn; }
-function _enqDays(patch) {
-  const root = document.getElementById('enqTimeHead');
-  if (!root || !root.dataset.react) return false;
-  Object.assign(_enqDaysView, patch);
-  if (ENQ_DAYS_REACT) ENQ_DAYS_REACT({ ..._enqDaysView });
-  else if (!root._edMounted) { root._edMounted = true; emkReactMount('enqtimehead', root); }
+const _luiMount = key => { if (!_leadUiOf(key).fn) _lui(key); };
+// True (and the render queued) while a source's cards are React but not drawn yet.
+function _leadKpiWait(key, render) {
+  const s = LEAD_UI_SPEC[key], root = document.getElementById(s.root);
+  if (!root || !root.dataset.react || _leadUiOf(key).fn) return false;
+  _leadUiOf(key).onReady = render; _lui(key);
   return true;
 }
-function enqDaysPick(v) { _enqDays({ days: String(v) }); renderEnqTimeChart(); }
+const LEAD_DAYS_KEY = { enqTimeDays: 'enqDays', mlTimeDays: 'mlDays' };
+function leadDaysPick(key, v) {
+  _lui(key, { days: String(v) });
+  ({ enqDays: renderEnqTimeChart, mlDays: renderMlTimeChart })[key]();
+}
+const LEAD_BAR_KEY = { mlStatusFilter: 'mlBar' };
+function leadBarPick(key, v) {
+  _lui(key, { status: String(v) });
+  ({ mlBar: onMlStatusFilter })[key]();
+}
 
 // KPI card click -> table us filter par. Dobara same card -> 'all' (toggle off).
 function selectEnqCard(f) {
   enqCardFilter = (enqCardFilter === f && f !== 'all') ? 'all' : f;
-  if (!_enqKpi({ sel: enqCardFilter })) ['all', 'new', 'progress', 'won', 'week'].forEach(k => {
+  if (!_lui('enqKpi', { sel: enqCardFilter })) ['all', 'new', 'progress', 'won', 'week'].forEach(k => {
     const el = document.getElementById('enqCard-' + k);
     if (el) el.classList.toggle('selected', k === enqCardFilter);
   });
@@ -421,8 +439,8 @@ async function loadEnquiries(opts) {
   startEnqAutoRefresh();
   if (!SRC_DD_REACT) _srcDd({}); // mounts the React source picker on the first visit
   if (!ENQ_TB_REACT) _enqTb({});  // and the toolbar
-  if (!ENQ_KPI_REACT) _enqKpi({}); // the KPI cards
-  if (!ENQ_DAYS_REACT) _enqDays({}); // and the chart's days picker
+  _luiMount('enqKpi'); // the KPI cards
+  _luiMount('enqDays'); // and the chart's days picker
   if (!LEAD_HEAD_REACT.enqTable) _leadHead('enqTable', {}); // and the table's header
   const silent = !!(opts && opts.silent); // auto-refresh: no "Loading…" flash, no count-up
   const tb = document.getElementById('enqTbody');
@@ -490,8 +508,7 @@ function enqDeltaLabel(cur, prev, suffix) {
 }
 
 function renderEnquiries() {
-  const kroot = document.getElementById('enqKpis');
-  if (kroot && kroot.dataset.react && !ENQ_KPI_REACT) { _enqKpiWaiting = true; _enqKpi({}); return; }
+  if (_leadKpiWait('enqKpi', renderEnquiries)) return;
   const allRows = _enqData.rows || [];
   const rows = allRows.filter(r => enqInRange(parseEnqDate(r.submitted_at)));
   const now = new Date();
@@ -617,7 +634,8 @@ function renderLeadsTimeChart(canvasId, selectId, rows, dateFn, noun) {
   const canvas = document.getElementById(canvasId);
   if (!canvas || typeof Chart === 'undefined') return;
   const sel = document.getElementById(selectId);
-  const mode = selectId === 'enqTimeDays' && _enqDays({}) ? _enqDaysView.days : (sel ? sel.value : 'auto');
+  const dk = LEAD_DAYS_KEY[selectId];
+  const mode = dk && _lui(dk) ? _leadUiOf(dk).view.days : (sel ? sel.value : 'auto');
   const dayMs = 86400000;
   const startOfDay = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
   const fmtD = d => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
@@ -928,6 +946,8 @@ function mlDailySeries(rows, days) {
 
 async function loadMetaLeads(opts) {
   startEnqAutoRefresh();
+  _luiMount('mlKpi'); _luiMount('mlDays'); _luiMount('mlBar'); // the React pieces, on the first visit
+  if (!LEAD_HEAD_REACT.mlTable) _leadHead('mlTable', {});
   const silent = !!(opts && opts.silent);
   const tb = document.getElementById('mlTbody');
   if (tb && !silent && !_leadRows('ml', tb, { loading: true })) tb.innerHTML = `<tr><td colspan="7" class="empty">Loading…</td></tr>`;
@@ -940,7 +960,7 @@ async function loadMetaLeads(opts) {
 
 function selectMlCard(f) {
   mlCardFilter = (mlCardFilter === f && f !== 'all') ? 'all' : f;
-  ['all', 'new', 'progress', 'converted', 'week'].forEach(k => { const el = document.getElementById('mlCard-' + k); if (el) el.classList.toggle('selected', k === mlCardFilter); });
+  if (!_lui('mlKpi', { sel: mlCardFilter })) ['all', 'new', 'progress', 'converted', 'week'].forEach(k => { const el = document.getElementById('mlCard-' + k); if (el) el.classList.toggle('selected', k === mlCardFilter); });
   renderMetaLeads();
 }
 
@@ -983,6 +1003,7 @@ function renderMlTrend(id, rows) {
 }
 
 function renderMetaLeads() {
+  if (_leadKpiWait('mlKpi', renderMetaLeads)) return;
   const allRows = (_metaLeads && _metaLeads.rows) || [];
   const rows = allRows.filter(r => enqInRange(mlDate(r.created_time)));
   const now = new Date();

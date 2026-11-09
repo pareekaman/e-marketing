@@ -1,0 +1,7 @@
+import{r as s,a as h,j as a}from"./vendor-DdgGs7Sa.js";import{l as u}from"./app-DYCEQstd.js";const y={enqTable:{sort:"enqSortBy",ws:[`
+            `,`
+              `,`
+            `,`
+          `],cols:[["date","Date","white-space:nowrap"],["name","Name"],["phone","Phone"],["service","Service"],["budget","Budget"],["source","Source"],["status","Status"]]},mlTable:{sort:"mlSortBy",ws:[`
+                `,"","",`
+              `],cols:[["date","Date","white-space:nowrap"],["name","Name"],["phone","WhatsApp"],["city","City"],["product","Product"],["platform","Platform"],["status","Status"]]}};function d(r){const{sort:p,cols:i,ws:n}=y[r];return function(){const[o,f]=s.useState(()=>u("leadHeadView",r)||{key:"",dir:1,painted:!1}),l=s.useRef({});s.useEffect(()=>(u("leadHeadSetReact",r,e=>h.flushSync(()=>f(e))),()=>u("leadHeadSetReact",r,null)),[]),s.useLayoutEffect(()=>{o.painted&&Object.values(l.current).forEach(e=>{e&&(e.style.cursor="pointer")})});const m=s.useRef(Object.fromEntries(i.map(([e,,c])=>[e,t=>{l.current[e]=t,t&&c&&!t._lh&&(t._lh=!0,t.setAttribute("style",c))}]))).current;return a.jsxs(a.Fragment,{children:[n[0],a.jsxs("tr",{children:[n[1],i.map(([e,c])=>a.jsxs("th",{"data-k":e,ref:m[e],onClick:()=>u(p,e),children:[c,o.painted?a.jsx("span",{className:"sort-ind",children:e===o.key?o.dir>0?" ▲":" ▼":""}):null]},e)),n[2]]}),n[3]]})}}const j=d("enqTable"),w=d("mlTable");export{j as EnqHead,w as MlHead};

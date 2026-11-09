@@ -9,13 +9,17 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { legacy } from '../lib/app.js';
 
-// [data-k, label, raw style attribute or undefined]
+// cols: [data-k, label, raw style attribute or undefined]. ws: the markup's whitespace —
+// [before <tr>, after <tr>, before </tr>, after </tr>].
 const TABLES = {
-  enqTable: { sort: 'enqSortBy', cols: [['date', 'Date', 'white-space:nowrap'], ['name', 'Name'], ['phone', 'Phone'], ['service', 'Service'], ['budget', 'Budget'], ['source', 'Source'], ['status', 'Status']] },
+  enqTable: { sort: 'enqSortBy', ws: ['\n            ', '\n              ', '\n            ', '\n          '],
+    cols: [['date', 'Date', 'white-space:nowrap'], ['name', 'Name'], ['phone', 'Phone'], ['service', 'Service'], ['budget', 'Budget'], ['source', 'Source'], ['status', 'Status']] },
+  mlTable: { sort: 'mlSortBy', ws: ['\n                ', '', '', '\n              '],
+    cols: [['date', 'Date', 'white-space:nowrap'], ['name', 'Name'], ['phone', 'WhatsApp'], ['city', 'City'], ['product', 'Product'], ['platform', 'Platform'], ['status', 'Status']] },
 };
 
 function makeHead(tableId) {
-  const { sort, cols } = TABLES[tableId];
+  const { sort, cols, ws } = TABLES[tableId];
   return function LeadHead() {
     const [v, setV] = useState(() => legacy('leadHeadView', tableId) || { key: '', dir: 1, painted: false });
     const ths = useRef({});
@@ -29,15 +33,16 @@ function makeHead(tableId) {
       if (el && raw && !el._lh) { el._lh = true; el.setAttribute('style', raw); }
     }]))).current;
     return <>
-      {'\n            '}<tr>{'\n              '}
+      {ws[0]}<tr>{ws[1]}
         {cols.map(([k, label]) => (
           <th key={k} data-k={k} ref={refs[k]} onClick={() => legacy(sort, k)}>
             {label}{v.painted ? <span className="sort-ind">{k === v.key ? (v.dir > 0 ? ' ▲' : ' ▼') : ''}</span> : null}
           </th>
-        ))}{'\n            '}
-      </tr>{'\n          '}
+        ))}{ws[2]}
+      </tr>{ws[3]}
     </>;
   };
 }
 
 export const EnqHead = makeHead('enqTable');
+export const MlHead = makeHead('mlTable');
