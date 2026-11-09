@@ -10395,6 +10395,11 @@ app.delete('/api/leaves/:id', requireAuth, async (req, res) => {
     if ((lr.user_id !== uid || lr.status !== 'pending') && !(await userCanDo(req.session, 'admin_leaves'))) {
       return res.status(403).json({ error: 'Cannot delete this request' });
     }
+    // An admin passes the check above even on their own approved leave, which let
+    // them drop it with no approval. Taking those days back goes through Remove days.
+    if (Number(lr.user_id) === Number(uid) && lr.status === 'approved') {
+      return res.status(403).json({ error: 'This leave is already approved. Use Remove days to send the removal for approval.' });
+    }
     await archiveDeleted('leave_requests', lr, req, {
       summary: r => `Leave (${r.leave_type || ''}, ${r.status || ''}) for user ${r.user_id}`,
     });
@@ -10460,6 +10465,24 @@ async function canDecideLeave(session, lr) {
   return !!(myInfo?.user_role === 'hod' && myInfo?.department && apInfo?.department === myInfo.department);
 }
 
+// Who decides a day-removal request for the holders the general rule below
+// does not fit: a HOD's goes to Simran (LEAVE_OVERSEER_ID) alone; an admin's
+// (any admin, by user_role or role) to the HOD(s) of their own department and
+// Simran. Anyone else, and Simran herself, gets null: the general rule.
+async function leaveRemovalDeciders(holderId) {
+  if (Number(holderId) === LEAVE_OVERSEER_ID) return null;
+  const [[h]] = await db.query('SELECT id, role, COALESCE(user_role, role) AS user_role, department FROM users WHERE id=?', [holderId]);
+  if (!h) return null;
+  if (h.user_role === 'hod') return [LEAVE_OVERSEER_ID];
+  if (h.user_role === 'admin' || h.role === 'admin') {
+    const [hods] = h.department
+      ? await db.query(`SELECT id FROM users WHERE COALESCE(user_role, role)='hod' AND department=? AND id<>?`, [h.department, h.id])
+      : [[]];
+    return [...hods.map(x => Number(x.id)), LEAVE_OVERSEER_ID];
+  }
+  return null;
+}
+
 // Whose Approvals list a day-removal request appears in: the same people who
 // see the leave itself there (GET /api/leaves?scope=approvals) — the holder's
 // approver, the HODs of the approver's department, and Simran (LEAVE_OVERSEER_ID). Not
@@ -10468,6 +10491,8 @@ async function canDecideLeave(session, lr) {
 async function inLeaveRemovalInbox(session, lr) {
   const uid = Number(session.userId);
   if (lr.sole_approver) return Number(lr.approver_id) === uid;
+  const routed = await leaveRemovalDeciders(lr.user_id);
+  if (routed) return routed.includes(uid);
   if (uid === LEAVE_OVERSEER_ID) return true;
   // Deciding a leave writes the decider into approver_id (Simran, say), so
   // the holder's own approver — their HOD — is looked up again; both count.
@@ -10514,11 +10539,13 @@ app.post('/api/leaves/:id/remove-days', requireAuth, async (req, res) => {
     if (dates.some(d => !have.has(d))) return res.status(400).json({ error: 'That day is not part of this request' });
     const reason = String(req.body.reason || '').trim();
 
-    if (lr.status === 'pending' || isAdmin) {
+    // An admin removes days from someone else's leave at once; from their own
+    // approved leave it is a request like anyone's (leaveRemovalDeciders).
+    if (lr.status === 'pending' || (isAdmin && !isOwner)) {
       const left = await applyLeaveDayRemoval(lr, dates, req);
       return res.json({ ok: true, applied: true, daysLeft: left });
     }
-    // Approved, and the holder is not an admin: it needs an approver.
+    // Approved, and the holder is changing their own: it needs an approver.
     if (!reason) return res.status(400).json({ error: 'Please give a reason' });
     const [[open]] = await db.query(`SELECT id FROM leave_day_removals WHERE leave_id=? AND status='pending'`, [id]);
     if (open) return res.status(400).json({ error: 'A removal request is already waiting for approval on this leave' });
@@ -10614,7 +10641,9 @@ app.put('/api/leaves/day-removals/:id', requireAuth, async (req, res) => {
     const [[lr]] = await db.query('SELECT * FROM leave_requests WHERE id=?', [r.leave_id]);
     if (!lr) return res.status(404).json({ error: 'The leave no longer exists' });
     if (Number(r.user_id) === Number(req.session.userId)) return res.status(403).json({ error: 'You cannot decide your own request' });
-    if (!(await canDecideLeave(req.session, lr)) && !(await inLeaveRemovalInbox(req.session, lr)))
+    const routed = lr.sole_approver ? null : await leaveRemovalDeciders(lr.user_id);
+    if (routed ? !routed.includes(Number(req.session.userId))
+        : (!(await canDecideLeave(req.session, lr)) && !(await inLeaveRemovalInbox(req.session, lr))))
       return res.status(403).json({ error: 'Not authorized to act on this request' });
     const note = String(req.body.note || '').trim() || null;
     const newStatus = action === 'approve' ? 'approved' : 'rejected';

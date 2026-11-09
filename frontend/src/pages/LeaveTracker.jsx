@@ -17,8 +17,9 @@ const canFilterTeam = u => !!u && (u.role === 'admin' || u.role === 'hod' || u.r
 
 function Item({ r, user }) {
   const dates = Array.isArray(r.dates) && r.dates.length ? r.dates : [{ date: r.from_date }];
-  const canDelete = (r.user_id === user.id && r.status === 'pending') || canDo('admin_leaves');
-  const canRemoveDays = dates.length > 1 && r.status !== 'rejected' && !r.pending_removal && (r.user_id === user.id || canDo('admin_leaves'));
+  // An admin's own approved leave is not deleted outright: its days come back through Remove days, for approval.
+  const canDelete = (r.user_id === user.id && r.status === 'pending') || (canDo('admin_leaves') && !(r.user_id === user.id && r.status === 'approved'));
+  const canRemoveDays = (dates.length > 1 || (r.user_id === user.id && r.status === 'approved' && canDo('admin_leaves'))) && r.status !== 'rejected' && !r.pending_removal && (r.user_id === user.id || canDo('admin_leaves'));
   const pendingRemoval = Array.isArray(r.pending_removal) && r.pending_removal.length ? r.pending_removal : null;
   // Moving a day to another date: the server sends can_move_days only to
   // Naman Gupta, on his own Extra Working.

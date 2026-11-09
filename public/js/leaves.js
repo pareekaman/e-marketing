@@ -397,11 +397,12 @@ function lvItemHtml(r) {
   }).join(' · ');
   const countLabel = dates.length > 1
     ? `<span style="color:#94a3b8;font-weight:500"> · ${dates.length} day${dates.length===1?'':'s'}</span>` : '';
-  const canDelete = (r.user_id === ME.id && r.status === 'pending') || canDo('admin_leaves');
+  // An admin's own approved leave is not deleted outright: its days come back through Remove days, for approval.
+  const canDelete = (r.user_id === ME.id && r.status === 'pending') || (canDo('admin_leaves') && !(r.user_id === ME.id && r.status === 'approved'));
   // Taking some days off a request. Only worth offering when there is more
   // than one day (a single day is just Delete), and not while a removal is
   // already waiting for approval.
-  const canRemoveDays = dates.length > 1 && r.status !== 'rejected' && !r.pending_removal
+  const canRemoveDays = (dates.length > 1 || (r.user_id === ME.id && r.status === 'approved' && canDo('admin_leaves'))) && r.status !== 'rejected' && !r.pending_removal
     && (r.user_id === ME.id || canDo('admin_leaves'));
   // Naman Gupta only, on his own Extra Working (the server sets can_move_days).
   const canMove = !!r.can_move_days && !(Array.isArray(r.pending_removal) && r.pending_removal.length);
@@ -916,7 +917,8 @@ function openLeaveRemoveDays(id){
   if (!lr) return;
   LV_REMOVE_ID = id;
   const dates = Array.isArray(lr.dates) && lr.dates.length ? lr.dates : [{ date: lr.from_date }];
-  const direct = lr.status === 'pending' || canDo('admin_leaves');
+  // An admin's own approved leave goes for approval like anyone's.
+  const direct = lr.status === 'pending' || (canDo('admin_leaves') && lr.user_id !== ME.id);
   // The pop-up is React (frontend/src/pages/LeaveRemoveDays.jsx, in
   // #lvRemoveRoot) since 2026-11-01; #leaveRemoveDaysModal is the fallback.
   // Both save through lvRemoveDaysSend().
