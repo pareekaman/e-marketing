@@ -364,7 +364,24 @@ function fmtDate(d) {
   return `${parts[2]}-${parts[1]}-${parts[0]}`;
 }
 // ── SET WEEK PLAN ───────────────────────────────────
+// The pop-up is React (frontend/src/pages/SetPlan.jsx, in #setPlanRoot) when that root
+// carries data-react; #setPlanModal is the fallback. Both save through weekPlanSend().
+let SET_PLAN_REACT = null, _setPlanWanted = null;
+function setPlanSetReact(fn) { SET_PLAN_REACT = fn; if (fn && _setPlanWanted) { const w = _setPlanWanted; _setPlanWanted = null; fn(w); } }
+// Employees the plan can be set for: an admin's employees, else the HOD's department.
+function _setPlanUsers(allUsers) {
+  return ME.role === 'admin'
+    ? allUsers.filter(u => u.role === 'user' || u.role === 'employee')
+    : allUsers.filter(u => u.department === ME.department && u.id !== ME.id);
+}
 async function openSetPlanModal() {
+  const root = document.getElementById('setPlanRoot');
+  if (root && root.dataset.react) {
+    const allUsers = await api('/api/users');
+    const data = { users: _setPlanUsers(Array.isArray(allUsers) ? allUsers : []).map(u => ({ value: String(u.id), label: u.name + ' (' + u.email + ')' })) };
+    if (SET_PLAN_REACT) SET_PLAN_REACT(data); else { _setPlanWanted = data; emkReactMount('setplan', root); }
+    return;
+  }
   document.getElementById('setPlanErr').style.display = 'none';
   document.getElementById('setPlanErr').textContent = '';
   document.getElementById('planEmpSelect').innerHTML = '<option value="">Select Employee</option>';
@@ -384,9 +401,7 @@ async function openSetPlanModal() {
 
   // Load department employees
   const allUsers = await api('/api/users');
-  const deptUsers = ME.role === 'admin'
-    ? allUsers.filter(u => u.role === 'user' || u.role === 'employee')
-    : allUsers.filter(u => u.department === ME.department && u.id !== ME.id);
+  const deptUsers = _setPlanUsers(allUsers);
   deptUsers.forEach(u => {
     const opt = document.createElement('option');
     opt.value = u.id;
@@ -398,14 +413,18 @@ async function openSetPlanModal() {
 }
 
 async function saveWeekPlan() {
-  const empId = document.getElementById('planEmpSelect').value;
-  const startDate = document.getElementById('planStartDate').value;
-  const improvementPct = document.getElementById('planImprovementPct').value;
   const err = document.getElementById('setPlanErr');
   err.style.display = 'none';
+  const res = await weekPlanSend(document.getElementById('planEmpSelect').value,
+    document.getElementById('planStartDate').value, document.getElementById('planImprovementPct').value);
+  if (res !== true) { err.textContent = res; err.style.display = 'block'; }
+}
 
-  if (!empId) { err.textContent = 'Please select an employee'; err.style.display = 'block'; return; }
-  if (!startDate) { err.textContent = 'Please select start date of week'; err.style.display = 'block'; return; }
+// The save, for this pop-up and the React one: true once it went through (the pop-up is
+// closed and the toast shown), otherwise the message to show in it.
+async function weekPlanSend(empId, startDate, improvementPct) {
+  if (!empId) return 'Please select an employee';
+  if (!startDate) return 'Please select start date of week';
 
   const payload = {
     employeeId: parseInt(empId),
@@ -419,9 +438,11 @@ async function saveWeekPlan() {
 
   const res = await api('/api/week-plan', 'POST', payload);
 
-  if (res.error) { err.textContent = res.error; err.style.display = 'block'; return; }
+  if (res.error) return res.error;
   closeModal('setPlanModal');
+  if (SET_PLAN_REACT) SET_PLAN_REACT(null);
   showToast('✅ Week plan saved successfully!');
+  return true;
 }
 
 
