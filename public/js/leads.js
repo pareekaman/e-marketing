@@ -246,6 +246,7 @@ const ENQ_STATUSES = ['NEW', 'Called', 'Contacted', 'Interested', 'Follow-up', '
 let _enqAnimate = false; // count-up animation runs only on the first render after a load
 
 function setEnqNum(id, to) {
+  if (_kpiPut(id, 'nums', { v: to, anim: _enqAnimate })) return;
   const el = document.getElementById(id); if (!el) return;
   if (!_enqAnimate) { el.textContent = to; return; }
   const start = performance.now(), dur = 700;
@@ -271,6 +272,7 @@ function enqDailySeries(rows, days) {
 }
 
 function renderEnqSpark(id, values, color) {
+  if (_kpiPut(id, 'sparks', { values: values || [], color })) return;
   const el = document.getElementById(id); if (el) el.innerHTML = enqSparkline(id, values, color);
 }
 
@@ -368,6 +370,18 @@ function _lui(key, patch) {
   return true;
 }
 const _luiMount = key => { if (!_leadUiOf(key).fn) _lui(key); };
+// A KPI card's number / sparkline / sub-line, by element id (enq*, ml*, gad*): kept in the
+// cards' view (nums: { v, anim }, sparks: { values, color }, subs: html) and handed over once
+// per render (microtask). False while those cards are not React, so the caller writes the DOM.
+function _kpiPut(id, part, val) {
+  const key = /^enq/.test(id) ? 'enqKpi' : /^ml/.test(id) ? 'mlKpi' : /^gad/.test(id) ? 'gadKpi' : null;
+  const root = key && document.getElementById(LEAD_UI_SPEC[key].root);
+  if (!root || !root.dataset.react) return false;
+  const u = _leadUiOf(key);
+  u.view[part] = { ...(u.view[part] || {}), [id]: val };
+  if (!u.pending) { u.pending = true; queueMicrotask(() => { u.pending = false; _lui(key); }); }
+  return true;
+}
 // True (and the render queued) while a source's cards are React but not drawn yet.
 function _leadKpiWait(key, render) {
   const s = LEAD_UI_SPEC[key], root = document.getElementById(s.root);
@@ -563,12 +577,12 @@ function renderEnquiries() {
   setEnqNum('enqWon', wonCount);
   setEnqNum('enqWeek', weekCount);
   const avgEl = document.getElementById('enqAvg');
-  if (avgEl) avgEl.textContent = avg >= 10 ? String(Math.round(avg)) : avg.toFixed(1);
+  if (avgEl && !_kpiPut(avgEl.id, 'nums', { v: avg >= 10 ? String(Math.round(avg)) : avg.toFixed(1) })) avgEl.textContent = avg >= 10 ? String(Math.round(avg)) : avg.toFixed(1);
 
   renderEnqSpark('enqSparkTotal', spark30, cssVar('--chart-1'));
   renderEnqSpark('enqSparkWeek', enqDailySeries(rows, 7), cssVar('--chart-5'));
 
-  const sub = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+  const sub = (id, html) => { if (_kpiPut(id, 'subs', html)) return; const el = document.getElementById(id); if (el) el.innerHTML = html; };
   sub('enqSubTotal', enqDeltaLabel(weekCount, prevWeek, 'this week'));
   sub('enqSubNew', newCount ? 'awaiting first contact' : 'all contacted');
   sub('enqSubProgress', progressCount ? 'being followed up' : 'none active');
@@ -1049,16 +1063,16 @@ function renderMetaLeads() {
   const avg = total ? total / spanDays : 0;
   const convRate = total ? Math.round((wonCount / total) * 100) : 0;
 
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  const set = (id, v) => { if (_kpiPut(id, 'nums', { v })) return; const el = document.getElementById(id); if (el) el.textContent = v; };
   set('mlTotal', total); set('mlNew', newCount); set('mlProgress', progressCount);
   set('mlConverted', wonCount); set('mlWeek', weekCount);
   const avgEl = document.getElementById('mlAvg');
-  if (avgEl) avgEl.textContent = avg >= 10 ? String(Math.round(avg)) : avg.toFixed(1);
+  if (avgEl && !_kpiPut(avgEl.id, 'nums', { v: avg >= 10 ? String(Math.round(avg)) : avg.toFixed(1) })) avgEl.textContent = avg >= 10 ? String(Math.round(avg)) : avg.toFixed(1);
 
   renderEnqSpark('mlSparkTotal', mlDailySeries(rows, 30), cssVar('--chart-1'));
   renderEnqSpark('mlSparkWeek', mlDailySeries(rows, 7), cssVar('--chart-5'));
 
-  const sub = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+  const sub = (id, html) => { if (_kpiPut(id, 'subs', html)) return; const el = document.getElementById(id); if (el) el.innerHTML = html; };
   sub('mlSubTotal', enqDeltaLabel(weekCount, prevWeek, 'this week'));
   sub('mlSubNew', newCount ? 'awaiting first contact' : 'all contacted');
   sub('mlSubProgress', progressCount ? 'being followed up' : 'none active');
@@ -1334,15 +1348,15 @@ function renderGoogleAds() {
   const avg = total ? total / spanDays : 0;
   const convRate = total ? Math.round((wonCount / total) * 100) : 0;
 
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  const set = (id, v) => { if (_kpiPut(id, 'nums', { v })) return; const el = document.getElementById(id); if (el) el.textContent = v; };
   set('gadTotal', total); set('gadNew', newCount); set('gadProgress', progressCount);
   set('gadWon', wonCount); set('gadWeek', weekCount);
-  const avgEl = document.getElementById('gadAvg'); if (avgEl) avgEl.textContent = avg >= 10 ? String(Math.round(avg)) : avg.toFixed(1);
+  const avgEl = document.getElementById('gadAvg'); if (avgEl && !_kpiPut(avgEl.id, 'nums', { v: avg >= 10 ? String(Math.round(avg)) : avg.toFixed(1) })) avgEl.textContent = avg >= 10 ? String(Math.round(avg)) : avg.toFixed(1);
 
   renderEnqSpark('gadSparkTotal', gadDailySeries(rows, 30), cssVar('--chart-1'));
   renderEnqSpark('gadSparkWeek', gadDailySeries(rows, 7), cssVar('--chart-5'));
 
-  const sub = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+  const sub = (id, html) => { if (_kpiPut(id, 'subs', html)) return; const el = document.getElementById(id); if (el) el.innerHTML = html; };
   sub('gadSubTotal', enqDeltaLabel(weekCount, prevWeek, 'this week'));
   sub('gadSubNew', newCount ? 'awaiting first contact' : 'all contacted');
   sub('gadSubProgress', progressCount ? 'being followed up' : 'none active');

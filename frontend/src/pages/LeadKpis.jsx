@@ -34,8 +34,46 @@ const cardsOf = s => [
   { k: 'avg', cls: 'avg', title: 'Average per day', label: 'Avg / Day', id: 'Avg', still: true },
 ];
 const nl = n => '\n' + ' '.repeat(n);
-// "—" once, as the markup started; after that the content is the render function's.
-const dash = el => { if (el && !el._ek) { el._ek = true; if (!el.textContent) el.textContent = '—'; } };
+// A card number: "—" until the first render hands one over; { v, anim } — with anim (a fresh
+// Website load) it counts up from 0 over 700ms with the old ease-out, else it is shown as is.
+function Num({ n }) {
+  const [shown, setShown] = useState(() => (n && !n.anim ? n.v : n ? 0 : '—'));
+  useEffect(() => {
+    if (!n) return;
+    if (!n.anim || typeof n.v !== 'number') { setShown(n.v); return; }
+    const start = performance.now(), dur = 700;
+    let id = 0;
+    const tick = now => {
+      const t = Math.min((now - start) / dur, 1);
+      setShown(Math.round(n.v * (1 - Math.pow(1 - t, 3))));
+      if (t < 1) id = requestAnimationFrame(tick);
+    };
+    tick(performance.now());
+    return () => cancelAnimationFrame(id);
+  }, [n]);
+  return <>{String(shown)}</>;
+}
+
+// The card sparkline (line + gradient area + end dot), drawn as enqSparkline drew it.
+function Spark({ id, sp }) {
+  const values = sp && sp.values;
+  if (!values || !values.length) return null;
+  const w = 96, h = 34, color = sp.color;
+  const max = Math.max(...values, 1), min = Math.min(...values, 0), range = (max - min) || 1;
+  const step = w / Math.max(values.length - 1, 1);
+  const pts = values.map((v, i) => [i * step, h - 2 - ((v - min) / range) * (h - 6)]);
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  const area = `${line} L${w},${h} L0,${h} Z`;
+  const gid = 'esk_' + id, last = pts[pts.length - 1];
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" xmlns="http://www.w3.org/2000/svg">{'\n    '}
+      <defs><linearGradient id={gid} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={color} stopOpacity="0.28" /><stop offset="1" stopColor={color} stopOpacity="0" /></linearGradient></defs>{'\n    '}
+      <path d={area} fill={`url(#${gid})`} />{'\n    '}
+      <path d={line} stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />{'\n    '}
+      <circle cx={last[0].toFixed(1)} cy={last[1].toFixed(1)} r="2.6" fill={color} />{'\n  '}
+    </svg>
+  );
+}
 
 function makeKpis(src) {
   const s = SOURCES[src], cards = cardsOf(s), i = s.indent;
@@ -50,8 +88,9 @@ function makeKpis(src) {
       {cards.map(c => <Fragment key={c.k}>{nl(i)}
         <div className={`enq-kpi ${c.cls}${c.k === v.sel ? ' selected' : ''}`} id={`${s.p}Card-${c.k}`} onClick={c.still ? undefined : () => click(c.k)} title={c.title}>{nl(i + 2)}
           <div className="enq-kpi-top"><span className="enq-kpi-icon">{ICONS[c.cls]}</span><span className="enq-kpi-label">{c.label}</span></div>{nl(i + 2)}
-          <div className="enq-kpi-bottom"><div className="enq-kpi-num" id={s.p + c.id} ref={dash} />{c.spark ? <div className="enq-kpi-spark" id={`${s.p}Spark${c.id}`} /> : null}</div>{nl(i + 2)}
-          <div className="enq-kpi-sub" id={`${s.p}Sub${c.id}`} />{nl(i)}
+          <div className="enq-kpi-bottom"><div className="enq-kpi-num" id={s.p + c.id}><Num n={(v.nums || {})[s.p + c.id]} /></div>{c.spark ? <div className="enq-kpi-spark" id={`${s.p}Spark${c.id}`}><Spark id={`${s.p}Spark${c.id}`} sp={(v.sparks || {})[`${s.p}Spark${c.id}`]} /></div> : null}</div>{nl(i + 2)}
+          {/* The sub-line is a short fixed phrase, sometimes with one <span class="up|down|flat">. */}
+          <div className="enq-kpi-sub" id={`${s.p}Sub${c.id}`} dangerouslySetInnerHTML={{ __html: (v.subs || {})[`${s.p}Sub${c.id}`] || '' }} />{nl(i)}
         </div>
       </Fragment>)}{nl(i - 2)}
     </>;
