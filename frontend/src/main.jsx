@@ -76,6 +76,7 @@ const PAGES = {
   cptabs: lazy(() => import('./pages/CpTabs.jsx')),
   cphead: lazy(() => import('./pages/CpTabs.jsx').then(m => ({ default: m.CpHead }))),
   cmtabs: lazy(() => import('./pages/CmTabs.jsx')),
+  ekbar: lazy(() => import('./pages/EkBar.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),

@@ -1650,7 +1650,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       .ek-form .ek-wide{grid-column:1 / -1}
       @media (max-width:600px){.ek-form{grid-template-columns:1fr}}
     </style>
-    <div class="ek-bar">
+    <!-- data-react: the bar is React (frontend/src/pages/EkBar.jsx); emk-creds.js still reads #ekQ / #ekEmp / #ekStatus. This markup is the fallback. -->
+    <div class="ek-bar" id="ekBarRoot" data-react="1" data-react-quiet="1">
       <input id="ekQ" type="search" placeholder="Search by client, employee, link or user ID…" oninput="ekRender()" autocomplete="off">
       <select id="ekEmp" onchange="ekRender()"><option value="">All employees</option></select>
       <select id="ekStatus" onchange="ekRender()">
@@ -4438,7 +4439,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261107b"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261109d"></script>
+<script src="/js/react-bridge.js?v=20261109e"></script>
 <script src="/js/dashboard.js?v=20261107e"></script>
 <script src="/js/amber-ui.js?v=20261107a"></script>
 <script src="/js/tasks.js?v=20261107e"></script>
@@ -4452,7 +4453,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/leaves.js?v=20261104a"></script>
 <script src="/js/leave-policy.js?v=20261101a"></script>
 <script src="/js/compose-mail.js?v=20261101b"></script>
-<script src="/js/emk-creds.js?v=20261101b"></script>
+<script src="/js/emk-creds.js?v=20261109a"></script>
 <script src="/js/portal.js?v=20261101b"></script>
 <script src="/js/payments.js?v=20261107b"></script>
 <script src="/js/mdo.js?v=20261106a"></script>

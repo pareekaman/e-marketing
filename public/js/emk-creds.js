@@ -24,7 +24,29 @@ function _ekShow(state){
   return true;
 }
 
+// The search bar (search, employee, status, Refresh, Add) is React (frontend/src/pages/EkBar.jsx)
+// when .ek-bar#ekBarRoot carries data-react; its markup in app.html is the fallback. React keeps
+// hidden <select id="ekEmp"> / <select id="ekStatus"> in step with this view (ekRender reads
+// them; updates are flushSync'd) and the search box keeps id="ekQ".
+// View: { emps: [names], emp, status }.
+let EK_BAR_REACT = null;
+const _ekBarView = { emps: [], emp: '', status: '' };
+function ekBarView(){ return { ..._ekBarView }; }
+function ekBarSetReact(fn){ EK_BAR_REACT = fn; }
+// patch null: only asks whether React is on (and mounts it).
+function _ekBarReact(patch){
+  const root = document.getElementById('ekBarRoot');
+  if (!root || !root.dataset.react) return false;
+  if (patch) Object.assign(_ekBarView, patch);
+  if (EK_BAR_REACT) { if (patch) EK_BAR_REACT({ ..._ekBarView }); }
+  else if (!root._barMounted) { root._barMounted = true; emkReactMount('ekbar', root); }
+  return true;
+}
+// React's employee / status boxes: the pick is in the hidden select before ekRender reads it.
+function ekBarPick(key, v){ _ekBarReact({ [key]: String(v) }); ekRender(); }
+
 async function loadEmkCreds(){
+  _ekBarReact(null);   // mounts the bar (React) on the first load
   const grid = document.getElementById('ekGrid');
   const count = document.getElementById('ekCount');
   count.textContent = 'Loading…';
@@ -39,7 +61,14 @@ async function loadEmkCreds(){
   EK_RECORDS = r.records;
   EK_EMPLOYEES = Array.isArray(r.employees) ? r.employees : [];
   const sel = document.getElementById('ekEmp');
-  const keep = sel.value;
+  const keep = sel ? sel.value : _ekBarView.emp;
+  if (_ekBarReact(null)) {
+    // React (EkBar.jsx) has the list: the same names, the choice kept while it is still listed.
+    const emps = [...new Set(EK_RECORDS.map(x => x.employee).filter(Boolean))].sort();
+    _ekBarReact({ emps, emp: emps.includes(_ekBarView.emp) ? _ekBarView.emp : '' });
+    ekRender();
+    return;
+  }
   sel.innerHTML = '<option value="">All employees</option>' +
     [...new Set(EK_RECORDS.map(x => x.employee).filter(Boolean))].sort()
       .map(e => `<option value="${dtEscape(e)}">${dtEscape(e)}</option>`).join('');
@@ -79,9 +108,12 @@ function ekRowBad(r){
 }
 
 function ekRender(){
-  const q = document.getElementById('ekQ').value.trim().toLowerCase();
-  const emp = document.getElementById('ekEmp').value;
-  const st = document.getElementById('ekStatus').value;
+  // Under React the bar may not be drawn yet on the first load (its chunk still arriving),
+  // so the pickers are read from the view and the search box only if it is there.
+  const react = _ekBarReact(null);
+  const q = (document.getElementById('ekQ')?.value || '').trim().toLowerCase();
+  const emp = react ? _ekBarView.emp : document.getElementById('ekEmp').value;
+  const st = react ? _ekBarView.status : document.getElementById('ekStatus').value;
   const all = ekGroups();
   const list = all.filter(g => {
     const bad = g.rows.some(ekRowBad);
