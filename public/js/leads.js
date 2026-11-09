@@ -163,7 +163,24 @@ function toggleSort(sort, key, rerender) {
   if (sort.key === key) sort.dir = -sort.dir; else { sort.key = key; sort.dir = 1; }
   rerender();
 }
+// A table's sortable header row is React (frontend/src/pages/LeadHead.jsx) when its <thead>
+// carries data-react; the markup is the fallback. React draws the <th>s (clicks → the table's
+// *SortBy) and, once painted, the ▲ / ▼ span and the pointer cursor exactly as below.
+// View per table: { key, dir, painted }.
+const LEAD_HEAD_REACT = {}, _leadHeadViews = {};
+const LEAD_HEAD_PAGE = { enqTable: 'leadheadenq' };
+function leadHeadView(tableId) { return _leadHeadViews[tableId] ? { ..._leadHeadViews[tableId] } : null; }
+function leadHeadSetReact(tableId, fn) { LEAD_HEAD_REACT[tableId] = fn; }
+function _leadHead(tableId, patch) {
+  const t = document.getElementById(tableId), head = t && t.tHead;
+  if (!head || !head.dataset.react || !LEAD_HEAD_PAGE[tableId]) return false;
+  _leadHeadViews[tableId] = { ...(_leadHeadViews[tableId] || { key: '', dir: 1, painted: false }), ...patch };
+  if (LEAD_HEAD_REACT[tableId]) LEAD_HEAD_REACT[tableId]({ ..._leadHeadViews[tableId] });
+  else if (!head._lhMounted) { head._lhMounted = true; emkReactMount(LEAD_HEAD_PAGE[tableId], head); }
+  return true;
+}
 function paintSortArrows(tableId, sort) {
+  if (_leadHead(tableId, { key: sort.key, dir: sort.dir, painted: true })) return;
   const t = document.getElementById(tableId); if (!t) return;
   t.querySelectorAll('th[data-k]').forEach(th => {
     const on = th.getAttribute('data-k') === sort.key;
@@ -406,6 +423,7 @@ async function loadEnquiries(opts) {
   if (!ENQ_TB_REACT) _enqTb({});  // and the toolbar
   if (!ENQ_KPI_REACT) _enqKpi({}); // the KPI cards
   if (!ENQ_DAYS_REACT) _enqDays({}); // and the chart's days picker
+  if (!LEAD_HEAD_REACT.enqTable) _leadHead('enqTable', {}); // and the table's header
   const silent = !!(opts && opts.silent); // auto-refresh: no "Loading…" flash, no count-up
   const tb = document.getElementById('enqTbody');
   if (tb && !silent && !_leadRows('enq', tb, { loading: true })) tb.innerHTML = `<tr><td colspan="7" class="empty">Loading…</td></tr>`;

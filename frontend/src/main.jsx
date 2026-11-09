@@ -89,6 +89,7 @@ const PAGES = {
   enqtoolbar: lazy(() => import('./pages/EnqToolbar.jsx')),
   enqkpis: lazy(() => import('./pages/EnqKpis.jsx')),
   enqtimehead: lazy(() => import('./pages/EnqTimeHead.jsx')),
+  leadheadenq: lazy(() => import('./pages/LeadHead.jsx').then(m => ({ default: m.EnqHead }))),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),

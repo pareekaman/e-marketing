@@ -1,0 +1,5 @@
+import{r as s,a as p,j as r}from"./vendor-DdgGs7Sa.js";import{l as o}from"./app-DYCEQstd.js";const m={enqTable:{sort:"enqSortBy",cols:[["date","Date","white-space:nowrap"],["name","Name"],["phone","Phone"],["service","Service"],["budget","Budget"],["source","Source"],["status","Status"]]}};function h(n){const{sort:d,cols:u}=m[n];return function(){const[a,f]=s.useState(()=>o("leadHeadView",n)||{key:"",dir:1,painted:!1}),i=s.useRef({});s.useEffect(()=>(o("leadHeadSetReact",n,e=>p.flushSync(()=>f(e))),()=>o("leadHeadSetReact",n,null)),[]),s.useLayoutEffect(()=>{a.painted&&Object.values(i.current).forEach(e=>{e&&(e.style.cursor="pointer")})});const l=s.useRef(Object.fromEntries(u.map(([e,,c])=>[e,t=>{i.current[e]=t,t&&c&&!t._lh&&(t._lh=!0,t.setAttribute("style",c))}]))).current;return r.jsxs(r.Fragment,{children:[`
+            `,r.jsxs("tr",{children:[`
+              `,u.map(([e,c])=>r.jsxs("th",{"data-k":e,ref:l[e],onClick:()=>o(d,e),children:[c,a.painted?r.jsx("span",{className:"sort-ind",children:e===a.key?a.dir>0?" ▲":" ▼":""}):null]},e)),`
+            `]}),`
+          `]})}}const j=h("enqTable");export{j as EnqHead};
