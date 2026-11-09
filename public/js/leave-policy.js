@@ -35,10 +35,18 @@ async function lpLoad(){
   if (!r.signed && !ME.impersonatedBy && Date.now() - _lpPromptedAt > 30000) lpOpenSign();
 }
 
+// The notice and the admin list are drawn by React (frontend/src/components/
+// LeavePolicyBoxes.jsx, inside the Leave Tracker) once it registers; this hands
+// over what to show. Before that, or without React, the markup below is written.
+let LP_NOTICE_REACT = null, LP_REPORT_REACT = null;
+function lpNoticeSetReact(fn){ LP_NOTICE_REACT = fn; }
+function lpReportSetReact(fn){ LP_REPORT_REACT = fn; }
+
 function lpRenderNotice(){
   const box = document.getElementById('lpNotice');
   if (!box || !LP_STATE) return;
   const s = LP_STATE;
+  if (LP_NOTICE_REACT) return LP_NOTICE_REACT({ ...s, title: LP_TITLE, policy: lpPolicyHtml() });
   box.innerHTML = `<details class="lp-notice" ${s.signed ? '' : 'open'}>
     <summary><span>📜 ${LP_TITLE}</span>
       ${s.signed
@@ -123,8 +131,9 @@ async function lpLoadReport(){
   const box = document.getElementById('lpReport');
   if (!box) return;
   const r = await api('/api/leave-policy/report');
-  if (!r || r.error || !Array.isArray(r.rows)) { box.innerHTML = ''; return; }
+  if (!r || r.error || !Array.isArray(r.rows)) { if (LP_REPORT_REACT) LP_REPORT_REACT(null); else box.innerHTML = ''; return; }
   LP_REPORT = r.rows;
+  if (LP_REPORT_REACT) return LP_REPORT_REACT({ rows: r.rows });
   const signed = r.rows.filter(x => x.signed_at).length;
   box.innerHTML = `<details class="lp-notice">
     <summary><span>🖊 Policy Acknowledgements</span><span class="lp-count">${signed} of ${r.rows.length} signed</span>

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, me, canDo, canSee, legacy, fmtDate, css } from '../lib/app.js';
 import SearchSelect from '../components/SearchSelect.jsx';
 import { TYPE_LABEL, TYPE_ICON, ExtraBreakdown, hasBreakdown } from '../components/LeaveBits.jsx';
+import { LpNotice, LpReport } from '../components/LeavePolicyBoxes.jsx';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const monthLabel = ym => { const [y, m] = ym.split('-'); return m ? `${MONTHS[+m - 1]} ${y}` : 'Undated'; };
@@ -196,9 +197,10 @@ export default function LeaveTracker() {
           <span ref={css('font-size:18px;line-height:1')}>＋</span> Apply for Leave
         </button>
       </div>
-      {/* Filled by leave-policy.js (lpLoad); React leaves their contents alone. */}
-      <div id="lpNotice"></div>
-      <div id="lpReport"></div>
+      {/* The policy notice and the acknowledgements list: leave-policy.js (lpLoad) hands
+          over what to show (LeavePolicyBoxes.jsx); until it registers, it writes them itself. */}
+      <div id="lpNotice"><LpNotice /></div>
+      <div id="lpReport"><LpReport /></div>
 
       <div className="lv-tabs">
         <div className={`lv-tab${tab === 'mine' ? ' active' : ''}`} onClick={() => setTab('mine')}><span className="lv-tab-ico">👤</span> My Leaves</div>
