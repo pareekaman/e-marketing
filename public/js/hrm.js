@@ -22,8 +22,10 @@ async function loadHRM() {
   const canSchedule = canDo('hrm_schedule');
   // React's top button (HrmTabs.jsx) takes it as a flag; the rest are set directly.
   const reactTop = _hrmTabs({ schedule: canSchedule });
+  const reactList = _hrmTb({ schedule: canSchedule });
   ['hrmScheduleBtnTop','hrmScheduleBtnList'].forEach(id => {
     if (reactTop && id === 'hrmScheduleBtnTop') return;
+    if (reactList && id === 'hrmScheduleBtnList') return;
     const b = document.getElementById(id);
     if (b) b.style.display = canSchedule ? '' : 'none';
   });
@@ -42,7 +44,9 @@ async function loadHRM() {
   // Populate position filter
   const positions = [...new Set(_hrmCandidates.map(c=>c.profile_position).filter(Boolean))].sort();
   const posEl = document.getElementById('hrmFilterPosition');
-  if (posEl) {
+  if (_hrmTb({ positions, position: positions.includes(_hrmTbView.position) ? _hrmTbView.position : '' })) {
+    // React's toolbar (HrmToolbar.jsx) has the list; the same names, the choice kept while listed.
+  } else if (posEl) {
     const cur = posEl.value;
     posEl.innerHTML = '<option value="">All Positions</option>' + positions.map(p=>`<option${p===cur?' selected':''}>${esc(p)}</option>`).join('');
   }
@@ -113,10 +117,32 @@ function renderHrmRecent() {
   el.innerHTML = renderHrmRows(recent);
 }
 
+// The Candidates toolbar (search, status, position, Schedule Interview) is React (frontend/src/
+// pages/HrmToolbar.jsx) when .hrm-toolbar#hrmToolbarRoot carries data-react; its markup is the
+// fallback. React keeps hidden <select id="hrmFilterStatus"> / <select id="hrmFilterPosition">
+// in step with this view (updates flushSync'd) and the search box keeps id="hrmSearch".
+// View: { positions, status, position, schedule }.
+let HRM_TB_REACT = null;
+const _hrmTbView = { positions: [], status: '', position: '', schedule: null };
+function hrmTbView() { return { ..._hrmTbView }; }
+function hrmTbSetReact(fn) { HRM_TB_REACT = fn; }
+function _hrmTb(patch) {
+  const root = document.getElementById('hrmToolbarRoot');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_hrmTbView, patch);
+  if (HRM_TB_REACT) HRM_TB_REACT({ ..._hrmTbView });
+  else if (!root._tbMounted) { root._tbMounted = true; emkReactMount('hrmtoolbar', root); }
+  return true;
+}
+// React's pickers: the pick is in the hidden select before renderHrmTable reads it.
+function hrmTbPick(key, v) { _hrmTb({ [key]: String(v) }); renderHrmTable(); }
+
 function renderHrmTable() {
+  // Under React the pickers are read from the view (the toolbar may not be drawn yet).
+  const tb = _hrmTb({});
   const search   = (document.getElementById('hrmSearch')?.value||'').toLowerCase();
-  const status   = document.getElementById('hrmFilterStatus')?.value||'';
-  const position = document.getElementById('hrmFilterPosition')?.value||'';
+  const status   = tb ? _hrmTbView.status : document.getElementById('hrmFilterStatus')?.value||'';
+  const position = tb ? _hrmTbView.position : document.getElementById('hrmFilterPosition')?.value||'';
   let list = _hrmCandidates;
   if (status)   list = list.filter(c=>c.status===status);
   if (position) list = list.filter(c=>c.profile_position===position);
