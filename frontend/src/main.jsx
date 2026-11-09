@@ -84,6 +84,7 @@ const PAGES = {
   hrmtabs: lazy(() => import('./pages/HrmTabs.jsx')),
   hrmdashhead: lazy(() => import('./pages/HrmTabs.jsx').then(m => ({ default: m.HrmDashHead }))),
   hrmtoolbar: lazy(() => import('./pages/HrmToolbar.jsx')),
+  hrmmsghead: lazy(() => import('./pages/HrmMsgHead.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),

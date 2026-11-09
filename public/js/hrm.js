@@ -225,8 +225,27 @@ function renderHrmRows(list) {
 // but is pruned to currently loaded messages on each render.
 let _hrmMsgSelected = new Set();
 
+// The Email Log card's controls (Delete Selected, search, All / Sent / Failed) are React
+// (frontend/src/pages/HrmMsgHead.jsx) when #hrmMsgHead carries data-react; their markup is
+// the fallback. React keeps a hidden <select id="hrmMsgFilter"> in step (flushSync'd) and the
+// search box keeps id="hrmMsgSearch". View: { filter, bulk: display | null, count }.
+let HRM_MSGHEAD_REACT = null;
+const _hrmMsgHeadView = { filter: '', bulk: null, count: 0 };
+function hrmMsgHeadView() { return { ..._hrmMsgHeadView }; }
+function hrmMsgHeadSetReact(fn) { HRM_MSGHEAD_REACT = fn; }
+function _hrmMsgHead(patch) {
+  const root = document.getElementById('hrmMsgHead');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_hrmMsgHeadView, patch);
+  if (HRM_MSGHEAD_REACT) HRM_MSGHEAD_REACT({ ..._hrmMsgHeadView });
+  else if (!root._mhMounted) { root._mhMounted = true; emkReactMount('hrmmsghead', root); }
+  return true;
+}
+function hrmMsgFilterPick(v) { _hrmMsgHead({ filter: String(v) }); renderHrmMsgTable(); }
+const _hrmMsgFilterVal = () => _hrmMsgHead({}) ? _hrmMsgHeadView.filter : (document.getElementById('hrmMsgFilter')?.value||'');
+
 function renderHrmMsgTable() {
-  const filter = document.getElementById('hrmMsgFilter')?.value||'';
+  const filter = _hrmMsgFilterVal();
   const search = (document.getElementById('hrmMsgSearch')?.value||'').toLowerCase();
   let list = _hrmMessages;
   if (filter) list = list.filter(m=>m.status===filter);
@@ -270,7 +289,7 @@ function toggleHrmMsgSelect(id, checked) {
 
 // Select-all applies to the currently visible (filtered/searched) rows only.
 function toggleHrmMsgSelectAll(checked) {
-  const filter = document.getElementById('hrmMsgFilter')?.value||'';
+  const filter = _hrmMsgFilterVal();
   const search = (document.getElementById('hrmMsgSearch')?.value||'').toLowerCase();
   let list = _hrmMessages;
   if (filter) list = list.filter(m=>m.status===filter);
@@ -280,6 +299,7 @@ function toggleHrmMsgSelectAll(checked) {
 }
 
 function updateHrmMsgBulkBtn() {
+  if (_hrmMsgHead({ bulk: _hrmMsgSelected.size ? 'inline-block' : 'none', count: _hrmMsgSelected.size })) return;
   const btn = document.getElementById('hrmMsgBulkDeleteBtn');
   const cnt = document.getElementById('hrmMsgBulkCount');
   if (!btn) return;
