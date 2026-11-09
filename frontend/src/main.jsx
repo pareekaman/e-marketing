@@ -80,6 +80,7 @@ const PAGES = {
   dmsbar: lazy(() => import('./pages/DmsBar.jsx')),
   dmshead: lazy(() => import('./pages/DmsHead.jsx')),
   dmsdepthead: lazy(() => import('./pages/DmsHead.jsx').then(m => ({ default: m.DmsDeptHead }))),
+  dmsbrowserhead: lazy(() => import('./pages/DmsBrowserHead.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),

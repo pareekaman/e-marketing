@@ -198,9 +198,11 @@ async function dmsSelectClient(id) {
     document.getElementById('dmsDeptList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Loading…</div>';
     document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Select a folder above to browse files.</div>';
   }
-  document.getElementById('dmsBrowserFolderName').textContent = '';
-  document.getElementById('dmsCreateFileBtn').style.display = 'none';
-  document.getElementById('dmsAddShortcutBtn').style.display = 'none';
+  if (!_dmsBr({ crumb: [], create: 'none', shortcut: 'none' })) {
+    document.getElementById('dmsBrowserFolderName').textContent = '';
+    document.getElementById('dmsCreateFileBtn').style.display = 'none';
+    document.getElementById('dmsAddShortcutBtn').style.display = 'none';
+  }
   _dmsBrowseFolderId = null;
 
   try {
@@ -345,7 +347,32 @@ function dmsFileListContextMenu(event) {
   }, 0);
 }
 
+// The file browser's header (the "Files — a / b" trail, Delete Selected, Refresh, Upload,
+// Add Existing, New File), its search box and the upload status line are React (frontend/src/
+// pages/DmsBrowserHead.jsx, in #dmsBrowserHead) when that carries data-react; their markup is the
+// fallback. The search box (#dmsFileSearch) and the file picker (#dmsUploadInput) keep their ids.
+// View: { crumb: [names], bulk, count, create, upload, shortcut (displays | null), status }.
+let DMS_BR_REACT = null;
+const _dmsBrView = { crumb: [], bulk: null, count: 0, create: null, upload: null, shortcut: null, status: { show: null, color: '', text: '' } };
+function dmsBrSetReact(fn) { DMS_BR_REACT = fn; if (fn) fn({ ..._dmsBrView }); }
+function _dmsBr(patch) {
+  const root = document.getElementById('dmsBrowserHead');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_dmsBrView, patch);
+  if (DMS_BR_REACT) DMS_BR_REACT({ ..._dmsBrView, status: { ..._dmsBrView.status } });
+  else if (!root._brMounted) { root._brMounted = true; emkReactMount('dmsbrowserhead', root); }
+  return true;
+}
+// The upload status line for dmsUploadPicked: the real element, or under React a stand-in
+// taking the same style.display / style.color / textContent writes into the view.
+function _dmsStatusBox() {
+  if (!_dmsBr({})) return document.getElementById('dmsUploadStatus');
+  const set = p => _dmsBr({ status: { ..._dmsBrView.status, ...p } });
+  return { style: { set display(v) { set({ show: v }); }, set color(v) { set({ color: v }); } }, set textContent(v) { set({ text: v }); } };
+}
+
 function dmsRenderFolderCrumb() {
+  if (_dmsBr({ crumb: _dmsFolderStack.map(f => f.name) })) return;   // React draws the trail
   const el = document.getElementById('dmsBrowserFolderName');
   el.innerHTML = _dmsFolderStack.map((f, i) => {
     if (i === _dmsFolderStack.length - 1) return `<span>${dtEscape(f.name)}</span>`;
@@ -370,17 +397,22 @@ async function dmsBrowseFolder(folderId, folderName, mode) {
   _dmsBrowseFolderName = folderName;
   dmsRenderFolderCrumb();
   _dmsSelectedIds.clear();
-  const bulkBtn = document.getElementById('dmsBulkDeleteBtn');
-  if (bulkBtn) bulkBtn.style.display = 'none';
+  if (!_dmsBr({ bulk: 'none' })) {
+    const bulkBtn = document.getElementById('dmsBulkDeleteBtn');
+    if (bulkBtn) bulkBtn.style.display = 'none';
+  }
   const searchInput = document.getElementById('dmsFileSearch');
   if (searchInput) searchInput.value = '';
   const react = _dmsIsReact('dmsFileList');
   if (react) dmsFiles({ state: 'loading' });
   else document.getElementById('dmsFileList').innerHTML = '<div style="color:#94a3b8;font-size:13px">Loading files…</div>';
   const canCreate = ME.role==='admin' || ME.role==='pc';
-  document.getElementById('dmsCreateFileBtn').style.display = canCreate ? 'inline-flex' : 'none';
-  document.getElementById('dmsUploadBtn').style.display = canCreate ? 'inline-flex' : 'none';
-  document.getElementById('dmsAddShortcutBtn').style.display = canCreate ? 'inline-flex' : 'none';
+  const cd = canCreate ? 'inline-flex' : 'none';
+  if (!_dmsBr({ create: cd, upload: cd, shortcut: cd })) {
+    document.getElementById('dmsCreateFileBtn').style.display = cd;
+    document.getElementById('dmsUploadBtn').style.display = cd;
+    document.getElementById('dmsAddShortcutBtn').style.display = cd;
+  }
   try {
     const files = await api(`/api/clients/${_dmsSelectedClient.id}/dms/folders/${folderId}/files`);
     // An error answer has no length, so it reads as an empty folder, as before.
@@ -572,11 +604,13 @@ async function dmsDeleteFile(fileId) {
 }
 
 function dmsUpdateBulkDeleteUI() {
-  const btn = document.getElementById('dmsBulkDeleteBtn');
-  if (!btn) return;
   const n = _dmsSelectedIds.size;
-  btn.style.display = n ? 'inline-flex' : 'none';
-  document.getElementById('dmsBulkDeleteCount').textContent = n;
+  if (!_dmsBr({ bulk: n ? 'inline-flex' : 'none', count: n })) {
+    const btn = document.getElementById('dmsBulkDeleteBtn');
+    if (!btn) return;
+    btn.style.display = n ? 'inline-flex' : 'none';
+    document.getElementById('dmsBulkDeleteCount').textContent = n;
+  }
   // React draws the boxes, Select all included, from the selection.
   if (_dmsIsReact('dmsFileList')) return dmsPaintFiles();
   const selectAllCb = document.getElementById('dmsSelectAllCb');
@@ -743,7 +777,7 @@ async function dmsUploadPicked(input) {
   const file = input.files?.[0];
   if (!file) return;
   if (!_dmsSelectedClient || !_dmsBrowseFolderId) { input.value = ''; return; }
-  const statusEl = document.getElementById('dmsUploadStatus');
+  const statusEl = _dmsStatusBox();
   statusEl.style.display = 'block';
   statusEl.style.color = '#4f46e5';
   statusEl.textContent = `Uploading "${file.name}"…`;
