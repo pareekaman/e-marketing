@@ -474,8 +474,13 @@ async function init() {
       else if (bb) bb.style.display = ME.role === 'admin' ? 'inline-flex' : 'none';
     }
     if (canDo('set_plan')) {
-      const sp = document.getElementById('setPlanBtn');
-      if (sp) sp.style.display = 'inline-flex';
+      // React's MIS header (MisSetPlan.jsx, in #misHeadRoot) takes the same display.
+      const mh = document.getElementById('misHeadRoot');
+      if (mh && mh.dataset.react) { window._misSetPlanShow = true; if (window.MIS_SETPLAN_REACT) window.MIS_SETPLAN_REACT(true); else emkReactMount('missetplan', mh); }
+      else {
+        const sp = document.getElementById('setPlanBtn');
+        if (sp) sp.style.display = 'inline-flex';
+      }
     }
 
     // Leave Tracker — team tab for roles with leave oversight

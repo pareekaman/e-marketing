@@ -1,0 +1,3 @@
+import{r as n,j as s}from"./vendor-DdgGs7Sa.js";import{l as a}from"./app-DYCEQstd.js";function u(){const[r,o]=n.useState(()=>!!window._misSetPlanShow),e=n.useRef(null);return n.useEffect(()=>(window.MIS_SETPLAN_REACT=o,()=>{window.MIS_SETPLAN_REACT=null}),[]),n.useLayoutEffect(()=>{e.current&&r&&(e.current.style.display="inline-flex")}),s.jsxs(s.Fragment,{children:[`
+      `,s.jsx("button",{id:"setPlanBtn",className:"btn btn-primary",onClick:()=>a("openSetPlanModal"),ref:t=>{e.current=t,t&&!t._sp&&(t._sp=!0,t.setAttribute("style","display:none"))},children:"📅 Set Plan"}),`
+    `]})}export{u as default};

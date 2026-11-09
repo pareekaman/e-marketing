@@ -71,6 +71,7 @@ const PAGES = {
   drtoolbar: lazy(() => import('./pages/DrToolbar.jsx')),
   drreminders: lazy(() => import('./pages/DrReminders.jsx')),
   misfilters: lazy(() => import('./pages/MisFilters.jsx')),
+  missetplan: lazy(() => import('./pages/MisSetPlan.jsx')),
   mis: lazy(() => import('./pages/MisResults.jsx')),
   race: lazy(() => import('./pages/RaceResults.jsx')),
   cechipsto: lazy(() => import('./pages/ComposeMail.jsx').then(m => ({ default: m.CeChipsTo }))),

@@ -2611,7 +2611,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 
   <!-- ── MIS REPORT ── -->
   <div id="page-mis" class="page">
-    <div class="page-header" style="justify-content:flex-end">
+    <!-- data-react: the header's Set Plan button is React (frontend/src/pages/MisSetPlan.jsx); this one is the fallback. -->
+    <div class="page-header" id="misHeadRoot" data-react="1" data-react-quiet="1" style="justify-content:flex-end">
       <button id="setPlanBtn" class="btn btn-primary" onclick="openSetPlanModal()" style="display:none">📅 Set Plan</button>
     </div>
 
@@ -4426,11 +4427,11 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 
 <script src="/js/themes/decor-core.js?v=20261027c"></script>
 <script src="/js/themes/picker.js?v=20261107b"></script>
-<script src="/js/core.js?v=20261107c"></script>
+<script src="/js/core.js?v=20261109a"></script>
 <script src="/js/access.js?v=20261107b"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261108a"></script>
+<script src="/js/react-bridge.js?v=20261109a"></script>
 <script src="/js/dashboard.js?v=20261107e"></script>
 <script src="/js/amber-ui.js?v=20261107a"></script>
 <script src="/js/tasks.js?v=20261107e"></script>
