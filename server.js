@@ -9784,7 +9784,11 @@ app.get('/api/leaves', requireAuth, async (req, res) => {
          FROM users hod
          WHERE COALESCE(hod.user_role, hod.role)='hod'
            AND hod.department=u.department
-           AND u.department IS NOT NULL AND u.department<>'') AS dept_hod_names
+           AND u.department IS NOT NULL AND u.department<>''
+           -- A HOD / PC / admin's leave does not go to their department's HODs
+           -- (resolveLeaveApprover), and a HOD was shown as their own approver:
+           -- for them the page falls back to approver_name, the real approver.
+           AND COALESCE(u.user_role, u.role) NOT IN ('hod','pc','admin')) AS dept_hod_names
       FROM leave_requests lr
       JOIN users u ON lr.user_id=u.id
       LEFT JOIN users ap ON lr.approver_id=ap.id
