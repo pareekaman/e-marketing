@@ -1,0 +1,4 @@
+import{r as s,j as n}from"./vendor-DdgGs7Sa.js";import{l as a,c as l}from"./app-DYCEQstd.js";function m(){const[e,i]=s.useState({active:"clients",vault:null}),c=s.useRef(null);return s.useEffect(()=>(a("cmTabsSetReact",i),a("initTabIndicators"),()=>a("cmTabsSetReact",null)),[]),s.useLayoutEffect(()=>{c.current&&e.vault!=null&&(c.current.style.display=e.vault?"":"none")}),n.jsxs("div",{className:"tab-group",ref:l("margin-bottom:18px"),children:[`
+      `,n.jsx("div",{className:"tab"+(e.active==="clients"?" active":""),id:"cmTabClientsBtn",onClick:()=>a("cmTab","clients"),children:"🏢 Clients"}),`
+      `,n.jsx("div",{className:"tab"+(e.active==="vault"?" active":""),id:"cmTabVaultBtn",onClick:()=>a("cmTab","vault"),ref:t=>{c.current=t,t&&!t._cm&&(t._cm=!0,t.setAttribute("style","display:none"))},children:"🔑 Credentials Vault"}),`
+    `]})}export{m as default};

@@ -45,8 +45,10 @@ function cmApplyRoleControls(){
   // (add_clients) along with Client Master at the Editor level.
   const show = ME.role === 'admin' || (cmCanEdit() && canDo('add_clients')) ? '' : 'none';
   // The Credentials Vault holds plaintext passwords, so the tab is admin-only.
-  const vaultBtn = document.getElementById('cmTabVaultBtn');
-  if (vaultBtn) vaultBtn.style.display = (ME.role === 'admin') ? '' : 'none';
+  if (!_cmTabsReact({ vault: ME.role === 'admin' })) {   // React tabs (CmTabs.jsx) take it as a flag
+    const vaultBtn = document.getElementById('cmTabVaultBtn');
+    if (vaultBtn) vaultBtn.style.display = (ME.role === 'admin') ? '' : 'none';
+  }
   if (_cmBar({ show: { add: show === '', crm: canDo('admin_clients') } })) return;
   const addBtn = document.getElementById('cmAddBtn');
   if (addBtn) addBtn.style.display = show;
@@ -117,10 +119,27 @@ async function cmRetryFms() {
 }
 
 // ── Client Master tabs: Clients list ⇄ Credentials Vault ─────────────
+// The two tabs are React (frontend/src/pages/CmTabs.jsx) when #cmTabsRoot carries data-react;
+// the .tab-group inside it in app.html is the fallback. View: { active, vault } — vault (the
+// tab shows, admin only) null until cmApplyRoleControls decides.
+let CM_TABS_REACT = null;
+const _cmTabsView = { active: 'clients', vault: null };
+function cmTabsSetReact(fn){ CM_TABS_REACT = fn; if (fn) fn({ ..._cmTabsView }); }
+function _cmTabsReact(patch){
+  const root = document.getElementById('cmTabsRoot');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_cmTabsView, patch);
+  if (CM_TABS_REACT) CM_TABS_REACT({ ..._cmTabsView });
+  else if (!root._tabsMounted) { root._tabsMounted = true; emkReactMount('cmtabs', root); }
+  return true;
+}
+
 function cmTab(which, el){
   if (which === 'vault' && ME.role !== 'admin') return;  // admin-only
-  document.querySelectorAll('#cmTabClientsBtn,#cmTabVaultBtn').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
+  if (!_cmTabsReact({ active: which })) {
+    document.querySelectorAll('#cmTabClientsBtn,#cmTabVaultBtn').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+  }
   document.getElementById('cmTab-clients').style.display = which === 'clients' ? 'block' : 'none';
   document.getElementById('cmTab-vault').style.display   = which === 'vault'   ? 'block' : 'none';
   if (which === 'vault') cvLoad();
