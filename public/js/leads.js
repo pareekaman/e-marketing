@@ -378,6 +378,12 @@ function _kpiPut(id, part, val) {
   const root = key && document.getElementById(LEAD_UI_SPEC[key].root);
   if (!root || !root.dataset.react) return false;
   const u = _leadUiOf(key);
+  // A sub-line comes as the old markup — a phrase, or <span class="up|down|flat">…</span> and a
+  // tail — and goes over as { cls, text, tail } for React to draw.
+  if (part === 'subs') {
+    const m = /^<span class="(up|down|flat)">([^<]*)<\/span>(.*)$/.exec(String(val));
+    val = m ? { cls: m[1], text: m[2], tail: m[3] } : { text: String(val) };
+  }
   u.view[part] = { ...(u.view[part] || {}), [id]: val };
   if (!u.pending) { u.pending = true; queueMicrotask(() => { u.pending = false; _lui(key); }); }
   return true;

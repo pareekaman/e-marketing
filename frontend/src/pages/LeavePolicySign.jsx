@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { legacy, css } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
+import { PolicyList } from '../components/LeavePolicyBoxes.jsx';
 
 function Body({ d, close }) {
   const [agree, setAgree] = useState(false);
@@ -37,7 +38,7 @@ function Body({ d, close }) {
         <h3 className="lv-modal-title">📜 Leave &amp; Work From Home (WFH) Policy</h3>
       </div>
       <p ref={css('font-size:13px;color:#64748b;margin:0 0 6px')}>Please read and sign this policy once.</p>
-      <div dangerouslySetInnerHTML={{ __html: d.html }} />
+      <div><PolicyList points={d.points} /></div>
       <h4 ref={css('margin:14px 0 8px;font-size:15px')}>Employee Acknowledgement</h4>
       <label ref={css('display:flex;gap:8px;align-items:flex-start;font-size:14px;cursor:pointer')}>
         <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} ref={css('margin-top:3px')} /> I have read, understood, and agree to comply with the above Leave &amp; WFH Policy.

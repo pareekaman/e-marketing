@@ -24,6 +24,13 @@ let LP_REPORT = [];           // the admin list, kept for Download
 function lpPolicyHtml(){
   return `<ol class="lp-list">${LP_POINTS.map(([h, t]) => `<li><b>${h}:</b> ${t}</li>`).join('')}</ol>`;
 }
+// The same points for React (PolicyList in LeavePolicyBoxes.jsx): each text split into plain
+// parts and the parts LP_POINTS wraps in <b>.
+function lpPolicyPoints(){
+  return LP_POINTS.map(([h, t]) => ({
+    h, parts: t.split(/(<b>[^<]*<\/b>)/).filter(Boolean).map(x => x.startsWith('<b>') ? { b: x.slice(3, -4) } : { t: x }),
+  }));
+}
 
 async function lpLoad(){
   const r = await api('/api/leave-policy/me');
@@ -46,7 +53,7 @@ function lpRenderNotice(){
   const box = document.getElementById('lpNotice');
   if (!box || !LP_STATE) return;
   const s = LP_STATE;
-  if (LP_NOTICE_REACT) return LP_NOTICE_REACT({ ...s, title: LP_TITLE, policy: lpPolicyHtml() });
+  if (LP_NOTICE_REACT) return LP_NOTICE_REACT({ ...s, title: LP_TITLE, points: lpPolicyPoints() });
   box.innerHTML = `<details class="lp-notice" ${s.signed ? '' : 'open'}>
     <summary><span>📜 ${LP_TITLE}</span>
       ${s.signed
@@ -69,7 +76,7 @@ function lpOpenSign(){
   _lpPromptedAt = Date.now();
   const root = document.getElementById('lpSignRoot');
   if (root && root.dataset.react) {
-    const data = { html: lpPolicyHtml(), name: ME.name || '', date: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'), maxBytes: LP_MAX_BYTES };
+    const data = { points: lpPolicyPoints(), name: ME.name || '', date: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'), maxBytes: LP_MAX_BYTES };
     if (LP_REACT) LP_REACT(data); else { _lpWanted = data; emkReactMount('lpsign', root); }
     return;
   }

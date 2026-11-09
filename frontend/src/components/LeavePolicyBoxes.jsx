@@ -27,18 +27,24 @@ export function LpNotice() {
           ? <span className="lp-ok">{'✅ Signed on ' + (s.signed_at ?? '')}</span>
           : <span className="lp-bad">{'✍️ Not signed yet — '}<a href="#" onClick={e => { e.preventDefault(); legacy('lpOpenSign'); }}>sign now</a></span>}
         {'\n    '}</summary>{'\n    '}
-      {/* the policy points carry <b>, so they come as markup, as before */}
-      <PolicyList html={s.policy} />{'\n    '}
+      <PolicyList points={s.points} />{'\n    '}
       {s.signed ? <div className="lp-signed">{'Signed by '}<b>{s.signed_name ?? ''}</b>{' on ' + (s.signed_at ?? '') + '\n      '}<img src={s.signature} alt="Signature" title="Click to open full size" onClick={viewSig} /></div> : null}
       {'\n  '}
     </details>
   );
 }
 
-// lpPolicyHtml() is a whole <ol class="lp-list">…</ol>; drawn as that element.
-function PolicyList({ html }) {
-  const inner = String(html || '').replace(/^<ol class="lp-list">/, '').replace(/<\/ol>$/, '');
-  return <ol className="lp-list" dangerouslySetInnerHTML={{ __html: inner }} />;
+// The policy's numbered points (lpPolicyPoints in leave-policy.js: { h, parts: [{ t } | { b }] }),
+// as lpPolicyHtml wrote them: <li><b>Heading:</b> text with its bold parts</li>. Also used by the
+// sign pop-up (LeavePolicySign.jsx).
+export function PolicyList({ points }) {
+  return (
+    <ol className="lp-list">
+      {(points || []).map((p, i) => (
+        <li key={i}><b>{p.h + ':'}</b>{' '}{p.parts.map((x, j) => (x.b !== undefined ? <b key={j}>{x.b}</b> : x.t))}</li>
+      ))}
+    </ol>
+  );
 }
 
 export function LpReport() {

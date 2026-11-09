@@ -54,6 +54,12 @@ function Num({ n }) {
   return <>{String(shown)}</>;
 }
 
+// A card's sub-line: { text } (a phrase) or { cls, text, tail } (a coloured part, then the rest).
+function Sub({ s }) {
+  if (!s) return null;
+  return s.cls ? <><span className={s.cls}>{s.text}</span>{s.tail}</> : <>{s.text}</>;
+}
+
 // The card sparkline (line + gradient area + end dot), drawn as enqSparkline drew it.
 function Spark({ id, sp }) {
   const values = sp && sp.values;
@@ -89,8 +95,7 @@ function makeKpis(src) {
         <div className={`enq-kpi ${c.cls}${c.k === v.sel ? ' selected' : ''}`} id={`${s.p}Card-${c.k}`} onClick={c.still ? undefined : () => click(c.k)} title={c.title}>{nl(i + 2)}
           <div className="enq-kpi-top"><span className="enq-kpi-icon">{ICONS[c.cls]}</span><span className="enq-kpi-label">{c.label}</span></div>{nl(i + 2)}
           <div className="enq-kpi-bottom"><div className="enq-kpi-num" id={s.p + c.id}><Num n={(v.nums || {})[s.p + c.id]} /></div>{c.spark ? <div className="enq-kpi-spark" id={`${s.p}Spark${c.id}`}><Spark id={`${s.p}Spark${c.id}`} sp={(v.sparks || {})[`${s.p}Spark${c.id}`]} /></div> : null}</div>{nl(i + 2)}
-          {/* The sub-line is a short fixed phrase, sometimes with one <span class="up|down|flat">. */}
-          <div className="enq-kpi-sub" id={`${s.p}Sub${c.id}`} dangerouslySetInnerHTML={{ __html: (v.subs || {})[`${s.p}Sub${c.id}`] || '' }} />{nl(i)}
+          <div className="enq-kpi-sub" id={`${s.p}Sub${c.id}`}><Sub s={(v.subs || {})[`${s.p}Sub${c.id}`]} /></div>{nl(i)}
         </div>
       </Fragment>)}{nl(i - 2)}
     </>;
