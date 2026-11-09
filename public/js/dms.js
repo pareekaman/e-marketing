@@ -63,14 +63,16 @@ async function loadDMS() {
 
   // Check Drive connection (admin only)
   const banner = document.getElementById('dmsAuthBanner');
-  const bulkBtn = document.getElementById('dmsBulkSetupBtn');
+  _dmsBarMount();
+  // React's toolbar (DmsBar.jsx) takes the button's display; the old one is set directly.
+  const bulkShow = d => { if (!_dmsBar({ bulk: d })) document.getElementById('dmsBulkSetupBtn').style.display = d; };
   if (ME.role === 'admin') {
     try {
       const st = await api('/api/google/drive-status');
       banner.style.display = st.connected ? 'none' : 'flex';
-      bulkBtn.style.display = st.connected ? 'inline-block' : 'none';
-    } catch { banner.style.display = 'none'; bulkBtn.style.display = 'none'; }
-  } else { banner.style.display = 'none'; bulkBtn.style.display = 'none'; }
+      bulkShow(st.connected ? 'inline-block' : 'none');
+    } catch { banner.style.display = 'none'; bulkShow('none'); }
+  } else { banner.style.display = 'none'; bulkShow('none'); }
 
   // Load clients
   const [clients] = await Promise.all([
@@ -594,8 +596,28 @@ async function dmsBulkDeleteSelected() {
   } catch (e) { showToast('Bulk delete failed: ' + e.message); }
 }
 
+// The client list's toolbar (search + Create missing folders) is React (frontend/src/pages/
+// DmsBar.jsx) when #dmsRootBar carries data-react; its markup in app.html is the fallback.
+// The search box keeps id="dmsClientSearch" (dmsPaintClients reads it).
+// View: { bulk: the button's display | null, busy }.
+let DMS_BAR_REACT = null;
+const _dmsBarView = { bulk: null, busy: false };
+function dmsBarSetReact(fn) { DMS_BAR_REACT = fn; if (fn) fn({ ..._dmsBarView }); }
+function _dmsBar(patch) {
+  const root = document.getElementById('dmsRootBar');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_dmsBarView, patch);
+  if (DMS_BAR_REACT) DMS_BAR_REACT({ ..._dmsBarView });
+  return true;
+}
+function _dmsBarMount() {
+  const root = document.getElementById('dmsRootBar');
+  if (root && root.dataset.react && !root._barMounted) { root._barMounted = true; emkReactMount('dmsbar', root); }
+}
+
 async function dmsBulkSetup() {
-  const btn = document.getElementById('dmsBulkSetupBtn');
+  // Under React the button's busy state is in the view; the stand-in takes the same writes.
+  const btn = _dmsBar({}) ? { set disabled(v) { _dmsBar({ busy: !!v }); }, set textContent(v) {} } : document.getElementById('dmsBulkSetupBtn');
   if (!await appConfirm('Create a Drive folder for every existing client that doesn\'t have one yet? This may take a while for a large client list.', 'Create missing folders?')) return;
   btn.disabled = true; btn.textContent = 'Creating…';
   try {

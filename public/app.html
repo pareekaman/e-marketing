@@ -1462,7 +1462,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 
     <!-- ROOT: Drive-style full-width client table -->
     <div id="dmsRootView">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <!-- data-react: the toolbar is React (frontend/src/pages/DmsBar.jsx); dms.js still reads #dmsClientSearch. This markup is the fallback. -->
+      <div id="dmsRootBar" data-react="1" data-react-quiet="1" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap">
         <input type="text" id="dmsClientSearch" placeholder="Search clients..." oninput="dmsFilterClients()" style="flex:1;min-width:200px;max-width:320px;box-sizing:border-box;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:inherit"/>
         <button id="dmsBulkSetupBtn" onclick="dmsBulkSetup()" title="Create Drive folders for every existing client that doesn't have one yet" style="display:none;font-size:12px;padding:6px 12px;border:1px solid #c7d2fe;background:#eef2ff;color:var(--accent-dark);border-radius:8px;cursor:pointer;font-weight:600;white-space:nowrap">📁 Create missing folders</button>
       </div>
@@ -4439,7 +4440,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261107b"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261105a"></script>
-<script src="/js/react-bridge.js?v=20261109e"></script>
+<script src="/js/react-bridge.js?v=20261109f"></script>
 <script src="/js/dashboard.js?v=20261107e"></script>
 <script src="/js/amber-ui.js?v=20261107a"></script>
 <script src="/js/tasks.js?v=20261107e"></script>
@@ -4463,7 +4464,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
      redirect back to the login page. -->
 <script src="/js/notify.js?v=20261105b"></script>
 <script src="/js/meetings.js?v=20261030b"></script>
-<script src="/js/dms.js?v=20261101a"></script>
+<script src="/js/dms.js?v=20261109a"></script>
 <script src="/js/leads.js?v=20261101c"></script>
 <script src="/js/enquiry.js?v=20261103a"></script>
 <script src="/js/voice-delegate.js?v=20261103a"></script>
