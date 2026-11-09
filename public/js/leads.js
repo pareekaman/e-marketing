@@ -283,18 +283,38 @@ const SRC_META = {
   google: { label: 'Google Ads', color: '--chart-3', icon: _srcSvg('<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>') },
   manual: { label: 'Manual Entry', color: '--success', icon: _srcSvg('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>') },
 };
+// The picker is React (frontend/src/pages/SrcDd.jsx) when #srcDdRoot carries data-react; its
+// markup in app.html is the fallback. View: { src, open, ic: { color, bg } | null } (ic is
+// null until the first pick, so the icon keeps the markup's var() style until then).
+let SRC_DD_REACT = null;
+const _srcDdView = { src: 'website', open: false, ic: null };
+function srcDdView() { return { ..._srcDdView }; }
+function srcDdSetReact(fn) { SRC_DD_REACT = fn; }
+function _srcDd(patch) {
+  const root = document.getElementById('srcDdRoot');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_srcDdView, patch);
+  if (SRC_DD_REACT) SRC_DD_REACT({ ..._srcDdView });
+  else if (!root._sdMounted) { root._sdMounted = true; emkReactMount('srcdd', root); }
+  return true;
+}
 function toggleSrcDd(e) {
   if (e) e.stopPropagation();
+  if (_srcDd({ open: !_srcDdView.open })) return;
   const m = document.getElementById('srcDdMenu'), b = document.getElementById('srcDdBtn');
   const open = m && m.classList.toggle('open'); if (b) b.classList.toggle('open', open);
 }
 function closeSrcDd() {
+  // Runs on every click and Escape anywhere in the app, so it only pushes when open.
+  const root = document.getElementById('srcDdRoot');
+  if (root && root.dataset.react) { if (_srcDdView.open) _srcDd({ open: false }); return; }
   const m = document.getElementById('srcDdMenu'), b = document.getElementById('srcDdBtn');
   if (m) m.classList.remove('open'); if (b) b.classList.remove('open');
 }
 function pickSrc(v) { closeSrcDd(); switchEnqSource(v); }
 function updateSrcDdUI(v) {
   const m = SRC_META[v] || SRC_META.website;
+  if (_srcDd({ src: v, ic: { color: cssVar(m.color), bg: `color-mix(in srgb, ${cssVar(m.color)} 14%, transparent)` } })) return;
   const lbl = document.getElementById('srcDdLabel'); if (lbl) lbl.textContent = m.label;
   const ic = document.getElementById('srcDdIcon');
   if (ic) { ic.innerHTML = m.icon; ic.style.color = cssVar(m.color); ic.style.background = `color-mix(in srgb, ${cssVar(m.color)} 14%, transparent)`; }
@@ -321,6 +341,7 @@ function switchEnqSource(src) {
 
 async function loadEnquiries(opts) {
   startEnqAutoRefresh();
+  if (!SRC_DD_REACT) _srcDd({}); // mounts the React source picker on the first visit
   const silent = !!(opts && opts.silent); // auto-refresh: no "Loading…" flash, no count-up
   const tb = document.getElementById('enqTbody');
   if (tb && !silent && !_leadRows('enq', tb, { loading: true })) tb.innerHTML = `<tr><td colspan="7" class="empty">Loading…</td></tr>`;
