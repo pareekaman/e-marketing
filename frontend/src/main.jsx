@@ -123,6 +123,8 @@ const PAGES = {
   leaveremove: lazy(() => import('./pages/LeaveRemoveDays.jsx')),
   setplan: lazy(() => import('./pages/SetPlan.jsx')),
   mondaycheckin: lazy(() => import('./pages/MondayCheckin.jsx')),
+  hrmstats: lazy(() => import('./pages/HrmStats.jsx').then(m => ({ default: m.HrmStatCards }))),
+  hrmmsgstats: lazy(() => import('./pages/HrmStats.jsx').then(m => ({ default: m.HrmMsgCards }))),
   leavemove: lazy(() => import('./pages/LeaveMoveDay.jsx')),
   lpsign: lazy(() => import('./pages/LeavePolicySign.jsx')),
   ekcards: lazy(() => import('./pages/EkCards.jsx')),

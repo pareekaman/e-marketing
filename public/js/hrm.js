@@ -9,6 +9,21 @@ const HRM_STATUS_BG = {'Scheduled':'#eff6ff','Rescheduled':'#fffbeb','Selected':
 // comparisons rely on them) — this only controls what's shown to the user.
 const HRM_STATUS_LABELS = {'Offer Sent':'PRELIMINARY OFFER LETTER SENT','Offer Letter Sent':'OFFER LETTER SENT'};
 
+// The number cards (frontend/src/pages/HrmStats.jsx) when #hrmStatGrid / #hrmMsgGrid carry
+// data-react; their markup is the fallback. Views: stats { total, today, selected, offers },
+// msgs { sent, failed, total }.
+const HRM_STATS_REACT = {}, _hrmStatsViews = {};
+function hrmStatsView(k) { return _hrmStatsViews[k] || null; }
+function hrmStatsSetReact(k, fn) { HRM_STATS_REACT[k] = fn; }
+function _hrmStats(k, view) {
+  const root = document.getElementById(k === 'stats' ? 'hrmStatGrid' : 'hrmMsgGrid');
+  if (!root || !root.dataset.react) return false;
+  _hrmStatsViews[k] = view;
+  if (HRM_STATS_REACT[k]) HRM_STATS_REACT[k](view);
+  else if (!root._hsMounted) { root._hsMounted = true; emkReactMount(k === 'stats' ? 'hrmstats' : 'hrmmsgstats', root); }
+  return true;
+}
+
 async function loadHRM() {
   const [stats, candidates, messages] = await Promise.all([
     api('/api/hrm/stats'),
@@ -30,7 +45,7 @@ async function loadHRM() {
     if (b) b.style.display = canSchedule ? '' : 'none';
   });
 
-  if (stats && !stats.error) {
+  if (stats && !stats.error && !_hrmStats('stats', { total: stats.total || 0, today: stats.today_interviews || 0, selected: stats.selected || 0, offers: stats.offer_sent || 0 })) {
     document.getElementById('hrm-stat-total').textContent    = stats.total || 0;
     document.getElementById('hrm-stat-today').textContent    = stats.today_interviews || 0;
     document.getElementById('hrm-stat-selected').textContent = stats.selected || 0;
@@ -38,9 +53,11 @@ async function loadHRM() {
   }
   const sent   = _hrmMessages.filter(m=>m.status==='Sent').length;
   const failed = _hrmMessages.filter(m=>m.status==='Failed').length;
-  document.getElementById('hrm-msg-sent').textContent   = sent;
-  document.getElementById('hrm-msg-failed').textContent = failed;
-  document.getElementById('hrm-msg-total').textContent  = _hrmMessages.length;
+  if (!_hrmStats('msgs', { sent, failed, total: _hrmMessages.length })) {
+    document.getElementById('hrm-msg-sent').textContent   = sent;
+    document.getElementById('hrm-msg-failed').textContent = failed;
+    document.getElementById('hrm-msg-total').textContent  = _hrmMessages.length;
+  }
   // Populate position filter
   const positions = [...new Set(_hrmCandidates.map(c=>c.profile_position).filter(Boolean))].sort();
   const posEl = document.getElementById('hrmFilterPosition');
