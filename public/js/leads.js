@@ -78,11 +78,33 @@ function rerenderActiveEnqView() {
   else if (src === 'google') renderGoogleAds();
   else if (src === 'manual') renderManual();
 }
+// The toolbar (date range + Custom From / To, and the Website status filter, search and
+// Refresh) is React (frontend/src/pages/EnqToolbar.jsx) when #enqToolbar carries data-react;
+// its markup in app.html is the fallback. React keeps hidden <select id="enqRangeSel"> and
+// <select id="enqStatusFilter"> in step (flushSync'd); the date and search inputs keep their
+// ids and values. View: { range, custom, web, statuses, status }.
+let ENQ_TB_REACT = null;
+const _enqTbView = { range: 'all', custom: false, web: true, statuses: [], status: '' };
+function enqTbView() { return { ..._enqTbView }; }
+function enqTbSetReact(fn) { ENQ_TB_REACT = fn; }
+function _enqTb(patch) {
+  const root = document.getElementById('enqToolbar');
+  if (!root || !root.dataset.react) return false;
+  Object.assign(_enqTbView, patch);
+  if (ENQ_TB_REACT) ENQ_TB_REACT({ ..._enqTbView });
+  else if (!root._etMounted) { root._etMounted = true; emkReactMount('enqtoolbar', root); }
+  return true;
+}
+function enqRangePick(v) { _enqTb({ range: String(v) }); onEnqRangeChange(); }
+function enqStatusPick(v) { _enqTb({ status: String(v) }); onEnqStatusFilter(); }
 function onEnqRangeChange() {
-  const sel = document.getElementById('enqRangeSel'); if (!sel) return;
-  enqRange.preset = sel.value;
-  const custom = sel.value === 'custom';
-  ['enqRangeFrom', 'enqRangeTo'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = custom ? '' : 'none'; });
+  const sel = document.getElementById('enqRangeSel');
+  const react = _enqTb({});
+  if (!sel && !react) return;
+  const value = react ? _enqTbView.range : sel.value;
+  enqRange.preset = value;
+  const custom = value === 'custom';
+  if (!_enqTb({ custom })) ['enqRangeFrom', 'enqRangeTo'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = custom ? '' : 'none'; });
   if (custom) onEnqCustomRange(); else rerenderActiveEnqView();
 }
 function onEnqCustomRange() {
@@ -161,14 +183,16 @@ function enqSortBy(k) { toggleSort(enqSort, k, renderEnquiries); }
 function mlSortBy(k) { toggleSort(mlSort, k, renderMetaLeads); }
 function gadSortBy(k) { toggleSort(gadSort, k, renderGoogleAds); }
 function manSortBy(k) { toggleSort(manSort, k, renderManual); }
-function onEnqStatusFilter() { enqStatusFilter = (document.getElementById('enqStatusFilter') || {}).value || ''; renderEnquiries(); }
+function onEnqStatusFilter() { enqStatusFilter = (_enqTb({}) ? _enqTbView.status : (document.getElementById('enqStatusFilter') || {}).value) || ''; renderEnquiries(); }
 function onMlStatusFilter() { mlStatusFilter = (document.getElementById('mlStatusFilter') || {}).value || ''; renderMetaLeads(); }
 function onGadStatusFilter() { gadStatusFilter = (document.getElementById('gadStatusFilter') || {}).value || ''; renderGoogleAds(); }
 // Status dropdown ko current data ke distinct statuses se bharta hai.
 function fillStatusOptions(selId, rows, statusFn, current) {
-  const sel = document.getElementById(selId); if (!sel) return;
   const set = new Set();
   rows.forEach(r => { const s = (statusFn(r) || '').trim(); if (s) set.add(s); });
+  // The Website one is React (EnqToolbar.jsx): it gets the list and the shown value.
+  if (selId === 'enqStatusFilter' && _enqTb({ statuses: [...set].sort(), status: current && set.has(current) ? current : '' })) return;
+  const sel = document.getElementById(selId); if (!sel) return;
   const opts = ['<option value="">All statuses</option>'].concat([...set].sort().map(s =>
     `<option value="${escapeHtml(s)}"${s === current ? ' selected' : ''}>${escapeHtml(s)}</option>`));
   sel.innerHTML = opts.join('');
@@ -331,7 +355,7 @@ function switchEnqSource(src) {
     if (el) el.style.display = s === src ? '' : 'none';
   });
   const web = src === 'website';
-  const ctrls = document.getElementById('enqWebControls'); if (ctrls) ctrls.style.display = web ? '' : 'none';
+  if (!_enqTb({ web })) { const ctrls = document.getElementById('enqWebControls'); if (ctrls) ctrls.style.display = web ? '' : 'none'; }
   const sub = document.getElementById('enqWebSubtitle'); if (sub) sub.style.display = web ? '' : 'none';
   if (src === 'meta' && !_metaLeads) loadMetaLeads();
   if (src === 'google' && !_gadData) loadGoogleAds();
@@ -342,6 +366,7 @@ function switchEnqSource(src) {
 async function loadEnquiries(opts) {
   startEnqAutoRefresh();
   if (!SRC_DD_REACT) _srcDd({}); // mounts the React source picker on the first visit
+  if (!ENQ_TB_REACT) _enqTb({});  // and the toolbar
   const silent = !!(opts && opts.silent); // auto-refresh: no "Loading…" flash, no count-up
   const tb = document.getElementById('enqTbody');
   if (tb && !silent && !_leadRows('enq', tb, { loading: true })) tb.innerHTML = `<tr><td colspan="7" class="empty">Loading…</td></tr>`;
