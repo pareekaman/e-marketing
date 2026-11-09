@@ -18,7 +18,8 @@ const reducedMotion = () => window.matchMedia && window.matchMedia('(prefers-red
 // bare: the children sit straight on the overlay, with no .modal box (a photo
 // viewer); overlayStyle / onOverlayClick are the overlay's own style text and
 // click, as the old markup set them.
-export default function Modal({ open, onClose, className = '', style = '', closeX = true, bare = false, overlayStyle = '', onOverlayClick, children }) {
+// overlayClass: extra classes on the overlay itself (the Monday check-in's mw-overlay).
+export default function Modal({ open, onClose, className = '', style = '', closeX = true, bare = false, overlayStyle = '', overlayClass = '', onOverlayClick, children }) {
   const [shown, setShown] = useState(open);       // mounted at all
   const [closing, setClosing] = useState(false);  // fading out
   const overlay = useRef(null);
@@ -48,7 +49,7 @@ export default function Modal({ open, onClose, className = '', style = '', close
   if (!shown) return null;
   return (
     <div ref={el => { overlay.current = el; if (overlayStyle) css(overlayStyle)(el); }} onClick={onOverlayClick}
-      className={`modal-overlay${open ? ' open' : ''}${closing ? ' closing' : ''}`}>
+      className={`modal-overlay${overlayClass ? ' ' + overlayClass : ''}${open ? ' open' : ''}${closing ? ' closing' : ''}`}>
       {bare ? children : <div className={`modal${className ? ' ' + className : ''}`} ref={style ? css(style) : undefined}>
         {closeX ? <button type="button" className="modal-close" aria-label="Close" onClick={() => onClose && onClose()}>×</button> : null}
         {children}

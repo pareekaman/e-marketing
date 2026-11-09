@@ -122,6 +122,7 @@ const PAGES = {
   dmspopups: lazy(() => import('./pages/DmsPopups.jsx')),
   leaveremove: lazy(() => import('./pages/LeaveRemoveDays.jsx')),
   setplan: lazy(() => import('./pages/SetPlan.jsx')),
+  mondaycheckin: lazy(() => import('./pages/MondayCheckin.jsx')),
   leavemove: lazy(() => import('./pages/LeaveMoveDay.jsx')),
   lpsign: lazy(() => import('./pages/LeavePolicySign.jsx')),
   ekcards: lazy(() => import('./pages/EkCards.jsx')),

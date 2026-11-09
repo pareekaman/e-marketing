@@ -649,6 +649,10 @@ function loadProfilePage() {
 let MW_DATA = null;
 let MW_CHOSEN_SCORE = -10;
 let MW_LAST_COMMITTED = null; // for live-preview comparison
+// The pop-up is React (frontend/src/pages/MondayCheckin.jsx, in #mwRoot) when that root
+// carries data-react; #mondayCheckinModal is the fallback. Both commit through mwCommitSend().
+let MW_REACT = null, _mwWanted = null;
+function mwSetReact(fn) { MW_REACT = fn; if (fn && _mwWanted) { const w = _mwWanted; _mwWanted = null; fn(w); } }
 
 function mwScoreClass(score) {
   if (score === null || score === undefined) return '';
@@ -717,6 +721,17 @@ async function mwLoadAndShow() {
     const hr = new Date(Date.now() + (5.5*60*60*1000)).getUTCHours();
     const greet = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
     const firstName = (ME.name || '').split(' ')[0] || '';
+    const mwRoot = document.getElementById('mwRoot');
+    if (mwRoot && mwRoot.dataset.react) {
+      const lw0 = MW_DATA.lastWeek, last0 = lw0.stats.overall.score;
+      MW_LAST_COMMITTED = lw0.plan && lw0.plan.user_committed_score !== null ? parseFloat(lw0.plan.user_committed_score) : null;
+      // Same default as below: last week's score, rounded and kept within -100..0.
+      const defaultScore = last0 !== null && last0 !== undefined ? Math.max(-100, Math.min(0, Math.round(last0))) : -10;
+      MW_CHOSEN_SCORE = defaultScore;
+      const view = { data: MW_DATA, greeting: `${greet}, ${firstName}`, subtitle: 'Monday Check-in · 30 seconds', defaultScore };
+      if (MW_REACT) MW_REACT(view); else { _mwWanted = view; emkReactMount('mondaycheckin', mwRoot); }
+      return;
+    }
     document.getElementById('mwGreeting').textContent = `${greet}, ${firstName}`;
     document.getElementById('mwSubtitle').textContent = `Monday Check-in · 30 seconds`;
 
@@ -931,19 +946,37 @@ async function mwSubmit() {
   err.style.display = 'none';
   btn.disabled = true;
   btn.textContent = 'Saving…';
+  const res = await mwCommitSend(MW_CHOSEN_SCORE);
+  if (res === true) return;
+  err.textContent = res;
+  err.style.display = 'block';
+  btn.disabled = false;
+  btn.textContent = 'Commit & Start Week →';
+}
+
+// Last week's delegation, checklist and FMS tasks, for the React pop-up's "▼ details".
+async function mwFetchDetails() {
+  const q = `start=${MW_DATA.lastWeek.start}&end=${MW_DATA.lastWeek.end}`;
+  const [delRes, chlRes, fmsRes] = await Promise.all([
+    api(`/api/my-week-tasks?type=delegation&${q}`),
+    api(`/api/my-week-tasks?type=checklist&${q}`),
+    api(`/api/my-week-fms-tasks?${q}`)
+  ]);
+  return { del: delRes.tasks || [], chl: chlRes.tasks || [], fms: fmsRes.tasks || [], today: MW_DATA.todayStr };
+}
+
+// The commit, for this pop-up and the React one: true once it went through (pop-up closed,
+// confetti when earned, toast), otherwise the message to show.
+async function mwCommitSend(score) {
+  MW_CHOSEN_SCORE = score;
   try {
     const r = await api('/api/my-week-plan', 'POST', {
       startDate: MW_DATA.thisWeek.start,
       committedScore: MW_CHOSEN_SCORE
     });
-    if (r.error) {
-      err.textContent = r.error;
-      err.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'Commit & Start Week →';
-      return;
-    }
+    if (r.error) return r.error;
     closeModal('mondayCheckinModal');
+    if (MW_REACT) MW_REACT(null);
     const rank = mwRankFor(MW_CHOSEN_SCORE);
     // Confetti when user hit last week's target OR commits to top-tier this week.
     const lastActual = MW_DATA && MW_DATA.lastWeek ? MW_DATA.lastWeek.stats.overall.score : null;
@@ -951,11 +984,9 @@ async function mwSubmit() {
     const hitLast = lastCommit !== null && lastActual !== null && lastActual >= lastCommit;
     if (hitLast || MW_CHOSEN_SCORE >= -10) mwConfetti();
     showToast(`${rank.icon} Locked: ${mwFmtScore(MW_CHOSEN_SCORE)} — go be a ${rank.title} this week!`);
+    return true;
   } catch (e) {
-    err.textContent = 'Network error: ' + e.message;
-    err.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'Commit & Start Week →';
+    return 'Network error: ' + e.message;
   }
 }
 
