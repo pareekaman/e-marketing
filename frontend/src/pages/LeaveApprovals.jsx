@@ -73,7 +73,7 @@ export default function LeaveApprovals() {
                   <br /><span ref={css('color:#94a3b8;font-size:11px')}>{`${dates.length} day${dates.length === 1 ? '' : 's'}`}</span>
                 </td>
                 <td ref={css('color:#64748b;font-size:12px;line-height:1.5;white-space:nowrap')}>
-                  {r.created_at ? <>{fmtDate(r.created_at.slice(0, 10))}<br /><span ref={css('color:#94a3b8;font-size:11px')}>{r.created_at.slice(11, 16)}</span></> : '—'}
+                  {r.created_at ? <>{fmtDate(r.created_at.slice(0, 10))}<br /><span ref={css('color:#94a3b8;font-size:11px')}>{(legacy('lvTime12', r.created_at.slice(11, 16)) ?? r.created_at.slice(11, 16))}</span></> : '—'}
                 </td>
                 <td ref={css('font-size:12px;max-width:280px')}>{hasBreakdown(r) ? <ExtraBreakdown r={r} /> : r.reason}</td>
                 <Buttons approve={() => legacy('openLeaveDecision', r.id, 'approve')} reject={() => legacy('openLeaveDecision', r.id, 'reject')} />

@@ -37,10 +37,10 @@ function Item({ r, user }) {
         </div>
         {hasBreakdown(r) ? <ExtraBreakdown r={r} /> : <div className="lv-item-reason">{r.reason}</div>}
         <div className="lv-item-meta">
-          <b>Applied:</b> {(r.created_at || '').slice(0, 16)}
+          <b>Applied:</b> {(legacy('lvTime12', (r.created_at || '').slice(0, 16)) ?? (r.created_at || '').slice(0, 16))}
           {r.hod_approved_name ? <> · <b>Approved by HOD:</b> {r.hod_approved_name}</> : null}
           {who ? <> · <b>{who[0]}:</b> {who[1]}</> : null}
-          {r.decided_at ? <> · <b>Decided:</b> {r.decided_at.slice(0, 16)}</> : null}
+          {r.decided_at ? <> · <b>Decided:</b> {(legacy('lvTime12', r.decided_at.slice(0, 16)) ?? r.decided_at.slice(0, 16))}</> : null}
           {r.approver_note ? <> · <b>Note:</b> {r.approver_note}</> : null}
         </div>
       </div>

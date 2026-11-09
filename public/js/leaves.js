@@ -7,6 +7,14 @@ const LEAVE_TYPE_LABEL = {
   work_from_home: 'Work From Home',
   extra_working: 'Extra Working'
 };
+// 'YYYY-MM-DD HH:MM' or 'HH:MM' (24-hour, as the server sends it) → the same with a
+// 12-hour time: '2026-11-09 02:32 PM'. Anything else comes back unchanged.
+function lvTime12(s) {
+  const m = String(s || '').match(/^(.*?)(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!m) return String(s || '');
+  const h = Number(m[2]);
+  return `${m[1]}${String(h % 12 || 12).padStart(2, '0')}:${m[3]} ${h >= 12 ? 'PM' : 'AM'}`;
+}
 const LEAVE_TYPE_ICON = {
   full_day: '🛌', half_day: '⏱', work_from_home: '🏠', extra_working: '⚡'
 };
@@ -416,14 +424,14 @@ function lvItemHtml(r) {
       </div>
       ${(() => { const bd = lvExtraBreakdownHtml(r); return bd || `<div class="lv-item-reason">${dtEscape(r.reason)}</div>`; })()}
       <div class="lv-item-meta">
-        <b>Applied:</b> ${dtEscape((r.created_at||'').slice(0,16))}
+        <b>Applied:</b> ${dtEscape(lvTime12((r.created_at||'').slice(0,16)))}
         ${r.hod_approved_name ? ` · <b>Approved by HOD:</b> ${dtEscape(r.hod_approved_name)}` : ''}
         ${r.status === 'pending' && r.leave_type === 'extra_working' && r.ew_needs_hod !== undefined && !Number(r.ew_needs_hod)
           ? ` · <b>Approver:</b> Simran Gurnani`
           : r.status === 'pending'
           ? (r.dept_hod_names ? ` · <b>Approver:</b> ${dtEscape(r.dept_hod_names)}` : (r.approver_name ? ` · <b>Approver:</b> ${dtEscape(r.approver_name)}` : ''))
           : (r.approver_name ? ` · <b>Decided by:</b> ${dtEscape(r.approver_name)}` : '')}
-        ${r.decided_at ? ` · <b>Decided:</b> ${dtEscape(r.decided_at.slice(0,16))}` : ''}
+        ${r.decided_at ? ` · <b>Decided:</b> ${dtEscape(lvTime12(r.decided_at.slice(0,16)))}` : ''}
         ${r.approver_note ? ` · <b>Note:</b> ${dtEscape(r.approver_note)}` : ''}
       </div>
     </div>
@@ -1081,7 +1089,7 @@ async function loadLeaveApprovals(){
               <td><b>${dtEscape(r.user_name)}</b>${r.user_department ? `<br><span style="color:#94a3b8;font-size:11px">${dtEscape(r.user_department)}</span>` : ''}</td>
               <td><span class="lv-type-pill lv-type-${r.leave_type}">${LEAVE_TYPE_ICON[r.leave_type]||''} ${LEAVE_TYPE_LABEL[r.leave_type]||r.leave_type}</span>${r.hod_approved_name ? `<div style="margin-top:4px;font-size:11px;color:#15803d;font-weight:600">✅ Approved by HOD: ${dtEscape(r.hod_approved_name)}</div>` : ''}</td>
               <td style="font-size:12px;line-height:1.5">${datesHtml}<br><span style="color:#94a3b8;font-size:11px">${dates.length} day${dates.length===1?'':'s'}</span></td>
-              <td style="color:#64748b;font-size:12px;line-height:1.5;white-space:nowrap">${r.created_at ? `${fmtDate(r.created_at.slice(0,10))}<br><span style="color:#94a3b8;font-size:11px">${dtEscape(r.created_at.slice(11,16))}</span>` : '—'}</td>
+              <td style="color:#64748b;font-size:12px;line-height:1.5;white-space:nowrap">${r.created_at ? `${fmtDate(r.created_at.slice(0,10))}<br><span style="color:#94a3b8;font-size:11px">${dtEscape(lvTime12(r.created_at.slice(11,16)))}</span>` : '—'}</td>
               <td style="font-size:12px;max-width:280px">${lvExtraBreakdownHtml(r) || dtEscape(r.reason)}</td>
               <td style="white-space:nowrap">
                 <button class="action-btn done" onclick="openLeaveDecision(${r.id},'approve')">Approve</button>
