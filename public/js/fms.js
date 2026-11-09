@@ -10,13 +10,28 @@ function setRaceDatesToCurrentWeek() {
   const monday = new Date(today);
   monday.setDate(today.getDate() + offsetToMon);
   const ymd = d => d.toISOString().split('T')[0];
-  const rs = document.getElementById('raceStart');
-  const re = document.getElementById('raceEnd');
-  if (rs) rs.value = ymd(monday);
-  if (re) re.value = ymd(today);
+  raceSetRange(ymd(monday), ymd(today));
+}
+
+// The filter card (Start / End, Start Race) is React (frontend/src/pages/RaceFilters.jsx) when
+// #raceFiltersRoot carries data-react; its markup in app.html is the fallback. The date boxes
+// keep their ids and their own values; a value written before React has drawn them also goes
+// into _raceRange (raceSetRange), which React's boxes start from.
+const _raceRange = { start: '', end: '' };
+function raceRangeInit() { return { ..._raceRange }; }
+function raceSetRange(start, end) {
+  _raceRange.start = start; _raceRange.end = end;
+  const rs = document.getElementById('raceStart'), re = document.getElementById('raceEnd');
+  if (rs) rs.value = start;
+  if (re) re.value = end;
+}
+function _raceFiltMount() {
+  const root = document.getElementById('raceFiltersRoot');
+  if (root && root.dataset.react && !root._filtMounted) { root._filtMounted = true; emkReactMount('racefilters', root); }
 }
 
 async function loadRaceTracker() {
+  _raceFiltMount();
   setRaceDatesToCurrentWeek();
   await generateRace();
 }

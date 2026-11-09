@@ -964,9 +964,12 @@ function setDefaultMISDates() {
   monday.setDate(today.getDate() + (dow === 0 ? -6 : 1 - dow));
   misSetRange(monday.toISOString().split('T')[0], today.toISOString().split('T')[0]);
   // Race Tracker uses the same default window
-  const rs = document.getElementById('raceStart');
-  const re = document.getElementById('raceEnd');
-  if (rs) rs.value = monday.toISOString().split('T')[0];
-  if (re) re.value = today.toISOString().split('T')[0];
+  if (typeof raceSetRange === 'function') raceSetRange(monday.toISOString().split('T')[0], today.toISOString().split('T')[0]);
+  else {
+    const rs = document.getElementById('raceStart');
+    const re = document.getElementById('raceEnd');
+    if (rs) rs.value = monday.toISOString().split('T')[0];
+    if (re) re.value = today.toISOString().split('T')[0];
+  }
 }
 
