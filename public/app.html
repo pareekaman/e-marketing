@@ -3047,7 +3047,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
   </div>
 
   <div id="enqView-manual" style="display:none">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+    <div id="manHead" data-react="1" data-react-quiet="1" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
       <div style="font-size:12px;color:var(--muted-foreground);display:inline-flex;align-items:center;gap:6px"><span class="live-dot"></span>Manual Entry · saved to Google Sheet · updated <span id="manUpdated">—</span></div>
       <button class="btn btn-outline" onclick="loadManual()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;vertical-align:-2px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Refresh</button>
     </div>
@@ -3070,7 +3070,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
       </div>
     </div>
 
-    <div class="manual-form-card">
+    <div class="manual-form-card" id="manForm" data-react="1" data-react-quiet="1">
       <div class="card-head-title" style="margin-bottom:2px">Add New Entry</div>
       <div style="font-size:12px;color:var(--muted-foreground);margin-bottom:6px">Fill in the details and Save — it goes straight into the Google Sheet.</div>
       <div class="manual-form-grid">
@@ -3091,11 +3091,11 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
     </div>
 
     <div class="task-table-card">
-      <div class="card-head"><div class="card-head-title">Entries <span id="manCount" style="font-size:12px;color:var(--muted-foreground);font-weight:500"></span></div>
+      <div class="card-head" id="manEntriesHead" data-react="1" data-react-quiet="1"><div class="card-head-title">Entries <span id="manCount" style="font-size:12px;color:var(--muted-foreground);font-weight:500"></span></div>
         <input type="text" id="manSearch" placeholder="Search…" oninput="renderManual()" style="padding:7px 11px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;background:var(--card);color:var(--foreground);outline:none;width:200px"/></div>
       <div style="overflow-x:auto;overflow-y:auto;max-height:52vh">
         <table id="manTable" class="sortable" style="min-width:820px">
-          <thead style="position:sticky;top:0;z-index:2;background:var(--muted)">
+          <thead data-react="1" style="position:sticky;top:0;z-index:2;background:var(--muted)">
             <tr><th data-k="sr" onclick="manSortBy('sr')" style="white-space:nowrap">Sr</th><th data-k="name" onclick="manSortBy('name')">Name</th><th data-k="company" onclick="manSortBy('company')">Company</th><th data-k="contact" onclick="manSortBy('contact')">Contact</th><th data-k="phone" onclick="manSortBy('phone')">Phone</th><th data-k="email" onclick="manSortBy('email')">E-Mail</th><th data-k="avg" onclick="manSortBy('avg')">Avg Order</th><th data-k="current" onclick="manSortBy('current')">Current</th></tr>
           </thead>
           <tbody id="manTbody" data-react="1"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
@@ -4448,7 +4448,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/access.js?v=20261107b"></script>
 <script src="/js/inventory.js?v=20261031a"></script>
 <script src="/js/hrm.js?v=20261109c"></script>
-<script src="/js/react-bridge.js?v=20261109s"></script>
+<script src="/js/react-bridge.js?v=20261109t"></script>
 <script src="/js/dashboard.js?v=20261107e"></script>
 <script src="/js/amber-ui.js?v=20261107a"></script>
 <script src="/js/tasks.js?v=20261107e"></script>
@@ -4473,7 +4473,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/notify.js?v=20261105b"></script>
 <script src="/js/meetings.js?v=20261030b"></script>
 <script src="/js/dms.js?v=20261109c"></script>
-<script src="/js/leads.js?v=20261109f"></script>
+<script src="/js/leads.js?v=20261109g"></script>
 <script src="/js/enquiry.js?v=20261103a"></script>
 <script src="/js/voice-delegate.js?v=20261103a"></script>
 <script src="/js/chatbot.js?v=20261027c"></script>

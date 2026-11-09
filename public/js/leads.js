@@ -168,7 +168,7 @@ function toggleSort(sort, key, rerender) {
 // *SortBy) and, once painted, the ▲ / ▼ span and the pointer cursor exactly as below.
 // View per table: { key, dir, painted }.
 const LEAD_HEAD_REACT = {}, _leadHeadViews = {};
-const LEAD_HEAD_PAGE = { enqTable: 'leadheadenq', mlTable: 'leadheadml', gadTable: 'leadheadgad' };
+const LEAD_HEAD_PAGE = { enqTable: 'leadheadenq', mlTable: 'leadheadml', gadTable: 'leadheadgad', manTable: 'leadheadman' };
 function leadHeadView(tableId) { return _leadHeadViews[tableId] ? { ..._leadHeadViews[tableId] } : null; }
 function leadHeadSetReact(tableId, fn) { LEAD_HEAD_REACT[tableId] = fn; }
 function _leadHead(tableId, patch) {
@@ -325,7 +325,15 @@ const LEAD_UI_SPEC = {
   gadKpi: { root: 'gadKpis', page: 'gadkpis', def: { sel: 'all' } },
   gadDays: { root: 'gadTimeHead', page: 'gadtimehead', def: { days: 'auto' } },
   gadBar: { root: 'gadBar', page: 'gadbar', def: { statuses: [], status: '' } },
+  // Manual Entry (ManualParts.jsx): the "updated …" line + Refresh (the time is handed over, so a
+  // load that lands before React has drawn it is not lost), the entry form (inputs keep their
+  // ids; "Current client?" is a SearchSelect over a hidden <select id="manCurrent">), and the
+  // Entries head (count handed over; #manSearch keeps its id).
+  manHead: { root: 'manHead', page: 'manhead', def: { updated: null } },
+  manForm: { root: 'manForm', page: 'manform', def: { current: '' } },
+  manEntries: { root: 'manEntriesHead', page: 'manentries', def: { count: '' } },
 };
+function manCurrentPick(v) { _lui('manForm', { current: String(v) }); }
 const _leadUi = {};
 const _leadUiOf = key => _leadUi[key] || (_leadUi[key] = { view: { ...LEAD_UI_SPEC[key].def }, fn: null, onReady: null });
 function leadUiView(key) { return LEAD_UI_SPEC[key] ? { ..._leadUiOf(key).view } : null; }
@@ -1526,13 +1534,15 @@ function manKey(kind) {
 
 async function loadManual(opts) {
   startEnqAutoRefresh();
+  _luiMount('manHead'); _luiMount('manForm'); _luiMount('manEntries'); // the React pieces, on the first visit
+  if (!LEAD_HEAD_REACT.manTable) _leadHead('manTable', {});
   const silent = !!(opts && opts.silent);
   const tb = document.getElementById('manTbody');
   if (tb && !silent && !_leadRows('man', tb, { loading: true })) tb.innerHTML = `<tr><td colspan="8" class="empty">Loading…</td></tr>`;
   const data = await api('/api/manual');
   if (!data || data.error) { if (tb && !silent && !_leadRows('man', tb, { error: (data && data.error) || 'Load failed' })) tb.innerHTML = `<tr><td colspan="8" class="empty" style="color:var(--destructive)">⚠️ ${escapeHtml((data && data.error) || 'Load failed')}</td></tr>`; return; }
   _manData = { rows: data.rows || [], keys: data.keys || [], headers: data.headers || [] };
-  const u = document.getElementById('manUpdated'); if (u) { const d = new Date(data.updatedAt); u.textContent = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); }
+  const u = document.getElementById('manUpdated'); { const d = new Date(data.updatedAt); const t = isNaN(d.getTime()) ? '—' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }); if (!_lui('manHead', { updated: t }) && u) u.textContent = t; }
   renderManual();
 }
 
@@ -1550,7 +1560,7 @@ function renderManual() {
 
   const q = (document.getElementById('manSearch') && document.getElementById('manSearch').value || '').trim().toLowerCase();
   const filtered = !q ? rows : rows.filter(r => [r[K.name], r[K.company], r[K.contact], r[K.phone], r[K.email]].some(v => (v || '').toLowerCase().includes(q)));
-  set('manCount', q ? `(${filtered.length} of ${total})` : `(${total})`);
+  if (!_lui('manEntries', { count: q ? `(${filtered.length} of ${total})` : `(${total})` })) set('manCount', q ? `(${filtered.length} of ${total})` : `(${total})`);
 
   const manValOf = (r, key) => {
     switch (key) {
@@ -1599,7 +1609,7 @@ function manCurBadge(v) {
 
 function clearManualForm() {
   ['manName', 'manCompany', 'manContact', 'manPhone', 'manEmail', 'manAvgOrder'].forEach(id => { const el = document.getElementById(id); if (el) { el.value = ''; el.classList.remove('err'); } });
-  const c = document.getElementById('manCurrent'); if (c) c.value = '';
+  if (!_lui('manForm', { current: '' })) { const c = document.getElementById('manCurrent'); if (c) c.value = ''; }
   const msg = document.getElementById('manSaveMsg'); if (msg) msg.textContent = '';
 }
 

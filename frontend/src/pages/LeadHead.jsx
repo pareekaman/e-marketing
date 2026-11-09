@@ -18,6 +18,8 @@ const TABLES = {
     cols: [['date', 'Date', 'white-space:nowrap'], ['name', 'Name'], ['phone', 'WhatsApp'], ['city', 'City'], ['product', 'Product'], ['platform', 'Platform'], ['status', 'Status']] },
   gadTable: { sort: 'gadSortBy', ws: ['\n              ', '', '', '\n            '],
     cols: [['date', 'Date', 'white-space:nowrap'], ['name', 'Name'], ['phone', 'Phone'], ['email', 'Email'], ['form', 'Form'], ['status', 'Status']] },
+  manTable: { sort: 'manSortBy', ws: ['\n            ', '', '', '\n          '],
+    cols: [['sr', 'Sr', 'white-space:nowrap'], ['name', 'Name'], ['company', 'Company'], ['contact', 'Contact'], ['phone', 'Phone'], ['email', 'E-Mail'], ['avg', 'Avg Order'], ['current', 'Current']] },
 };
 
 function makeHead(tableId) {
@@ -49,3 +51,4 @@ function makeHead(tableId) {
 export const EnqHead = makeHead('enqTable');
 export const MlHead = makeHead('mlTable');
 export const GadHead = makeHead('gadTable');
+export const ManHead = makeHead('manTable');
