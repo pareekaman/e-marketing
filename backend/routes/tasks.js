@@ -961,6 +961,9 @@ app.delete('/api/tasks/:id', requireAuth, async (req, res) => {
     const [rows] = await db.query(`SELECT * FROM ${tbl} WHERE id=?`, [req.params.id]);
     await archiveDeleted(tbl, rows, req, { summary: r => `Task: ${r.description || ''}` });
     await db.query(`DELETE FROM ${tbl} WHERE id=?`, [req.params.id]);
+    // A pending revise / completion request for a task that no longer exists
+    // stayed on the Approvals screen with no client and no task.
+    await db.query(`DELETE FROM task_approvals WHERE task_id=? AND task_type=? AND status='pending'`, [req.params.id, type || 'delegation']);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1005,6 +1008,11 @@ app.delete('/api/tasks/user/:userId', requireAuth, requireAdmin, async (req, res
       reason: `Bulk delete of all ${table} rows for user ${req.params.userId}`,
     });
     await db.query(`DELETE FROM ${table} WHERE assigned_to = ?`, [req.params.userId]);
+    // Same as the single delete: their pending approval requests go with them.
+    if (doomed.length) {
+      await db.query(`DELETE FROM task_approvals WHERE task_type=? AND status='pending' AND task_id IN (?)`,
+        [type || 'delegation', doomed.map(r => r.id)]);
+    }
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
