@@ -2225,10 +2225,14 @@ async function taskDelegateCsvSend(file, busy, close) {
       type: 'delegation', desc: description, assignedTo: doer.id,
       approverEmail: get(r, 'approver_email'), date, priority,
       approval: get(r, 'approval').toLowerCase() === 'yes' ? 'yes' : 'no',
-      remarks: get(r, 'remarks'), client_id, quietEmail: true
+      remarks: get(r, 'remarks'), client_id, quietEmail: true,
+      // A done row is a record of finished work: the server creates it completed on
+      // its own date, which stays as the sheet has it (no holiday move, no late mark).
+      bulkDone: markDone
     });
     if (res && res.error) { problems.push(`Row ${n + 1}: ${res.error}`); continue; }
     count++;
+    if (markDone && res && res.completed) { doneCount++; continue; }
     if (res && res.id && !res.duplicate) createdIds.push(res.id);
     if (markDone) {
       // A holiday/week-off skip creates nothing, so there is no row to close.

@@ -242,6 +242,13 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         doerIsClient = true;
       }
     }
+    // The CSV bulk upload only, for a row marked done: a record of work that already
+    // happened on `date`. The task is created completed on that date, and the date is
+    // kept as the sheet has it (no holiday / week-off move), so it counts as on time.
+    // The Delegate form never sends this. A row that needs approval keeps the normal
+    // path, so its completion still goes to the approver.
+    const bulkDone = req.body.bulkDone === true && (type || 'checklist') === 'delegation'
+      && !doerWillSet && !isClient && approval !== 'yes' && /^\d{4}-\d{2}-\d{2}$/.test(String(date || ''));
     // Optional clock time on the deadline — only meaningful alongside a date.
     const dueTime = doerWillSet ? null : parseDueTime(req.body.dueTime);
     if (dueTime === undefined) return res.status(400).json({ error: 'Due time must be HH:MM (24-hour)' });
@@ -253,7 +260,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
     // would be wrong.
     let effectiveDate = doerWillSet ? null : date;
     let adjusted = false, adjustedReason = '';
-    if (!doerWillSet && !doerIsClient) try {
+    if (!doerWillSet && !doerIsClient && !bulkDone) try {
       const holidaysSet = await loadHolidaysSet();
       const [[doerUser]] = await db.query('SELECT week_off, extra_off FROM users WHERE id=? LIMIT 1', [targetUser]);
       if (doerUser && isUserOffOn(doerUser, date, holidaysSet)) {
@@ -296,8 +303,12 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
       // approval inserts in server.js: those arrive from outside and the doer
       // really has not seen them, whoever the row names as assigner.
       const selfAssigned = String(assignedBy) === String(targetUser);
-      const [insD] = await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,due_time,status,priority,approval,remarks,client_id,url,awaiting_due_date,seen_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, dueTime, 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0, selfAssigned ? new Date() : null]);
+      // A bulk "done" row is inserted completed, done at noon of its date (noon so the
+      // date reads the same in IST and UTC), and already seen: it is a record, not news.
+      const [insD] = await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,due_time,status,priority,approval,remarks,client_id,url,awaiting_due_date,seen_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, dueTime, bulkDone ? 'completed' : 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0, (selfAssigned || bulkDone) ? new Date() : null, bulkDone ? `${effectiveDate} 12:00:00` : null]);
       newTaskId = insD.insertId;
+      if (bulkDone) logTaskActivity({ taskId: newTaskId, taskType: 'delegation', newStatus: 'completed',
+        changedBy: req.session.userId, source: 'bulk-upload-done', note: `done on ${effectiveDate}` });
       // 📧 Send delegation email + 📱 WhatsApp (non-blocking — fire and forget)
       (async () => {
         const target = await getNotifyTarget(targetUser);
@@ -359,7 +370,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
       const [insC] = await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks,client_id) VALUES (?,?,?,?,?,?,?,?)`, [desc, targetUser, req.session.userId, effectiveDate, 'pending', priority||'low', remarks||'', enforcedClientId]);
       newTaskId = insC.insertId;
     }
-    res.json({ success: true, id: newTaskId, adjusted, effectiveDate, adjustedReason });
+    res.json({ success: true, id: newTaskId, adjusted, effectiveDate, adjustedReason, completed: !!(bulkDone && newTaskId) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
