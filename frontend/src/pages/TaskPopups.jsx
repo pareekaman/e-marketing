@@ -553,7 +553,11 @@ function DelegateBody({ d, close }) {
           <input type="file" ref={el => { file.current = el; css('font-size:12px;flex:1')(el); }} accept=".csv" />
           <button className="btn btn-green btn-sm" disabled={csvBusy != null}
             onClick={() => legacy('taskDelegateCsvSend', file.current.files[0], setCsvBusy, close)}>{csvBusy != null ? csvBusy : '⬆ Upload CSV'}</button>
-          <button className="btn btn-outline btn-sm" onClick={() => legacy('downloadSample')}>⬇ Sample</button>
+          {/* While rows are going up, ✕ Cancel takes the Sample button's place: it stops before
+              the next row, and tasks.js then offers to delete what this upload made. */}
+          {csvBusy != null && csvBusy.startsWith('⏳')
+            ? <button key="cancel" className="btn btn-outline btn-sm" ref={css('border-color:#dc2626;color:#dc2626')} onClick={() => legacy('taskCsvCancel')}>✕ Cancel</button>
+            : <button key="sample" className="btn btn-outline btn-sm" onClick={() => legacy('downloadSample')}>⬇ Sample</button>}
         </div>
         <div ref={css('font-size:11px;color:#94a3b8;margin-top:6px')}>Columns: doer_email, approver_email, due_date, priority, approval, description, remarks, client_name — matched by header name, so any order works and only doer_email, due_date and description are required. Dates as YYYY-MM-DD or MM/DD/YYYY.</div>
       </div>

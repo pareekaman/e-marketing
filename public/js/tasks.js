@@ -2184,6 +2184,10 @@ async function taskDelegateCsvSend(file, busy, close) {
   // used to start the whole upload again and create every task twice.
   if (_csvUploading) return;
   _csvUploading = true;
+  _csvCancel = false;
+  // Every task this upload made (not duplicates of tasks already there), so a cancel
+  // can take back exactly these.
+  const madeIds = [];
   const progress = (done, total) => busy(`⏳ Uploading ${done} / ${total}…`);
   progress(0, rows.length - 1);
   try {
@@ -2197,7 +2201,10 @@ async function taskDelegateCsvSend(file, busy, close) {
   // A row that cannot be read is left out and reported, never saved half-right.
   const problems = [];
   let count = 0, doneCount = 0; const createdIds = [];
+  let stoppedAt = 0;
   for (let n = 1; n < rows.length; n++) {
+    // Cancel (taskCsvCancel) stops before the next row; a row already sent finishes.
+    if (_csvCancel) { stoppedAt = n + 1; break; }
     progress(n, rows.length - 1);
     const r = rows[n];
     const email = get(r, 'doer_email').toLowerCase();
@@ -2232,7 +2239,11 @@ async function taskDelegateCsvSend(file, busy, close) {
     });
     if (res && res.error) { problems.push(`Row ${n + 1}: ${res.error}`); continue; }
     count++;
+    if (res && res.id && !res.duplicate) madeIds.push(res.id);
     if (markDone && res && res.completed) { doneCount++; continue; }
+    // A done row that repeats an earlier row of this sheet: that task is already
+    // done on its date, so closing it again would restamp it today as late.
+    if (markDone && res && res.duplicate) continue;
     if (res && res.id && !res.duplicate) createdIds.push(res.id);
     if (markDone) {
       // A holiday/week-off skip creates nothing, so there is no row to close.
@@ -2244,9 +2255,30 @@ async function taskDelegateCsvSend(file, busy, close) {
       else doneCount++;
     }
   }
+  // Cancelled: offer to take back what this upload made so far.
+  if (stoppedAt) {
+    busy(null);
+    const keep = !madeIds.length || !(await appConfirm(
+      `The upload was stopped after ${stoppedAt - 2} of ${rows.length - 1} rows. ${madeIds.length} task${madeIds.length === 1 ? ' was' : 's were'} already created by it.\n\nDelete ${madeIds.length === 1 ? 'it' : 'them'}?`,
+      'Upload cancelled'));
+    if (!keep) {
+      busy(`🗑 Deleting ${madeIds.length}…`);
+      let deleted = 0; const failed = [];
+      for (const id of madeIds) {
+        const d = await api(`/api/tasks/${id}?type=delegation`, 'DELETE');
+        if (d && d.success) deleted++; else failed.push((d && d.error) || 'could not delete');
+      }
+      loadDashboard(true);
+      if (failed.length) appAlert(`${deleted} of ${madeIds.length} deleted. ${failed.length} could not be: ${[...new Set(failed)].join('; ')}`, 'Upload cancelled');
+      else showToast(`Upload cancelled · ${deleted} task${deleted === 1 ? '' : 's'} deleted`);
+      return;
+    }
+    showToast(`Upload cancelled · ${count} task${count === 1 ? '' : 's'} kept`);
+  }
   // One summary email per doer instead of one per row (open tasks only).
   if (createdIds.length) api('/api/tasks/notify-batch', 'POST', { ids: createdIds }).catch(() => {});
   if (count) { close(); loadDashboard(true); }
+  if (stoppedAt) return;
   if (problems.length) {
     appAlert(`${count} task${count === 1 ? '' : 's'} created${doneCount ? ` (${doneCount} marked done)` : ''}. ${problems.length} row${problems.length === 1 ? ' was' : 's were'} not:\n\n${problems.join('\n')}`, 'Bulk upload');
   } else {
@@ -2257,7 +2289,9 @@ async function taskDelegateCsvSend(file, busy, close) {
     busy(null);
   }
 }
-let _csvUploading = false;
+let _csvUploading = false, _csvCancel = false;
+// The upload pop-up's ✕ Cancel: stop the delegation CSV upload before its next row.
+function taskCsvCancel() { if (_csvUploading) _csvCancel = true; }
 
 function uploadCSVC() {
   return taskChecklistCsvSend(document.getElementById('bulkFileC').files[0], () => closeModal('checklistModal'));
