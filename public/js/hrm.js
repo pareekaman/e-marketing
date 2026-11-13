@@ -1325,10 +1325,10 @@ function refreshNavGroupVisibility() {
 }
 
 // Back / Forward: open the page the address now names.
-// The address carries the tab's name (pageToUrl / pageFromUrl, core.js).
-try { if (!history.state) history.replaceState({ page: pageFromUrl(new URLSearchParams(location.search).get('page')) || 'dashboard' }, '', location.href); } catch {}
+// The address carries the tab's name, /app/<name> (pagePath / pageFromLocation, core.js).
+try { if (!history.state) history.replaceState({ page: pageFromLocation() || 'dashboard' }, '', location.href); } catch {}
 window.addEventListener('popstate', () => {
-  const page = pageFromUrl(new URLSearchParams(location.search).get('page')) || 'dashboard';
+  const page = pageFromLocation() || 'dashboard';
   if (!document.getElementById('page-' + page)) return;
   window._navFromHistory = true;
   try { navigate(page, null); } finally { window._navFromHistory = false; }
@@ -1375,16 +1375,11 @@ function navigate(page, el) {
   const moreTab = document.getElementById('mbnMoreTab');
   if (moreTab) moreTab.classList.toggle('active', !document.querySelector('.mobile-bottom-nav .nav-item.active'));
   try { localStorage.setItem('lastPage', page); } catch {}
-  // The address follows the page (?page=, which core.js already opens), so a
-  // link can be shared and Back / Forward move between pages. Not when Back
+  // The address follows the page (/app/<name>, which core.js already opens), so
+  // a link can be shared and Back / Forward move between pages. Not when Back
   // itself brought us here, or the history would grow on every step back.
-  if (!window._navFromHistory) {
-    const qs = new URLSearchParams(location.search);
-    if ((qs.get('page') || 'dashboard') !== pageToUrl(page)) {
-      if (page === 'dashboard') qs.delete('page'); else qs.set('page', pageToUrl(page));
-      const q = qs.toString();
-      try { history.pushState({ page }, '', location.pathname + (q ? '?' + q : '') + location.hash); } catch {}
-    }
+  if (!window._navFromHistory && (pageFromLocation() || 'dashboard') !== page) {
+    try { history.pushState({ page }, '', pagePath(page) + pageQuery() + location.hash); } catch {}
   }
   document.getElementById('topbarTitle').textContent = pageTitles[page] || page;
   // Greeting under the Dashboard title; css/amber.css shows it (amber look only).

@@ -107,6 +107,20 @@ function pageFromUrl(name) {
   const hit = Object.keys(PAGE_URL_NAMES).find(id => PAGE_URL_NAMES[id] === name);
   return hit || name;
 }
+// Each page has its own address: /app for the dashboard, /app/<name> for the rest
+// (/app/alltasks, /app/scheduler). The server sends app.html for all of them. An
+// old link that names the page as ?page=<name> still opens it.
+function pagePath(page) { return !page || page === 'dashboard' ? '/app' : '/app/' + pageToUrl(page); }
+function pageFromLocation() {
+  const m = location.pathname.match(/^\/app\/([a-z0-9-]+)\/?$/);
+  const name = m ? m[1] : new URLSearchParams(location.search).get('page');
+  return name ? pageFromUrl(name) : null;
+}
+// The rest of the query string, without the old ?page=.
+function pageQuery() {
+  const qs = new URLSearchParams(location.search); qs.delete('page');
+  const q = qs.toString(); return q ? '?' + q : '';
+}
 // 'paymentreq' and 'feedback' are in every role's defaults on purpose: the
 // Payment Request nav used to be shown to everyone unconditionally, and the
 // Feedback nav is granted by /api/feedback/access. Both are now additionally
@@ -359,10 +373,11 @@ async function init() {
     const r = await fetch('/api/me', { credentials: 'include', headers });
     if (!r.ok) {
       localStorage.removeItem('authToken');
-      // Carry a ?page= deep link across the login round-trip, so a shared link
-      // still lands on the right tab for someone who wasn't signed in.
+      // Carry a page's link (/app/inventory, or an old ?page=) across the login
+      // round-trip, so a shared link still lands on the right tab for someone
+      // who wasn't signed in.
       const next = location.pathname + location.search;
-      window.location.replace(location.search ? '/?next=' + encodeURIComponent(next) : '/');
+      window.location.replace((location.search || /^\/app\/./.test(location.pathname)) ? '/?next=' + encodeURIComponent(next) : '/');
       return;
     }
     ME = await r.json();
@@ -515,18 +530,14 @@ async function init() {
     // (already the default "active" page in the markup) stays put.
     let restored = false;
     try {
-      // ?page=inventory makes a shareable deep link (there is no router — the
-      // app is one document and navigate() just swaps .page divs). An explicit
+      // /app/inventory is a shareable deep link (there is no router — the app
+      // is one document and navigate() just swaps .page divs). An explicit
       // link beats the remembered tab, so it is checked first.
-      const asked = new URLSearchParams(location.search).get('page');
-      const wanted = asked && pageFromUrl(asked);
-      // An old link (?page=meetings) is rewritten to the tab's name in place,
-      // without a new history step.
-      if (asked && pageToUrl(wanted) !== asked) {
-        try {
-          const qs = new URLSearchParams(location.search); qs.set('page', pageToUrl(wanted));
-          history.replaceState({ page: wanted }, '', location.pathname + '?' + qs.toString() + location.hash);
-        } catch {}
+      const wanted = pageFromLocation();
+      // An old link (?page=inventory, /app?page=meetings, /app/meetings) is
+      // rewritten to /app/<the tab's name> in place, without a new history step.
+      if (wanted && location.pathname + location.search !== pagePath(wanted) + pageQuery()) {
+        try { history.replaceState({ page: wanted }, '', pagePath(wanted) + pageQuery() + location.hash); } catch {}
       }
       const lastPage = wanted || localStorage.getItem('lastPage');
       // Mirror navigate()'s own role guards so a disallowed saved page doesn't

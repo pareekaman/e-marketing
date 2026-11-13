@@ -967,13 +967,13 @@ function mascotCheer(){
   update();
 })();
 
-// Where to land after login. ?next= carries a deep link (e.g. /app?page=inventory)
-// that app.html bounced here when the visitor wasn't signed in.
+// Where to land after login. ?next= carries a deep link (e.g. /app/inventory, or an
+// old /app?page=inventory) that app.html bounced here when the visitor wasn't signed in.
 // Only ever an /app path of our own: anything else and this becomes an open
 // redirect that phishing can point wherever it likes.
 function nextTarget() {
   const n = new URLSearchParams(location.search).get('next');
-  return (n && /^\/app(\?[^\s]*)?$/.test(n)) ? n : '/app';
+  return (n && /^\/app(\/[a-z0-9-]+)?(\?[^\s]*)?$/.test(n)) ? n : '/app';
 }
 
 // Already-logged-in users skip the form. Clients go straight to their portal;
